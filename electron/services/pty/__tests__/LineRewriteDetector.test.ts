@@ -72,6 +72,14 @@ describe("isStatusLineRewrite", () => {
     expect(isStatusLineRewrite("text\r")).toBe(false);
   });
 
+  it("returns false for rewrite with ordinary content", () => {
+    expect(isStatusLineRewrite("\rhello world")).toBe(false);
+  });
+
+  it("returns false for ANSI erase with ordinary content", () => {
+    expect(isStatusLineRewrite("\x1b[2Khello world")).toBe(false);
+  });
+
   it("returns true for ANSI erase with status content", () => {
     expect(isStatusLineRewrite("\x1b[2K⠋ Working on task")).toBe(true);
   });

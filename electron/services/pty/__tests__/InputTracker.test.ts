@@ -68,17 +68,20 @@ describe("InputTracker", () => {
       expect(tracker.process("\r", 7001)).toEqual({ kind: "enter", hadText: true });
     });
 
-    it("handles escape sequences in input", () => {
-      // Arrow key sequence
-      const result = tracker.process("\x1b[A", 1000);
-      expect(result.kind).toBe("no-enter");
+    it("handles escape sequences in input without counting as text", () => {
+      // Arrow key sequence should not count as typed text
+      tracker.process("\x1b[A", 1000);
+      // Enter after escape-only input should report hadText=false
+      const result = tracker.process("\r", 1001);
+      expect(result).toEqual({ kind: "enter", hadText: false });
     });
 
-    it("handles partial escape sequences across calls", () => {
+    it("handles partial escape sequences across calls without counting as text", () => {
       tracker.process("\x1b", 1000);
-      // Next call should prepend the partial
-      const result = tracker.process("[A", 1001);
-      expect(result.kind).toBe("no-enter");
+      tracker.process("[A", 1001);
+      // Escape sequence was split across calls but should not count as text
+      const result = tracker.process("\r", 1002);
+      expect(result).toEqual({ kind: "enter", hadText: false });
     });
 
     it("resets pendingInputChars on Enter", () => {

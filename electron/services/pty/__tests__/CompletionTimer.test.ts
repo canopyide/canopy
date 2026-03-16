@@ -55,4 +55,24 @@ describe("CompletionTimer", () => {
     expect(cb1).not.toHaveBeenCalled();
     expect(cb2).toHaveBeenCalledOnce();
   });
+
+  it("delayed re-emit resets the timer deadline", () => {
+    const timer = new CompletionTimer();
+    const cb1 = vi.fn();
+    const cb2 = vi.fn();
+    timer.emit(cb1, 500);
+    // Advance 300ms — first timer hasn't fired yet
+    vi.advanceTimersByTime(300);
+    expect(cb1).not.toHaveBeenCalled();
+    // Re-emit with new callback — should start a fresh 500ms timer
+    timer.emit(cb2, 500);
+    // Advance 200ms — would have been enough for old timer but not for new one
+    vi.advanceTimersByTime(200);
+    expect(cb1).not.toHaveBeenCalled();
+    expect(cb2).not.toHaveBeenCalled();
+    // Advance remaining 300ms to complete new timer
+    vi.advanceTimersByTime(300);
+    expect(cb1).not.toHaveBeenCalled();
+    expect(cb2).toHaveBeenCalledOnce();
+  });
 });
