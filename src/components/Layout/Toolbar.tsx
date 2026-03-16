@@ -69,7 +69,6 @@ const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
 interface ToolbarProps {
   onLaunchAgent: (type: string) => void;
   onSettings: () => void;
-  onOpenAgentSettings?: () => void;
   errorCount?: number;
   onToggleProblems?: () => void;
   isFocusMode?: boolean;
@@ -82,7 +81,6 @@ interface ToolbarProps {
 export function Toolbar({
   onLaunchAgent,
   onSettings,
-  onOpenAgentSettings,
   errorCount = 0,
   onToggleProblems,
   isFocusMode = false,
@@ -278,8 +276,6 @@ export function Toolbar({
     }
   };
 
-  const openAgentSettings = onOpenAgentSettings ?? onSettings;
-
   const handleSettingsContextMenu = async (event: React.MouseEvent) => {
     const template: MenuItemOption[] = [
       { id: "settings:general", label: "General" },
@@ -416,7 +412,7 @@ export function Toolbar({
             key="claude"
             type="claude"
             availability={agentAvailability?.claude}
-            onOpenSettings={openAgentSettings}
+
             data-toolbar-item=""
           />
         ),
@@ -428,7 +424,7 @@ export function Toolbar({
             key="gemini"
             type="gemini"
             availability={agentAvailability?.gemini}
-            onOpenSettings={openAgentSettings}
+
             data-toolbar-item=""
           />
         ),
@@ -440,7 +436,7 @@ export function Toolbar({
             key="codex"
             type="codex"
             availability={agentAvailability?.codex}
-            onOpenSettings={openAgentSettings}
+
             data-toolbar-item=""
           />
         ),
@@ -452,7 +448,7 @@ export function Toolbar({
             key="opencode"
             type="opencode"
             availability={agentAvailability?.opencode}
-            onOpenSettings={openAgentSettings}
+
             data-toolbar-item=""
           />
         ),
@@ -464,7 +460,7 @@ export function Toolbar({
             key="cursor"
             type="cursor"
             availability={agentAvailability?.cursor}
-            onOpenSettings={openAgentSettings}
+
             data-toolbar-item=""
           />
         ),
@@ -980,7 +976,6 @@ export function Toolbar({
       agentAvailability,
       agentSettings,
       hasAnySelectedAgent,
-      openAgentSettings,
       onLaunchAgent,
       terminalShortcut,
       browserShortcut,
