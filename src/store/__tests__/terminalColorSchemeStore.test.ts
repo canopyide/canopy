@@ -64,18 +64,25 @@ describe("terminalColorSchemeStore", () => {
     expect(theme.cursor).toBe("#3F9366");
   });
 
-  it("getEffectiveTheme returns tokyo-night for fiordland app theme", () => {
+  it("getEffectiveTheme returns dracula for fiordland app theme", () => {
     useAppThemeStore.setState({ selectedSchemeId: "fiordland" });
     const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.background).toBe("#1a1b26");
-    expect(theme.foreground).toBe("#a9b1d6");
+    expect(theme.background).toBe("#282a36");
+    expect(theme.foreground).toBe("#f8f8f2");
   });
 
-  it("getEffectiveTheme returns rose-pine-dawn for bondi app theme", () => {
+  it("getEffectiveTheme returns Canopy Ember for highlands app theme", () => {
+    useAppThemeStore.setState({ selectedSchemeId: "highlands" });
+    const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
+    expect(theme.background).toBe("#211916");
+    expect(theme.foreground).toBe("#e8ddd2");
+  });
+
+  it("getEffectiveTheme returns solarized-light for bondi app theme", () => {
     useAppThemeStore.setState({ selectedSchemeId: "bondi" });
     const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.background).toBe("#faf4ed");
-    expect(theme.foreground).toBe("#575279");
+    expect(theme.background).toBe("#fdf6e3");
+    expect(theme.foreground).toBe("#657b83");
   });
 
   it("getEffectiveTheme returns correct theme after switching to non-canopy scheme", () => {
@@ -156,7 +163,7 @@ describe("terminalColorSchemeStore", () => {
     it("returns mapped scheme background when app theme changes", () => {
       useAppThemeStore.setState({ selectedSchemeId: "fiordland" });
       const bg = selectWrapperBackground(useTerminalColorSchemeStore.getState());
-      expect(bg).toBe("#1a1b26");
+      expect(bg).toBe("#282a36");
     });
 
     it("returns hex color for built-in non-default scheme", () => {

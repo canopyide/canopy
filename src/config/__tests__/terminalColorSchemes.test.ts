@@ -9,8 +9,8 @@ import {
 } from "../terminalColorSchemes";
 
 describe("terminalColorSchemes", () => {
-  it("has exactly 20 built-in schemes", () => {
-    expect(BUILT_IN_SCHEMES).toHaveLength(20);
+  it("has exactly 21 built-in schemes", () => {
+    expect(BUILT_IN_SCHEMES).toHaveLength(21);
   });
 
   it("all schemes have unique IDs", () => {
@@ -76,10 +76,23 @@ describe("terminalColorSchemes", () => {
     }
   });
 
+  it("Match App Theme reuses a small set of shared terminal schemes", () => {
+    expect(new Set(Object.values(APP_THEME_TERMINAL_SCHEME_MAP))).toEqual(
+      new Set([
+        "atom-one-light",
+        "canopy-ember",
+        "daintree",
+        "dracula",
+        "github-dark",
+        "solarized-light",
+      ])
+    );
+  });
+
   it("getMappedTerminalScheme returns scheme for known app theme", () => {
     const scheme = getMappedTerminalScheme("fiordland");
     expect(scheme).toBeDefined();
-    expect(scheme!.id).toBe("tokyo-night");
+    expect(scheme!.id).toBe("dracula");
   });
 
   it("getMappedTerminalScheme returns undefined for unknown app theme", () => {
