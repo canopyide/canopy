@@ -88,15 +88,15 @@ describe("createCanopyTokens — light mode derived defaults", () => {
   it("sets black-based border defaults for light mode", () => {
     expect(lightTokens["border-subtle"]).toBe("rgba(0, 0, 0, 0.06)");
     expect(lightTokens["border-strong"]).toBe("rgba(0, 0, 0, 0.12)");
-    expect(lightTokens["border-divider"]).toBe("rgba(0, 0, 0, 0.05)");
+    expect(lightTokens["border-divider"]).toBe("rgba(0, 0, 0, 0.08)");
   });
 
   it("sets black-based overlay defaults for light mode", () => {
-    expect(lightTokens["overlay-subtle"]).toBe("rgba(0, 0, 0, 0.02)");
-    expect(lightTokens["overlay-soft"]).toBe("rgba(0, 0, 0, 0.03)");
-    expect(lightTokens["overlay-medium"]).toBe("rgba(0, 0, 0, 0.04)");
-    expect(lightTokens["overlay-strong"]).toBe("rgba(0, 0, 0, 0.05)");
-    expect(lightTokens["overlay-emphasis"]).toBe("rgba(0, 0, 0, 0.08)");
+    expect(lightTokens["overlay-subtle"]).toBe("rgba(0, 0, 0, 0.04)");
+    expect(lightTokens["overlay-soft"]).toBe("rgba(0, 0, 0, 0.06)");
+    expect(lightTokens["overlay-medium"]).toBe("rgba(0, 0, 0, 0.08)");
+    expect(lightTokens["overlay-strong"]).toBe("rgba(0, 0, 0, 0.10)");
+    expect(lightTokens["overlay-emphasis"]).toBe("rgba(0, 0, 0, 0.14)");
   });
 
   it("sets lighter scrim defaults for light mode", () => {

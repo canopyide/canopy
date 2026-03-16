@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "path";
 
 /** Normalize a path to forward slashes for cross-platform mock matching */
@@ -389,11 +389,9 @@ describe("WorktreeLifecycleService", () => {
         // Advance past the timeout
         vi.advanceTimersByTime(1001);
 
-        expect(mockSpawnSync).toHaveBeenCalledWith(
-          "taskkill",
-          ["/F", "/T", "/PID", "12345"],
-          { windowsHide: true }
-        );
+        expect(mockSpawnSync).toHaveBeenCalledWith("taskkill", ["/F", "/T", "/PID", "12345"], {
+          windowsHide: true,
+        });
 
         // Emit close to resolve the promise
         listeners["close"]?.forEach((cb) => cb(1));
