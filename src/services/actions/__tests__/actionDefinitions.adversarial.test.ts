@@ -543,10 +543,7 @@ describe("terminal action hardening", () => {
     const addTerminal = vi.fn().mockResolvedValue("copy-id");
 
     useTerminalStore.setState({
-      terminals: [
-        createTerminal({ id: "term-a" }),
-        createTerminal({ id: "term-b" }),
-      ],
+      terminals: [createTerminal({ id: "term-a" }), createTerminal({ id: "term-b" })],
       focusedId: null,
       addTerminal,
     } as never);
