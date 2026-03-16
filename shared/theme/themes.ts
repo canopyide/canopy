@@ -658,6 +658,7 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "activity-idle": "#3A3328",
       "activity-working": "#22c55e",
       "activity-waiting": "#D4913E",
+      "terminal-bright-black": "#5A5347",
       "terminal-selection": "#2A2418",
       "terminal-red": "#C8704E",
       "terminal-green": "#52956A",
