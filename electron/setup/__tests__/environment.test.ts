@@ -70,21 +70,21 @@ describe("Windows Git PATH discovery", () => {
     const candidates = getCandidatePaths();
     // User install
     expect(candidates).toContainEqual(
-      expect.stringContaining(path.join("AppData", "Local", "Programs", "Git", "cmd")),
+      expect.stringContaining(path.join("AppData", "Local", "Programs", "Git", "cmd"))
     );
     // Program Files (fallback)
     expect(candidates).toContainEqual(
-      expect.stringContaining(path.join("C:\\Program Files", "Git", "cmd")),
+      expect.stringContaining(path.join("C:\\Program Files", "Git", "cmd"))
     );
     // Program Files (x86) (fallback)
     expect(candidates).toContainEqual(
-      expect.stringContaining(path.join("C:\\Program Files (x86)", "Git", "cmd")),
+      expect.stringContaining(path.join("C:\\Program Files (x86)", "Git", "cmd"))
     );
     // Scoop shims
     expect(candidates).toContainEqual(expect.stringContaining(path.join("scoop", "shims")));
     // Chocolatey (fallback)
     expect(candidates).toContainEqual(
-      expect.stringContaining(path.join("C:\\ProgramData\\chocolatey", "bin")),
+      expect.stringContaining(path.join("C:\\ProgramData\\chocolatey", "bin"))
     );
   });
 
@@ -96,11 +96,11 @@ describe("Windows Git PATH discovery", () => {
 
     const candidates = getCandidatePaths();
     expect(candidates).toContainEqual(
-      expect.stringContaining(path.join("D:\\Programs", "Git", "cmd")),
+      expect.stringContaining(path.join("D:\\Programs", "Git", "cmd"))
     );
     // Should NOT contain the fallback
     const hasDefault = candidates.some(
-      (p) => p.includes("C:\\Program Files") && !p.includes("(x86)"),
+      (p) => p.includes("C:\\Program Files") && !p.includes("(x86)")
     );
     expect(hasDefault).toBe(false);
   });
@@ -113,7 +113,7 @@ describe("Windows Git PATH discovery", () => {
 
     const candidates = getCandidatePaths();
     expect(candidates).toContainEqual(
-      expect.stringContaining(path.join("D:\\Programs (x86)", "Git", "cmd")),
+      expect.stringContaining(path.join("D:\\Programs (x86)", "Git", "cmd"))
     );
   });
 
