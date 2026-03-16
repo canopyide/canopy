@@ -63,7 +63,11 @@ describe("Appearance tab search index subtab metadata", () => {
   });
 
   it("terminal entries map to terminal subtab", () => {
-    const terminalIds = ["appearance-color-scheme", "appearance-font-size", "appearance-font-family"];
+    const terminalIds = [
+      "appearance-color-scheme",
+      "appearance-font-size",
+      "appearance-font-family",
+    ];
     for (const id of terminalIds) {
       const entry = SETTINGS_SEARCH_INDEX.find((e) => e.id === id);
       expect(entry?.subtab).toBe("terminal");
