@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   X,
   Maximize2,
@@ -405,7 +412,12 @@ function PanelHeaderComponent({
             <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
               <div className="relative min-w-0 flex-1 flex">
                 {tabsCanScrollLeft && (
-                  <div className={cn("absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent", tabFadeFrom)} />
+                  <div
+                    className={cn(
+                      "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent",
+                      tabFadeFrom
+                    )}
+                  />
                 )}
                 <div
                   ref={tabListRef}
@@ -427,7 +439,9 @@ function PanelHeaderComponent({
                       isActive={tab.isActive}
                       onClick={() => onTabClick?.(tab.id)}
                       onClose={() => onTabClose?.(tab.id)}
-                      onRename={onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined}
+                      onRename={
+                        onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined
+                      }
                     />
                   ))}
                   {onAddTab && (
@@ -453,7 +467,12 @@ function PanelHeaderComponent({
                   )}
                 </div>
                 {tabsCanScrollRight && (
-                  <div className={cn("absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent", tabFadeFrom)} />
+                  <div
+                    className={cn(
+                      "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent",
+                      tabFadeFrom
+                    )}
+                  />
                 )}
               </div>
             </SortableContext>
@@ -461,7 +480,12 @@ function PanelHeaderComponent({
         ) : (
           <div className="relative min-w-0 flex-1 flex">
             {tabsCanScrollLeft && (
-              <div className={cn("absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent", tabFadeFrom)} />
+              <div
+                className={cn(
+                  "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent",
+                  tabFadeFrom
+                )}
+              />
             )}
             <div
               ref={tabListRef}
@@ -509,7 +533,12 @@ function PanelHeaderComponent({
               )}
             </div>
             {tabsCanScrollRight && (
-              <div className={cn("absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent", tabFadeFrom)} />
+              <div
+                className={cn(
+                  "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent",
+                  tabFadeFrom
+                )}
+              />
             )}
           </div>
         )
