@@ -1,12 +1,6 @@
 import { appClient, terminalClient, worktreeClient, projectClient, systemClient } from "@/clients";
 import { suppressMruRecording } from "@/store/worktreeStore";
-import { terminalConfigClient } from "@/clients/terminalConfigClient";
-import {
-  useLayoutConfigStore,
-  useScrollbackStore,
-  usePerformanceModeStore,
-  useTerminalInputStore,
-} from "@/store";
+import { useLayoutConfigStore } from "@/store";
 import { useUserAgentRegistryStore } from "@/store/userAgentRegistryStore";
 import type {
   TerminalType,
@@ -16,9 +10,6 @@ import type {
   TabGroup,
 } from "@/types";
 import { keybindingService } from "@/services/KeybindingService";
-import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
-import { generateAgentCommand, buildResumeCommand } from "@shared/types";
-import { normalizeScrollbackLines } from "@shared/config/scrollback";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { isTerminalWarmInProjectSwitchCache } from "@/services/projectSwitchRendererCache";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
@@ -27,13 +18,25 @@ import { logDebug, logInfo, logWarn, logError } from "@/utils/logger";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance, withRendererSpan } from "@/utils/performance";
 import { isCanopyEnvEnabled } from "@/utils/env";
-
-const RECONNECT_TIMEOUT_MS = 2000;
+import {
+  type TerminalRestoreTask,
+  splitSnapshotRestoreTasks,
+  scheduleDeferredSnapshotRestore,
+  runInBatches,
+  RESTORE_SPAWN_BATCH_SIZE,
+  RESTORE_SPAWN_BATCH_DELAY_MS,
+} from "./batchScheduler";
+import { normalizeAndApplyScrollback } from "./scrollbackConfig";
+import { reconnectWithTimeout } from "./reconnectManager";
+import {
+  inferKind,
+  buildArgsForBackendTerminal,
+  buildArgsForReconnectedFallback,
+  buildArgsForRespawn,
+  buildArgsForNonPtyRecreation,
+  buildArgsForOrphanedTerminal,
+} from "./statePatcher";
 const RESTORE_CONCURRENCY = 8;
-const RESTORE_SPAWN_BATCH_SIZE = 3;
-const RESTORE_SPAWN_BATCH_DELAY_MS = 100;
-const DEFERRED_RESTORE_IDLE_TIMEOUT_MS = 1200;
-const DEFERRED_RESTORE_FALLBACK_DELAY_MS = 32;
 const CLIPBOARD_DIR_NAME = "canopy-clipboard";
 const VERBOSE_HYDRATION_LOGGING = isCanopyEnvEnabled("CANOPY_VERBOSE");
 
@@ -43,13 +46,6 @@ function logHydrationInfo(message: string, context?: Record<string, unknown>): v
 }
 
 let hydrationBootstrapPromise: Promise<void> | null = null;
-
-interface TerminalRestoreTask {
-  terminalId: string;
-  label: string;
-  worktreeId?: string;
-  location: "grid" | "dock";
-}
 
 async function ensureHydrationBootstrap(): Promise<void> {
   if (!hydrationBootstrapPromise) {
@@ -63,76 +59,6 @@ async function ensureHydrationBootstrap(): Promise<void> {
   }
 
   await hydrationBootstrapPromise;
-}
-
-function splitSnapshotRestoreTasks(
-  tasks: TerminalRestoreTask[],
-  activeWorktreeId: string | null,
-  enableDeferredRestore: boolean
-): { criticalTasks: TerminalRestoreTask[]; deferredTasks: TerminalRestoreTask[] } {
-  if (!enableDeferredRestore || tasks.length <= 1) {
-    return { criticalTasks: tasks, deferredTasks: [] };
-  }
-
-  const criticalTasks: TerminalRestoreTask[] = [];
-  const deferredTasks: TerminalRestoreTask[] = [];
-
-  for (const task of tasks) {
-    const isDockTask = task.location === "dock";
-    const isProjectScopedTask = task.worktreeId == null;
-    const isActiveWorktreeTask = task.worktreeId === activeWorktreeId;
-
-    if (isDockTask || isProjectScopedTask || isActiveWorktreeTask) {
-      criticalTasks.push(task);
-    } else {
-      deferredTasks.push(task);
-    }
-  }
-
-  if (criticalTasks.length === 0 && deferredTasks.length > 0) {
-    const fallbackTask = deferredTasks.shift();
-    if (fallbackTask) {
-      criticalTasks.push(fallbackTask);
-    }
-  }
-
-  return { criticalTasks, deferredTasks };
-}
-
-function scheduleDeferredSnapshotRestore(runRestore: () => Promise<void>): void {
-  const execute = () => {
-    void runRestore().catch((error) => {
-      logWarn("Deferred terminal snapshot restore failed", { error });
-    });
-  };
-
-  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(() => execute(), {
-      timeout: DEFERRED_RESTORE_IDLE_TIMEOUT_MS,
-    });
-    return;
-  }
-
-  setTimeout(execute, DEFERRED_RESTORE_FALLBACK_DELAY_MS);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function runInBatches<T>(
-  items: T[],
-  batchSize: number,
-  delayMs: number,
-  runner: (item: T) => Promise<void>
-): Promise<void> {
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize);
-    await Promise.allSettled(batch.map(runner));
-    if (i + batchSize < items.length) {
-      await delay(delayMs);
-    }
-  }
 }
 
 async function restoreTerminalSnapshots(
@@ -300,37 +226,7 @@ export async function hydrateAppState(
 
     terminalInstanceService.setGPUHardwareAvailable(gpuWebGLHardware ?? true);
 
-    // Hydrate terminal config (scrollback, performance mode) BEFORE restoring terminals
-    try {
-      if (terminalConfig?.scrollbackLines !== undefined) {
-        const { scrollbackLines } = terminalConfig;
-        const normalizedScrollback = normalizeScrollbackLines(scrollbackLines);
-
-        if (normalizedScrollback !== scrollbackLines) {
-          logHydrationInfo(
-            `Normalizing scrollback from ${scrollbackLines} to ${normalizedScrollback}`
-          );
-          terminalConfigClient.setScrollback(normalizedScrollback).catch((err) => {
-            logWarn("Failed to persist scrollback normalization", { error: err });
-          });
-        }
-
-        useScrollbackStore.getState().setScrollbackLines(normalizedScrollback);
-      }
-      if (terminalConfig?.performanceMode !== undefined) {
-        usePerformanceModeStore.getState().setPerformanceMode(terminalConfig.performanceMode);
-      }
-      if (terminalConfig) {
-        useTerminalInputStore
-          .getState()
-          .setHybridInputEnabled(terminalConfig.hybridInputEnabled ?? true);
-        useTerminalInputStore
-          .getState()
-          .setHybridInputAutoFocus(terminalConfig.hybridInputAutoFocus ?? true);
-      }
-    } catch (error) {
-      logWarn("Failed to hydrate terminal config", { error });
-    }
+    normalizeAndApplyScrollback(terminalConfig, logHydrationInfo);
 
     if (!appState) {
       logWarn("App state returned undefined during hydration, using defaults");
@@ -448,18 +344,7 @@ export async function hydrateAppState(
             if (backendTerminal) {
               taskIsPty = true;
             } else {
-              let inferredKind: TerminalKind = saved.kind ?? "terminal";
-              if (!saved.kind) {
-                if (saved.browserUrl !== undefined) {
-                  inferredKind = "browser";
-                } else if (saved.notePath !== undefined || saved.noteId !== undefined) {
-                  inferredKind = "notes";
-                } else if (saved.title === "Assistant" || saved.title?.startsWith("Assistant")) {
-                  inferredKind = "assistant";
-                } else if (!saved.cwd && !saved.command) {
-                  inferredKind = "assistant";
-                }
-              }
+              const inferredKind = inferKind(saved);
               taskIsPty = inferredKind === "assistant" ? false : panelKindHasPty(inferredKind);
             }
 
@@ -468,68 +353,25 @@ export async function hydrateAppState(
               isPty: taskIsPty,
               execute: async () => {
                 if (backendTerminal) {
-                  // PTY terminal - reconnect to existing backend process
                   logHydrationInfo(`Reconnecting to terminal: ${saved.id}`);
 
-                  const cwd = backendTerminal.cwd || projectRoot || "";
-                  const currentAgentState = backendTerminal.agentState;
-                  const backendLastStateChange = backendTerminal.lastStateChange;
-                  let agentId =
-                    backendTerminal.agentId ??
-                    (backendTerminal.type && isRegisteredAgent(backendTerminal.type)
-                      ? backendTerminal.type
-                      : undefined);
-
-                  if (!agentId && backendTerminal.kind === "agent") {
-                    const titleLower = (backendTerminal.title ?? "").toLowerCase();
-                    if (titleLower.includes("claude")) {
-                      agentId = "claude";
-                    } else if (titleLower.includes("gemini")) {
-                      agentId = "gemini";
-                    } else if (titleLower.includes("codex")) {
-                      agentId = "codex";
-                    } else if (titleLower.includes("opencode")) {
-                      agentId = "opencode";
-                    } else {
-                      logWarn(
-                        `Backend agent terminal ${backendTerminal.id} missing agentId and title doesn't match known agents: "${backendTerminal.title}"`
-                      );
-                    }
-                  }
-
-                  const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
+                  const args = buildArgsForBackendTerminal(
+                    backendTerminal,
+                    saved,
+                    projectRoot || ""
+                  );
+                  const location = args.location as "grid" | "dock";
 
                   logHydrationInfo(`[HYDRATION] Adding terminal from backend:`, {
                     id: backendTerminal.id,
-                    kind: backendTerminal.kind ?? (agentId ? "agent" : "terminal"),
-                    agentId,
+                    kind: args.kind,
+                    agentId: args.agentId,
                     location,
                     worktreeId: backendTerminal.worktreeId,
                     title: backendTerminal.title,
                   });
 
-                  const isDevPreview = backendTerminal.kind === "dev-preview";
-                  const devCommand = isDevPreview ? saved.command?.trim() : undefined;
-                  const restoredTerminalId = await addTerminal({
-                    kind: backendTerminal.kind ?? (agentId ? "agent" : "terminal"),
-                    type: backendTerminal.type,
-                    agentId,
-                    title: backendTerminal.title,
-                    cwd,
-                    worktreeId: backendTerminal.worktreeId,
-                    location,
-                    existingId: backendTerminal.id,
-                    agentState: currentAgentState,
-                    lastStateChange: backendLastStateChange,
-                    devCommand,
-                    browserUrl: isDevPreview ? saved.browserUrl : undefined,
-                    browserHistory: isDevPreview ? saved.browserHistory : undefined,
-                    browserZoom: isDevPreview ? saved.browserZoom : undefined,
-                    devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
-                    exitBehavior: saved.exitBehavior,
-                    agentSessionId: saved.agentSessionId,
-                    agentLaunchFlags: saved.agentLaunchFlags,
-                  });
+                  const restoredTerminalId = await addTerminal(args);
 
                   if (backendTerminal.activityTier) {
                     terminalInstanceService.initializeBackendTier(
@@ -572,21 +414,7 @@ export async function hydrateAppState(
 
                   backendTerminalMap.delete(saved.id);
                 } else {
-                  let kind: TerminalKind = saved.kind ?? "terminal";
-                  if (!saved.kind) {
-                    if (saved.browserUrl !== undefined) {
-                      kind = "browser";
-                    } else if (saved.notePath !== undefined || saved.noteId !== undefined) {
-                      kind = "notes";
-                    } else if (
-                      saved.title === "Assistant" ||
-                      saved.title?.startsWith("Assistant")
-                    ) {
-                      kind = "assistant";
-                    } else if (!saved.cwd && !saved.command) {
-                      kind = "assistant";
-                    }
-                  }
+                  const kind = inferKind(saved);
 
                   if (kind === "assistant") {
                     logHydrationInfo(`Skipping legacy assistant panel: ${saved.id}`);
@@ -596,107 +424,18 @@ export async function hydrateAppState(
                   const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
 
                   if (panelKindHasPty(kind)) {
-                    let reconnectedTerminal: Awaited<
-                      ReturnType<typeof terminalClient.reconnect>
-                    > | null = null;
-                    let reconnectTimedOut = false;
+                    const reconnectOutcome = await reconnectWithTimeout(saved.id, logHydrationInfo);
+                    const reconnectTimedOut = reconnectOutcome.status === "timeout";
+                    const reconnectedTerminal =
+                      reconnectOutcome.status === "found" ? reconnectOutcome.terminal : null;
 
-                    try {
-                      logHydrationInfo(`Trying reconnect fallback for ${saved.id} (kind: ${kind})`);
-
-                      const reconnectPromise = terminalClient.reconnect(saved.id);
-                      const timeoutPromise = new Promise<null>((_, reject) =>
-                        setTimeout(
-                          () => reject(new Error("Reconnection timeout")),
-                          RECONNECT_TIMEOUT_MS
-                        )
+                    if (reconnectedTerminal) {
+                      const reconnectArgs = buildArgsForReconnectedFallback(
+                        reconnectedTerminal,
+                        saved,
+                        projectRoot || ""
                       );
-
-                      reconnectedTerminal = await Promise.race([reconnectPromise, timeoutPromise]);
-
-                      if (reconnectedTerminal?.exists && reconnectedTerminal.hasPty) {
-                        logHydrationInfo(
-                          `Reconnect fallback succeeded for ${saved.id} - terminal exists in backend but was missed by getForProject`
-                        );
-                      } else {
-                        logHydrationInfo(
-                          `Reconnect fallback: terminal ${saved.id} not found (exists=${reconnectedTerminal?.exists}, hasPty=${reconnectedTerminal?.hasPty})`
-                        );
-                      }
-                    } catch (reconnectError) {
-                      const isTimeout =
-                        reconnectError instanceof Error &&
-                        reconnectError.message === "Reconnection timeout";
-                      reconnectTimedOut = isTimeout;
-
-                      if (isTimeout) {
-                        logWarn(
-                          `Reconnect timed out for ${saved.id} after ${RECONNECT_TIMEOUT_MS}ms`
-                        );
-                      } else {
-                        logWarn(`Reconnect fallback failed for ${saved.id}`, {
-                          error: reconnectError,
-                        });
-                      }
-                      reconnectedTerminal = null;
-                    }
-
-                    if (reconnectedTerminal?.exists && reconnectedTerminal.hasPty) {
-                      const cwd = reconnectedTerminal.cwd || saved.cwd || projectRoot || "";
-                      const currentAgentState = reconnectedTerminal.agentState;
-                      const backendLastStateChange = reconnectedTerminal.lastStateChange;
-                      let agentId =
-                        reconnectedTerminal.agentId ??
-                        saved.agentId ??
-                        (reconnectedTerminal.type && isRegisteredAgent(reconnectedTerminal.type)
-                          ? reconnectedTerminal.type
-                          : saved.type && isRegisteredAgent(saved.type)
-                            ? saved.type
-                            : undefined);
-
-                      const reconnectedKind = reconnectedTerminal.kind ?? saved.kind;
-                      if (!agentId && reconnectedKind === "agent") {
-                        const title = reconnectedTerminal.title ?? saved.title ?? "";
-                        const titleLower = title.toLowerCase();
-                        if (titleLower.includes("claude")) {
-                          agentId = "claude";
-                        } else if (titleLower.includes("gemini")) {
-                          agentId = "gemini";
-                        } else if (titleLower.includes("codex")) {
-                          agentId = "codex";
-                        } else if (titleLower.includes("opencode")) {
-                          agentId = "opencode";
-                        } else {
-                          logWarn(
-                            `Reconnected agent panel ${saved.id} missing agentId and title doesn't match known agents: "${title}"`
-                          );
-                        }
-                      }
-
-                      const isDevPreview = reconnectedKind === "dev-preview";
-                      const devCommand = isDevPreview ? saved.command?.trim() : undefined;
-                      const restoredTerminalId = await addTerminal({
-                        kind: reconnectedKind ?? (agentId ? "agent" : "terminal"),
-                        type: reconnectedTerminal.type ?? saved.type,
-                        agentId,
-                        title: reconnectedTerminal.title ?? saved.title,
-                        cwd,
-                        worktreeId: reconnectedTerminal.worktreeId ?? saved.worktreeId,
-                        location,
-                        existingId: reconnectedTerminal.id,
-                        agentState: currentAgentState,
-                        lastStateChange: backendLastStateChange,
-                        devCommand,
-                        browserUrl: isDevPreview ? saved.browserUrl : undefined,
-                        browserHistory: isDevPreview ? saved.browserHistory : undefined,
-                        browserZoom: isDevPreview ? saved.browserZoom : undefined,
-                        devPreviewConsoleOpen: isDevPreview
-                          ? saved.devPreviewConsoleOpen
-                          : undefined,
-                        exitBehavior: saved.exitBehavior,
-                        agentSessionId: saved.agentSessionId,
-                        agentLaunchFlags: saved.agentLaunchFlags,
-                      });
+                      const restoredTerminalId = await addTerminal(reconnectArgs);
 
                       if (reconnectedTerminal.activityTier) {
                         terminalInstanceService.initializeBackendTier(
@@ -737,101 +476,30 @@ export async function hydrateAppState(
                         });
                       }
                     } else {
-                      let effectiveAgentId =
-                        saved.agentId ??
-                        (saved.type && isRegisteredAgent(saved.type) ? saved.type : undefined);
-
-                      if (!effectiveAgentId && kind === "agent") {
-                        const titleLower = (saved.title ?? "").toLowerCase();
-                        if (titleLower.includes("claude")) {
-                          effectiveAgentId = "claude";
-                        } else if (titleLower.includes("gemini")) {
-                          effectiveAgentId = "gemini";
-                        } else if (titleLower.includes("codex")) {
-                          effectiveAgentId = "codex";
-                        } else if (titleLower.includes("opencode")) {
-                          effectiveAgentId = "opencode";
-                        } else {
-                          logWarn(
-                            `Agent panel ${saved.id} missing agentId and title doesn't match known agents: "${saved.title}" - respawning as terminal`
-                          );
-                        }
-                      }
-
-                      const isAgentPanel = kind === "agent" || Boolean(effectiveAgentId);
-                      const agentId = effectiveAgentId;
-                      let command = saved.command?.trim() || undefined;
-
-                      if (agentId) {
-                        if (saved.agentSessionId) {
-                          const resumeCmd = buildResumeCommand(
-                            agentId,
-                            saved.agentSessionId,
-                            saved.agentLaunchFlags
-                          );
-                          if (resumeCmd) {
-                            command = resumeCmd;
-                          } else if (agentSettings) {
-                            const agentConfig = getAgentConfig(agentId);
-                            const baseCommand = agentConfig?.command || agentId;
-                            command = generateAgentCommand(
-                              baseCommand,
-                              agentSettings.agents?.[agentId] ?? {},
-                              agentId,
-                              { clipboardDirectory }
-                            );
-                          }
-                        } else if (agentSettings) {
-                          const agentConfig = getAgentConfig(agentId);
-                          const baseCommand = agentConfig?.command || agentId;
-                          command = generateAgentCommand(
-                            baseCommand,
-                            agentSettings.agents?.[agentId] ?? {},
-                            agentId,
-                            { clipboardDirectory }
-                          );
-                        }
-                      }
-
-                      const respawnKind = isAgentPanel ? "agent" : kind;
-                      const isDevPreview = kind === "dev-preview";
+                      const respawnArgs = buildArgsForRespawn(
+                        saved,
+                        kind,
+                        projectRoot || "",
+                        agentSettings,
+                        reconnectTimedOut,
+                        clipboardDirectory
+                      );
 
                       logHydrationInfo(
-                        `Respawning PTY panel: ${saved.id} (${isAgentPanel ? "agent" : "terminal"})`
+                        `Respawning PTY panel: ${saved.id} (${respawnArgs.kind === "agent" ? "agent" : "terminal"})`
                       );
 
                       logHydrationInfo(`[HYDRATION-RESPAWN] Adding terminal:`, {
                         id: saved.id,
-                        kind: respawnKind,
-                        agentId,
-                        location,
+                        kind: respawnArgs.kind,
+                        agentId: respawnArgs.agentId,
+                        location: respawnArgs.location,
                         savedLocation: saved.location,
                         worktreeId: saved.worktreeId,
                         title: saved.title,
                       });
 
-                      const restoredTerminalId = await addTerminal({
-                        kind: respawnKind,
-                        type: saved.type,
-                        agentId,
-                        title: saved.title,
-                        cwd: saved.cwd || projectRoot || "",
-                        worktreeId: saved.worktreeId,
-                        location,
-                        requestedId: reconnectTimedOut ? undefined : saved.id,
-                        command: isAgentPanel ? command : saved.command?.trim() || undefined,
-                        isInputLocked: saved.isInputLocked,
-                        devCommand: isDevPreview ? command : undefined,
-                        browserUrl: isDevPreview ? saved.browserUrl : undefined,
-                        browserHistory: isDevPreview ? saved.browserHistory : undefined,
-                        browserZoom: isDevPreview ? saved.browserZoom : undefined,
-                        devPreviewConsoleOpen: isDevPreview
-                          ? saved.devPreviewConsoleOpen
-                          : undefined,
-                        exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
-                        agentLaunchFlags: saved.agentLaunchFlags,
-                        restore: true,
-                      });
+                      const restoredTerminalId = await addTerminal(respawnArgs);
 
                       if (terminalSizes && typeof terminalSizes === "object") {
                         const savedSize =
@@ -853,34 +521,7 @@ export async function hydrateAppState(
                     }
                   } else {
                     logHydrationInfo(`Recreating ${kind} panel: ${saved.id}`);
-
-                    const devCommandCandidate =
-                      kind === "dev-preview" ? saved.devCommand?.trim() : undefined;
-                    const devCommand =
-                      kind === "dev-preview"
-                        ? devCommandCandidate || saved.command?.trim() || undefined
-                        : undefined;
-
-                    await addTerminal({
-                      kind,
-                      title: saved.title,
-                      cwd: saved.cwd || projectRoot || "",
-                      worktreeId: saved.worktreeId,
-                      location,
-                      requestedId: saved.id,
-                      browserUrl: saved.browserUrl,
-                      browserHistory: saved.browserHistory,
-                      browserZoom: saved.browserZoom,
-                      browserConsoleOpen: kind === "browser" ? saved.browserConsoleOpen : undefined,
-                      notePath: saved.notePath,
-                      noteId: saved.noteId,
-                      scope: saved.scope as "worktree" | "project" | undefined,
-                      createdAt: saved.createdAt,
-                      devCommand,
-                      devPreviewConsoleOpen:
-                        kind === "dev-preview" ? saved.devPreviewConsoleOpen : undefined,
-                      exitBehavior: saved.exitBehavior,
-                    });
+                    await addTerminal(buildArgsForNonPtyRecreation(saved, kind, projectRoot || ""));
                   }
                 }
               },
@@ -959,42 +600,8 @@ export async function hydrateAppState(
               try {
                 logHydrationInfo(`Reconnecting to orphaned terminal: ${terminal.id}`);
 
-                const cwd = terminal.cwd || projectRoot || "";
-                const currentAgentState = terminal.agentState;
-                const backendLastStateChange = terminal.lastStateChange;
-                let agentId =
-                  terminal.agentId ??
-                  (terminal.type && isRegisteredAgent(terminal.type) ? terminal.type : undefined);
-
-                if (!agentId && terminal.kind === "agent") {
-                  const titleLower = (terminal.title ?? "").toLowerCase();
-                  if (titleLower.includes("claude")) {
-                    agentId = "claude";
-                  } else if (titleLower.includes("gemini")) {
-                    agentId = "gemini";
-                  } else if (titleLower.includes("codex")) {
-                    agentId = "codex";
-                  } else if (titleLower.includes("opencode")) {
-                    agentId = "opencode";
-                  } else {
-                    logWarn(
-                      `Orphaned agent terminal ${terminal.id} missing agentId and title doesn't match known agents: "${terminal.title}"`
-                    );
-                  }
-                }
-
-                const restoredTerminalId = await addTerminal({
-                  kind: terminal.kind ?? (agentId ? "agent" : "terminal"),
-                  type: terminal.type,
-                  agentId,
-                  title: terminal.title,
-                  cwd,
-                  worktreeId: terminal.worktreeId,
-                  location: "grid",
-                  existingId: terminal.id,
-                  agentState: currentAgentState,
-                  lastStateChange: backendLastStateChange,
-                });
+                const orphanArgs = buildArgsForOrphanedTerminal(terminal, projectRoot || "");
+                const restoredTerminalId = await addTerminal(orphanArgs);
 
                 if (terminal.activityTier) {
                   terminalInstanceService.initializeBackendTier(
