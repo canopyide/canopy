@@ -24,7 +24,6 @@ import { hasTemplateExpressions, resolveTemplateArgs } from "./workflow/Template
 import { ApprovalManager } from "./workflow/ApprovalManager.js";
 import {
   LoopCompiler,
-  buildCompositeId,
   parseCompositeId,
   findLoopNode,
   COMPOSITE_SEP,
@@ -943,11 +942,7 @@ export class WorkflowEngine {
       const iterStr = key.substring(sepIdx + 1);
       const loopNode = findLoopNode(run.definition, loopNodeId);
       if (loopNode) {
-        await this.loopCompiler.checkLoopIterationComplete(
-          loopNode,
-          run,
-          parseInt(iterStr, 10)
-        );
+        await this.loopCompiler.checkLoopIterationComplete(loopNode, run, parseInt(iterStr, 10));
         hasRecoveryChanges = true;
       }
     }

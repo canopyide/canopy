@@ -12,9 +12,7 @@ export function hasTemplateExpressions(value: unknown): boolean {
     return value.some((item) => hasTemplateExpressions(item));
   }
   if (value !== null && typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).some((v) =>
-      hasTemplateExpressions(v)
-    );
+    return Object.values(value as Record<string, unknown>).some((v) => hasTemplateExpressions(v));
   }
   return false;
 }
