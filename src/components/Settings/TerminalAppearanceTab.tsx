@@ -39,7 +39,10 @@ const FONT_FAMILY_OPTIONS: Array<{ id: string; label: string; value: string }> =
   },
 ];
 
-export function TerminalAppearanceTab({ activeSubtab, onSubtabChange }: TerminalAppearanceTabProps) {
+export function TerminalAppearanceTab({
+  activeSubtab,
+  onSubtabChange,
+}: TerminalAppearanceTabProps) {
   const effectiveSubtab =
     activeSubtab && APPEARANCE_SUBTABS.some((t) => t.id === activeSubtab) ? activeSubtab : "app";
 
