@@ -675,7 +675,7 @@ describe("Hokkaido built-in scheme", () => {
   });
 
   it("uses the cool grey-white canvas", () => {
-    expect(hokkaido.tokens["surface-canvas"]).toBe("#F4F7F9");
+    expect(hokkaido.tokens["surface-canvas"]).toBe("#EEF3F7");
   });
 
   it("has all required token keys", () => {
