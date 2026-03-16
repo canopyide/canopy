@@ -108,6 +108,7 @@ describe("terminalColorSchemes", () => {
     expect(scheme).toBeDefined();
     expect(scheme!.id).toBe("highlands");
     expect(scheme!.type).toBe("dark");
+    expect(scheme!.colors.background).toBe("#1A1614");
   });
 
   it("getMappedTerminalScheme returns undefined for unknown app theme", () => {
