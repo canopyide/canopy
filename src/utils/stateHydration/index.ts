@@ -29,8 +29,7 @@ import {
   RESTORE_SPAWN_BATCH_DELAY_MS,
 } from "./batchScheduler";
 import { normalizeAndApplyScrollback } from "./scrollbackConfig";
-
-const RECONNECT_TIMEOUT_MS = 2000;
+import { reconnectWithTimeout } from "./reconnectManager";
 const RESTORE_CONCURRENCY = 8;
 const CLIPBOARD_DIR_NAME = "canopy-clipboard";
 const VERBOSE_HYDRATION_LOGGING = isCanopyEnvEnabled("CANOPY_VERBOSE");
@@ -487,52 +486,12 @@ export async function hydrateAppState(
                   const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
 
                   if (panelKindHasPty(kind)) {
-                    let reconnectedTerminal: Awaited<
-                      ReturnType<typeof terminalClient.reconnect>
-                    > | null = null;
-                    let reconnectTimedOut = false;
+                    const reconnectOutcome = await reconnectWithTimeout(saved.id, logHydrationInfo);
+                    const reconnectTimedOut = reconnectOutcome.status === "timeout";
+                    const reconnectedTerminal =
+                      reconnectOutcome.status === "found" ? reconnectOutcome.terminal : null;
 
-                    try {
-                      logHydrationInfo(`Trying reconnect fallback for ${saved.id} (kind: ${kind})`);
-
-                      const reconnectPromise = terminalClient.reconnect(saved.id);
-                      const timeoutPromise = new Promise<null>((_, reject) =>
-                        setTimeout(
-                          () => reject(new Error("Reconnection timeout")),
-                          RECONNECT_TIMEOUT_MS
-                        )
-                      );
-
-                      reconnectedTerminal = await Promise.race([reconnectPromise, timeoutPromise]);
-
-                      if (reconnectedTerminal?.exists && reconnectedTerminal.hasPty) {
-                        logHydrationInfo(
-                          `Reconnect fallback succeeded for ${saved.id} - terminal exists in backend but was missed by getForProject`
-                        );
-                      } else {
-                        logHydrationInfo(
-                          `Reconnect fallback: terminal ${saved.id} not found (exists=${reconnectedTerminal?.exists}, hasPty=${reconnectedTerminal?.hasPty})`
-                        );
-                      }
-                    } catch (reconnectError) {
-                      const isTimeout =
-                        reconnectError instanceof Error &&
-                        reconnectError.message === "Reconnection timeout";
-                      reconnectTimedOut = isTimeout;
-
-                      if (isTimeout) {
-                        logWarn(
-                          `Reconnect timed out for ${saved.id} after ${RECONNECT_TIMEOUT_MS}ms`
-                        );
-                      } else {
-                        logWarn(`Reconnect fallback failed for ${saved.id}`, {
-                          error: reconnectError,
-                        });
-                      }
-                      reconnectedTerminal = null;
-                    }
-
-                    if (reconnectedTerminal?.exists && reconnectedTerminal.hasPty) {
+                    if (reconnectedTerminal) {
                       const cwd = reconnectedTerminal.cwd || saved.cwd || projectRoot || "";
                       const currentAgentState = reconnectedTerminal.agentState;
                       const backendLastStateChange = reconnectedTerminal.lastStateChange;
