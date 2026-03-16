@@ -33,6 +33,7 @@ test.describe.serial("Core: Light Theme Smoke", () => {
     if (ctx?.app) await closeApp(ctx.app);
   });
 
+
   test("light themes keep key chrome readable and capture screenshots", async (_props, testInfo) => {
     const { window } = ctx;
 
