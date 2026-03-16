@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ProcessInfo } from "../../ProcessTreeCache.js";
 import type { ProcessTreeCache } from "../../ProcessTreeCache.js";
 import { createProcessStateValidator } from "../terminalActivityPatterns.js";
@@ -10,7 +10,7 @@ function createMockProcessTreeCache(
   return {
     getChildren: (ppid: number) => childrenByPid.get(ppid) ?? [],
     getChildPids: (ppid: number) => (childrenByPid.get(ppid) ?? []).map((c) => c.pid),
-    hasActiveDescendants: () => activeDescendants,
+    hasActiveDescendants: vi.fn(() => activeDescendants),
     getProcess: () => undefined,
     hasChildren: (ppid: number) => (childrenByPid.get(ppid) ?? []).length > 0,
     getDescendantsCpuUsage: () => 0,
@@ -21,12 +21,6 @@ function createMockProcessTreeCache(
 }
 
 describe("createProcessStateValidator", () => {
-  const originalPlatform = process.platform;
-
-  afterEach(() => {
-    Object.defineProperty(process, "platform", { value: originalPlatform });
-  });
-
   it("returns undefined when ptyPid is undefined", () => {
     const cache = createMockProcessTreeCache(new Map());
     expect(createProcessStateValidator(undefined, cache)).toBeUndefined();
@@ -38,8 +32,9 @@ describe("createProcessStateValidator", () => {
 
   it("returns true when hasActiveDescendants reports activity", () => {
     const cache = createMockProcessTreeCache(new Map(), true);
-    const validator = createProcessStateValidator(1, cache)!;
+    const validator = createProcessStateValidator(42, cache)!;
     expect(validator.hasActiveChildren()).toBe(true);
+    expect(cache.hasActiveDescendants).toHaveBeenCalledWith(42, 0.5);
   });
 
   it("returns false when no children exist and no CPU activity", () => {
@@ -74,19 +69,22 @@ describe("createProcessStateValidator", () => {
     expect(validator.hasActiveChildren()).toBe(true);
   });
 
-  it("returns true on Windows when a significant child has no grandchildren", () => {
-    Object.defineProperty(process, "platform", { value: "win32" });
-
+  it("strips .exe suffix when classifying children", () => {
     const children: ProcessInfo[] = [
-      { pid: 10, ppid: 1, comm: "node", command: "node server.js", cpuPercent: 0 },
+      { pid: 10, ppid: 1, comm: "node.exe", command: "node.exe build.js", cpuPercent: 0 },
     ];
-    const cache = createMockProcessTreeCache(
-      new Map([
-        [1, children],
-        [10, []],
-      ])
-    );
+    const cache = createMockProcessTreeCache(new Map([[1, children]]));
     const validator = createProcessStateValidator(1, cache)!;
     expect(validator.hasActiveChildren()).toBe(true);
+  });
+
+  it("treats powershell and cmd as shell processes", () => {
+    const children: ProcessInfo[] = [
+      { pid: 10, ppid: 1, comm: "powershell", command: "powershell", cpuPercent: 0 },
+      { pid: 11, ppid: 1, comm: "cmd", command: "cmd", cpuPercent: 0 },
+    ];
+    const cache = createMockProcessTreeCache(new Map([[1, children]]));
+    const validator = createProcessStateValidator(1, cache)!;
+    expect(validator.hasActiveChildren()).toBe(false);
   });
 });
