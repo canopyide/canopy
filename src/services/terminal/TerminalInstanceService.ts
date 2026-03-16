@@ -1114,6 +1114,9 @@ class TerminalInstanceService {
       this.readinessWaiters.delete(id);
     }
 
+    this.agentStateController.destroy(id);
+    this.restoreController.destroy(id);
+
     this.instances.delete(id);
 
     for (const unsub of managed.listeners) {
@@ -1139,7 +1142,6 @@ class TerminalInstanceService {
       clearTimeout(managed.inputBurstTimer);
       managed.inputBurstTimer = undefined;
     }
-    this.agentStateController.destroy(id);
     if (managed.titleReportTimer !== undefined) {
       clearTimeout(managed.titleReportTimer);
       managed.titleReportTimer = undefined;
@@ -1149,8 +1151,6 @@ class TerminalInstanceService {
       clearTimeout(managed.resizeSuppressionTimer);
       managed.resizeSuppressionTimer = undefined;
     }
-
-    this.restoreController.destroy(id);
 
     managed.exitSubscribers.clear();
     managed.agentStateSubscribers.clear();
