@@ -149,6 +149,64 @@ describe("removeTerminal consoleCaptureStore cleanup", () => {
     expect(useConsoleCaptureStore.getState().messages.has(panelId)).toBe(false);
   });
 
+  it("preserves other panes' messages when one browser panel is removed", () => {
+    useTerminalStore.setState({
+      terminals: [
+        {
+          id: "browser-a",
+          type: "terminal",
+          kind: "browser",
+          title: "Browser A",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "grid",
+        },
+        {
+          id: "browser-b",
+          type: "terminal",
+          kind: "browser",
+          title: "Browser B",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "grid",
+        },
+      ],
+    });
+
+    const addMsg = useConsoleCaptureStore.getState().addStructuredMessage;
+    addMsg({
+      id: 1,
+      paneId: "browser-a",
+      level: "log",
+      cdpType: "log",
+      args: [{ type: "primitive", kind: "string", value: "a" }],
+      summaryText: "a",
+      groupDepth: 0,
+      timestamp: Date.now(),
+      navigationGeneration: 0,
+    });
+    addMsg({
+      id: 2,
+      paneId: "browser-b",
+      level: "log",
+      cdpType: "log",
+      args: [{ type: "primitive", kind: "string", value: "b" }],
+      summaryText: "b",
+      groupDepth: 0,
+      timestamp: Date.now(),
+      navigationGeneration: 0,
+    });
+
+    useTerminalStore.getState().removeTerminal("browser-a");
+
+    const state = useConsoleCaptureStore.getState();
+    expect(state.messages.has("browser-a")).toBe(false);
+    expect(state.messages.has("browser-b")).toBe(true);
+    expect(state.messages.get("browser-b")).toHaveLength(1);
+  });
+
   it("does not throw when removing a non-browser panel with no console messages", () => {
     const panelId = "terminal-1";
 
