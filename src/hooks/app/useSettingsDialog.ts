@@ -30,6 +30,8 @@ export function useSettingsDialog() {
       "imageViewer",
       "voice",
       "mcp",
+      "environment",
+      "privacy",
       "troubleshooting",
     ];
     const tab = allowedTabs.includes(target.tab as SettingsTab)
