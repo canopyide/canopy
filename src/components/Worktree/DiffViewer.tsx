@@ -161,7 +161,7 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
               <button
                 onClick={handleOpenInEditor}
                 title={`Open in editor${firstHunkLine ? ` at line ${firstHunkLine}` : ""}`}
-                className="ml-2 shrink-0 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-white/5 hover:text-canopy-text transition-colors"
+                className="ml-2 shrink-0 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-tint/5 hover:text-canopy-text transition-colors"
               >
                 <ExternalLink className="w-3 h-3" />
                 Open

@@ -431,7 +431,7 @@ export function KeyboardShortcutsTab() {
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             aria-label="Search shortcuts"
-            className="flex-1 min-w-0 text-xs bg-transparent text-canopy-text placeholder:text-canopy-text/40 focus:outline-none"
+            className="flex-1 min-w-0 text-xs bg-transparent text-canopy-text placeholder:text-text-muted focus:outline-none"
           />
           {searchQuery && (
             <button

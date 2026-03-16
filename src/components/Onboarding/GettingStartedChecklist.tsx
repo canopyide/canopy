@@ -93,7 +93,7 @@ export function GettingStartedChecklist({
               "rounded-[var(--radius-xs)]",
               "h-6 w-6 flex items-center justify-center shrink-0",
               "text-canopy-text/60 transition-colors",
-              "hover:text-canopy-text/90 hover:bg-white/10",
+              "hover:text-canopy-text/90 hover:bg-tint/10",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
             )}
           >

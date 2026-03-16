@@ -218,7 +218,7 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
                 value={editing.name}
                 onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                 placeholder="e.g., postgres-mcp"
-                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent"
+                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-canopy-accent"
               />
             </div>
 
@@ -229,7 +229,7 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
                 value={editing.command}
                 onChange={(e) => setEditing({ ...editing, command: e.target.value })}
                 placeholder="e.g., npx, uvx, /usr/local/bin/my-server"
-                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono"
+                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono"
               />
             </div>
 
@@ -242,7 +242,7 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
                 onChange={(e) => setEditing({ ...editing, args: e.target.value })}
                 placeholder={"-y\n@modelcontextprotocol/server-postgres"}
                 rows={3}
-                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono resize-y"
+                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono resize-y"
               />
             </div>
 
@@ -256,7 +256,7 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
                 onChange={(e) => setEditing({ ...editing, env: e.target.value })}
                 placeholder={"DATABASE_URL=postgresql://localhost/mydb\nAPI_KEY=$MY_SECRET"}
                 rows={3}
-                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono resize-y"
+                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono resize-y"
               />
             </div>
 
@@ -269,7 +269,7 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
                 value={editing.cwd}
                 onChange={(e) => setEditing({ ...editing, cwd: e.target.value })}
                 placeholder="Defaults to project root"
-                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono"
+                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono"
               />
             </div>
 

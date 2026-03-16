@@ -164,7 +164,7 @@ export function NotificationSettingsTab() {
                 <button
                   onClick={handlePreview}
                   title="Preview sound"
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text hover:bg-white/[0.06] transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text hover:bg-tint/[0.06] transition-colors"
                 >
                   <Play className="h-3.5 w-3.5" />
                   Preview

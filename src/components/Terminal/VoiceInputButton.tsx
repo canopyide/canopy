@@ -258,7 +258,7 @@ export function VoiceInputButton({
             : cn(
                 status === "error"
                   ? "text-activity-waiting hover:text-activity-waiting/80"
-                  : "text-canopy-text/50 hover:text-canopy-text/80 hover:bg-white/[0.06]"
+                  : "text-canopy-text/50 hover:text-canopy-text/80 hover:bg-tint/[0.06]"
               ),
           disabled && !isActive && "pointer-events-none opacity-40"
         )}

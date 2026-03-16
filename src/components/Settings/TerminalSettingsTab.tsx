@@ -423,7 +423,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
                     "flex flex-col items-center justify-center p-4 rounded-[var(--radius-md)] border transition-all",
                     layoutConfig.strategy === id
                       ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
-                      : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
+                      : "border-canopy-border hover:bg-tint/5 text-canopy-text/70"
                   )}
                 >
                   <Icon className="w-6 h-6 mb-2" />
@@ -490,7 +490,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
                   performanceMode && "opacity-50 cursor-not-allowed",
                   scrollbackLines === value
                     ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
-                    : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
+                    : "border-canopy-border hover:bg-tint/5 text-canopy-text/70"
                 )}
               >
                 <span className="text-xs font-medium">{label}</span>

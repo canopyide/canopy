@@ -34,7 +34,7 @@ export const AttachmentTray = memo(function AttachmentTray({
         "mt-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] leading-tight",
         warning
           ? "border-activity-waiting/40 bg-activity-waiting/[0.06]"
-          : "border-white/[0.06] bg-white/[0.02]"
+          : "border-tint/[0.06] bg-tint/[0.02]"
       )}
     >
       <div
@@ -57,7 +57,7 @@ export const AttachmentTray = memo(function AttachmentTray({
           return (
             <li
               key={item.id}
-              className="flex items-center gap-1 rounded-sm bg-white/[0.04] px-1.5 py-0.5 text-canopy-text/70"
+              className="flex items-center gap-1 rounded-sm bg-tint/[0.04] px-1.5 py-0.5 text-canopy-text/70"
             >
               <Icon className="h-3 w-3 shrink-0 opacity-60" />
               <span className="max-w-[140px] truncate">{item.label}</span>
@@ -66,7 +66,7 @@ export const AttachmentTray = memo(function AttachmentTray({
               </span>
               <button
                 type="button"
-                className="ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm text-canopy-text/40 hover:bg-white/[0.08] hover:text-canopy-text/80 transition-colors cursor-pointer"
+                className="ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm text-canopy-text/40 hover:bg-tint/[0.08] hover:text-canopy-text/80 transition-colors cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemove(item);

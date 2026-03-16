@@ -68,7 +68,7 @@ export function FindBar({ find }: FindBarProps) {
         type="button"
         onClick={goPrev}
         disabled={matchCount === 0}
-        className="p-0.5 rounded hover:bg-white/10 disabled:opacity-30 text-canopy-text/70"
+        className="p-0.5 rounded hover:bg-tint/10 disabled:opacity-30 text-canopy-text/70"
         aria-label="Previous match"
       >
         <ChevronUp className="w-3.5 h-3.5" />
@@ -77,7 +77,7 @@ export function FindBar({ find }: FindBarProps) {
         type="button"
         onClick={goNext}
         disabled={matchCount === 0}
-        className="p-0.5 rounded hover:bg-white/10 disabled:opacity-30 text-canopy-text/70"
+        className="p-0.5 rounded hover:bg-tint/10 disabled:opacity-30 text-canopy-text/70"
         aria-label="Next match"
       >
         <ChevronDown className="w-3.5 h-3.5" />
@@ -85,7 +85,7 @@ export function FindBar({ find }: FindBarProps) {
       <button
         type="button"
         onClick={close}
-        className="p-0.5 rounded hover:bg-white/10 text-canopy-text/70"
+        className="p-0.5 rounded hover:bg-tint/10 text-canopy-text/70"
         aria-label="Close find bar"
       >
         <X className="w-3.5 h-3.5" />

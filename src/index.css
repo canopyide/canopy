@@ -6,6 +6,7 @@
 
   --color-white: #ffffff;
   --color-black: #000000;
+  --color-tint: var(--theme-tint, #ffffff);
 
   --color-surface-canvas: var(--theme-surface-canvas);
   --color-surface-sidebar: var(--theme-surface-sidebar);

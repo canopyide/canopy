@@ -1119,14 +1119,14 @@ export function Toolbar({
             <button
               data-toolbar-item=""
               className={cn(
-                "flex items-center justify-center gap-2 px-3 h-9 rounded-[var(--radius-md)] select-none border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] app-no-drag pointer-events-auto outline-none min-w-0 max-w-full overflow-hidden",
+                "flex items-center justify-center gap-2 px-3 h-9 rounded-[var(--radius-md)] select-none border border-tint/10 shadow-[inset_0_1px_0_var(--color-overlay-strong)] app-no-drag pointer-events-auto outline-none min-w-0 max-w-full overflow-hidden",
                 "opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
               )}
               data-testid="project-switcher-trigger"
               style={{
                 background: currentProject
                   ? getProjectGradient(currentProject.color)
-                  : "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))",
+                  : "linear-gradient(135deg, var(--color-overlay-soft), var(--color-overlay-subtle))",
               }}
               onClick={() => projectSwitcher.open("dropdown")}
             >
@@ -1135,18 +1135,18 @@ export function Toolbar({
                   <span className="text-base leading-none shrink-0" aria-label="Project emoji">
                     {currentProject.emoji}
                   </span>
-                  <span className="text-xs font-medium text-white/90 tracking-wide truncate min-w-0">
+                  <span className="text-xs font-medium text-tint/90 tracking-wide truncate min-w-0">
                     {currentProject.name}
                   </span>
                   {branchName && (
                     <span
-                      className="font-mono text-[10px] tabular-nums text-white/70 px-1.5 py-0.5 rounded-full bg-white/10 shrink-0"
+                      className="font-mono text-[10px] tabular-nums text-tint/70 px-1.5 py-0.5 rounded-full bg-tint/10 shrink-0"
                       aria-label={`Current branch ${branchName}`}
                     >
                       {branchName}
                     </span>
                   )}
-                  <ChevronsUpDown className="h-3 w-3 text-white/50 ml-0.5 shrink-0" />
+                  <ChevronsUpDown className="h-3 w-3 text-tint/50 ml-0.5 shrink-0" />
                 </>
               ) : (
                 <>

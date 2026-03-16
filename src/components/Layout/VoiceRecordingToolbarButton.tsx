@@ -64,10 +64,10 @@ export function VoiceRecordingToolbarButton({
             className={cn(
               "relative transition-colors mr-0.5",
               isRecording
-                ? "text-canopy-text hover:bg-white/[0.06]"
+                ? "text-canopy-text hover:bg-tint/[0.06]"
                 : status === "connecting"
-                  ? "text-canopy-text/60 hover:bg-white/[0.06]"
-                  : "text-canopy-accent hover:bg-white/[0.06] hover:text-canopy-accent"
+                  ? "text-canopy-text/60 hover:bg-tint/[0.06]"
+                  : "text-canopy-accent hover:bg-tint/[0.06] hover:text-canopy-accent"
             )}
             aria-label={tooltipTitle}
           >

@@ -171,7 +171,7 @@ export function TerminalSearchBar({ terminalId, onClose, className }: TerminalSe
           "w-44 px-2 py-1 text-sm",
           "bg-canopy-bg border border-canopy-border rounded",
           "focus:outline-none focus:ring-1 focus:ring-status-info",
-          "text-canopy-text placeholder:text-canopy-text/40"
+          "text-canopy-text placeholder:text-text-muted"
         )}
       />
 

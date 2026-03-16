@@ -185,7 +185,7 @@ function TaskRow({ terminal, status, now, onStop, onFocus, onRestart, onDismiss 
     <div
       className={cn(
         "flex items-center gap-1.5 px-2 py-1 rounded-[var(--radius-sm)] text-[11px] font-mono group",
-        "hover:bg-white/[0.04] transition-colors cursor-pointer",
+        "hover:bg-tint/[0.04] transition-colors cursor-pointer",
         status === "failed" && "border-l-2 border-status-error",
         status === "success" && "opacity-60"
       )}
@@ -222,7 +222,7 @@ function TaskRow({ terminal, status, now, onStop, onFocus, onRestart, onDismiss 
               e.stopPropagation();
               onStop(terminal.id);
             }}
-            className="p-0.5 rounded hover:bg-white/10 text-canopy-text/40 hover:text-status-error"
+            className="p-0.5 rounded hover:bg-tint/10 text-canopy-text/40 hover:text-status-error"
             aria-label="Stop task"
           >
             <X className="h-3 w-3" />
@@ -236,7 +236,7 @@ function TaskRow({ terminal, status, now, onStop, onFocus, onRestart, onDismiss 
                   e.stopPropagation();
                   onRestart(terminal.id);
                 }}
-                className="p-0.5 rounded hover:bg-white/10 text-canopy-text/40 hover:text-canopy-text"
+                className="p-0.5 rounded hover:bg-tint/10 text-canopy-text/40 hover:text-canopy-text"
                 aria-label="Restart task"
               >
                 <RotateCw className="h-3 w-3" />
@@ -247,7 +247,7 @@ function TaskRow({ terminal, status, now, onStop, onFocus, onRestart, onDismiss 
                 e.stopPropagation();
                 onDismiss(terminal.id);
               }}
-              className="p-0.5 rounded hover:bg-white/10 text-canopy-text/40 hover:text-canopy-text"
+              className="p-0.5 rounded hover:bg-tint/10 text-canopy-text/40 hover:text-canopy-text"
               aria-label="Dismiss"
             >
               <X className="h-3 w-3" />
@@ -259,7 +259,7 @@ function TaskRow({ terminal, status, now, onStop, onFocus, onRestart, onDismiss 
             e.stopPropagation();
             onFocus(terminal.id);
           }}
-          className="p-0.5 rounded hover:bg-white/10 text-canopy-text/40 hover:text-canopy-text"
+          className="p-0.5 rounded hover:bg-tint/10 text-canopy-text/40 hover:text-canopy-text"
           aria-label="Focus terminal"
         >
           <Eye className="h-3 w-3" />

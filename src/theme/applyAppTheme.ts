@@ -44,6 +44,8 @@ export function applyAppThemeToRoot(root: HTMLElement, scheme: AppColorScheme): 
     root.style.setProperty(name, value);
   }
 
+  root.style.setProperty("--theme-tint", scheme.type === "dark" ? "#ffffff" : "#000000");
+
   root.dataset.theme = scheme.id;
   root.dataset.colorMode = scheme.type;
   root.style.colorScheme = scheme.type;

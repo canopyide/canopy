@@ -236,7 +236,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
             !isMaximized &&
             (isFocused && showGridAttention
               ? "terminal-selected"
-              : "border-overlay hover:border-white/[0.08]"),
+              : "border-overlay hover:border-tint/[0.08]"),
           location === "grid" && isMaximized && "border-0 rounded-none z-[var(--z-maximized)]",
           isTrashing && "terminal-trashing",
           className

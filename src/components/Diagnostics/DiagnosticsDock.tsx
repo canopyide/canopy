@@ -229,7 +229,7 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
               <TooltipTrigger asChild>
                 <button
                   onClick={closeDock}
-                  className="p-1.5 hover:bg-white/[0.06] rounded-[var(--radius-md)] transition-colors text-canopy-text/60 hover:text-canopy-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                  className="p-1.5 hover:bg-tint/[0.06] rounded-[var(--radius-md)] transition-colors text-canopy-text/60 hover:text-canopy-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                   aria-label="Close diagnostics dock"
                 >
                   <X className="w-4 h-4" />

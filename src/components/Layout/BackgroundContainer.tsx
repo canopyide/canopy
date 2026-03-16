@@ -95,7 +95,7 @@ export function BackgroundContainer({ compact = false }: BackgroundContainerProp
                   pingTerminal(terminal.id);
                   setIsOpen(false);
                 }}
-                className="flex items-center justify-between gap-2.5 w-full px-2.5 py-1.5 rounded-[var(--radius-sm)] transition-colors group text-left outline-none hover:bg-white/5 focus:bg-white/5"
+                className="flex items-center justify-between gap-2.5 w-full px-2.5 py-1.5 rounded-[var(--radius-sm)] transition-colors group text-left outline-none hover:bg-tint/5 focus:bg-tint/5"
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">

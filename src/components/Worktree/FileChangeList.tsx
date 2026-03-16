@@ -186,7 +186,7 @@ export function FileChangeList({
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              className="group flex items-center text-xs font-mono hover:bg-white/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"
+              className="group flex items-center text-xs font-mono hover:bg-tint/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"
               onClick={() => handleFileClick(change)}
             >
               <span className={cn("w-4 font-bold shrink-0", config.color)}>{config.label}</span>

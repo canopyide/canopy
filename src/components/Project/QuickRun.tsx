@@ -355,7 +355,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
           "w-full flex items-center justify-between px-4 py-2",
-          "text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] transition-colors focus:outline-none font-sans"
+          "text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] transition-colors focus:outline-none font-sans"
         )}
         aria-expanded={isExpanded}
         aria-controls="quick-run-panel"
@@ -412,7 +412,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                   placeholder="Execute command..."
                   aria-label="Command input"
                   className={cn(
-                    "flex-1 bg-transparent py-2.5 text-xs text-canopy-text font-mono placeholder:text-white/35",
+                    "flex-1 bg-transparent py-2.5 text-xs text-canopy-text font-mono placeholder:text-text-muted",
                     "focus:outline-none min-w-0"
                   )}
                   autoComplete="off"
@@ -430,7 +430,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                             "p-1.5 rounded-[var(--radius-sm)] transition-all",
                             autoRestart
                               ? "bg-canopy-accent/20 text-canopy-accent"
-                              : "text-white/40 hover:text-white/60 hover:bg-white/10"
+                              : "text-tint/40 hover:text-tint/60 hover:bg-tint/10"
                           )}
                           aria-label={autoRestart ? "Disable auto-restart" : "Enable auto-restart"}
                           aria-pressed={autoRestart}
@@ -454,7 +454,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                             "p-1.5 rounded-[var(--radius-sm)] transition-all",
                             runAsDocked
                               ? "bg-canopy-accent/20 text-canopy-accent"
-                              : "text-white/40 hover:text-white/60 hover:bg-white/10"
+                              : "text-tint/40 hover:text-tint/60 hover:bg-tint/10"
                           )}
                           aria-label={
                             runAsDocked
@@ -488,8 +488,8 @@ export function QuickRun({ projectId }: QuickRunProps) {
                             className={cn(
                               "p-1.5 rounded-[var(--radius-sm)] transition-all",
                               input.trim()
-                                ? "text-white hover:bg-white/10"
-                                : "text-white/20 cursor-not-allowed"
+                                ? "text-white hover:bg-tint/10"
+                                : "text-tint/20 cursor-not-allowed"
                             )}
                             aria-label="Run command"
                           >
@@ -509,7 +509,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                     onMouseDown={(e) => e.preventDefault()}
                     className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-[var(--radius-md)] shadow-2xl overflow-hidden z-50 max-h-64 flex flex-col"
                   >
-                    <div className="text-[11px] font-sans tracking-wider text-white/30 px-3 py-1 bg-black/20 border-b border-white/5 shrink-0">
+                    <div className="text-[11px] font-sans tracking-wider text-tint/30 px-3 py-1 bg-black/20 border-b border-tint/5 shrink-0">
                       COMMANDS
                     </div>
                     <div className="overflow-y-auto flex-1">
@@ -522,7 +522,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                             "w-full flex items-center gap-3 px-3 py-2 text-left text-xs font-mono transition-colors group",
                             index === focusedSuggestionIndex
                               ? "bg-canopy-accent/20 text-canopy-text"
-                              : "text-canopy-text/70 hover:bg-white/5"
+                              : "text-canopy-text/70 hover:bg-tint/5"
                           )}
                           onClick={() => {
                             setInput(item.value);
@@ -568,7 +568,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                               <button
                                 type="button"
                                 onClick={(e) => handleUnpin(e, item)}
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity ml-2 shrink-0"
+                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-tint/10 rounded transition-opacity ml-2 shrink-0"
                                 aria-label="Unpin this command"
                               >
                                 <PinOff className="h-3 w-3 text-canopy-text/40 hover:text-status-error" />
@@ -577,7 +577,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                               <button
                                 type="button"
                                 onClick={(e) => handlePin(e, item)}
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity ml-2 shrink-0"
+                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-tint/10 rounded transition-opacity ml-2 shrink-0"
                                 aria-label="Pin this command"
                               >
                                 <Pin className="h-3 w-3 text-canopy-text/40 hover:text-canopy-accent" />

@@ -99,22 +99,22 @@ export function createCanopyTokens(
     "border-strong":
       tokens["border-strong"] ?? (dark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.12)"),
     "border-divider":
-      tokens["border-divider"] ?? (dark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)"),
+      tokens["border-divider"] ?? (dark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.08)"),
     "accent-foreground": tokens["accent-foreground"] ?? tokens["text-inverse"],
     "accent-soft": accentSoft,
     "accent-muted": accentMuted,
     "focus-ring":
       tokens["focus-ring"] ?? (dark ? "rgba(255, 255, 255, 0.18)" : "rgba(0, 0, 0, 0.15)"),
     "overlay-subtle":
-      tokens["overlay-subtle"] ?? (dark ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.02)"),
+      tokens["overlay-subtle"] ?? (dark ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.04)"),
     "overlay-soft":
-      tokens["overlay-soft"] ?? (dark ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.03)"),
+      tokens["overlay-soft"] ?? (dark ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.06)"),
     "overlay-medium":
-      tokens["overlay-medium"] ?? (dark ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.04)"),
+      tokens["overlay-medium"] ?? (dark ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.08)"),
     "overlay-strong":
-      tokens["overlay-strong"] ?? (dark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.05)"),
+      tokens["overlay-strong"] ?? (dark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.10)"),
     "overlay-emphasis":
-      tokens["overlay-emphasis"] ?? (dark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)"),
+      tokens["overlay-emphasis"] ?? (dark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.14)"),
     "scrim-soft": tokens["scrim-soft"] ?? (dark ? "rgba(0, 0, 0, 0.2)" : "rgba(0, 0, 0, 0.12)"),
     "scrim-medium":
       tokens["scrim-medium"] ?? (dark ? "rgba(0, 0, 0, 0.45)" : "rgba(0, 0, 0, 0.30)"),

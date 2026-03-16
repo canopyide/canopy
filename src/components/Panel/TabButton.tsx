@@ -221,7 +221,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
               "border-r border-divider transition-colors",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]",
               isActive
-                ? "bg-white/[0.04] text-canopy-text"
+                ? "bg-tint/[0.04] text-canopy-text"
                 : "text-canopy-text/60 hover:text-canopy-text hover:bg-overlay-subtle"
             )}
             data-tab-id={id}

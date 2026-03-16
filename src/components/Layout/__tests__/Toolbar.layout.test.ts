@@ -118,11 +118,11 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     });
 
     it("branch badge has shrink-0 to stay visible during truncation", () => {
-      expect(source).toContain("bg-white/10 shrink-0");
+      expect(source).toContain("bg-tint/10 shrink-0");
     });
 
     it("chevron icons have shrink-0", () => {
-      const chevronMatches = source.match(/text-white\/50 ml-0\.5 shrink-0/g);
+      const chevronMatches = source.match(/text-tint\/50 ml-0\.5 shrink-0/g);
       expect(chevronMatches).not.toBeNull();
     });
   });

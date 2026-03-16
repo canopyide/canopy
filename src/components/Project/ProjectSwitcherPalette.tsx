@@ -83,14 +83,14 @@ function ProjectListItem({
       className={cn(
         "group relative w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors border border-transparent",
         project.isActive
-          ? cn("text-canopy-text", index === selectedIndex && "bg-white/[0.04]")
+          ? cn("text-canopy-text", index === selectedIndex && "bg-tint/[0.04]")
           : project.isMissing
             ? cn(
                 "text-canopy-text/50",
-                index === selectedIndex ? "bg-white/[0.04]" : "hover:bg-overlay-subtle"
+                index === selectedIndex ? "bg-tint/[0.04]" : "hover:bg-overlay-subtle"
               )
             : index === selectedIndex
-              ? "bg-white/[0.04] text-canopy-text cursor-pointer"
+              ? "bg-tint/[0.04] text-canopy-text cursor-pointer"
               : "text-canopy-text/70 hover:bg-overlay-subtle hover:text-canopy-text cursor-pointer"
       )}
       onClick={() => !project.isActive && !project.isMissing && onSelect(project)}
@@ -175,7 +175,7 @@ function ProjectListItem({
                           "p-0.5 rounded transition-colors cursor-pointer",
                           project.isPinned
                             ? "text-canopy-accent/70 hover:text-canopy-accent"
-                            : "text-canopy-text/50 hover:bg-white/[0.06] hover:text-canopy-text/80",
+                            : "text-canopy-text/50 hover:bg-tint/[0.06] hover:text-canopy-text/80",
                           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                         )}
                         aria-label={project.isPinned ? "Unpin project" : "Pin project"}
@@ -214,7 +214,7 @@ function ProjectListItem({
                           }}
                           className={cn(
                             "p-0.5 rounded transition-colors cursor-pointer",
-                            "text-canopy-text/50 hover:bg-white/[0.06] hover:text-canopy-text/80",
+                            "text-canopy-text/50 hover:bg-tint/[0.06] hover:text-canopy-text/80",
                             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                           )}
                           aria-label="Locate project folder"
@@ -238,7 +238,7 @@ function ProjectListItem({
                           }}
                           className={cn(
                             "p-0.5 rounded transition-colors cursor-pointer",
-                            "text-canopy-text/50 hover:bg-white/[0.06] hover:text-canopy-text/80",
+                            "text-canopy-text/50 hover:bg-tint/[0.06] hover:text-canopy-text/80",
                             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                           )}
                           aria-label="Remove project"
@@ -295,7 +295,7 @@ function ProjectListItem({
                             }}
                             className={cn(
                               "p-0.5 rounded transition-colors cursor-pointer",
-                              "text-canopy-text/50 hover:bg-white/[0.06] hover:text-canopy-text/80",
+                              "text-canopy-text/50 hover:bg-tint/[0.06] hover:text-canopy-text/80",
                               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                             )}
                             aria-label="Close project"
@@ -398,7 +398,7 @@ function ProjectListContent({
             const isLast = sectionIdx === sections.length - 1;
             return (
               <div key={section.key}>
-                {sectionIdx > 0 && <div className="h-[3px] bg-white/[0.08]" />}
+                {sectionIdx > 0 && <div className="h-[3px] bg-tint/[0.08]" />}
                 <div
                   className={cn(
                     "px-2 py-1.5",
@@ -619,7 +619,7 @@ function ProjectPaletteInner({
 
       {(onOpenProjectSettings || onAddProject || onCreateFolder) && (
         <>
-          <div className="h-[3px] bg-white/[0.08]" />
+          <div className="h-[3px] bg-tint/[0.08]" />
           <div className="px-2 pt-1 pb-2">
             {onOpenProjectSettings && (
               <button
@@ -627,7 +627,7 @@ function ProjectPaletteInner({
                 onClick={() => onOpenProjectSettings()}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors hover:bg-overlay-subtle"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] bg-white/[0.04] text-muted-foreground">
+                <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] bg-tint/[0.04] text-muted-foreground">
                   <Settings2 className="h-4 w-4" />
                 </div>
                 <span className="font-medium text-sm text-muted-foreground">
