@@ -669,13 +669,13 @@ function PanelHeaderComponent({
         {/* Overflow menu — contains Restart, Cancel Watch, and headerActions */}
         {hasOverflowItems && (
           <TooltipProvider>
-            <Tooltip open={overflowTooltipOpen} onOpenChange={setOverflowTooltipOpen}>
-              <TooltipTrigger asChild>
-                <DropdownMenu
-                  onOpenChange={(open) => {
-                    if (open) setOverflowTooltipOpen(false);
-                  }}
-                >
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) setOverflowTooltipOpen(false);
+              }}
+            >
+              <Tooltip open={overflowTooltipOpen} onOpenChange={setOverflowTooltipOpen}>
+                <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
@@ -686,43 +686,41 @@ function PanelHeaderComponent({
                       <Ellipsis className="w-3 h-3" aria-hidden="true" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-[160px]">
-                    {canRestart && onRestart && (
-                      <DropdownMenuItem
-                        onSelect={handleRestartSelect}
-                        className={cn(
-                          armedRestartId === id && "bg-status-warning/10 text-status-warning"
-                        )}
-                        data-testid={
-                          armedRestartId === id ? "panel-restart-confirm" : "panel-restart"
-                        }
-                        aria-label={
-                          armedRestartId === id
-                            ? `Armed — click again to confirm restart. ${countdown !== null ? `${countdown} seconds remaining` : ""}`
-                            : "Restart Session"
-                        }
-                      >
-                        <RotateCcw className="w-3 h-3 mr-2" aria-hidden="true" />
-                        {armedRestartId === id
-                          ? `Confirm Restart (${countdown ?? 0}s)`
-                          : "Restart Session"}
-                      </DropdownMenuItem>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">More panel actions</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="min-w-[160px]">
+                {canRestart && onRestart && (
+                  <DropdownMenuItem
+                    onSelect={handleRestartSelect}
+                    className={cn(
+                      armedRestartId === id && "bg-status-warning/10 text-status-warning"
                     )}
-                    {showCancelWatch && (
-                      <DropdownMenuItem onSelect={() => unwatchPanel(id)}>
-                        <Bell className="w-3 h-3 mr-2" aria-hidden="true" />
-                        Cancel Watch
-                      </DropdownMenuItem>
-                    )}
-                    {headerActions && ((canRestart && !!onRestart) || showCancelWatch) && (
-                      <DropdownMenuSeparator />
-                    )}
-                    {headerActions}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">More panel actions</TooltipContent>
-            </Tooltip>
+                    data-testid={armedRestartId === id ? "panel-restart-confirm" : "panel-restart"}
+                    aria-label={
+                      armedRestartId === id
+                        ? `Armed — click again to confirm restart. ${countdown !== null ? `${countdown} seconds remaining` : ""}`
+                        : "Restart Session"
+                    }
+                  >
+                    <RotateCcw className="w-3 h-3 mr-2" aria-hidden="true" />
+                    {armedRestartId === id
+                      ? `Confirm Restart (${countdown ?? 0}s)`
+                      : "Restart Session"}
+                  </DropdownMenuItem>
+                )}
+                {showCancelWatch && (
+                  <DropdownMenuItem onSelect={() => unwatchPanel(id)}>
+                    <Bell className="w-3 h-3 mr-2" aria-hidden="true" />
+                    Cancel Watch
+                  </DropdownMenuItem>
+                )}
+                {headerActions && ((canRestart && !!onRestart) || showCancelWatch) && (
+                  <DropdownMenuSeparator />
+                )}
+                {headerActions}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </TooltipProvider>
         )}
 
