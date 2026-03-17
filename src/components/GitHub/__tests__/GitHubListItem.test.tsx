@@ -341,6 +341,37 @@ describe("GitHubListItem", () => {
     expect(screen.queryByLabelText("Create worktree")).toBeNull();
   });
 
+  it("shows comment count for issues with commentCount >= 1", () => {
+    render(<GitHubListItem item={{ ...baseIssue, commentCount: 3 }} type="issue" />);
+    expect(screen.getByText("3")).toBeTruthy();
+  });
+
+  it("hides comment count for issues with commentCount 0", () => {
+    render(<GitHubListItem item={{ ...baseIssue, commentCount: 0 }} type="issue" />);
+    // The "0" should not appear as a comment count
+    const allText = screen.queryAllByText("0");
+    expect(allText).toHaveLength(0);
+  });
+
+  it("shows comment count for PRs with commentCount >= 1", () => {
+    render(<GitHubListItem item={{ ...basePR, commentCount: 7 }} type="pr" />);
+    expect(screen.getByText("7")).toBeTruthy();
+  });
+
+  it("hides comment count for PRs with commentCount 0", () => {
+    const { container } = render(
+      <GitHubListItem item={{ ...basePR, commentCount: 0 }} type="pr" />
+    );
+    const svgs = container.querySelectorAll("svg.lucide-message-square");
+    expect(svgs).toHaveLength(0);
+  });
+
+  it("hides comment count for PRs without commentCount", () => {
+    const { container } = render(<GitHubListItem item={basePR} type="pr" />);
+    const svgs = container.querySelectorAll("svg.lucide-message-square");
+    expect(svgs).toHaveLength(0);
+  });
+
   it("does not show Copy icon - only # prefix and Check on copy", async () => {
     const { container } = render(<GitHubListItem item={baseIssue} type="issue" />);
     // No Copy icon should exist
