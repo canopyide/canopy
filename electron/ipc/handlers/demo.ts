@@ -163,7 +163,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
           const image = await deps.mainWindow.webContents.capturePage();
           if (!captureActive || token !== captureToken) return;
           const filename = `frame-${String(captureFrameCount + 1).padStart(6, "0")}.png`;
-          await writeFile(join(captureSessionDir!, filename), image.toPNG());
+          await writeFile(`${captureSessionDir}/${filename}`, image.toPNG());
           if (!captureActive || token !== captureToken) return;
           captureFrameCount++;
           if (captureFrameCount >= captureMaxFrames) {
