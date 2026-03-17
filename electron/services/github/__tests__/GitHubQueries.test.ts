@@ -15,13 +15,23 @@ describe("LIST_PRS_QUERY", () => {
 
 describe("SEARCH_QUERY", () => {
   it("fetches comments totalCount in PR fragment", () => {
-    expect(SEARCH_QUERY).toContain("comments");
+    const prFragment = SEARCH_QUERY.slice(SEARCH_QUERY.indexOf("... on PullRequest"));
+    expect(prFragment).toContain("comments");
   });
 });
 
 describe("GET_PR_QUERY", () => {
   it("fetches comments totalCount", () => {
     expect(GET_PR_QUERY).toContain("comments");
+  });
+});
+
+describe("buildBatchPRQuery — no comments field", () => {
+  it("does not include comments in batch query output", () => {
+    const query = buildBatchPRQuery("owner", "repo", [
+      { worktreeId: "wt-1", branchName: "main" },
+    ]);
+    expect(query).not.toContain("comments");
   });
 });
 
