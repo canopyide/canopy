@@ -25,18 +25,18 @@ import { SCROLLBACK_BACKGROUND } from "@shared/config/scrollback";
 // eslint-disable-next-line no-control-regex
 const URXVT_MOUSE_RE = /^\x1b\[\d+;\d+;\d+M/;
 
-// Arrow keys (normal mode), Home, End, and other single-letter CSI finals
+// CSI navigation: arrows, Home, End, and modified F1–F4 (with optional ;modifier param)
 // eslint-disable-next-line no-control-regex
-const CSI_NAV_RE = /^\x1b\[[ABCDHF]$/;
+const CSI_NAV_RE = /^\x1b\[(1;\d+)?[ABCDHFPQRS]$/;
 
-// Application-mode arrows, Home/End, F1–F4 (SS3 prefix)
+// Application-mode arrows, Home/End, F1–F4 (SS3 prefix, unmodified only)
 // eslint-disable-next-line no-control-regex
 const SS3_NAV_RE = /^\x1bO[ABCDHFPQRS]$/;
 
 // Tilde-terminated navigation: Insert(2), Delete(3), PgUp(5), PgDn(6), F5–F12
-// Excludes bracketed paste markers (200~, 201~)
+// Includes optional ;modifier param. Excludes bracketed paste markers (200~, 201~)
 // eslint-disable-next-line no-control-regex
-const TILDE_NAV_RE = /^\x1b\[(2|3|5|6|15|17|18|19|20|21|23|24)~$/;
+const TILDE_NAV_RE = /^\x1b\[(2|3|5|6|15|17|18|19|20|21|23|24)(;\d+)?~$/;
 
 export function isNonKeyboardInput(data: string): boolean {
   // Mouse sequences
