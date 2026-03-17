@@ -62,7 +62,8 @@
     "node-pty": "1.2.0-beta.12"
   },
   "overrides": {
-    "node-gyp": "^10.3.1"
+    "node-gyp": "^10.3.1",
+    "eslint-plugin-react-hooks": "$eslint-plugin-react-hooks"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
@@ -74,7 +75,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@electron/rebuild": "^4.0.3",
-    "@eslint/js": "^9.39.1",
+    "@eslint/js": "^10.0.1",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@octokit/graphql": "^9.0.3",
@@ -90,7 +91,6 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/eslint__js": "^8.42.3",
     "@types/js-yaml": "^4.0.9",
     "@types/jsdom": "^28.0.0",
     "@types/node": "^22.19.3",
@@ -123,11 +123,10 @@
     "electron-store": "^11.0.2",
     "electron-updater": "^6.3.0",
     "esbuild": "^0.27.0",
-    "eslint": "^9.39.1",
+    "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.4",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react-hooks": "7.1.0-canary-c80a0750-20260312",
     "execa": "^9.6.0",
     "fix-path": "^5.0.0",
     "framer-motion": "^12.33.0",
@@ -164,7 +163,7 @@
     "tailwindcss": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.48.0",
+    "typescript-eslint": "^8.57.1",
     "vite": "^6.0.3",
     "vitest": "^4.0.14",
     "wait-on": "^8.0.1",
