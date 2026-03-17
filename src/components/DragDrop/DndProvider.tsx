@@ -34,7 +34,10 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { TerminalDragPreview } from "./TerminalDragPreview";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { arrayMove } from "@dnd-kit/sortable";
 import { parseAccordionDragId } from "./SortableWorktreeTerminal";
+import { isWorktreeSortDragData, parseWorktreeSortDragId } from "./SortableWorktreeCard";
+import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 
 // Placeholder ID used when dragging from dock to grid
 export const GRID_PLACEHOLDER_ID = "__grid-placeholder__";
@@ -247,8 +250,20 @@ export function DndProvider({ children }: DndProviderProps) {
     const { active } = event;
     const dragId = active.id as string;
 
-    const data = active.data.current as DragData | WorktreeDragData | undefined;
-    const terminalId = data?.terminal?.id ?? parseAccordionDragId(dragId) ?? dragId;
+    const data = active.data.current as
+      | DragData
+      | WorktreeDragData
+      | Record<string, unknown>
+      | undefined;
+
+    // Skip terminal-specific logic for worktree-sort drags
+    if (isWorktreeSortDragData(data as Record<string, unknown> | undefined)) {
+      setActiveId(dragId);
+      return;
+    }
+
+    const terminalId =
+      (data as DragData | undefined)?.terminal?.id ?? parseAccordionDragId(dragId) ?? dragId;
 
     setActiveId(dragId);
     terminalInstanceService.lockResize(terminalId, true);
@@ -272,6 +287,11 @@ export function DndProvider({ children }: DndProviderProps) {
     if (!over) {
       setOverContainer(null);
       setPlaceholderIndex(null);
+      return;
+    }
+
+    // Skip all container/placeholder logic for worktree-sort drags
+    if (isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
       return;
     }
 
@@ -359,6 +379,29 @@ export function DndProvider({ children }: DndProviderProps) {
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
+
+      // Handle worktree-sort drags before any terminal logic
+      const activeRawData = active.data.current as Record<string, unknown> | undefined;
+      if (isWorktreeSortDragData(activeRawData)) {
+        setActiveId(null);
+        setActiveData(null);
+
+        if (!over) return;
+
+        const activeWorktreeId = parseWorktreeSortDragId(String(active.id));
+        const overWorktreeId = parseWorktreeSortDragId(String(over.id));
+        if (!activeWorktreeId || !overWorktreeId || activeWorktreeId === overWorktreeId) return;
+
+        const order = activeRawData.dragStartOrder as string[];
+        const oldIndex = order.indexOf(activeWorktreeId);
+        const newIndex = order.indexOf(overWorktreeId);
+        if (oldIndex === -1 || newIndex === -1) return;
+
+        const newOrder = arrayMove(order, oldIndex, newIndex);
+        useWorktreeFilterStore.getState().setManualOrder(newOrder);
+        useWorktreeFilterStore.getState().setOrderBy("manual");
+        return;
+      }
 
       // Read fresh terminal list from store to avoid stale closures
       const terminals = useTerminalStore.getState().terminals;
@@ -799,10 +842,15 @@ export function DndProvider({ children }: DndProviderProps) {
   );
 
   const handleDragCancel = useCallback(() => {
-    const terminalId =
-      activeData?.terminal?.id ?? (activeId ? (parseAccordionDragId(activeId) ?? activeId) : null);
-    if (terminalId) {
-      terminalInstanceService.lockResize(terminalId, false);
+    // Skip terminal unlock for worktree-sort drags (no lock was acquired)
+    const isWorktreeSort = activeId ? parseWorktreeSortDragId(activeId) !== null : false;
+    if (!isWorktreeSort) {
+      const terminalId =
+        activeData?.terminal?.id ??
+        (activeId ? (parseAccordionDragId(activeId) ?? activeId) : null);
+      if (terminalId) {
+        terminalInstanceService.lockResize(terminalId, false);
+      }
     }
 
     // Clear any pending stabilization timers
