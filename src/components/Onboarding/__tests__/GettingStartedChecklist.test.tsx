@@ -54,13 +54,17 @@ describe("GettingStartedChecklist", () => {
     expect(buttons).toHaveLength(3);
   });
 
-  it("renders completed steps as non-interactive divs", () => {
+  it("renders completed steps as non-interactive divs that still show labels", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={allComplete} />);
 
     const stepButtons = screen.queryAllByRole("button", {
       name: /open a project|launch an ai agent|create a worktree/i,
     });
     expect(stepButtons).toHaveLength(0);
+
+    expect(screen.getByText("Open a project")).toBeTruthy();
+    expect(screen.getByText("Launch an AI agent")).toBeTruthy();
+    expect(screen.getByText("Create a worktree")).toBeTruthy();
   });
 
   it("renders mixed state correctly — only incomplete steps are buttons", () => {
@@ -79,6 +83,7 @@ describe("GettingStartedChecklist", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
 
     fireEvent.click(screen.getByRole("button", { name: /open a project/i }));
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
     expect(dispatchMock).toHaveBeenCalledWith("project.openDialog", undefined, { source: "user" });
   });
 
@@ -86,6 +91,7 @@ describe("GettingStartedChecklist", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
 
     fireEvent.click(screen.getByRole("button", { name: /launch an ai agent/i }));
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
     expect(dispatchMock).toHaveBeenCalledWith("panel.palette", undefined, { source: "user" });
   });
 
@@ -93,6 +99,7 @@ describe("GettingStartedChecklist", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
 
     fireEvent.click(screen.getByRole("button", { name: /create a worktree/i }));
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
     expect(dispatchMock).toHaveBeenCalledWith("worktree.createDialog.open", undefined, {
       source: "user",
     });
