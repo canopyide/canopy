@@ -16,7 +16,11 @@ export function parseNoteWithLinks(text: string): TextSegment[] {
 
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      segments.push({ type: "text", content: text.slice(lastIndex, match.index), start: lastIndex });
+      segments.push({
+        type: "text",
+        content: text.slice(lastIndex, match.index),
+        start: lastIndex,
+      });
     }
     segments.push({ type: "link", content: match[1], start: match.index });
     lastIndex = match.index + match[0].length;
