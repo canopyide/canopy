@@ -66,12 +66,14 @@ describe("projectGroupsStore", () => {
       const idA = useProjectGroupsStore.getState().createGroup("Group A");
       const idB = useProjectGroupsStore.getState().createGroup("Group B");
       useProjectGroupsStore.getState().addProjectToGroup(idA, "project-1");
+      useProjectGroupsStore.getState().addProjectToGroup(idA, "project-2"); // Keep A non-empty
       useProjectGroupsStore.getState().addProjectToGroup(idB, "project-1");
 
       const groups = useProjectGroupsStore.getState().groups;
       const groupA = groups.find((g) => g.id === idA);
       const groupB = groups.find((g) => g.id === idB);
       expect(groupA?.projectIds).not.toContain("project-1");
+      expect(groupA?.projectIds).toContain("project-2");
       expect(groupB?.projectIds).toContain("project-1");
     });
 

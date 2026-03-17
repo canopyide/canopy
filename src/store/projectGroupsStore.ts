@@ -54,6 +54,12 @@ export const useProjectGroupsStore = create<ProjectGroupsState>()(
 
       addProjectToGroup: (groupId, projectId) => {
         set((state) => {
+          // Track which groups lost the project (for auto-cleanup)
+          const previousGroupIds = new Set(
+            state.groups
+              .filter((g) => g.id !== groupId && g.projectIds.includes(projectId))
+              .map((g) => g.id)
+          );
           const updated = state.groups.map((g) => {
             if (g.id === groupId) {
               return g.projectIds.includes(projectId)
@@ -65,10 +71,10 @@ export const useProjectGroupsStore = create<ProjectGroupsState>()(
               ? { ...g, projectIds: g.projectIds.filter((id) => id !== projectId) }
               : g;
           });
-          // Auto-delete empty groups (except the target)
+          // Only auto-delete groups that lost the project and are now empty
           return {
             groups: normalizeOrder(
-              updated.filter((g) => g.id === groupId || g.projectIds.length > 0)
+              updated.filter((g) => !previousGroupIds.has(g.id) || g.projectIds.length > 0)
             ),
           };
         });
@@ -81,18 +87,32 @@ export const useProjectGroupsStore = create<ProjectGroupsState>()(
               ? { ...g, projectIds: g.projectIds.filter((id) => id !== projectId) }
               : g
           );
-          return { groups: normalizeOrder(updated.filter((g) => g.projectIds.length > 0)) };
+          // Only auto-delete groups that contained the project and are now empty
+          return {
+            groups: normalizeOrder(
+              updated.filter((g) => g.id !== groupId || g.projectIds.length > 0)
+            ),
+          };
         });
       },
 
       removeProjectFromAllGroups: (projectId) => {
         set((state) => {
+          const affectedGroupIds = new Set(
+            state.groups.filter((g) => g.projectIds.includes(projectId)).map((g) => g.id)
+          );
+          if (affectedGroupIds.size === 0) return state;
           const updated = state.groups.map((g) =>
-            g.projectIds.includes(projectId)
+            affectedGroupIds.has(g.id)
               ? { ...g, projectIds: g.projectIds.filter((id) => id !== projectId) }
               : g
           );
-          return { groups: normalizeOrder(updated.filter((g) => g.projectIds.length > 0)) };
+          // Only auto-delete affected groups that are now empty
+          return {
+            groups: normalizeOrder(
+              updated.filter((g) => !affectedGroupIds.has(g.id) || g.projectIds.length > 0)
+            ),
+          };
         });
       },
 
