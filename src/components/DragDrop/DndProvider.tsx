@@ -250,20 +250,15 @@ export function DndProvider({ children }: DndProviderProps) {
     const { active } = event;
     const dragId = active.id as string;
 
-    const data = active.data.current as
-      | DragData
-      | WorktreeDragData
-      | Record<string, unknown>
-      | undefined;
-
     // Skip terminal-specific logic for worktree-sort drags
-    if (isWorktreeSortDragData(data as Record<string, unknown> | undefined)) {
+    if (isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
       setActiveId(dragId);
       return;
     }
 
-    const terminalId =
-      (data as DragData | undefined)?.terminal?.id ?? parseAccordionDragId(dragId) ?? dragId;
+    const data = active.data.current as DragData | WorktreeDragData | undefined;
+
+    const terminalId = data?.terminal?.id ?? parseAccordionDragId(dragId) ?? dragId;
 
     setActiveId(dragId);
     terminalInstanceService.lockResize(terminalId, true);
