@@ -224,7 +224,7 @@ export interface WorktreeHeaderProps {
   branchLabel: string;
   lifecycleStage: WorktreeLifecycleStage | null;
   worktreeErrorCount: number;
-  dragHandleListeners?: Record<string, Function>;
+  dragHandleListeners?: Record<string, (...args: unknown[]) => void>;
   dragHandleActivatorRef?: (node: HTMLElement | null) => void;
   isDraggingSort?: boolean;
 

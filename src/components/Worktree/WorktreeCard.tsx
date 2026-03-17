@@ -46,7 +46,7 @@ export interface WorktreeCardProps {
   variant?: "sidebar" | "grid";
   onAfterTerminalSelect?: () => void;
   sortableRef?: (node: HTMLElement | null) => void;
-  dragHandleListeners?: Record<string, Function>;
+  dragHandleListeners?: Record<string, (...args: unknown[]) => void>;
   dragHandleActivatorRef?: (node: HTMLElement | null) => void;
   isDraggingSort?: boolean;
 }

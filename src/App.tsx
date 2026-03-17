@@ -468,6 +468,13 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     setRecipeEditorInitialTerminals(undefined);
   }, []);
 
+  const sortableIds = useMemo(
+    () => filteredWorktrees.map((w) => getWorktreeSortDragId(w.id)),
+    [filteredWorktrees]
+  );
+
+  const dragStartOrder = useMemo(() => filteredWorktrees.map((w) => w.id), [filteredWorktrees]);
+
   if (isLoading && worktrees.length === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -549,13 +556,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const hasQuery = query.trim().length > 0;
   const isSortDisabled = isGroupedByType || hasQuery;
-
-  const sortableIds = useMemo(
-    () => filteredWorktrees.map((w) => getWorktreeSortDragId(w.id)),
-    [filteredWorktrees]
-  );
-
-  const dragStartOrder = useMemo(() => filteredWorktrees.map((w) => w.id), [filteredWorktrees]);
 
   const renderWorktreeCard = (worktree: WorktreeState) => (
     <WorktreeCard
