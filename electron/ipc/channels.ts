@@ -454,6 +454,9 @@ export const CHANNELS = {
   DEMO_SLEEP: "demo:sleep",
   DEMO_EXEC_SLEEP: "demo:exec-sleep",
   DEMO_COMMAND_DONE: "demo:command-done",
+  DEMO_START_CAPTURE: "demo:start-capture",
+  DEMO_STOP_CAPTURE: "demo:stop-capture",
+  DEMO_GET_CAPTURE_STATUS: "demo:get-capture-status",
 
   // Workflow approval channels
   WORKFLOW_RESOLVE_APPROVAL: "workflow:resolve-approval",

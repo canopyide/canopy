@@ -131,6 +131,10 @@ import type {
   DemoWaitForSelectorPayload,
   DemoSleepPayload,
   DemoScreenshotResult,
+  DemoStartCapturePayload,
+  DemoStartCaptureResult,
+  DemoStopCaptureResult,
+  DemoCaptureStatus,
 } from "./demo.js";
 
 export type ChecklistItemId = "openedProject" | "launchedAgent" | "createdWorktree";
@@ -1570,6 +1574,18 @@ export interface IpcInvokeMap {
   "demo:sleep": {
     args: [payload: DemoSleepPayload];
     result: void;
+  };
+  "demo:start-capture": {
+    args: [payload: DemoStartCapturePayload];
+    result: DemoStartCaptureResult;
+  };
+  "demo:stop-capture": {
+    args: [];
+    result: DemoStopCaptureResult;
+  };
+  "demo:get-capture-status": {
+    args: [];
+    result: DemoCaptureStatus;
   };
 
   // Project MCP server channels

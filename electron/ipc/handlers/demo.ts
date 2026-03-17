@@ -1,5 +1,8 @@
 import { ipcMain } from "electron";
 import { randomBytes } from "crypto";
+import { mkdtemp, writeFile } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
@@ -9,6 +12,10 @@ import type {
   DemoWaitForSelectorPayload,
   DemoSleepPayload,
   DemoScreenshotResult,
+  DemoStartCapturePayload,
+  DemoStartCaptureResult,
+  DemoStopCaptureResult,
+  DemoCaptureStatus,
 } from "../../../shared/types/ipc/demo.js";
 
 export function registerDemoHandlers(deps: HandlerDependencies): () => void {
@@ -102,6 +109,94 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SLEEP, payload);
   };
 
+  // --- Frame capture state ---
+  let captureActive = false;
+  let captureBusy = false;
+  let captureFrameCount = 0;
+  let captureSessionDir: string | null = null;
+  let captureTimer: ReturnType<typeof setTimeout> | null = null;
+  let captureToken = 0;
+  let captureMaxFrames = 9000;
+
+  function stopCapture(): DemoStopCaptureResult {
+    captureActive = false;
+    captureToken++;
+    if (captureTimer !== null) {
+      clearTimeout(captureTimer);
+      captureTimer = null;
+    }
+    return { outputDir: captureSessionDir ?? "", frameCount: captureFrameCount };
+  }
+
+  const handleStartCapture = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: DemoStartCapturePayload
+  ): Promise<DemoStartCaptureResult> => {
+    if (captureActive) {
+      throw new Error("Capture already in progress");
+    }
+
+    captureActive = true;
+    const fps = payload.fps ?? 30;
+    captureMaxFrames = payload.maxFrames ?? 9000;
+    const intervalMs = Math.round(1000 / fps);
+
+    try {
+      captureSessionDir = payload.outputDir ?? (await mkdtemp(join(tmpdir(), "canopy-capture-")));
+    } catch (err) {
+      captureActive = false;
+      throw err;
+    }
+    captureFrameCount = 0;
+    captureBusy = false;
+    const token = ++captureToken;
+
+    function scheduleNext(): void {
+      captureTimer = setTimeout(async () => {
+        if (!captureActive || token !== captureToken) return;
+        if (captureBusy) {
+          scheduleNext();
+          return;
+        }
+        captureBusy = true;
+        try {
+          const image = await deps.mainWindow.webContents.capturePage();
+          if (!captureActive || token !== captureToken) return;
+          const filename = `frame-${String(captureFrameCount + 1).padStart(6, "0")}.png`;
+          await writeFile(`${captureSessionDir}/${filename}`, image.toPNG());
+          if (!captureActive || token !== captureToken) return;
+          captureFrameCount++;
+          if (captureFrameCount >= captureMaxFrames) {
+            stopCapture();
+          } else {
+            scheduleNext();
+          }
+        } catch {
+          if (captureActive && token === captureToken) {
+            scheduleNext();
+          }
+        } finally {
+          captureBusy = false;
+        }
+      }, intervalMs);
+    }
+
+    scheduleNext();
+    return { outputDir: captureSessionDir };
+  };
+
+  const handleStopCapture = async (): Promise<DemoStopCaptureResult> => {
+    return stopCapture();
+  };
+
+  const handleGetCaptureStatus = async (): Promise<DemoCaptureStatus> => {
+    return {
+      active: captureActive,
+      frameCount: captureFrameCount,
+      outputDir: captureSessionDir,
+    };
+  };
+
   ipcMain.handle(CHANNELS.DEMO_MOVE_TO, handleMoveTo);
   ipcMain.handle(CHANNELS.DEMO_CLICK, handleClick);
   ipcMain.handle(CHANNELS.DEMO_SCREENSHOT, handleScreenshot);
@@ -111,8 +206,12 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.DEMO_PAUSE, handlePause);
   ipcMain.handle(CHANNELS.DEMO_RESUME, handleResume);
   ipcMain.handle(CHANNELS.DEMO_SLEEP, handleSleep);
+  ipcMain.handle(CHANNELS.DEMO_START_CAPTURE, handleStartCapture);
+  ipcMain.handle(CHANNELS.DEMO_STOP_CAPTURE, handleStopCapture);
+  ipcMain.handle(CHANNELS.DEMO_GET_CAPTURE_STATUS, handleGetCaptureStatus);
 
   return () => {
+    stopCapture();
     ipcMain.removeHandler(CHANNELS.DEMO_MOVE_TO);
     ipcMain.removeHandler(CHANNELS.DEMO_CLICK);
     ipcMain.removeHandler(CHANNELS.DEMO_SCREENSHOT);
@@ -122,5 +221,8 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     ipcMain.removeHandler(CHANNELS.DEMO_PAUSE);
     ipcMain.removeHandler(CHANNELS.DEMO_RESUME);
     ipcMain.removeHandler(CHANNELS.DEMO_SLEEP);
+    ipcMain.removeHandler(CHANNELS.DEMO_START_CAPTURE);
+    ipcMain.removeHandler(CHANNELS.DEMO_STOP_CAPTURE);
+    ipcMain.removeHandler(CHANNELS.DEMO_GET_CAPTURE_STATUS);
   };
 }
