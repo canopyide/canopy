@@ -86,6 +86,28 @@ describe("isNonKeyboardInput", () => {
     it("matches lone Escape", () => {
       expect(isNonKeyboardInput("\x1b")).toBe(true);
     });
+
+    it("matches modifier-bearing arrow keys (Shift+Up, Ctrl+Left, etc.)", () => {
+      expect(isNonKeyboardInput("\x1b[1;2A")).toBe(true); // Shift+Up
+      expect(isNonKeyboardInput("\x1b[1;5C")).toBe(true); // Ctrl+Right
+      expect(isNonKeyboardInput("\x1b[1;3D")).toBe(true); // Alt+Left
+      expect(isNonKeyboardInput("\x1b[1;2H")).toBe(true); // Shift+Home
+      expect(isNonKeyboardInput("\x1b[1;5F")).toBe(true); // Ctrl+End
+    });
+
+    it("matches modifier-bearing F-keys (Shift+F1, Ctrl+F5, etc.)", () => {
+      expect(isNonKeyboardInput("\x1b[1;2P")).toBe(true); // Shift+F1
+      expect(isNonKeyboardInput("\x1b[1;5Q")).toBe(true); // Ctrl+F2
+      expect(isNonKeyboardInput("\x1b[15;2~")).toBe(true); // Shift+F5
+      expect(isNonKeyboardInput("\x1b[24;5~")).toBe(true); // Ctrl+F12
+    });
+
+    it("matches modifier-bearing PgUp/PgDn/Insert/Delete", () => {
+      expect(isNonKeyboardInput("\x1b[5;2~")).toBe(true); // Shift+PgUp
+      expect(isNonKeyboardInput("\x1b[6;5~")).toBe(true); // Ctrl+PgDn
+      expect(isNonKeyboardInput("\x1b[3;5~")).toBe(true); // Ctrl+Delete
+      expect(isNonKeyboardInput("\x1b[2;2~")).toBe(true); // Shift+Insert
+    });
   });
 
   describe("control characters (must match)", () => {
