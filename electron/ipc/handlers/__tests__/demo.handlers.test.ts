@@ -205,7 +205,11 @@ describe("frame capture pipeline", () => {
     const cleanup = registerDemoHandlers(deps);
 
     const handler = getHandler("demo:get-capture-status");
-    const status = (await handler({})) as { active: boolean; frameCount: number };
+    const status = (await handler({})) as {
+      active: boolean;
+      frameCount: number;
+      outputDir: string | null;
+    };
 
     expect(status.active).toBe(false);
     expect(status.frameCount).toBe(0);
