@@ -117,6 +117,7 @@ export function GettingStartedChecklist({
             "overflow-hidden transition-all duration-300 ease-in-out",
             collapsed ? "h-0" : "h-auto"
           )}
+          {...(collapsed ? { inert: true } : {})}
         >
           <div className="px-3 pb-3 space-y-1.5">
             {CHECKLIST_ITEMS.map(({ id, label, icon: Icon, actionId }) => {
