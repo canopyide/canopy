@@ -17,11 +17,12 @@ export function registerDevServerActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: async (args?: { url?: string }) => {
-      if (!args?.url) {
+    run: async (args: unknown) => {
+      const { url } = args as { url?: string };
+      if (!url) {
         throw new Error("No URL provided");
       }
-      await window.electron.system.openExternal(args.url);
+      await window.electron.system.openExternal(url);
     },
   }));
 

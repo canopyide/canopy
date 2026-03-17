@@ -588,7 +588,7 @@ export function Toolbar({
                         aria-label={`${detectedServers.length} detected dev servers`}
                       >
                         <Radio className="h-4 w-4" />
-                        <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-canopy-accent text-[10px] font-bold text-white">
+                        <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-canopy-accent text-[10px] font-bold text-accent-foreground">
                           {detectedServers.length}
                         </span>
                       </Button>
@@ -1091,6 +1091,10 @@ export function Toolbar({
       toggleNotificationCenter,
       closeNotificationCenter,
       notificationUnreadCount,
+      detectedServers,
+      detectedServersOpen,
+      setIssueSearchQuery,
+      setPrSearchQuery,
     ]
   );
 
