@@ -220,11 +220,59 @@ describe("GitHubListItem", () => {
     expect(copyButton.textContent).toBe("#42");
   });
 
-  it("applies selected state when isActive", () => {
+  it("applies active highlight when isActive but not selected", () => {
     const { container } = render(<GitHubListItem item={baseIssue} type="issue" isActive />);
     const option = container.querySelector("[role='option']");
-    expect(option?.getAttribute("aria-selected")).toBe("true");
+    expect(option?.getAttribute("aria-selected")).toBe("false");
     expect(option?.className).toContain("bg-muted/50");
+  });
+
+  it("applies selected styling and aria-selected when isSelected", () => {
+    const { container } = render(
+      <GitHubListItem
+        item={baseIssue}
+        type="issue"
+        isSelected
+        isSelectionActive
+        onToggleSelect={vi.fn()}
+      />
+    );
+    const option = container.querySelector("[role='option']");
+    expect(option?.getAttribute("aria-selected")).toBe("true");
+    expect(option?.className).toContain("bg-canopy-accent/10");
+  });
+
+  it("shows checked checkbox when selected", () => {
+    const { container } = render(
+      <GitHubListItem
+        item={baseIssue}
+        type="issue"
+        isSelected
+        isSelectionActive
+        onToggleSelect={vi.fn()}
+      />
+    );
+    const checkboxes = container.querySelectorAll("[aria-hidden='true']");
+    const checked = Array.from(checkboxes).find((el) =>
+      (el.getAttribute("class") ?? "").includes("bg-canopy-accent")
+    );
+    expect(checked).not.toBeUndefined();
+  });
+
+  it("calls onToggleSelect when clicking title during active selection", () => {
+    const onToggleSelect = vi.fn();
+    vi.mocked(actionService.dispatch).mockClear();
+    render(
+      <GitHubListItem
+        item={baseIssue}
+        type="issue"
+        isSelectionActive
+        onToggleSelect={onToggleSelect}
+      />
+    );
+    fireEvent.click(screen.getByText("Fix the thing"));
+    expect(onToggleSelect).toHaveBeenCalled();
+    expect(actionService.dispatch).not.toHaveBeenCalled();
   });
 
   it("renders assignee avatar for issues with assignees", () => {
