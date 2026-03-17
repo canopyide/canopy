@@ -909,6 +909,10 @@ describe("ActivityMonitor", () => {
 
       // Send a large data burst (>2000 chars) that evicts the working indicator from the pattern buffer
       monitor.onData("x".repeat(3000));
+
+      // Verify the buffer eviction actually happened
+      expect(monitor.getLastPatternResult()?.isWorking).toBe(false);
+
       vi.advanceTimersByTime(500);
 
       // Pattern buffer no longer contains "esc to interrupt", so lastPatternResult.isWorking is false.
