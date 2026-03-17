@@ -29,6 +29,7 @@ import { HibernationService } from "../HibernationService.js";
 describe("HibernationService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.resetModules();
     vi.useFakeTimers();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
