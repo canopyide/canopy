@@ -746,17 +746,18 @@ export class ActivityMonitor {
         return;
       }
 
-      if (
-        this.lastWorkingIndicatorTimestamp > 0 &&
-        Date.now() - this.lastWorkingIndicatorTimestamp <
-          this.WORKING_INDICATOR_TTL_MS
-      ) {
+      const actuallyBusy = this.hasActiveChildrenSafe();
+      if (actuallyBusy) {
         this.resetDebounceTimer();
         return;
       }
 
-      const actuallyBusy = this.hasActiveChildrenSafe();
-      if (actuallyBusy) {
+      if (
+        actuallyBusy === null &&
+        this.lastWorkingIndicatorTimestamp > 0 &&
+        Date.now() - this.lastWorkingIndicatorTimestamp <
+          this.WORKING_INDICATOR_TTL_MS
+      ) {
         this.resetDebounceTimer();
         return;
       }
