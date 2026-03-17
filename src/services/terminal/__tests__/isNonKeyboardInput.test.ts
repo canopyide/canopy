@@ -30,47 +30,122 @@ describe("isNonKeyboardInput", () => {
     });
   });
 
+  describe("navigation sequences (must match)", () => {
+    it("matches arrow keys (normal mode)", () => {
+      expect(isNonKeyboardInput("\x1b[A")).toBe(true);
+      expect(isNonKeyboardInput("\x1b[B")).toBe(true);
+      expect(isNonKeyboardInput("\x1b[C")).toBe(true);
+      expect(isNonKeyboardInput("\x1b[D")).toBe(true);
+    });
+
+    it("matches arrow keys (application cursor mode)", () => {
+      expect(isNonKeyboardInput("\x1bOA")).toBe(true);
+      expect(isNonKeyboardInput("\x1bOB")).toBe(true);
+      expect(isNonKeyboardInput("\x1bOC")).toBe(true);
+      expect(isNonKeyboardInput("\x1bOD")).toBe(true);
+    });
+
+    it("matches Home/End (normal mode)", () => {
+      expect(isNonKeyboardInput("\x1b[H")).toBe(true);
+      expect(isNonKeyboardInput("\x1b[F")).toBe(true);
+    });
+
+    it("matches Home/End (application mode)", () => {
+      expect(isNonKeyboardInput("\x1bOH")).toBe(true);
+      expect(isNonKeyboardInput("\x1bOF")).toBe(true);
+    });
+
+    it("matches Page Up/Down", () => {
+      expect(isNonKeyboardInput("\x1b[5~")).toBe(true);
+      expect(isNonKeyboardInput("\x1b[6~")).toBe(true);
+    });
+
+    it("matches Insert and Forward Delete keys", () => {
+      expect(isNonKeyboardInput("\x1b[2~")).toBe(true);
+      expect(isNonKeyboardInput("\x1b[3~")).toBe(true);
+    });
+
+    it("matches F1–F4 (SS3 prefix)", () => {
+      expect(isNonKeyboardInput("\x1bOP")).toBe(true);
+      expect(isNonKeyboardInput("\x1bOQ")).toBe(true);
+      expect(isNonKeyboardInput("\x1bOR")).toBe(true);
+      expect(isNonKeyboardInput("\x1bOS")).toBe(true);
+    });
+
+    it("matches F5–F12 (tilde-terminated)", () => {
+      expect(isNonKeyboardInput("\x1b[15~")).toBe(true); // F5
+      expect(isNonKeyboardInput("\x1b[17~")).toBe(true); // F6
+      expect(isNonKeyboardInput("\x1b[18~")).toBe(true); // F7
+      expect(isNonKeyboardInput("\x1b[19~")).toBe(true); // F8
+      expect(isNonKeyboardInput("\x1b[20~")).toBe(true); // F9
+      expect(isNonKeyboardInput("\x1b[21~")).toBe(true); // F10
+      expect(isNonKeyboardInput("\x1b[23~")).toBe(true); // F11
+      expect(isNonKeyboardInput("\x1b[24~")).toBe(true); // F12
+    });
+
+    it("matches lone Escape", () => {
+      expect(isNonKeyboardInput("\x1b")).toBe(true);
+    });
+  });
+
+  describe("control characters (must match)", () => {
+    it("matches Ctrl+C", () => {
+      expect(isNonKeyboardInput("\x03")).toBe(true);
+    });
+
+    it("matches Ctrl+D", () => {
+      expect(isNonKeyboardInput("\x04")).toBe(true);
+    });
+
+    it("matches Ctrl+L", () => {
+      expect(isNonKeyboardInput("\x0c")).toBe(true);
+    });
+
+    it("matches Ctrl+Z", () => {
+      expect(isNonKeyboardInput("\x1a")).toBe(true);
+    });
+  });
+
   describe("keyboard input (must NOT match)", () => {
-    it("does NOT match arrow keys", () => {
-      expect(isNonKeyboardInput("\x1b[A")).toBe(false);
-      expect(isNonKeyboardInput("\x1b[B")).toBe(false);
-      expect(isNonKeyboardInput("\x1b[C")).toBe(false);
-      expect(isNonKeyboardInput("\x1b[D")).toBe(false);
-    });
-
-    it("does NOT match function keys", () => {
-      expect(isNonKeyboardInput("\x1b[15~")).toBe(false);
-      expect(isNonKeyboardInput("\x1b[17~")).toBe(false);
-    });
-
-    it("does NOT match Home/End/PgUp/PgDn", () => {
-      expect(isNonKeyboardInput("\x1b[H")).toBe(false);
-      expect(isNonKeyboardInput("\x1b[F")).toBe(false);
-      expect(isNonKeyboardInput("\x1b[5~")).toBe(false);
-      expect(isNonKeyboardInput("\x1b[6~")).toBe(false);
-    });
-
     it("does NOT match printable characters", () => {
       expect(isNonKeyboardInput("a")).toBe(false);
       expect(isNonKeyboardInput("hello")).toBe(false);
-      expect(isNonKeyboardInput("\r")).toBe(false);
       expect(isNonKeyboardInput(" ")).toBe(false);
     });
 
-    it("does NOT match control characters", () => {
-      expect(isNonKeyboardInput("\x03")).toBe(false);
-      expect(isNonKeyboardInput("\x04")).toBe(false);
-      expect(isNonKeyboardInput("\x1a")).toBe(false);
+    it("does NOT match Enter", () => {
+      expect(isNonKeyboardInput("\r")).toBe(false);
+      expect(isNonKeyboardInput("\x0d")).toBe(false);
+    });
+
+    it("does NOT match Backspace", () => {
+      expect(isNonKeyboardInput("\x7f")).toBe(false);
+      expect(isNonKeyboardInput("\x08")).toBe(false);
+    });
+
+    it("does NOT match Tab", () => {
+      expect(isNonKeyboardInput("\x09")).toBe(false);
+    });
+
+    it("does NOT match Alt+key sequences", () => {
+      expect(isNonKeyboardInput("\x1ba")).toBe(false);
+      expect(isNonKeyboardInput("\x1bb")).toBe(false);
+      expect(isNonKeyboardInput("\x1bf")).toBe(false);
+    });
+
+    it("does NOT match bracketed paste delimiters", () => {
+      expect(isNonKeyboardInput("\x1b[200~")).toBe(false);
+      expect(isNonKeyboardInput("\x1b[201~")).toBe(false);
+    });
+
+    it("does NOT match Kitty keyboard protocol sequences", () => {
+      expect(isNonKeyboardInput("\x1b[13;2u")).toBe(false);
     });
   });
 
   describe("edge cases", () => {
     it("returns false for empty string", () => {
       expect(isNonKeyboardInput("")).toBe(false);
-    });
-
-    it("returns false for lone ESC character", () => {
-      expect(isNonKeyboardInput("\x1b")).toBe(false);
     });
 
     it("returns false for incomplete CSI prefix", () => {
