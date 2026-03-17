@@ -10,7 +10,6 @@ vi.mock("react-dom", async () => {
 });
 
 vi.mock("@/hooks", () => ({
-  useDragHandle: () => null,
   useBackgroundPanelStats: () => ({ activeCount: 0, workingCount: 0 }),
   useHorizontalScrollControls: () => ({
     containerRef: { current: null },
