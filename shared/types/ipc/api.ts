@@ -1117,6 +1117,12 @@ export interface ElectronAPI {
   };
   demo?: {
     moveTo(x: number, y: number, durationMs: number): Promise<void>;
+    moveToSelector(
+      selector: string,
+      durationMs: number,
+      offsetX?: number,
+      offsetY?: number
+    ): Promise<void>;
     click(): Promise<void>;
     type(selector: string, text: string, cps?: number): Promise<void>;
     setZoom(factor: number, durationMs?: number): Promise<void>;

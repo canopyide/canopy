@@ -7,6 +7,7 @@ import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
   DemoMoveToPayload,
+  DemoMoveToSelectorPayload,
   DemoTypePayload,
   DemoSetZoomPayload,
   DemoWaitForSelectorPayload,
@@ -56,6 +57,13 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     payload: DemoMoveToPayload
   ): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO, payload);
+  };
+
+  const handleMoveToSelector = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: DemoMoveToSelectorPayload
+  ): Promise<void> => {
+    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO_SELECTOR, payload);
   };
 
   const handleClick = async (): Promise<void> => {
@@ -198,6 +206,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
   };
 
   ipcMain.handle(CHANNELS.DEMO_MOVE_TO, handleMoveTo);
+  ipcMain.handle(CHANNELS.DEMO_MOVE_TO_SELECTOR, handleMoveToSelector);
   ipcMain.handle(CHANNELS.DEMO_CLICK, handleClick);
   ipcMain.handle(CHANNELS.DEMO_SCREENSHOT, handleScreenshot);
   ipcMain.handle(CHANNELS.DEMO_TYPE, handleType);
@@ -213,6 +222,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
   return () => {
     stopCapture();
     ipcMain.removeHandler(CHANNELS.DEMO_MOVE_TO);
+    ipcMain.removeHandler(CHANNELS.DEMO_MOVE_TO_SELECTOR);
     ipcMain.removeHandler(CHANNELS.DEMO_CLICK);
     ipcMain.removeHandler(CHANNELS.DEMO_SCREENSHOT);
     ipcMain.removeHandler(CHANNELS.DEMO_TYPE);
