@@ -101,6 +101,8 @@ export default defineConfig(({ mode }) => ({
       ? { pure: ["console.log", "console.info", "console.warn", "console.debug"] }
       : {},
   build: {
+    target: "chrome144",
+    modulePreload: { polyfill: false },
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
@@ -110,6 +112,11 @@ export default defineConfig(({ mode }) => ({
           return getVendorChunk(id);
         },
       },
+    },
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: "chrome144",
     },
   },
   resolve: {
