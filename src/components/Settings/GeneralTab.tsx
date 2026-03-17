@@ -33,7 +33,7 @@ const GENERAL_SUBTABS: SettingsSubtabItem[] = [
 
 interface GeneralTabProps {
   appVersion: string;
-  onNavigateToAgents?: () => void;
+  onNavigateToAgents?: (agentId?: string) => void;
   activeSubtab: string | null;
   onSubtabChange: (id: string) => void;
 }
@@ -310,12 +310,15 @@ export function GeneralTab({
                   const name = config?.name ?? id;
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={id}
-                      className="flex items-center justify-between text-sm px-3 py-2 rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg/30"
+                      className="flex items-center justify-between text-sm px-3 py-2 rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg/30 w-full text-left cursor-pointer transition-colors hover:bg-overlay-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+                      aria-label={`Go to ${name} agent settings`}
+                      onClick={() => onNavigateToAgents?.(id)}
                     >
                       <span className="text-canopy-text/70">{name}</span>
-                      <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-2">
                         {!isSelected ? (
                           <span className="text-canopy-text/40 text-xs">Disabled</span>
                         ) : isAvailable ? (
@@ -329,14 +332,14 @@ export function GeneralTab({
                             <span className="text-status-warning text-xs">CLI not found</span>
                           </>
                         )}
-                      </div>
-                    </div>
+                      </span>
+                    </button>
                   );
                 })}
 
                 {onNavigateToAgents && (
                   <button
-                    onClick={onNavigateToAgents}
+                    onClick={() => onNavigateToAgents?.()}
                     className="text-xs text-canopy-accent hover:underline"
                   >
                     Configure agents →
