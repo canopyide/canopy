@@ -310,14 +310,18 @@ describe("GitHubListItem", () => {
     expect(screen.getByText("7")).toBeTruthy();
   });
 
-  it("hides comment count for PRs without commentCount", () => {
-    render(<GitHubListItem item={basePR} type="pr" />);
-    // No comment count indicator should be present
-    const commentCounts = screen.queryAllByText(/^\d+$/);
-    const hasCommentCount = commentCounts.some(
-      (el) => el.closest(".inline-flex.items-center.gap-0\\.5") !== null
+  it("hides comment count for PRs with commentCount 0", () => {
+    const { container } = render(
+      <GitHubListItem item={{ ...basePR, commentCount: 0 }} type="pr" />
     );
-    expect(hasCommentCount).toBe(false);
+    const svgs = container.querySelectorAll("svg.lucide-message-square");
+    expect(svgs).toHaveLength(0);
+  });
+
+  it("hides comment count for PRs without commentCount", () => {
+    const { container } = render(<GitHubListItem item={basePR} type="pr" />);
+    const svgs = container.querySelectorAll("svg.lucide-message-square");
+    expect(svgs).toHaveLength(0);
   });
 
   it("does not show Copy icon - only # prefix and Check on copy", async () => {
