@@ -437,6 +437,7 @@ export const CHANNELS = {
 
   // Demo mode channels (dev-only)
   DEMO_MOVE_TO: "demo:move-to",
+  DEMO_MOVE_TO_SELECTOR: "demo:move-to-selector",
   DEMO_CLICK: "demo:click",
   DEMO_TYPE: "demo:type",
   DEMO_SET_ZOOM: "demo:set-zoom",
@@ -445,6 +446,7 @@ export const CHANNELS = {
   DEMO_PAUSE: "demo:pause",
   DEMO_RESUME: "demo:resume",
   DEMO_EXEC_MOVE_TO: "demo:exec-move-to",
+  DEMO_EXEC_MOVE_TO_SELECTOR: "demo:exec-move-to-selector",
   DEMO_EXEC_CLICK: "demo:exec-click",
   DEMO_EXEC_TYPE: "demo:exec-type",
   DEMO_EXEC_SET_ZOOM: "demo:exec-set-zoom",

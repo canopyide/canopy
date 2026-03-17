@@ -126,6 +126,7 @@ import type { AgentRegistry, AgentMetadata } from "./agentCapabilities.js";
 import type { AppThemeConfig } from "../appTheme.js";
 import type {
   DemoMoveToPayload,
+  DemoMoveToSelectorPayload,
   DemoTypePayload,
   DemoSetZoomPayload,
   DemoWaitForSelectorPayload,
@@ -1543,6 +1544,10 @@ export interface IpcInvokeMap {
     args: [payload: DemoMoveToPayload];
     result: void;
   };
+  "demo:move-to-selector": {
+    args: [payload: DemoMoveToSelectorPayload];
+    result: void;
+  };
   "demo:click": {
     args: [];
     result: void;
@@ -1757,6 +1762,7 @@ export interface IpcEventMap {
 
   // Demo mode events (main → renderer command forwarding)
   "demo:exec-move-to": DemoMoveToPayload;
+  "demo:exec-move-to-selector": DemoMoveToSelectorPayload;
   "demo:exec-click": void;
   "demo:exec-type": DemoTypePayload;
   "demo:exec-set-zoom": DemoSetZoomPayload;

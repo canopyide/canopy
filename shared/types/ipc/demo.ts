@@ -24,6 +24,13 @@ export interface DemoSleepPayload {
   durationMs: number;
 }
 
+export interface DemoMoveToSelectorPayload {
+  selector: string;
+  durationMs: number;
+  offsetX?: number;
+  offsetY?: number;
+}
+
 export interface DemoScreenshotResult {
   data: Uint8Array;
   width: number;
