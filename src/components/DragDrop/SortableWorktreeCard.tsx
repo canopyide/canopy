@@ -23,7 +23,9 @@ export function parseWorktreeSortDragId(dragId: string | number): string | null 
   return null;
 }
 
-export function isWorktreeSortDragData(data: Record<string, unknown> | undefined): boolean {
+export function isWorktreeSortDragData(
+  data: Record<string, unknown> | undefined
+): data is Record<string, unknown> & WorktreeSortDragData {
   return data?.type === "worktree-sort";
 }
 
