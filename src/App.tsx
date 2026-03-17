@@ -123,6 +123,7 @@ import {
   sortWorktreesByRelevance,
   groupByType,
   findIntegrationWorktree,
+  filterTriageWorktrees,
   scoreWorktree,
   type DerivedWorktreeMeta,
   type FilterState,
@@ -260,25 +261,17 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     [worktrees, mainWorktree]
   );
 
-  const triageWorktrees = useMemo(() => {
-    const nonMain = worktrees.filter(
-      (w) => w.id !== mainWorktree?.id && w.id !== integrationWorktree?.id
-    );
-    return nonMain.filter((w) => {
-      const meta = derivedMetaMap.get(w.id);
-      if (!meta) return false;
-      const qualifies = meta.hasWaitingAgent || meta.hasErrors || meta.hasMergeConflict;
-      if (!qualifies) return false;
-      if (query.trim().length > 0) {
-        const exactNum = parseExactNumber(query);
-        if (exactNum !== null) {
-          return w.issueNumber === exactNum || w.prNumber === exactNum;
-        }
-        return scoreWorktree(w, query) > 0;
-      }
-      return true;
-    });
-  }, [worktrees, derivedMetaMap, mainWorktree, integrationWorktree, query]);
+  const triageWorktrees = useMemo(
+    () =>
+      filterTriageWorktrees(
+        worktrees,
+        derivedMetaMap,
+        mainWorktree?.id,
+        integrationWorktree?.id,
+        query
+      ),
+    [worktrees, derivedMetaMap, mainWorktree, integrationWorktree, query]
+  );
 
   const { filteredWorktrees, groupedSections } = useMemo(() => {
     const filters: FilterState = {
