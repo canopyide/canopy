@@ -5,6 +5,7 @@ import type { WorktreeState } from "../../types";
 import type { GitHubIssue } from "@shared/types/github";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
 import { useDroppable } from "@dnd-kit/core";
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import {
   useErrorStore,
   useTerminalStore,
@@ -46,7 +47,7 @@ export interface WorktreeCardProps {
   variant?: "sidebar" | "grid";
   onAfterTerminalSelect?: () => void;
   sortableRef?: (node: HTMLElement | null) => void;
-  dragHandleListeners?: Record<string, (...args: unknown[]) => void>;
+  dragHandleListeners?: SyntheticListenerMap;
   dragHandleActivatorRef?: (node: HTMLElement | null) => void;
   isDraggingSort?: boolean;
 }

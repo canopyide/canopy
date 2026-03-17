@@ -34,6 +34,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { WorktreeLifecycleStage } from "./hooks/useWorktreeStatus";
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { useIssueTooltip, usePRTooltip } from "@/hooks/useGitHubTooltip";
 import { IssueTooltipContent, PRTooltipContent, TooltipLoading } from "./GitHubTooltipContent";
 
@@ -224,7 +225,7 @@ export interface WorktreeHeaderProps {
   branchLabel: string;
   lifecycleStage: WorktreeLifecycleStage | null;
   worktreeErrorCount: number;
-  dragHandleListeners?: Record<string, (...args: unknown[]) => void>;
+  dragHandleListeners?: SyntheticListenerMap;
   dragHandleActivatorRef?: (node: HTMLElement | null) => void;
   isDraggingSort?: boolean;
 
