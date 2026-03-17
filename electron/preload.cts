@@ -617,6 +617,9 @@ const CHANNELS = {
   DEMO_SLEEP: "demo:sleep",
   DEMO_EXEC_SLEEP: "demo:exec-sleep",
   DEMO_COMMAND_DONE: "demo:command-done",
+  DEMO_START_CAPTURE: "demo:start-capture",
+  DEMO_STOP_CAPTURE: "demo:stop-capture",
+  DEMO_GET_CAPTURE_STATUS: "demo:get-capture-status",
 
   // Workflow approval channels
   WORKFLOW_RESOLVE_APPROVAL: "workflow:resolve-approval",
@@ -2057,6 +2060,10 @@ const api: ElectronAPI = {
           pause: () => _typedInvoke(CHANNELS.DEMO_PAUSE),
           resume: () => _typedInvoke(CHANNELS.DEMO_RESUME),
           sleep: (durationMs: number) => _typedInvoke(CHANNELS.DEMO_SLEEP, { durationMs }),
+          startCapture: (payload: { fps?: number; maxFrames?: number; outputDir?: string }) =>
+            _typedInvoke(CHANNELS.DEMO_START_CAPTURE, payload),
+          stopCapture: () => _typedInvoke(CHANNELS.DEMO_STOP_CAPTURE),
+          getCaptureStatus: () => _typedInvoke(CHANNELS.DEMO_GET_CAPTURE_STATUS),
           onExecCommand: (
             channel: string,
             callback: (payload: Record<string, unknown>) => void
