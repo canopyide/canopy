@@ -29,3 +29,24 @@ export interface DemoScreenshotResult {
   width: number;
   height: number;
 }
+
+export interface DemoStartCapturePayload {
+  fps?: number;
+  maxFrames?: number;
+  outputDir?: string;
+}
+
+export interface DemoStartCaptureResult {
+  outputDir: string;
+}
+
+export interface DemoStopCaptureResult {
+  outputDir: string;
+  frameCount: number;
+}
+
+export interface DemoCaptureStatus {
+  active: boolean;
+  frameCount: number;
+  outputDir: string | null;
+}

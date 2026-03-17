@@ -71,7 +71,13 @@ import type {
   AgentHelpRequest,
   AgentHelpResult,
 } from "./agent.js";
-import type { DemoScreenshotResult } from "./demo.js";
+import type {
+  DemoScreenshotResult,
+  DemoStartCapturePayload,
+  DemoStartCaptureResult,
+  DemoStopCaptureResult,
+  DemoCaptureStatus,
+} from "./demo.js";
 import type {
   CopyTreeResult,
   CopyTreeOptions,
@@ -1119,6 +1125,9 @@ export interface ElectronAPI {
     pause(): Promise<void>;
     resume(): Promise<void>;
     sleep(durationMs: number): Promise<void>;
+    startCapture(payload: DemoStartCapturePayload): Promise<DemoStartCaptureResult>;
+    stopCapture(): Promise<DemoStopCaptureResult>;
+    getCaptureStatus(): Promise<DemoCaptureStatus>;
     onExecCommand(
       channel: string,
       callback: (payload: Record<string, unknown>) => void
