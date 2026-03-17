@@ -105,7 +105,7 @@ describe("GlobalTerminalScannerService", () => {
     expect(onChangedSpy).toHaveBeenCalledTimes(1);
     const servers = onChangedSpy.mock.calls[0][0];
     expect(servers).toHaveLength(1);
-    expect(servers[0].url).toBe("http://localhost:3000");
+    expect(servers[0].url).toBe("http://localhost:3000/");
     expect(servers[0].port).toBe(3000);
     expect(servers[0].terminalId).toBe("t1");
     expect(servers[0].worktreeId).toBe("wt1");

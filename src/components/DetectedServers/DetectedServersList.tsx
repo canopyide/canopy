@@ -11,7 +11,7 @@ interface DetectedServersListProps {
 export function DetectedServersList({ servers, onOpen, onClose }: DetectedServersListProps) {
   if (servers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 px-4 text-text-tertiary">
+      <div className="flex flex-col items-center justify-center py-8 px-4 text-text-muted">
         <Radio className="h-8 w-8 mb-2 opacity-40" />
         <p className="text-sm font-medium">No dev servers detected</p>
         <p className="text-xs mt-1 text-center">
@@ -39,7 +39,7 @@ export function DetectedServersList({ servers, onOpen, onClose }: DetectedServer
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-sm truncate text-text-primary">{server.url}</span>
-              <span className="text-xs text-text-tertiary truncate">
+              <span className="text-xs text-text-muted truncate">
                 {server.terminalTitle ?? server.worktreeId ?? "Terminal"}
               </span>
             </div>
