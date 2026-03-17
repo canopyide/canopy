@@ -33,6 +33,9 @@ interface GitHubListItemProps {
   onSwitchToWorktree?: (worktreeId: string) => void;
   optionId?: string;
   isActive?: boolean;
+  isSelected?: boolean;
+  isSelectionActive?: boolean;
+  onToggleSelect?: (e: React.MouseEvent) => void;
 }
 
 function getStateIcon(state: string, type: "issue" | "pr") {
@@ -78,6 +81,9 @@ export function GitHubListItem({
   onSwitchToWorktree,
   optionId,
   isActive,
+  isSelected = false,
+  isSelectionActive = false,
+  onToggleSelect,
 }: GitHubListItemProps) {
   const isItemPR = isPR(item);
   const StateIcon = getStateIcon(item.state, type);
@@ -130,16 +136,51 @@ export function GitHubListItem({
     <div
       id={optionId}
       role="option"
-      aria-selected={isActive}
+      aria-selected={isSelected}
       className={cn(
-        "hover:bg-muted/50 transition-colors group cursor-default",
-        isActive && "bg-muted/50"
+        "hover:bg-muted/50 transition-colors group cursor-default select-none",
+        isActive && "bg-muted/50",
+        isSelected && "bg-canopy-accent/10 border-l-2 border-canopy-accent",
+        !isSelected && "border-l-2 border-transparent"
       )}
+      onClick={isSelectionActive && onToggleSelect ? (e) => onToggleSelect(e) : undefined}
     >
       <div className="flex items-start gap-2 px-3 py-2.5">
-        <span className={cn("shrink-0 mt-0.5", stateColor)}>
-          <StateIcon className="h-4 w-4" />
-        </span>
+        {type === "issue" && onToggleSelect ? (
+          <span className="shrink-0 mt-0.5 relative w-4 h-4">
+            {/* State icon: visible by default, hidden on hover or when selection active */}
+            <span
+              className={cn(
+                "absolute inset-0",
+                stateColor,
+                isSelectionActive || isSelected ? "hidden" : "group-hover:hidden"
+              )}
+            >
+              <StateIcon className="h-4 w-4" />
+            </span>
+            {/* Checkbox: hidden by default, visible on hover or when selection active */}
+            <span
+              aria-hidden="true"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelect(e);
+              }}
+              className={cn(
+                "absolute inset-0 rounded border flex items-center justify-center transition-colors cursor-pointer",
+                isSelected
+                  ? "bg-canopy-accent border-canopy-accent"
+                  : "border-canopy-border hover:border-canopy-accent/60",
+                isSelectionActive || isSelected ? "flex" : "hidden group-hover:flex"
+              )}
+            >
+              {isSelected && <Check className="w-3 h-3 text-white" />}
+            </span>
+          </span>
+        ) : (
+          <span className={cn("shrink-0 mt-0.5", stateColor)}>
+            <StateIcon className="h-4 w-4" />
+          </span>
+        )}
 
         <div className="flex-1 min-w-0">
           {/* Title row: title, CI dot, #number copy */}
@@ -148,9 +189,16 @@ export function GitHubListItem({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                handleOpenExternal();
+                if (isSelectionActive && onToggleSelect) {
+                  onToggleSelect(e);
+                } else {
+                  handleOpenExternal();
+                }
               }}
-              className="flex-1 min-w-0 text-sm font-medium text-foreground truncate text-left hover:underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              className={cn(
+                "flex-1 min-w-0 text-sm font-medium text-foreground truncate text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
+                !isSelectionActive && "hover:underline"
+              )}
             >
               {item.title}
             </button>

@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients/githubClient";
 import { actionService } from "@/services/ActionService";
 import { GitHubListItem } from "./GitHubListItem";
+import { IssueBulkActionBar } from "./IssueBulkActionBar";
+import { useIssueSelection } from "@/hooks/useIssueSelection";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeDataStore } from "@/store/worktreeDataStore";
 import {
@@ -68,6 +70,19 @@ export function GitHubResourceList({
   const [sortPopoverOpen, setSortPopoverOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const selection = useIssueSelection();
+  const issueCacheRef = useRef<Map<number, GitHubIssue>>(new Map());
+
+  // Accumulate issue objects into the session cache whenever data changes
+  useEffect(() => {
+    if (type !== "issue") return;
+    for (const item of data) {
+      if (!("isDraft" in item)) {
+        issueCacheRef.current.set(item.number, item as GitHubIssue);
+      }
+    }
+  }, [data, type]);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
@@ -243,6 +258,12 @@ export function GitHubResourceList({
     }
   }, [loadingMore, hasMore, fetchData, cursor]);
 
+  const handleClose = useCallback(() => {
+    selection.clear();
+    issueCacheRef.current.clear();
+    onClose?.();
+  }, [onClose, selection]);
+
   const handleOpenInGitHub = () => {
     const query = searchQuery.trim() || undefined;
     const state = filterState as string;
@@ -259,7 +280,7 @@ export function GitHubResourceList({
         { source: "user" }
       );
     }
-    onClose?.();
+    handleClose();
   };
 
   const handleCreateNew = () => {
@@ -279,17 +300,17 @@ export function GitHubResourceList({
       } else {
         openCreateDialog(item);
       }
-      onClose?.();
+      handleClose();
     },
-    [openCreateDialog, openCreateDialogForPR, onClose]
+    [openCreateDialog, openCreateDialogForPR, handleClose]
   );
 
   const handleSwitchToWorktree = useCallback(
     (worktreeId: string) => {
       selectWorktree(worktreeId);
-      onClose?.();
+      handleClose();
     },
-    [selectWorktree, onClose]
+    [selectWorktree, handleClose]
   );
 
   const handleClearSearch = useCallback(() => {
@@ -325,6 +346,14 @@ export function GitHubResourceList({
 
   const handleInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
+      // Cmd/Ctrl+A: select all issues
+      if (type === "issue" && (e.metaKey || e.ctrlKey) && e.key === "a") {
+        e.preventDefault();
+        e.stopPropagation();
+        selection.selectAll(data.map((item) => item.number));
+        return;
+      }
+
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
@@ -375,12 +404,15 @@ export function GitHubResourceList({
         }
         case "Escape":
           e.preventDefault();
-          if (searchQuery !== "") {
+          if (selection.isSelectionActive) {
+            selection.clear();
+            e.nativeEvent.stopImmediatePropagation();
+          } else if (searchQuery !== "") {
             setSearchQuery("");
             e.nativeEvent.stopImmediatePropagation();
           } else {
             e.stopPropagation();
-            onClose?.();
+            handleClose();
           }
           break;
       }
@@ -392,9 +424,12 @@ export function GitHubResourceList({
       handleLoadMore,
       handleSwitchToWorktree,
       handleCreateWorktree,
-      onClose,
+      handleClose,
       type,
       searchQuery,
+      setSearchQuery,
+      selection,
+      data,
     ]
   );
 
@@ -457,7 +492,7 @@ export function GitHubResourceList({
   };
 
   return (
-    <div className="w-[450px] flex flex-col max-h-[500px]">
+    <div className="relative w-[450px] flex flex-col max-h-[500px]">
       <div className="p-3 border-b border-[var(--border-divider)] space-y-3 shrink-0">
         <div className="flex items-center gap-2">
           <div
@@ -639,6 +674,7 @@ export function GitHubResourceList({
               ref={listRef}
               id={listId}
               role="listbox"
+              aria-multiselectable={type === "issue" ? true : undefined}
               className="divide-y divide-[var(--border-divider)]"
             >
               {data.map((item, index) => (
@@ -650,6 +686,19 @@ export function GitHubResourceList({
                   onSwitchToWorktree={handleSwitchToWorktree}
                   optionId={`github-${type}-option-${item.number}`}
                   isActive={activeIndex === index}
+                  isSelected={type === "issue" ? selection.selectedIds.has(item.number) : false}
+                  isSelectionActive={type === "issue" ? selection.isSelectionActive : false}
+                  onToggleSelect={
+                    type === "issue"
+                      ? (e: React.MouseEvent) => {
+                          if (e.shiftKey) {
+                            selection.toggleRange(index, (i) => data[i].number);
+                          } else {
+                            selection.toggle(item.number, index);
+                          }
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -756,6 +805,15 @@ export function GitHubResourceList({
           New
         </Button>
       </div>
+
+      {type === "issue" && (
+        <IssueBulkActionBar
+          selectedIssues={Array.from(selection.selectedIds)
+            .map((id) => issueCacheRef.current.get(id))
+            .filter((issue): issue is GitHubIssue => issue !== undefined)}
+          onClear={selection.clear}
+        />
+      )}
     </div>
   );
 }
