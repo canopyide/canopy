@@ -26,7 +26,7 @@ function createAnchor() {
 }
 
 describe("FixedDropdown overlay-count dismiss behavior", () => {
-  let onOpenChange: ReturnType<typeof vi.fn>;
+  let onOpenChange: ReturnType<typeof vi.fn<(open: boolean) => void>>;
   let anchorRef: React.RefObject<HTMLElement | null>;
 
   beforeEach(() => {
