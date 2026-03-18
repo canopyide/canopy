@@ -82,7 +82,7 @@ describe("TerminalInfoDialog", () => {
   it("shows exit code when terminal has exited", async () => {
     const payload = makePayload({
       hasPty: false,
-      exitCode: 0,
+      exitCode: 42,
       ptyPid: undefined,
       ptyCols: undefined,
       ptyRows: undefined,
@@ -96,6 +96,7 @@ describe("TerminalInfoDialog", () => {
     });
 
     expect(screen.getByText("Exit Code:")).toBeTruthy();
+    expect(screen.getByText("42")).toBeTruthy();
   });
 
   it("does not show exit code when PTY is active", async () => {
