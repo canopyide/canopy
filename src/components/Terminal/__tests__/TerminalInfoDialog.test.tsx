@@ -95,7 +95,7 @@ describe("TerminalInfoDialog", () => {
       expect(screen.getByText("PTY Diagnostics")).toBeTruthy();
     });
 
-    expect(screen.getByText("Exit Code")).toBeTruthy();
+    expect(screen.getByText("Exit Code:")).toBeTruthy();
   });
 
   it("does not show exit code when PTY is active", async () => {
@@ -108,7 +108,7 @@ describe("TerminalInfoDialog", () => {
       expect(screen.getByText("PTY Diagnostics")).toBeTruthy();
     });
 
-    expect(screen.queryByText("Exit Code")).toBeNull();
+    expect(screen.queryByText("Exit Code:")).toBeNull();
   });
 
   it("omits TTY row when ptyTty is undefined", async () => {
@@ -121,7 +121,7 @@ describe("TerminalInfoDialog", () => {
       expect(screen.getByText("PTY Diagnostics")).toBeTruthy();
     });
 
-    expect(screen.queryByText("TTY Device")).toBeNull();
+    expect(screen.queryByText("TTY Device:")).toBeNull();
   });
 
   it("renders gracefully when all new fields are undefined", async () => {
