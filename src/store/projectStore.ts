@@ -108,6 +108,38 @@ function getProjectOpenErrorMessage(error: unknown): string {
 // Captured before each projectClient.switch/reopen call; checked in .then/.catch.
 let switchEpoch = 0;
 
+// Safety timeout: auto-clears isSwitching if the main process never responds.
+// Uses its own epoch to avoid entangling with the IPC staleness guard above.
+export const SWITCH_SAFETY_TIMEOUT_MS = 30_000;
+let switchSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+let switchSafetyEpoch = 0;
+
+function armSwitchSafetyTimeout(get: () => ProjectState): void {
+  if (switchSafetyTimer != null) {
+    clearTimeout(switchSafetyTimer);
+  }
+  const capturedEpoch = ++switchSafetyEpoch;
+  switchSafetyTimer = setTimeout(() => {
+    switchSafetyTimer = null;
+    if (capturedEpoch !== switchSafetyEpoch) return;
+    if (!get().isSwitching) return;
+    notify({
+      type: "warning",
+      title: "Project switch timed out",
+      message: "The project switch took too long. You may need to try again.",
+      duration: 6000,
+    });
+    get().finishProjectSwitch();
+  }, SWITCH_SAFETY_TIMEOUT_MS);
+}
+
+function clearSwitchSafetyTimeout(): void {
+  if (switchSafetyTimer != null) {
+    clearTimeout(switchSafetyTimer);
+    switchSafetyTimer = null;
+  }
+}
+
 function evictRendererTerminalInstances(terminalIds: string[]): void {
   if (terminalIds.length === 0) {
     return;
@@ -247,6 +279,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       switchingToProjectName: targetProject?.name ?? null,
       error: null,
     });
+    armSwitchSafetyTimeout(get);
     try {
       // Save current project's panel state BEFORE switching
       if (oldProjectId) {
@@ -583,6 +616,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       switchingToProjectName: targetProject?.name ?? null,
       error: null,
     });
+    armSwitchSafetyTimeout(get);
     try {
       // Save current project's panel state BEFORE switching (same as switchProject)
       if (oldProjectId) {
@@ -769,6 +803,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   },
 
   finishProjectSwitch: () => {
+    clearSwitchSafetyTimeout();
     set({ isSwitching: false, switchingToProjectName: null });
   },
 
