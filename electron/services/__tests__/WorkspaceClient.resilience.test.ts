@@ -235,6 +235,7 @@ describe("WorkspaceClient resilience", () => {
       resolveSetActive();
       await promise;
 
+      expect(mockWindow.webContents.send).toHaveBeenCalledTimes(1);
       expect(mockWindow.webContents.send).toHaveBeenCalledWith("worktree:activated", {
         worktreeId: "wt-1",
       });
