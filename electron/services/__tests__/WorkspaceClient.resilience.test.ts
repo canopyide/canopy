@@ -215,7 +215,7 @@ describe("WorkspaceClient resilience", () => {
         isDestroyed: vi.fn(() => false),
         webContents: { isDestroyed: vi.fn(() => false), send: vi.fn() },
       };
-      getAllWindowsMock.mockReturnValue([mockWindow] as unknown[]);
+      getAllWindowsMock.mockReturnValue([mockWindow] as never[]);
 
       // Make the host "ready" so requests go through
       child.emit("message", { type: "ready" });
