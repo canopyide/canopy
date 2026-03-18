@@ -608,7 +608,7 @@ export const createTabGroupActions = (
       return group.activeTabId || null;
     }
     const terminal = get().terminals.find((t) => t.id === groupId);
-    if (terminal && terminal.location !== "trash") {
+    if (terminal && terminal.location !== "trash" && terminal.location !== "background") {
       for (const g of get().tabGroups.values()) {
         if (g.panelIds.includes(groupId)) {
           return null;
