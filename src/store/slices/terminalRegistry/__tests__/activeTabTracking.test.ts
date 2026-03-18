@@ -191,6 +191,55 @@ describe("unified active tab tracking", () => {
       const updatedGroup = state.tabGroups.get("group-1");
       expect(updatedGroup?.activeTabId).toBe("term-1");
     });
+
+    it("should be a no-op when setting the same active tab", () => {
+      const group: TabGroup = {
+        id: "group-1",
+        panelIds: ["term-1", "term-2"],
+        activeTabId: "term-1",
+        location: "grid",
+      };
+
+      useTerminalStore.setState({
+        terminals: [
+          {
+            id: "term-1",
+            type: "terminal",
+            title: "Shell 1",
+            cwd: "/test",
+            cols: 80,
+            rows: 24,
+            location: "grid",
+          },
+          {
+            id: "term-2",
+            type: "terminal",
+            title: "Shell 2",
+            cwd: "/test",
+            cols: 80,
+            rows: 24,
+            location: "grid",
+          },
+        ],
+        tabGroups: new Map([["group-1", group]]),
+      });
+
+      const tabGroupsBefore = useTerminalStore.getState().tabGroups;
+      useTerminalStore.getState().setActiveTab("group-1", "term-1");
+      // Map reference should be unchanged (no unnecessary re-renders)
+      expect(useTerminalStore.getState().tabGroups).toBe(tabGroupsBefore);
+    });
+
+    it("should be a no-op for nonexistent group ID", () => {
+      useTerminalStore.setState({
+        terminals: [],
+        tabGroups: new Map(),
+      });
+
+      const tabGroupsBefore = useTerminalStore.getState().tabGroups;
+      useTerminalStore.getState().setActiveTab("nonexistent", "term-1");
+      expect(useTerminalStore.getState().tabGroups).toBe(tabGroupsBefore);
+    });
   });
 
   describe("getActiveTabId", () => {
@@ -258,6 +307,63 @@ describe("unified active tab tracking", () => {
 
       const { getActiveTabId } = useTerminalStore.getState();
       expect(getActiveTabId("nonexistent")).toBeNull();
+    });
+
+    it("should return null when panelId belongs to an explicit group", () => {
+      const group: TabGroup = {
+        id: "group-1",
+        panelIds: ["term-1", "term-2"],
+        activeTabId: "term-1",
+        location: "grid",
+      };
+
+      useTerminalStore.setState({
+        terminals: [
+          {
+            id: "term-1",
+            type: "terminal",
+            title: "Shell 1",
+            cwd: "/test",
+            cols: 80,
+            rows: 24,
+            location: "grid",
+          },
+          {
+            id: "term-2",
+            type: "terminal",
+            title: "Shell 2",
+            cwd: "/test",
+            cols: 80,
+            rows: 24,
+            location: "grid",
+          },
+        ],
+        tabGroups: new Map([["group-1", group]]),
+      });
+
+      const { getActiveTabId } = useTerminalStore.getState();
+      // Panel ID is not a group ID — it belongs to an explicit group
+      expect(getActiveTabId("term-1")).toBeNull();
+    });
+
+    it("should exclude background panels from virtual group resolution", () => {
+      useTerminalStore.setState({
+        terminals: [
+          {
+            id: "term-bg",
+            type: "terminal",
+            title: "Background",
+            cwd: "/test",
+            cols: 80,
+            rows: 24,
+            location: "background",
+          },
+        ],
+        tabGroups: new Map(),
+      });
+
+      const { getActiveTabId } = useTerminalStore.getState();
+      expect(getActiveTabId("term-bg")).toBeNull();
     });
   });
 
