@@ -1126,14 +1126,98 @@ describe("ActivityMonitor", () => {
       visibleLines = ["> "];
       vi.advanceTimersByTime(100); // Boot detection
 
-      // The prompt fast-path requires at least 1000ms of quiet output before firing,
-      // to avoid misfiring during inter-chunk gaps in high-output bursts.
-      // Wait 1100ms to exceed the minimum quiet threshold.
-      vi.advanceTimersByTime(1100);
+      // The prompt fast-path requires at least 3000ms of quiet output before firing,
+      // to avoid misfiring during inter-tool-call gaps (Issue #3606).
+      // Wait 3100ms to exceed both the 3000ms quiet threshold and 2000ms working hold.
+      vi.advanceTimersByTime(3100);
 
       // Should have gone idle via prompt fast-path, well before the 6000ms debounce
       expect(monitor.getState()).toBe("idle");
       expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "idle");
+
+      monitor.dispose();
+    });
+  });
+
+  describe("Agent state jitter prevention (Issue #3606)", () => {
+    it("should not jitter between busy and idle during multi-step agent work with inter-tool-call gaps", () => {
+      const onStateChange = vi.fn();
+      let visibleLines = ["Working... (esc to interrupt)"];
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        getVisibleLines: () => visibleLines,
+        getCursorLine: () => visibleLines[visibleLines.length - 1],
+        initialState: "busy",
+        skipInitialStateEmit: true,
+        idleDebounceMs: 6000,
+        pollingIntervalMs: 50,
+      });
+
+      monitor.startPolling();
+      expect(monitor.getState()).toBe("busy");
+      onStateChange.mockClear();
+
+      // Simulate inter-tool-call gap: prompt briefly visible for 1.5s
+      visibleLines = ["> "];
+      vi.advanceTimersByTime(1500);
+
+      // Should still be busy — 1.5s gap must not trigger idle
+      expect(monitor.getState()).toBe("busy");
+      const idleCalls = onStateChange.mock.calls.filter((call) => call[2] === "idle");
+      expect(idleCalls.length).toBe(0);
+
+      // Agent resumes work
+      visibleLines = ["Running tool... (esc to interrupt)"];
+      vi.advanceTimersByTime(500);
+
+      // Should remain busy
+      expect(monitor.getState()).toBe("busy");
+
+      // Another inter-tool-call gap of 2.5s
+      visibleLines = ["> "];
+      vi.advanceTimersByTime(2500);
+
+      // Should still be busy — within working hold window (refreshed by working signal)
+      expect(monitor.getState()).toBe("busy");
+      const idleCalls2 = onStateChange.mock.calls.filter((call) => call[2] === "idle");
+      expect(idleCalls2.length).toBe(0);
+
+      monitor.dispose();
+    });
+
+    it("should recover quickly from idle to busy when agent resumes", () => {
+      const onStateChange = vi.fn();
+      let visibleLines = ["> "];
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        getVisibleLines: () => visibleLines,
+        getCursorLine: () => visibleLines[visibleLines.length - 1],
+        initialState: "idle",
+        skipInitialStateEmit: true,
+        idleDebounceMs: 6000,
+        pollingIntervalMs: 50,
+        workingRecoveryDelayMs: 300,
+      });
+
+      monitor.startPolling();
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // Agent starts working — working pattern appears
+      visibleLines = ["Working... (esc to interrupt)"];
+
+      // Brief noise below 300ms should not trigger recovery
+      vi.advanceTimersByTime(200);
+      visibleLines = ["> "];
+      vi.advanceTimersByTime(50);
+
+      // Should still be idle — noise was too brief
+      expect(monitor.getState()).toBe("idle");
+
+      // Sustained working signal for >300ms
+      visibleLines = ["Working... (esc to interrupt)"];
+      vi.advanceTimersByTime(350);
+
+      // Should have recovered to busy
+      expect(monitor.getState()).toBe("busy");
 
       monitor.dispose();
     });
@@ -2095,7 +2179,7 @@ describe("ActivityMonitor", () => {
   });
 
   describe("Boot detection with Claude Code banner", () => {
-    it("should detect Claude Code v2.x.x banner and transition to waiting within 200ms", () => {
+    it("should detect Claude Code v2.x.x banner and transition to waiting after working hold expires", () => {
       const onStateChange = vi.fn();
       const visibleLines = [
         "           Claude Code v2.1.37",
@@ -2123,12 +2207,12 @@ describe("ActivityMonitor", () => {
       // Boot detection should complete within first polling cycle (50ms)
       vi.advanceTimersByTime(50);
 
-      // Verify no idle transition before 200ms debounce
+      // Verify no idle transition before working hold (2000ms) expires
       let idleCalls = onStateChange.mock.calls.filter((call) => call[2] === "idle");
       expect(idleCalls.length).toBe(0);
 
-      // Should transition to idle after 200ms debounce with prompt visible
-      vi.advanceTimersByTime(200);
+      // Should transition to idle after working hold expires + prompt fast-path quiet threshold
+      vi.advanceTimersByTime(3100);
 
       // Verify idle transition occurred
       idleCalls = onStateChange.mock.calls.filter((call) => call[2] === "idle");
@@ -2156,9 +2240,9 @@ describe("ActivityMonitor", () => {
 
       monitor.startPolling();
 
-      // Advance through boot detection and debounce
+      // Advance through boot detection and past working hold + prompt fast-path quiet
       vi.advanceTimersByTime(50);
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(3100);
 
       // Verify final state is idle
       expect(monitor.getState()).toBe("idle");
@@ -2185,9 +2269,9 @@ describe("ActivityMonitor", () => {
 
       monitor.startPolling();
 
-      // Advance through boot detection and debounce
+      // Advance through boot detection and past working hold + prompt fast-path quiet
       vi.advanceTimersByTime(50);
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(3100);
 
       // Verify final state is idle
       expect(monitor.getState()).toBe("idle");
@@ -2222,8 +2306,8 @@ describe("ActivityMonitor", () => {
       // Should have scanned 50 lines during boot (not just 10 or 15)
       expect(getVisibleLines).toHaveBeenCalledWith(50);
 
-      // Boot should complete after debounce
-      vi.advanceTimersByTime(250);
+      // Boot should complete after working hold + prompt fast-path quiet threshold
+      vi.advanceTimersByTime(3100);
 
       // Verify final state is idle
       expect(monitor.getState()).toBe("idle");
@@ -2252,8 +2336,8 @@ describe("ActivityMonitor", () => {
 
       getVisibleLines.mockClear();
 
-      // Advance past boot completion
-      vi.advanceTimersByTime(250);
+      // Advance past boot completion and working hold
+      vi.advanceTimersByTime(3100);
 
       // Next poll: post-boot, should scan max(10, 15) = 15 lines
       vi.advanceTimersByTime(100);
