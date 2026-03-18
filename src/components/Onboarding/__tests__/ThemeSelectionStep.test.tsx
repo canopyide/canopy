@@ -15,7 +15,7 @@ vi.mock("@/store/appThemeStore", () => ({
 
 vi.mock("@/clients/appThemeClient", () => ({
   appThemeClient: {
-    setColorScheme: (...args: unknown[]) => mockSetColorScheme(...args),
+    setColorScheme: (id: string) => mockSetColorScheme(id),
   },
 }));
 
