@@ -6,9 +6,76 @@
     <!-- CSP: Transformed by vite.config.ts cspTransformPlugin (dev/prod aware) -->
     <meta http-equiv="Content-Security-Policy" content="" />
     <title>Canopy</title>
+    <style>
+      #startup-skeleton {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        background: var(--theme-surface-canvas, #19191a);
+      }
+      .skeleton-toolbar {
+        height: 48px;
+        flex-shrink: 0;
+        background: var(--theme-surface-sidebar, #131312);
+        border-bottom: 1px solid var(--theme-border-default, #282828);
+      }
+      .skeleton-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .skeleton-sidebar {
+        width: 350px;
+        flex-shrink: 0;
+        background: var(--theme-surface-sidebar, #131312);
+        border-right: 1px solid var(--theme-border-default, #282828);
+      }
+      .skeleton-main {
+        flex: 1;
+        background: var(--theme-surface-canvas, #19191a);
+      }
+      @media (prefers-color-scheme: light) {
+        #startup-skeleton {
+          background: var(--theme-surface-canvas, #f6f4ef);
+        }
+        .skeleton-toolbar {
+          background: var(--theme-surface-sidebar, #ebe7de);
+          border-bottom-color: var(--theme-border-default, #d8d2c6);
+        }
+        .skeleton-sidebar {
+          background: var(--theme-surface-sidebar, #ebe7de);
+          border-right-color: var(--theme-border-default, #d8d2c6);
+        }
+        .skeleton-main {
+          background: var(--theme-surface-canvas, #f6f4ef);
+        }
+      }
+      @keyframes skeleton-safety-fade {
+        0%,
+        99% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          pointer-events: none;
+        }
+      }
+      #startup-skeleton {
+        animation: skeleton-safety-fade 10s forwards;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="startup-skeleton">
+      <div class="skeleton-toolbar"></div>
+      <div class="skeleton-body">
+        <div class="skeleton-sidebar"></div>
+        <div class="skeleton-main"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

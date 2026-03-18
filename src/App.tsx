@@ -44,6 +44,7 @@ import { useQuickCreatePalette } from "./hooks/useQuickCreatePalette";
 import { useDoubleShift } from "./hooks/useDoubleShift";
 import { useMcpBridge } from "./hooks/useMcpBridge";
 import { useFileDropGuard } from "./hooks/useFileDropGuard";
+import { removeStartupSkeleton } from "./utils/removeStartupSkeleton";
 import { createTooltipWithShortcut } from "./lib/platform";
 import { useCrashRecoveryGate } from "./hooks/app/useCrashRecoveryGate";
 import { CrashRecoveryDialog } from "./components/Recovery/CrashRecoveryDialog";
@@ -919,6 +920,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 function App() {
   useErrors();
   useUnloadCleanup();
+  useEffect(() => removeStartupSkeleton(), []);
 
   const { crossDiffDialog, closeCrossWorktreeDiff } = useWorktreeSelectionStore(
     useShallow((state) => ({
