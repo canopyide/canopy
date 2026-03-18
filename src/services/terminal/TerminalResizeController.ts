@@ -324,7 +324,7 @@ export class TerminalResizeController {
   }
 
   private scheduleIdleResize(id: string, managed: ManagedTerminal): void {
-    if (managed.resizeJob !== undefined) return;
+    if (managed.resizeJob !== undefined || managed.resizeDebounceTimer !== undefined) return;
 
     if (typeof scheduler !== "undefined" && typeof scheduler.postTask === "function") {
       const controller = new AbortController();
@@ -343,9 +343,7 @@ export class TerminalResizeController {
           },
           { priority: "background", signal: controller.signal }
         )
-        .catch((e: unknown) => {
-          if (e instanceof Error && e.name !== "AbortError") throw e;
-        });
+        .catch(() => {});
     } else {
       const timerId = setTimeout(() => {
         const current = this.deps.getInstance(id);
