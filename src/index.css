@@ -1730,3 +1730,7 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
     border-radius: var(--radius-md);
   }
 }
+
+@utility contain-layout-paint {
+  contain: layout paint;
+}
