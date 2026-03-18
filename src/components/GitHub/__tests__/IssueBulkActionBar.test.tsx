@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup, waitFor } from "@testing-library/react";
 import { IssueBulkActionBar } from "../IssueBulkActionBar";
 import type { GitHubIssue } from "@shared/types/github";
+import type { ActionDispatchResult } from "@shared/types/actions";
 
 vi.mock("@/services/ActionService", () => ({
   actionService: { dispatch: vi.fn().mockResolvedValue({ ok: true }) },
@@ -118,7 +119,7 @@ describe("IssueBulkActionBar", () => {
 
   it("shows executing state with spinner and progress text", async () => {
     const { actionService } = await import("@/services/ActionService");
-    let resolveDispatch: (v: unknown) => void;
+    let resolveDispatch!: (v: ActionDispatchResult) => void;
     vi.mocked(actionService.dispatch).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -135,7 +136,7 @@ describe("IssueBulkActionBar", () => {
     expect(screen.getByText(/Creating 0\/1/)).toBeTruthy();
 
     await act(async () => {
-      resolveDispatch!({ ok: true });
+      resolveDispatch!({ ok: true, result: undefined });
     });
   });
 
