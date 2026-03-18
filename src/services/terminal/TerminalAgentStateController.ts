@@ -54,7 +54,7 @@ export class TerminalAgentStateController {
       let debounceCount: number;
       if (data === "") {
         newCount = count;
-        debounceCount = 0;
+        debounceCount = count;
       } else if (data === "\x7f") {
         newCount = Math.max(0, count - 1);
         debounceCount = newCount;
