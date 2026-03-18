@@ -17,7 +17,7 @@ import {
   type PRStateFilter,
 } from "@/store/githubFilterStore";
 import type { GitHubIssue, GitHubPR, GitHubSortOrder } from "@shared/types/github";
-import { parseExactNumber } from "@/lib/parseExactNumber";
+import { parseNumberQuery, MULTI_FETCH_CAP } from "@/lib/parseNumberQuery";
 
 type StateFilter = IssueStateFilter | PRStateFilter;
 
@@ -86,8 +86,9 @@ export function GitHubResourceList({
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  const exactNumber = useMemo(() => parseExactNumber(searchQuery), [searchQuery]);
+  const numberQuery = useMemo(() => parseNumberQuery(searchQuery), [searchQuery]);
   const exactNumberAbortRef = useRef<AbortController | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const stateTabs = useMemo(() => {
     if (type === "pr") {
@@ -177,7 +178,7 @@ export function GitHubResourceList({
   );
 
   useEffect(() => {
-    if (exactNumber !== null) {
+    if (numberQuery !== null) {
       return;
     }
 
@@ -189,10 +190,10 @@ export function GitHubResourceList({
     fetchData(null, false, abortController.signal);
 
     return () => abortController.abort();
-  }, [debouncedSearch, filterState, projectPath, type, fetchData, exactNumber]);
+  }, [debouncedSearch, filterState, projectPath, type, fetchData, numberQuery]);
 
   useEffect(() => {
-    if (exactNumber === null) {
+    if (numberQuery === null) {
       return;
     }
 
@@ -208,31 +209,75 @@ export function GitHubResourceList({
     setCursor(null);
     setHasMore(false);
 
-    const fetchExact = async () => {
+    const getByNumber = (num: number) =>
+      type === "issue"
+        ? githubClient.getIssueByNumber(projectPath, num)
+        : githubClient.getPRByNumber(projectPath, num);
+
+    const matchesFilter = (item: GitHubIssue | GitHubPR) =>
+      filterState === "all" || item.state.toLowerCase() === filterState;
+
+    const fetchNumeric = async () => {
       try {
-        const result =
-          type === "issue"
-            ? await githubClient.getIssueByNumber(projectPath, exactNumber)
-            : await githubClient.getPRByNumber(projectPath, exactNumber);
-
-        if (abortController.signal.aborted) return;
-
-        if (result) {
-          const matchesFilter =
-            filterState === "all" ||
-            (type === "issue" && result.state.toLowerCase() === filterState) ||
-            (type === "pr" && result.state.toLowerCase() === filterState);
-
-          if (matchesFilter) {
-            setData([result]);
-            setExactNumberNotFound(null);
-          } else {
-            setData([]);
-            setExactNumberNotFound(exactNumber);
+        switch (numberQuery.kind) {
+          case "single": {
+            const result = await getByNumber(numberQuery.number);
+            if (abortController.signal.aborted) return;
+            if (result && matchesFilter(result)) {
+              setData([result]);
+            } else {
+              setData([]);
+              setExactNumberNotFound(numberQuery.number);
+            }
+            break;
           }
-        } else {
-          setData([]);
-          setExactNumberNotFound(exactNumber);
+
+          case "multi": {
+            const results = await Promise.all(numberQuery.numbers.map(getByNumber));
+            if (abortController.signal.aborted) return;
+            const filtered = results.filter(
+              (r): r is NonNullable<typeof r> => r !== null && matchesFilter(r)
+            );
+            setData(filtered);
+            break;
+          }
+
+          case "range": {
+            const numbers: number[] = [];
+            for (let n = numberQuery.from; n <= numberQuery.to; n++) {
+              numbers.push(n);
+            }
+            const results = await Promise.all(numbers.map(getByNumber));
+            if (abortController.signal.aborted) return;
+            const filtered = results.filter(
+              (r): r is NonNullable<typeof r> => r !== null && matchesFilter(r)
+            );
+            setData(filtered);
+            break;
+          }
+
+          case "open-ended": {
+            const options = {
+              cwd: projectPath,
+              search: `number:>=${numberQuery.from}`,
+              state: filterState as "open" | "closed" | "merged" | "all",
+              bypassCache: true,
+              sortOrder: "created" as const,
+            };
+            const result =
+              type === "issue"
+                ? await githubClient.listIssues(
+                    options as Parameters<typeof githubClient.listIssues>[0]
+                  )
+                : await githubClient.listPullRequests(
+                    options as Parameters<typeof githubClient.listPullRequests>[0]
+                  );
+            if (abortController.signal.aborted) return;
+            setData(result.items);
+            setCursor(result.pageInfo.endCursor);
+            setHasMore(result.pageInfo.hasNextPage);
+            break;
+          }
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
@@ -245,12 +290,13 @@ export function GitHubResourceList({
       }
     };
 
-    void fetchExact();
+    void fetchNumeric();
 
     return () => {
       abortController.abort();
     };
-  }, [exactNumber, projectPath, type, filterState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numberQuery, projectPath, type, filterState, retryKey]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -319,8 +365,12 @@ export function GitHubResourceList({
   }, [setSearchQuery]);
 
   const handleRetry = () => {
-    setCursor(null);
-    fetchData(null, false, undefined);
+    if (numberQuery !== null) {
+      setRetryKey((k) => k + 1);
+    } else {
+      setCursor(null);
+      fetchData(null, false, undefined);
+    }
   };
 
   const listId = `github-${type}-list`;
@@ -636,6 +686,12 @@ export function GitHubResourceList({
             );
           })}
         </div>
+
+        {numberQuery?.kind === "range" && numberQuery.truncated && (
+          <p className="text-xs text-muted-foreground">
+            Showing first {MULTI_FETCH_CAP} of range (capped)
+          </p>
+        )}
       </div>
 
       <div className="overflow-y-auto flex-1 min-h-0">
