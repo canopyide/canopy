@@ -451,7 +451,7 @@ describe("rendererStoreOrchestrator", () => {
         },
       ],
       backgroundedTerminals: new Map([
-        ["dock-bg-1", { originalLocation: "dock", timestamp: Date.now() }],
+        ["dock-bg-1", { id: "dock-bg-1", originalLocation: "dock" as const }],
       ]),
     });
 
