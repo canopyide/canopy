@@ -230,6 +230,9 @@ class TerminalInstanceService {
 
     if (managed.isSerializedRestoreInProgress) {
       managed.deferredOutput.push(data);
+      const deferredBytes =
+        typeof data === "string" ? this.textEncoder.encode(data).length : data.byteLength;
+      this.dataBuffer.notifyWriteComplete(id, deferredBytes);
       return;
     }
 
@@ -266,6 +269,7 @@ class TerminalInstanceService {
       managed.pendingWrites = Math.max(0, (managed.pendingWrites ?? 1) - 1);
 
       terminalClient.acknowledgeData(id, acknowledgedBytes);
+      this.dataBuffer.notifyWriteComplete(id, acknowledgedBytes);
 
       if (shouldSample) {
         const writeDurationMs =
@@ -518,6 +522,11 @@ class TerminalInstanceService {
       return false;
     });
     listeners.push(() => oscDisposable.dispose());
+
+    const writeParsedDisposable = terminal.onWriteParsed(() => {
+      this.dataBuffer.notifyParsed(id);
+    });
+    listeners.push(() => writeParsedDisposable.dispose());
 
     const scrollDisposable = terminal.onScroll(() => {
       const buffer = terminal.buffer.active;
