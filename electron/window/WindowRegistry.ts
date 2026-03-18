@@ -7,6 +7,8 @@ export interface WindowContext {
   projectPath: string | null;
   services: Record<string, unknown>;
   cleanup: Array<() => void>;
+  /** @internal Set to true after unregister runs to prevent double-cleanup from deferred event listeners. */
+  _unregistered?: boolean;
 }
 
 export interface WindowRegistryOptions {
@@ -42,10 +44,8 @@ export class WindowRegistry {
       this.primaryWindowId = windowId;
     }
 
-    let unregistered = false;
     const doUnregister = () => {
-      if (unregistered) return;
-      unregistered = true;
+      if (ctx._unregistered) return;
       this.unregister(windowId);
     };
 
@@ -57,7 +57,8 @@ export class WindowRegistry {
 
   unregister(windowId: number): void {
     const ctx = this.windows.get(windowId);
-    if (!ctx) return;
+    if (!ctx || ctx._unregistered) return;
+    ctx._unregistered = true;
 
     for (const fn of ctx.cleanup) {
       try {
