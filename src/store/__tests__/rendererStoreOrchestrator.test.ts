@@ -413,6 +413,76 @@ describe("rendererStoreOrchestrator", () => {
     );
   });
 
+  it("auto-restores background panel when focused", () => {
+    useTerminalStore.setState({
+      terminals: [
+        {
+          id: "bg-1",
+          type: "terminal",
+          title: "BG",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "background",
+          worktreeId: "wt-1",
+        },
+      ],
+    });
+
+    const restoreSpy = vi.spyOn(useTerminalStore.getState(), "restoreBackgroundTerminal");
+
+    useTerminalStore.setState({ focusedId: "bg-1" });
+
+    expect(restoreSpy).toHaveBeenCalledWith("bg-1");
+  });
+
+  it("sets activeDockTerminalId when restoring a background panel to dock", () => {
+    useTerminalStore.setState({
+      terminals: [
+        {
+          id: "dock-bg-1",
+          type: "terminal",
+          title: "Dock BG",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "background",
+          worktreeId: "wt-1",
+        },
+      ],
+      backgroundedTerminals: new Map([
+        ["dock-bg-1", { id: "dock-bg-1", originalLocation: "dock" as const }],
+      ]),
+    });
+
+    useTerminalStore.setState({ focusedId: "dock-bg-1" });
+
+    expect(useTerminalStore.getState().activeDockTerminalId).toBe("dock-bg-1");
+  });
+
+  it("does not restore non-background panel when focused", () => {
+    useTerminalStore.setState({
+      terminals: [
+        {
+          id: "grid-1",
+          type: "terminal",
+          title: "Grid",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "grid",
+          worktreeId: "wt-1",
+        },
+      ],
+    });
+
+    const restoreSpy = vi.spyOn(useTerminalStore.getState(), "restoreBackgroundTerminal");
+
+    useTerminalStore.setState({ focusedId: "grid-1" });
+
+    expect(restoreSpy).not.toHaveBeenCalled();
+  });
+
   it("cleanup function prevents further reactions", () => {
     destroyStoreOrchestrator();
 
