@@ -10,11 +10,13 @@ describe("TerminalParserHandler", () => {
   let mockManaged: ManagedTerminal;
   let escHandlers: any[];
   let csiHandlers: any[];
+  let oscHandlers: any[];
 
   beforeEach(() => {
     process.env = { ...originalEnv, NODE_ENV: "test" };
     escHandlers = [];
     csiHandlers = [];
+    oscHandlers = [];
 
     mockTerminal = {
       parser: {
@@ -26,6 +28,11 @@ describe("TerminalParserHandler", () => {
         registerCsiHandler: vi.fn((opts, handler) => {
           const disposable = { dispose: vi.fn() };
           csiHandlers.push({ opts, handler, disposable });
+          return disposable;
+        }),
+        registerOscHandler: vi.fn((ident: number, handler: (data: string) => boolean) => {
+          const disposable = { dispose: vi.fn() };
+          oscHandlers.push({ ident, handler, disposable });
           return disposable;
         }),
       },
@@ -145,5 +152,33 @@ describe("TerminalParserHandler", () => {
   it("should handle missing parser API gracefully", () => {
     (mockManaged.terminal as any).parser = undefined; // Simulate missing API
     expect(() => new TerminalParserHandler(mockManaged)).not.toThrow();
+  });
+
+  it("should block OSC 52 clipboard write on agent terminals", () => {
+    new TerminalParserHandler(mockManaged);
+
+    const osc52 = oscHandlers.find((h) => h.ident === 52);
+    expect(osc52).toBeDefined();
+    expect(osc52.handler("c;dGVzdA==")).toBe(true);
+  });
+
+  it("should block OSC 52 clipboard write on regular terminals", () => {
+    mockManaged.kind = "terminal";
+    mockManaged.agentId = undefined;
+
+    new TerminalParserHandler(mockManaged);
+
+    const osc52 = oscHandlers.find((h) => h.ident === 52);
+    expect(osc52).toBeDefined();
+    expect(osc52.handler("c;dGVzdA==")).toBe(true);
+  });
+
+  it("should dispose OSC 52 handler correctly", () => {
+    const handler = new TerminalParserHandler(mockManaged);
+    const osc52 = oscHandlers.find((h) => h.ident === 52);
+    expect(osc52).toBeDefined();
+
+    handler.dispose();
+    expect(osc52.disposable.dispose).toHaveBeenCalled();
   });
 });

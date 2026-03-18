@@ -54,9 +54,18 @@ export class TerminalParserHandler {
   private attachHandlers(): void {
     const { terminal } = this.managed;
 
-    if (!terminal.parser || !terminal.parser.registerCsiHandler) {
+    if (
+      !terminal.parser ||
+      !terminal.parser.registerCsiHandler ||
+      !terminal.parser.registerOscHandler
+    ) {
       return; // Graceful degradation if proposed API missing
     }
+
+    // Block OSC 52 clipboard write sequences (defense-in-depth against pastejacking).
+    // Unconditional — all terminal kinds must block this attack vector.
+    const osc52Handler = terminal.parser.registerOscHandler(52, () => true);
+    this.disposables.push(osc52Handler);
 
     const capabilities = this.getAgentCapabilities();
 
