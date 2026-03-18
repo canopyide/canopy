@@ -254,6 +254,26 @@ describe("OnboardingFlow telemetry tracking", () => {
     });
   });
 
+  it("emits onboarding_step_skipped when theme selection is skipped", async () => {
+    const { getByTestId } = await act(async () => {
+      return render(<OnboardingFlow {...defaultProps} />);
+    });
+
+    await vi.waitFor(() => {
+      expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", expect.any(Object));
+    });
+
+    trackMock.mockClear();
+
+    await act(async () => {
+      getByTestId("theme-skip").click();
+    });
+
+    expect(trackMock).toHaveBeenCalledWith("onboarding_step_skipped", {
+      step: "themeSelection",
+    });
+  });
+
   it("emits onboarding_step_skipped when agent selection is skipped", async () => {
     const { getByTestId } = await act(async () => {
       return render(<OnboardingFlow {...defaultProps} />);
