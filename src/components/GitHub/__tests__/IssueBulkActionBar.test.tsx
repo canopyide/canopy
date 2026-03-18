@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, act, cleanup, waitFor } from "@testing-library/react";
 import { IssueBulkActionBar } from "../IssueBulkActionBar";
 import type { GitHubIssue } from "@shared/types/github";
 
@@ -32,8 +32,13 @@ vi.mock("@/utils/textParsing", () => ({
   generateBranchSlug: (title: string) => title.toLowerCase().replace(/\s+/g, "-"),
 }));
 
+let capturedRecipePickerProps: { isOpen: boolean; onSelect: (id: string | null) => void } | null =
+  null;
 vi.mock("../RecipePicker", () => ({
-  RecipePicker: () => null,
+  RecipePicker: (props: { isOpen: boolean; onSelect: (id: string | null) => void }) => {
+    capturedRecipePickerProps = props;
+    return null;
+  },
 }));
 
 const makeIssue = (n: number): GitHubIssue => ({
@@ -49,6 +54,7 @@ const makeIssue = (n: number): GitHubIssue => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  capturedRecipePickerProps = null;
 });
 
 afterEach(() => {
@@ -69,7 +75,8 @@ describe("IssueBulkActionBar", () => {
     expect(toolbar).toBeTruthy();
 
     expect(screen.getByText("3")).toBeTruthy();
-    expect(screen.getByText("Create Worktrees")).toBeTruthy();
+    const createBtn = screen.getByRole("button", { name: /Create Worktrees/i });
+    expect(createBtn).toBeTruthy();
   });
 
   it("renders as inline footer row, not a floating pill", () => {
@@ -100,5 +107,51 @@ describe("IssueBulkActionBar", () => {
   it("renders clear selection button with correct aria-label", () => {
     render(<IssueBulkActionBar selectedIssues={[makeIssue(1)]} onClear={vi.fn()} />);
     expect(screen.getByLabelText("Clear selection")).toBeTruthy();
+  });
+
+  it("clicking Create Worktrees opens the recipe picker", () => {
+    render(<IssueBulkActionBar selectedIssues={[makeIssue(1)]} onClear={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Create Worktrees/i }));
+    expect(capturedRecipePickerProps?.isOpen).toBe(true);
+  });
+
+  it("shows executing state with spinner and progress text", async () => {
+    const { actionService } = await import("@/services/ActionService");
+    let resolveDispatch: (v: unknown) => void;
+    vi.mocked(actionService.dispatch).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDispatch = resolve;
+        })
+    );
+
+    render(<IssueBulkActionBar selectedIssues={[makeIssue(1)]} onClear={vi.fn()} />);
+
+    await act(async () => {
+      capturedRecipePickerProps?.onSelect(null);
+    });
+
+    expect(screen.getByText(/Creating 0\/1/)).toBeTruthy();
+
+    await act(async () => {
+      resolveDispatch!({ ok: true });
+    });
+  });
+
+  it("shows done state with created count after execution completes", async () => {
+    const { actionService } = await import("@/services/ActionService");
+    vi.mocked(actionService.dispatch).mockResolvedValue({ ok: true } as never);
+
+    render(<IssueBulkActionBar selectedIssues={[makeIssue(1)]} onClear={vi.fn()} />);
+
+    await act(async () => {
+      capturedRecipePickerProps?.onSelect(null);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("1 created")).toBeTruthy();
+    });
+    expect(screen.getByLabelText("Dismiss")).toBeTruthy();
   });
 });
