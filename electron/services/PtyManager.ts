@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import { events } from "./events.js";
 import type { AgentEvent } from "./AgentStateMachine.js";
@@ -382,7 +382,9 @@ export class PtyManager extends EventEmitter {
         return fs.readlinkSync(`/proc/${pid}/fd/0`);
       }
       // macOS
-      const tty = execSync(`ps -p ${pid} -o tty=`, { timeout: 500 }).toString().trim();
+      const tty = execFileSync("ps", ["-p", String(pid), "-o", "tty="], { timeout: 500 })
+        .toString()
+        .trim();
       if (!tty || tty === "??" || tty === "?") return undefined;
       return `/dev/${tty}`;
     } catch {
