@@ -21,15 +21,24 @@ function createMockSession() {
   };
 }
 
-const defaultSession = createMockSession();
-const browserSession = createMockSession();
-const sidecarSession = createMockSession();
-
-const sessionCreatedListeners: Array<(ses: ReturnType<typeof createMockSession>) => void> = [];
+const { defaultSession, browserSession, sidecarSession, sessionCreatedListeners } = vi.hoisted(
+  () => {
+    return {
+      defaultSession: createMockSession(),
+      browserSession: createMockSession(),
+      sidecarSession: createMockSession(),
+      sessionCreatedListeners: [] as Array<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ses: any) => void
+      >,
+    };
+  }
+);
 
 vi.mock("electron", () => ({
   app: {
-    on: vi.fn((event: string, listener: (ses: ReturnType<typeof createMockSession>) => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    on: vi.fn((event: string, listener: (ses: any) => void) => {
       if (event === "session-created") {
         sessionCreatedListeners.push(listener);
       }
