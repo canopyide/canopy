@@ -1,5 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
+
+const mockShow = vi.fn();
+const mockIncrementCount = vi.fn();
+const mockGetState = vi.fn(() => ({
+  hydrated: true,
+  counts: {},
+  show: mockShow,
+  incrementCount: mockIncrementCount,
+}));
+
+vi.mock("../../store/shortcutHintStore", () => ({
+  shortcutHintStore: {
+    getState: mockGetState,
+  },
+}));
+
+const mockGetEffectiveCombo = vi.fn(() => null);
+const mockGetDisplayCombo = vi.fn(() => "");
+
+vi.mock("../KeybindingService", () => ({
+  keybindingService: {
+    getEffectiveCombo: (...args: unknown[]) => mockGetEffectiveCombo(...args),
+    getDisplayCombo: (...args: unknown[]) => mockGetDisplayCombo(...args),
+  },
+}));
+
 import { ActionService } from "../ActionService";
 import type { ActionDefinition, ActionId } from "@shared/types/actions";
 
@@ -289,6 +315,98 @@ describe("ActionService", () => {
       expect(entry).not.toBeNull();
       expect(entry?.id).toBe("actions.list");
       expect(entry?.title).toBe("Test Action");
+    });
+  });
+
+  describe("shortcut hints", () => {
+    const makeAction = (id: string): ActionDefinition => ({
+      id: id as ActionId,
+      title: "Test",
+      description: "Test action",
+      category: "test",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      run: vi.fn().mockResolvedValue(undefined),
+    });
+
+    beforeEach(() => {
+      mockShow.mockClear();
+      mockIncrementCount.mockClear();
+      mockGetEffectiveCombo.mockReset();
+      mockGetDisplayCombo.mockReset();
+      mockGetState.mockReturnValue({
+        hydrated: true,
+        counts: {},
+        show: mockShow,
+        incrementCount: mockIncrementCount,
+      });
+    });
+
+    it("emits hint for user source with keybinding", async () => {
+      mockGetEffectiveCombo.mockReturnValue("Cmd+K");
+      mockGetDisplayCombo.mockReturnValue("⌘K");
+
+      service.register(makeAction("test.action"));
+      await service.dispatch("test.action" as ActionId, undefined, { source: "user" });
+
+      expect(mockShow).toHaveBeenCalledWith("test.action", "⌘K");
+      expect(mockIncrementCount).toHaveBeenCalledWith("test.action");
+    });
+
+    it("does not emit hint for keybinding source", async () => {
+      mockGetEffectiveCombo.mockReturnValue("Cmd+K");
+
+      service.register(makeAction("test.action"));
+      await service.dispatch("test.action" as ActionId, undefined, { source: "keybinding" });
+
+      expect(mockShow).not.toHaveBeenCalled();
+    });
+
+    it("does not emit hint for menu source", async () => {
+      mockGetEffectiveCombo.mockReturnValue("Cmd+K");
+
+      service.register(makeAction("test.action"));
+      await service.dispatch("test.action" as ActionId, undefined, { source: "menu" });
+
+      expect(mockShow).not.toHaveBeenCalled();
+    });
+
+    it("does not emit hint when action has no keybinding", async () => {
+      mockGetEffectiveCombo.mockReturnValue(null);
+
+      service.register(makeAction("test.action"));
+      await service.dispatch("test.action" as ActionId, undefined, { source: "user" });
+
+      expect(mockShow).not.toHaveBeenCalled();
+    });
+
+    it("does not emit hint when store is not hydrated", async () => {
+      mockGetEffectiveCombo.mockReturnValue("Cmd+K");
+      mockGetState.mockReturnValue({
+        hydrated: false,
+        counts: {},
+        show: mockShow,
+        incrementCount: mockIncrementCount,
+      });
+
+      service.register(makeAction("test.action"));
+      await service.dispatch("test.action" as ActionId, undefined, { source: "user" });
+
+      expect(mockShow).not.toHaveBeenCalled();
+    });
+
+    it("does not emit hint when action execution fails", async () => {
+      mockGetEffectiveCombo.mockReturnValue("Cmd+K");
+
+      const failAction: ActionDefinition = {
+        ...makeAction("test.fail"),
+        run: vi.fn().mockRejectedValue(new Error("fail")),
+      };
+      service.register(failAction);
+      await service.dispatch("test.fail" as ActionId, undefined, { source: "user" });
+
+      expect(mockShow).not.toHaveBeenCalled();
     });
   });
 });
