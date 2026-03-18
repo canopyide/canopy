@@ -356,7 +356,7 @@ export class TerminalResizeController {
           this.resizeTerminal(current, current.latestCols, current.latestRows);
           this.sendPtyResize(id, current.latestCols, current.latestRows);
         }
-      }, 0);
+      }, 0) as unknown as number;
       managed.resizeDebounceTimer = timerId;
     }
   }
@@ -373,7 +373,7 @@ export class TerminalResizeController {
         this.resizeTerminal(current, cols, rows);
         this.sendPtyResize(id, cols, rows);
       }
-    }, RESIZE_DEBOUNCE_MS);
+    }, RESIZE_DEBOUNCE_MS) as unknown as number;
     managed.resizeDebounceTimer = timeoutId;
   }
 
