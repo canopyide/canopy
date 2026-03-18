@@ -201,7 +201,7 @@ describe("WelcomeScreen", () => {
     expect(screen.getByText("3000ms ago")).toBeTruthy();
   });
 
-  it("limits recent projects to 5", () => {
+  it("limits recent projects to 5 most recent in descending order", () => {
     const manyProjects = Array.from({ length: 8 }, (_, i) => ({
       id: `p${i}`,
       name: `Project ${i}`,
@@ -212,8 +212,10 @@ describe("WelcomeScreen", () => {
     storeState = { ...storeState, projects: manyProjects };
     render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
 
-    const projectButtons = screen.getAllByText(/Project \d/);
-    expect(projectButtons).toHaveLength(5);
+    const projectNames = screen.getAllByText(/Project \d/).map((el) => el.textContent);
+    expect(projectNames).toHaveLength(5);
+    // Should be the 5 most recent in descending order (7000, 6000, 5000, 4000, 3000)
+    expect(projectNames).toEqual(["Project 7", "Project 6", "Project 5", "Project 4", "Project 3"]);
   });
 
   // --- Checklist ---
@@ -241,11 +243,29 @@ describe("WelcomeScreen", () => {
     expect(buttons).toHaveLength(3);
   });
 
-  it("dispatches correct action when checklist item is clicked", () => {
+  it("dispatches project.openDialog when Open a project is clicked", () => {
     render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
 
     fireEvent.click(screen.getByRole("button", { name: /open a project/i }));
     expect(dispatchMock).toHaveBeenCalledWith("project.openDialog", undefined, {
+      source: "user",
+    });
+  });
+
+  it("dispatches panel.palette when Launch an AI agent is clicked", () => {
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /launch an ai agent/i }));
+    expect(dispatchMock).toHaveBeenCalledWith("panel.palette", undefined, {
+      source: "user",
+    });
+  });
+
+  it("dispatches worktree.createDialog.open when Create a worktree is clicked", () => {
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /create a worktree/i }));
+    expect(dispatchMock).toHaveBeenCalledWith("worktree.createDialog.open", undefined, {
       source: "user",
     });
   });
@@ -276,6 +296,13 @@ describe("WelcomeScreen", () => {
     render(<WelcomeScreen gettingStarted={makeGettingStarted(null)} />);
 
     expect(screen.queryByText("Getting Started")).toBeNull();
+  });
+
+  it("hides checklist when visible is false", () => {
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete, false)} />);
+
+    expect(screen.queryByText("Getting Started")).toBeNull();
+    expect(screen.queryByText("Install Canopy")).toBeNull();
   });
 
   // --- Quick Actions ---
@@ -311,13 +338,18 @@ describe("WelcomeScreen", () => {
 
   // --- Keyboard Shortcuts ---
 
-  it("renders keyboard shortcuts with kbd elements", () => {
-    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+  it("renders keyboard shortcuts inside kbd elements", () => {
+    const { container } = render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
 
     expect(screen.getAllByText("Keyboard Shortcuts").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("⌘N")).toBeTruthy();
-    expect(screen.getByText("⌘P")).toBeTruthy();
-    expect(screen.getByText("⌘K")).toBeTruthy();
+
+    const kbdElements = container.querySelectorAll("kbd");
+    expect(kbdElements.length).toBeGreaterThanOrEqual(6);
+
+    const kbdTexts = Array.from(kbdElements).map((el) => el.textContent);
+    expect(kbdTexts).toContain("⌘N");
+    expect(kbdTexts).toContain("⌘P");
+    expect(kbdTexts).toContain("⌘K");
   });
 
   // --- Footer ---

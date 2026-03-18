@@ -49,7 +49,7 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
 
   const completedCount = checklist ? Object.values(checklist.items).filter(Boolean).length : 0;
   const allDone = checklist ? Object.values(checklist.items).every(Boolean) : false;
-  const showChecklist = checklist && !checklist.dismissed && !allDone;
+  const showChecklist = gettingStarted.visible && checklist && !checklist.dismissed && !allDone;
   const progressTotal = 4; // 3 real items + endowed "Install Canopy"
   const progressDone = 1 + completedCount; // endowed item always complete
 
