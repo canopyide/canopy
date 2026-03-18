@@ -139,7 +139,7 @@ describe("GitHubListItem", () => {
       fireEvent.click(copyButton);
     });
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("42");
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("#42");
   });
 
   it("shows check icon after copy then reverts after timeout", async () => {
