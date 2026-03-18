@@ -107,6 +107,40 @@ describe("WindowRegistry", () => {
     expect(registry.size).toBe(0);
   });
 
+  it("skips destroyed windows when reassigning primary", () => {
+    const registry = new WindowRegistry();
+    const win1 = makeMockWindow(1, 100);
+    const win2 = makeMockWindow(2, 200);
+    const win3 = makeMockWindow(3, 300);
+
+    registry.register(win1);
+    registry.register(win2);
+    registry.register(win3);
+
+    // Mark win2 as destroyed so it gets skipped during primary reassignment
+    (win2.isDestroyed as ReturnType<typeof vi.fn>).mockReturnValue(true);
+
+    registry.unregister(1);
+
+    // Should skip destroyed win2 and pick win3
+    expect(registry.getPrimary()?.windowId).toBe(3);
+  });
+
+  it("returns undefined primary when all remaining windows are destroyed", () => {
+    const registry = new WindowRegistry();
+    const win1 = makeMockWindow(1, 100);
+    const win2 = makeMockWindow(2, 200);
+
+    registry.register(win1);
+    registry.register(win2);
+
+    (win2.isDestroyed as ReturnType<typeof vi.fn>).mockReturnValue(true);
+
+    registry.unregister(1);
+
+    expect(registry.getPrimary()).toBeUndefined();
+  });
+
   it("setPrimary changes the primary window", () => {
     const registry = new WindowRegistry();
     const win1 = makeMockWindow(1, 100);
@@ -153,16 +187,19 @@ describe("WindowRegistry", () => {
     expect(registry.size).toBe(0);
   });
 
-  it("idempotent cleanup — both closed and destroyed fire without error", () => {
+  it("idempotent cleanup — both closed and destroyed fire without error, cleanup runs once", () => {
     const registry = new WindowRegistry();
     const win = makeMockWindow(1, 100);
+    const cleanupSpy = vi.fn();
 
-    registry.register(win);
+    const ctx = registry.register(win);
+    ctx.cleanup.push(cleanupSpy);
 
     win._fireClosed();
     win._fireDestroyed();
 
     expect(registry.size).toBe(0);
+    expect(cleanupSpy).toHaveBeenCalledOnce();
   });
 
   it("runs cleanup callbacks on unregister", () => {
