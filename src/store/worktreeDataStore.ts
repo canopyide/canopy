@@ -80,13 +80,16 @@ function worktreeChangesEqual(
 ): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
+  // lastUpdated is set by the backend whenever git status is recomputed.
+  // If it matches, the full changes snapshot (including the file list) is
+  // identical, so we can skip the expensive array comparison.
+  if (a.lastUpdated !== undefined && a.lastUpdated === b.lastUpdated) return true;
   return (
     a.changedFileCount === b.changedFileCount &&
     a.changes.length === b.changes.length &&
     a.totalInsertions === b.totalInsertions &&
     a.totalDeletions === b.totalDeletions &&
     a.latestFileMtime === b.latestFileMtime &&
-    a.lastUpdated === b.lastUpdated &&
     a.lastCommitMessage === b.lastCommitMessage &&
     a.lastCommitTimestampMs === b.lastCommitTimestampMs
   );
@@ -131,6 +134,8 @@ function worktreeStatesEqual(a: WorktreeState, b: WorktreeState): boolean {
     a.issueNumber === b.issueNumber &&
     a.issueTitle === b.issueTitle &&
     a.taskId === b.taskId &&
+    a.hasPlanFile === b.hasPlanFile &&
+    a.planFilePath === b.planFilePath &&
     worktreeChangesEqual(a.worktreeChanges, b.worktreeChanges) &&
     lifecycleStatusEqual(a.lifecycleStatus, b.lifecycleStatus)
   );
@@ -227,29 +232,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
                 : (state.issueTitle ?? existing.issueTitle),
             };
 
-            if (
-              existing.branch === merged.branch &&
-              existing.path === merged.path &&
-              existing.name === merged.name &&
-              existing.isCurrent === merged.isCurrent &&
-              existing.isMainWorktree === merged.isMainWorktree &&
-              existing.modifiedCount === merged.modifiedCount &&
-              existing.summary === merged.summary &&
-              existing.mood === merged.mood &&
-              existing.aiNote === merged.aiNote &&
-              existing.aiNoteTimestamp === merged.aiNoteTimestamp &&
-              existing.lastActivityTimestamp === merged.lastActivityTimestamp &&
-              existing.prNumber === merged.prNumber &&
-              existing.prUrl === merged.prUrl &&
-              existing.prState === merged.prState &&
-              existing.prTitle === merged.prTitle &&
-              existing.issueNumber === merged.issueNumber &&
-              existing.issueTitle === merged.issueTitle &&
-              existing.worktreeChanges === merged.worktreeChanges &&
-              existing.lifecycleStatus === merged.lifecycleStatus &&
-              existing.hasPlanFile === merged.hasPlanFile &&
-              existing.planFilePath === merged.planFilePath
-            ) {
+            if (worktreeStatesEqual(existing, merged)) {
               return prev;
             }
           } else {
