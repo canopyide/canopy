@@ -117,7 +117,7 @@ describe("TerminalAgentStateController", () => {
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("directing");
     });
 
@@ -129,7 +129,7 @@ describe("TerminalAgentStateController", () => {
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("waiting");
     });
 
@@ -140,40 +140,166 @@ describe("TerminalAgentStateController", () => {
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("working");
     });
 
-    it("reverts directing state after debounce timeout", () => {
+    it("reverts directing state after short debounce for phase 1 (single char)", () => {
       const managed = makeMockManaged({
         canonicalAgentState: "waiting",
         agentState: "waiting",
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("directing");
 
-      vi.advanceTimersByTime(2500);
+      vi.advanceTimersByTime(1499);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
       expect(managed.agentState).toBe("waiting");
     });
 
-    it("resets debounce timer on repeated input", () => {
+    it("uses long debounce for phase 2 (5+ chars)", () => {
       const managed = makeMockManaged({
         canonicalAgentState: "waiting",
         agentState: "waiting",
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
-      vi.advanceTimersByTime(2000);
+      controller.onUserInput("t1", "hello");
       expect(managed.agentState).toBe("directing");
 
-      controller.onUserInput("t1");
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(5000);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(5000);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("upgrades to phase 2 timeout after accumulating 5+ chars", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "ab");
+      controller.onUserInput("t1", "cd");
+      controller.onUserInput("t1", "e");
+
+      vi.advanceTimersByTime(5000);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(5000);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("resets debounce timer on repeated input (phase 1)", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "a");
+      vi.advanceTimersByTime(1000);
+      expect(managed.agentState).toBe("directing");
+
+      controller.onUserInput("t1", "b");
+      vi.advanceTimersByTime(1000);
       expect(managed.agentState).toBe("directing");
 
       vi.advanceTimersByTime(500);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("backspace decrements composition count staying in phase 1", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      // Type "hello" (5 chars → phase 2), then backspace (4 chars → phase 1)
+      controller.onUserInput("t1", "hello");
+      controller.onUserInput("t1", "\x7f");
+
+      // After backspace count is 4 (phase 1 = 1500ms debounce)
+      // Should NOT survive 5000ms (which phase 2 would)
+      vi.advanceTimersByTime(1499);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("backspace does not drop count below zero", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "a");
+      controller.onUserInput("t1", "\x7f");
+      controller.onUserInput("t1", "\x7f");
+      controller.onUserInput("t1", "\x7f");
+
+      vi.advanceTimersByTime(1499);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("ctrl+u resets composition count to zero", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "hello world");
+      controller.onUserInput("t1", "\x15");
+
+      vi.advanceTimersByTime(1499);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("bracketed paste immediately enters phase 2", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "\x1b[200~hello world\x1b[201~");
+
+      vi.advanceTimersByTime(5000);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(5000);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("empty data does not crash and uses phase 1 timeout", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "");
+
+      vi.advanceTimersByTime(1499);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
       expect(managed.agentState).toBe("waiting");
     });
   });
@@ -197,7 +323,7 @@ describe("TerminalAgentStateController", () => {
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("directing");
 
       controller.clearDirectingState("t1");
@@ -224,13 +350,32 @@ describe("TerminalAgentStateController", () => {
       managed.agentStateSubscribers.add(callback);
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("directing");
       callback.mockClear();
 
       controller.clearDirectingState("t1");
       expect(managed.agentState).toBe("waiting");
       expect(callback).toHaveBeenCalledWith("waiting");
+    });
+
+    it("resets composition count so next input starts from phase 1", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "hello");
+      controller.clearDirectingState("t1");
+
+      controller.onUserInput("t1", "a");
+
+      vi.advanceTimersByTime(1499);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(managed.agentState).toBe("waiting");
     });
   });
 
@@ -256,7 +401,7 @@ describe("TerminalAgentStateController", () => {
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("directing");
 
       controller.onEnterPressed("t1");
@@ -330,7 +475,7 @@ describe("TerminalAgentStateController", () => {
       controller.onEnterPressed("t1");
       expect(managed.agentState).toBe("working");
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("working");
     });
 
@@ -349,6 +494,28 @@ describe("TerminalAgentStateController", () => {
       controller.setAgentState("t1", "working");
       expect(callback).toHaveBeenCalledTimes(1);
     });
+
+    it("resets composition count so next input after Enter starts from phase 1", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "hello");
+      controller.onEnterPressed("t1");
+
+      managed.agentState = "waiting";
+      managed.canonicalAgentState = "waiting";
+
+      controller.onUserInput("t1", "a");
+
+      vi.advanceTimersByTime(1499);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(managed.agentState).toBe("waiting");
+    });
   });
 
   describe("destroy", () => {
@@ -359,13 +526,38 @@ describe("TerminalAgentStateController", () => {
       });
       instances.set("t1", managed);
 
-      controller.onUserInput("t1");
+      controller.onUserInput("t1", "a");
       expect(managed.agentState).toBe("directing");
 
       controller.destroy("t1");
 
       vi.advanceTimersByTime(3000);
       expect(managed.agentState).toBe("directing");
+    });
+
+    it("clears composition count so re-added instance starts at phase 1", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      controller.onUserInput("t1", "hello");
+      controller.destroy("t1");
+
+      const managed2 = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed2);
+
+      controller.onUserInput("t1", "a");
+
+      vi.advanceTimersByTime(1499);
+      expect(managed2.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(managed2.agentState).toBe("waiting");
     });
   });
 
@@ -376,14 +568,37 @@ describe("TerminalAgentStateController", () => {
       instances.set("t1", m1);
       instances.set("t2", m2);
 
-      controller.onUserInput("t1");
-      controller.onUserInput("t2");
+      controller.onUserInput("t1", "a");
+      controller.onUserInput("t2", "a");
 
       controller.dispose();
 
       vi.advanceTimersByTime(3000);
       expect(m1.agentState).toBe("directing");
       expect(m2.agentState).toBe("directing");
+    });
+
+    it("clears all composition counts", () => {
+      const m1 = makeMockManaged({ canonicalAgentState: "waiting", agentState: "waiting" });
+      instances.set("t1", m1);
+
+      controller.onUserInput("t1", "hello");
+      controller.dispose();
+
+      const m2 = makeMockManaged({ canonicalAgentState: "waiting", agentState: "waiting" });
+      instances.set("t1", m2);
+
+      controller = new TerminalAgentStateController({
+        getInstance: (id) => instances.get(id),
+      });
+
+      controller.onUserInput("t1", "a");
+
+      vi.advanceTimersByTime(1499);
+      expect(m2.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(m2.agentState).toBe("waiting");
     });
   });
 });
