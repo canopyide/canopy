@@ -123,7 +123,7 @@ export function GitHubListItem({
       clearTimeout(copyTimeoutRef.current);
     }
     try {
-      await navigator.clipboard.writeText(String(item.number));
+      await navigator.clipboard.writeText(`#${item.number}`);
       setCopied(true);
       copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
     } catch {
