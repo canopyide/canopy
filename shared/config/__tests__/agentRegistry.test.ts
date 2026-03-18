@@ -606,7 +606,7 @@ describe("gemini metadata", () => {
   it("has correct release notes URL", () => {
     const config = getAgentConfig("gemini");
     expect(config?.version?.releaseNotesUrl).toBe(
-      "https://github.com/google-gemini/gemini-cli/releases",
+      "https://github.com/google-gemini/gemini-cli/releases"
     );
   });
 
