@@ -120,8 +120,11 @@ describe("WorkerAgentStateService", () => {
         expect(calcState("completed", { type: "exit", code: 1 })).toBe("failed");
       });
 
-      it("should stay completed on zero exit from completed", () => {
-        expect(calcState("completed", { type: "exit", code: 0 })).toBe("completed");
+      it("should return null (no-op) on zero exit from completed", () => {
+        const state = createTerminalState("t1", "agent1");
+        state.agentState = "completed";
+        const result = calculateStateChange(state, { type: "exit", code: 0 });
+        expect(result).toBeNull();
       });
 
       it("should not transition from other states on exit", () => {
@@ -185,6 +188,42 @@ describe("WorkerAgentStateService", () => {
       expect(r.timestamp).toBeGreaterThan(0);
       expect(typeof r.trigger).toBe("string");
       expect(typeof r.confidence).toBe("number");
+    });
+
+    it("should emit completed → working with correct fields on busy", () => {
+      const state = createTerminalState("t1", "agent1");
+      state.agentState = "completed";
+      const result = calculateStateChange(state, { type: "busy" });
+
+      expect(result).not.toBeNull();
+      const r = result as StateChangeResult;
+      expect(r.state).toBe("working");
+      expect(r.previousState).toBe("completed");
+      expect(r.trigger).toBe("activity");
+    });
+
+    it("should emit completed → waiting with correct fields on prompt", () => {
+      const state = createTerminalState("t1", "agent1");
+      state.agentState = "completed";
+      const result = calculateStateChange(state, { type: "prompt" });
+
+      expect(result).not.toBeNull();
+      const r = result as StateChangeResult;
+      expect(r.state).toBe("waiting");
+      expect(r.previousState).toBe("completed");
+      expect(r.trigger).toBe("activity");
+    });
+
+    it("should emit completed → failed with correct fields on non-zero exit", () => {
+      const state = createTerminalState("t1", "agent1");
+      state.agentState = "completed";
+      const result = calculateStateChange(state, { type: "exit", code: 1 });
+
+      expect(result).not.toBeNull();
+      const r = result as StateChangeResult;
+      expect(r.state).toBe("failed");
+      expect(r.previousState).toBe("completed");
+      expect(r.trigger).toBe("exit");
     });
   });
 
