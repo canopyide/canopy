@@ -18,6 +18,7 @@ import {
   GitPullRequest,
   CircleDot,
   GitMerge,
+  Github,
 } from "lucide-react";
 import { PulseHeatmap } from "./PulseHeatmap";
 import { PulseSummary } from "./PulseSummary";
@@ -178,9 +179,94 @@ function HealthSignals({ health }: { health: ProjectHealthData }) {
 
 const MAX_RETRIES = 3;
 
+const SKELETON_COLS = 60;
+const SKELETON_CELL = 10;
+const SKELETON_GAP = 3;
+const SKELETON_ROW_WIDTH = SKELETON_CELL * SKELETON_COLS + SKELETON_GAP * (SKELETON_COLS - 1);
+
+function PulseSkeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "w-fit bg-canopy-sidebar rounded-[var(--radius-lg)] border border-canopy-border",
+        className
+      )}
+    >
+      <div className="px-4 py-3 border-b border-canopy-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-muted shrink-0" />
+          <div className="h-4 bg-muted rounded w-36" />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-5 bg-muted rounded w-14" />
+          <div className="w-5 h-5 rounded bg-muted" />
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4 animate-pulse-delayed">
+        <div
+          className="flex"
+          style={{ gap: `${SKELETON_GAP}px`, width: `${SKELETON_ROW_WIDTH}px` }}
+        >
+          {Array.from({ length: SKELETON_COLS }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-full bg-muted shrink-0"
+              style={{ width: `${SKELETON_CELL}px`, height: `${SKELETON_CELL}px` }}
+            />
+          ))}
+        </div>
+
+        <div className="h-3 bg-muted rounded w-52" />
+
+        <div className="border-t border-canopy-border pt-3">
+          <div className="flex items-center gap-2">
+            <div className="h-5 bg-muted rounded w-16" />
+            <div className="h-5 bg-muted rounded w-10" />
+            <div className="h-5 bg-muted rounded w-10" />
+            <div className="h-5 bg-muted rounded w-24" />
+          </div>
+        </div>
+
+        <div className="border-t border-canopy-border pt-3">
+          <div className="flex items-center gap-4">
+            <div className="h-4 bg-muted rounded w-20" />
+            <div className="h-4 bg-muted rounded w-24" />
+            <div className="h-4 bg-muted rounded w-16" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HealthSectionSkeleton() {
+  return (
+    <div className="border-t border-canopy-border pt-3 animate-pulse-delayed">
+      <div className="flex items-center gap-2">
+        <div className="h-5 bg-muted rounded w-16" />
+        <div className="h-5 bg-muted rounded w-10" />
+        <div className="h-5 bg-muted rounded w-10" />
+        <div className="h-5 bg-muted rounded w-24" />
+      </div>
+    </div>
+  );
+}
+
+function NoRemoteHint() {
+  return (
+    <div className="border-t border-canopy-border pt-3">
+      <div className="flex items-center gap-2 text-xs text-canopy-text/50">
+        <Github className="w-3.5 h-3.5" />
+        <span>Connect a GitHub remote for CI status, issues, and PRs</span>
+      </div>
+    </div>
+  );
+}
+
 export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProps) {
   const projectName = useProjectStore((s) => s.currentProject?.name);
-  const { health, refresh: refreshHealth } = useProjectHealth();
+  const { health, loading: healthLoading, refresh: refreshHealth } = useProjectHealth();
   const { pulse, isLoading, error, rangeDays, retryCount, fetchPulse, setRangeDays } =
     usePulseStore(
       useShallow((state) => ({
@@ -219,23 +305,7 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
     RANGE_OPTIONS.find((o) => o.value === rangeDays)?.label ?? `${rangeDays} days`;
 
   if (isLoading && !pulse) {
-    return (
-      <div
-        className={cn(
-          "p-4 bg-canopy-sidebar rounded-[var(--radius-lg)] border border-canopy-border",
-          className
-        )}
-      >
-        <div
-          className="flex items-center gap-2 text-canopy-text/75"
-          role="status"
-          aria-live="polite"
-        >
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-          <span className="text-xs">Loading activity data...</span>
-        </div>
-      </div>
-    );
+    return <PulseSkeleton className={className} />;
   }
 
   if (!pulse && error === null) {
@@ -354,11 +424,15 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
 
         <p className="text-xs text-canopy-text/80 italic">{getCoachLine(pulse)}</p>
 
-        {health && !health.error && health.repoUrl && (
+        {health && !health.error && health.repoUrl ? (
           <div className="border-t border-canopy-border pt-3">
             <HealthSignals health={health} />
           </div>
-        )}
+        ) : healthLoading ? (
+          <HealthSectionSkeleton />
+        ) : health && !health.repoUrl ? (
+          <NoRemoteHint />
+        ) : null}
 
         <div className="border-t border-canopy-border pt-3">
           <PulseSummary pulse={pulse} />
