@@ -254,6 +254,10 @@ describe("reset-data", () => {
 
     expect(fsMock.readdirSync).toHaveBeenCalledWith("/tmp/test-appdata");
     expect(fsMock.rmSync).toHaveBeenCalledTimes(1);
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "db.sqlite"), {
+      recursive: true,
+      force: true,
+    });
   });
 
   it("does not wipe when neither trigger is present", async () => {
@@ -290,5 +294,22 @@ describe("reset-data", () => {
     await import("../environment.js");
 
     expect(fsMock.rmSync).toHaveBeenCalledTimes(2);
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "locked-file"), {
+      recursive: true,
+      force: true,
+    });
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "deletable-file"), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it("ignores CANOPY_RESET_DATA values other than '1'", async () => {
+    process.env.CANOPY_RESET_DATA = "true";
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    expect(fsMock.readdirSync).not.toHaveBeenCalled();
   });
 });
