@@ -530,6 +530,7 @@ describe("preferences action hardening", () => {
       "terminalConfig.setFontFamily",
       "terminalConfig.setHybridInputEnabled",
       "terminalConfig.setHybridInputAutoFocus",
+      "terminalConfig.setScreenReaderMode",
       "worktreeConfig.get",
       "worktreeConfig.setPattern",
       "help.shortcuts",
