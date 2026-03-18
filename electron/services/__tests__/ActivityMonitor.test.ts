@@ -350,7 +350,8 @@ describe("ActivityMonitor", () => {
         vi.advanceTimersByTime(120);
       }
 
-      // Wait for working hold (2000ms from startPolling) to expire + idle debounce
+      // Wait long enough for working hold to expire (set ~100ms into polling)
+      // and idle debounce (400ms) to be satisfied
       vi.advanceTimersByTime(2000);
 
       expect(monitor.getState()).toBe("idle");
@@ -1189,6 +1190,42 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
+    it("should transition to idle after genuine quiet period exceeds 3s with prompt visible", () => {
+      const onStateChange = vi.fn();
+      let visibleLines: string[] = ["Working... (esc to interrupt)"];
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        getVisibleLines: () => visibleLines,
+        getCursorLine: () => visibleLines[visibleLines.length - 1],
+        idleDebounceMs: 6000,
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      expect(monitor.getState()).toBe("busy");
+
+      // Simulate final output right before agent finishes
+      vi.advanceTimersByTime(900);
+      monitor.onData("Done.\n");
+      onStateChange.mockClear();
+
+      // Agent finishes — prompt appears (quiet starts at 1000ms from lastActivityTimestamp)
+      visibleLines = ["> "];
+
+      // At 2800ms after last data: below 3000ms fast-path quiet threshold
+      vi.advanceTimersByTime(2800);
+      expect(monitor.getState()).toBe("busy");
+
+      // At 3100ms after last data: exceeds 3000ms quiet threshold
+      vi.advanceTimersByTime(300);
+      expect(monitor.getState()).toBe("idle");
+      const idleCalls = onStateChange.mock.calls.filter((call) => call[2] === "idle");
+      expect(idleCalls.length).toBeGreaterThan(0);
+
+      monitor.dispose();
+    });
+
     it("should recover quickly from idle to busy when agent resumes", () => {
       const onStateChange = vi.fn();
       let visibleLines: string[] = ["> "];
@@ -1202,7 +1239,7 @@ describe("ActivityMonitor", () => {
       });
 
       monitor.startPolling();
-      // Boot immediately exits (pollingMaxBootMs: 0), then idle after working hold expires
+      // Boot immediately exits (pollingMaxBootMs: 0), then idle after 3000ms prompt fast-path quiet
       vi.advanceTimersByTime(3200);
       expect(monitor.getState()).toBe("idle");
       onStateChange.mockClear();
