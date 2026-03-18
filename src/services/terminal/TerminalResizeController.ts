@@ -7,7 +7,6 @@ import type { TerminalOutputIngestService } from "./TerminalOutputIngestService"
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const RESIZE_DEBOUNCE_MS = 100;
-const IDLE_CALLBACK_TIMEOUT_MS = 1000;
 const RESIZE_LOCK_TTL_MS = 5000;
 const SETTLED_RESIZE_DELAY_MS = 500;
 
@@ -119,7 +118,7 @@ export class TerminalResizeController {
     const managed = this.deps.getInstance(id);
     if (!managed) return;
 
-    if (managed.resizeJob !== undefined) {
+    if (managed.resizeJob !== undefined || managed.resizeDebounceTimer !== undefined) {
       this.clearResizeJob(managed);
       this.applyResize(id, managed.latestCols, managed.latestRows);
     }
@@ -255,8 +254,12 @@ export class TerminalResizeController {
 
   clearResizeJob(managed: ManagedTerminal): void {
     if (managed.resizeJob !== undefined) {
-      clearTimeout(managed.resizeJob);
+      managed.resizeJob.abort();
       managed.resizeJob = undefined;
+    }
+    if (managed.resizeDebounceTimer !== undefined) {
+      clearTimeout(managed.resizeDebounceTimer);
+      managed.resizeDebounceTimer = undefined;
     }
   }
 
@@ -323,20 +326,39 @@ export class TerminalResizeController {
   private scheduleIdleResize(id: string, managed: ManagedTerminal): void {
     if (managed.resizeJob !== undefined) return;
 
-    const idleId = requestIdleCallback(
-      () => {
+    if (typeof scheduler !== "undefined" && typeof scheduler.postTask === "function") {
+      const controller = new AbortController();
+      managed.resizeJob = controller;
+      void scheduler
+        .postTask(
+          () => {
+            const current = this.deps.getInstance(id);
+            if (current) {
+              current.resizeJob = undefined;
+              this.deps.dataBuffer.flushForTerminal(id);
+              this.deps.dataBuffer.resetForTerminal(id);
+              this.resizeTerminal(current, current.latestCols, current.latestRows);
+              this.sendPtyResize(id, current.latestCols, current.latestRows);
+            }
+          },
+          { priority: "background", signal: controller.signal }
+        )
+        .catch((e: unknown) => {
+          if (e instanceof Error && e.name !== "AbortError") throw e;
+        });
+    } else {
+      const timerId = window.setTimeout(() => {
         const current = this.deps.getInstance(id);
         if (current) {
-          current.resizeJob = undefined;
+          current.resizeDebounceTimer = undefined;
           this.deps.dataBuffer.flushForTerminal(id);
           this.deps.dataBuffer.resetForTerminal(id);
           this.resizeTerminal(current, current.latestCols, current.latestRows);
           this.sendPtyResize(id, current.latestCols, current.latestRows);
         }
-      },
-      { timeout: IDLE_CALLBACK_TIMEOUT_MS }
-    );
-    managed.resizeJob = idleId as unknown as number;
+      }, 0);
+      managed.resizeDebounceTimer = timerId;
+    }
   }
 
   private debounceResize(id: string, managed: ManagedTerminal, cols: number, rows: number): void {
@@ -345,14 +367,14 @@ export class TerminalResizeController {
     const timeoutId = window.setTimeout(() => {
       const current = this.deps.getInstance(id);
       if (current) {
-        current.resizeJob = undefined;
+        current.resizeDebounceTimer = undefined;
         this.deps.dataBuffer.flushForTerminal(id);
         this.deps.dataBuffer.resetForTerminal(id);
         this.resizeTerminal(current, cols, rows);
         this.sendPtyResize(id, cols, rows);
       }
     }, RESIZE_DEBOUNCE_MS);
-    managed.resizeJob = timeoutId;
+    managed.resizeDebounceTimer = timeoutId;
   }
 
   private getBufferLineCount(id: string): number {
