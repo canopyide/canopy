@@ -171,10 +171,10 @@ describe("TerminalAgentStateController", () => {
       controller.onUserInput("t1", "hello");
       expect(managed.agentState).toBe("directing");
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(9999);
       expect(managed.agentState).toBe("directing");
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(1);
       expect(managed.agentState).toBe("waiting");
     });
 
@@ -189,10 +189,10 @@ describe("TerminalAgentStateController", () => {
       controller.onUserInput("t1", "cd");
       controller.onUserInput("t1", "e");
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(9999);
       expect(managed.agentState).toBe("directing");
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(1);
       expect(managed.agentState).toBe("waiting");
     });
 
@@ -213,6 +213,50 @@ describe("TerminalAgentStateController", () => {
 
       vi.advanceTimersByTime(500);
       expect(managed.agentState).toBe("waiting");
+    });
+
+    it("upgrades from phase 1 to phase 2 mid-session when 5th char typed after delay", () => {
+      const managed = makeMockManaged({
+        canonicalAgentState: "waiting",
+        agentState: "waiting",
+      });
+      instances.set("t1", managed);
+
+      // Type 4 chars (phase 1)
+      controller.onUserInput("t1", "abcd");
+      vi.advanceTimersByTime(1400);
+      expect(managed.agentState).toBe("directing");
+
+      // Type 5th char — should upgrade to phase 2 (10000ms from this keystroke)
+      controller.onUserInput("t1", "e");
+
+      // Should survive well past phase 1 timeout
+      vi.advanceTimersByTime(9999);
+      expect(managed.agentState).toBe("directing");
+
+      vi.advanceTimersByTime(1);
+      expect(managed.agentState).toBe("waiting");
+    });
+
+    it("independent composition counts across multiple terminals", () => {
+      const m1 = makeMockManaged({ canonicalAgentState: "waiting", agentState: "waiting" });
+      const m2 = makeMockManaged({ canonicalAgentState: "waiting", agentState: "waiting" });
+      instances.set("t1", m1);
+      instances.set("t2", m2);
+
+      // t1 enters phase 2 with 5 chars
+      controller.onUserInput("t1", "hello");
+      // t2 stays in phase 1 with 1 char
+      controller.onUserInput("t2", "a");
+
+      // After 1500ms, t2 (phase 1) should expire, t1 (phase 2) should hold
+      vi.advanceTimersByTime(1500);
+      expect(m1.agentState).toBe("directing");
+      expect(m2.agentState).toBe("waiting");
+
+      // t1 should expire at 10000ms
+      vi.advanceTimersByTime(8500);
+      expect(m1.agentState).toBe("waiting");
     });
 
     it("backspace decrements composition count staying in phase 1", () => {
@@ -280,10 +324,10 @@ describe("TerminalAgentStateController", () => {
 
       controller.onUserInput("t1", "\x1b[200~hello world\x1b[201~");
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(9999);
       expect(managed.agentState).toBe("directing");
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(1);
       expect(managed.agentState).toBe("waiting");
     });
 
@@ -303,7 +347,7 @@ describe("TerminalAgentStateController", () => {
       expect(managed.agentState).toBe("waiting");
     });
 
-    it("empty data always uses phase 1 timeout even when count is already in phase 2", () => {
+    it("empty data preserves phase 2 timeout when count is already in phase 2", () => {
       const managed = makeMockManaged({
         canonicalAgentState: "waiting",
         agentState: "waiting",
@@ -314,10 +358,10 @@ describe("TerminalAgentStateController", () => {
       controller.onUserInput("t1", "hello");
       expect(managed.agentState).toBe("directing");
 
-      // A legacy notifyUserInput(id) call (data="") should reset debounce to phase 1
+      // A legacy notifyUserInput(id) call (data="") should preserve phase 2
       controller.onUserInput("t1", "");
 
-      vi.advanceTimersByTime(1499);
+      vi.advanceTimersByTime(9999);
       expect(managed.agentState).toBe("directing");
 
       vi.advanceTimersByTime(1);
