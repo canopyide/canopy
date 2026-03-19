@@ -55,6 +55,8 @@ let terminalClient: typeof import("../terminalClient").terminalClient;
 // Store window.addEventListener calls so we can fire them
 let windowMessageListeners: Array<(e: MessageEvent) => void> = [];
 
+const typedGlobal = globalThis as unknown as Record<string, unknown>;
+
 describe("terminalClient MessagePort data routing", () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -63,16 +65,17 @@ describe("terminalClient MessagePort data routing", () => {
     windowMessageListeners = [];
 
     // Set up minimal window mock
-    (globalThis as any).window = {
-      top: globalThis,
+    const windowMock = {
+      top: null as unknown,
       electron: { terminal: mockElectronTerminal },
       location: { origin: "http://localhost", protocol: "http:" },
-      addEventListener: vi.fn((type: string, handler: any) => {
+      addEventListener: vi.fn((type: string, handler: (e: MessageEvent) => void) => {
         if (type === "message") windowMessageListeners.push(handler);
       }),
     };
     // window.top must === window for the guard
-    (globalThis as any).window.top = (globalThis as any).window;
+    windowMock.top = windowMock;
+    typedGlobal.window = windowMock;
 
     vi.clearAllMocks();
 
@@ -81,7 +84,7 @@ describe("terminalClient MessagePort data routing", () => {
   });
 
   afterEach(() => {
-    delete (globalThis as any).window;
+    delete typedGlobal.window;
   });
 
   function acquirePort(): MessagePort {
@@ -96,11 +99,11 @@ describe("terminalClient MessagePort data routing", () => {
     return port;
   }
 
-  function fireWindowMessage(data: any, ports?: MessagePort[]) {
+  function fireWindowMessage(data: Record<string, unknown>, ports?: MessagePort[]) {
     const event = {
       data,
       ports: ports || [],
-      source: (globalThis as any).window,
+      source: typedGlobal.window,
       origin: "http://localhost",
     } as unknown as MessageEvent;
     for (const listener of windowMessageListeners) {
