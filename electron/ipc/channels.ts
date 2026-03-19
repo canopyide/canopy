@@ -299,6 +299,7 @@ export const CHANNELS = {
   WINDOW_ZOOM_OUT: "window:zoom-out",
   WINDOW_ZOOM_RESET: "window:zoom-reset",
   WINDOW_CLOSE: "window:close",
+  WINDOW_RECLAIM_MEMORY: "window:reclaim-memory",
 
   NOTIFICATION_UPDATE: "notification:update",
   NOTIFICATION_SETTINGS_GET: "notification:settings-get",
