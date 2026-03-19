@@ -189,10 +189,16 @@ function TerminalPaneComponent({
   const isBackendRecovering = backendStatus === "recovering";
 
   useEffect(() => {
-    if (!isBackendDisconnected) {
+    if (backendStatus !== "disconnected") {
       setIsRestartingService(false);
     }
-  }, [isBackendDisconnected]);
+  }, [backendStatus]);
+
+  useEffect(() => {
+    if (!isRestartingService) return;
+    const timeout = setTimeout(() => setIsRestartingService(false), 15_000);
+    return () => clearTimeout(timeout);
+  }, [isRestartingService]);
   const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
   const effectiveAgentId = (

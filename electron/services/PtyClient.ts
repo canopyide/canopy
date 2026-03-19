@@ -1301,8 +1301,8 @@ export class PtyClient extends EventEmitter {
       return;
     }
 
-    if (this.child !== null && this.isInitialized) {
-      console.warn("[PtyClient] Cannot manual restart - host is already running");
+    if (this.child !== null) {
+      console.warn("[PtyClient] Cannot manual restart - host process already exists");
       return;
     }
 
