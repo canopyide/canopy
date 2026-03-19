@@ -498,6 +498,7 @@ const CHANNELS = {
   WINDOW_ZOOM_OUT: "window:zoom-out",
   WINDOW_ZOOM_RESET: "window:zoom-reset",
   WINDOW_CLOSE: "window:close",
+  WINDOW_RECLAIM_MEMORY: "window:reclaim-memory",
 
   // Notification channels
   NOTIFICATION_UPDATE: "notification:update",
@@ -2196,3 +2197,10 @@ if (window.top === window && isTrustedRendererUrl(window.location.href)) {
     );
   }
 }
+
+// Private listener: reclaim renderer memory when notified by the main process.
+// Not exposed through window.electron — this is an internal optimization.
+ipcRenderer.on(CHANNELS.WINDOW_RECLAIM_MEMORY, () => {
+  webFrame.clearCache();
+  (globalThis as Record<string, unknown>).gc?.();
+});
