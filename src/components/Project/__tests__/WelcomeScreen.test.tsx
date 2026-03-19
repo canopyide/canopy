@@ -361,7 +361,7 @@ describe("WelcomeScreen", () => {
     expect(newsletterButton).toBeTruthy();
 
     fireEvent.click(newsletterButton);
-    expect(openExternalMock).toHaveBeenCalledWith("https://subscribepage.io/canopy");
+    expect(openExternalMock).toHaveBeenCalledWith("https://canopyide.com/newsletter");
   });
 
   // --- Adaptive Layout ---

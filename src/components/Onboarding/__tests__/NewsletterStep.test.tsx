@@ -30,12 +30,12 @@ describe("NewsletterStep", () => {
     expect(screen.getByRole("button", { name: "Subscribe" })).toHaveProperty("disabled", false);
   });
 
-  it("calls openExternal with hosted subscribe URL and onDismiss(true) on subscribe", () => {
+  it("calls openExternal with newsletter URL and onDismiss(true) on subscribe", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
     fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
 
     expect(openExternalMock).toHaveBeenCalledOnce();
-    expect(openExternalMock).toHaveBeenCalledWith("https://subscribepage.io/canopy");
+    expect(openExternalMock).toHaveBeenCalledWith("https://canopyide.com/newsletter");
     expect(onDismiss).toHaveBeenCalledWith(true);
   });
 
