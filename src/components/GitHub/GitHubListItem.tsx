@@ -209,25 +209,28 @@ export function GitHubListItem({
               {item.title}
             </button>
 
-            {isItemPR && item.state === "OPEN" && item.ciStatus && (() => {
-              const ciInfo = getCIStatusInfo(item.ciStatus);
-              return (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="shrink-0" aria-label={ciInfo.tooltip}>
-                        {ciInfo.icon ? (
-                          <ciInfo.icon className={cn("w-3 h-3", ciInfo.color)} />
-                        ) : (
-                          <span className={cn("block w-2 h-2 rounded-full", ciInfo.color)} />
-                        )}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">{ciInfo.tooltip}</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            })()}
+            {isItemPR &&
+              item.state === "OPEN" &&
+              item.ciStatus &&
+              (() => {
+                const ciInfo = getCIStatusInfo(item.ciStatus);
+                return (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="shrink-0" aria-label={ciInfo.tooltip}>
+                          {ciInfo.icon ? (
+                            <ciInfo.icon className={cn("w-3 h-3", ciInfo.color)} />
+                          ) : (
+                            <span className={cn("block w-2 h-2 rounded-full", ciInfo.color)} />
+                          )}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">{ciInfo.tooltip}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              })()}
 
             <TooltipProvider>
               <Tooltip>
