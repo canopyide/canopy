@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import path from "path";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import type { HandlerDependencies } from "../types.js";
@@ -373,6 +374,9 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
 
     if (typeof cwd !== "string" || !cwd) {
       throw new Error("Invalid working directory");
+    }
+    if (!path.isAbsolute(cwd)) {
+      throw new Error("Working directory must be an absolute path");
     }
 
     const { listCommits } = await import("../../utils/git.js");

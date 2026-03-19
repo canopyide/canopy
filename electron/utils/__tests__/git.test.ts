@@ -8,12 +8,9 @@ const mockGit = {
   revparse: vi.fn(),
 };
 
-vi.mock("simple-git", () => {
-  return {
-    simpleGit: vi.fn(() => mockGit),
-    default: vi.fn(() => mockGit),
-  };
-});
+vi.mock("../hardenedGit.js", () => ({
+  createHardenedGit: vi.fn(() => mockGit),
+}));
 
 vi.mock("fs", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -34,7 +31,7 @@ vi.mock("../logger.js", () => ({
 }));
 
 import { getLatestTrackedFileMtime, getWorktreeChangesWithStats, listCommits } from "../git.js";
-import { simpleGit } from "simple-git";
+import { createHardenedGit } from "../hardenedGit.js";
 import { promises as fs } from "fs";
 
 describe("getLatestTrackedFileMtime", () => {
@@ -49,7 +46,7 @@ describe("getLatestTrackedFileMtime", () => {
     const timestamp = await getLatestTrackedFileMtime("/test/path");
 
     expect(timestamp).toBe(commitUnixTime * 1000);
-    expect(simpleGit).toHaveBeenCalledWith("/test/path");
+    expect(createHardenedGit).toHaveBeenCalledWith("/test/path");
     expect(mockGit.raw).toHaveBeenCalledWith(["log", "-1", "--format=%ct"]);
   });
 
