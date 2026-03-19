@@ -35,11 +35,11 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
     // Disable animations so indicator visibility toggles instantly
     await window.emulateMedia({ reducedMotion: "reduce" });
 
-    // Run a two-phase command: fill buffer immediately, then produce new output after 5s
+    // Run a two-phase command: fill buffer immediately, then produce new output after 8s
     await runTerminalCommand(
       window,
       panel,
-      `node -e "for(let i=1;i<=200;i++) console.log('SCRL_A_FILL_'+i); setTimeout(()=>{for(let i=1;i<=20;i++) console.log('SCRL_A_NEW_'+i)}, 5000)"`
+      `node -e "for(let i=1;i<=200;i++) console.log('SCRL_A_FILL_'+i); setTimeout(()=>{for(let i=1;i<=20;i++) console.log('SCRL_A_NEW_'+i)}, 8000)"`
     );
 
     // Wait for the fill phase to complete
@@ -53,11 +53,14 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
     }
     await window.waitForTimeout(T_SETTLE);
 
+    // Indicator should NOT be visible yet (scrolling alone doesn't trigger it)
+    const indicator = panel.locator(SEL.terminal.scrollIndicator);
+    await expect(indicator).not.toBeVisible();
+
     // Wait for the delayed output to arrive (the node process is still running)
     await waitForTerminalText(panel, "SCRL_A_NEW_20", T_LONG);
 
     // The indicator should now be visible
-    const indicator = panel.locator(SEL.terminal.scrollIndicator);
     await expect(indicator).toBeVisible({ timeout: T_MEDIUM });
   });
 
