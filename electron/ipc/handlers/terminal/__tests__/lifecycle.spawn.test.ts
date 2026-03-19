@@ -125,6 +125,25 @@ describe("terminal spawn handler - projectId resolution", () => {
     expect(spawnArgs.projectId).toBe("project-b-id");
   });
 
+  it("handles deleted projectId with no current project gracefully", async () => {
+    mockGetProjectById.mockReturnValue(null);
+    mockGetCurrentProject.mockReturnValue(null);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler({} as Electron.IpcMainInvokeEvent, {
+      projectId: "deleted-project-id",
+      cols: 80,
+      rows: 24,
+    });
+
+    expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.projectId).toBeUndefined();
+  });
+
   it("uses explicit projectId even when current project differs", async () => {
     mockGetProjectById.mockReturnValue(projectA);
     mockGetCurrentProject.mockReturnValue(projectB);
@@ -142,5 +161,27 @@ describe("terminal spawn handler - projectId resolution", () => {
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
     expect(spawnArgs.projectId).toBe("project-a-id");
     expect(mockGetProjectById).toHaveBeenCalledWith("project-a-id");
+  });
+
+  it("fetches project settings using resolved projectId, not current project", async () => {
+    mockGetProjectById.mockReturnValue(projectA);
+    mockGetCurrentProject.mockReturnValue(projectB);
+    mockGetProjectSettings.mockResolvedValue({
+      terminalSettings: { shell: "/bin/bash" },
+    });
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler({} as Electron.IpcMainInvokeEvent, {
+      projectId: "project-a-id",
+      cols: 80,
+      rows: 24,
+    });
+
+    expect(mockGetProjectSettings).toHaveBeenCalledWith("project-a-id");
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.shell).toBe("/bin/bash");
   });
 });

@@ -13,6 +13,16 @@ import { saveTerminals } from "./persistence";
 import { optimizeForDock } from "./layout";
 import { deriveRuntimeStatus, getDefaultTitle } from "./helpers";
 
+// Lazy accessor to break circular dependency: restart -> projectStore -> terminalPersistence -> core.
+let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
+async function resolveProjectStore() {
+  if (!_cachedProjectStore) {
+    const mod = await import("@/store/projectStore");
+    _cachedProjectStore = mod.useProjectStore;
+  }
+  return _cachedProjectStore;
+}
+
 type Set = TerminalRegistryStoreApi["setState"];
 type Get = TerminalRegistryStoreApi["getState"];
 
@@ -250,10 +260,9 @@ export const createRestartActions = (
 
       await terminalInstanceService.waitForInstance(id, { timeoutMs: 5000 });
 
-      // Capture project ID synchronously before async work (issue #3690).
-      // Lazy import to avoid circular dependency.
-      const { useProjectStore } = await import("@/store/projectStore");
-      const capturedProjectId = useProjectStore.getState().currentProject?.id;
+      // Capture project ID before async work to avoid race conditions (issue #3690).
+      const projectStore = await resolveProjectStore();
+      const capturedProjectId = projectStore.getState().currentProject?.id;
 
       // Fetch project environment variables for restart
       let restartEnv: Record<string, string> | undefined;
@@ -614,10 +623,9 @@ export const createRestartActions = (
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Capture project ID synchronously before async work (issue #3690).
-      // Lazy import to avoid circular dependency.
-      const { useProjectStore: projectStore } = await import("@/store/projectStore");
-      const capturedProjectId = projectStore.getState().currentProject?.id;
+      // Capture project ID before async work to avoid race conditions (issue #3690).
+      const projectStoreForConvert = await resolveProjectStore();
+      const capturedProjectId = projectStoreForConvert.getState().currentProject?.id;
 
       // Fetch project environment variables for conversion
       let convertEnv: Record<string, string> | undefined;
