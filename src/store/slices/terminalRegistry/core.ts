@@ -33,6 +33,17 @@ import {
 } from "./helpers";
 import type { TrashExpiryHelpers } from "./trash";
 
+// Lazy accessor to break circular dependency: core -> projectStore -> terminalPersistence -> core.
+// Resolved on first call (after app init), then cached.
+let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
+async function resolveProjectStore() {
+  if (!_cachedProjectStore) {
+    const mod = await import("@/store/projectStore");
+    _cachedProjectStore = mod.useProjectStore;
+  }
+  return _cachedProjectStore;
+}
+
 type Set = TerminalRegistryStoreApi["setState"];
 type Get = TerminalRegistryStoreApi["getState"];
 
@@ -235,13 +246,18 @@ export const createCorePanelActions = (
     const shouldBackground = location === "dock" || (location === "grid" && !isInActiveWorktree);
     const runtimeStatus: TerminalRuntimeStatus = shouldBackground ? "background" : "running";
 
+    // Capture project ID synchronously before any async work to avoid race conditions
+    // if the user switches projects during async operations (issue #3690).
+    // resolveProjectStore() is cached after first call, so subsequent calls resolve immediately.
+    const projectStore = await resolveProjectStore();
+    const capturedProjectId = projectStore.getState().currentProject?.id;
+
     // Fetch project environment variables and merge with spawn options
     // Precedence: spawn-time env > project env (spawn-time overrides project)
     let mergedEnv: Record<string, string> | undefined = options.env;
     try {
-      const currentProject = await projectClient.getCurrent();
-      if (currentProject?.id) {
-        const projectSettings = await projectClient.getSettings(currentProject.id);
+      if (capturedProjectId) {
+        const projectSettings = await projectClient.getSettings(capturedProjectId);
         if (
           projectSettings?.environmentVariables &&
           Object.keys(projectSettings.environmentVariables).length > 0
@@ -267,6 +283,7 @@ export const createCorePanelActions = (
         const commandToExecute = options.skipCommandExecution ? undefined : options.command;
         id = await terminalClient.spawn({
           id: options.requestedId,
+          projectId: capturedProjectId,
           cwd: options.cwd,
           shell: options.shell,
           cols: 80,
