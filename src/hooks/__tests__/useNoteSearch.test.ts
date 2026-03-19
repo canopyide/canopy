@@ -331,7 +331,7 @@ describe("useNoteSearch", () => {
 
     // Trigger onUpdated — should clear cache
     act(() => {
-      onUpdatedCallback?.({ notePath: "/notes/n1.md", title: "Test Note" });
+      onUpdatedCallback?.({ notePath: "/notes/n1.md", title: "Test Note", action: "updated" });
     });
 
     // Close and re-open
