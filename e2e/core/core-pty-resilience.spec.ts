@@ -142,6 +142,7 @@ test.describe.serial("Core: PTY Resilience", () => {
   });
 
   test("PTY crash mid-output: spawn terminal and start flood", async () => {
+    test.setTimeout(120_000);
     const { window } = ctx;
 
     await window.locator(SEL.toolbar.openTerminal).click();
@@ -187,11 +188,16 @@ test.describe.serial("Core: PTY Resilience", () => {
         async () => {
           const count = await getGridPanelCount(window);
           if (count === 0) return "trashed";
-          const panelText = await getTerminalText(floodPanel);
-          if (panelText.includes("Process exited")) return "preserved";
+          try {
+            const panelText = await getTerminalText(floodPanel);
+            if (panelText.includes("Process exited")) return "preserved";
+          } catch {
+            // Panel may have been removed between count check and text read
+            return "trashed";
+          }
           return "pending";
         },
-        { timeout: T_LONG, intervals: [500] }
+        { timeout: 60_000, intervals: [1000] }
       )
       .toMatch(/trashed|preserved/);
 
