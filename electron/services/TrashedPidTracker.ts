@@ -1,7 +1,7 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 
 const TRASHED_PIDS_FILENAME = "trashed-pids.json";
 
@@ -111,7 +111,16 @@ export class TrashedPidTracker {
       }
 
       let killed = false;
-      if (process.platform !== "win32") {
+      if (process.platform === "win32") {
+        const result = spawnSync("taskkill", ["/T", "/F", "/PID", String(entry.pid)], {
+          windowsHide: true,
+          stdio: "ignore",
+          timeout: 3000,
+        });
+        if (result.status === 0 || result.status === 128) {
+          killed = true;
+        }
+      } else {
         try {
           process.kill(-entry.pid, "SIGKILL");
           killed = true;
