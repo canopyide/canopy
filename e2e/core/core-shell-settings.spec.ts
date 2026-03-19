@@ -88,7 +88,9 @@ test.describe.serial("Core: Shell & Settings", () => {
 
       for (const { nav, title } of tabs) {
         await window.locator(`${SEL.settings.navSidebar} button`, { hasText: nav }).click();
-        await expect(window.locator("h3", { hasText: title })).toBeVisible({ timeout: T_SHORT });
+        await expect(window.getByRole("dialog").locator("h3", { hasText: title })).toBeVisible({
+          timeout: T_SHORT,
+        });
       }
 
       await window.keyboard.press("Escape");
@@ -160,10 +162,16 @@ test.describe.serial("Core: Shell & Settings", () => {
     test("Cmd+W closes remaining terminal", async () => {
       const { window } = ctx;
 
-      const before = await getGridPanelCount(window);
+      // Ensure at least 2 panels so Cmd+W doesn't close the last one (which quits the app)
+      let before = await getGridPanelCount(window);
       if (before === 0) {
         test.skip();
         return;
+      }
+      if (before === 1) {
+        await window.keyboard.press(`${mod}+Alt+t`);
+        await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(2);
+        before = 2;
       }
 
       const panel = window.locator(SEL.panel.gridPanel).first();

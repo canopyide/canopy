@@ -125,6 +125,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
 }
 
 export async function closeApp(app: ElectronApplication): Promise<void> {
+  const pid = app.process().pid;
   try {
     await Promise.race([
       app.close(),
@@ -132,16 +133,37 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
     ]);
   } catch {
     // Force-kill if close() hangs (zombie process prevention)
-    try {
-      if (process.platform === "win32") {
-        const pid = app.process().pid;
-        if (pid) execSync(`taskkill /F /PID ${pid} /T 2>nul`, { stdio: "ignore" });
-      } else {
-        app.process().kill("SIGKILL");
+    forceKillProcessTree(pid);
+  }
+
+  // Ensure all child processes (PTY host, workspace host) are cleaned up
+  // even after a successful close — lingering children block worker teardown.
+  if (pid) {
+    await wait(500);
+    forceKillProcessTree(pid);
+  }
+}
+
+function forceKillProcessTree(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") {
+      execSync(`taskkill /F /PID ${pid} /T 2>nul`, { stdio: "ignore" });
+    } else {
+      // Kill entire process group (negative PID) to catch child processes
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        // Process group kill failed — fall back to single process
       }
-    } catch {
-      // Already dead
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already dead
+      }
     }
+  } catch {
+    // Already dead
   }
 }
 
