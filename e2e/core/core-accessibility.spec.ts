@@ -110,7 +110,10 @@ test.describe.serial("Core: Accessibility", () => {
           .analyze();
         expect(results.violations, formatViolations(results.violations)).toEqual([]);
 
-        await window.keyboard.press(`${mod}+w`);
+        // Use the close button instead of Cmd+W to avoid quitting the app
+        // when this is the only panel (terminal.close quits on last panel)
+        const panel = window.locator(SEL.panel.gridPanel).first();
+        await panel.locator(SEL.panel.close).first().click({ force: true });
         await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(before);
       });
 
