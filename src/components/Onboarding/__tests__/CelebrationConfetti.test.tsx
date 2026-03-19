@@ -7,7 +7,13 @@ vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   motion: {
     div: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<HTMLDivElement>) => {
-      const { initial, animate, exit, transition, ...rest } = props;
+      const {
+        initial: _initial,
+        animate: _animate,
+        exit: _exit,
+        transition: _transition,
+        ...rest
+      } = props;
       return <div ref={ref} {...rest} />;
     }),
   },
