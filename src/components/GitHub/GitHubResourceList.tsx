@@ -193,8 +193,8 @@ export function GitHubResourceList({
         setCursor(result.pageInfo.endCursor);
         setHasMore(result.pageInfo.hasNextPage);
 
-        // Write first-page results to cache
-        if (!append && options?.cacheKey) {
+        // Write first-page results to cache (skip search-filtered results)
+        if (!append && options?.cacheKey && !debouncedSearch) {
           setCache(options.cacheKey, {
             items: result.items,
             endCursor: result.pageInfo.endCursor,
@@ -227,6 +227,7 @@ export function GitHubResourceList({
     }
 
     const abortController = new AbortController();
+    loadMoreAbortRef.current?.abort();
     const gen = nextGeneration(cacheKey);
 
     if (!mountedRef.current) {
