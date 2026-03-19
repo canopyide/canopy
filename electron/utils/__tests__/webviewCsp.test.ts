@@ -142,6 +142,8 @@ describe("webviewCsp", () => {
       );
 
       expect(directives["form-action"]).not.toMatch(/(?:^|\s)https:(?:\s|$)/);
+      expect(directives["form-action"]).not.toMatch(/(?:^|\s)http:(?:\s|$)/);
+      expect(directives["form-action"]).not.toMatch(/(?:^|\s)\*(?:\s|$)/);
       expect(directives["form-action"]).not.toContain("http://example.com");
     });
   });
