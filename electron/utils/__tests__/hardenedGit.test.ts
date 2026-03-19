@@ -12,7 +12,7 @@ vi.mock("simple-git", () => ({
   simpleGit: vi.fn(() => mockGitInstance),
 }));
 
-import { validateCwd, createHardenedGit, HARDENED_GIT_CONFIG } from "../hardenedGit.js";
+import { validateCwd, createHardenedGit } from "../hardenedGit.js";
 import { simpleGit } from "simple-git";
 
 describe("validateCwd", () => {
@@ -113,12 +113,24 @@ describe("createHardenedGit", () => {
     });
   });
 
-  it("includes all expected config keys", () => {
+  it("includes all security-critical config overrides", () => {
     createHardenedGit("/test/repo");
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    for (const key of HARDENED_GIT_CONFIG) {
+    const expectedKeys = [
+      "core.fsmonitor=false",
+      "core.pager=cat",
+      "core.askpass=",
+      "credential.helper=",
+      "protocol.ext.allow=never",
+      "core.sshCommand=",
+      "core.gitProxy=",
+      "core.hooksPath=",
+      "diff.external=",
+    ];
+    for (const key of expectedKeys) {
       expect(options.config).toContain(key);
     }
+    expect(options.config).toHaveLength(expectedKeys.length);
   });
 });
