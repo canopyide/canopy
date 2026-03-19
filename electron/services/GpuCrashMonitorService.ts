@@ -33,7 +33,14 @@ class GpuCrashMonitorService {
     const alreadyDisabled = isGpuDisabledByFlag(app.getPath("userData"));
 
     app.on("child-process-gone", (_event, details) => {
-      if (details.type !== "GPU") return;
+      if (details.type !== "GPU") {
+        if (details.reason !== "clean-exit" && details.reason !== "killed") {
+          console.warn(
+            `[ChildProcess] Process gone: type=${details.type}, reason=${details.reason}, exitCode=${details.exitCode}, name=${details.name}`
+          );
+        }
+        return;
+      }
       if (details.reason === "clean-exit" || details.reason === "killed") return;
 
       this.crashCount++;
