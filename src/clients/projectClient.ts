@@ -78,10 +78,12 @@ export const projectClient = {
   },
 
   remove: (projectId: string): Promise<void> => {
+    invalidateCurrentCache();
     return window.electron.project.remove(projectId);
   },
 
   update: (projectId: string, updates: Partial<Project>): Promise<Project> => {
+    invalidateCurrentCache();
     return window.electron.project.update(projectId, updates);
   },
 
@@ -114,6 +116,7 @@ export const projectClient = {
     projectId: string,
     options?: { killTerminals?: boolean }
   ): Promise<ProjectCloseResult> => {
+    invalidateCurrentCache();
     return window.electron.project.close(projectId, options);
   },
 
@@ -204,10 +207,12 @@ export const projectClient = {
   },
 
   enableInRepoSettings: (projectId: string): Promise<Project> => {
+    invalidateCurrentCache();
     return window.electron.project.enableInRepoSettings(projectId);
   },
 
   disableInRepoSettings: (projectId: string): Promise<Project> => {
+    invalidateCurrentCache();
     return window.electron.project.disableInRepoSettings(projectId);
   },
 
