@@ -152,6 +152,17 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       expect(event.preventDefault).toHaveBeenCalledTimes(1);
     });
 
+    it("allows https://localhost:3000", () => {
+      const contents = createMockWebContents("webview");
+      simulateWebContentsCreated(contents);
+
+      const handler = getEventHandlers(contents, "will-navigate")[0];
+      const event = { preventDefault: vi.fn() };
+      handler(event, "https://localhost:3000/secure");
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
     it("blocks navigation to file:///etc/passwd", () => {
       const contents = createMockWebContents("webview");
       simulateWebContentsCreated(contents);
@@ -159,6 +170,22 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       const handler = getEventHandlers(contents, "will-navigate")[0];
       const event = { preventDefault: vi.fn() };
       handler(event, "file:///etc/passwd");
+
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["javascript:alert(1)", "javascript: scheme"],
+      ["data:text/html,<h1>XSS</h1>", "data: scheme"],
+      ["about:blank", "about:blank"],
+      ["", "empty string"],
+    ])("blocks %s (%s)", (url) => {
+      const contents = createMockWebContents("webview");
+      simulateWebContentsCreated(contents);
+
+      const handler = getEventHandlers(contents, "will-navigate")[0];
+      const event = { preventDefault: vi.fn() };
+      handler(event, url);
 
       expect(event.preventDefault).toHaveBeenCalledTimes(1);
     });
@@ -172,6 +199,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       const event = { preventDefault: vi.fn() };
       handler(event, "https://evil.com");
 
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Blocked webview navigation to non-localhost URL: https://evil.com")
       );
@@ -211,6 +239,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       const event = { preventDefault: vi.fn() };
       handler(event, "https://external-oauth.com/authorize");
 
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(
           "Blocked webview redirect to non-localhost URL: https://external-oauth.com/authorize"
