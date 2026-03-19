@@ -87,7 +87,9 @@ function createTerminal(
     merged.kind === "agent" || !!merged.agentId || (!!merged.type && merged.type !== "terminal");
   const ctx = defaultSpawnContext({
     isAgentTerminal: isAgent,
-    agentId: isAgent ? ((merged as Record<string, unknown>).agentId as string ?? merged.type) : undefined,
+    agentId: isAgent
+      ? (((merged as Record<string, unknown>).agentId as string) ?? merged.type)
+      : undefined,
   });
   return new TerminalProcess(
     "t1",
@@ -184,10 +186,8 @@ describe.skipIf(process.platform === "win32")("TerminalProcess.kill — process 
 
   it("sends SIGTERM to descendants bottom-up before killing shell", () => {
     const mockCache = createMockProcessTreeCache([456, 789]);
-    const mockPty = createMockPty();
 
-    const terminal = createTerminal(undefined, { processTreeCache: mockCache }, undefined);
-    // Replace the internal PTY ref by creating with the mock that has vi.fn() kill
+    const terminal = createTerminal(undefined, { processTreeCache: mockCache });
     terminal.kill("test");
 
     // Cache should be queried with the shell PID
