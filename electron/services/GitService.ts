@@ -1,4 +1,4 @@
-import { simpleGit, SimpleGit, BranchSummary } from "simple-git";
+import type { SimpleGit, BranchSummary } from "simple-git";
 import { resolve, dirname, normalize, sep, isAbsolute } from "path";
 import { existsSync } from "fs";
 import { readFile, stat } from "fs/promises";
@@ -6,6 +6,7 @@ import { logDebug, logError, logWarn } from "../utils/logger.js";
 import type { GitStatus, WorktreeChanges } from "../../shared/types/index.js";
 import { WorktreeRemovedError, GitError } from "../utils/errorTypes.js";
 import type { CrossWorktreeDiffResult, CrossWorktreeFile } from "../../shared/types/ipc/git.js";
+import { createHardenedGit } from "../utils/hardenedGit.js";
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -31,7 +32,7 @@ export class GitService {
 
   constructor(rootPath: string) {
     this.rootPath = rootPath;
-    this.git = simpleGit(rootPath);
+    this.git = createHardenedGit(rootPath);
   }
 
   async listBranches(): Promise<BranchInfo[]> {
@@ -373,7 +374,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   async getRemoteUrl(repoPath: string): Promise<string | null> {
     return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
+      const git = createHardenedGit(repoPath);
       const remotes = await git.getRemotes(true);
       const origin = remotes.find((r) => r.name === "origin");
       return origin?.refs?.fetch || null;
@@ -390,7 +391,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   async getRepositoryRoot(repoPath: string): Promise<string> {
     return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
+      const git = createHardenedGit(repoPath);
       const root = await git.revparse(["--show-toplevel"]);
       return root.trim();
     }, "getRepositoryRoot");
