@@ -1308,6 +1308,13 @@ function cleanup(): void {
   }
 
   ptyManager.dispose();
+
+  // Release SharedArrayBuffer references so V8 can GC shared memory regions
+  visualBuffers = [];
+  visualSignalView = null;
+  analysisBuffer = null;
+  ipcDataMirrorTerminals.clear();
+
   events.removeAllListeners();
 
   console.log("[PtyHost] Disposed");
