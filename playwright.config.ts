@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 const isCI = !!process.env.CI;
 const isWindowsCI = process.platform === "win32" && isCI;
+const e2eWorkers = isWindowsCI ? 1 : 2;
 
 // Per-test timeout: allow enough time for launch retries + test execution.
 // launchApp retries up to 5x with 45s timeout per attempt on Windows CI.
@@ -9,7 +10,7 @@ const coreTimeout = isWindowsCI ? 300_000 : 120_000;
 const onlineTimeout = isWindowsCI ? 480_000 : 300_000;
 
 export default defineConfig({
-  workers: 1,
+  workers: e2eWorkers,
   fullyParallel: false,
   timeout: 180_000,
   expect: { timeout: isWindowsCI ? 15_000 : isCI ? 10_000 : 5_000 },
