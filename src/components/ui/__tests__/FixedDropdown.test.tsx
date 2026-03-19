@@ -33,6 +33,7 @@ describe("FixedDropdown overlay-count dismiss behavior", () => {
     mockOverlayCount = 0;
     onOpenChange = vi.fn();
     anchorRef = createAnchor();
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
   });
 
   it("closes when overlayCount increases (default behavior)", () => {

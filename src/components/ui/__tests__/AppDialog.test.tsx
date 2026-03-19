@@ -64,6 +64,7 @@ function pressEscape() {
 describe("AppDialog focus trapping", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
   });
 
   it("auto-focuses the first focusable element on open", async () => {
