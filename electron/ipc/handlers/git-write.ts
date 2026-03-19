@@ -21,7 +21,6 @@ export interface StagingStatus {
   hasRemote: boolean;
 }
 
-
 export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
