@@ -36,10 +36,7 @@ export function useDeferredNewsletterPrompt(isStateLoaded: boolean): DeferredNew
           const hasAgent = useTerminalStore.getState().terminals.some((t) => t.kind === "agent");
           if (hasAgent && !firedRef.current) {
             firedRef.current = true;
-            const timer = setTimeout(() => setVisible(true), PROMPT_DELAY_MS);
-            // Store cleanup ref won't help here, but the effect cleanup will
-            // handle component unmount via the ref check below
-            return () => clearTimeout(timer);
+            setTimeout(() => setVisible(true), PROMPT_DELAY_MS);
           }
         }
       })
