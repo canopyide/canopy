@@ -114,7 +114,7 @@ describe("GitHubResourceList SWR behavior", () => {
   });
 
   it("shows cached data immediately on warm remount (no skeleton)", async () => {
-    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "updated");
     setCache(cacheKey, {
       items: [makeIssue(10), makeIssue(11)],
       endCursor: null,
@@ -134,7 +134,7 @@ describe("GitHubResourceList SWR behavior", () => {
   });
 
   it("background refresh updates data in place when response differs", async () => {
-    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "updated");
     setCache(cacheKey, {
       items: [makeIssue(10)],
       endCursor: null,
@@ -158,7 +158,7 @@ describe("GitHubResourceList SWR behavior", () => {
   });
 
   it("preserves cached data when background refresh fails", async () => {
-    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "updated");
     setCache(cacheKey, {
       items: [makeIssue(20)],
       endCursor: null,
@@ -181,7 +181,7 @@ describe("GitHubResourceList SWR behavior", () => {
   });
 
   it("different project paths use separate cache entries", async () => {
-    const keyA = buildCacheKey("/proj-a", "issue", "open", "created");
+    const keyA = buildCacheKey("/proj-a", "issue", "open", "updated");
     setCache(keyA, {
       items: [makeIssue(50)],
       endCursor: null,
