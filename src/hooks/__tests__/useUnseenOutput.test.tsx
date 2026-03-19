@@ -7,7 +7,7 @@ let currentSnapshot = { isUserScrolledBack: false, unseen: 0 };
 
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
-    subscribeUnseenOutput: vi.fn((id: string, listener: () => void) => {
+    subscribeUnseenOutput: vi.fn((_id: string, listener: () => void) => {
       capturedListener = listener;
       return () => {
         capturedListener = null;
