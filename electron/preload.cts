@@ -195,6 +195,7 @@ const CHANNELS = {
   TERMINAL_AGENT_TITLE_STATE: "terminal:agent-title-state",
   TERMINAL_REDUCE_SCROLLBACK: "terminal:reduce-scrollback",
   TERMINAL_RESTORE_SCROLLBACK: "terminal:restore-scrollback",
+  TERMINAL_RESTART_SERVICE: "terminal:restart-service",
 
   // Files channels
   FILES_SEARCH: "files:search",
