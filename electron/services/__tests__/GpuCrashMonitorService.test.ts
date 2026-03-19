@@ -94,6 +94,13 @@ describe("GpuCrashMonitorService", () => {
       }
     }
 
+    function emitChildProcessGone(type: string, reason: string, exitCode: number, name = "") {
+      const handlers = appListeners["child-process-gone"] ?? [];
+      for (const handler of handlers) {
+        handler({}, { type, reason, exitCode, serviceName: "", name });
+      }
+    }
+
     it("registers child-process-gone listener on initialize", async () => {
       await loadAndInit();
       expect(appMock.on).toHaveBeenCalledWith("child-process-gone", expect.any(Function));
@@ -126,15 +133,31 @@ describe("GpuCrashMonitorService", () => {
       expect(appMock.relaunch).not.toHaveBeenCalled();
     });
 
-    it("ignores non-GPU process crashes", async () => {
+    it("logs non-GPU process crashes without triggering GPU relaunch", async () => {
       await loadAndInit();
-      const handlers = appListeners["child-process-gone"] ?? [];
-      for (const handler of handlers) {
-        handler({}, { type: "Utility", reason: "crashed", exitCode: 1 });
-        handler({}, { type: "Utility", reason: "crashed", exitCode: 1 });
-        handler({}, { type: "Utility", reason: "crashed", exitCode: 1 });
-      }
+      emitChildProcessGone("Utility", "crashed", 1, "canopy-pty-host");
+      emitChildProcessGone("Utility", "crashed", 1, "canopy-pty-host");
+      emitChildProcessGone("Utility", "crashed", 1, "canopy-pty-host");
       expect(appMock.relaunch).not.toHaveBeenCalled();
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("[ChildProcess]"));
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("name=canopy-pty-host"));
+    });
+
+    it("does not log non-GPU clean-exit or killed events", async () => {
+      await loadAndInit();
+      emitChildProcessGone("Utility", "clean-exit", 0, "canopy-pty-host");
+      emitChildProcessGone("Utility", "killed", 137, "canopy-workspace-host");
+      expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("[ChildProcess]"));
+    });
+
+    it("logs non-GPU crash with full process details", async () => {
+      await loadAndInit();
+      emitChildProcessGone("Utility", "oom", 137, "canopy-workspace-host");
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "type=Utility, reason=oom, exitCode=137, name=canopy-workspace-host"
+        )
+      );
     });
 
     it("does not relaunch if flag already exists (already disabled)", async () => {
