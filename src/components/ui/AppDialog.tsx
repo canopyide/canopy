@@ -10,6 +10,7 @@ import {
   UI_EXIT_DURATION,
   UI_ENTER_EASING,
   UI_EXIT_EASING,
+  getUiTransitionDuration,
 } from "@/lib/animationUtils";
 import { X, Loader2 } from "lucide-react";
 import { Button } from "./button";
@@ -90,7 +91,7 @@ export function AppDialog({
 
   const { isVisible, shouldRender } = useAnimatedPresence({
     isOpen,
-    animationDuration: UI_EXIT_DURATION,
+    animationDuration: getUiTransitionDuration("exit"),
     onAnimateOut: restoreFocus,
   });
 

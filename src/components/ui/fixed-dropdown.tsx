@@ -7,6 +7,7 @@ import {
   UI_EXIT_DURATION,
   UI_ENTER_EASING,
   UI_EXIT_EASING,
+  getUiTransitionDuration,
 } from "@/lib/animationUtils";
 import { useUIStore } from "@/store/uiStore";
 
@@ -34,7 +35,7 @@ export function FixedDropdown({
   const contentRef = useRef<HTMLDivElement>(null);
   const { isVisible, shouldRender } = useAnimatedPresence({
     isOpen: open,
-    animationDuration: UI_EXIT_DURATION,
+    animationDuration: getUiTransitionDuration("exit"),
   });
   const overlayCount = useUIStore((state) => state.overlayCount);
   const prevOverlayCountRef = useRef<number>(overlayCount);
