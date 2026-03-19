@@ -33,6 +33,17 @@ import {
 } from "./helpers";
 import type { TrashExpiryHelpers } from "./trash";
 
+// Lazy accessor to break circular dependency: core -> projectStore -> terminalPersistence -> core.
+// Resolved on first call (after app init), then cached.
+let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
+async function resolveProjectStore() {
+  if (!_cachedProjectStore) {
+    const mod = await import("@/store/projectStore");
+    _cachedProjectStore = mod.useProjectStore;
+  }
+  return _cachedProjectStore;
+}
+
 type Set = TerminalRegistryStoreApi["setState"];
 type Get = TerminalRegistryStoreApi["getState"];
 
@@ -237,9 +248,9 @@ export const createCorePanelActions = (
 
     // Capture project ID synchronously before any async work to avoid race conditions
     // if the user switches projects during async operations (issue #3690).
-    // Lazy import to avoid circular dependency (core -> projectStore -> terminalPersistence -> core).
-    const { useProjectStore } = await import("@/store/projectStore");
-    const capturedProjectId = useProjectStore.getState().currentProject?.id;
+    // resolveProjectStore() is cached after first call, so subsequent calls resolve immediately.
+    const projectStore = await resolveProjectStore();
+    const capturedProjectId = projectStore.getState().currentProject?.id;
 
     // Fetch project environment variables and merge with spawn options
     // Precedence: spawn-time env > project env (spawn-time overrides project)
