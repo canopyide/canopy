@@ -19,8 +19,12 @@ vi.mock("../../utils/fs.js", () => ({
   waitForPathExists: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../utils/hardenedGit.js", () => ({
+  createHardenedGit: vi.fn(() => mockSimpleGit),
+  validateCwd: vi.fn(),
+}));
+
 vi.mock("../../utils/git.js", () => ({
-  createGit: vi.fn(() => mockSimpleGit),
   invalidateGitStatusCache: vi.fn(),
   getWorktreeChangesWithStats: vi.fn().mockResolvedValue({
     head: "abc123",
