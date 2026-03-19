@@ -3,6 +3,7 @@ import { CHANNELS } from "../channels.js";
 import { checkRateLimit } from "../utils.js";
 import type { HandlerDependencies } from "../types.js";
 import type { GitStatus } from "../../../shared/types/git.js";
+import { validateCwd, createHardenedGit } from "../../utils/hardenedGit.js";
 
 interface StagingFileEntry {
   path: string;
@@ -20,11 +21,6 @@ export interface StagingStatus {
   hasRemote: boolean;
 }
 
-function validateCwd(cwd: unknown): asserts cwd is string {
-  if (typeof cwd !== "string" || !cwd.trim()) {
-    throw new Error("Invalid working directory");
-  }
-}
 
 export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
@@ -39,8 +35,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       throw new Error("Invalid file path");
     }
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(payload.cwd);
+    const git = createHardenedGit(payload.cwd);
     await git.add(["--", payload.filePath]);
   };
   ipcMain.handle(CHANNELS.GIT_STAGE_FILE, handleStageFile);
@@ -56,8 +51,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       throw new Error("Invalid file path");
     }
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(payload.cwd);
+    const git = createHardenedGit(payload.cwd);
 
     let hasHead = true;
     try {
@@ -82,8 +76,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     checkRateLimit(CHANNELS.GIT_STAGE_ALL, 10, 10_000);
     validateCwd(cwd);
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(cwd);
+    const git = createHardenedGit(cwd);
     await git.add("-A");
   };
   ipcMain.handle(CHANNELS.GIT_STAGE_ALL, handleStageAll);
@@ -96,8 +89,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     checkRateLimit(CHANNELS.GIT_UNSTAGE_ALL, 10, 10_000);
     validateCwd(cwd);
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(cwd);
+    const git = createHardenedGit(cwd);
 
     let hasHead = true;
     try {
@@ -125,8 +117,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       throw new Error("Commit message is required");
     }
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(payload.cwd);
+    const git = createHardenedGit(payload.cwd);
     const result = await git.commit(payload.message.trim());
     return {
       hash: result.commit || "",
@@ -143,8 +134,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     checkRateLimit(CHANNELS.GIT_PUSH, 5, 10_000);
     validateCwd(payload?.cwd);
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(payload.cwd);
+    const git = createHardenedGit(payload.cwd);
 
     try {
       const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
@@ -179,8 +169,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
   ): Promise<string | null> => {
     checkRateLimit(CHANNELS.GIT_GET_USERNAME, 20, 10_000);
     validateCwd(cwd);
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(cwd);
+    const git = createHardenedGit(cwd);
     try {
       const { value } = await git.getConfig("user.name");
       return value || null;
@@ -198,8 +187,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     checkRateLimit(CHANNELS.GIT_GET_STAGING_STATUS, 20, 10_000);
     validateCwd(cwd);
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(cwd);
+    const git = createHardenedGit(cwd);
     const status = await git.status();
 
     const mapStatus = (s: string): GitStatus => {
@@ -291,8 +279,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       throw new Error("Invalid diff type: must be 'unstaged', 'staged', or 'head'");
     }
 
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit(payload.cwd);
+    const git = createHardenedGit(payload.cwd);
 
     let raw: string;
     switch (diffType) {

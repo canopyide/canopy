@@ -13,6 +13,7 @@ import type {
   GitInitResult,
   GitInitProgressEvent,
 } from "../../../shared/types/ipc/gitInit.js";
+import { createHardenedGit } from "../../utils/hardenedGit.js";
 
 export function registerProjectCrudHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow } = deps;
@@ -409,8 +410,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       throw new Error("Path is not a directory");
     }
 
-    const simpleGit = await import("simple-git");
-    const git = simpleGit.simpleGit(directoryPath);
+    const git = createHardenedGit(directoryPath);
     await git.init();
   };
   ipcMain.handle(CHANNELS.PROJECT_INIT_GIT, handleProjectInitGit);
@@ -467,8 +467,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         throw new Error("Path is not a directory");
       }
 
-      const simpleGit = await import("simple-git");
-      const git = simpleGit.simpleGit(directoryPath);
+      const git = createHardenedGit(directoryPath);
 
       emitProgress("init", "start", "Initializing Git repository...");
       await git.init();

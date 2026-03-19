@@ -1,10 +1,11 @@
 import { dirname, resolve } from "path";
 import { realpathSync, promises as fs } from "fs";
-import { simpleGit, SimpleGit, StatusResult } from "simple-git";
+import type { SimpleGit, StatusResult } from "simple-git";
 import type { FileChangeDetail, GitStatus, WorktreeChanges } from "../types/index.js";
 import { GitError, WorktreeRemovedError } from "./errorTypes.js";
 import { logWarn, logError } from "./logger.js";
 import { Cache } from "./cache.js";
+import { createHardenedGit } from "./hardenedGit.js";
 
 const GIT_WORKTREE_CHANGES_CACHE = new Cache<string, WorktreeChanges>({
   maxSize: 100,
@@ -66,7 +67,7 @@ function parseNumstat(diffOutput: string, gitRoot: string): Map<string, DiffStat
 
 export async function getCommitCount(cwd: string): Promise<number> {
   try {
-    const git = simpleGit(cwd);
+    const git = createHardenedGit(cwd);
     const count = await git.raw(["rev-list", "--count", "HEAD"]);
     return parseInt(count.trim(), 10);
   } catch (error) {
@@ -102,7 +103,7 @@ export async function listCommits(options: ListCommitsOptions): Promise<ListComm
   const { cwd, search, branch, skip = 0, limit = 30 } = options;
 
   try {
-    const git = simpleGit(cwd);
+    const git = createHardenedGit(cwd);
 
     const totalCountStr = await git.raw(["rev-list", "--count", branch || "HEAD"]);
     const total = parseInt(totalCountStr.trim(), 10);
@@ -156,7 +157,7 @@ export async function listCommits(options: ListCommitsOptions): Promise<ListComm
 
 export async function getLatestTrackedFileMtime(worktreePath: string): Promise<number | null> {
   try {
-    const git = simpleGit(worktreePath);
+    const git = createHardenedGit(worktreePath);
     const unixSeconds = await git.raw(["log", "-1", "--format=%ct"]);
     const parsed = Number.parseInt(unixSeconds.trim(), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : null;
@@ -210,7 +211,7 @@ export async function getWorktreeChangesWithStats(
   }
 
   try {
-    const git: SimpleGit = simpleGit(cwd);
+    const git: SimpleGit = createHardenedGit(cwd);
     const status: StatusResult = await git.status();
     const gitRoot = realpathSync((await git.revparse(["--show-toplevel"])).trim());
 
