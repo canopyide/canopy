@@ -7,7 +7,7 @@ const onboardingMock = {
     Promise.resolve({
       schemaVersion: 1,
       completed: true,
-      currentStep: null,
+      currentStep: null as string | null,
       migratedFromLocalStorage: true,
       firstRunToastSeen: false,
       newsletterPromptSeen: false,
