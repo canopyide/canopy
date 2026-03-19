@@ -84,6 +84,8 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
   const markItem = useCallback((item: ChecklistItemId) => {
     if (!isElectronAvailable()) return;
     void window.electron.onboarding.markChecklistItem(item);
+    let shouldCelebrate = false;
+    let shouldDismiss = false;
     setChecklist((prev) => {
       if (!prev) return prev;
       if (prev.items[item]) return prev;
@@ -93,21 +95,25 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
       };
       const allDone = Object.values(updated.items).every(Boolean);
       if (allDone) {
-        if (!prev.celebrationShown) {
-          notify({
-            type: "success",
-            title: "Checklist complete!",
-            message: "You're all set! Open the Action Palette (Cmd+K) to explore shortcuts.",
-            duration: 5000,
-          });
-          setShowCelebration(true);
-          void window.electron.onboarding.markChecklistCelebrationShown();
-        }
-        void window.electron.onboarding.dismissChecklist();
+        shouldCelebrate = !prev.celebrationShown;
+        shouldDismiss = true;
         return { ...updated, dismissed: true, celebrationShown: true };
       }
       return updated;
     });
+    if (shouldDismiss) {
+      void window.electron.onboarding.dismissChecklist();
+    }
+    if (shouldCelebrate) {
+      notify({
+        type: "success",
+        title: "Checklist complete!",
+        message: "You're all set! Open the Action Palette (Cmd+K) to explore shortcuts.",
+        duration: 5000,
+      });
+      setShowCelebration(true);
+      void window.electron.onboarding.markChecklistCelebrationShown();
+    }
   }, []);
 
   const dismiss = useCallback(() => {
