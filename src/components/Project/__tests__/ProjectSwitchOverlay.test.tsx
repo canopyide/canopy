@@ -53,7 +53,7 @@ describe("ProjectSwitchOverlay cancel button", () => {
   it("does not show the cancel button before the delay", () => {
     render(<ProjectSwitchOverlay isSwitching={true} projectName="Test" />);
 
-    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    const cancelButton = screen.getByRole("button", { name: "Cancel", hidden: true });
     expect(cancelButton.parentElement?.className).toContain("pointer-events-none");
   });
 
@@ -91,7 +91,7 @@ describe("ProjectSwitchOverlay cancel button", () => {
 
     rerender(<ProjectSwitchOverlay isSwitching={false} projectName="Test" />);
 
-    cancelButton = screen.getByRole("button", { name: "Cancel" });
+    cancelButton = screen.getByRole("button", { name: "Cancel", hidden: true });
     expect(cancelButton.parentElement?.className).toContain("pointer-events-none");
   });
 });
