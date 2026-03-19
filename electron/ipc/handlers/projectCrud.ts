@@ -59,6 +59,19 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
     }
+
+    if (deps.ptyClient) {
+      await deps.ptyClient.killByProject(projectId).catch((err: unknown) => {
+        console.error(`[IPC] project:remove: Failed to kill terminals for ${projectId}:`, err);
+      });
+    }
+
+    if (deps.projectMcpManager) {
+      await deps.projectMcpManager.stopForProject(projectId).catch((err: unknown) => {
+        console.error(`[IPC] project:remove: Failed to stop MCP servers for ${projectId}:`, err);
+      });
+    }
+
     await projectStore.removeProject(projectId);
   };
   ipcMain.handle(CHANNELS.PROJECT_REMOVE, handleProjectRemove);
