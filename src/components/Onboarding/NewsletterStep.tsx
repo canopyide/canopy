@@ -3,7 +3,7 @@ import { Mail, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const NEWSLETTER_SUBSCRIBE_URL = "https://subscribepage.io/canopy";
+const NEWSLETTER_SUBSCRIBE_URL = "https://canopyide.com/newsletter";
 
 interface NewsletterStepProps {
   onDismiss: (subscribed: boolean) => void;
