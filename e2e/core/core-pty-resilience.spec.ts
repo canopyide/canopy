@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
-import { waitForTerminalText } from "../helpers/terminal";
 import { getFirstGridPanel, getGridPanelCount } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
@@ -53,9 +52,11 @@ test.describe.serial("Core: PTY Resilience", () => {
     // Verify PID is alive
     expect(isPidAlive(ptyPid)).toBe(true);
 
-    // Capture baseline process identity for PID reuse safety
+    // Capture baseline process identity for PID reuse safety (Unix only)
     const baseline = getProcessInfo(ptyPid);
-    expect(baseline).not.toBeNull();
+    if (process.platform !== "win32") {
+      expect(baseline).not.toBeNull();
+    }
 
     // Capture process snapshot before stress
     const procsBefore = snapshotProcesses((e) => e.ppid === ptyPid);
@@ -64,14 +65,14 @@ test.describe.serial("Core: PTY Resilience", () => {
     const memBefore = await measureMainMemory(app, { forceGc: true });
     expect(memBefore.heapUsed).toBeGreaterThan(0);
 
-    // Start frame probe
+    // Start frame probe — use try/finally to ensure cleanup
     await startFrameProbe(window);
-
-    // Flood terminal with output
-    await floodTerminal(window, panel, { lines: 2000 });
-
-    // Stop frame probe and check responsiveness
-    const frameResult = await stopFrameProbe(window);
+    let frameResult;
+    try {
+      await floodTerminal(window, panel, { lines: 2000 });
+    } finally {
+      frameResult = await stopFrameProbe(window);
+    }
     expect(frameResult.sampleCount).toBeGreaterThan(0);
     // Catastrophic stall threshold — generous for CI VMs
     expect(frameResult.maxGapMs).toBeLessThan(5000);
@@ -100,8 +101,8 @@ test.describe.serial("Core: PTY Resilience", () => {
     // Wait for PTY process to exit
     await waitForProcessExit(ptyPid, 15_000);
 
-    // Verify PID is dead or reused (not the same process)
-    if (isPidAlive(ptyPid)) {
+    // Verify PID is dead or reused (not the same process, Unix only)
+    if (process.platform !== "win32" && isPidAlive(ptyPid)) {
       expect(verifyProcessIdentity(ptyPid, baseline!)).toBe(false);
     }
 
@@ -123,11 +124,8 @@ test.describe.serial("Core: PTY Resilience", () => {
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
 
-      // Wait for shell to be ready
-      await waitForTerminalText(panel, "$", T_LONG).catch(() => {
-        // Some shells use % or > as prompt — just wait a bit
-      });
-      await window.waitForTimeout(1000);
+      // Wait for shell to be ready (prompt char varies by shell)
+      await window.waitForTimeout(2000);
 
       // Close panel
       const closeBtn = panel.locator(SEL.panel.close);

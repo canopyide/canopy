@@ -209,7 +209,7 @@ export async function floodTerminal(
   opts: { lines?: number; sentinel?: string } = {}
 ): Promise<void> {
   const lines = opts.lines ?? 2000;
-  const sentinel = opts.sentinel ?? "__FLOOD_DONE__";
+  const sentinel = opts.sentinel ?? `__FLOOD_DONE_${Date.now()}__`;
   const cmd = `node -e "for(let i=0;i<${lines};i++) console.log('L'+i); console.log('${sentinel}')"`;
   await runTerminalCommand(page, panelLocator, cmd);
   await waitForTerminalText(panelLocator, sentinel, 60_000);
