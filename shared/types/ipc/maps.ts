@@ -1747,6 +1747,7 @@ export interface IpcEventMap {
 
   // Window events
   "window:fullscreen-change": boolean;
+  "window:reclaim-memory": { reason: string };
 
   // Notification events
   "notification:update": { waitingCount: number; failedCount: number };

@@ -678,6 +678,11 @@ export async function setupWindowServices(
         } catch {
           /* non-critical */
         }
+        try {
+          sendToRenderer(win, CHANNELS.WINDOW_RECLAIM_MEMORY, { reason: "memory-pressure" });
+        } catch {
+          /* non-critical */
+        }
       },
       hibernateIdleProjects: async () => {
         await getHibernationService().hibernateUnderMemoryPressure();

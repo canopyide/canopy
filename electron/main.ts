@@ -71,8 +71,8 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-// V8 tuning for renderer processes: heap size limit and compact code preference
-app.commandLine.appendSwitch("js-flags", "--max-old-space-size=4096 --optimize-for-size");
+// V8 tuning for renderer processes: heap size, compact code preference, and GC exposure
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=4096 --optimize-for-size --expose-gc");
 
 // Keep the renderer process at full priority and prevent AudioContext suspension
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
