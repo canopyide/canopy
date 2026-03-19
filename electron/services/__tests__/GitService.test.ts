@@ -3,7 +3,6 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-const simpleGitMock = vi.hoisted(() => vi.fn());
 const gitClientMock = vi.hoisted(() => ({
   branch: vi.fn(),
   diff: vi.fn(),
@@ -12,8 +11,10 @@ const gitClientMock = vi.hoisted(() => ({
   revparse: vi.fn(),
 }));
 
-vi.mock("simple-git", () => ({
-  simpleGit: simpleGitMock,
+const createHardenedGitMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../../utils/hardenedGit.js", () => ({
+  createHardenedGit: createHardenedGitMock,
 }));
 
 import { GitService } from "../GitService.js";
@@ -24,7 +25,7 @@ describe("GitService", () => {
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "canopy-git-service-"));
     vi.clearAllMocks();
-    simpleGitMock.mockImplementation(() => gitClientMock);
+    createHardenedGitMock.mockImplementation(() => gitClientMock);
     gitClientMock.branch.mockResolvedValue({ branches: {} });
     gitClientMock.diff.mockResolvedValue("");
     gitClientMock.raw.mockResolvedValue("");
