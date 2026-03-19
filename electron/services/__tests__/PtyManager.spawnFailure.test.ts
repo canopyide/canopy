@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { IPty } from "node-pty";
 
+let shouldThrow = false;
+const constructorError = new Error("HeadlessTerminal init failed");
+
 vi.mock("node-pty", () => {
   return { spawn: vi.fn() };
 });
@@ -20,26 +23,30 @@ vi.mock("../pty/terminalSpawn.js", async (importOriginal) => {
   };
 });
 
-// Must be imported after vi.mock declarations
-const { acquirePtyProcess } = await import("../pty/terminalSpawn.js");
-const { PtyManager } = await import("../PtyManager.js");
-
-// Mock TerminalProcess to throw on demand
-const constructorError = new Error("HeadlessTerminal init failed");
-let shouldThrow = false;
-
-vi.mock("../pty/TerminalProcess.js", () => {
+vi.mock("../pty/index.js", async (importOriginal) => {
+  const orig = (await importOriginal()) as Record<string, unknown>;
   return {
-    TerminalProcess: vi.fn().mockImplementation(() => {
-      if (shouldThrow) throw constructorError;
-      return {
-        getInfo: () => ({}),
-        getIsAgentTerminal: () => false,
-        setSabModeEnabled: () => {},
-      };
-    }),
+    ...orig,
+    TerminalProcess: class MockTerminalProcess {
+      constructor() {
+        if (shouldThrow) throw constructorError;
+      }
+      getInfo() {
+        return {};
+      }
+      getIsAgentTerminal() {
+        return false;
+      }
+      setSabModeEnabled() {}
+      shouldPreserveOnExit() {
+        return false;
+      }
+    },
   };
 });
+
+const { acquirePtyProcess } = await import("../pty/terminalSpawn.js");
+const { PtyManager } = await import("../PtyManager.js");
 
 function createMockPty(): IPty {
   return {
