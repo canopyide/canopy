@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { useOverlayState } from "@/hooks";
@@ -9,6 +9,7 @@ import {
   UI_EXIT_DURATION,
   UI_ENTER_EASING,
   UI_EXIT_EASING,
+  getUiTransitionDuration,
 } from "@/lib/animationUtils";
 
 export interface AppPaletteDialogProps {
@@ -40,19 +41,21 @@ export function AppPaletteDialog({
 
   const { isVisible, shouldRender } = useAnimatedPresence({
     isOpen,
-    animationDuration: UI_EXIT_DURATION,
+    animationDuration: getUiTransitionDuration("exit"),
     onAnimateOut: restoreFocus,
   });
 
   useOverlayState(isOpen || shouldRender);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       previousFocusRef.current = document.activeElement as HTMLElement;
-      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
-        'input, button, [tabindex]:not([tabindex="-1"])'
-      );
-      firstFocusable?.focus();
+      requestAnimationFrame(() => {
+        const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+          'input, button, [tabindex]:not([tabindex="-1"])'
+        );
+        firstFocusable?.focus();
+      });
     }
   }, [isOpen]);
 
