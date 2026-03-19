@@ -19,7 +19,7 @@ env:
 
 jobs:
   check:
-    runs-on: ubuntu-8-core
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -71,7 +71,7 @@ jobs:
   build:
     needs: [check, test]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-8-core
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
@@ -109,7 +109,7 @@ jobs:
   ci-ok:
     if: always()
     needs: [check, test]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 2
 
     steps:
