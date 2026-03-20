@@ -75,6 +75,21 @@ export function registerTerminalInputActions(
     },
   }));
 
+  actions.set("terminal.bulkCommand", () => ({
+    id: "terminal.bulkCommand" as ActionId,
+    title: "Bulk Command Center",
+    description: "Send keystrokes or commands to multiple agent terminals",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      const { openBulkCommandPalette } =
+        await import("@/components/BulkCommandCenter/BulkCommandPalette");
+      openBulkCommandPalette();
+    },
+  }));
+
   actions.set("terminal.sendToAgent", () => ({
     id: "terminal.sendToAgent" as ActionId,
     title: "Send to Agent",

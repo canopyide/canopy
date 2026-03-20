@@ -116,6 +116,7 @@ export type KeyAction =
   | "terminal.popStash"
   | "terminal.scrollToLastActivity"
   | "terminal.sendToAgent"
+  | "terminal.bulkCommand"
 
   // Agent spawning
   | "agent.palette"
@@ -279,6 +280,7 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "terminal.popStash",
   "terminal.scrollToLastActivity",
   "terminal.sendToAgent",
+  "terminal.bulkCommand",
   "agent.palette",
   ...BUILT_IN_AGENT_KEY_ACTIONS,
   "agent.terminal",
