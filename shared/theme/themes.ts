@@ -269,34 +269,47 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
     type: "light",
     builtin: true,
     tokens: createCanopyTokens("light", {
-      "surface-canvas": "#F7F4EE",
-      "surface-sidebar": "#E8E3D6",
+      // Surfaces — bright, airy beach whites
+      "surface-canvas": "#F8F6F1",
+      "surface-sidebar": "#F0ECE3",
       "surface-panel": "#FFFFFF",
       "surface-panel-elevated": "#FFFFFF",
-      "surface-grid": "#E0D9CA",
+      "surface-grid": "#E6E1D6",
+      // Text — rich espresso for crisp readability
       "text-primary": "#2D2418",
-      "text-secondary": "color-mix(in oklab, #2D2418 72%, #F7F4EE)",
-      "text-muted": "#7A6E5E",
-      "text-inverse": "#F7F4EE",
-      "border-default": "#B8AC99",
-      "border-subtle": "#CEC4B4",
-      "border-strong": "#887A67",
-      "border-divider": "#DDD5C5",
-      "accent-primary": "#1A9E55",
-      "accent-foreground": "#062714",
+      "text-secondary": "color-mix(in oklab, #2D2418 72%, #F8F6F1)",
+      "text-muted": "#6B6055",
+      "text-inverse": "#F8F6F1",
+      // Borders — clean, visible but not heavy
+      "border-default": "#C8BFA8",
+      "border-subtle": "#DBD4C6",
+      "border-strong": "#A09280",
+      "border-divider": "#E2DCD0",
+      // Accent — bold coastal vegetation green
+      "accent-primary": "#08803C",
+      "accent-foreground": "#FFFFFF",
+      // Status
       "status-success": "#167A40",
       "status-warning": "#8F5318",
       "status-danger": "#A93B2A",
       "status-info": "#4B6178",
-      "activity-active": "#1A9E55",
+      // Activity — bold greens for visibility on light backgrounds
+      "activity-active": "#08803C",
       "activity-idle": "#8C8782",
-      "activity-working": "#1A9E55",
+      "activity-working": "#08803C",
       "activity-waiting": "#C17F2E",
+      // GitHub — light-mode appropriate (darker, higher contrast)
+      "github-open": "#1a7f37",
+      "github-merged": "#8250df",
+      "github-closed": "#cf222e",
+      "github-draft": "#636c76",
+      // Overlays — white-based for correct light-mode elevation
       "overlay-subtle": "rgba(255, 255, 255, 0.55)",
       "overlay-soft": "rgba(255, 255, 255, 0.70)",
-      "overlay-medium": "rgba(255, 255, 255, 0.84)",
+      "overlay-medium": "rgba(255, 255, 255, 0.85)",
       "overlay-strong": "rgba(255, 255, 255, 0.92)",
       "overlay-emphasis": "rgba(255, 255, 255, 0.97)",
+      // Terminal
       "terminal-black": "#2D2418",
       "terminal-selection": "#DDF0E6",
       "terminal-red": "#B03530",
@@ -312,6 +325,7 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "terminal-bright-magenta": "#563D7E",
       "terminal-bright-cyan": "#0A5752",
       "terminal-bright-white": "#1A1208",
+      // Syntax
       "syntax-comment": "#6E6455",
       "syntax-punctuation": "#2D2418",
       "syntax-number": "#8F5318",
@@ -322,6 +336,7 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "syntax-link": "#2B5573",
       "syntax-quote": "#6E6455",
       "syntax-chip": "#0E6E6A",
+      // Categories
       "category-blue": "oklch(0.62 0.14 250)",
       "category-purple": "oklch(0.64 0.14 310)",
       "category-cyan": "oklch(0.65 0.12 215)",
