@@ -531,6 +531,45 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
   });
 
+  it("allows create after cancel while in-flight tasks are pending", async () => {
+    const resolvers: Array<(value: string) => void> = [];
+    mockWorktreeCreate.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+
+    render(<BulkCreateWorktreeDialog {...defaultProps} />);
+
+    // Start the batch
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    // Cancel before in-flight tasks resolve — guard must be released by handleClose
+    await act(async () => {
+      const buttons = screen.getAllByRole("button");
+      const cancelBtn = buttons.find((b) => b.textContent === "Cancel");
+      cancelBtn?.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Reset mocks for the second run
+    mockWorktreeCreate.mockClear();
+    setupWorktreeCreateMocks();
+
+    // Create should work again — guard was released by handleClose
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(5000);
+
+    expect(mockWorktreeCreate).toHaveBeenCalledTimes(3);
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+  });
+
   it("stops processing items when dialog is closed during execution", async () => {
     const resolvers: Array<(value: string) => void> = [];
     mockWorktreeCreate.mockImplementation(

@@ -766,6 +766,7 @@ export function BulkCreateWorktreeDialog({
       queueRef.current?.clear();
       queueRef.current = null;
     }
+    isExecutingRef.current = false;
     dispatchProgress({ type: "RESET" });
     batchTrackingRef.current = new Map();
     onClose();
