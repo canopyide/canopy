@@ -219,16 +219,29 @@ test.describe.serial("Core: Process Cleanup on Shutdown", () => {
     const descendants = getDescendantPids(ptyPid);
     trackedPids = [ptyPid, ...descendants];
 
+    // Verify the hung process spawned at least one descendant (the tail process)
+    expect(descendants.length).toBeGreaterThan(0);
+
     // Verify the PTY process is alive before shutdown
     expect(isPidAlive(ptyPid)).toBe(true);
 
     // Close the app — triggers before-quit → shutdown handler → graceful PTY kill.
     // closeApp() has a 10s timeout on app.close() with force-kill fallback,
     // then kills any lingering descendants as a safety net.
+    // We measure time to verify the graceful shutdown path completed without
+    // needing the 10s force-kill fallback.
+    const startTime = Date.now();
     await closeApp(app);
+    const elapsed = Date.now() - startTime;
 
     // Mark app as closed so afterAll doesn't try to close it again
     ctx = undefined as unknown as AppContext;
+
+    // If closeApp() needed the force-kill fallback (10s timeout), elapsed > 10s.
+    // The graceful shutdown (4s PTY kill timeout + service disposal) should
+    // complete well under this. Use 10s as the threshold — exceeding it means
+    // the graceful path failed and closeApp had to force-kill.
+    expect(elapsed).toBeLessThan(10_000);
 
     // Verify all tracked PIDs are dead after shutdown
     for (const pid of trackedPids) {
