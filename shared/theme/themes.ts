@@ -89,18 +89,19 @@ export function createCanopyTokens(
     "category-pink": tokens["category-pink"] ?? "oklch(0.72 0.13 340)",
     "category-violet": tokens["category-violet"] ?? "oklch(0.7 0.13 295)",
     "category-slate": tokens["category-slate"] ?? "oklch(0.65 0.04 240)",
-    "border-subtle": tokens["border-subtle"] ?? withAlpha(overlayTone, dark ? 0.08 : 0.12),
-    "border-strong": tokens["border-strong"] ?? withAlpha(overlayTone, dark ? 0.14 : 0.2),
-    "border-divider": tokens["border-divider"] ?? withAlpha(overlayTone, dark ? 0.05 : 0.08),
+    "border-subtle": tokens["border-subtle"] ?? withAlpha(overlayTone, dark ? 0.08 : 0.06),
+    "border-strong": tokens["border-strong"] ?? withAlpha(overlayTone, dark ? 0.14 : 0.12),
+    "border-divider": tokens["border-divider"] ?? withAlpha(overlayTone, dark ? 0.05 : 0.04),
+    "border-interactive": tokens["border-interactive"] ?? withAlpha(overlayTone, dark ? 0.2 : 0.28),
     "accent-foreground": tokens["accent-foreground"] ?? tokens["text-inverse"],
     "accent-soft": accentSoft,
     "accent-muted": accentMuted,
     "focus-ring": tokens["focus-ring"] ?? withAlpha(overlayTone, dark ? 0.18 : 0.2),
-    "overlay-subtle": tokens["overlay-subtle"] ?? withAlpha(overlayTone, dark ? 0.02 : 0.04),
-    "overlay-soft": tokens["overlay-soft"] ?? withAlpha(overlayTone, dark ? 0.03 : 0.08),
-    "overlay-medium": tokens["overlay-medium"] ?? withAlpha(overlayTone, dark ? 0.04 : 0.12),
-    "overlay-strong": tokens["overlay-strong"] ?? withAlpha(overlayTone, dark ? 0.06 : 0.16),
-    "overlay-emphasis": tokens["overlay-emphasis"] ?? withAlpha(overlayTone, dark ? 0.1 : 0.2),
+    "overlay-subtle": tokens["overlay-subtle"] ?? withAlpha(overlayTone, dark ? 0.02 : 0.06),
+    "overlay-soft": tokens["overlay-soft"] ?? withAlpha(overlayTone, dark ? 0.03 : 0.1),
+    "overlay-medium": tokens["overlay-medium"] ?? withAlpha(overlayTone, dark ? 0.04 : 0.16),
+    "overlay-strong": tokens["overlay-strong"] ?? withAlpha(overlayTone, dark ? 0.06 : 0.22),
+    "overlay-emphasis": tokens["overlay-emphasis"] ?? withAlpha(overlayTone, dark ? 0.1 : 0.3),
     "scrim-soft": tokens["scrim-soft"] ?? (dark ? "rgba(0, 0, 0, 0.2)" : "rgba(0, 0, 0, 0.12)"),
     "scrim-medium":
       tokens["scrim-medium"] ?? (dark ? "rgba(0, 0, 0, 0.45)" : "rgba(0, 0, 0, 0.30)"),
@@ -111,6 +112,14 @@ export function createCanopyTokens(
     "terminal-white":
       tokens["terminal-white"] ?? (dark ? tokens["text-primary"] : tokens["surface-canvas"]),
     "terminal-bright-black": tokens["terminal-bright-black"] ?? tokens["activity-idle"],
+    "surface-input":
+      tokens["surface-input"] ?? (dark ? tokens["surface-panel-elevated"] : "#FFFFFF"),
+    "surface-inset": tokens["surface-inset"] ?? withAlpha(overlayTone, dark ? 0.03 : 0.04),
+    "surface-hover": tokens["surface-hover"] ?? withAlpha(overlayTone, dark ? 0.05 : 0.05),
+    "surface-active": tokens["surface-active"] ?? withAlpha(overlayTone, dark ? 0.08 : 0.08),
+    "text-link": tokens["text-link"] ?? tokens["accent-primary"],
+    "shadow-color":
+      tokens["shadow-color"] ?? (dark ? "rgba(0, 0, 0, 0.5)" : withAlpha(lightInk, 0.1)),
     ...tokens,
   };
 }
