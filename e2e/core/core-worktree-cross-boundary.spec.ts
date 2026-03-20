@@ -215,6 +215,8 @@ test.describe.serial("Core: Worktree Selection Persists Across Project Switch", 
       await expect
         .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
         .toContain("selected");
+      // Allow time for the async worktree selection to persist to the main process
+      await window.waitForTimeout(T_SETTLE * 2);
     });
 
     // Switch to Project B

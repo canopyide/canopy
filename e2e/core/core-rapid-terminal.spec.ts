@@ -8,7 +8,8 @@ import { SEL } from "../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
 import { getPtyPid, isPidAlive, measureMainMemory, waitForProcessDeath } from "../helpers/stress";
 
-const CYCLE_COUNT = 50;
+// Keep within the terminal spawn rate limit (10 per 30s window)
+const CYCLE_COUNT = 8;
 const MEMORY_THRESHOLD_MB = 20;
 
 let ctx: AppContext;
@@ -73,31 +74,20 @@ test.describe.serial("Core: Rapid Terminal Create/Destroy Cycles", () => {
     if (ctx?.app) await closeApp(ctx.app);
   });
 
-  test("50 rapid create/destroy cycles with leak and memory checks", async () => {
+  test("rapid create/destroy cycles with leak and memory checks", async () => {
     test.setTimeout(300_000);
     const { app, window } = ctx;
 
     // Baseline memory
     const memBefore = await measureMainMemory(app, { forceGc: true });
 
-    await test.step("run 50 rapid create/destroy cycles", async () => {
+    await test.step("run rapid create/destroy cycles", async () => {
       for (let i = 0; i < CYCLE_COUNT; i++) {
         const { ptyPid } = await openTerminalAndGetPid(window);
         trackedPids.push(ptyPid);
         await forceCloseFirstPanel(window);
-
-        // Batch-check PIDs every 10 cycles (Unix only)
-        if (process.platform !== "win32" && (i + 1) % 10 === 0) {
-          const batchStart = i - 9;
-          const batch = trackedPids.slice(batchStart, batchStart + 10);
-          for (const pid of batch) {
-            try {
-              await waitForProcessDeath(pid, 15_000);
-            } catch {
-              // Will be caught in final verification
-            }
-          }
-        }
+        // Pace cycles to stay within the terminal spawn rate limiter (10 per 30s)
+        await window.waitForTimeout(500);
       }
     });
 
