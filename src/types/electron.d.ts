@@ -21,6 +21,9 @@ declare global {
     }>;
     __CANOPY_E2E_ADD_ERROR__?: (message: string) => void;
     __CANOPY_E2E_CLEAR_ERRORS__?: () => void;
+    __CANOPY_E2E_IPC__?: {
+      getRendererListenerCount: (channel: string) => number;
+    };
   }
 }
 
