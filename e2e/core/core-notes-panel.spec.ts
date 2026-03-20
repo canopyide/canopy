@@ -196,9 +196,15 @@ test.describe.serial("Core: Notes Panel", () => {
 
   test("filter by tag narrows list", async () => {
     const { window } = ctx;
+
+    // Close and reopen palette to ensure tag state is fresh (IPC tag writes
+    // from prior tests may not be reflected until the palette remounts)
+    await closeNotesPalette(window);
+    await openNotesPalette(window);
     const palette = window.locator(SEL.notes.palette);
 
     const tagChip = palette.getByRole("button", { name: "test-tag" });
+    await expect(tagChip).toBeVisible({ timeout: T_MEDIUM });
     await tagChip.click();
     await window.waitForTimeout(T_SETTLE);
 

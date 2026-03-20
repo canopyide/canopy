@@ -281,6 +281,10 @@ test.describe.serial("Core: Browser Panel", () => {
     });
 
     test("open browser panel, navigate to console-test page, and toggle console drawer", async () => {
+      test.skip(
+        process.platform === "win32" && !!process.env.CI,
+        "Windows CI: webview console drawer unreliable with GPU disabled"
+      );
       const { window } = ctx;
 
       await window.locator(SEL.toolbar.openBrowser).click();
@@ -301,6 +305,10 @@ test.describe.serial("Core: Browser Panel", () => {
     });
 
     test("console displays captured log message", async () => {
+      test.skip(
+        process.platform === "win32" && !!process.env.CI,
+        "Windows CI: webview console drawer unreliable with GPU disabled"
+      );
       const { window } = ctx;
       const browserPanel = window.locator(SEL.panel.gridPanel).filter({
         has: window.locator(SEL.browser.addressBar),

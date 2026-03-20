@@ -1,3 +1,4 @@
+import path from "path";
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
@@ -62,7 +63,7 @@ test.describe.serial("Core: Panel Tab Groups", () => {
 
       // Verify working directory is inherited
       await runTerminalCommand(window, panel, 'node -p "process.cwd()"');
-      const dirBasename = fixtureDir.split("/").pop() || fixtureDir.split("\\").pop() || "";
+      const dirBasename = path.basename(fixtureDir);
       await waitForTerminalText(panel, dirBasename, T_LONG);
     });
 

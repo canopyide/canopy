@@ -142,6 +142,10 @@ test.describe.serial("Core: PTY Resilience", () => {
   });
 
   test("PTY crash mid-output: spawn terminal and start flood", async () => {
+    test.skip(
+      process.platform === "win32",
+      "Uses bash-only $$ and while/do/done syntax — not supported on Windows/PowerShell"
+    );
     test.setTimeout(120_000);
     const { window } = ctx;
 
