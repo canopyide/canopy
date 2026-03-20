@@ -2945,10 +2945,11 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(3100);
 
       const idleCall = onStateChange.mock.calls.find(
-        (c: unknown[]) => c[2] === "idle" && c[3]?.trigger === "pattern"
+        (c: unknown[]) =>
+          c[2] === "idle" && (c[3] as Record<string, unknown> | undefined)?.trigger === "pattern"
       );
       expect(idleCall).toBeDefined();
-      expect(idleCall![3].patternConfidence).toBe(0.7);
+      expect((idleCall![3] as Record<string, unknown>).patternConfidence).toBe(0.7);
 
       monitor.dispose();
     });
@@ -2972,7 +2973,9 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(3100);
 
       const idleCall = onStateChange.mock.calls.find(
-        (c: unknown[]) => c[2] === "idle" && c[3]?.patternConfidence === 0.7
+        (c: unknown[]) =>
+          c[2] === "idle" &&
+          (c[3] as Record<string, unknown> | undefined)?.patternConfidence === 0.7
       );
       expect(idleCall).toBeDefined();
 
@@ -2998,7 +3001,9 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(2000);
 
       const idleCall = onStateChange.mock.calls.find(
-        (c: unknown[]) => c[2] === "idle" && c[3]?.patternConfidence === 0.7
+        (c: unknown[]) =>
+          c[2] === "idle" &&
+          (c[3] as Record<string, unknown> | undefined)?.patternConfidence === 0.7
       );
       expect(idleCall).toBeUndefined();
 
@@ -3024,7 +3029,9 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(5000);
 
       const idleCall = onStateChange.mock.calls.find(
-        (c: unknown[]) => c[2] === "idle" && c[3]?.patternConfidence === 0.7
+        (c: unknown[]) =>
+          c[2] === "idle" &&
+          (c[3] as Record<string, unknown> | undefined)?.patternConfidence === 0.7
       );
       expect(idleCall).toBeUndefined();
 
@@ -3048,7 +3055,9 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(3500);
 
       const lexemeCall = onStateChange.mock.calls.find(
-        (c: unknown[]) => c[2] === "idle" && c[3]?.patternConfidence === 0.7
+        (c: unknown[]) =>
+          c[2] === "idle" &&
+          (c[3] as Record<string, unknown> | undefined)?.patternConfidence === 0.7
       );
       expect(lexemeCall).toBeUndefined();
 
@@ -3074,7 +3083,9 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(3100);
 
       const idleCall = onStateChange.mock.calls.find(
-        (c: unknown[]) => c[2] === "idle" && c[3]?.patternConfidence === 0.7
+        (c: unknown[]) =>
+          c[2] === "idle" &&
+          (c[3] as Record<string, unknown> | undefined)?.patternConfidence === 0.7
       );
       expect(idleCall).toBeDefined();
 
