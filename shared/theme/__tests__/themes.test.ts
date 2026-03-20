@@ -86,17 +86,17 @@ describe("createCanopyTokens — light mode derived defaults", () => {
   const lightTokens = createCanopyTokens("light", REQUIRED_TOKENS);
 
   it("derives border defaults from the theme's foreground ink for light mode", () => {
-    expect(lightTokens["border-subtle"]).toBe("rgba(26, 26, 26, 0.12)");
-    expect(lightTokens["border-strong"]).toBe("rgba(26, 26, 26, 0.2)");
-    expect(lightTokens["border-divider"]).toBe("rgba(26, 26, 26, 0.08)");
+    expect(lightTokens["border-subtle"]).toBe("rgba(26, 26, 26, 0.06)");
+    expect(lightTokens["border-strong"]).toBe("rgba(26, 26, 26, 0.12)");
+    expect(lightTokens["border-divider"]).toBe("rgba(26, 26, 26, 0.04)");
   });
 
   it("derives overlay defaults from the theme's foreground ink for light mode", () => {
-    expect(lightTokens["overlay-subtle"]).toBe("rgba(26, 26, 26, 0.04)");
-    expect(lightTokens["overlay-soft"]).toBe("rgba(26, 26, 26, 0.08)");
-    expect(lightTokens["overlay-medium"]).toBe("rgba(26, 26, 26, 0.12)");
-    expect(lightTokens["overlay-strong"]).toBe("rgba(26, 26, 26, 0.16)");
-    expect(lightTokens["overlay-emphasis"]).toBe("rgba(26, 26, 26, 0.2)");
+    expect(lightTokens["overlay-subtle"]).toBe("rgba(26, 26, 26, 0.06)");
+    expect(lightTokens["overlay-soft"]).toBe("rgba(26, 26, 26, 0.1)");
+    expect(lightTokens["overlay-medium"]).toBe("rgba(26, 26, 26, 0.16)");
+    expect(lightTokens["overlay-strong"]).toBe("rgba(26, 26, 26, 0.22)");
+    expect(lightTokens["overlay-emphasis"]).toBe("rgba(26, 26, 26, 0.3)");
   });
 
   it("sets lighter scrim defaults for light mode", () => {
@@ -109,10 +109,20 @@ describe("createCanopyTokens — light mode derived defaults", () => {
     expect(lightTokens["focus-ring"]).toBe("rgba(26, 26, 26, 0.2)");
   });
 
+  it("derives new semantic token defaults for light mode", () => {
+    expect(lightTokens["surface-input"]).toBe("#FFFFFF");
+    expect(lightTokens["surface-inset"]).toBe("rgba(26, 26, 26, 0.04)");
+    expect(lightTokens["surface-hover"]).toBe("rgba(26, 26, 26, 0.05)");
+    expect(lightTokens["surface-active"]).toBe("rgba(26, 26, 26, 0.08)");
+    expect(lightTokens["text-link"]).toBe("#3F9366");
+    expect(lightTokens["border-interactive"]).toBe("rgba(26, 26, 26, 0.28)");
+    expect(lightTokens["shadow-color"]).toBe("rgba(26, 26, 26, 0.1)");
+  });
+
   it("keeps the default Bondi overlays warm instead of neutral black", () => {
     const bondi = BUILT_IN_APP_SCHEMES.find((scheme) => scheme.id === "bondi")!;
-    expect(bondi.tokens["overlay-soft"]).toBe("rgba(27, 54, 38, 0.08)");
-    expect(bondi.tokens["border-divider"]).toBe("rgba(27, 54, 38, 0.08)");
+    expect(bondi.tokens["overlay-soft"]).toBe("rgba(27, 54, 38, 0.1)");
+    expect(bondi.tokens["border-divider"]).toBe("rgba(27, 54, 38, 0.04)");
   });
 });
 
@@ -134,6 +144,16 @@ describe("createCanopyTokens — dark mode derived defaults match built-in", () 
     expect(darkTokens["scrim-soft"]).toBe("rgba(0, 0, 0, 0.2)");
     expect(darkTokens["scrim-medium"]).toBe("rgba(0, 0, 0, 0.45)");
     expect(darkTokens["scrim-strong"]).toBe("rgba(0, 0, 0, 0.62)");
+  });
+
+  it("derives new semantic token defaults for dark mode", () => {
+    expect(darkTokens["surface-input"]).toBe(REQUIRED_TOKENS["surface-panel-elevated"]);
+    expect(darkTokens["surface-inset"]).toBe("rgba(255, 255, 255, 0.03)");
+    expect(darkTokens["surface-hover"]).toBe("rgba(255, 255, 255, 0.05)");
+    expect(darkTokens["surface-active"]).toBe("rgba(255, 255, 255, 0.08)");
+    expect(darkTokens["text-link"]).toBe("#3F9366");
+    expect(darkTokens["border-interactive"]).toBe("rgba(255, 255, 255, 0.2)");
+    expect(darkTokens["shadow-color"]).toBe("rgba(0, 0, 0, 0.5)");
   });
 });
 
@@ -172,6 +192,14 @@ describe("createCanopyTokens — caller overrides win via spread", () => {
       "overlay-emphasis": "rgba(50, 50, 50, 0.2)",
     });
     expect(tokens["overlay-emphasis"]).toBe("rgba(50, 50, 50, 0.2)");
+  });
+
+  it("explicit surface-input overrides the default", () => {
+    const tokens = createCanopyTokens("light", {
+      ...REQUIRED_TOKENS,
+      "surface-input": "#F0F0F0",
+    });
+    expect(tokens["surface-input"]).toBe("#F0F0F0");
   });
 });
 
@@ -312,7 +340,7 @@ describe("built-in schemes — Fiordland", () => {
     expect(fiordland.builtin).toBe(true);
   });
 
-  it("produces all 79 token keys", () => {
+  it("produces all 86 token keys", () => {
     for (const key of APP_THEME_TOKEN_KEYS) {
       expect(fiordland.tokens).toHaveProperty(key, expect.any(String));
     }
@@ -526,7 +554,7 @@ describe("built-in schemes — Namib theme", () => {
     expect(namib.tokens["terminal-bright-black"]).toBe("#5A5347");
   });
 
-  it("produces all 79 required token keys", () => {
+  it("produces all 86 required token keys", () => {
     for (const key of APP_THEME_TOKEN_KEYS) {
       expect(namib.tokens).toHaveProperty(key, expect.any(String));
     }
@@ -634,7 +662,7 @@ describe("built-in schemes — Serengeti light theme", () => {
     expect(serengeti.builtin).toBe(true);
   });
 
-  it("produces all 79 required token keys", () => {
+  it("produces all 86 required token keys", () => {
     for (const key of APP_THEME_TOKEN_KEYS) {
       expect(serengeti.tokens).toHaveProperty(key, expect.any(String));
     }
@@ -897,6 +925,24 @@ describe("normalizeAppColorScheme", () => {
     expect(scheme.tokens["surface-panel"]).toBe(
       getBuiltInAppSchemeForType("light").tokens["surface-panel"]
     );
+  });
+
+  it("fills in new semantic tokens for custom themes missing them", () => {
+    const scheme = normalizeAppColorScheme({
+      id: "legacy-custom",
+      name: "Legacy Custom",
+      type: "dark",
+      tokens: {
+        "surface-canvas": "#1a1a1a",
+      } as Partial<AppColorSchemeTokens> as AppColorSchemeTokens,
+    });
+
+    for (const key of APP_THEME_TOKEN_KEYS) {
+      expect(scheme.tokens).toHaveProperty(key, expect.any(String));
+    }
+    expect(scheme.tokens["surface-input"]).toBeDefined();
+    expect(scheme.tokens["shadow-color"]).toBeDefined();
+    expect(scheme.tokens["text-link"]).toBeDefined();
   });
 });
 
