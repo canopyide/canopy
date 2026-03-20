@@ -270,7 +270,7 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
     builtin: true,
     tokens: createCanopyTokens("light", {
       // Surfaces — crisp cool slate (Bondi Blue sky)
-      "surface-canvas": "#f0f4f8",
+      "surface-canvas": "#eaeff5",
       "surface-sidebar": "#f8fafc",
       "surface-panel": "#ffffff",
       "surface-panel-elevated": "#ffffff",
@@ -305,8 +305,8 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "terminal-selection": "#bae6fd",
       "terminal-red": "#c62828",
       "terminal-green": "#047857",
-      "terminal-yellow": "#b45309",
-      "terminal-blue": "#2563eb",
+      "terminal-yellow": "#9a4408",
+      "terminal-blue": "#1d4ed8",
       "terminal-magenta": "#7c3aed",
       "terminal-cyan": "#0e7490",
       "terminal-bright-red": "#991b1b",
@@ -319,12 +319,12 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       // Syntax — vivid, clear
       "syntax-comment": "#586779",
       "syntax-punctuation": "#0f172a",
-      "syntax-number": "#b45309",
+      "syntax-number": "#9a4408",
       "syntax-string": "#047857",
-      "syntax-operator": "#2563eb",
+      "syntax-operator": "#1d4ed8",
       "syntax-keyword": "#c62828",
       "syntax-function": "#0e7490",
-      "syntax-link": "#2563eb",
+      "syntax-link": "#1d4ed8",
       "syntax-quote": "#586779",
       "syntax-chip": "#0e7490",
       // Categories — vivid for light backgrounds
