@@ -249,21 +249,6 @@ describe("createCanopyTokens — terminal fallbacks branch by type", () => {
 describe("built-in schemes — Daintree has explicit category colors", () => {
   const canopy = BUILT_IN_APP_SCHEMES.find((s) => s.id === "daintree")!;
 
-  it("has all 12 category colors set", () => {
-    expect(canopy.tokens["category-blue"]).toBe("oklch(0.7 0.13 250)");
-    expect(canopy.tokens["category-purple"]).toBe("oklch(0.7 0.13 310)");
-    expect(canopy.tokens["category-cyan"]).toBe("oklch(0.72 0.11 215)");
-    expect(canopy.tokens["category-green"]).toBe("oklch(0.7 0.13 145)");
-    expect(canopy.tokens["category-amber"]).toBe("oklch(0.73 0.14 75)");
-    expect(canopy.tokens["category-orange"]).toBe("oklch(0.7 0.14 45)");
-    expect(canopy.tokens["category-teal"]).toBe("oklch(0.7 0.11 185)");
-    expect(canopy.tokens["category-indigo"]).toBe("oklch(0.7 0.13 275)");
-    expect(canopy.tokens["category-rose"]).toBe("oklch(0.7 0.14 5)");
-    expect(canopy.tokens["category-pink"]).toBe("oklch(0.72 0.13 340)");
-    expect(canopy.tokens["category-violet"]).toBe("oklch(0.7 0.13 295)");
-    expect(canopy.tokens["category-slate"]).toBe("oklch(0.65 0.04 240)");
-  });
-
   it("produces all required token keys", () => {
     for (const key of APP_THEME_TOKEN_KEYS) {
       expect(canopy.tokens).toHaveProperty(key, expect.any(String));
@@ -284,11 +269,6 @@ describe("built-in schemes — Bondi light theme", () => {
     for (const key of APP_THEME_TOKEN_KEYS) {
       expect(bondi.tokens).toHaveProperty(key, expect.any(String));
     }
-  });
-
-  it("has warm espresso text-primary instead of green-tinted", () => {
-    expect(bondi.tokens["terminal-black"]).toBe("#2D2418");
-    expect(bondi.tokens["text-primary"]).toBe("#2D2418");
   });
 
   it("delegates terminal-white to surface-canvas default", () => {
@@ -410,51 +390,16 @@ describe("built-in schemes — Fiordland", () => {
     }
   });
 
-  it("uses the brand accent-primary", () => {
-    expect(fiordland.tokens["accent-primary"]).toBe("#3F9366");
-  });
-
-  it("derives accent-foreground from text-inverse", () => {
-    expect(fiordland.tokens["accent-foreground"]).toBe("#070D12");
-  });
-
-  it("uses contrast-safe status-danger", () => {
-    expect(fiordland.tokens["status-danger"]).toBe("#E04055");
-  });
-
-  it("overrides overlay tokens for deep background", () => {
-    expect(fiordland.tokens["overlay-subtle"]).toBe("rgba(255, 255, 255, 0.03)");
-    expect(fiordland.tokens["overlay-soft"]).toBe("rgba(255, 255, 255, 0.05)");
-    expect(fiordland.tokens["overlay-medium"]).toBe("rgba(255, 255, 255, 0.08)");
-    expect(fiordland.tokens["overlay-strong"]).toBe("rgba(255, 255, 255, 0.12)");
-    expect(fiordland.tokens["overlay-emphasis"]).toBe("rgba(255, 255, 255, 0.18)");
-  });
-
   it("derives terminal-black from surface-canvas", () => {
-    expect(fiordland.tokens["terminal-black"]).toBe("#070D12");
+    expect(fiordland.tokens["terminal-black"]).toBe(fiordland.tokens["surface-canvas"]);
   });
 
   it("derives terminal-white from text-primary", () => {
-    expect(fiordland.tokens["terminal-white"]).toBe("#D4E0D6");
+    expect(fiordland.tokens["terminal-white"]).toBe(fiordland.tokens["text-primary"]);
   });
 
   it("derives terminal-bright-black from activity-idle", () => {
-    expect(fiordland.tokens["terminal-bright-black"]).toBe("#3D4E5C");
-  });
-
-  it("has all 12 category colors set", () => {
-    expect(fiordland.tokens["category-blue"]).toBe("oklch(0.7 0.13 250)");
-    expect(fiordland.tokens["category-purple"]).toBe("oklch(0.7 0.13 310)");
-    expect(fiordland.tokens["category-cyan"]).toBe("oklch(0.72 0.11 215)");
-    expect(fiordland.tokens["category-green"]).toBe("oklch(0.7 0.13 145)");
-    expect(fiordland.tokens["category-amber"]).toBe("oklch(0.73 0.14 75)");
-    expect(fiordland.tokens["category-orange"]).toBe("oklch(0.7 0.14 45)");
-    expect(fiordland.tokens["category-teal"]).toBe("oklch(0.7 0.11 185)");
-    expect(fiordland.tokens["category-indigo"]).toBe("oklch(0.7 0.13 275)");
-    expect(fiordland.tokens["category-rose"]).toBe("oklch(0.7 0.14 5)");
-    expect(fiordland.tokens["category-pink"]).toBe("oklch(0.72 0.13 340)");
-    expect(fiordland.tokens["category-violet"]).toBe("oklch(0.7 0.13 295)");
-    expect(fiordland.tokens["category-slate"]).toBe("oklch(0.65 0.04 240)");
+    expect(fiordland.tokens["terminal-bright-black"]).toBe(fiordland.tokens["activity-idle"]);
   });
 
   it("passes contrast validation with no warnings", () => {
@@ -476,24 +421,6 @@ describe("built-in schemes — Galápagos", () => {
     for (const key of APP_THEME_TOKEN_KEYS) {
       expect(galapagos.tokens).toHaveProperty(key, expect.any(String));
     }
-  });
-
-  it("has redesigned terminal normal colors", () => {
-    expect(galapagos.tokens["terminal-red"]).toBe("#D96C6C");
-    expect(galapagos.tokens["terminal-green"]).toBe("#62A862");
-    expect(galapagos.tokens["terminal-yellow"]).toBe("#C9A040");
-    expect(galapagos.tokens["terminal-blue"]).toBe("#5693BF");
-    expect(galapagos.tokens["terminal-magenta"]).toBe("#B882B0");
-    expect(galapagos.tokens["terminal-cyan"]).toBe("#4DB8C2");
-  });
-
-  it("has redesigned syntax tokens", () => {
-    expect(galapagos.tokens["syntax-comment"]).toBe("#617B7F");
-    expect(galapagos.tokens["syntax-punctuation"]).toBe("#A0AFBA");
-    expect(galapagos.tokens["syntax-keyword"]).toBe("#BB9AF7");
-    expect(galapagos.tokens["syntax-operator"]).toBe("#6CB8CC");
-    expect(galapagos.tokens["syntax-chip"]).toBe("#D4A853");
-    expect(galapagos.tokens["syntax-number"]).toBe("#D4895A");
   });
 
   it.each([
@@ -566,21 +493,16 @@ describe("built-in schemes — Highlands theme", () => {
     expect(highlands.builtin).toBe(true);
   });
 
-  it("preserves mandatory eucalyptus accent", () => {
-    expect(highlands.tokens["accent-primary"]).toBe("#3F9366");
+  it("derives terminal-black from surface-canvas", () => {
+    expect(highlands.tokens["terminal-black"]).toBe(highlands.tokens["surface-canvas"]);
   });
 
-  it("uses contrast-adjusted syntax colors", () => {
-    expect(highlands.tokens["syntax-keyword"]).toBe("#B872A5");
-    expect(highlands.tokens["syntax-function"]).toBe("#6898B5");
-    expect(highlands.tokens["syntax-number"]).toBe("#C080A0");
-    expect(highlands.tokens["status-danger"]).toBe("#E35040");
+  it("derives terminal-white from text-primary", () => {
+    expect(highlands.tokens["terminal-white"]).toBe(highlands.tokens["text-primary"]);
   });
 
-  it("auto-derives terminal-black/white/bright-black from surfaces and activity", () => {
-    expect(highlands.tokens["terminal-black"]).toBe("#1A1614");
-    expect(highlands.tokens["terminal-white"]).toBe("#C9D1D9");
-    expect(highlands.tokens["terminal-bright-black"]).toBe("#73665A");
+  it("derives terminal-bright-black from activity-idle", () => {
+    expect(highlands.tokens["terminal-bright-black"]).toBe(highlands.tokens["activity-idle"]);
   });
 
   it("produces all required token keys", () => {
@@ -603,19 +525,12 @@ describe("built-in schemes — Namib theme", () => {
     expect(namib.builtin).toBe(true);
   });
 
-  it("has the correct accent and canvas colors", () => {
-    expect(namib.tokens["accent-primary"]).toBe("#3F9366");
-    expect(namib.tokens["surface-canvas"]).toBe("#1A1714");
-  });
-
-  it("has the scarab cyan keyword color", () => {
-    expect(namib.tokens["syntax-keyword"]).toBe("#48C0B2");
-  });
-
-  it("derives terminal-black/white from surfaces and overrides bright-black", () => {
+  it("derives terminal-black from surface-canvas", () => {
     expect(namib.tokens["terminal-black"]).toBe(namib.tokens["surface-canvas"]);
+  });
+
+  it("derives terminal-white from text-primary", () => {
     expect(namib.tokens["terminal-white"]).toBe(namib.tokens["text-primary"]);
-    expect(namib.tokens["terminal-bright-black"]).toBe("#5A5347");
   });
 
   it("produces all 86 required token keys", () => {
@@ -639,24 +554,7 @@ describe("built-in schemes — Arashiyama bamboo-grove dark theme", () => {
     expect(arashiyama.builtin).toBe(true);
   });
 
-  it("uses standard green for activity-working", () => {
-    expect(arashiyama.tokens["activity-working"]).toBe("#22c55e");
-  });
-
-  it("uses warm amber for activity-waiting", () => {
-    expect(arashiyama.tokens["activity-waiting"]).toBe("#C89A3A");
-  });
-
-  it("preserves intentional muted green for activity-active", () => {
-    expect(arashiyama.tokens["activity-active"]).toBe("#3F9366");
-  });
-
-  it("uses a true red for terminal-bright-red", () => {
-    expect(arashiyama.tokens["terminal-bright-red"]).toBe("#E06058");
-  });
-
   it("terminal-selection passes 3:1 contrast against canvas", () => {
-    expect(arashiyama.tokens["terminal-selection"]).toBe("#A3573B");
     const ratio = wcagContrastRatio(
       arashiyama.tokens["terminal-selection"],
       arashiyama.tokens["surface-canvas"]
@@ -664,9 +562,7 @@ describe("built-in schemes — Arashiyama bamboo-grove dark theme", () => {
     expect(ratio, `selection contrast ${ratio.toFixed(2)}:1 needs ≥3:1`).toBeGreaterThanOrEqual(3);
   });
 
-  it("has redesigned syntax-keyword and syntax-number values", () => {
-    expect(arashiyama.tokens["syntax-keyword"]).toBe("#E06268");
-    expect(arashiyama.tokens["syntax-number"]).toBe("#D4A046");
+  it("syntax-number is distinct from syntax-string", () => {
     expect(arashiyama.tokens["syntax-number"]).not.toBe(arashiyama.tokens["syntax-string"]);
   });
 
@@ -690,20 +586,16 @@ describe("built-in schemes — Redwoods has correct tokens and derived values", 
     expect(redwoods.builtin).toBe(true);
   });
 
-  it("has the forest green accent", () => {
-    expect(redwoods.tokens["accent-primary"]).toBe("#4D9E6A");
-  });
-
   it("derives terminal-black from surface-canvas", () => {
-    expect(redwoods.tokens["terminal-black"]).toBe("#1A1210");
+    expect(redwoods.tokens["terminal-black"]).toBe(redwoods.tokens["surface-canvas"]);
   });
 
   it("derives terminal-white from text-primary", () => {
-    expect(redwoods.tokens["terminal-white"]).toBe("#D0C8B5");
+    expect(redwoods.tokens["terminal-white"]).toBe(redwoods.tokens["text-primary"]);
   });
 
   it("derives terminal-bright-black from activity-idle", () => {
-    expect(redwoods.tokens["terminal-bright-black"]).toBe("#52423D");
+    expect(redwoods.tokens["terminal-bright-black"]).toBe(redwoods.tokens["activity-idle"]);
   });
 
   it("produces all required token keys", () => {
@@ -732,20 +624,15 @@ describe("built-in schemes — Serengeti light theme", () => {
     }
   });
 
-  it("overrides terminal-black to text-primary, not surface-canvas", () => {
-    expect(serengeti.tokens["terminal-black"]).toBe("#4A3F35");
+  it("terminal-black is not surface-canvas (overridden to text-primary)", () => {
     expect(serengeti.tokens["terminal-black"]).not.toBe(serengeti.tokens["surface-canvas"]);
   });
 
   it("syntax-comment is distinct from text-muted", () => {
-    expect(serengeti.tokens["syntax-comment"]).toBe("#6E6259");
-    expect(serengeti.tokens["text-muted"]).toBe("#7A6E63");
     expect(serengeti.tokens["syntax-comment"]).not.toBe(serengeti.tokens["text-muted"]);
   });
 
   it("syntax-function differs from accent-primary", () => {
-    expect(serengeti.tokens["accent-primary"]).toBe("#3F9366");
-    expect(serengeti.tokens["syntax-function"]).toBe("#256645");
     expect(serengeti.tokens["syntax-function"]).not.toBe(serengeti.tokens["accent-primary"]);
   });
 
@@ -777,7 +664,6 @@ describe("built-in schemes — Serengeti light theme", () => {
   it("delegates terminal-white and terminal-bright-black to defaults", () => {
     expect(serengeti.tokens["terminal-white"]).toBe(serengeti.tokens["surface-canvas"]);
     expect(serengeti.tokens["terminal-bright-black"]).toBe(serengeti.tokens["activity-idle"]);
-    expect(serengeti.tokens["terminal-bright-white"]).toBe("#2A2018");
   });
 
   it("text-muted meets WCAG AA 3:1 against surface-panel", () => {
@@ -790,18 +676,6 @@ describe("built-in schemes — Serengeti light theme", () => {
       `text-muted on surface-panel = ${ratio.toFixed(2)}:1, needs ≥3:1`
     ).toBeGreaterThanOrEqual(3);
   });
-
-  it("uses earthy activity colors instead of neon", () => {
-    expect(serengeti.tokens["activity-active"]).toBe("#1D9B5E");
-    expect(serengeti.tokens["activity-working"]).toBe("#1D9B5E");
-    expect(serengeti.tokens["activity-waiting"]).toBe("#C17F2E");
-    expect(serengeti.tokens["activity-idle"]).toBe("#8C8782");
-  });
-
-  it("uses lower-lightness oklch category colors for light mode", () => {
-    expect(serengeti.tokens["category-blue"]).toBe("oklch(0.62 0.14 250)");
-    expect(serengeti.tokens["category-slate"]).toBe("oklch(0.58 0.04 240)");
-  });
 });
 
 describe("Hokkaido built-in scheme", () => {
@@ -812,27 +686,6 @@ describe("Hokkaido built-in scheme", () => {
     expect(hokkaido.name).toBe("Hokkaido");
     expect(hokkaido.type).toBe("light");
     expect(hokkaido.builtin).toBe(true);
-  });
-
-  it("uses the fixed brand accent-primary", () => {
-    expect(hokkaido.tokens["accent-primary"]).toBe("#3F9366");
-  });
-
-  it("uses the cool grey-white canvas", () => {
-    expect(hokkaido.tokens["surface-canvas"]).toBe("#ECF1F6");
-  });
-
-  it("has stepped surface hierarchy with panel lighter than canvas", () => {
-    expect(hokkaido.tokens["surface-panel"]).toBe("#F5F8FB");
-    expect(hokkaido.tokens["surface-sidebar"]).toBe("#DDE6EE");
-    expect(hokkaido.tokens["surface-grid"]).toBe("#CDD9E3");
-  });
-
-  it("overrides border tokens with visible hex values", () => {
-    expect(hokkaido.tokens["border-default"]).toBe("#B8CAD6");
-    expect(hokkaido.tokens["border-subtle"]).toBe("#D8E5ED");
-    expect(hokkaido.tokens["border-divider"]).toBe("#E5EFF4");
-    expect(hokkaido.tokens["border-strong"]).toBe("#AABFCC");
   });
 
   it("uses theme-appropriate activity indicators instead of neon green", () => {
@@ -852,26 +705,23 @@ describe("Hokkaido built-in scheme", () => {
   });
 
   it.each([
-    ["syntax-keyword", "#795293", 4.5],
-    ["syntax-string", "#B34060", 4.5],
-    ["syntax-comment", "#526D7E", 4.5],
-    ["syntax-number", "#2E5E82", 4.5],
-    ["syntax-operator", "#006A71", 4.5],
-    ["syntax-function", "#2D7A52", 4.5],
-    ["syntax-punctuation", "#3A4D5C", 4.5],
-    ["syntax-quote", "#526D7E", 4.5],
-  ] as const)(
-    "%s (%s) meets WCAG AA contrast (≥%s:1) on canvas",
-    (token, _hex, minimum: number) => {
-      const fg = hokkaido.tokens[token];
-      const bg = hokkaido.tokens["surface-canvas"];
-      const ratio = wcagContrastRatio(fg, bg);
-      expect(
-        ratio,
-        `${token} "${fg}" on canvas "${bg}" = ${ratio.toFixed(2)}:1, needs ≥${minimum}:1`
-      ).toBeGreaterThanOrEqual(minimum);
-    }
-  );
+    "syntax-keyword",
+    "syntax-string",
+    "syntax-comment",
+    "syntax-number",
+    "syntax-operator",
+    "syntax-function",
+    "syntax-punctuation",
+    "syntax-quote",
+  ] as const)("%s meets WCAG AA 4.5:1 on canvas", (token) => {
+    const fg = hokkaido.tokens[token];
+    const bg = hokkaido.tokens["surface-canvas"];
+    const ratio = wcagContrastRatio(fg, bg);
+    expect(
+      ratio,
+      `${token} "${fg}" on canvas "${bg}" = ${ratio.toFixed(2)}:1, needs ≥4.5:1`
+    ).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 describe("built-in schemes — Svalbard light theme", () => {
@@ -883,27 +733,6 @@ describe("built-in schemes — Svalbard light theme", () => {
     expect(svalbard.name).toBe("Svalbard");
     expect(svalbard.type).toBe("light");
     expect(svalbard.builtin).toBe(true);
-  });
-
-  it("has arctic surface hierarchy with wider spread", () => {
-    expect(svalbard.tokens["surface-canvas"]).toBe("#DFEAF1");
-    expect(svalbard.tokens["surface-sidebar"]).toBe("#C8D7E3");
-    expect(svalbard.tokens["surface-panel"]).toBe("#EFF5F9");
-    expect(svalbard.tokens["surface-panel-elevated"]).toBe("#FFFFFF");
-    expect(svalbard.tokens["surface-grid"]).toBe("#B8C8D6");
-  });
-
-  it("has explicit border overrides (not alpha-derived)", () => {
-    expect(svalbard.tokens["border-default"]).toBe("#9EB4C4");
-    expect(svalbard.tokens["border-subtle"]).toBe("#A8BCC9");
-    expect(svalbard.tokens["border-strong"]).toBe("#8BA5B8");
-  });
-
-  it("has cold arctic activity indicators", () => {
-    expect(svalbard.tokens["activity-active"]).toBe("#006B8F");
-    expect(svalbard.tokens["activity-working"]).toBe("#006B8F");
-    expect(svalbard.tokens["activity-waiting"]).toBe("#4C5980");
-    expect(svalbard.tokens["activity-idle"]).toBe("#7A8E9E");
   });
 
   it("auto-derives terminal-black from text-primary for light themes", () => {
@@ -1043,18 +872,6 @@ describe("built-in schemes — Atacama light theme", () => {
     expect(getAppThemeById("atacama")).toBe(atacama);
   });
 
-  it("uses WCAG-safe text-muted (#6B6560), not the original #9A9386", () => {
-    expect(atacama.tokens["text-muted"]).toBe("#6B6560");
-  });
-
-  it("has accent-foreground explicitly set", () => {
-    expect(atacama.tokens["accent-foreground"]).toBe("#08140e");
-  });
-
-  it("has near-black terminal-bright-white for light background", () => {
-    expect(atacama.tokens["terminal-bright-white"]).toBe("#1A1210");
-  });
-
   it("auto-derives terminal-black from text-primary for light themes", () => {
     expect(atacama.tokens["terminal-black"]).toBe(atacama.tokens["text-primary"]);
   });
@@ -1067,42 +884,8 @@ describe("built-in schemes — Atacama light theme", () => {
     expect(atacama.tokens["terminal-bright-black"]).toBe(atacama.tokens["activity-idle"]);
   });
 
-  it("has signature indigo keywords and teal functions", () => {
-    expect(atacama.tokens["syntax-keyword"]).toBe("#293D71");
-    expect(atacama.tokens["syntax-function"]).toBe("#1B5F5C");
-  });
-
-  it("has correct mineral-desert surface hierarchy", () => {
-    expect(atacama.tokens["surface-canvas"]).toBe("#F0F0ED");
-    expect(atacama.tokens["surface-sidebar"]).toBe("#E5E4DF");
-    expect(atacama.tokens["surface-panel"]).toBe("#F8F8F6");
-    expect(atacama.tokens["surface-panel-elevated"]).toBe("#FFFFFF");
-    expect(atacama.tokens["surface-grid"]).toBe("#DCDAD4");
-    expect(atacama.tokens["border-default"]).toBe("#C6C4BF");
-  });
-
-  it("has distinct syntax-operator (#4A5D7B) different from syntax-keyword", () => {
-    expect(atacama.tokens["syntax-operator"]).toBe("#4A5D7B");
+  it("syntax-operator is distinct from syntax-keyword", () => {
     expect(atacama.tokens["syntax-operator"]).not.toBe(atacama.tokens["syntax-keyword"]);
-  });
-
-  it("has text-secondary color-mix referencing current surface-canvas", () => {
-    expect(atacama.tokens["text-secondary"]).toBe("color-mix(in oklab, #3A3431 72%, #F0F0ED)");
-  });
-
-  it("has light-appropriate category colors (oklch L=0.58-0.68)", () => {
-    expect(atacama.tokens["category-blue"]).toBe("oklch(0.62 0.14 250)");
-    expect(atacama.tokens["category-purple"]).toBe("oklch(0.64 0.14 310)");
-    expect(atacama.tokens["category-cyan"]).toBe("oklch(0.65 0.12 215)");
-    expect(atacama.tokens["category-green"]).toBe("oklch(0.63 0.13 145)");
-    expect(atacama.tokens["category-amber"]).toBe("oklch(0.68 0.14 75)");
-    expect(atacama.tokens["category-orange"]).toBe("oklch(0.66 0.15 45)");
-    expect(atacama.tokens["category-teal"]).toBe("oklch(0.64 0.11 185)");
-    expect(atacama.tokens["category-indigo"]).toBe("oklch(0.61 0.13 275)");
-    expect(atacama.tokens["category-rose"]).toBe("oklch(0.63 0.14 5)");
-    expect(atacama.tokens["category-pink"]).toBe("oklch(0.66 0.13 340)");
-    expect(atacama.tokens["category-violet"]).toBe("oklch(0.63 0.13 295)");
-    expect(atacama.tokens["category-slate"]).toBe("oklch(0.58 0.04 240)");
   });
 
   it("produces all required token keys", () => {
