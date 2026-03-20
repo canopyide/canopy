@@ -22,7 +22,10 @@ let probePanelId: string;
  */
 async function ptyWrite(page: import("@playwright/test").Page, panelId: string, data: string) {
   await page.evaluate(
-    ([id, d]) => (window as unknown as Record<string, any>).electron.terminal.write(id, d),
+    ([id, d]) =>
+      (
+        window as unknown as { electron: { terminal: { write: (id: string, d: string) => void } } }
+      ).electron.terminal.write(id, d),
     [panelId, data]
   );
 }
