@@ -13,14 +13,20 @@
   --color-surface-panel: var(--theme-surface-panel);
   --color-surface-panel-elevated: var(--theme-surface-panel-elevated);
   --color-surface-grid: var(--theme-surface-grid);
+  --color-surface-input: var(--theme-surface-input);
+  --color-surface-inset: var(--theme-surface-inset);
+  --color-surface-hover: var(--theme-surface-hover);
+  --color-surface-active: var(--theme-surface-active);
   --color-text-primary: var(--theme-text-primary);
   --color-text-secondary: var(--theme-text-secondary);
   --color-text-muted: var(--theme-text-muted);
   --color-text-inverse: var(--theme-text-inverse);
+  --color-text-link: var(--theme-text-link);
   --color-border-default: var(--theme-border-default);
   --color-border-subtle: var(--theme-border-subtle);
   --color-border-strong: var(--theme-border-strong);
   --color-border-divider: var(--theme-border-divider);
+  --color-border-interactive: var(--theme-border-interactive);
   --color-accent-primary: var(--theme-accent-primary);
   --color-accent-foreground: var(--theme-accent-foreground);
   --color-accent-primary-foreground: var(--theme-accent-foreground);
@@ -44,6 +50,7 @@
   --color-scrim-soft: var(--theme-scrim-soft);
   --color-scrim-medium: var(--theme-scrim-medium);
   --color-scrim-strong: var(--theme-scrim-strong);
+  --color-shadow-color: var(--theme-shadow-color);
   --color-github-open: var(--theme-github-open);
   --color-github-merged: var(--theme-github-merged);
   --color-github-closed: var(--theme-github-closed);
@@ -475,18 +482,18 @@ code.hljs {
 
   --shadow-overlay:
     0 1px 0 var(--theme-overlay-soft) inset,
-    0 12px 40px color-mix(in oklch, var(--theme-scrim-medium) 89%, transparent);
+    0 12px 40px color-mix(in oklch, var(--theme-shadow-color) 89%, transparent);
   --shadow-modal:
     0 1px 0 var(--theme-overlay-medium) inset,
-    0 20px 56px color-mix(in oklch, var(--theme-scrim-strong) 81%, transparent);
+    0 20px 56px color-mix(in oklch, var(--theme-shadow-color) 81%, transparent);
   --shadow-dock-popover:
     0 1px 0 var(--theme-overlay-strong) inset,
-    0 25px 70px -10px color-mix(in oklch, var(--theme-scrim-strong) 97%, transparent);
+    0 25px 70px -10px color-mix(in oklch, var(--theme-shadow-color) 97%, transparent);
   --shadow-dock-panel-popover:
     0 1px 0 var(--theme-overlay-strong) inset,
-    0 10px 40px -10px color-mix(in oklch, var(--theme-scrim-medium) 78%, transparent),
-    0 20px 60px -15px color-mix(in oklch, var(--theme-scrim-medium) 56%, transparent),
-    0 30px 80px -20px color-mix(in oklch, var(--theme-scrim-soft) 75%, transparent);
+    0 10px 40px -10px color-mix(in oklch, var(--theme-shadow-color) 78%, transparent),
+    0 20px 60px -15px color-mix(in oklch, var(--theme-shadow-color) 56%, transparent),
+    0 30px 80px -20px color-mix(in oklch, var(--theme-shadow-color) 75%, transparent);
   --border-overlay: var(--theme-border-strong);
   --border-dock-popup: color-mix(
     in oklab,
@@ -497,7 +504,7 @@ code.hljs {
 
   --dock-bg: var(--color-canopy-sidebar);
   --dock-border: var(--border-divider);
-  --dock-shadow: 0 -2px 12px color-mix(in oklch, var(--theme-scrim-soft) 75%, transparent);
+  --dock-shadow: 0 -2px 12px color-mix(in oklch, var(--theme-shadow-color) 75%, transparent);
   --dock-padding-x: 0.5rem;
   --dock-padding-y: 0.375rem;
   --dock-gap: 0.375rem;
@@ -531,7 +538,7 @@ code.hljs {
   --destructive: var(--theme-status-danger);
   --destructive-foreground: var(--theme-text-inverse);
   --border: var(--theme-border-default);
-  --input: var(--theme-border-default);
+  --input: var(--theme-surface-input);
   --ring: var(--theme-focus-ring);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
