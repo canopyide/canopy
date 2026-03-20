@@ -2220,3 +2220,11 @@ ipcRenderer.on(CHANNELS.WINDOW_RECLAIM_MEMORY, () => {
   webFrame.clearCache();
   (globalThis as unknown as { gc?: () => void }).gc?.();
 });
+
+// E2E test bridge: expose renderer-side IPC listener introspection in fault mode.
+// Gated by CANOPY_E2E_FAULT_MODE to avoid production surface area.
+if (process.env.CANOPY_E2E_FAULT_MODE === "1") {
+  contextBridge.exposeInMainWorld("__CANOPY_E2E_IPC__", {
+    getRendererListenerCount: (channel: string) => ipcRenderer.listenerCount(channel),
+  });
+}
