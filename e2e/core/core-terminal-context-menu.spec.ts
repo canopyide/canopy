@@ -10,7 +10,7 @@ import {
 } from "../helpers/terminal";
 import { getFirstGridPanel, getGridPanelCount } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
@@ -150,19 +150,27 @@ test.describe.serial("Core: Terminal Context Menu", () => {
       await expect(menu).not.toBeVisible({ timeout: T_SHORT });
     });
 
-    test("context menu closes on outside click", async () => {
+    test("selecting menu item closes menu and performs action", async () => {
       const { window } = ctx;
       const panel = getFirstGridPanel(window);
 
       await openTerminalContextMenu(panel);
 
       const menu = window.locator(SEL.contextMenu.content);
-      await expect(menu).toBeVisible({ timeout: T_SHORT });
+      const lockItem = window.getByRole("menuitem", { name: "Lock Input" });
+      await expect(lockItem).toBeVisible({ timeout: T_SHORT });
+      await lockItem.click();
 
-      // Use mouse.click at top-left corner to dismiss — Radix overlay intercepts
-      // normal locator clicks, so we bypass with raw mouse coordinates
-      await window.mouse.click(10, 10);
       await expect(menu).not.toBeVisible({ timeout: T_SHORT });
+
+      // Verify the action toggled — re-open menu should show "Unlock Input"
+      await openTerminalContextMenu(panel);
+      await expect(window.getByRole("menuitem", { name: "Unlock Input" })).toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      // Toggle back
+      await window.getByRole("menuitem", { name: "Unlock Input" }).click();
     });
 
     test("close terminal", async () => {
