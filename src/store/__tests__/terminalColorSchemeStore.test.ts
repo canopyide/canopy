@@ -78,11 +78,11 @@ describe("terminalColorSchemeStore", () => {
     expect(theme.foreground).toBe("#C9D1D9");
   });
 
-  it("getEffectiveTheme returns solarized-light for bondi app theme", () => {
+  it("getEffectiveTheme returns bondi terminal theme for bondi app theme", () => {
     useAppThemeStore.setState({ selectedSchemeId: "bondi" });
     const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.background).toBe("#fdf6e3");
-    expect(theme.foreground).toBe("#657b83");
+    expect(theme.background).toBe("#ffffff");
+    expect(theme.foreground).toBe("#0f172a");
   });
 
   it("getEffectiveTheme returns correct theme after switching to non-canopy scheme", () => {
