@@ -38,20 +38,23 @@ test.describe("Core: Process Cleanup", () => {
       const ctx = await launchApp({ userDataDir });
       await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Process Cleanup");
 
-      // Open terminal
+      // Open terminal and wait for shell readiness
       await ctx.window.locator(SEL.toolbar.openTerminal).click();
       const panel = getFirstGridPanel(ctx.window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
-      await ctx.window.waitForTimeout(2000);
+      await waitForTerminalText(panel, "process-cleanup", T_LONG);
 
-      // Spawn a long-lived child process
+      // Spawn a long-lived child process and wait for it to appear
       await runTerminalCommand(ctx.window, panel, "sleep 9999");
-      await ctx.window.waitForTimeout(1500);
 
-      // Collect PTY PID and descendants
+      // Collect PTY PID and poll for descendants until sleep is visible
       ptyPid = await getPtyPid(ctx.window, panel);
       expect(ptyPid).toBeGreaterThan(0);
+      await expect
+        .poll(() => getDescendantPids(ptyPid).length, { timeout: 10_000, intervals: [500] })
+        .toBeGreaterThan(0);
       descendants = getDescendantPids(ptyPid);
+      expect(descendants.length).toBeGreaterThan(0);
 
       const electronPid = ctx.app.process().pid!;
 
@@ -97,7 +100,7 @@ test.describe("Core: Process Cleanup", () => {
       await ctx.window.locator(SEL.toolbar.openTerminal).click();
       const panel = getFirstGridPanel(ctx.window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
-      await ctx.window.waitForTimeout(2000);
+      await waitForTerminalText(panel, "process-cleanup-unclean", T_LONG);
 
       // Spawn a HUP-resistant process so it survives SIGKILL of parent.
       // `trap '' HUP` makes the shell ignore SIGHUP.
