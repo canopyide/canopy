@@ -119,10 +119,10 @@ describe("createCanopyTokens — light mode derived defaults", () => {
     expect(lightTokens["shadow-color"]).toBe("rgba(26, 26, 26, 0.1)");
   });
 
-  it("Bondi overrides overlays to white-based for correct light-mode elevation", () => {
+  it("Bondi uses dark-ink overlays (default for light themes)", () => {
     const bondi = BUILT_IN_APP_SCHEMES.find((scheme) => scheme.id === "bondi")!;
-    expect(bondi.tokens["overlay-soft"]).toMatch(/^rgba\(255, 255, 255,/);
-    expect(bondi.tokens["overlay-subtle"]).toMatch(/^rgba\(255, 255, 255,/);
+    expect(bondi.tokens["overlay-soft"]).toMatch(/^rgba\(15, 23, 42,/);
+    expect(bondi.tokens["overlay-subtle"]).toMatch(/^rgba\(15, 23, 42,/);
   });
 });
 
