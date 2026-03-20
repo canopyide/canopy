@@ -16,17 +16,15 @@ const PROJECT_B = "Lifecycle Project B";
 const RECIPE_NAME = "Lifecycle Recipe";
 
 let ctx: AppContext;
+let repoBPath: string;
 
 test.describe.serial("Core: Project Lifecycle", () => {
   test.beforeAll(async () => {
     const repoA = createFixtureRepo({ name: "lifecycle-a" });
-    const repoB = createFixtureRepo({ name: "lifecycle-b" });
+    repoBPath = createFixtureRepo({ name: "lifecycle-b" });
 
     ctx = await launchApp();
     await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
-
-    // Store repoB path for adding later
-    (ctx as AppContext & { repoB: string }).repoB = repoB;
   });
 
   test.afterAll(async () => {
@@ -35,9 +33,8 @@ test.describe.serial("Core: Project Lifecycle", () => {
 
   test("add second project via project switcher", async () => {
     const { app, window } = ctx;
-    const repoB = (ctx as AppContext & { repoB: string }).repoB;
 
-    await addAndSwitchToProject(app, window, repoB, PROJECT_B);
+    await addAndSwitchToProject(app, window, repoBPath, PROJECT_B);
 
     // Verify both projects are listed in the switcher
     await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
