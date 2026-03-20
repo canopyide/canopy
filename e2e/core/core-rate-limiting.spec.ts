@@ -85,7 +85,7 @@ test.describe.serial("Core: Rate Limiting", () => {
 
     // At least 1 rejection should be "Spawn queue full" (the overflow)
     const queueFullErrors = rejected.filter((r) => r.message.includes("Spawn queue full"));
-    expect(queueFullErrors.length).toBeGreaterThanOrEqual(1);
+    expect(queueFullErrors.length).toBe(1);
 
     // The remaining rejections are "App is shutting down" from drainRateLimitQueues
     const shutdownErrors = rejected.filter((r) => r.message.includes("App is shutting down"));
@@ -116,10 +116,13 @@ test.describe.serial("Core: Rate Limiting", () => {
     // Next spawn would queue (not reject) — verify it doesn't resolve immediately
     // by racing it against a short timeout.
     const queuedResult = await ctx.window.evaluate(async (cwd) => {
+      const spawnPromise = (window as any).electron.terminal
+        .spawn({ cols: 80, rows: 24, cwd })
+        .then((id: string) => ({ resolved: true as const, id }));
+      // Prevent unhandled rejection when resetRateLimits drains this promise
+      spawnPromise.catch(() => {});
       const raceResult = await Promise.race([
-        (window as any).electron.terminal
-          .spawn({ cols: 80, rows: 24, cwd })
-          .then((id: string) => ({ resolved: true, id })),
+        spawnPromise,
         new Promise<{ resolved: false }>((resolve) =>
           setTimeout(() => resolve({ resolved: false }), 500)
         ),
