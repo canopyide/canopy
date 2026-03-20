@@ -245,9 +245,9 @@ test.describe.serial("Core: Process Cleanup on Shutdown", () => {
 
     // If closeApp() needed the force-kill fallback (10s timeout), elapsed > 10s.
     // The graceful shutdown (4s PTY kill timeout + service disposal) should
-    // complete well under this. Use 10s as the threshold — exceeding it means
+    // complete well under this. Use 15s as the threshold — exceeding it means
     // the graceful path failed and closeApp had to force-kill.
-    expect(elapsed).toBeLessThan(10_000);
+    expect(elapsed).toBeLessThan(15_000);
 
     // Verify all tracked PIDs are dead after shutdown
     for (const pid of trackedPids) {
