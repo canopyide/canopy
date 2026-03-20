@@ -341,6 +341,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Send selection to another terminal",
     category: "Terminal",
   },
+  {
+    actionId: "terminal.bulkCommand",
+    combo: "Cmd+Shift+B",
+    scope: "global",
+    priority: 0,
+    description: "Open bulk command center",
+    category: "Terminal",
+  },
   // Directional terminal navigation (Ghostty-style: Cmd+Option+Arrow)
   {
     actionId: "terminal.focusUp",

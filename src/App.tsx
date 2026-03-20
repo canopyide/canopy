@@ -12,7 +12,7 @@ import React, {
   useTransition,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw } from "lucide-react";
+import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw, Radio } from "lucide-react";
 import { ScrollIndicator } from "./components/Worktree/ScrollIndicator";
 import {
   isElectronAvailable,
@@ -97,6 +97,7 @@ import { ActionPalette } from "./components/ActionPalette";
 import { QuickSwitcher } from "./components/QuickSwitcher";
 import { SendToAgentPalette } from "./components/Terminal/SendToAgentPalette";
 import { useSendToAgentPalette } from "./hooks/useSendToAgentPalette";
+import { BulkCommandPalette } from "./components/BulkCommandCenter";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { NotesPalette } from "./components/Notes";
@@ -824,6 +825,18 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
               <button
+                onClick={() =>
+                  actionService.dispatch("terminal.bulkCommand", undefined, {
+                    source: "user",
+                  })
+                }
+                className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
+                title={createTooltipWithShortcut("Bulk command center", "Cmd+Shift+B")}
+                aria-label="Bulk command center"
+              >
+                <Radio className="w-3.5 h-3.5" />
+              </button>
+              <button
                 onClick={handleRefreshAll}
                 disabled={isRefreshing}
                 className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1276,6 +1289,7 @@ function App() {
         selectItem={sendToAgentPalette.selectItem}
         confirmSelection={sendToAgentPalette.confirmSelection}
       />
+      <BulkCommandPalette />
       <NewTerminalPalette
         isOpen={newTerminalPalette.isOpen}
         query={newTerminalPalette.query}
