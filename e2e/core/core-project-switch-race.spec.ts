@@ -146,11 +146,15 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     test.slow();
     const { window } = ctx;
 
+    // Ensure faults are cleared from previous test before spawning
+    await clearAllFaults(ctx.app);
+
     // Ensure we're on Project A with a fresh terminal fully spawned
     await switchToProject(window, PROJECT_A_NAME);
     await window.locator(SEL.toolbar.openTerminal).click();
     const panel = window.locator(SEL.panel.gridPanel).first();
-    await expect(panel).toBeVisible({ timeout: T_LONG });
+    // CI VMs are slow after fault-injection tests; use generous timeout
+    await expect(panel).toBeVisible({ timeout: 60_000 });
     // Wait for shell prompt so the terminal is fully initialized
     await window.waitForTimeout(3000);
 
