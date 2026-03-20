@@ -29,6 +29,7 @@ test.describe.serial("Core: Sidecar Panel", () => {
     await toggle.click();
 
     await expect(window.locator(SEL.sidecar.region)).toBeVisible({ timeout: T_MEDIUM });
+    await expect(toggle).toHaveAttribute("aria-pressed", "true", { timeout: T_SHORT });
   });
 
   test("shows launchpad content", async () => {
@@ -40,8 +41,10 @@ test.describe.serial("Core: Sidecar Panel", () => {
   test("closes via toolbar toggle", async () => {
     const { window } = ctx;
 
-    await window.locator(SEL.toolbar.sidecarToggle).click();
+    const toggle = window.locator(SEL.toolbar.sidecarToggle);
+    await toggle.click();
     await expect(window.locator(SEL.sidecar.region)).toBeHidden({ timeout: T_SHORT });
+    await expect(toggle).toHaveAttribute("aria-pressed", "false", { timeout: T_SHORT });
   });
 
   test("resizes via keyboard", async () => {
