@@ -177,10 +177,6 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     test.slow();
     const { window } = ctx;
 
-    // Record baseline terminal count
-    const baselineTerminals = await getAllTerminals(window);
-    const baselineCount = baselineTerminals.filter((t: TerminalInfo) => !t.isTrashed).length;
-
     // Switch to Project A to spawn from there
     await switchToProject(window, PROJECT_A_NAME);
     const projectA = await getCurrentProject(window);
