@@ -162,8 +162,8 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
       "type new command and verify output",
       async () => {
         const panel = getPanelById(page, panelIdsA[0]);
-        await focusAndRunCommand(page, panel, "echo POST_SWITCH_INPUT");
-        await waitForTerminalText(panel, "POST_SWITCH_INPUT");
+        await focusAndRunCommand(page, panel, "echo INPUT_OK_$((40+2))");
+        await waitForTerminalText(panel, "INPUT_OK_42");
       },
       { box: true }
     );
@@ -286,7 +286,7 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
     );
 
     await test.step(
-      "verify final state is A with 3 panels",
+      "verify final state is A with 3 panels and original content",
       async () => {
         const current = await page.evaluate(async () => {
           return await (window as any).electron.project.getCurrent();
@@ -294,6 +294,10 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
         expect(current.name).toBe(PROJECT_A);
 
         await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(3);
+
+        // Verify original terminal markers survived rapid switching
+        const panel1 = getPanelById(page, panelIdsA[0]);
+        await waitForTerminalText(panel1, "MARKER_ALPHA_ONE");
       },
       { box: true }
     );
