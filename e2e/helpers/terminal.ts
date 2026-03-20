@@ -54,10 +54,12 @@ export async function selectAllTerminalText(panelLocator: Locator): Promise<void
   const page = panelLocator.page();
   const panelId = await getPanelId(panelLocator);
   if (!panelId) throw new Error("Could not resolve panel ID for selectAll");
-  await page.evaluate((id) => {
+  const ok = await page.evaluate((id) => {
     const fn = (window as unknown as Record<string, unknown>).__canopySelectTerminalAll;
-    if (typeof fn === "function") fn(id);
+    if (typeof fn === "function") return fn(id) as boolean;
+    return false;
   }, panelId);
+  if (!ok) throw new Error(`selectAllTerminalText failed for panel ${panelId}`);
 }
 
 export async function openTerminalContextMenu(panelLocator: Locator): Promise<void> {
