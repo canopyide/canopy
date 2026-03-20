@@ -289,7 +289,7 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "status-success": "#059669",
       "status-warning": "#d97706",
       "status-danger": "#dc2626",
-      "status-info": "#0ea5e9",
+      "status-info": "#0369a1",
       // Activity — Bondi Blue active, emerald working
       "activity-active": "#0080A0",
       "activity-idle": "#94a3b8",
