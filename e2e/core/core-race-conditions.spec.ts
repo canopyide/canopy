@@ -33,41 +33,40 @@ test.describe.serial("Core: Race Conditions from Concurrent IPC", () => {
     const { window } = ctx;
 
     const branchName = `race-wt-${Date.now()}`;
-    const wtPath1 = path.join(path.dirname(fixtureDir), `race-wt-1-${Date.now()}`);
-    const wtPath2 = path.join(path.dirname(fixtureDir), `race-wt-2-${Date.now()}`);
+    const wtPath = path.join(path.dirname(fixtureDir), `race-wt-${Date.now()}`);
 
+    // Fire two concurrent creates with the SAME branch name and target path
     const results: SettledResult<string>[] = await window.evaluate(
-      async ([rootPath, branch, p1, p2]: string[]) => {
+      async ([rootPath, branch, targetPath]: string[]) => {
         const api = (window as any).electron.worktree;
-        const opts1 = { baseBranch: "main", newBranch: branch, path: p1 };
-        const opts2 = { baseBranch: "main", newBranch: branch + "-dup", path: p2 };
+        const opts = { baseBranch: "main", newBranch: branch, path: targetPath };
         const calls = [
-          api.create(opts1, rootPath).then(
+          api.create(opts, rootPath).then(
             (v: string) => ({ status: "fulfilled", value: v }),
             (e: any) => ({ status: "rejected", reason: e?.message ?? String(e) })
           ),
-          api.create(opts2, rootPath).then(
+          api.create(opts, rootPath).then(
             (v: string) => ({ status: "fulfilled", value: v }),
             (e: any) => ({ status: "rejected", reason: e?.message ?? String(e) })
           ),
         ];
         return Promise.all(calls);
       },
-      [fixtureDir, branchName, wtPath1, wtPath2]
+      [fixtureDir, branchName, wtPath]
     );
 
+    // Exactly one should succeed, the other should be rejected (git won't create duplicate)
     const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled.length + rejected.length).toBe(2);
     expect(fulfilled.length).toBeGreaterThanOrEqual(1);
 
-    // Verify worktrees from backend — at least one new worktree exists
+    // Verify exactly one worktree with this branch exists
     const worktrees = await window.evaluate(async () => {
       return await (window as any).electron.worktree.getAll();
     });
-    const newWorktrees = worktrees.filter(
-      (wt: any) => wt.branch && wt.branch.startsWith("race-wt-") && !wt.isMainWorktree
-    );
-    expect(newWorktrees.length).toBeGreaterThanOrEqual(1);
-    expect(newWorktrees.length).toBeLessThanOrEqual(2);
+    const matching = worktrees.filter((wt: any) => wt.branch === branchName && !wt.isMainWorktree);
+    expect(matching.length).toBe(1);
   });
 
   test("concurrent terminal spawn with same ID results in exactly one terminal", async () => {
@@ -120,7 +119,7 @@ test.describe.serial("Core: Race Conditions from Concurrent IPC", () => {
     }, terminalId);
   });
 
-  test("closing a panel during spawn does not crash the main process", async () => {
+  test("concurrent spawn/kill/trash does not crash or duplicate", async () => {
     test.setTimeout(60_000);
     const { window } = ctx;
 
@@ -152,16 +151,15 @@ test.describe.serial("Core: Race Conditions from Concurrent IPC", () => {
     const alive = await ctx.app.evaluate(() => true);
     expect(alive).toBe(true);
 
-    // Terminal must be in a consistent state — any single state is acceptable
-    // (the race outcome is nondeterministic: spawn may win or kill/trash may win)
+    // Must not have duplicate terminal records — at most one entry with this ID
     const terminals: any[] = await window.evaluate(async () => {
       return await (window as any).electron.terminal.getAllTerminals();
     });
-    const t = terminals.find((t: any) => t.id === terminalId);
-    const state = !t ? "absent" : t.isTrashed ? "trashed" : t.hasPty ? "active" : "killed";
-    expect(state).toMatch(/absent|trashed|active|killed/);
+    const matching = terminals.filter((t: any) => t.id === terminalId);
+    expect(matching.length).toBeLessThanOrEqual(1);
 
     // Cleanup
+    const t = matching[0];
     if (t && !t.isTrashed) {
       await window.evaluate(async (id: string) => {
         try {
