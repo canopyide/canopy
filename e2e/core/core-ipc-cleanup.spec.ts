@@ -145,7 +145,7 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
       // Simulate 5 mount/unmount cycles: subscribe, then unsubscribe
       for (let i = 0; i < 5; i++) {
         if (cleanup) cleanup();
-        cleanup = w.electron.terminal.onActivity((_terminalId: string, _isActive: boolean) => {
+        cleanup = w.electron.terminal.onActivity(() => {
           counter++;
         });
       }
@@ -163,7 +163,10 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
     await app.evaluate(({ BrowserWindow }) => {
       const wins = BrowserWindow.getAllWindows();
       if (wins.length > 0) {
-        wins[0].webContents.send("terminal:activity", "test-terminal-id", true);
+        wins[0].webContents.send("terminal:activity", {
+          terminalId: "test-terminal-id",
+          headline: "e2e test",
+        });
       }
     });
 
