@@ -48,7 +48,7 @@ import { useMcpBridge } from "./hooks/useMcpBridge";
 import { useFileDropGuard } from "./hooks/useFileDropGuard";
 import { removeStartupSkeleton } from "./utils/removeStartupSkeleton";
 import { createTooltipWithShortcut } from "./lib/platform";
-import { TooltipProvider } from "./components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { useCrashRecoveryGate } from "./hooks/app/useCrashRecoveryGate";
 import { CrashRecoveryDialog } from "./components/Recovery/CrashRecoveryDialog";
 import {
@@ -866,48 +866,68 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           </div>
           <div className="flex items-center gap-1">
             <div className="invisible group-hover/header:visible group-focus-within/header:visible flex items-center gap-1">
-              <button
-                onClick={onOpenOverview}
-                className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
-                title={createTooltipWithShortcut("Open worktrees overview", "Cmd+Shift+O")}
-                aria-label="Open worktrees overview"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() =>
-                  actionService.dispatch("terminal.bulkCommand", undefined, {
-                    source: "user",
-                  })
-                }
-                className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
-                title={createTooltipWithShortcut("Bulk command center", "Cmd+Shift+B")}
-                aria-label="Bulk command center"
-              >
-                <Radio className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={handleRefreshAll}
-                disabled={isRefreshing}
-                className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Refresh sidebar"
-                aria-label="Refresh sidebar"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onOpenOverview}
+                    className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
+                    aria-label="Open worktrees overview"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {createTooltipWithShortcut("Open worktrees overview", "Cmd+Shift+O")}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() =>
+                      actionService.dispatch("terminal.bulkCommand", undefined, {
+                        source: "user",
+                      })
+                    }
+                    className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
+                    aria-label="Bulk command center"
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {createTooltipWithShortcut("Bulk command center", "Cmd+Shift+B")}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleRefreshAll}
+                    disabled={isRefreshing}
+                    className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="Refresh sidebar"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Refresh sidebar</TooltipContent>
+              </Tooltip>
             </div>
-            <button
-              onClick={() =>
-                actionService.dispatch("worktree.createDialog.open", undefined, {
-                  source: "user",
-                })
-              }
-              className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
-              title="Create new worktree"
-              aria-label="Create new worktree"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() =>
+                    actionService.dispatch("worktree.createDialog.open", undefined, {
+                      source: "user",
+                    })
+                  }
+                  className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
+                  aria-label="Create new worktree"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Create new worktree</TooltipContent>
+            </Tooltip>
           </div>
         </div>
 
