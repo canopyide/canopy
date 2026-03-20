@@ -83,4 +83,24 @@ describe("ThemeSelectionStep", () => {
     const { container } = render(<ThemeSelectionStep {...defaultProps} isOpen={false} />);
     expect(container.querySelector("[role='dialog']")).toBeNull();
   });
+
+  it("auto-selects bondi when OS prefers light and current scheme is daintree", () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(prefers-color-scheme: light)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    render(<ThemeSelectionStep {...defaultProps} />);
+    expect(mockSetSelectedSchemeId).toHaveBeenCalledWith("bondi");
+    expect(mockSetColorScheme).toHaveBeenCalledWith("bondi");
+  });
+
+  it("does not auto-select when already on OS-preferred scheme", () => {
+    render(<ThemeSelectionStep {...defaultProps} />);
+    expect(mockSetSelectedSchemeId).not.toHaveBeenCalled();
+  });
 });
