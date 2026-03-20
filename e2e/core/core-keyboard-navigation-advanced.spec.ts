@@ -82,14 +82,29 @@ test.describe.serial("Core: Keyboard Terminal Navigation", () => {
     const startId = await getFocusedPanelId(window);
     expect(startId).toBeTruthy();
 
-    // Cycle backward: should wrap to last panel
-    await window.keyboard.press("Control+Shift+Tab");
+    // First discover the forward order by pressing Ctrl+Tab twice
+    await window.keyboard.press("Control+Tab");
     await expect.poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM }).not.toBe(startId);
-    const lastId = await getFocusedPanelId(window);
+    const forwardSecond = await getFocusedPanelId(window);
 
-    // Cycle backward again: should move to a different panel
+    await window.keyboard.press("Control+Tab");
+    await expect
+      .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM })
+      .not.toBe(forwardSecond);
+    const forwardThird = await getFocusedPanelId(window);
+
+    // Return to start
+    await window.locator(SEL.panel.gridPanel).first().locator(SEL.terminal.xtermRows).click();
+    await window.waitForTimeout(T_SETTLE);
+    await expect.poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM }).toBe(startId);
+
+    // Cycle backward: should wrap to last panel (same as forward's third)
     await window.keyboard.press("Control+Shift+Tab");
-    await expect.poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM }).not.toBe(lastId);
+    await expect.poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM }).toBe(forwardThird);
+
+    // Cycle backward again: should go to the second panel (reverse of forward)
+    await window.keyboard.press("Control+Shift+Tab");
+    await expect.poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM }).toBe(forwardSecond);
   });
 
   test("cycling with single panel is no-op", async () => {
@@ -201,14 +216,14 @@ test.describe.serial("Core: Keyboard Worktree Navigation", () => {
     await window.keyboard.press(`${mod}+Alt+2`);
     await expect(featureCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
 
-    // Jump to worktree 1 (main)
-    await window.keyboard.press(`${mod}+Alt+1`);
-    await expect(mainCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
-
-    // Jump to out-of-range worktree 9 — should be no-op
+    // Jump to out-of-range worktree 9 while on worktree 2 — should be no-op
     await window.keyboard.press(`${mod}+Alt+9`);
     await window.waitForTimeout(T_SETTLE);
-    await expect(mainCard).toHaveAttribute("aria-label", /selected/, { timeout: T_SHORT });
+    await expect(featureCard).toHaveAttribute("aria-label", /selected/, { timeout: T_SHORT });
+
+    // Jump to worktree 1 (main) to leave clean state
+    await window.keyboard.press(`${mod}+Alt+1`);
+    await expect(mainCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
   });
 
   test("focus state visible via DOM attributes after keyboard navigation", async () => {
