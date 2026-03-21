@@ -6,7 +6,6 @@
 
   --color-white: #ffffff;
   --color-black: #000000;
-  --color-tint: var(--theme-tint, #ffffff);
 
   --color-surface-canvas: var(--theme-surface-canvas);
   --color-surface-sidebar: var(--theme-surface-sidebar);
@@ -32,6 +31,7 @@
   --color-accent-primary-foreground: var(--theme-accent-foreground);
   --color-accent-soft: var(--theme-accent-soft);
   --color-accent-muted: var(--theme-accent-muted);
+  --color-accent-rgb: var(--theme-accent-rgb);
   --color-focus-ring: var(--theme-focus-ring);
   --color-status-success: var(--theme-status-success);
   --color-status-warning: var(--theme-status-warning);
@@ -52,10 +52,20 @@
   --color-scrim-medium: var(--theme-scrim-medium);
   --color-scrim-strong: var(--theme-scrim-strong);
   --color-shadow-color: var(--theme-shadow-color);
+  --color-tint: var(--theme-tint);
   --color-github-open: var(--theme-github-open);
   --color-github-merged: var(--theme-github-merged);
   --color-github-closed: var(--theme-github-closed);
   --color-github-draft: var(--theme-github-draft);
+  --color-search-highlight-background: var(--theme-search-highlight-background);
+  --color-search-highlight-text: var(--theme-search-highlight-text);
+  --color-search-selected-result-border: var(--theme-search-selected-result-border);
+  --color-search-selected-result-icon: var(--theme-search-selected-result-icon);
+  --color-search-match-badge-background: var(--theme-search-match-badge-background);
+  --color-search-match-badge-text: var(--theme-search-match-badge-text);
+  --color-terminal-background: var(--theme-terminal-background);
+  --color-terminal-foreground: var(--theme-terminal-foreground);
+  --color-terminal-muted: var(--theme-terminal-muted);
   --color-terminal-selection: var(--theme-terminal-selection);
   --color-terminal-black: var(--theme-terminal-black);
   --color-terminal-red: var(--theme-terminal-red);
@@ -95,6 +105,10 @@
   --color-category-pink: var(--theme-category-pink);
   --color-category-violet: var(--theme-category-violet);
   --color-category-slate: var(--theme-category-slate);
+  --color-recipe-state-chip-bg-opacity: var(--theme-recipe-state-chip-bg-opacity);
+  --color-recipe-state-chip-border-opacity: var(--theme-recipe-state-chip-border-opacity);
+  --color-recipe-label-pill-bg-opacity: var(--theme-recipe-label-pill-bg-opacity);
+  --color-recipe-label-pill-border-opacity: var(--theme-recipe-label-pill-border-opacity);
 
   --color-category-blue-subtle: color-mix(
     in oklch,
@@ -518,6 +532,13 @@ code.hljs {
   --dock-item-border-active: rgba(var(--theme-accent-rgb), 0.32);
   --dock-item-bg-failed: color-mix(in oklab, var(--color-status-error) 8%, transparent);
   --dock-item-border-failed: color-mix(in oklab, var(--color-status-error) 40%, transparent);
+
+  /* Recipe tokens — per-theme parametric opacity values */
+  --recipe-state-chip-bg-opacity: var(--theme-recipe-state-chip-bg-opacity, 0.15);
+  --recipe-state-chip-border-opacity: var(--theme-recipe-state-chip-border-opacity, 0.4);
+  --recipe-label-pill-bg-opacity: var(--theme-recipe-label-pill-bg-opacity, 0.1);
+  --recipe-label-pill-border-opacity: var(--theme-recipe-label-pill-border-opacity, 0.2);
+
   --animation-duration: 150ms;
   --transition-duration: 150ms;
   --terminal-animation-duration: 150ms;

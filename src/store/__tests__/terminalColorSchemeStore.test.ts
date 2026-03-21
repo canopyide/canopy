@@ -64,25 +64,11 @@ describe("terminalColorSchemeStore", () => {
     expect(theme.cursor).toBe("#3F9366");
   });
 
-  it("getEffectiveTheme returns fiordland theme for fiordland app theme", () => {
-    useAppThemeStore.setState({ selectedSchemeId: "fiordland" });
-    const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.background).toBe("#070D12");
-    expect(theme.foreground).toBe("#B5C7D6");
-  });
-
-  it("getEffectiveTheme returns Highlands theme for highlands app theme", () => {
-    useAppThemeStore.setState({ selectedSchemeId: "highlands" });
-    const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.background).toBe("#1A1614");
-    expect(theme.foreground).toBe("#C9D1D9");
-  });
-
   it("getEffectiveTheme returns bondi terminal theme for bondi app theme", () => {
     useAppThemeStore.setState({ selectedSchemeId: "bondi" });
     const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.background).toBe("#ffffff");
-    expect(theme.foreground).toBe("#0f172a");
+    expect(theme.background).toBe("#1E252E");
+    expect(theme.foreground).toBe("#D8DDE3");
   });
 
   it("getEffectiveTheme returns correct theme after switching to non-canopy scheme", () => {
@@ -161,9 +147,9 @@ describe("terminalColorSchemeStore", () => {
     });
 
     it("returns mapped scheme background when app theme changes", () => {
-      useAppThemeStore.setState({ selectedSchemeId: "fiordland" });
+      useAppThemeStore.setState({ selectedSchemeId: "bondi" });
       const bg = selectWrapperBackground(useTerminalColorSchemeStore.getState());
-      expect(bg).toBe("#070D12");
+      expect(bg).toBe("#1E252E");
     });
 
     it("returns hex color for built-in non-default scheme", () => {

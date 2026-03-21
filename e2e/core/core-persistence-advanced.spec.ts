@@ -122,15 +122,15 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
     ctx = await launchApp({ userDataDir });
     const { window: w1, app: app1 } = ctx;
 
-    // Set theme to "fiordland" (dark, non-default) via IPC and reload
+    // Set theme to "bondi" (light, non-default) via IPC and reload
     await w1.evaluate(async () => {
-      await window.electron.appTheme.setColorScheme("fiordland");
+      await window.electron.appTheme.setColorScheme("bondi");
     });
     await w1.reload({ waitUntil: "domcontentloaded" });
     await w1.locator(SEL.toolbar.openSettings).waitFor({ state: "visible", timeout: T_MEDIUM });
 
     // Verify theme applied
-    await expect(w1.locator("html")).toHaveAttribute("data-theme", "fiordland", {
+    await expect(w1.locator("html")).toHaveAttribute("data-theme", "bondi", {
       timeout: T_MEDIUM,
     });
 
@@ -199,11 +199,11 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
     ctx = await launchApp({ userDataDir });
     const { window: w2 } = ctx;
 
-    // Verify theme persisted (fiordland is dark, never a system default)
-    await expect(w2.locator("html")).toHaveAttribute("data-theme", "fiordland", {
+    // Verify theme persisted (bondi is light, non-default)
+    await expect(w2.locator("html")).toHaveAttribute("data-theme", "bondi", {
       timeout: T_MEDIUM,
     });
-    await expect(w2.locator("html")).toHaveAttribute("data-color-mode", "dark", {
+    await expect(w2.locator("html")).toHaveAttribute("data-color-mode", "light", {
       timeout: T_MEDIUM,
     });
 
