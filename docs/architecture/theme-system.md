@@ -68,4 +68,8 @@ See [theme-tokens.md](./theme-tokens.md) for the complete token schema, per-toke
 - Spacing, layout, and animation timing remain app-owned.
 - Terminal is a first-class layer independent of workbench surfaces. Themes can use a dark terminal inside a light workbench (see Bondi).
 - Search highlighting is independent of accent. Themes can use different hues for search vs interaction.
-- Recipe tokens (`recipe-*`) encode per-theme parametric values (opacities, shadows). Components consume these alongside semantic color tokens.
+- Recipe tokens (`recipe-*`) encode per-theme parametric values (opacities, shadows, geometry, textures). Components consume these alongside semantic color tokens.
+- The overlay ladder is driven by `overlay-base`. Setting this to a hued color tints all hover and fill states; borders and surfaces continue using the neutral polarity tone.
+- `accent-secondary` provides an optional second color lane for dual-accent themes. Defaults to `status-success` so single-accent themes require no secondary accent definition.
+- Shadow personality is fully theme-controlled via `recipe-shadow-ambient` and `recipe-shadow-floating` — complete `box-shadow` values including geometry and blur.
+- The `recipe-surface-elevated-inset-shadow` token drives the top-edge sheen on elevated surfaces (dialogs, palettes, active sidebar cards). Set to `"none"` for flat aesthetics.
