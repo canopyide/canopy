@@ -16,13 +16,13 @@ describe("applyAppThemeToRoot", () => {
     expect(root.style.colorScheme).toBe("dark");
   });
 
-  it("uses the theme foreground ink as the tint for light themes", () => {
+  it("uses black as the tint for light themes", () => {
     const root = document.createElement("div");
     const bondi = resolveAppTheme("bondi");
 
     applyAppThemeToRoot(root, bondi);
 
-    expect(root.style.getPropertyValue("--theme-tint")).toBe(bondi.tokens["text-primary"]);
+    expect(root.style.getPropertyValue("--theme-tint")).toBe("#000000");
     expect(root.dataset.theme).toBe("bondi");
     expect(root.dataset.colorMode).toBe("light");
     expect(root.style.colorScheme).toBe("light");

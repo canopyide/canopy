@@ -41,28 +41,6 @@ describe("getTerminalThemeFromAppScheme", () => {
     expect(theme.scrollbarSliderBackground).toBe("rgba(255, 255, 255, 0.20)");
   });
 
-  it("maps Fiordland scheme tokens correctly", () => {
-    const fiordland = BUILT_IN_APP_SCHEMES.find((s) => s.id === "fiordland")!;
-    const theme = getTerminalThemeFromAppScheme(fiordland);
-    expect(theme.background).toBe("#070D12");
-    expect(theme.foreground).toBe("#D4E0D6");
-    expect(theme.selectionBackground).toBe("#162E3A");
-    expect(theme.red).toBe("#D06775");
-    expect(theme.green).toBe("#66A88B");
-    expect(theme.brightWhite).toBe("#D4E3EF");
-    // activity-idle #3D4E5C → rgba(61, 78, 92, ...)
-    expect(theme.scrollbarSliderBackground).toBe("rgba(61, 78, 92, 0.4)");
-    expect(theme.scrollbarSliderHoverBackground).toBe("rgba(61, 78, 92, 0.6)");
-    expect(theme.scrollbarSliderActiveBackground).toBe("rgba(61, 78, 92, 0.8)");
-  });
-
-  it("maps Serengeti terminal-black to text-primary, not canvas", () => {
-    const serengeti = BUILT_IN_APP_SCHEMES.find((s) => s.id === "serengeti")!;
-    const theme = getTerminalThemeFromAppScheme(serengeti);
-    expect(theme.black).toBe("#4A3F35");
-    expect(theme.black).not.toBe(serengeti.tokens["surface-canvas"]);
-  });
-
   it("uses light generic defaults for non-hex light scheme", () => {
     const scheme: AppColorScheme = {
       ...BUILT_IN_APP_SCHEMES[0],

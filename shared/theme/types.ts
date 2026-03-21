@@ -1,4 +1,5 @@
 export const APP_THEME_TOKEN_KEYS = [
+  // Surface hierarchy
   "surface-canvas",
   "surface-sidebar",
   "surface-panel",
@@ -8,43 +9,80 @@ export const APP_THEME_TOKEN_KEYS = [
   "surface-inset",
   "surface-hover",
   "surface-active",
+
+  // Text hierarchy
   "text-primary",
   "text-secondary",
   "text-muted",
   "text-inverse",
   "text-link",
+
+  // Borders
   "border-default",
   "border-subtle",
   "border-strong",
   "border-divider",
   "border-interactive",
+
+  // Accent
   "accent-primary",
   "accent-foreground",
   "accent-soft",
   "accent-muted",
+  "accent-rgb",
+
+  // Focus
   "focus-ring",
+
+  // Status
   "status-success",
   "status-warning",
   "status-danger",
   "status-info",
+
+  // Activity
   "activity-active",
   "activity-idle",
   "activity-working",
   "activity-waiting",
   "activity-approval",
+
+  // Overlay ladder
   "overlay-subtle",
   "overlay-soft",
   "overlay-medium",
   "overlay-strong",
   "overlay-emphasis",
+
+  // Scrim
   "scrim-soft",
   "scrim-medium",
   "scrim-strong",
+
+  // Shadow
   "shadow-color",
+
+  // Tint (white for dark themes, black for light themes)
+  "tint",
+
+  // GitHub PR/issue states
   "github-open",
   "github-merged",
   "github-closed",
   "github-draft",
+
+  // Search highlighting (independent of accent)
+  "search-highlight-background",
+  "search-highlight-text",
+  "search-selected-result-border",
+  "search-selected-result-icon",
+  "search-match-badge-background",
+  "search-match-badge-text",
+
+  // Terminal (first-class layer, independent of workbench)
+  "terminal-background",
+  "terminal-foreground",
+  "terminal-muted",
   "terminal-selection",
   "terminal-black",
   "terminal-red",
@@ -62,6 +100,8 @@ export const APP_THEME_TOKEN_KEYS = [
   "terminal-bright-magenta",
   "terminal-bright-cyan",
   "terminal-bright-white",
+
+  // Syntax highlighting
   "syntax-comment",
   "syntax-punctuation",
   "syntax-number",
@@ -72,6 +112,8 @@ export const APP_THEME_TOKEN_KEYS = [
   "syntax-link",
   "syntax-quote",
   "syntax-chip",
+
+  // Category hues (12 perceptually uniform colors)
   "category-blue",
   "category-purple",
   "category-cyan",
@@ -84,6 +126,12 @@ export const APP_THEME_TOKEN_KEYS = [
   "category-pink",
   "category-violet",
   "category-slate",
+
+  // Recipes — per-theme parametric values
+  "recipe-state-chip-bg-opacity",
+  "recipe-state-chip-border-opacity",
+  "recipe-label-pill-bg-opacity",
+  "recipe-label-pill-border-opacity",
 ] as const;
 
 export type AppThemeTokenKey = (typeof APP_THEME_TOKEN_KEYS)[number];

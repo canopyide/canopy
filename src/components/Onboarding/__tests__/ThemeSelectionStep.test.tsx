@@ -44,7 +44,7 @@ describe("ThemeSelectionStep", () => {
   it("renders exactly two theme options (Daintree and Bondi)", () => {
     render(<ThemeSelectionStep {...defaultProps} />);
     expect(screen.getByText("Daintree")).toBeTruthy();
-    expect(screen.getByText("Bondi")).toBeTruthy();
+    expect(screen.getByText("Bondi Beach")).toBeTruthy();
     expect(screen.queryByText("Fiordland")).toBeNull();
     expect(screen.queryByText("Highlands")).toBeNull();
   });
@@ -62,7 +62,7 @@ describe("ThemeSelectionStep", () => {
 
   it("calls setSelectedSchemeId and appThemeClient.setColorScheme on theme click", () => {
     render(<ThemeSelectionStep {...defaultProps} />);
-    fireEvent.click(screen.getByText("Bondi"));
+    fireEvent.click(screen.getByText("Bondi Beach"));
     expect(mockSetSelectedSchemeId).toHaveBeenCalledWith("bondi");
     expect(mockSetColorScheme).toHaveBeenCalledWith("bondi");
   });

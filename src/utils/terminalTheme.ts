@@ -29,8 +29,8 @@ export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME {
   };
 
   return {
-    background: getVar("--theme-surface-panel", CANOPY_TERMINAL_THEME.background ?? ""),
-    foreground: getVar("--theme-text-primary", CANOPY_TERMINAL_THEME.foreground ?? ""),
+    background: getVar("--theme-terminal-background", CANOPY_TERMINAL_THEME.background ?? ""),
+    foreground: getVar("--theme-terminal-foreground", CANOPY_TERMINAL_THEME.foreground ?? ""),
     cursor: getVar("--theme-accent-primary", CANOPY_TERMINAL_THEME.cursor ?? ""),
     cursorAccent: getVar("--theme-text-inverse", CANOPY_TERMINAL_THEME.cursorAccent ?? ""),
     selectionBackground: getVar(
@@ -38,7 +38,7 @@ export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME {
       CANOPY_TERMINAL_THEME.selectionBackground ?? ""
     ),
     selectionForeground: getVar(
-      "--theme-text-primary",
+      "--theme-terminal-foreground",
       CANOPY_TERMINAL_THEME.selectionForeground ?? ""
     ),
     black: getVar("--theme-terminal-black", CANOPY_TERMINAL_THEME.black ?? ""),
