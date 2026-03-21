@@ -34,7 +34,7 @@ function PaletteStrip({ scheme }: { scheme: AppColorScheme }) {
 }
 
 function HeroImage({ scheme, size }: { scheme: AppColorScheme; size: number }) {
-  if (scheme.heroImage) {
+  if (scheme.heroImage?.trim()) {
     return (
       <img
         src={scheme.heroImage}
@@ -291,8 +291,6 @@ export function AppThemePicker() {
 
   const selectedWarnings = warningsByScheme.get(selectedScheme.id) ?? [];
 
-  let darkIdx = 0;
-
   return (
     <div className="space-y-3">
       {importMessage && (
@@ -339,6 +337,11 @@ export function AppThemePicker() {
             }
           }}
           onKeyDown={handleKeyDown}
+          onBlur={(e) => {
+            if (!listRef.current?.contains(e.relatedTarget as Node)) {
+              setOpen(false);
+            }
+          }}
           className={cn(
             "w-full flex items-center gap-3 p-2 rounded-[var(--radius-md)] border transition-colors text-left",
             "border-canopy-border bg-canopy-bg hover:border-canopy-text/30",
@@ -402,20 +405,17 @@ export function AppThemePicker() {
                     Dark
                   </p>
                 </div>
-                {darkSchemes.map((scheme) => {
-                  const idx = darkIdx++;
-                  return (
-                    <ThemeOption
-                      key={scheme.id}
-                      id={`theme-option-${scheme.id}`}
-                      scheme={scheme}
-                      selected={selectedSchemeId === scheme.id}
-                      highlighted={activeIndex === idx}
-                      warnings={warningsByScheme.get(scheme.id) ?? []}
-                      onClick={() => handleSelect(scheme.id)}
-                    />
-                  );
-                })}
+                {darkSchemes.map((scheme, i) => (
+                  <ThemeOption
+                    key={scheme.id}
+                    id={`theme-option-${scheme.id}`}
+                    scheme={scheme}
+                    selected={selectedSchemeId === scheme.id}
+                    highlighted={activeIndex === i}
+                    warnings={warningsByScheme.get(scheme.id) ?? []}
+                    onClick={() => handleSelect(scheme.id)}
+                  />
+                ))}
               </>
             )}
             {lightSchemes.length > 0 && (
