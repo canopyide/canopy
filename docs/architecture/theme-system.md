@@ -58,8 +58,14 @@ Canopy's app theme system is a semantic-token pipeline shared between the render
 - Persisted config comes from the app theme IPC handlers in `electron/ipc/handlers/appTheme.ts`.
 - Custom themes are stored as serialized JSON in the main-process store and normalized when loaded.
 
+## Token Reference
+
+See [theme-tokens.md](./theme-tokens.md) for the complete token schema, per-token documentation, and instructions for creating new themes.
+
 ## Current Constraints
 
 - The semantic token contract is the stable API. Avoid introducing component-level theme tokens.
 - Spacing, layout, and animation timing remain app-owned.
-- A user-facing light preset is intentionally not exposed yet; only the internal light fallback exists to support upcoming work safely.
+- Terminal is a first-class layer independent of workbench surfaces. Themes can use a dark terminal inside a light workbench (see Bondi).
+- Search highlighting is independent of accent. Themes can use different hues for search vs interaction.
+- Recipe tokens (`recipe-*`) encode per-theme parametric values (opacities, shadows). Components consume these alongside semantic color tokens.
