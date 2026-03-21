@@ -30,10 +30,10 @@ Five-level depth hierarchy plus semantic interactive surfaces.
 | Token                    | Purpose                                | Daintree                  | Bondi       |
 | ------------------------ | -------------------------------------- | ------------------------- | ----------- |
 | `surface-grid`           | Deepest recess — panel grid background | `#0e0e0d`                 | `#CDD3DB`   |
-| `surface-sidebar`        | Sidebar, toolbar, dock chrome          | `#131312`                 | `#D8DEE6`   |
+| `surface-sidebar`        | Sidebar, toolbar, dock chrome          | `#131413`                 | `#D8DEE6`   |
 | `surface-canvas`         | Main app background (`<body>`)         | `#19191a`                 | `#ECF0F5`   |
-| `surface-panel`          | Panel chrome, dropdowns, dialogs       | `#1d1d1e`                 | `#F5F8FB`   |
-| `surface-panel-elevated` | Focused panel, tooltips                | `#2b2b2c`                 | `#FCFDFE`   |
+| `surface-panel`          | Panel chrome, dropdowns, dialogs       | `#202121`                 | `#F5F8FB`   |
+| `surface-panel-elevated` | Focused panel, tooltips                | `#2D302F`                 | `#FCFDFE`   |
 | `surface-input`          | Text input backgrounds                 | Derived: `panel-elevated` | `#F5F8FB`   |
 | `surface-inset`          | Recessed content within panels         | Derived: `tint` 3%        | `#E6EBF0`   |
 | `surface-hover`          | Hover overlay on interactive elements  | Derived: `tint` 5%        | `black 5%`  |
@@ -43,13 +43,14 @@ Five-level depth hierarchy plus semantic interactive surfaces.
 
 ## Text tokens
 
-| Token            | Purpose                                            |
-| ---------------- | -------------------------------------------------- |
-| `text-primary`   | Headings, active labels, focused content           |
-| `text-secondary` | Descriptions, subtitles, inactive tabs             |
-| `text-muted`     | Disabled text, timestamps (may fall below WCAG AA) |
-| `text-inverse`   | Text on solid accent/color backgrounds             |
-| `text-link`      | Hyperlink color (defaults to `accent-primary`)     |
+| Token              | Purpose                                              |
+| ------------------ | ---------------------------------------------------- |
+| `text-primary`     | Headings, active labels, focused content             |
+| `text-secondary`   | Descriptions, subtitles, inactive tabs               |
+| `text-muted`       | Disabled text, timestamps (may fall below WCAG AA)   |
+| `text-placeholder` | Input placeholder text (derived: `text-primary` 35%) |
+| `text-inverse`     | Text on solid accent/color backgrounds               |
+| `text-link`        | Hyperlink color (defaults to `accent-primary`)       |
 
 ## Border tokens
 
@@ -75,6 +76,18 @@ Five-level depth hierarchy plus semantic interactive surfaces.
 | `accent-rgb`        | Raw RGB triplet (e.g. `63, 147, 102`) for `rgba()` usage    |
 
 **Critical rule:** Accent must remain distinct from `status-success`. They serve different semantic roles.
+
+## Secondary accent tokens
+
+An optional second color lane for themes with two distinct interaction colors.
+
+| Token                    | Purpose                                                                 |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `accent-secondary`       | Second accent hue (e.g. sage in Bali/Table Mountain, gold in Serengeti) |
+| `accent-secondary-soft`  | Low-opacity tint of secondary accent (~15% dark / ~10% light)           |
+| `accent-secondary-muted` | Medium-opacity tint of secondary accent (~25% dark / ~18% light)        |
+
+All three default to `status-success` and its derived tints when omitted, so single-accent themes work without any secondary accent definition.
 
 ## Status tokens
 
@@ -103,15 +116,18 @@ Drive state chips in panel headers and worktree card indicators.
 
 ## Overlay tokens
 
-Five-step opacity ladder for tinting surfaces during interactive states.
+A single-knob color input drives the entire opacity ladder.
 
-| Token              | Dark        | Light       |
-| ------------------ | ----------- | ----------- |
-| `overlay-subtle`   | `white 2%`  | `black 2%`  |
-| `overlay-soft`     | `white 3%`  | `black 5%`  |
-| `overlay-medium`   | `white 4%`  | `black 5%`  |
-| `overlay-strong`   | `white 6%`  | `black 8%`  |
-| `overlay-emphasis` | `white 10%` | `black 12%` |
+| Token              | Purpose                                                    | Dark default | Light default |
+| ------------------ | ---------------------------------------------------------- | ------------ | ------------- |
+| `overlay-base`     | Tint color for the ladder (default: `#ffffff` / `#000000`) | `#ffffff`    | `#000000`     |
+| `overlay-subtle`   | Lightest interactive tint                                  | base 2%      | base 2%       |
+| `overlay-soft`     | Hover state on list items                                  | base 3%      | base 3%       |
+| `overlay-medium`   | Active/selected item on sidebar, focus fills               | base 4%      | base 5%       |
+| `overlay-strong`   | Stronger fills, secondary hover                            | base 6%      | base 8%       |
+| `overlay-emphasis` | Maximum-contrast fill before full surface change           | base 10%     | base 12%      |
+
+Set `overlay-base` to a hued color to tint all hover and fill states (e.g. Fiordland: icy blue `#B4DCF0`, Arashiyama: warm cream `#FFECE6`). Borders and surfaces continue using the neutral polarity tone regardless of `overlay-base`.
 
 ## GitHub tokens
 
@@ -227,6 +243,43 @@ Elevation shadows for panels, palettes, and floating surfaces.
 | `recipe-control-chrome-raised-shadow`  | Box shadow for elevated panels and palettes | `0 4px 12px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3)` | `0 4px 12px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08)` |
 | `recipe-control-chrome-pressed-shadow` | Inset shadow for pressed interactive states | `inset 0 1px 2px rgba(0,0,0,0.3)`                       | `inset 0 1px 2px rgba(0,0,0,0.08)`                        |
 
+### Surface elevation sheen recipe
+
+Inset top-edge highlight applied to elevated surfaces: dialogs, palettes, tooltips, active sidebar cards.
+
+| Token                                  | Purpose                             | Dark default                             | Light default                          |
+| -------------------------------------- | ----------------------------------- | ---------------------------------------- | -------------------------------------- |
+| `recipe-surface-elevated-inset-shadow` | Top-edge sheen on elevated surfaces | `inset 0 1px 0 0 rgba(255,255,255,0.03)` | `inset 0 1px 0 rgba(255,255,255,0.60)` |
+
+Set to `"none"` on themes that should not show the sheen (e.g. Svalbard's stark flat aesthetic). Applied via `style` prop rather than a Tailwind class so the full `box-shadow` value is theme-controlled.
+
+### Shadow profile recipes
+
+Complete `box-shadow` values including geometry and blur — themes set these to express their shadow personality.
+
+| Token                    | Purpose                                     | Dark default                                            | Light default                                             |
+| ------------------------ | ------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- |
+| `recipe-shadow-ambient`  | Subtle ambient elevation (cards, badges)    | `0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)`  | `0 2px 8px rgba(0,0,0,0.06)`                              |
+| `recipe-shadow-floating` | Prominent floating surfaces (menus, modals) | `0 4px 12px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3)` | `0 4px 12px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08)` |
+
+Themes can express distinct shadow characters: crisp and close (Bondi `0 1px 2px`), fog-diffused (Bali `0 14px 48px`), barely-there (Svalbard `0 18px 44px rgba(...,0.05)`).
+
+### Focus ring recipe
+
+| Token                      | Purpose                         | Default |
+| -------------------------- | ------------------------------- | ------- |
+| `recipe-focus-ring-offset` | Offset between element and ring | `"2px"` |
+
+Some themes prefer `"3px"` for extra breathing room (e.g. Bali).
+
+### Chrome noise texture recipe
+
+| Token                         | Purpose                                                | Default  |
+| ----------------------------- | ------------------------------------------------------ | -------- |
+| `recipe-chrome-noise-texture` | CSS `background-image` grain layer for sidebar/toolbar | `"none"` |
+
+Set to a `data-URI` SVG noise filter to add subtle grain texture to chrome surfaces. Requires component-level support (`background-image: var(--theme-recipe-chrome-noise-texture)`). Most themes leave this as `"none"`; Highlands uses SVG grain for a tactile texture.
+
 ## Diff tokens
 
 Theme-controlled colors for the diff viewer. Derived from `status-success` and `status-danger` at authoring time, but fully overridable for precise per-theme tuning.
@@ -286,6 +339,7 @@ Everything else derives from these automatically — including `activity-complet
 
 Common overrides for a polished theme:
 
+- `overlay-base` — set to a hued color to tint hover/fill states (icy blue, warm cream, etc.)
 - `terminal-background/foreground/muted/cursor` — if terminal should differ from workbench
 - `search-*` — if accent hue doesn't work as search highlighting
 - `activity-idle` — unique idle indicator per theme atmosphere
@@ -294,6 +348,11 @@ Common overrides for a polished theme:
 - `recipe-scrollbar-thumb` — if you want a colored scrollbar rather than neutral
 - `recipe-panel-state-edge-width` — set to `"2px"` on light themes, `"0px"` on dark themes that don't use the rail
 - `recipe-control-chrome-raised-shadow` — tune depth for your workbench atmosphere
+- `recipe-surface-elevated-inset-shadow` — tune or set to `"none"` for flat aesthetics
+- `recipe-shadow-ambient` / `recipe-shadow-floating` — express shadow personality (crisp, diffused, barely-there)
+- `recipe-focus-ring-offset` — set to `"3px"` for extra breathing room
+- `recipe-chrome-noise-texture` — add SVG grain to chrome surfaces (requires component support)
+- `accent-secondary` — define a second color lane for dual-accent themes
 - `diff-*` — override if status-success/danger don't read well as diff backgrounds
 
 ### 3. Add to BUILT_IN_APP_SCHEMES
@@ -356,3 +415,27 @@ No component should reference hex values or know which theme is active.
 | `src/store/appThemeStore.ts`         | Renderer theme state (Zustand)                                                           |
 | `src/config/terminalColorSchemes.ts` | Terminal-specific color scheme library                                                   |
 | `electron/utils/appThemeImporter.ts` | JSON import with normalization, alias resolution, and validation                         |
+
+## Token count summary
+
+| Group     | Count   | Notes                                                                                                                                                   |
+| --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Surface   | 9       | 5 depth levels + input, inset, hover, active                                                                                                            |
+| Text      | 6       | primary, secondary, muted, placeholder, inverse, link                                                                                                   |
+| Border    | 5       |                                                                                                                                                         |
+| Accent    | 9       | 6 primary lane + 3 secondary lane                                                                                                                       |
+| Focus     | 1       |                                                                                                                                                         |
+| Status    | 4       |                                                                                                                                                         |
+| Activity  | 7       |                                                                                                                                                         |
+| Overlay   | 6       | base + subtle, soft, medium, strong, emphasis                                                                                                           |
+| Scrim     | 3       |                                                                                                                                                         |
+| Shadow    | 1       |                                                                                                                                                         |
+| Tint      | 1       |                                                                                                                                                         |
+| GitHub    | 4       |                                                                                                                                                         |
+| Search    | 6       |                                                                                                                                                         |
+| Terminal  | 22      | 6 base (bg/fg/muted/cursor/cursor-accent/selection) + 16 ANSI                                                                                           |
+| Syntax    | 10      |                                                                                                                                                         |
+| Category  | 12      |                                                                                                                                                         |
+| Recipe    | 19      | state chrome (5) + scrollbar (4) + panel edge (3) + control chrome (2) + surface sheen (1) + shadow profiles (2) + focus offset (1) + noise texture (1) |
+| Diff      | 8       |                                                                                                                                                         |
+| **Total** | **133** |                                                                                                                                                         |

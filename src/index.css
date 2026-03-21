@@ -19,6 +19,7 @@
   --color-text-primary: var(--theme-text-primary);
   --color-text-secondary: var(--theme-text-secondary);
   --color-text-muted: var(--theme-text-muted);
+  --color-text-placeholder: var(--theme-text-placeholder);
   --color-text-inverse: var(--theme-text-inverse);
   --color-text-link: var(--theme-text-link);
   --color-border-default: var(--theme-border-default);
@@ -33,6 +34,9 @@
   --color-accent-soft: var(--theme-accent-soft);
   --color-accent-muted: var(--theme-accent-muted);
   --color-accent-rgb: var(--theme-accent-rgb);
+  --color-accent-secondary: var(--theme-accent-secondary);
+  --color-accent-secondary-soft: var(--theme-accent-secondary-soft);
+  --color-accent-secondary-muted: var(--theme-accent-secondary-muted);
   --color-focus-ring: var(--theme-focus-ring);
   --color-status-success: var(--theme-status-success);
   --color-status-warning: var(--theme-status-warning);
@@ -45,6 +49,7 @@
   --color-activity-approval: var(--theme-activity-approval);
   --color-activity-completed: var(--theme-activity-completed);
   --color-activity-failed: var(--theme-activity-failed);
+  --color-overlay-base: var(--theme-overlay-base);
   --color-overlay-subtle: var(--theme-overlay-subtle);
   --color-overlay-soft: var(--theme-overlay-soft);
   --color-overlay-medium: var(--theme-overlay-medium);
@@ -124,6 +129,11 @@
   --color-recipe-panel-state-edge-radius: var(--theme-recipe-panel-state-edge-radius);
   --color-recipe-control-chrome-raised-shadow: var(--theme-recipe-control-chrome-raised-shadow);
   --color-recipe-control-chrome-pressed-shadow: var(--theme-recipe-control-chrome-pressed-shadow);
+  --color-recipe-surface-elevated-inset-shadow: var(--theme-recipe-surface-elevated-inset-shadow);
+  --color-recipe-shadow-ambient: var(--theme-recipe-shadow-ambient);
+  --color-recipe-shadow-floating: var(--theme-recipe-shadow-floating);
+  --color-recipe-focus-ring-offset: var(--theme-recipe-focus-ring-offset);
+  --color-recipe-chrome-noise-texture: var(--theme-recipe-chrome-noise-texture);
   --color-diff-insert-background: var(--theme-diff-insert-background);
   --color-diff-insert-edit-background: var(--theme-diff-insert-edit-background);
   --color-diff-delete-background: var(--theme-diff-delete-background);

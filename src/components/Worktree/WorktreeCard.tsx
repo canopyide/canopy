@@ -526,22 +526,29 @@ export const WorktreeCard = React.memo(function WorktreeCard({
         "group relative transition-all duration-200",
         variant === "sidebar" && "border-b border-border-default",
         variant === "grid" && "rounded-lg border border-divider bg-overlay-subtle",
-        isActive ? "bg-surface-panel-elevated shadow-sm" : "hover:bg-overlay-subtle",
+        isActive && variant === "sidebar" && "bg-overlay-medium",
+        isActive && variant !== "sidebar" && "bg-surface-panel-elevated shadow-sm",
+        !isActive && "hover:bg-overlay-subtle",
         variant === "sidebar" && !isActive && "bg-transparent",
         isActive &&
           !isSingleWorktree &&
           variant === "sidebar" &&
-          "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-r before:bg-[var(--color-state-active)] before:content-[''] before:z-10 motion-safe:before:animate-in motion-safe:before:fade-in motion-safe:before:duration-200",
-        variant === "grid" && isActive && "border-[var(--color-state-active)]/70 shadow-md",
+          "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-r before:bg-accent-primary before:content-[''] before:z-10 motion-safe:before:animate-in motion-safe:before:fade-in motion-safe:before:duration-200",
+        variant === "grid" && isActive && "border-accent-primary/70 shadow-md",
         variant === "grid" &&
           !isActive &&
-          "hover:border-canopy-accent/50 hover:shadow-lg hover:shadow-canopy-accent/5",
+          "hover:border-accent-primary/50 hover:shadow-lg hover:shadow-accent-primary/5",
         isFocused && !isActive && "bg-overlay-subtle",
         isOver &&
           !isActive &&
-          "ring-2 ring-canopy-accent bg-canopy-accent/10 border-canopy-accent/50 transition-all duration-200",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+          "ring-2 ring-accent-primary bg-accent-primary/10 border-accent-primary/50 transition-all duration-200",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-primary focus-visible:outline-offset-2"
       )}
+      style={
+        isActive && variant === "sidebar"
+          ? { boxShadow: "var(--theme-recipe-surface-elevated-inset-shadow)" }
+          : undefined
+      }
       onClick={onSelect}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
@@ -560,7 +567,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
       {isOver && !isActive && (
         <div
           className={cn(
-            "absolute inset-0 z-50 bg-canopy-accent/20 border-2 border-canopy-accent pointer-events-none animate-in fade-in duration-150",
+            "absolute inset-0 z-50 bg-accent-primary/10 border-2 border-accent-primary pointer-events-none animate-in fade-in duration-150",
             variant === "grid" && "rounded-lg"
           )}
         />
@@ -572,8 +579,8 @@ export const WorktreeCard = React.memo(function WorktreeCard({
               className={cn(
                 "absolute w-3 h-3 z-10 cursor-default",
                 chipState === "error" && "bg-github-closed",
-                chipState === "approval" && "bg-state-approval",
-                chipState === "waiting" && "bg-state-waiting",
+                chipState === "approval" && "bg-activity-approval",
+                chipState === "waiting" && "bg-activity-waiting",
                 chipState === "cleanup" && "bg-github-merged",
                 chipState === "complete" && "bg-github-open",
                 variant === "sidebar" ? "top-0 left-[1px]" : "top-0 left-0 rounded-tl-lg"
@@ -611,10 +618,10 @@ export const WorktreeCard = React.memo(function WorktreeCard({
             className={cn(
               "shrink-0 w-4 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors",
               isDraggingSort
-                ? "bg-canopy-accent/20 text-canopy-accent"
+                ? "bg-accent-primary/20 text-accent-primary"
                 : isWorktreeSortDragging
-                  ? "text-canopy-text/30 hover:text-canopy-text/50 hover:bg-overlay-soft"
-                  : "text-transparent hover:text-canopy-text/30 hover:bg-overlay-soft"
+                  ? "text-text-primary/30 hover:text-text-primary/50 hover:bg-overlay-soft"
+                  : "text-transparent hover:text-text-primary/30 hover:bg-overlay-soft"
             )}
             aria-label="Drag to reorder"
             {...dragHandleListeners}

@@ -79,6 +79,9 @@ export function createCanopyTokens(
 ): AppColorSchemeTokens {
   const dark = type === "dark";
   const overlayTone = dark ? "#ffffff" : "#000000";
+  // overlay-base tints the entire hover/fill ladder. Defaults to overlayTone (pure
+  // white/black). Set to a hued color for themed overlays (icy blue, warm cream, etc.).
+  const overlayBase = tokens["overlay-base"] ?? overlayTone;
   const accentSoft =
     tokens["accent-soft"] ?? withAlpha(tokens["accent-primary"], dark ? 0.18 : 0.12);
   const accentMuted =
@@ -87,6 +90,11 @@ export function createCanopyTokens(
     ? hexToRgbTriplet(tokens["accent-primary"])
     : "0, 0, 0";
   const tint = dark ? "#ffffff" : "#000000";
+  const accentSecondary = tokens["accent-secondary"] ?? tokens["status-success"];
+  const accentSecondarySoft =
+    tokens["accent-secondary-soft"] ?? withAlpha(accentSecondary, dark ? 0.15 : 0.1);
+  const accentSecondaryMuted =
+    tokens["accent-secondary-muted"] ?? withAlpha(accentSecondary, dark ? 0.25 : 0.18);
 
   const githubDefaults = dark ? GITHUB_DARK_TOKENS : GITHUB_LIGHT_TOKENS;
 
@@ -139,11 +147,12 @@ export function createCanopyTokens(
     "accent-muted": accentMuted,
     "accent-rgb": tokens["accent-rgb"] ?? accentRgb,
     "focus-ring": tokens["focus-ring"] ?? withAlpha(overlayTone, dark ? 0.18 : 0.18),
-    "overlay-subtle": tokens["overlay-subtle"] ?? withAlpha(overlayTone, dark ? 0.02 : 0.02),
-    "overlay-soft": tokens["overlay-soft"] ?? withAlpha(overlayTone, dark ? 0.03 : 0.03),
-    "overlay-medium": tokens["overlay-medium"] ?? withAlpha(overlayTone, dark ? 0.04 : 0.05),
-    "overlay-strong": tokens["overlay-strong"] ?? withAlpha(overlayTone, dark ? 0.06 : 0.08),
-    "overlay-emphasis": tokens["overlay-emphasis"] ?? withAlpha(overlayTone, dark ? 0.1 : 0.12),
+    "overlay-base": tokens["overlay-base"] ?? overlayTone,
+    "overlay-subtle": tokens["overlay-subtle"] ?? withAlpha(overlayBase, dark ? 0.02 : 0.02),
+    "overlay-soft": tokens["overlay-soft"] ?? withAlpha(overlayBase, dark ? 0.03 : 0.03),
+    "overlay-medium": tokens["overlay-medium"] ?? withAlpha(overlayBase, dark ? 0.04 : 0.05),
+    "overlay-strong": tokens["overlay-strong"] ?? withAlpha(overlayBase, dark ? 0.06 : 0.08),
+    "overlay-emphasis": tokens["overlay-emphasis"] ?? withAlpha(overlayBase, dark ? 0.1 : 0.12),
     "scrim-soft": tokens["scrim-soft"] ?? (dark ? "rgba(0, 0, 0, 0.2)" : "rgba(0, 0, 0, 0.3)"),
     "scrim-medium": tokens["scrim-medium"] ?? (dark ? "rgba(0, 0, 0, 0.45)" : "rgba(0, 0, 0, 0.5)"),
     "scrim-strong": tokens["scrim-strong"] ?? (dark ? "rgba(0, 0, 0, 0.62)" : "rgba(0, 0, 0, 0.7)"),
@@ -169,7 +178,12 @@ export function createCanopyTokens(
     "surface-inset": tokens["surface-inset"] ?? withAlpha(overlayTone, dark ? 0.03 : 0.04),
     "surface-hover": tokens["surface-hover"] ?? withAlpha(overlayTone, dark ? 0.05 : 0.03),
     "surface-active": tokens["surface-active"] ?? withAlpha(overlayTone, dark ? 0.08 : 0.06),
+    "text-placeholder":
+      tokens["text-placeholder"] ?? withAlpha(tokens["text-primary"], dark ? 0.35 : 0.32),
     "text-link": tokens["text-link"] ?? tokens["accent-primary"],
+    "accent-secondary": accentSecondary,
+    "accent-secondary-soft": accentSecondarySoft,
+    "accent-secondary-muted": accentSecondaryMuted,
     "search-highlight-background": searchHighlightBg,
     "search-highlight-text": tokens["search-highlight-text"] ?? searchHighlightText,
     "search-selected-result-border":
@@ -209,6 +223,23 @@ export function createCanopyTokens(
     "recipe-control-chrome-pressed-shadow":
       tokens["recipe-control-chrome-pressed-shadow"] ??
       (dark ? "inset 0 1px 2px rgba(0, 0, 0, 0.3)" : "inset 0 1px 2px rgba(0, 0, 0, 0.08)"),
+    "recipe-surface-elevated-inset-shadow":
+      tokens["recipe-surface-elevated-inset-shadow"] ??
+      (dark
+        ? "inset 0 1px 0 0 rgba(255, 255, 255, 0.03)"
+        : "inset 0 1px 0 rgba(255, 255, 255, 0.60)"),
+    "recipe-shadow-ambient":
+      tokens["recipe-shadow-ambient"] ??
+      (dark
+        ? "0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)"
+        : "0 2px 8px rgba(0, 0, 0, 0.06)"),
+    "recipe-shadow-floating":
+      tokens["recipe-shadow-floating"] ??
+      (dark
+        ? "0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3)"
+        : "0 4px 12px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)"),
+    "recipe-focus-ring-offset": tokens["recipe-focus-ring-offset"] ?? "2px",
+    "recipe-chrome-noise-texture": tokens["recipe-chrome-noise-texture"] ?? "none",
     "diff-insert-background":
       tokens["diff-insert-background"] ?? withAlpha(tokens["status-success"], dark ? 0.18 : 0.1),
     "diff-insert-edit-background":
@@ -295,30 +326,47 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
     type: "dark",
     builtin: true,
     tokens: createCanopyTokens("dark", {
-      "surface-canvas": "#19191a",
-      "surface-sidebar": "#131312",
-      "surface-panel": "#1d1d1e",
-      "surface-panel-elevated": "#2b2b2c",
+      // Surfaces — 5-level depth hierarchy with microscopic green bias in chrome
       "surface-grid": "#0e0e0d",
-      "text-primary": "#e4e4e7",
-      "text-secondary": "color-mix(in oklab, #e4e4e7 65%, #19191a)",
-      "text-muted": "#a1a1aa",
+      "surface-sidebar": "#131413",
+      "surface-canvas": "#19191a",
+      "surface-panel": "#202121",
+      "surface-panel-elevated": "#2D302F",
+      // Text — cool-shifted from pure zinc to carry canopy botanical undertone
+      "text-primary": "#E1E5E2",
+      "text-secondary": "#B5BCB8",
+      "text-muted": "#9AA29E",
       "text-inverse": "#19191a",
-      "border-default": "#282828",
-      "accent-primary": "#3F9366",
-      "status-success": "#5F8B6D",
+      // Border — green-biased default, alpha overlays for structural lines
+      "border-default": "#2A2D2B",
+      // Accent — emerald "chosen path": selection, focus, toggles, buttons
+      "accent-primary": "#3E9066",
+      "accent-foreground": "#19191a",
+      // Status — muted semantic outcomes that don't compete with accent or activity
+      "status-success": "#4F756A",
       "status-warning": "#C59A4E",
       "status-danger": "#C8746C",
       "status-info": "#7B8C96",
-      "activity-active": "#22c55e",
-      "activity-idle": "#52525b",
-      "activity-working": "#22c55e",
+      // Activity — vivid teal (#22B8A0) for live metabolism; idle unified with disabled text
+      "activity-active": "#22B8A0",
+      "activity-idle": "#555C58",
+      "activity-working": "#22B8A0",
       "activity-waiting": "#fbbf24",
-      "search-highlight-background": "rgba(63, 147, 102, 0.2)",
-      "search-highlight-text": "#5F8B6D",
+      // Focus ring — accent-tinted, carries botanical feel into the interaction layer
+      "focus-ring": "rgba(104, 166, 126, 0.24)",
+      // Shadow — neutral black, slightly heavier than the generic dark default
+      "shadow-color": "rgba(0, 0, 0, 0.55)",
+      // Search — independent teal lane, distinct from accent/success/working greens
+      "search-highlight-background": "rgba(92, 137, 128, 0.2)",
+      "search-highlight-text": "#5C8980",
+      "search-selected-result-border": "#5C8980",
+      "search-selected-result-icon": "#5C8980",
+      "search-match-badge-background": "rgba(92, 137, 128, 0.15)",
+      "search-match-badge-text": "#5C8980",
+      // Terminal — inherits canvas; cursor derived from accent-primary
       "terminal-background": "#19191a",
-      "terminal-foreground": "#e4e4e7",
-      "terminal-muted": "#a1a1aa",
+      "terminal-foreground": "#E1E5E2",
+      "terminal-muted": "#9AA29E",
       "terminal-selection": "#1a2c22",
       "terminal-red": "#f87171",
       "terminal-green": "#10b981",
@@ -333,6 +381,7 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "terminal-bright-magenta": "#c084fc",
       "terminal-bright-cyan": "#67e8f9",
       "terminal-bright-white": "#fafafa",
+      // Syntax
       "syntax-comment": "#707b90",
       "syntax-punctuation": "#c5d0f5",
       "syntax-number": "#efb36b",
@@ -343,7 +392,11 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "syntax-link": "#72c1ea",
       "syntax-quote": "#adb5bb",
       "syntax-chip": "#7fd4cf",
-      "focus-ring": "rgba(255, 255, 255, 0.18)",
+      // Scrollbar — thumb uses activity-idle color; hover lightens toward text-primary
+      "recipe-scrollbar-thumb": "#555C58",
+      "recipe-scrollbar-thumb-hover": "color-mix(in oklab, #555C58 85%, #E1E5E2)",
+      // Button inset highlight — brighter than generic dark default (matches kitchen sink)
+      "recipe-button-inset-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.15)",
     }),
   },
   {

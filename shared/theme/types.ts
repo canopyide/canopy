@@ -14,6 +14,7 @@ export const APP_THEME_TOKEN_KEYS = [
   "text-primary",
   "text-secondary",
   "text-muted",
+  "text-placeholder",
   "text-inverse",
   "text-link",
 
@@ -31,6 +32,11 @@ export const APP_THEME_TOKEN_KEYS = [
   "accent-soft",
   "accent-muted",
   "accent-rgb",
+
+  // Secondary accent (optional second color lane — e.g. sage in Bali/Table Mountain, gold in Serengeti)
+  "accent-secondary",
+  "accent-secondary-soft",
+  "accent-secondary-muted",
 
   // Focus
   "focus-ring",
@@ -51,6 +57,9 @@ export const APP_THEME_TOKEN_KEYS = [
   "activity-failed",
 
   // Overlay ladder
+  // overlay-base is the tint color for the ladder (default: white dark / black light).
+  // Set to a hued color (e.g. icy blue, warm cream) to tint all hover/fill states.
+  "overlay-base",
   "overlay-subtle",
   "overlay-soft",
   "overlay-medium",
@@ -153,6 +162,22 @@ export const APP_THEME_TOKEN_KEYS = [
   // Control chrome recipe (panel/palette shadows and raised-surface highlights)
   "recipe-control-chrome-raised-shadow",
   "recipe-control-chrome-pressed-shadow",
+
+  // Surface elevation sheen — inset top-edge highlight on elevated surfaces
+  // (dialogs, palettes, tooltips, active sidebar cards). Set to "none" to disable.
+  "recipe-surface-elevated-inset-shadow",
+
+  // Shadow profiles — complete box-shadow values including geometry + blur
+  // Themes set these to express their shadow personality (crisp, fog-diffused, soft, etc.)
+  "recipe-shadow-ambient",
+  "recipe-shadow-floating",
+
+  // Focus ring offset in px (default 2px; some themes prefer 3px for breathing room)
+  "recipe-focus-ring-offset",
+
+  // Chrome noise texture — CSS background-image layer for grain on sidebar/toolbar/dock.
+  // Set to a data-URI SVG noise filter or "none" (default). Requires component support.
+  "recipe-chrome-noise-texture",
 
   // Diff viewer (theme-controlled)
   "diff-insert-background",
