@@ -3,7 +3,6 @@ import path from "node:path";
 import { z } from "zod";
 import {
   APP_THEME_TOKEN_KEYS,
-  LEGACY_THEME_TOKEN_ALIASES,
   getAppThemeWarnings,
   getBuiltInAppSchemeForType,
   inferAppThemeTypeFromTokens,
@@ -23,10 +22,7 @@ const THEME_SCHEMA = z
   })
   .passthrough();
 
-const KNOWN_TOKEN_KEYS = new Set<string>([
-  ...APP_THEME_TOKEN_KEYS,
-  ...Object.keys(LEGACY_THEME_TOKEN_ALIASES),
-]);
+const KNOWN_TOKEN_KEYS = new Set<string>(APP_THEME_TOKEN_KEYS);
 
 const METADATA_KEYS = new Set([
   "id",

@@ -55,10 +55,10 @@ function getHeatCellBackground(level: HeatCell["level"]): string {
 
   const opacityVar =
     level === 3
-      ? "var(--pulse-heat-high-opacity, var(--recipe-pulse-heat-high-opacity))"
+      ? "var(--pulse-heat-high-opacity, 0.55)"
       : level === 2
-        ? "var(--pulse-heat-medium-opacity, var(--recipe-pulse-heat-medium-opacity))"
-        : "var(--pulse-heat-low-opacity, var(--recipe-pulse-heat-low-opacity))";
+        ? "var(--pulse-heat-medium-opacity, 0.35)"
+        : "var(--pulse-heat-low-opacity, 0.18)";
 
   return `color-mix(in oklab, var(--color-state-working) calc(${opacityVar} * 100%), transparent)`;
 }

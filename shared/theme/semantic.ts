@@ -81,18 +81,18 @@ export function createSemanticTokens(palette: ThemePalette): AppColorSchemeToken
     "syntax-link": palette.syntax.link,
     "syntax-quote": palette.syntax.quote,
     "syntax-chip": palette.syntax.chip,
-    "recipe-shadow-ambient": shadowProfiles.ambient,
-    "recipe-shadow-floating": shadowProfiles.floating,
-    "recipe-dialog-shadow": shadowProfiles.dialog,
+    "shadow-ambient": shadowProfiles.ambient,
+    "shadow-floating": shadowProfiles.floating,
+    "shadow-dialog": shadowProfiles.dialog,
     "material-blur": `${strategy?.materialBlur ?? 0}px`,
     "material-saturation": `${strategy?.materialSaturation ?? 100}%`,
     "material-opacity": strategy?.materialBlur && strategy.materialBlur > 0 ? "0.9" : "1",
     "radius-scale": String(strategy?.radiusScale ?? 1),
-    "recipe-chrome-noise-texture":
+    "chrome-noise-texture":
       strategy?.noiseOpacity && strategy.noiseOpacity > 0
         ? `radial-gradient(circle at 20% 20%, rgb(255 255 255 / ${strategy.noiseOpacity}), transparent 55%)`
         : "none",
-    "recipe-panel-state-edge-width":
+    "panel-state-edge-width":
       (strategy?.panelStateEdge ?? palette.type === "light") ? "2px" : "0px",
   });
 }
