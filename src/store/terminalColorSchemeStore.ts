@@ -24,17 +24,17 @@ export function selectWrapperBackground(state: TerminalColorSchemeState): string
   const scheme = allSchemes.find((s) => s.id === state.selectedSchemeId);
 
   if (!scheme) {
-    return "var(--theme-surface-canvas)";
+    return "var(--theme-terminal-background)";
   }
 
   if (scheme.id === DEFAULT_SCHEME_ID) {
     const appThemeId = useAppThemeStore.getState().selectedSchemeId;
     const mapped = getMappedTerminalScheme(appThemeId);
     if (mapped?.colors.background) return mapped.colors.background;
-    return "var(--theme-surface-canvas)";
+    return "var(--theme-terminal-background)";
   }
 
-  return scheme.colors.background ?? "var(--theme-surface-canvas)";
+  return scheme.colors.background ?? "var(--theme-terminal-background)";
 }
 
 function computeEffectiveTheme(

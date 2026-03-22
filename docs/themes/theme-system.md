@@ -5,9 +5,9 @@ Canopy's theming system is a three-layer pipeline shared between the renderer an
 1. `ThemePalette`
    Theme authors define the visual foundation in `shared/theme/palette.ts`: surfaces, text, accent, status, activity, terminal colors, syntax colors, and a small `strategy` object.
 2. Semantic tokens
-   `createSemanticTokens()` in `shared/theme/semantic.ts` compiles a palette into the stable app token contract (`AppColorSchemeTokens` in `shared/theme/types.ts`). Internally this calls `createCanopyTokens()` in `shared/theme/themes.ts` which derives ~100 tokens from ~40 required palette inputs.
+   `compileThemePaletteToTokens()` in `shared/theme/paletteCompiler.ts` compiles a palette into the stable app token contract (`AppColorSchemeTokens` in `shared/theme/types.ts`). `createSemanticTokens()` in `shared/theme/semantic.ts` is the thin public wrapper, and `createCanopyTokens()` in `shared/theme/canopyTokens.ts` derives ~100 tokens from ~40 required palette inputs.
 3. Component public vars
-   Individual UI areas expose their own override surface through CSS variables such as `--toolbar-bg`, `--toolbar-project-bg`, `--settings-dialog-bg`, `--pulse-card-bg`, and `--terminal-grid-bg`.
+   Individual UI areas expose their own override surface through CSS variables such as `--toolbar-bg`, `--toolbar-project-bg`, `--settings-dialog-bg`, `--pulse-card-bg`, `--dock-bg`, and `--terminal-grid-bg`.
 
 ## Core Model
 
@@ -83,6 +83,7 @@ Component CSS owns the public override surface. Themes can target specific UI re
 | Settings           | `src/styles/components/settings.css` | `--settings-*`                                     |
 | Pulse              | `src/styles/components/pulse.css`    | `--pulse-*`                                        |
 | Panel shell        | `src/styles/components/panels.css`   | `--chrome-*`, `--dialog-*`, `--floating-surface-*` |
+| Root aliases       | `src/index.css`                      | `--dock-*`, `--terminal-grid-bg`, shared root vars |
 
 Pattern:
 
@@ -128,9 +129,11 @@ Extensions are applied as bare CSS custom properties on `:root` (e.g., `"toolbar
 | File                                  | Purpose                                                                   |
 | ------------------------------------- | ------------------------------------------------------------------------- |
 | `shared/theme/palette.ts`             | `ThemePalette` and `ThemeStrategy` types                                  |
+| `shared/theme/canopyTokens.ts`        | `createCanopyTokens()`, `hexToRgbTriplet()`                               |
+| `shared/theme/paletteCompiler.ts`     | `compileThemePaletteToTokens()` shared palette compiler                   |
 | `shared/theme/types.ts`               | `APP_THEME_TOKEN_KEYS`, `AppThemeTokenKey`, `AppColorScheme`              |
-| `shared/theme/semantic.ts`            | `createSemanticTokens()` — palette to tokens compiler                     |
-| `shared/theme/themes.ts`              | `createCanopyTokens()`, `BUILT_IN_APP_SCHEMES`, `createThemeFromSource()` |
+| `shared/theme/semantic.ts`            | `createSemanticTokens()` compatibility wrapper around the shared compiler |
+| `shared/theme/themes.ts`              | `BUILT_IN_APP_SCHEMES`, `createThemeFromSource()`, theme normalization    |
 | `shared/theme/contrast.ts`            | `getThemeContrastWarnings()` WCAG validation                              |
 | `shared/theme/builtInThemeSources.ts` | `BuiltInThemeSource` interface + re-export                                |
 | `shared/theme/builtInThemes/index.ts` | Theme manifest array                                                      |

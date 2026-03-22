@@ -1108,7 +1108,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const showErrorChip = agentState === "failed" && !errorChipDismissed;
 
     const barContent = (
-      <div className="group cursor-text bg-canopy-bg px-4 pb-3 pt-3">
+      <div className="group cursor-text bg-terminal-background px-3 pb-2 pt-1">
         {showErrorChip && (
           <div className="flex items-center gap-1.5 px-1 pb-1.5">
             <div className="flex items-center gap-1.5 rounded-sm bg-status-error/10 px-2 py-0.5 text-status-error">
@@ -1133,9 +1133,9 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             ref={inputShellRef}
             className={cn(
               "group/shell relative",
-              "flex w-full items-center gap-1.5 rounded-sm border border-border-subtle bg-overlay-soft py-1 shadow-[0_6px_12px_var(--color-scrim-soft)] transition-colors",
-              "group-hover:border-border-default group-hover:bg-overlay-medium",
-              "focus-within:border-canopy-accent/45 focus-within:ring-1 focus-within:ring-canopy-accent/16 focus-within:bg-overlay-medium",
+              "flex w-full items-center gap-1.5 rounded-sm border border-terminal-foreground/10 bg-terminal-foreground/[0.06] py-1 shadow-[0_6px_12px_rgb(0_0_0/0.15)] transition-colors",
+              "group-hover:border-terminal-foreground/15 group-hover:bg-terminal-foreground/[0.08]",
+              "focus-within:border-canopy-accent/45 focus-within:ring-1 focus-within:ring-canopy-accent/16 focus-within:bg-terminal-foreground/[0.08]",
               isVoiceActiveForPanel &&
                 "border-canopy-accent/60 bg-canopy-accent/[0.12] shadow-[0_0_0_1px_rgba(var(--theme-accent-rgb),0.35),0_0_16px_rgba(var(--theme-accent-rgb),0.15)]",
               isDragOverFiles && "border-canopy-accent/60 ring-1 ring-canopy-accent/30",
@@ -1169,7 +1169,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               }
             />
             {isDragOverFiles && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-sm bg-canopy-bg/80 pointer-events-none">
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-sm bg-terminal-background/80 pointer-events-none">
                 <span className="text-xs font-medium text-canopy-accent">Drop to attach</span>
               </div>
             )}
@@ -1190,7 +1190,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 }}
                 className={cn(
                   "w-full min-h-[20px]",
-                  "text-canopy-text",
+                  "text-terminal-foreground",
                   disabled && "pointer-events-none"
                 )}
               />

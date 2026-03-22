@@ -727,7 +727,12 @@ function TerminalPaneComponent({
         onDismiss={() => setDismissedRestartPrompt(true)}
       />
 
-      <div className="flex-1 min-h-0 bg-canopy-bg flex flex-col">
+      <div
+        className={cn(
+          "flex-1 min-h-0 flex flex-col",
+          isAgentTerminal ? "bg-terminal-background" : "bg-canopy-bg"
+        )}
+      >
         <div className="flex-1 relative min-h-0">
           <div
             className={cn(

@@ -208,23 +208,23 @@ describe("terminalColorSchemeStore", () => {
       expect(selectWrapperBackground(useTerminalColorSchemeStore.getState())).toBe("#222222");
     });
 
-    it("falls back to the canvas variable for an unmapped app theme", () => {
+    it("falls back to the terminal-background variable for an unmapped app theme", () => {
       useAppThemeStore.setState({ selectedSchemeId: "custom-unknown-theme" });
 
       expect(selectWrapperBackground(useTerminalColorSchemeStore.getState())).toBe(
-        "var(--theme-surface-canvas)"
+        "var(--theme-terminal-background)"
       );
     });
 
-    it("falls back to the canvas variable for an unknown scheme id", () => {
+    it("falls back to the terminal-background variable for an unknown scheme id", () => {
       useTerminalColorSchemeStore.setState({ selectedSchemeId: "nonexistent" });
 
       expect(selectWrapperBackground(useTerminalColorSchemeStore.getState())).toBe(
-        "var(--theme-surface-canvas)"
+        "var(--theme-terminal-background)"
       );
     });
 
-    it("falls back to the canvas variable when a custom scheme has no background", () => {
+    it("falls back to the terminal-background variable when a custom scheme has no background", () => {
       const noBackground: TerminalColorScheme = {
         ...CUSTOM_SCHEME,
         id: "no-bg",
@@ -234,7 +234,7 @@ describe("terminalColorSchemeStore", () => {
       useTerminalColorSchemeStore.getState().setSelectedSchemeId("no-bg");
 
       expect(selectWrapperBackground(useTerminalColorSchemeStore.getState())).toBe(
-        "var(--theme-surface-canvas)"
+        "var(--theme-terminal-background)"
       );
     });
   });

@@ -1,6 +1,6 @@
 import type { ITheme } from "@xterm/xterm";
 import type { AppColorScheme, AppColorSchemeTokens } from "./types.js";
-import { hexToRgbTriplet } from "./themes.js";
+import { hexToRgbTriplet } from "./canopyTokens.js";
 
 export function getTerminalScrollbarDefaults(type: "dark" | "light") {
   const ch = type === "dark" ? "255, 255, 255" : "0, 0, 0";

@@ -494,7 +494,10 @@ function XtermAdapterComponent({
     <div
       className={cn(
         "w-full h-full text-text-primary overflow-hidden",
-        !isAltBuffer && "pl-3 pt-3 pb-3 pr-3 rounded-b-[var(--radius-lg)]",
+        !isAltBuffer &&
+          terminalType === "terminal" &&
+          "pl-3 pt-3 pb-3 pr-3 rounded-b-[var(--radius-lg)]",
+        !isAltBuffer && terminalType !== "terminal" && "pl-3 pt-3 pb-1 pr-3",
         className
       )}
       style={{ backgroundColor: wrapperBackground, contain: "strict" }}

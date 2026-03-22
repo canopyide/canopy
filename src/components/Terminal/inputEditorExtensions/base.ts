@@ -39,7 +39,7 @@ export const inputTheme = EditorView.theme(
       borderLeftColor: "var(--theme-accent-primary)",
     },
     ".cm-placeholder": {
-      color: "color-mix(in oklab, var(--theme-text-muted) 78%, transparent)",
+      color: "color-mix(in oklab, var(--theme-terminal-muted) 78%, transparent)",
     },
     ".cm-scroller": {
       overflow: "hidden",
