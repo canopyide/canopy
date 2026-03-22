@@ -542,8 +542,7 @@ Within some settings sections (e.g., General has Overview/Hibernation/Display), 
 The active subtab shows a 2px `accent-primary` colored line along the bottom:
 
 ```css
-isactive? "border-b-2 border-canopy-accent text-canopy-text"
-         : "border-b-2 border-transparent text-text-secondary";
+isactive?"border-b-2 border-canopy-accent text-canopy-text": "border-b-2 border-transparent text-text-secondary";
 ```
 
 Inactive tabs have a transparent bottom border (same 2px so layout doesn't shift) and use `text-secondary`. On hover, inactive tabs show `border-canopy-border` (a subtle gray line).
