@@ -75,13 +75,12 @@ describe("IssueBulkActionBar", () => {
     const classes = toolbar.className;
 
     expect(classes).toContain("rounded-xl");
-    expect(classes).toContain("shadow-xl");
+    expect(classes).toContain("shadow-[var(--theme-shadow-floating)]");
     expect(classes).toContain("mx-2");
     expect(classes).toContain("mb-2");
     expect(classes).toContain("bg-surface-panel");
     expect(classes).not.toContain("bg-surface-panel-elevated");
     expect(classes).toContain("ring-border-default");
-    expect(classes).toContain("shadow-black/20");
     expect(classes).toContain("inset-shadow-[0_1px_0_var(--color-overlay-soft)]");
 
     expect(classes).not.toContain("border-t");
