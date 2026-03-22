@@ -1,10 +1,44 @@
-.toolbar-icon-button {
-  --_toolbar-fg: var(--toolbar-control-hover-fg, var(--theme-accent-primary));
+.surface-toolbar {
+  background-color: var(--toolbar-bg, var(--theme-surface-toolbar));
+  background-image: var(--toolbar-noise, var(--chrome-noise-texture));
+  background-blend-mode: soft-light;
+  box-shadow: var(--toolbar-shadow, none);
+  -webkit-backdrop-filter: blur(var(--theme-material-blur))
+    saturate(var(--theme-material-saturation));
+  backdrop-filter: blur(var(--theme-material-blur)) saturate(var(--theme-material-saturation));
+}
+
+.toolbar-icon-button,
+.toolbar-agent-button {
+  --_hover-fg: var(--toolbar-control-hover-fg, var(--theme-accent-primary));
+  --_hover-shadow: var(--toolbar-control-hover-shadow, none);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .toolbar-icon-button:hover,
 .toolbar-icon-button:focus-visible {
-  color: var(--_toolbar-fg);
+  background: var(--toolbar-control-hover-bg, var(--theme-overlay-elevated));
+  color: var(--_hover-fg);
+  box-shadow: var(--_hover-shadow);
+}
+
+.toolbar-agent-button:hover,
+.toolbar-agent-button:focus-visible {
+  background: var(
+    --toolbar-agent-hover-bg,
+    var(--toolbar-control-hover-bg, var(--theme-overlay-elevated))
+  );
+  color: var(--_hover-fg);
+  box-shadow: var(--_hover-shadow);
+}
+
+.toolbar-icon-button:active,
+.toolbar-agent-button:active {
+  transform: scale(0.98);
 }
 
 .toolbar-divider {
