@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, act } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { describe, expect, it, beforeEach } from "vitest";
 import { useOverlayState } from "../useOverlayState";
 import { useUIStore } from "@/store/uiStore";
