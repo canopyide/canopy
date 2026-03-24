@@ -21,7 +21,7 @@ vi.mock("../terminalSessionPersistence.js", async (importOriginal) => {
 });
 
 type DataCb = (data: string) => void;
-type ExitCb = (e: { exitCode: number | undefined; signal: number | undefined }) => void;
+type ExitCb = (e: { exitCode: number; signal?: number }) => void;
 
 function createControllablePty(): IPty & {
   emitData: (d: string) => void;
@@ -43,7 +43,7 @@ function createControllablePty(): IPty & {
       dataCb = cb;
       return { dispose: () => {} };
     },
-    onExit: (cb: (e: { exitCode: number | undefined; signal: number | undefined }) => void) => {
+    onExit: (cb: (e: { exitCode: number; signal?: number }) => void) => {
       exitCb = cb;
       return { dispose: () => {} };
     },
