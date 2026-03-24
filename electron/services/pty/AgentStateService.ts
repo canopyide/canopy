@@ -207,11 +207,9 @@ export class AgentStateService {
     // (crash-signal exits are now the only path to "failed")
     if (newState === "failed") {
       const errorMessage =
-        event.type === "error"
-          ? event.error
-          : event.type === "exit"
-            ? `Process crashed (exit code ${event.code}${event.signal ? `, signal ${event.signal}` : ""})`
-            : "Agent entered failed state";
+        event.type === "exit"
+          ? `Process crashed (exit code ${event.code}${event.signal ? `, signal ${event.signal}` : ""})`
+          : "Agent entered failed state";
       this.emitAgentFailed(terminal, errorMessage);
     }
 
