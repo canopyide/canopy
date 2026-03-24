@@ -37,7 +37,6 @@ function makeOpts(): AppLifecycleOptions {
     onCreateWindow: vi.fn(),
     getMainWindow: vi.fn(() => null),
     getCliAvailabilityService: vi.fn(() => null),
-    getProjectSwitchService: vi.fn(() => null),
   };
 }
 
