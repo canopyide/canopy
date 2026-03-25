@@ -354,6 +354,30 @@ describe("buildArgsForRespawn", () => {
     );
     expect(result.agentModelId).toBe("claude-opus-4-6");
   });
+
+  it("passes agentLaunchFlags to buildResumeCommand", () => {
+    buildResumeCommandMock.mockClear();
+    buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentSessionId: "sess-1",
+        agentLaunchFlags: ["--yolo", "--dangerously-skip-permissions"],
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(buildResumeCommandMock).toHaveBeenCalledWith("claude", "sess-1", [
+      "--yolo",
+      "--dangerously-skip-permissions",
+    ]);
+  });
 });
 
 describe("agentModelId propagation", () => {
@@ -486,5 +510,118 @@ describe("buildArgsForOrphanedTerminal", () => {
   it("falls back to projectRoot when cwd is empty", () => {
     const result = buildArgsForOrphanedTerminal({ id: "t1", cwd: "", title: "Test" }, "/project");
     expect(result.cwd).toBe("/project");
+  });
+
+  it("preserves agentLaunchFlags and agentModelId from backend", () => {
+    const result = buildArgsForOrphanedTerminal(
+      {
+        id: "t1",
+        kind: "agent",
+        type: "claude",
+        agentId: "claude",
+        title: "Claude",
+        cwd: "/project",
+        agentLaunchFlags: ["--dangerously-skip-permissions", "--yolo"],
+        agentModelId: "sonnet",
+        agentSessionId: "sess-123",
+      },
+      "/project"
+    );
+    expect(result.agentLaunchFlags).toEqual(["--dangerously-skip-permissions", "--yolo"]);
+    expect(result.agentModelId).toBe("sonnet");
+    expect(result.agentSessionId).toBe("sess-123");
+  });
+
+  it("handles empty agentLaunchFlags array correctly", () => {
+    const result = buildArgsForOrphanedTerminal(
+      { id: "t1", kind: "agent", title: "Claude", cwd: "/p", agentLaunchFlags: [] },
+      "/p"
+    );
+    expect(result.agentLaunchFlags).toEqual([]);
+  });
+
+  it("omits agent fields when not present on backend (backwards compat)", () => {
+    const result = buildArgsForOrphanedTerminal(
+      { id: "t1", kind: "terminal", title: "Shell", cwd: "/p" },
+      "/p"
+    );
+    expect(result.agentLaunchFlags).toBeUndefined();
+    expect(result.agentModelId).toBeUndefined();
+    expect(result.agentSessionId).toBeUndefined();
+  });
+});
+
+describe("buildArgsForBackendTerminal — agent launch flags", () => {
+  it("prefers backend agentLaunchFlags over saved", () => {
+    const result = buildArgsForBackendTerminal(
+      {
+        id: "t1",
+        kind: "agent",
+        type: "claude",
+        agentId: "claude",
+        title: "Claude",
+        cwd: "/p",
+        agentLaunchFlags: ["--yolo"],
+        agentModelId: "opus",
+      },
+      {
+        id: "t1",
+        agentLaunchFlags: ["--old-flag"],
+        agentModelId: "old-model",
+      },
+      "/p"
+    );
+    expect(result.agentLaunchFlags).toEqual(["--yolo"]);
+    expect(result.agentModelId).toBe("opus");
+  });
+
+  it("falls back to saved when backend has no flags", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", kind: "agent", type: "claude", agentId: "claude", title: "Claude", cwd: "/p" },
+      { id: "t1", agentLaunchFlags: ["--saved-flag"], agentModelId: "saved-model" },
+      "/p"
+    );
+    expect(result.agentLaunchFlags).toEqual(["--saved-flag"]);
+    expect(result.agentModelId).toBe("saved-model");
+  });
+
+  it("falls back to saved when backend fields are null (stale JSON)", () => {
+    const result = buildArgsForBackendTerminal(
+      {
+        id: "t1",
+        kind: "agent",
+        type: "claude",
+        agentId: "claude",
+        title: "Claude",
+        cwd: "/p",
+        agentLaunchFlags: null as unknown as string[] | undefined,
+        agentModelId: null as unknown as string | undefined,
+      },
+      { id: "t1", agentLaunchFlags: ["--saved"], agentModelId: "saved" },
+      "/p"
+    );
+    expect(result.agentLaunchFlags).toEqual(["--saved"]);
+    expect(result.agentModelId).toBe("saved");
+  });
+});
+
+describe("buildArgsForReconnectedFallback — agent launch flags", () => {
+  it("prefers reconnected flags over saved", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", kind: "agent", title: "Claude", cwd: "/p", agentLaunchFlags: ["--new"] },
+      { id: "t1", agentLaunchFlags: ["--old"] },
+      "/p"
+    );
+    expect(result.agentLaunchFlags).toEqual(["--new"]);
+  });
+
+  it("falls back to saved when reconnected has no flags", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", kind: "agent", title: "Claude", cwd: "/p" },
+      { id: "t1", agentLaunchFlags: ["--saved"], agentModelId: "saved-m" },
+      "/p"
+    );
+    expect(result.agentLaunchFlags).toEqual(["--saved"]);
+    expect(result.agentModelId).toBe("saved-m");
   });
 });
