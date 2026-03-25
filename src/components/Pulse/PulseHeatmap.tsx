@@ -148,7 +148,7 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
               });
 
               const ringStyle = (
-                cell.isToday || cell.isMostRecentActive
+                cell.isMostRecentActive
                   ? { "--tw-ring-offset-color": "var(--pulse-ring-offset, var(--pulse-card-bg))" }
                   : {}
               ) as CSSProperties;
@@ -166,10 +166,7 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
                       }}
                       className={cn(
                         "rounded-[2px] shrink-0 border-0 p-0 cursor-default transition-[transform,background-color,box-shadow] duration-150",
-                        cell.isToday && "ring-2 ring-canopy-accent ring-offset-1",
-                        cell.isMostRecentActive &&
-                          !cell.isToday &&
-                          "ring-1 ring-canopy-accent/45 ring-offset-1"
+                        cell.isMostRecentActive && "ring-1 ring-canopy-accent/45 ring-offset-1"
                       )}
                       aria-label={`${formatted}: ${getTooltipText(cell)}`}
                       tabIndex={0}
