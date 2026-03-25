@@ -104,7 +104,9 @@ describe("agent command injection - shell ready detection", () => {
     ptyClient.emit("data", id, `some init output\n${sentinel}\n`);
 
     expect(ptyClient.write).toHaveBeenCalledTimes(2);
-    expect(ptyClient.write.mock.calls[1][1]).toBe(`${CLEAR_SCREEN_SEQUENCE}exec gemini chat\r`);
+    expect(ptyClient.write.mock.calls[1][1]).toBe(
+      `printf '${CLEAR_SCREEN_SEQUENCE}'; exec gemini chat\r`
+    );
   });
 
   it("does not write command twice after sentinel arrives", async () => {
@@ -240,7 +242,71 @@ describe("agent command injection - shell ready detection", () => {
     vi.advanceTimersByTime(3000);
 
     expect(ptyClient.write).toHaveBeenCalledTimes(2);
-    expect(ptyClient.write.mock.calls[1][1]).toBe(`${CLEAR_SCREEN_SEQUENCE}exec gemini chat\r`);
+    expect(ptyClient.write.mock.calls[1][1]).toBe(
+      `printf '${CLEAR_SCREEN_SEQUENCE}'; exec gemini chat\r`
+    );
     vi.useRealTimers();
+  });
+
+  it("does not write command when terminal is gone before sentinel", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    cleanup = registerTerminalLifecycleHandlers(deps);
+    const handler = getSpawnHandler();
+
+    const id = await handler({} as Electron.IpcMainInvokeEvent, {
+      cols: 80,
+      rows: 24,
+      kind: "agent",
+      agentId: "gemini",
+      command: "gemini chat",
+    });
+
+    ptyClient.hasTerminal.mockReturnValue(false);
+    const sentinelWrite = ptyClient.write.mock.calls[0];
+    const sentinel = sentinelWrite[1].match(/__CANOPY_READY_\w+__/)?.[0];
+    ptyClient.emit("data", id, sentinel!);
+
+    expect(ptyClient.write).toHaveBeenCalledTimes(1);
+  });
+
+  it("non-agent command does not include clear sequence", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    cleanup = registerTerminalLifecycleHandlers(deps);
+    const handler = getSpawnHandler();
+
+    await handler({} as Electron.IpcMainInvokeEvent, {
+      cols: 80,
+      rows: 24,
+      command: "ls -la",
+    });
+
+    await vi.waitFor(
+      () => {
+        expect(ptyClient.write).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 500 }
+    );
+    expect(ptyClient.write.mock.calls[0][1]).not.toContain(CLEAR_SCREEN_SEQUENCE);
+  });
+
+  it("detects sentinel from Uint8Array data", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    cleanup = registerTerminalLifecycleHandlers(deps);
+    const handler = getSpawnHandler();
+
+    const id = await handler({} as Electron.IpcMainInvokeEvent, {
+      cols: 80,
+      rows: 24,
+      kind: "agent",
+      agentId: "gemini",
+      command: "gemini chat",
+    });
+
+    const sentinelWrite = ptyClient.write.mock.calls[0];
+    const sentinel = sentinelWrite[1].match(/__CANOPY_READY_\w+__/)?.[0] as string;
+    const encoded = new TextEncoder().encode(sentinel);
+
+    ptyClient.emit("data", id, encoded);
+    expect(ptyClient.write).toHaveBeenCalledTimes(2);
   });
 });

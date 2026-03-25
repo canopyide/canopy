@@ -198,8 +198,10 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
             const sentinel = `__CANOPY_READY_${id.slice(0, 8)}__`;
             let completed = false;
             let buffer = "";
+            let timerId: ReturnType<typeof setTimeout> | undefined;
 
             const cleanup = () => {
+              if (timerId !== undefined) clearTimeout(timerId);
               ptyClient.off("data", onData);
               ptyClient.off("exit", onExit);
             };
@@ -209,7 +211,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
               completed = true;
               cleanup();
               if (ptyClient.hasTerminal(id)) {
-                ptyClient.write(id, `${CLEAR_SCREEN_SEQUENCE}${finalCommand}\r`);
+                ptyClient.write(id, `printf '${CLEAR_SCREEN_SEQUENCE}'; ${finalCommand}\r`);
               }
             };
 
@@ -240,7 +242,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
             // Write sentinel echo — processed after shell init completes
             ptyClient.write(id, `echo ${sentinel}\r`);
 
-            setTimeout(() => writeCommand(), SHELL_READY_TIMEOUT_MS);
+            timerId = setTimeout(() => writeCommand(), SHELL_READY_TIMEOUT_MS);
           } else {
             setTimeout(() => {
               if (ptyClient.hasTerminal(id)) {
