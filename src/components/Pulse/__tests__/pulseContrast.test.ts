@@ -86,8 +86,9 @@ describe("PulseHeatmap — contrast on elevated card (issue #2645)", () => {
     expect(content).toContain("var(--pulse-missed-bg)");
   });
 
-  it("today ring uses the pulse ring offset token", async () => {
+  it("most-recent-active ring uses the pulse ring offset token", async () => {
     const content = await readFile(HEATMAP_PATH, "utf-8");
     expect(content).toContain("var(--pulse-ring-offset");
+    expect(content).not.toContain('cell.isToday && "ring-2');
   });
 });
