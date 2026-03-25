@@ -3,7 +3,7 @@ import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
-import { getFirstGridPanel, getGridPanelCount } from "../helpers/panels";
+import { getFirstGridPanel, getGridPanelCount, openTerminal } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
 import { getPtyPid, isPidAlive, measureMainMemory } from "../helpers/stress";
