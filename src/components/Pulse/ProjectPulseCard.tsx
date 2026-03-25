@@ -47,7 +47,7 @@ function getCoachLine(pulse: ProjectPulse): string {
   const last7Days = sortedCells.slice(-7).filter((c) => c.count > 0).length;
 
   if (today && today.count > 0) {
-    return "Nice — progress logged today.";
+    return `${today.count} commit${today.count !== 1 ? "s" : ""} today — nice.`;
   }
   if (pulse.currentStreakDays && pulse.currentStreakDays > 0) {
     return "One small commit today keeps your streak going.";
