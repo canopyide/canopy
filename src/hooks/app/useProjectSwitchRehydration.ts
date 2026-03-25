@@ -30,17 +30,6 @@ interface ProjectSwitchedEventDetail {
 }
 
 export function useProjectSwitchRehydration() {
-  const addTerminal = useTerminalStore((s) => s.addTerminal);
-  const setReconnectError = useTerminalStore((s) => s.setReconnectError);
-  const hydrateTabGroups = useTerminalStore((s) => s.hydrateTabGroups);
-  const restoreTerminalOrder = useTerminalStore((s) => s.restoreTerminalOrder);
-  const hydrateMru = useTerminalStore((s) => s.hydrateMru);
-  const setActiveWorktree = useWorktreeSelectionStore((s) => s.setActiveWorktree);
-  const loadRecipes = useRecipeStore((s) => s.loadRecipes);
-  const openDiagnosticsDock = useDiagnosticsStore((s) => s.openDock);
-  const setFocusMode = useFocusStore((s) => s.setFocusMode);
-  const hydrateActionMru = useActionMruStore((s) => s.hydrateActionMru);
-
   const currentSwitchIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -48,20 +37,27 @@ export function useProjectSwitchRehydration() {
       return;
     }
 
-    const callbacks: HydrationOptions = {
-      addTerminal: addTerminal as HydrationOptions["addTerminal"],
-      setActiveWorktree,
-      loadRecipes,
-      openDiagnosticsDock,
-      setFocusMode,
-      setReconnectError,
-      hydrateTabGroups,
-      restoreTerminalOrder,
-      hydrateMru,
-      hydrateActionMru,
-    };
-
     const handleProjectSwitch = async (event: Event) => {
+      const { addTerminal, setReconnectError, hydrateTabGroups, restoreTerminalOrder, hydrateMru } =
+        useTerminalStore.getState();
+      const { setActiveWorktree } = useWorktreeSelectionStore.getState();
+      const { loadRecipes } = useRecipeStore.getState();
+      const { openDock: openDiagnosticsDock } = useDiagnosticsStore.getState();
+      const { setFocusMode } = useFocusStore.getState();
+      const { hydrateActionMru } = useActionMruStore.getState();
+
+      const callbacks: HydrationOptions = {
+        addTerminal: addTerminal as HydrationOptions["addTerminal"],
+        setActiveWorktree,
+        loadRecipes,
+        openDiagnosticsDock,
+        setFocusMode,
+        setReconnectError,
+        hydrateTabGroups,
+        restoreTerminalOrder,
+        hydrateMru,
+        hydrateActionMru,
+      };
       const customEvent = event as CustomEvent<ProjectSwitchedEventDetail>;
       const switchId = customEvent.detail?.switchId;
       const projectId = customEvent.detail?.projectId;
@@ -159,16 +155,5 @@ export function useProjectSwitchRehydration() {
       window.removeEventListener("project-switched", handleProjectSwitch);
       cleanup();
     };
-  }, [
-    addTerminal,
-    setActiveWorktree,
-    loadRecipes,
-    openDiagnosticsDock,
-    setFocusMode,
-    setReconnectError,
-    hydrateTabGroups,
-    restoreTerminalOrder,
-    hydrateMru,
-    hydrateActionMru,
-  ]);
+  }, []);
 }
