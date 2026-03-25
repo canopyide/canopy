@@ -23,7 +23,9 @@ function stripWrappingQuotes(value: string): string {
   return trimmed;
 }
 
-async function readFrontmatterDescription(filePath: string): Promise<string | null> {
+async function readFrontmatterDescription(
+  filePath: string
+): Promise<{ description: string | null; userInvocable: boolean }> {
   let handle: FileHandle | null = null;
   try {
     handle = await fs.open(filePath, "r");
@@ -32,17 +34,26 @@ async function readFrontmatterDescription(filePath: string): Promise<string | nu
     const text = buffer.subarray(0, bytesRead).toString("utf8");
 
     const normalized = text.startsWith("\uFEFF") ? text.slice(1) : text;
-    if (!normalized.startsWith("---")) return null;
+    if (!normalized.startsWith("---")) return { description: null, userInvocable: true };
 
     const endIndex = normalized.indexOf("\n---", 3);
-    if (endIndex === -1) return null;
+    if (endIndex === -1) return { description: null, userInvocable: true };
 
     const frontmatter = normalized.slice(3, endIndex);
-    const match = frontmatter.match(/^description:\s*(.+)$/m);
-    if (!match) return null;
-    return stripWrappingQuotes(match[1] ?? "");
+
+    const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+    const description = descMatch ? stripWrappingQuotes(descMatch[1] ?? "") : null;
+
+    const invocableMatch = frontmatter.match(/^user-invocable:\s*(.+)$/m);
+    let userInvocable = true;
+    if (invocableMatch) {
+      const val = stripWrappingQuotes(invocableMatch[1] ?? "").toLowerCase();
+      if (val === "false" || val === "no") userInvocable = false;
+    }
+
+    return { description, userInvocable };
   } catch {
-    return null;
+    return { description: null, userInvocable: true };
   } finally {
     await handle?.close().catch(() => {});
   }
@@ -116,7 +127,9 @@ async function scanCommandDirectory(
         const name = relNoExt.split(path.sep).join(":");
         const label = isPromptDirectory ? `/prompts:${name}` : `/${name}`;
         const id = isPromptDirectory ? `${scope}:prompts:${name}` : `${scope}:${name}`;
-        const description = (await readFrontmatterDescription(fullPath)) ?? "Custom command";
+        const { description: desc, userInvocable } = await readFrontmatterDescription(fullPath);
+        if (!userInvocable) return;
+        const description = desc ?? "Custom command";
 
         results.push({
           id,

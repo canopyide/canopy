@@ -300,6 +300,166 @@ Create an issue.
     }
   });
 
+  it("excludes commands with user-invocable: false", async () => {
+    const root = await makeTempDir();
+    const service = new SlashCommandService();
+
+    try {
+      await fs.mkdir(path.join(root, ".git"));
+
+      await writeFile(
+        path.join(root, ".claude", "commands", "internal.md"),
+        `---
+description: "Internal pipeline command"
+user-invocable: false
+---
+
+Not for users.
+`
+      );
+
+      const commands = await service.list("claude", root);
+      const internal = commands.find((c) => c.label === "/internal");
+
+      expect(internal).toBeUndefined();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes commands with user-invocable: no", async () => {
+    const root = await makeTempDir();
+    const service = new SlashCommandService();
+
+    try {
+      await fs.mkdir(path.join(root, ".git"));
+
+      await writeFile(
+        path.join(root, ".claude", "commands", "hidden.md"),
+        `---
+description: "Hidden command"
+user-invocable: no
+---
+
+Hidden.
+`
+      );
+
+      const commands = await service.list("claude", root);
+      const hidden = commands.find((c) => c.label === "/hidden");
+
+      expect(hidden).toBeUndefined();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("includes commands with user-invocable: true or absent header", async () => {
+    const root = await makeTempDir();
+    const service = new SlashCommandService();
+
+    try {
+      await fs.mkdir(path.join(root, ".git"));
+
+      await writeFile(
+        path.join(root, ".claude", "commands", "explicit-true.md"),
+        `---
+description: "Explicitly invocable"
+user-invocable: true
+---
+
+Visible.
+`
+      );
+
+      await writeFile(
+        path.join(root, ".claude", "commands", "no-header.md"),
+        `---
+description: "No invocable header"
+---
+
+Also visible.
+`
+      );
+
+      const commands = await service.list("claude", root);
+      const explicitTrue = commands.find((c) => c.label === "/explicit-true");
+      const noHeader = commands.find((c) => c.label === "/no-header");
+
+      expect(explicitTrue).toBeDefined();
+      expect(explicitTrue?.description).toBe("Explicitly invocable");
+      expect(noHeader).toBeDefined();
+      expect(noHeader?.description).toBe("No invocable header");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("handles case-insensitive user-invocable values in commands", async () => {
+    const root = await makeTempDir();
+    const service = new SlashCommandService();
+
+    try {
+      await fs.mkdir(path.join(root, ".git"));
+
+      await writeFile(
+        path.join(root, ".claude", "commands", "upper-false.md"),
+        `---
+description: "Upper false"
+user-invocable: FALSE
+---
+
+Hidden.
+`
+      );
+
+      await writeFile(
+        path.join(root, ".claude", "commands", "mixed-no.md"),
+        `---
+description: "Mixed no"
+user-invocable: No
+---
+
+Hidden.
+`
+      );
+
+      const commands = await service.list("claude", root);
+
+      expect(commands.find((c) => c.label === "/upper-false")).toBeUndefined();
+      expect(commands.find((c) => c.label === "/mixed-no")).toBeUndefined();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes Codex prompts with user-invocable: false", async () => {
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      await writeFile(
+        path.join(projectRoot, ".codex", "prompts", "internal-prompt.md"),
+        `---
+description: "Internal Codex prompt"
+user-invocable: false
+---
+
+Not for users.
+`
+      );
+
+      const commands = await service.list("codex", projectRoot);
+      const internal = commands.find((c) => c.label === "/prompts:internal-prompt");
+
+      expect(internal).toBeUndefined();
+    } finally {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("discovers project skills from .claude/skills/", async () => {
     const homeRoot = await makeTempDir();
     const root = await makeTempDir();
