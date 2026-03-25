@@ -190,7 +190,7 @@ async function initializeDeferredServices(
     cliService.checkAvailability().then((availability) => {
       console.log("[MAIN] CLI availability checked:", availability);
       console.log("[MAIN] Rebuilding menu with agent availability...");
-      createApplicationMenu(window, cliService, projectSwitchService ?? undefined);
+      createApplicationMenu(window, cliService);
       return availability;
     }),
   ]);
@@ -318,7 +318,7 @@ export async function setupWindowServices(
   // Menu & Notifications
   console.log("[MAIN] Creating application menu (initial, no agent availability yet)...");
   cliAvailabilityService = new CliAvailabilityService();
-  createApplicationMenu(win, cliAvailabilityService, undefined);
+  createApplicationMenu(win, cliAvailabilityService);
 
   notificationService.initialize(win);
   agentNotificationService.initialize();
@@ -642,12 +642,9 @@ export async function setupWindowServices(
   if (cliPath) {
     setPendingCliPath(null);
     console.log("[MAIN] Opening CLI path from launch args:", cliPath);
-    handleDirectoryOpen(
-      cliPath,
-      win,
-      cliAvailabilityService ?? undefined,
-      projectSwitchService ?? undefined
-    ).catch((err) => console.error("[MAIN] Failed to open CLI path:", err));
+    handleDirectoryOpen(cliPath, win, cliAvailabilityService ?? undefined).catch((err) =>
+      console.error("[MAIN] Failed to open CLI path:", err)
+    );
   }
 
   // Performance monitors
@@ -735,6 +732,8 @@ export async function setupWindowServices(
     disposeAgentRouter();
     disposeAgentAvailabilityStore();
     disposeWorkflowEngine();
+
+    projectSwitchService = null;
 
     if (ptyClient) ptyClient.dispose();
     ptyClient = null;
