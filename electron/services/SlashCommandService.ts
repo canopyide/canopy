@@ -59,7 +59,9 @@ async function readFrontmatterDescription(
   }
 }
 
-async function readTomlDescription(filePath: string): Promise<string | null> {
+async function readTomlDescription(
+  filePath: string
+): Promise<{ description: string | null; userInvocable: boolean }> {
   let handle: FileHandle | null = null;
   try {
     handle = await fs.open(filePath, "r");
@@ -69,18 +71,30 @@ async function readTomlDescription(filePath: string): Promise<string | null> {
 
     const normalized = text.startsWith("\uFEFF") ? text.slice(1) : text;
 
+    let description: string | null = null;
     const multilineDouble = normalized.match(/^description\s*=\s*"""\s*([\s\S]*?)\s*"""/m);
-    if (multilineDouble?.[1]) return multilineDouble[1].trim();
+    if (multilineDouble?.[1]) {
+      description = multilineDouble[1].trim();
+    } else {
+      const multilineSingle = normalized.match(/^description\s*=\s*'''\s*([\s\S]*?)\s*'''/m);
+      if (multilineSingle?.[1]) {
+        description = multilineSingle[1].trim();
+      } else {
+        const singleLine = normalized.match(/^description\s*=\s*(["'])(.*?)\1/m);
+        if (singleLine?.[2]) description = singleLine[2].trim();
+      }
+    }
 
-    const multilineSingle = normalized.match(/^description\s*=\s*'''\s*([\s\S]*?)\s*'''/m);
-    if (multilineSingle?.[1]) return multilineSingle[1].trim();
+    const invocableMatch = normalized.match(/^user-invocable\s*=\s*(.+)$/m);
+    let userInvocable = true;
+    if (invocableMatch) {
+      const raw = invocableMatch[1]!.trim().toLowerCase();
+      if (raw === "false" || raw === "no") userInvocable = false;
+    }
 
-    const singleLine = normalized.match(/^description\s*=\s*(["'])(.*?)\1/m);
-    if (singleLine?.[2]) return singleLine[2].trim();
-
-    return null;
+    return { description, userInvocable };
   } catch {
-    return null;
+    return { description: null, userInvocable: true };
   } finally {
     await handle?.close().catch(() => {});
   }
@@ -191,7 +205,9 @@ async function scanTomlCommandDirectory(
         const name = relNoExt.split(path.sep).join(":");
         const label = isPromptDirectory ? `/prompts:${name}` : `/${name}`;
         const id = isPromptDirectory ? `${scope}:prompts:${name}` : `${scope}:${name}`;
-        const description = (await readTomlDescription(fullPath)) ?? "Custom command";
+        const { description: desc, userInvocable } = await readTomlDescription(fullPath);
+        if (!userInvocable) return;
+        const description = desc ?? "Custom command";
 
         results.push({
           id,

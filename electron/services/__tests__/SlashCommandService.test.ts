@@ -163,6 +163,40 @@ prompt = "Run the tests"
     }
   });
 
+  it("excludes Gemini TOML commands with user-invocable = false", async () => {
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      await writeFile(
+        path.join(projectRoot, ".gemini", "commands", "visible.toml"),
+        `description = "Visible command"
+prompt = "Do visible thing"
+`
+      );
+
+      await writeFile(
+        path.join(projectRoot, ".gemini", "commands", "hidden.toml"),
+        `description = "Hidden command"
+user-invocable = false
+prompt = "Do hidden thing"
+`
+      );
+
+      const commands = await service.list("gemini", projectRoot);
+      const visible = commands.find((c) => c.label === "/visible");
+      const hidden = commands.find((c) => c.label === "/hidden");
+
+      expect(visible).toBeDefined();
+      expect(visible?.description).toBe("Visible command");
+      expect(hidden).toBeUndefined();
+    } finally {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("merges Codex project prompts over user prompts and supports nested namespaces", async () => {
     const homeRoot = await makeTempDir();
     const projectRoot = await makeTempDir();
