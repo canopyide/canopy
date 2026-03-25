@@ -78,7 +78,6 @@ test.describe.serial("Core: Toolbar Overflow", () => {
 
       // Simulate the overflow computation with a narrow container
       const ids = Object.keys(PRIORITIES);
-      const itemWidths = new Map(ids.map((id) => [id, 36]));
       const containerWidth = 200; // Very narrow
       const totalWidth = ids.length * 36; // 504px total
 
