@@ -536,7 +536,8 @@ export function GitHubResourceList({
     return (
       msg.includes("GitHub token not configured") ||
       msg.includes("Invalid GitHub token") ||
-      msg.includes("Token lacks required permissions")
+      msg.includes("Token lacks required permissions") ||
+      msg.includes("SSO authorization required")
     );
   };
 
