@@ -139,6 +139,16 @@ describe("portalStore", () => {
       expect(usePortalStore.getState().width).toBe(PORTAL_MIN_WIDTH);
     });
 
+    it("preserves in-range width values exactly", () => {
+      usePortalStore.getState().setWidth(600);
+      expect(usePortalStore.getState().width).toBe(600);
+    });
+
+    it("allows width at exactly PORTAL_MAX_WIDTH", () => {
+      usePortalStore.getState().setWidth(PORTAL_MAX_WIDTH);
+      expect(usePortalStore.getState().width).toBe(PORTAL_MAX_WIDTH);
+    });
+
     it("clamps width above maximum to PORTAL_MAX_WIDTH", () => {
       usePortalStore.getState().setWidth(PORTAL_MAX_WIDTH + 1);
       expect(usePortalStore.getState().width).toBe(PORTAL_MAX_WIDTH);
