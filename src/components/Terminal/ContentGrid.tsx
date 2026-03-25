@@ -941,7 +941,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
             ref={gridRegionRef}
             role="region"
             tabIndex={-1}
-            aria-label="Panel grid"
+            aria-label="Panel grid region"
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
@@ -974,7 +974,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
             ref={gridRegionRef}
             role="region"
             tabIndex={-1}
-            aria-label="Panel grid"
+            aria-label="Panel grid region"
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
