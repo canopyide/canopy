@@ -106,101 +106,101 @@ export function NotificationSettingsTab() {
       />
 
       <div className={settings.enabled ? undefined : "opacity-50 pointer-events-none"}>
-      <SettingsSection
-        icon={Bell}
-        title="Agent Notifications"
-        description="OS notifications are off by default. Enable individual event types below to receive native alerts for agent activity. Notifications are suppressed when you are already viewing the relevant worktree."
-      >
-        <div className="space-y-3">
-          <SettingsCheckbox
-            id="notif-completed"
-            label="Agent completed"
-            description="Show a notification when an agent finishes its task"
-            checked={settings.completedEnabled}
-            onChange={(v) => update({ completedEnabled: v })}
-          />
-          <SettingsCheckbox
-            id="notif-waiting"
-            label="Agent waiting for input"
-            description="Show a notification immediately when an agent needs input — always fires regardless of focus"
-            checked={settings.waitingEnabled}
-            onChange={(v) => update({ waitingEnabled: v })}
-          />
-          {settings.waitingEnabled && (
-            <div className="ml-6 space-y-3 border-l border-canopy-border pl-4">
-              <SettingsCheckbox
-                id="notif-waiting-escalation"
-                label="Escalate if still waiting"
-                description="Fire an additional OS notification if a docked agent remains waiting after the delay below"
-                checked={settings.waitingEscalationEnabled}
-                onChange={(v) => update({ waitingEscalationEnabled: v })}
-              />
-              {settings.waitingEscalationEnabled && (
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-canopy-text block">
-                    Escalation delay
-                  </label>
+        <SettingsSection
+          icon={Bell}
+          title="Agent Notifications"
+          description="OS notifications are off by default. Enable individual event types below to receive native alerts for agent activity. Notifications are suppressed when you are already viewing the relevant worktree."
+        >
+          <div className="space-y-3">
+            <SettingsCheckbox
+              id="notif-completed"
+              label="Agent completed"
+              description="Show a notification when an agent finishes its task"
+              checked={settings.completedEnabled}
+              onChange={(v) => update({ completedEnabled: v })}
+            />
+            <SettingsCheckbox
+              id="notif-waiting"
+              label="Agent waiting for input"
+              description="Show a notification immediately when an agent needs input — always fires regardless of focus"
+              checked={settings.waitingEnabled}
+              onChange={(v) => update({ waitingEnabled: v })}
+            />
+            {settings.waitingEnabled && (
+              <div className="ml-6 space-y-3 border-l border-canopy-border pl-4">
+                <SettingsCheckbox
+                  id="notif-waiting-escalation"
+                  label="Escalate if still waiting"
+                  description="Fire an additional OS notification if a docked agent remains waiting after the delay below"
+                  checked={settings.waitingEscalationEnabled}
+                  onChange={(v) => update({ waitingEscalationEnabled: v })}
+                />
+                {settings.waitingEscalationEnabled && (
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-canopy-text block">
+                      Escalation delay
+                    </label>
+                    <select
+                      value={settings.waitingEscalationDelayMs}
+                      onChange={(e) => update({ waitingEscalationDelayMs: Number(e.target.value) })}
+                      className="px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text focus:border-canopy-accent focus:outline-none transition-colors"
+                    >
+                      {ESCALATION_DELAY_OPTIONS.map(({ value, label }) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={Volume2}
+          title="Sound"
+          description="Play a sound when a notification fires."
+        >
+          <div className="space-y-4">
+            <SettingsSwitchCard
+              variant="compact"
+              title="Play sound"
+              subtitle="Enable audio alerts for agent notifications"
+              isEnabled={settings.soundEnabled}
+              onChange={() => update({ soundEnabled: !settings.soundEnabled })}
+              ariaLabel="Play sound for notifications"
+            />
+
+            {settings.soundEnabled && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-canopy-text block">Sound</label>
+                <div className="flex items-center gap-2">
                   <select
-                    value={settings.waitingEscalationDelayMs}
-                    onChange={(e) => update({ waitingEscalationDelayMs: Number(e.target.value) })}
-                    className="px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text focus:border-canopy-accent focus:outline-none transition-colors"
+                    value={settings.soundFile}
+                    onChange={(e) => update({ soundFile: e.target.value })}
+                    className="flex-1 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text focus:border-canopy-accent focus:outline-none transition-colors"
                   >
-                    {ESCALATION_DELAY_OPTIONS.map(({ value, label }) => (
-                      <option key={value} value={value}>
+                    {AVAILABLE_SOUNDS.map(({ file, label }) => (
+                      <option key={file} value={file}>
                         {label}
                       </option>
                     ))}
                   </select>
+                  <button
+                    onClick={handlePreview}
+                    title="Preview sound"
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text hover:bg-tint/[0.06] transition-colors"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                    Preview
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        icon={Volume2}
-        title="Sound"
-        description="Play a sound when a notification fires."
-      >
-        <div className="space-y-4">
-          <SettingsSwitchCard
-            variant="compact"
-            title="Play sound"
-            subtitle="Enable audio alerts for agent notifications"
-            isEnabled={settings.soundEnabled}
-            onChange={() => update({ soundEnabled: !settings.soundEnabled })}
-            ariaLabel="Play sound for notifications"
-          />
-
-          {settings.soundEnabled && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-canopy-text block">Sound</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={settings.soundFile}
-                  onChange={(e) => update({ soundFile: e.target.value })}
-                  className="flex-1 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text focus:border-canopy-accent focus:outline-none transition-colors"
-                >
-                  {AVAILABLE_SOUNDS.map(({ file, label }) => (
-                    <option key={file} value={file}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={handlePreview}
-                  title="Preview sound"
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg text-canopy-text hover:bg-tint/[0.06] transition-colors"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                  Preview
-                </button>
               </div>
-            </div>
-          )}
-        </div>
-      </SettingsSection>
+            )}
+          </div>
+        </SettingsSection>
       </div>
     </div>
   );
