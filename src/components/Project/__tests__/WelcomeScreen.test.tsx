@@ -50,11 +50,15 @@ vi.mock("@/utils/timeAgo", () => ({
   formatTimeAgo: (value: number) => `${value}ms ago`,
 }));
 
-vi.mock("@/components/icons", () => ({
-  CanopyIcon: ({ className }: { className?: string }) => (
-    <div data-testid="canopy-icon" className={className} />
-  ),
-}));
+vi.mock("@/components/icons", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/icons")>();
+  return {
+    ...actual,
+    CanopyIcon: ({ className }: { className?: string }) => (
+      <div data-testid="canopy-icon" className={className} />
+    ),
+  };
+});
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({
