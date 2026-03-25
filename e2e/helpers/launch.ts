@@ -1,6 +1,6 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import { createRequire } from "module";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, unlinkSync, readdirSync } from "fs";
 import { tmpdir } from "os";
 import { execSync } from "child_process";
 import path from "path";
@@ -19,6 +19,7 @@ export interface LaunchOptions {
   env?: Record<string, string>;
   userDataDir?: string;
   waitForSelector?: string;
+  extraArgs?: string[];
 }
 
 function cleanupWindowsElectronProcesses(): void {
@@ -47,8 +48,15 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
     const args = [`--user-data-dir=${userDataDir}`, ROOT];
 
     if (process.env.CI) {
-      // CI runners lack real GPUs — disable GPU to prevent hangs
-      args.unshift("--disable-gpu", "--disable-software-rasterizer", "--noerrdialogs");
+      // CI runners lack real GPUs — disable GPU to prevent hangs.
+      // Force scale factor 1 so the window uses full pixel resolution
+      // (prevents display scaling from shrinking effective toolbar width).
+      args.unshift(
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--noerrdialogs",
+        "--force-device-scale-factor=1"
+      );
 
       if (process.platform === "linux") {
         // Linux CI needs --no-sandbox and shared memory workaround
@@ -66,13 +74,17 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       cleanupWindowsElectronProcesses();
     }
 
+    if (options.extraArgs?.length) {
+      args.unshift(...options.extraArgs);
+    }
+
     let app: ElectronApplication | null = null;
     try {
       const launchEnv = {
         ...process.env,
         ...options.env,
         NODE_ENV: "production",
-        CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS: "1",
+        CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS: options.env?.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS ?? "1",
         CANOPY_DISABLE_WEBGL: "1",
         ...(isWindowsCI
           ? {
@@ -80,6 +92,9 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
             }
           : {}),
       };
+      delete launchEnv.ELECTRON_RUN_AS_NODE;
+      delete launchEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+
       app = await electron.launch({
         executablePath: electronPath,
         args,
@@ -95,9 +110,27 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
         if (msg.type() === "error") console.error("[e2e:console]", msg.text());
       });
 
+      // Maximize window so toolbar overflow doesn't hide buttons.
+      // Skip for restart tests to preserve persisted window state.
+      if (!options.userDataDir) {
+        await app.evaluate(({ BrowserWindow, screen }) => {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          // On CI with small virtual displays, maximize may still be too
+          // small. Use the primary display work area to set the largest
+          // possible size, then maximize for good measure.
+          const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+          win.setSize(Math.max(width, 1920), Math.max(height, 1080));
+          win.center();
+          win.maximize();
+        });
+      }
+
       await window.waitForLoadState("domcontentloaded");
 
-      const readySelector = options.waitForSelector ?? '[aria-label="Open settings"]';
+      // Use sidebar toggle as ready indicator — it has priority 1 and is
+      // always visible regardless of toolbar overflow or window size.
+      const readySelector = options.waitForSelector ?? '[aria-label="Toggle Sidebar"]';
       await window.locator(readySelector).waitFor({ state: "visible", timeout: launchTimeout });
 
       return { app, window, userDataDir };
@@ -125,6 +158,12 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
 }
 
 export async function closeApp(app: ElectronApplication): Promise<void> {
+  const pid = app.process().pid;
+
+  // Collect all descendant PIDs BEFORE closing — once the parent dies,
+  // children get reparented to PID 1 and we can no longer find them via ppid.
+  const descendantPids = pid ? getDescendantPids(pid) : [];
+
   try {
     await Promise.race([
       app.close(),
@@ -132,16 +171,66 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
     ]);
   } catch {
     // Force-kill if close() hangs (zombie process prevention)
+    forceKillProcessTree(pid);
+  }
+
+  // Kill any lingering descendant processes (PTY host, workspace host, shells).
+  // These may have been reparented to PID 1 after the main process exited.
+  for (const childPid of descendantPids) {
     try {
-      if (process.platform === "win32") {
-        const pid = app.process().pid;
-        if (pid) execSync(`taskkill /F /PID ${pid} /T 2>nul`, { stdio: "ignore" });
-      } else {
-        app.process().kill("SIGKILL");
-      }
+      process.kill(childPid, "SIGKILL");
     } catch {
       // Already dead
     }
+  }
+}
+
+function getDescendantPids(pid: number): number[] {
+  if (process.platform === "win32") return [];
+  try {
+    const result = execSync(`pgrep -P ${pid}`, {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    const children = result
+      .trim()
+      .split("\n")
+      .map(Number)
+      .filter((n) => n > 0);
+    const all = [...children];
+    for (const child of children) {
+      all.push(...getDescendantPids(child));
+    }
+    return all;
+  } catch {
+    return [];
+  }
+}
+
+function forceKillProcessTree(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") {
+      execSync(`taskkill /F /PID ${pid} /T 2>nul`, { stdio: "ignore" });
+    } else {
+      try {
+        execSync(`pkill -9 -P ${pid}`, { stdio: "ignore" });
+      } catch {
+        // No children or pkill not available
+      }
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        // Process group kill failed
+      }
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already dead
+      }
+    }
+  } catch {
+    // Already dead
   }
 }
 
@@ -160,6 +249,23 @@ export async function waitForProcessExit(pid: number, timeoutMs = 15_000): Promi
     await wait(100);
   }
   throw new Error(`Process ${pid} did not exit within ${timeoutMs}ms`);
+}
+
+export function removeSingletonFiles(userDataDir: string): void {
+  try {
+    const entries = readdirSync(userDataDir);
+    for (const entry of entries) {
+      if (entry.startsWith("Singleton")) {
+        try {
+          unlinkSync(path.join(userDataDir, entry));
+        } catch {
+          // best-effort
+        }
+      }
+    }
+  } catch {
+    // directory may not exist yet
+  }
 }
 
 export async function mockOpenDialog(

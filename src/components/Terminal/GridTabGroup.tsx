@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useCallback, useMemo, useEffect, useRef } from "react";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { GridPanel } from "./GridPanel";
 import type { TabGroup } from "@/types";
 import type { TabInfo } from "@/components/Panel/TabButton";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { focusPanelInput } from "./terminalFocusRegistry";
+import { getGroupAmbientAgentState } from "@/components/Layout/useDockBlockedState";
 
 export interface GridTabGroupProps {
   group: TabGroup;
@@ -15,7 +16,91 @@ export interface GridTabGroupProps {
   isMaximized?: boolean;
 }
 
-export function GridTabGroup({
+/**
+ * Custom comparator for GridTabGroup's React.memo wrapper.
+ *
+ * Compares panel rendering fields used by the tabs useMemo, isGroupFocused,
+ * and getGroupAmbientAgentState. Skips callback props (none on this component).
+ * The group.activeTabId is NOT compared because the component subscribes to it
+ * via Zustand store selector instead.
+ */
+export function gridTabGroupPropsAreEqual(
+  prev: GridTabGroupProps,
+  next: GridTabGroupProps
+): boolean {
+  // Scalar props
+  if (
+    prev.focusedId !== next.focusedId ||
+    prev.gridPanelCount !== next.gridPanelCount ||
+    prev.gridCols !== next.gridCols ||
+    prev.isMaximized !== next.isMaximized
+  ) {
+    return false;
+  }
+
+  // Group: fast-path reference check, then field-level
+  if (prev.group !== next.group) {
+    const a = prev.group;
+    const b = next.group;
+    if (a.id !== b.id || a.location !== b.location || a.worktreeId !== b.worktreeId) {
+      return false;
+    }
+    // Compare panelIds (ordered)
+    if (a.panelIds.length !== b.panelIds.length) return false;
+    for (let i = 0; i < a.panelIds.length; i++) {
+      if (a.panelIds[i] !== b.panelIds[i]) return false;
+    }
+  }
+
+  // Panels: compare length, then element-by-element on all render-relevant fields.
+  // Must include the full set that GridPanel/buildPanelProps uses, not just tab-label
+  // fields, because the active panel is passed as `terminal` to GridPanel.
+  const prevPanels = prev.panels;
+  const nextPanels = next.panels;
+  if (prevPanels !== nextPanels) {
+    if (prevPanels.length !== nextPanels.length) return false;
+    for (let i = 0; i < prevPanels.length; i++) {
+      const a = prevPanels[i];
+      const b = nextPanels[i];
+      if (a !== b) {
+        if (
+          a.id !== b.id ||
+          a.title !== b.title ||
+          a.worktreeId !== b.worktreeId ||
+          a.kind !== b.kind ||
+          a.type !== b.type ||
+          a.agentId !== b.agentId ||
+          a.cwd !== b.cwd ||
+          a.agentState !== b.agentState ||
+          a.activityHeadline !== b.activityHeadline ||
+          a.activityStatus !== b.activityStatus ||
+          a.activityType !== b.activityType ||
+          a.lastCommand !== b.lastCommand ||
+          a.flowStatus !== b.flowStatus ||
+          a.restartKey !== b.restartKey ||
+          a.restartError !== b.restartError ||
+          a.reconnectError !== b.reconnectError ||
+          a.spawnError !== b.spawnError ||
+          a.detectedProcessId !== b.detectedProcessId ||
+          a.browserUrl !== b.browserUrl ||
+          a.notePath !== b.notePath ||
+          a.noteId !== b.noteId ||
+          a.scope !== b.scope ||
+          a.createdAt !== b.createdAt ||
+          a.isRestarting !== b.isRestarting ||
+          a.runtimeStatus !== b.runtimeStatus ||
+          a.isInputLocked !== b.isInputLocked
+        ) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+export const GridTabGroup = React.memo(function GridTabGroup({
   group,
   panels,
   focusedId,
@@ -32,9 +117,9 @@ export function GridTabGroup({
   const reorderPanelsInGroup = useTerminalStore((state) => state.reorderPanelsInGroup);
   const updateTitle = useTerminalStore((state) => state.updateTitle);
 
-  // Subscribe to activeTabByGroup for reactive updates
+  // Subscribe to registry's active tab for reactive updates
   const storedActiveTabId = useTerminalStore(
-    (state) => state.activeTabByGroup.get(group.id) ?? null
+    (state) => state.tabGroups.get(group.id)?.activeTabId ?? null
   );
 
   // Reconcile active tab - ensure it's valid and in this group
@@ -78,7 +163,11 @@ export function GridTabGroup({
   }, [panels, activeTabId]);
 
   // Check if this group is currently focused
-  const isGroupFocused = panels.some((p) => p.id === focusedId);
+  const isGroupFocused = useMemo(() => panels.some((p) => p.id === focusedId), [panels, focusedId]);
+
+  // Compute highest-urgency agent state across all tabs so the group container
+  // reflects blocked/working state even when the blocking tab is not active.
+  const groupAmbientState = useMemo(() => getGroupAmbientAgentState(panels), [panels]);
 
   // Restore focus to the hybrid input bar when switching tabs within a focused group.
   // The existing TerminalPane focus effect uses double-rAF which races with
@@ -161,6 +250,7 @@ export function GridTabGroup({
     try {
       const options = await buildPanelDuplicateOptions(activePanel, "grid");
       const newPanelId = await addTerminal(options);
+      if (!newPanelId) return;
 
       addPanelToGroup(group.id, newPanelId);
       setActiveTab(group.id, newPanelId);
@@ -183,6 +273,7 @@ export function GridTabGroup({
       isMaximized={isMaximized}
       gridPanelCount={gridPanelCount}
       gridCols={gridCols}
+      ambientAgentState={groupAmbientState}
       tabs={tabs}
       groupId={group.id}
       onTabClick={handleTabClick}
@@ -192,4 +283,4 @@ export function GridTabGroup({
       onTabReorder={handleTabReorder}
     />
   );
-}
+}, gridTabGroupPropsAreEqual);

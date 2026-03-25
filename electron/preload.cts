@@ -5,6 +5,8 @@
 
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { isTrustedRendererUrl } from "../shared/utils/trustedRenderer.js";
+import { isIpcEnvelope } from "../shared/types/ipc/errors.js";
+import { deserializeError } from "../shared/utils/ipcErrorSerialization.js";
 
 import type {
   WorktreeState,
@@ -39,7 +41,6 @@ import type {
   ChecklistItemId,
 } from "../shared/types/index.js";
 import type { ColorVisionMode } from "../shared/types/appTheme.js";
-import type { ProjectMcpServerRunState } from "../shared/types/ipc/project.js";
 import type {
   AgentStateChangePayload,
   AgentDetectedPayload,
@@ -52,15 +53,21 @@ import type {
   DevPreviewStopByPanelRequest,
   DevPreviewSessionState,
   DevPreviewStateChangedPayload,
+  GlobalDevServersGetResult,
+  GlobalDevServersChangedPayload,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
-import type { TerminalStatusPayload, SpawnResult } from "../shared/types/pty-host.js";
+import type {
+  TerminalStatusPayload,
+  SpawnResult,
+  TerminalResourceBatchPayload,
+} from "../shared/types/pty-host.js";
 
 type SpawnResultPayload = SpawnResult;
 import type {
-  SidecarNewTabMenuAction,
-  SidecarShowNewTabMenuPayload,
-} from "../shared/types/sidecar.js";
+  PortalNewTabMenuAction,
+  PortalShowNewTabMenuPayload,
+} from "../shared/types/portal.js";
 import type { ShowContextMenuPayload } from "../shared/types/menu.js";
 
 export type { ElectronAPI };
@@ -116,11 +123,21 @@ ipcRenderer.on("terminal-port", (event, payload: { token: string }) => {
   }
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches ipcRenderer.invoke return type
+async function _unwrappingInvoke(channel: string, ...args: unknown[]): Promise<any> {
+  const response = await ipcRenderer.invoke(channel, ...args);
+  if (isIpcEnvelope(response)) {
+    if (!response.ok) throw deserializeError(response.error);
+    return response.data;
+  }
+  return response;
+}
+
 function _typedInvoke<K extends Extract<keyof IpcInvokeMap, string>>(
   channel: K,
   ...args: IpcInvokeMap[K]["args"]
 ): Promise<IpcInvokeMap[K]["result"]> {
-  return ipcRenderer.invoke(channel, ...args);
+  return _unwrappingInvoke(channel, ...args) as Promise<IpcInvokeMap[K]["result"]>;
 }
 
 function _typedOn<K extends Extract<keyof IpcEventMap, string>>(
@@ -193,6 +210,7 @@ const CHANNELS = {
   TERMINAL_AGENT_TITLE_STATE: "terminal:agent-title-state",
   TERMINAL_REDUCE_SCROLLBACK: "terminal:reduce-scrollback",
   TERMINAL_RESTORE_SCROLLBACK: "terminal:restore-scrollback",
+  TERMINAL_RESTART_SERVICE: "terminal:restart-service",
 
   // Files channels
   FILES_SEARCH: "files:search",
@@ -243,6 +261,7 @@ const CHANNELS = {
   SYSTEM_START_AGENT_UPDATE: "system:start-agent-update",
   SYSTEM_HEALTH_CHECK: "system:health-check",
   SYSTEM_DOWNLOAD_DIAGNOSTICS: "system:download-diagnostics",
+  SYSTEM_GET_APP_METRICS: "system:get-app-metrics",
   SYSTEM_WAKE: "system:wake",
 
   // PR detection channels
@@ -253,6 +272,7 @@ const CHANNELS = {
 
   // GitHub channels
   GITHUB_GET_REPO_STATS: "github:get-repo-stats",
+  GITHUB_GET_PROJECT_HEALTH: "github:get-project-health",
   GITHUB_OPEN_ISSUES: "github:open-issues",
   GITHUB_OPEN_PRS: "github:open-prs",
   GITHUB_OPEN_COMMITS: "github:open-commits",
@@ -352,6 +372,7 @@ const CHANNELS = {
   PROJECT_CLOSE: "project:close",
   PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
+  PROJECT_GET_BULK_STATS: "project:get-bulk-stats",
   PROJECT_CREATE_FOLDER: "project:create-folder",
   PROJECT_INIT_GIT: "project:init-git",
   PROJECT_INIT_GIT_GUIDED: "project:init-git-guided",
@@ -400,6 +421,13 @@ const CHANNELS = {
   TERMINAL_CONFIG_SET_COLOR_SCHEME: "terminal-config:set-color-scheme",
   TERMINAL_CONFIG_SET_CUSTOM_SCHEMES: "terminal-config:set-custom-schemes",
   TERMINAL_CONFIG_IMPORT_COLOR_SCHEME: "terminal-config:import-color-scheme",
+  TERMINAL_CONFIG_SET_SCREEN_READER_MODE: "terminal-config:set-screen-reader-mode",
+  TERMINAL_CONFIG_SET_RESOURCE_MONITORING: "terminal-config:set-resource-monitoring",
+
+  TERMINAL_RESOURCE_METRICS: "terminal:resource-metrics",
+
+  ACCESSIBILITY_GET_ENABLED: "accessibility:get-enabled",
+  ACCESSIBILITY_SUPPORT_CHANGED: "accessibility:support-changed",
 
   // Git channels
   GIT_GET_FILE_DIFF: "git:get-file-diff",
@@ -416,21 +444,23 @@ const CHANNELS = {
   GIT_GET_USERNAME: "git:get-username",
   GIT_GET_WORKING_DIFF: "git:get-working-diff",
 
-  // Sidecar channels
-  SIDECAR_CREATE: "sidecar:create",
-  SIDECAR_SHOW: "sidecar:show",
-  SIDECAR_HIDE: "sidecar:hide",
-  SIDECAR_RESIZE: "sidecar:resize",
-  SIDECAR_CLOSE_TAB: "sidecar:close-tab",
-  SIDECAR_NAVIGATE: "sidecar:navigate",
-  SIDECAR_GO_BACK: "sidecar:go-back",
-  SIDECAR_GO_FORWARD: "sidecar:go-forward",
-  SIDECAR_RELOAD: "sidecar:reload",
-  SIDECAR_SHOW_NEW_TAB_MENU: "sidecar:show-new-tab-menu",
-  SIDECAR_NAV_EVENT: "sidecar:nav-event",
-  SIDECAR_FOCUS: "sidecar:focus",
-  SIDECAR_BLUR: "sidecar:blur",
-  SIDECAR_NEW_TAB_MENU_ACTION: "sidecar:new-tab-menu-action",
+  // Portal channels
+  PORTAL_CREATE: "portal:create",
+  PORTAL_SHOW: "portal:show",
+  PORTAL_HIDE: "portal:hide",
+  PORTAL_RESIZE: "portal:resize",
+  PORTAL_CLOSE_TAB: "portal:close-tab",
+  PORTAL_NAVIGATE: "portal:navigate",
+  PORTAL_GO_BACK: "portal:go-back",
+  PORTAL_GO_FORWARD: "portal:go-forward",
+  PORTAL_RELOAD: "portal:reload",
+  PORTAL_SHOW_NEW_TAB_MENU: "portal:show-new-tab-menu",
+  PORTAL_NAV_EVENT: "portal:nav-event",
+  PORTAL_FOCUS: "portal:focus",
+  PORTAL_BLUR: "portal:blur",
+  PORTAL_NEW_TAB_MENU_ACTION: "portal:new-tab-menu-action",
+  PORTAL_TAB_EVICTED: "portal:tab-evicted",
+  PORTAL_TABS_EVICTED: "portal:tabs-evicted",
 
   // Webview channels
   WEBVIEW_SET_LIFECYCLE_STATE: "webview:set-lifecycle-state",
@@ -448,6 +478,7 @@ const CHANNELS = {
   // Hibernation channels
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
+  HIBERNATION_PROJECT_HIBERNATED: "hibernation:project-hibernated",
 
   // System Sleep channels
   SYSTEM_SLEEP_GET_METRICS: "system-sleep:get-metrics",
@@ -478,6 +509,8 @@ const CHANNELS = {
   WINDOW_ZOOM_OUT: "window:zoom-out",
   WINDOW_ZOOM_RESET: "window:zoom-reset",
   WINDOW_CLOSE: "window:close",
+  WINDOW_RECLAIM_MEMORY: "window:reclaim-memory",
+  WINDOW_DESTROY_HIDDEN_WEBVIEWS: "window:destroy-hidden-webviews",
 
   // Notification channels
   NOTIFICATION_UPDATE: "notification:update",
@@ -541,6 +574,10 @@ const CHANNELS = {
   TELEMETRY_MARK_PROMPT_SHOWN: "telemetry:mark-prompt-shown",
   TELEMETRY_TRACK: "telemetry:track",
 
+  // GPU channels
+  GPU_GET_STATUS: "gpu:get-status",
+  GPU_SET_HARDWARE_ACCELERATION: "gpu:set-hardware-acceleration",
+
   // Privacy & Data channels
   PRIVACY_GET_SETTINGS: "privacy:get-settings",
   PRIVACY_SET_TELEMETRY_LEVEL: "privacy:set-telemetry-level",
@@ -571,9 +608,6 @@ const CHANNELS = {
   VOICE_INPUT_PARAGRAPH_BOUNDARY: "voice-input:paragraph-boundary",
 
   // MCP Server channels
-  PROJECT_MCP_GET_STATUSES: "project-mcp:get-statuses",
-  PROJECT_MCP_STATUS_CHANGED: "project-mcp:status-changed",
-
   MCP_SERVER_GET_STATUS: "mcp-server:get-status",
   MCP_SERVER_SET_ENABLED: "mcp-server:set-enabled",
   MCP_SERVER_SET_PORT: "mcp-server:set-port",
@@ -597,9 +631,15 @@ const CHANNELS = {
   ONBOARDING_CHECKLIST_GET: "onboarding:checklist-get",
   ONBOARDING_CHECKLIST_DISMISS: "onboarding:checklist-dismiss",
   ONBOARDING_CHECKLIST_MARK_ITEM: "onboarding:checklist-mark-item",
+  ONBOARDING_CHECKLIST_MARK_CELEBRATION_SHOWN: "onboarding:checklist-mark-celebration-shown",
+
+  // Shortcut Hints channels
+  SHORTCUT_HINTS_GET_COUNTS: "shortcut-hints:get-counts",
+  SHORTCUT_HINTS_INCREMENT_COUNT: "shortcut-hints:increment-count",
 
   // Demo mode channels (dev-only)
   DEMO_MOVE_TO: "demo:move-to",
+  DEMO_MOVE_TO_SELECTOR: "demo:move-to-selector",
   DEMO_CLICK: "demo:click",
   DEMO_TYPE: "demo:type",
   DEMO_SET_ZOOM: "demo:set-zoom",
@@ -608,13 +648,21 @@ const CHANNELS = {
   DEMO_PAUSE: "demo:pause",
   DEMO_RESUME: "demo:resume",
   DEMO_EXEC_MOVE_TO: "demo:exec-move-to",
+  DEMO_EXEC_MOVE_TO_SELECTOR: "demo:exec-move-to-selector",
   DEMO_EXEC_CLICK: "demo:exec-click",
   DEMO_EXEC_TYPE: "demo:exec-type",
   DEMO_EXEC_SET_ZOOM: "demo:exec-set-zoom",
   DEMO_EXEC_PAUSE: "demo:exec-pause",
   DEMO_EXEC_RESUME: "demo:exec-resume",
   DEMO_EXEC_WAIT_FOR_SELECTOR: "demo:exec-wait-for-selector",
+  DEMO_SLEEP: "demo:sleep",
+  DEMO_EXEC_SLEEP: "demo:exec-sleep",
   DEMO_COMMAND_DONE: "demo:command-done",
+  DEMO_START_CAPTURE: "demo:start-capture",
+  DEMO_STOP_CAPTURE: "demo:stop-capture",
+  DEMO_GET_CAPTURE_STATUS: "demo:get-capture-status",
+  DEMO_ENCODE: "demo:encode",
+  DEMO_ENCODE_PROGRESS: "demo:encode:progress",
 
   // Workflow approval channels
   WORKFLOW_RESOLVE_APPROVAL: "workflow:resolve-approval",
@@ -626,52 +674,54 @@ const CHANNELS = {
 const api: ElectronAPI = {
   // Worktree API
   worktree: {
-    getAll: () => _typedInvoke(CHANNELS.WORKTREE_GET_ALL),
+    getAll: () => _unwrappingInvoke(CHANNELS.WORKTREE_GET_ALL),
 
-    refresh: () => _typedInvoke(CHANNELS.WORKTREE_REFRESH),
+    refresh: () => _unwrappingInvoke(CHANNELS.WORKTREE_REFRESH),
 
-    refreshPullRequests: () => _typedInvoke(CHANNELS.WORKTREE_PR_REFRESH),
+    refreshPullRequests: () => _unwrappingInvoke(CHANNELS.WORKTREE_PR_REFRESH),
 
-    getPRStatus: () => _typedInvoke(CHANNELS.WORKTREE_PR_STATUS),
+    getPRStatus: () => _unwrappingInvoke(CHANNELS.WORKTREE_PR_STATUS),
 
-    setActive: (worktreeId: string) => _typedInvoke(CHANNELS.WORKTREE_SET_ACTIVE, { worktreeId }),
+    setActive: (worktreeId: string) =>
+      _unwrappingInvoke(CHANNELS.WORKTREE_SET_ACTIVE, { worktreeId }),
 
     create: (options: CreateWorktreeOptions, rootPath: string): Promise<string> =>
-      _typedInvoke(CHANNELS.WORKTREE_CREATE, { rootPath, options }),
+      _unwrappingInvoke(CHANNELS.WORKTREE_CREATE, { rootPath, options }),
 
-    listBranches: (rootPath: string) => _typedInvoke(CHANNELS.WORKTREE_LIST_BRANCHES, { rootPath }),
+    listBranches: (rootPath: string) =>
+      _unwrappingInvoke(CHANNELS.WORKTREE_LIST_BRANCHES, { rootPath }),
 
     getRecentBranches: (rootPath: string) =>
-      _typedInvoke(CHANNELS.WORKTREE_GET_RECENT_BRANCHES, { rootPath }),
+      _unwrappingInvoke(CHANNELS.WORKTREE_GET_RECENT_BRANCHES, { rootPath }),
 
     getDefaultPath: (rootPath: string, branchName: string): Promise<string> =>
-      _typedInvoke(CHANNELS.WORKTREE_GET_DEFAULT_PATH, { rootPath, branchName }),
+      _unwrappingInvoke(CHANNELS.WORKTREE_GET_DEFAULT_PATH, { rootPath, branchName }),
 
     getAvailableBranch: (rootPath: string, branchName: string): Promise<string> =>
-      _typedInvoke(CHANNELS.WORKTREE_GET_AVAILABLE_BRANCH, { rootPath, branchName }),
+      _unwrappingInvoke(CHANNELS.WORKTREE_GET_AVAILABLE_BRANCH, { rootPath, branchName }),
 
     delete: (worktreeId: string, force?: boolean, deleteBranch?: boolean) =>
-      _typedInvoke(CHANNELS.WORKTREE_DELETE, { worktreeId, force, deleteBranch }),
+      _unwrappingInvoke(CHANNELS.WORKTREE_DELETE, { worktreeId, force, deleteBranch }),
 
     createForTask: (payload: { taskId: string; baseBranch?: string; description?: string }) =>
-      _typedInvoke(CHANNELS.WORKTREE_CREATE_FOR_TASK, payload),
+      _unwrappingInvoke(CHANNELS.WORKTREE_CREATE_FOR_TASK, payload),
 
-    getByTaskId: (taskId: string) => _typedInvoke(CHANNELS.WORKTREE_GET_BY_TASK_ID, taskId),
+    getByTaskId: (taskId: string) => _unwrappingInvoke(CHANNELS.WORKTREE_GET_BY_TASK_ID, taskId),
 
     cleanupTask: (taskId: string, options?: { force?: boolean; deleteBranch?: boolean }) =>
-      _typedInvoke(CHANNELS.WORKTREE_CLEANUP_TASK, taskId, options),
+      _unwrappingInvoke(CHANNELS.WORKTREE_CLEANUP_TASK, taskId, options),
 
     attachIssue: (payload: AttachIssuePayload) =>
-      _typedInvoke(CHANNELS.WORKTREE_ATTACH_ISSUE, payload),
+      _unwrappingInvoke(CHANNELS.WORKTREE_ATTACH_ISSUE, payload),
 
     detachIssue: (worktreeId: string) =>
-      _typedInvoke(CHANNELS.WORKTREE_DETACH_ISSUE, { worktreeId }),
+      _unwrappingInvoke(CHANNELS.WORKTREE_DETACH_ISSUE, { worktreeId }),
 
     getIssueAssociation: (worktreeId: string): Promise<IssueAssociation | null> =>
-      _typedInvoke(CHANNELS.WORKTREE_GET_ISSUE_ASSOCIATION, worktreeId),
+      _unwrappingInvoke(CHANNELS.WORKTREE_GET_ISSUE_ASSOCIATION, worktreeId),
 
     getAllIssueAssociations: (): Promise<Record<string, IssueAssociation>> =>
-      _typedInvoke(CHANNELS.WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS),
+      _unwrappingInvoke(CHANNELS.WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS),
 
     onUpdate: (callback: (state: WorktreeState) => void) =>
       _typedOn(CHANNELS.WORKTREE_UPDATE, callback),
@@ -685,16 +735,16 @@ const api: ElectronAPI = {
 
   // Terminal API
   terminal: {
-    spawn: (options: TerminalSpawnOptions) => _typedInvoke(CHANNELS.TERMINAL_SPAWN, options),
+    spawn: (options: TerminalSpawnOptions) => _unwrappingInvoke(CHANNELS.TERMINAL_SPAWN, options),
 
     write: (id: string, data: string) => ipcRenderer.send(CHANNELS.TERMINAL_INPUT, id, data),
 
-    submit: (id: string, text: string) => _typedInvoke(CHANNELS.TERMINAL_SUBMIT, id, text),
+    submit: (id: string, text: string) => _unwrappingInvoke(CHANNELS.TERMINAL_SUBMIT, id, text),
 
     resize: (id: string, cols: number, rows: number) =>
       ipcRenderer.send(CHANNELS.TERMINAL_RESIZE, { id, cols, rows }),
 
-    kill: (id: string) => _typedInvoke(CHANNELS.TERMINAL_KILL, id),
+    kill: (id: string) => _unwrappingInvoke(CHANNELS.TERMINAL_KILL, id),
 
     // Tuple payload [id, data] requires per-terminal filtering
     // Accepts both string and Uint8Array/Buffer (binary optimization for reduced GC pressure)
@@ -735,9 +785,9 @@ const api: ElectronAPI = {
     onActivity: (callback: (data: TerminalActivityPayload) => void) =>
       _typedOn(CHANNELS.TERMINAL_ACTIVITY, callback),
 
-    trash: (id: string) => _typedInvoke(CHANNELS.TERMINAL_TRASH, id),
+    trash: (id: string) => _unwrappingInvoke(CHANNELS.TERMINAL_TRASH, id),
 
-    restore: (id: string) => _typedInvoke(CHANNELS.TERMINAL_RESTORE, id),
+    restore: (id: string) => _unwrappingInvoke(CHANNELS.TERMINAL_RESTORE, id),
 
     onTrashed: (callback: (data: { id: string; expiresAt: number }) => void) =>
       _typedOn(CHANNELS.TERMINAL_TRASHED, callback),
@@ -749,47 +799,51 @@ const api: ElectronAPI = {
       ipcRenderer.send(CHANNELS.TERMINAL_SET_ACTIVITY_TIER, { id, tier }),
 
     wake: (id: string): Promise<{ state: string | null; warnings?: string[] }> =>
-      _typedInvoke(CHANNELS.TERMINAL_WAKE, id),
+      _unwrappingInvoke(CHANNELS.TERMINAL_WAKE, id),
 
     acknowledgeData: (id: string, length: number) =>
       ipcRenderer.send(CHANNELS.TERMINAL_ACKNOWLEDGE_DATA, { id, length }),
 
     getForProject: (projectId: string) =>
-      ipcRenderer.invoke(CHANNELS.TERMINAL_GET_FOR_PROJECT, projectId),
+      _unwrappingInvoke(CHANNELS.TERMINAL_GET_FOR_PROJECT, projectId),
 
-    getAvailableTerminals: () => ipcRenderer.invoke(CHANNELS.TERMINAL_GET_AVAILABLE),
+    getAvailableTerminals: () => _unwrappingInvoke(CHANNELS.TERMINAL_GET_AVAILABLE),
 
     getTerminalsByState: (state: string) =>
-      ipcRenderer.invoke(CHANNELS.TERMINAL_GET_BY_STATE, state),
+      _unwrappingInvoke(CHANNELS.TERMINAL_GET_BY_STATE, state),
 
-    getAllTerminals: () => ipcRenderer.invoke(CHANNELS.TERMINAL_GET_ALL),
+    getAllTerminals: () => _unwrappingInvoke(CHANNELS.TERMINAL_GET_ALL),
 
-    reconnect: (terminalId: string) => ipcRenderer.invoke(CHANNELS.TERMINAL_RECONNECT, terminalId),
+    reconnect: (terminalId: string) => _unwrappingInvoke(CHANNELS.TERMINAL_RECONNECT, terminalId),
 
     replayHistory: (terminalId: string, maxLines?: number) =>
-      ipcRenderer.invoke(CHANNELS.TERMINAL_REPLAY_HISTORY, { terminalId, maxLines }),
+      _unwrappingInvoke(CHANNELS.TERMINAL_REPLAY_HISTORY, { terminalId, maxLines }),
 
     getSerializedState: (terminalId: string) =>
-      _typedInvoke(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, terminalId),
+      _unwrappingInvoke(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, terminalId),
 
     getSerializedStates: (terminalIds: string[]) =>
-      _typedInvoke(CHANNELS.TERMINAL_GET_SERIALIZED_STATES, terminalIds),
+      _unwrappingInvoke(CHANNELS.TERMINAL_GET_SERIALIZED_STATES, terminalIds),
 
-    getInfo: (id: string) => _typedInvoke(CHANNELS.TERMINAL_GET_INFO, id),
+    getInfo: (id: string) => _unwrappingInvoke(CHANNELS.TERMINAL_GET_INFO, id),
 
     getSharedBuffers: (): Promise<{
       visualBuffers: SharedArrayBuffer[];
       signalBuffer: SharedArrayBuffer | null;
-    }> => ipcRenderer.invoke(CHANNELS.TERMINAL_GET_SHARED_BUFFERS),
+    }> => _unwrappingInvoke(CHANNELS.TERMINAL_GET_SHARED_BUFFERS),
 
     getAnalysisBuffer: (): Promise<SharedArrayBuffer | null> =>
-      ipcRenderer.invoke(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER),
+      _unwrappingInvoke(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER),
 
     forceResume: (id: string): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke(CHANNELS.TERMINAL_FORCE_RESUME, id),
+      _unwrappingInvoke(CHANNELS.TERMINAL_FORCE_RESUME, id),
 
     onStatus: (callback: (data: TerminalStatusPayload) => void) =>
       _typedOn(CHANNELS.TERMINAL_STATUS, callback),
+
+    onResourceMetrics: (
+      callback: (data: { metrics: TerminalResourceBatchPayload; timestamp: number }) => void
+    ) => _typedOn(CHANNELS.TERMINAL_RESOURCE_METRICS, callback),
 
     onBackendCrashed: (
       callback: (data: {
@@ -834,17 +888,19 @@ const api: ElectronAPI = {
 
     onRestoreScrollback: (callback: (data: { terminalIds: string[] }) => void) =>
       _typedOn(CHANNELS.TERMINAL_RESTORE_SCROLLBACK, callback),
+
+    restartService: (): Promise<void> => _unwrappingInvoke(CHANNELS.TERMINAL_RESTART_SERVICE),
   },
 
   // Files API
   files: {
-    search: (payload) => _typedInvoke(CHANNELS.FILES_SEARCH, payload),
-    read: (payload) => _typedInvoke(CHANNELS.FILES_READ, payload),
+    search: (payload) => _unwrappingInvoke(CHANNELS.FILES_SEARCH, payload),
+    read: (payload) => _unwrappingInvoke(CHANNELS.FILES_READ, payload),
   },
 
   // Slash Commands API
   slashCommands: {
-    list: (payload) => _typedInvoke(CHANNELS.SLASH_COMMANDS_LIST, payload),
+    list: (payload) => _unwrappingInvoke(CHANNELS.SLASH_COMMANDS_LIST, payload),
   },
 
   // Artifact API
@@ -853,36 +909,37 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.ARTIFACT_DETECTED, callback),
 
     saveToFile: (options: SaveArtifactOptions) =>
-      _typedInvoke(CHANNELS.ARTIFACT_SAVE_TO_FILE, options),
+      _unwrappingInvoke(CHANNELS.ARTIFACT_SAVE_TO_FILE, options),
 
     applyPatch: (options: ApplyPatchOptions) =>
-      _typedInvoke(CHANNELS.ARTIFACT_APPLY_PATCH, options),
+      _unwrappingInvoke(CHANNELS.ARTIFACT_APPLY_PATCH, options),
   },
 
   // CopyTree API
   copyTree: {
     generate: (worktreeId: string, options?: CopyTreeOptions) =>
-      _typedInvoke(CHANNELS.COPYTREE_GENERATE, { worktreeId, options }),
+      _unwrappingInvoke(CHANNELS.COPYTREE_GENERATE, { worktreeId, options }),
 
     generateAndCopyFile: (worktreeId: string, options?: CopyTreeOptions) =>
-      _typedInvoke(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE, { worktreeId, options }),
+      _unwrappingInvoke(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE, { worktreeId, options }),
 
     injectToTerminal: (
       terminalId: string,
       worktreeId: string,
       options?: CopyTreeOptions,
       injectionId?: string
-    ) => _typedInvoke(CHANNELS.COPYTREE_INJECT, { terminalId, worktreeId, options, injectionId }),
+    ) =>
+      _unwrappingInvoke(CHANNELS.COPYTREE_INJECT, { terminalId, worktreeId, options, injectionId }),
 
-    isAvailable: () => _typedInvoke(CHANNELS.COPYTREE_AVAILABLE),
+    isAvailable: () => _unwrappingInvoke(CHANNELS.COPYTREE_AVAILABLE),
 
-    cancel: (injectionId?: string) => _typedInvoke(CHANNELS.COPYTREE_CANCEL, { injectionId }),
+    cancel: (injectionId?: string) => _unwrappingInvoke(CHANNELS.COPYTREE_CANCEL, { injectionId }),
 
     getFileTree: (worktreeId: string, dirPath?: string) =>
-      _typedInvoke(CHANNELS.COPYTREE_GET_FILE_TREE, { worktreeId, dirPath }),
+      _unwrappingInvoke(CHANNELS.COPYTREE_GET_FILE_TREE, { worktreeId, dirPath }),
 
     testConfig: (worktreeId: string, options?: CopyTreeOptions) =>
-      _typedInvoke(CHANNELS.COPYTREE_TEST_CONFIG, { worktreeId, options }),
+      _unwrappingInvoke(CHANNELS.COPYTREE_TEST_CONFIG, { worktreeId, options }),
 
     onProgress: (callback: (progress: CopyTreeProgress) => void) =>
       _typedOn(CHANNELS.COPYTREE_PROGRESS, callback),
@@ -890,7 +947,7 @@ const api: ElectronAPI = {
 
   // Editor API
   editor: {
-    getConfig: (projectId?: string) => _typedInvoke(CHANNELS.EDITOR_GET_CONFIG, projectId),
+    getConfig: (projectId?: string) => _unwrappingInvoke(CHANNELS.EDITOR_GET_CONFIG, projectId),
 
     setConfig: (payload: {
       editor: { id: string; customCommand?: string; customTemplate?: string };
@@ -901,48 +958,50 @@ const api: ElectronAPI = {
         payload as import("../shared/types/editor.js").EditorSetConfigPayload
       ),
 
-    discover: () => _typedInvoke(CHANNELS.EDITOR_DISCOVER),
+    discover: () => _unwrappingInvoke(CHANNELS.EDITOR_DISCOVER),
   },
 
   // System API
   system: {
-    openExternal: (url: string) => _typedInvoke(CHANNELS.SYSTEM_OPEN_EXTERNAL, { url }),
+    openExternal: (url: string) => _unwrappingInvoke(CHANNELS.SYSTEM_OPEN_EXTERNAL, { url }),
 
-    openPath: (path: string) => _typedInvoke(CHANNELS.SYSTEM_OPEN_PATH, { path }),
+    openPath: (path: string) => _unwrappingInvoke(CHANNELS.SYSTEM_OPEN_PATH, { path }),
 
     openInEditor: (payload: { path: string; line?: number; col?: number; projectId?: string }) =>
-      _typedInvoke(CHANNELS.SYSTEM_OPEN_IN_EDITOR, payload),
+      _unwrappingInvoke(CHANNELS.SYSTEM_OPEN_IN_EDITOR, payload),
 
-    checkCommand: (command: string) => _typedInvoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
+    checkCommand: (command: string) => _unwrappingInvoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
 
-    checkDirectory: (path: string) => _typedInvoke(CHANNELS.SYSTEM_CHECK_DIRECTORY, path),
+    checkDirectory: (path: string) => _unwrappingInvoke(CHANNELS.SYSTEM_CHECK_DIRECTORY, path),
 
-    getHomeDir: () => _typedInvoke(CHANNELS.SYSTEM_GET_HOME_DIR),
+    getHomeDir: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_HOME_DIR),
 
-    getTmpDir: () => _typedInvoke(CHANNELS.SYSTEM_GET_TMP_DIR),
+    getTmpDir: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_TMP_DIR),
 
-    getCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY),
+    getCliAvailability: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY),
 
-    refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
+    refreshCliAvailability: () => _unwrappingInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
 
-    getAgentVersions: () => _typedInvoke(CHANNELS.SYSTEM_GET_AGENT_VERSIONS),
+    getAgentVersions: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_VERSIONS),
 
-    refreshAgentVersions: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_AGENT_VERSIONS),
+    refreshAgentVersions: () => _unwrappingInvoke(CHANNELS.SYSTEM_REFRESH_AGENT_VERSIONS),
 
-    getAgentUpdateSettings: () => _typedInvoke(CHANNELS.SYSTEM_GET_AGENT_UPDATE_SETTINGS),
+    getAgentUpdateSettings: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_UPDATE_SETTINGS),
 
     setAgentUpdateSettings: (settings: {
       autoCheck: boolean;
       checkFrequencyHours: number;
       lastAutoCheck: number | null;
-    }) => _typedInvoke(CHANNELS.SYSTEM_SET_AGENT_UPDATE_SETTINGS, settings),
+    }) => _unwrappingInvoke(CHANNELS.SYSTEM_SET_AGENT_UPDATE_SETTINGS, settings),
 
     startAgentUpdate: (payload: { agentId: string; method?: string }) =>
-      _typedInvoke(CHANNELS.SYSTEM_START_AGENT_UPDATE, payload),
+      _unwrappingInvoke(CHANNELS.SYSTEM_START_AGENT_UPDATE, payload),
 
-    healthCheck: (agentIds?: string[]) => _typedInvoke(CHANNELS.SYSTEM_HEALTH_CHECK, agentIds),
+    healthCheck: (agentIds?: string[]) => _unwrappingInvoke(CHANNELS.SYSTEM_HEALTH_CHECK, agentIds),
 
-    downloadDiagnostics: () => _typedInvoke(CHANNELS.SYSTEM_DOWNLOAD_DIAGNOSTICS),
+    downloadDiagnostics: () => _unwrappingInvoke(CHANNELS.SYSTEM_DOWNLOAD_DIAGNOSTICS),
+
+    getAppMetrics: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_APP_METRICS),
 
     onWake: (callback: (data: { sleepDuration: number; timestamp: number }) => void) => {
       const handler = (
@@ -956,40 +1015,40 @@ const api: ElectronAPI = {
 
   // App State API
   app: {
-    getState: () => _typedInvoke(CHANNELS.APP_GET_STATE),
+    getState: () => _unwrappingInvoke(CHANNELS.APP_GET_STATE),
 
     setState: (partialState: Partial<AppState>) =>
-      _typedInvoke(CHANNELS.APP_SET_STATE, partialState),
+      _unwrappingInvoke(CHANNELS.APP_SET_STATE, partialState),
 
-    getVersion: () => _typedInvoke(CHANNELS.APP_GET_VERSION),
+    getVersion: () => _unwrappingInvoke(CHANNELS.APP_GET_VERSION),
 
-    hydrate: () => _typedInvoke(CHANNELS.APP_HYDRATE),
+    hydrate: () => _unwrappingInvoke(CHANNELS.APP_HYDRATE),
 
-    quit: () => _typedInvoke(CHANNELS.APP_QUIT),
+    quit: () => _unwrappingInvoke(CHANNELS.APP_QUIT),
 
-    forceQuit: () => _typedInvoke(CHANNELS.APP_FORCE_QUIT),
+    forceQuit: () => _unwrappingInvoke(CHANNELS.APP_FORCE_QUIT),
 
     onMenuAction: (callback: (action: string) => void) => _typedOn(CHANNELS.MENU_ACTION, callback),
   },
 
   menu: {
     showContext: (payload: ShowContextMenuPayload) =>
-      _typedInvoke(CHANNELS.MENU_SHOW_CONTEXT, payload),
+      _unwrappingInvoke(CHANNELS.MENU_SHOW_CONTEXT, payload),
   },
 
   // Logs API
   logs: {
-    getAll: (filters?: LogFilterOptions) => _typedInvoke(CHANNELS.LOGS_GET_ALL, filters),
+    getAll: (filters?: LogFilterOptions) => _unwrappingInvoke(CHANNELS.LOGS_GET_ALL, filters),
 
-    getSources: () => _typedInvoke(CHANNELS.LOGS_GET_SOURCES),
+    getSources: () => _unwrappingInvoke(CHANNELS.LOGS_GET_SOURCES),
 
-    clear: () => _typedInvoke(CHANNELS.LOGS_CLEAR),
+    clear: () => _unwrappingInvoke(CHANNELS.LOGS_CLEAR),
 
-    openFile: () => _typedInvoke(CHANNELS.LOGS_OPEN_FILE),
+    openFile: () => _unwrappingInvoke(CHANNELS.LOGS_OPEN_FILE),
 
-    setVerbose: (enabled: boolean) => _typedInvoke(CHANNELS.LOGS_SET_VERBOSE, enabled),
+    setVerbose: (enabled: boolean) => _unwrappingInvoke(CHANNELS.LOGS_SET_VERBOSE, enabled),
 
-    getVerbose: () => _typedInvoke(CHANNELS.LOGS_GET_VERBOSE),
+    getVerbose: () => _unwrappingInvoke(CHANNELS.LOGS_GET_VERBOSE),
 
     onEntry: (callback: (entry: LogEntry) => void) => {
       const offEntry = _typedOn(CHANNELS.LOGS_ENTRY, callback);
@@ -1008,7 +1067,7 @@ const api: ElectronAPI = {
       level: "debug" | "info" | "warn" | "error",
       message: string,
       context?: Record<string, unknown>
-    ) => _typedInvoke(CHANNELS.LOGS_WRITE, { level, message, context }),
+    ) => _unwrappingInvoke(CHANNELS.LOGS_WRITE, { level, message, context }),
   },
 
   // Error API
@@ -1016,26 +1075,26 @@ const api: ElectronAPI = {
     onError: (callback: (error: AppError) => void) => _typedOn(CHANNELS.ERROR_NOTIFY, callback),
 
     retry: (errorId: string, action: RetryAction, args?: Record<string, unknown>) =>
-      _typedInvoke(CHANNELS.ERROR_RETRY, { errorId, action, args }),
+      _unwrappingInvoke(CHANNELS.ERROR_RETRY, { errorId, action, args }),
 
     cancelRetry: (errorId: string) => ipcRenderer.send(CHANNELS.ERROR_RETRY_CANCEL, errorId),
 
     onRetryProgress: (callback: (payload: RetryProgressPayload) => void) =>
       _typedOn(CHANNELS.ERROR_RETRY_PROGRESS, callback),
 
-    openLogs: () => _typedInvoke(CHANNELS.ERROR_OPEN_LOGS),
+    openLogs: () => _unwrappingInvoke(CHANNELS.ERROR_OPEN_LOGS),
 
-    getPending: () => _typedInvoke(CHANNELS.ERROR_GET_PENDING),
+    getPending: () => _unwrappingInvoke(CHANNELS.ERROR_GET_PENDING),
   },
 
   // Event Inspector API
   eventInspector: {
-    getEvents: () => _typedInvoke(CHANNELS.EVENT_INSPECTOR_GET_EVENTS),
+    getEvents: () => _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_GET_EVENTS),
 
     getFiltered: (filters: EventFilterOptions) =>
-      _typedInvoke(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, filters),
+      _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, filters),
 
-    clear: () => _typedInvoke(CHANNELS.EVENT_INSPECTOR_CLEAR),
+    clear: () => _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_CLEAR),
 
     subscribe: () => ipcRenderer.send(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE),
 
@@ -1047,51 +1106,59 @@ const api: ElectronAPI = {
 
   events: {
     emit: (eventType: string, payload: unknown) =>
-      _typedInvoke(CHANNELS.EVENTS_EMIT, eventType, payload),
+      _unwrappingInvoke(CHANNELS.EVENTS_EMIT, eventType, payload),
   },
 
   // Project API
   project: {
-    getAll: () => _typedInvoke(CHANNELS.PROJECT_GET_ALL),
+    getAll: () => _unwrappingInvoke(CHANNELS.PROJECT_GET_ALL),
 
-    getCurrent: () => _typedInvoke(CHANNELS.PROJECT_GET_CURRENT),
+    getCurrent: () => _unwrappingInvoke(CHANNELS.PROJECT_GET_CURRENT),
 
-    add: (path: string) => _typedInvoke(CHANNELS.PROJECT_ADD, path),
+    add: (path: string) => _unwrappingInvoke(CHANNELS.PROJECT_ADD, path),
 
-    remove: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_REMOVE, projectId),
+    remove: (projectId: string) => _unwrappingInvoke(CHANNELS.PROJECT_REMOVE, projectId),
 
     update: (projectId: string, updates: Partial<Project>) =>
-      _typedInvoke(CHANNELS.PROJECT_UPDATE, projectId, updates),
+      _unwrappingInvoke(CHANNELS.PROJECT_UPDATE, projectId, updates),
 
-    switch: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_SWITCH, projectId),
+    switch: (projectId: string) => _unwrappingInvoke(CHANNELS.PROJECT_SWITCH, projectId),
 
-    openDialog: () => _typedInvoke(CHANNELS.PROJECT_OPEN_DIALOG),
+    openDialog: () => _unwrappingInvoke(CHANNELS.PROJECT_OPEN_DIALOG),
 
-    onSwitch: (callback: (payload: { project: Project; switchId: string }) => void) =>
-      _typedOn(CHANNELS.PROJECT_ON_SWITCH, callback),
+    onSwitch: (
+      callback: (payload: {
+        project: Project;
+        switchId: string;
+        worktreeLoadError?: string;
+      }) => void
+    ) => _typedOn(CHANNELS.PROJECT_ON_SWITCH, callback),
 
-    getSettings: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_GET_SETTINGS, projectId),
+    getSettings: (projectId: string) => _unwrappingInvoke(CHANNELS.PROJECT_GET_SETTINGS, projectId),
 
     saveSettings: (projectId: string, settings: ProjectSettings) =>
-      _typedInvoke(CHANNELS.PROJECT_SAVE_SETTINGS, { projectId, settings }),
+      _unwrappingInvoke(CHANNELS.PROJECT_SAVE_SETTINGS, { projectId, settings }),
 
-    detectRunners: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_DETECT_RUNNERS, projectId),
+    detectRunners: (projectId: string) =>
+      _unwrappingInvoke(CHANNELS.PROJECT_DETECT_RUNNERS, projectId),
 
     close: (projectId: string, options?: { killTerminals?: boolean }) =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_CLOSE, projectId, options),
+      _unwrappingInvoke(CHANNELS.PROJECT_CLOSE, projectId, options),
 
-    reopen: (projectId: string) => ipcRenderer.invoke(CHANNELS.PROJECT_REOPEN, projectId),
+    reopen: (projectId: string) => _unwrappingInvoke(CHANNELS.PROJECT_REOPEN, projectId),
 
-    getStats: (projectId: string) => ipcRenderer.invoke(CHANNELS.PROJECT_GET_STATS, projectId),
+    getStats: (projectId: string) => _unwrappingInvoke(CHANNELS.PROJECT_GET_STATS, projectId),
+
+    getBulkStats: (projectIds: string[]) =>
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_BULK_STATS, projectIds),
 
     createFolder: (parentPath: string, folderName: string): Promise<string> =>
-      _typedInvoke(CHANNELS.PROJECT_CREATE_FOLDER, { parentPath, folderName }),
+      _unwrappingInvoke(CHANNELS.PROJECT_CREATE_FOLDER, { parentPath, folderName }),
 
-    initGit: (directoryPath: string) =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_INIT_GIT, directoryPath),
+    initGit: (directoryPath: string) => _unwrappingInvoke(CHANNELS.PROJECT_INIT_GIT, directoryPath),
 
     initGitGuided: (options: import("../shared/types/ipc/gitInit.js").GitInitOptions) =>
-      _typedInvoke(CHANNELS.PROJECT_INIT_GIT_GUIDED, options),
+      _unwrappingInvoke(CHANNELS.PROJECT_INIT_GIT_GUIDED, options),
 
     onInitGitProgress: (
       callback: (event: import("../shared/types/ipc/gitInit.js").GitInitProgressEvent) => void
@@ -1105,139 +1172,144 @@ const api: ElectronAPI = {
     },
 
     getRecipes: (projectId: string): Promise<TerminalRecipe[]> =>
-      _typedInvoke(CHANNELS.PROJECT_GET_RECIPES, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_RECIPES, projectId),
 
     saveRecipes: (projectId: string, recipes: TerminalRecipe[]): Promise<void> =>
-      _typedInvoke(CHANNELS.PROJECT_SAVE_RECIPES, { projectId, recipes }),
+      _unwrappingInvoke(CHANNELS.PROJECT_SAVE_RECIPES, { projectId, recipes }),
 
     addRecipe: (projectId: string, recipe: TerminalRecipe): Promise<void> =>
-      _typedInvoke(CHANNELS.PROJECT_ADD_RECIPE, { projectId, recipe }),
+      _unwrappingInvoke(CHANNELS.PROJECT_ADD_RECIPE, { projectId, recipe }),
 
     updateRecipe: (
       projectId: string,
       recipeId: string,
       updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
     ): Promise<void> =>
-      _typedInvoke(CHANNELS.PROJECT_UPDATE_RECIPE, { projectId, recipeId, updates }),
+      _unwrappingInvoke(CHANNELS.PROJECT_UPDATE_RECIPE, { projectId, recipeId, updates }),
 
     deleteRecipe: (projectId: string, recipeId: string): Promise<void> =>
-      _typedInvoke(CHANNELS.PROJECT_DELETE_RECIPE, { projectId, recipeId }),
+      _unwrappingInvoke(CHANNELS.PROJECT_DELETE_RECIPE, { projectId, recipeId }),
 
     getTerminals: (
       projectId: string
     ): Promise<import("../shared/types/index.js").TerminalSnapshot[]> =>
-      _typedInvoke(CHANNELS.PROJECT_GET_TERMINALS, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_TERMINALS, projectId),
 
     setTerminals: (
       projectId: string,
       terminals: import("../shared/types/index.js").TerminalSnapshot[]
-    ): Promise<void> => _typedInvoke(CHANNELS.PROJECT_SET_TERMINALS, { projectId, terminals }),
+    ): Promise<void> => _unwrappingInvoke(CHANNELS.PROJECT_SET_TERMINALS, { projectId, terminals }),
 
     getTerminalSizes: (
       projectId: string
     ): Promise<Record<string, { cols: number; rows: number }>> =>
-      _typedInvoke(CHANNELS.PROJECT_GET_TERMINAL_SIZES, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_TERMINAL_SIZES, projectId),
 
     setTerminalSizes: (
       projectId: string,
       terminalSizes: Record<string, { cols: number; rows: number }>
     ): Promise<void> =>
-      _typedInvoke(CHANNELS.PROJECT_SET_TERMINAL_SIZES, { projectId, terminalSizes }),
+      _unwrappingInvoke(CHANNELS.PROJECT_SET_TERMINAL_SIZES, { projectId, terminalSizes }),
 
     getTabGroups: (projectId: string): Promise<import("../shared/types/index.js").TabGroup[]> =>
-      _typedInvoke(CHANNELS.PROJECT_GET_TAB_GROUPS, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_TAB_GROUPS, projectId),
 
     setTabGroups: (
       projectId: string,
       tabGroups: import("../shared/types/index.js").TabGroup[]
-    ): Promise<void> => _typedInvoke(CHANNELS.PROJECT_SET_TAB_GROUPS, { projectId, tabGroups }),
+    ): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.PROJECT_SET_TAB_GROUPS, { projectId, tabGroups }),
 
     getFocusMode: (
       projectId: string
     ): Promise<{
       focusMode: boolean;
       focusPanelState?: { sidebarWidth: number; diagnosticsOpen: boolean };
-    }> => _typedInvoke(CHANNELS.PROJECT_GET_FOCUS_MODE, projectId),
+    }> => _unwrappingInvoke(CHANNELS.PROJECT_GET_FOCUS_MODE, projectId),
 
     setFocusMode: (
       projectId: string,
       focusMode: boolean,
       focusPanelState?: { sidebarWidth: number; diagnosticsOpen: boolean }
     ): Promise<void> =>
-      _typedInvoke(CHANNELS.PROJECT_SET_FOCUS_MODE, { projectId, focusMode, focusPanelState }),
+      _unwrappingInvoke(CHANNELS.PROJECT_SET_FOCUS_MODE, { projectId, focusMode, focusPanelState }),
 
     readClaudeMd: (projectId: string): Promise<string | null> =>
-      _typedInvoke(CHANNELS.PROJECT_READ_CLAUDE_MD, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_READ_CLAUDE_MD, projectId),
 
     writeClaudeMd: (projectId: string, content: string): Promise<void> =>
-      _typedInvoke(CHANNELS.PROJECT_WRITE_CLAUDE_MD, { projectId, content }),
+      _unwrappingInvoke(CHANNELS.PROJECT_WRITE_CLAUDE_MD, { projectId, content }),
 
     enableInRepoSettings: (projectId: string): Promise<Project> =>
-      _typedInvoke(CHANNELS.PROJECT_ENABLE_IN_REPO_SETTINGS, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_ENABLE_IN_REPO_SETTINGS, projectId),
 
     disableInRepoSettings: (projectId: string): Promise<Project> =>
-      _typedInvoke(CHANNELS.PROJECT_DISABLE_IN_REPO_SETTINGS, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_DISABLE_IN_REPO_SETTINGS, projectId),
 
-    checkMissing: (): Promise<string[]> => _typedInvoke(CHANNELS.PROJECT_CHECK_MISSING),
+    checkMissing: (): Promise<string[]> => _unwrappingInvoke(CHANNELS.PROJECT_CHECK_MISSING),
 
     locate: (projectId: string): Promise<Project | null> =>
-      _typedInvoke(CHANNELS.PROJECT_LOCATE, projectId),
+      _unwrappingInvoke(CHANNELS.PROJECT_LOCATE, projectId),
   },
 
   // Agent Settings API
   agentSettings: {
-    get: () => _typedInvoke(CHANNELS.AGENT_SETTINGS_GET),
+    get: () => _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_GET),
 
     set: (agentId: string, settings: Partial<AgentSettingsEntry>) =>
-      _typedInvoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: agentId, settings }),
+      _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: agentId, settings }),
 
-    reset: (agentType?: string) => _typedInvoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
+    reset: (agentType?: string) => _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
   },
 
   userAgentRegistry: {
-    get: () => _typedInvoke(CHANNELS.USER_AGENT_REGISTRY_GET),
+    get: () => _unwrappingInvoke(CHANNELS.USER_AGENT_REGISTRY_GET),
 
     add: (config: import("../shared/types/index.js").UserAgentConfig) =>
-      _typedInvoke(CHANNELS.USER_AGENT_REGISTRY_ADD, config),
+      _unwrappingInvoke(CHANNELS.USER_AGENT_REGISTRY_ADD, config),
 
     update: (id: string, config: import("../shared/types/index.js").UserAgentConfig) =>
-      _typedInvoke(CHANNELS.USER_AGENT_REGISTRY_UPDATE, { id, config }),
+      _unwrappingInvoke(CHANNELS.USER_AGENT_REGISTRY_UPDATE, { id, config }),
 
-    remove: (id: string) => _typedInvoke(CHANNELS.USER_AGENT_REGISTRY_REMOVE, id),
+    remove: (id: string) => _unwrappingInvoke(CHANNELS.USER_AGENT_REGISTRY_REMOVE, id),
   },
 
   agentHelp: {
     get: (request: import("../shared/types/ipc/agent.js").AgentHelpRequest) =>
-      _typedInvoke(CHANNELS.AGENT_HELP_GET, request),
+      _unwrappingInvoke(CHANNELS.AGENT_HELP_GET, request),
   },
 
   // GitHub API
   github: {
     getRepoStats: (cwd: string, bypassCache?: boolean) =>
-      _typedInvoke(CHANNELS.GITHUB_GET_REPO_STATS, cwd, bypassCache),
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_REPO_STATS, cwd, bypassCache),
+
+    getProjectHealth: (cwd: string, bypassCache?: boolean) =>
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_PROJECT_HEALTH, cwd, bypassCache),
 
     openIssues: (cwd: string, query?: string, state?: string) =>
-      _typedInvoke(CHANNELS.GITHUB_OPEN_ISSUES, cwd, query, state),
+      _unwrappingInvoke(CHANNELS.GITHUB_OPEN_ISSUES, cwd, query, state),
 
     openPRs: (cwd: string, query?: string, state?: string) =>
-      _typedInvoke(CHANNELS.GITHUB_OPEN_PRS, cwd, query, state),
+      _unwrappingInvoke(CHANNELS.GITHUB_OPEN_PRS, cwd, query, state),
 
-    openCommits: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_COMMITS, cwd),
+    openCommits: (cwd: string, branch?: string) =>
+      _unwrappingInvoke(CHANNELS.GITHUB_OPEN_COMMITS, cwd, branch),
 
     openIssue: (cwd: string, issueNumber: number) =>
-      _typedInvoke(CHANNELS.GITHUB_OPEN_ISSUE, { cwd, issueNumber }),
+      _unwrappingInvoke(CHANNELS.GITHUB_OPEN_ISSUE, { cwd, issueNumber }),
 
-    openPR: (prUrl: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_PR, prUrl),
+    openPR: (prUrl: string) => _unwrappingInvoke(CHANNELS.GITHUB_OPEN_PR, prUrl),
 
-    checkCli: () => _typedInvoke(CHANNELS.GITHUB_CHECK_CLI),
+    checkCli: () => _unwrappingInvoke(CHANNELS.GITHUB_CHECK_CLI),
 
-    getConfig: () => _typedInvoke(CHANNELS.GITHUB_GET_CONFIG),
+    getConfig: () => _unwrappingInvoke(CHANNELS.GITHUB_GET_CONFIG),
 
-    setToken: (token: string) => _typedInvoke(CHANNELS.GITHUB_SET_TOKEN, token),
+    setToken: (token: string) => _unwrappingInvoke(CHANNELS.GITHUB_SET_TOKEN, token),
 
-    clearToken: () => _typedInvoke(CHANNELS.GITHUB_CLEAR_TOKEN),
+    clearToken: () => _unwrappingInvoke(CHANNELS.GITHUB_CLEAR_TOKEN),
 
-    validateToken: (token: string) => _typedInvoke(CHANNELS.GITHUB_VALIDATE_TOKEN, token),
+    validateToken: (token: string) => _unwrappingInvoke(CHANNELS.GITHUB_VALIDATE_TOKEN, token),
 
     listIssues: (options: {
       cwd: string;
@@ -1246,7 +1318,7 @@ const api: ElectronAPI = {
       cursor?: string;
       bypassCache?: boolean;
       sortOrder?: "created" | "updated";
-    }) => ipcRenderer.invoke(CHANNELS.GITHUB_LIST_ISSUES, options),
+    }) => _unwrappingInvoke(CHANNELS.GITHUB_LIST_ISSUES, options),
 
     listPullRequests: (options: {
       cwd: string;
@@ -1255,25 +1327,25 @@ const api: ElectronAPI = {
       cursor?: string;
       bypassCache?: boolean;
       sortOrder?: "created" | "updated";
-    }) => ipcRenderer.invoke(CHANNELS.GITHUB_LIST_PRS, options),
+    }) => _unwrappingInvoke(CHANNELS.GITHUB_LIST_PRS, options),
 
     assignIssue: (cwd: string, issueNumber: number, username: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_ASSIGN_ISSUE, { cwd, issueNumber, username }),
+      _unwrappingInvoke(CHANNELS.GITHUB_ASSIGN_ISSUE, { cwd, issueNumber, username }),
 
     getIssueTooltip: (cwd: string, issueNumber: number) =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_GET_ISSUE_TOOLTIP, { cwd, issueNumber }),
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_ISSUE_TOOLTIP, { cwd, issueNumber }),
 
     getPRTooltip: (cwd: string, prNumber: number) =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_GET_PR_TOOLTIP, { cwd, prNumber }),
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_PR_TOOLTIP, { cwd, prNumber }),
 
     getIssueUrl: (cwd: string, issueNumber: number): Promise<string | null> =>
-      _typedInvoke(CHANNELS.GITHUB_GET_ISSUE_URL, { cwd, issueNumber }),
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_ISSUE_URL, { cwd, issueNumber }),
 
     getIssueByNumber: (cwd: string, issueNumber: number) =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_GET_ISSUE_BY_NUMBER, { cwd, issueNumber }),
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_ISSUE_BY_NUMBER, { cwd, issueNumber }),
 
     getPRByNumber: (cwd: string, prNumber: number) =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_GET_PR_BY_NUMBER, { cwd, prNumber }),
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_PR_BY_NUMBER, { cwd, prNumber }),
 
     onPRDetected: (callback: (data: PRDetectedPayload) => void) =>
       _typedOn(CHANNELS.PR_DETECTED, callback),
@@ -1291,9 +1363,9 @@ const api: ElectronAPI = {
   // Notes API
   notes: {
     create: (title: string, scope: "worktree" | "project", worktreeId?: string) =>
-      _typedInvoke(CHANNELS.NOTES_CREATE, title, scope, worktreeId),
+      _unwrappingInvoke(CHANNELS.NOTES_CREATE, title, scope, worktreeId),
 
-    read: (notePath: string) => _typedInvoke(CHANNELS.NOTES_READ, notePath),
+    read: (notePath: string) => _unwrappingInvoke(CHANNELS.NOTES_READ, notePath),
 
     write: (
       notePath: string,
@@ -1307,13 +1379,13 @@ const api: ElectronAPI = {
         tags?: string[];
       },
       expectedLastModified?: number
-    ) => _typedInvoke(CHANNELS.NOTES_WRITE, notePath, content, metadata, expectedLastModified),
+    ) => _unwrappingInvoke(CHANNELS.NOTES_WRITE, notePath, content, metadata, expectedLastModified),
 
-    list: () => _typedInvoke(CHANNELS.NOTES_LIST),
+    list: () => _unwrappingInvoke(CHANNELS.NOTES_LIST),
 
-    delete: (notePath: string) => _typedInvoke(CHANNELS.NOTES_DELETE, notePath),
+    delete: (notePath: string) => _unwrappingInvoke(CHANNELS.NOTES_DELETE, notePath),
 
-    search: (query: string) => _typedInvoke(CHANNELS.NOTES_SEARCH, query),
+    search: (query: string) => _unwrappingInvoke(CHANNELS.NOTES_SEARCH, query),
 
     onUpdated: (
       callback: (data: {
@@ -1326,15 +1398,15 @@ const api: ElectronAPI = {
 
   // Workflow API
   workflow: {
-    listWorkflows: () => _typedInvoke(CHANNELS.WORKFLOW_LIST),
+    listWorkflows: () => _unwrappingInvoke(CHANNELS.WORKFLOW_LIST),
 
-    startWorkflow: (workflowId: string) => _typedInvoke(CHANNELS.WORKFLOW_START, workflowId),
+    startWorkflow: (workflowId: string) => _unwrappingInvoke(CHANNELS.WORKFLOW_START, workflowId),
 
-    cancelWorkflow: (runId: string) => _typedInvoke(CHANNELS.WORKFLOW_CANCEL, runId),
+    cancelWorkflow: (runId: string) => _unwrappingInvoke(CHANNELS.WORKFLOW_CANCEL, runId),
 
-    getWorkflowRun: (runId: string) => _typedInvoke(CHANNELS.WORKFLOW_GET_RUN, runId),
+    getWorkflowRun: (runId: string) => _unwrappingInvoke(CHANNELS.WORKFLOW_GET_RUN, runId),
 
-    listRuns: () => _typedInvoke(CHANNELS.WORKFLOW_LIST_RUNS),
+    listRuns: () => _unwrappingInvoke(CHANNELS.WORKFLOW_LIST_RUNS),
 
     onStarted: (
       callback: (data: {
@@ -1365,14 +1437,14 @@ const api: ElectronAPI = {
       }) => void
     ) => _typedOn(CHANNELS.WORKFLOW_FAILED, callback),
 
-    listPendingApprovals: () => _typedInvoke(CHANNELS.WORKFLOW_LIST_PENDING_APPROVALS),
+    listPendingApprovals: () => _unwrappingInvoke(CHANNELS.WORKFLOW_LIST_PENDING_APPROVALS),
 
     resolveApproval: (payload: {
       runId: string;
       nodeId: string;
       approved: boolean;
       feedback?: string;
-    }) => _typedInvoke(CHANNELS.WORKFLOW_RESOLVE_APPROVAL, payload),
+    }) => _unwrappingInvoke(CHANNELS.WORKFLOW_RESOLVE_APPROVAL, payload),
 
     onApprovalRequested: (
       callback: (payload: {
@@ -1418,28 +1490,37 @@ const api: ElectronAPI = {
   // Dev Preview API
   devPreview: {
     ensure: (request: DevPreviewEnsureRequest): Promise<DevPreviewSessionState> =>
-      _typedInvoke(CHANNELS.DEV_PREVIEW_ENSURE, request) as Promise<DevPreviewSessionState>,
+      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_ENSURE, request) as Promise<DevPreviewSessionState>,
 
     restart: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _typedInvoke(CHANNELS.DEV_PREVIEW_RESTART, request) as Promise<DevPreviewSessionState>,
+      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_RESTART, request) as Promise<DevPreviewSessionState>,
 
     stop: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _typedInvoke(CHANNELS.DEV_PREVIEW_STOP, request) as Promise<DevPreviewSessionState>,
+      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_STOP, request) as Promise<DevPreviewSessionState>,
 
     stopByPanel: (request: DevPreviewStopByPanelRequest): Promise<void> =>
-      _typedInvoke(CHANNELS.DEV_PREVIEW_STOP_BY_PANEL, request) as Promise<void>,
+      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_STOP_BY_PANEL, request) as Promise<void>,
 
     getState: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _typedInvoke(CHANNELS.DEV_PREVIEW_GET_STATE, request) as Promise<DevPreviewSessionState>,
+      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_GET_STATE, request) as Promise<DevPreviewSessionState>,
 
     onStateChanged: (callback: (payload: DevPreviewStateChangedPayload) => void) =>
       _typedOn(CHANNELS.DEV_PREVIEW_STATE_CHANGED, callback),
   },
 
+  // Global Dev Servers API
+  globalDevServers: {
+    get: (): Promise<GlobalDevServersGetResult> =>
+      _typedInvoke("global-dev-servers:get") as Promise<GlobalDevServersGetResult>,
+
+    onChanged: (callback: (payload: GlobalDevServersChangedPayload) => void) =>
+      _typedOn("global-dev-servers:changed", callback),
+  },
+
   // Git API
   git: {
     getFileDiff: (cwd: string, filePath: string, status: GitStatus) =>
-      _typedInvoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),
+      _unwrappingInvoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),
 
     getProjectPulse: (options: {
       worktreeId: string;
@@ -1447,7 +1528,7 @@ const api: ElectronAPI = {
       includeDelta?: boolean;
       includeRecentCommits?: boolean;
       forceRefresh?: boolean;
-    }) => ipcRenderer.invoke(CHANNELS.GIT_GET_PROJECT_PULSE, options),
+    }) => _unwrappingInvoke(CHANNELS.GIT_GET_PROJECT_PULSE, options),
 
     listCommits: (options: {
       cwd: string;
@@ -1455,24 +1536,25 @@ const api: ElectronAPI = {
       branch?: string;
       skip?: number;
       limit?: number;
-    }) => ipcRenderer.invoke(CHANNELS.GIT_LIST_COMMITS, options),
+    }) => _unwrappingInvoke(CHANNELS.GIT_LIST_COMMITS, options),
 
     stageFile: (cwd: string, filePath: string) =>
-      _typedInvoke(CHANNELS.GIT_STAGE_FILE, { cwd, filePath }),
+      _unwrappingInvoke(CHANNELS.GIT_STAGE_FILE, { cwd, filePath }),
 
     unstageFile: (cwd: string, filePath: string) =>
-      _typedInvoke(CHANNELS.GIT_UNSTAGE_FILE, { cwd, filePath }),
+      _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_FILE, { cwd, filePath }),
 
-    stageAll: (cwd: string) => _typedInvoke(CHANNELS.GIT_STAGE_ALL, cwd),
+    stageAll: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_STAGE_ALL, cwd),
 
-    unstageAll: (cwd: string) => _typedInvoke(CHANNELS.GIT_UNSTAGE_ALL, cwd),
+    unstageAll: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_ALL, cwd),
 
-    commit: (cwd: string, message: string) => _typedInvoke(CHANNELS.GIT_COMMIT, { cwd, message }),
+    commit: (cwd: string, message: string) =>
+      _unwrappingInvoke(CHANNELS.GIT_COMMIT, { cwd, message }),
 
     push: (cwd: string, setUpstream?: boolean) =>
-      _typedInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
+      _unwrappingInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
 
-    getStagingStatus: (cwd: string) => _typedInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
+    getStagingStatus: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
 
     compareWorktrees: (
       cwd: string,
@@ -1481,7 +1563,7 @@ const api: ElectronAPI = {
       filePath?: string,
       useMergeBase?: boolean
     ) =>
-      _typedInvoke(CHANNELS.GIT_COMPARE_WORKTREES, {
+      _unwrappingInvoke(CHANNELS.GIT_COMPARE_WORKTREES, {
         cwd,
         branch1,
         branch2,
@@ -1489,92 +1571,110 @@ const api: ElectronAPI = {
         useMergeBase,
       }),
 
-    getUsername: (cwd: string) => _typedInvoke(CHANNELS.GIT_GET_USERNAME, cwd),
+    getUsername: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_GET_USERNAME, cwd),
 
     getWorkingDiff: (cwd: string, type: "unstaged" | "staged" | "head") =>
-      _typedInvoke(CHANNELS.GIT_GET_WORKING_DIFF, { cwd, type }),
+      _unwrappingInvoke(CHANNELS.GIT_GET_WORKING_DIFF, { cwd, type }),
   },
 
   // Terminal Config API
   terminalConfig: {
-    get: () => _typedInvoke(CHANNELS.TERMINAL_CONFIG_GET),
+    get: () => _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_GET),
 
     setScrollback: (scrollbackLines: number) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK, scrollbackLines),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK, scrollbackLines),
 
     setPerformanceMode: (performanceMode: boolean) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_PERFORMANCE_MODE, performanceMode),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_PERFORMANCE_MODE, performanceMode),
 
     setFontSize: (fontSize: number) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_FONT_SIZE, fontSize),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_FONT_SIZE, fontSize),
 
     setFontFamily: (fontFamily: string) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY, fontFamily),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY, fontFamily),
 
     setHybridInputEnabled: (enabled: boolean) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_ENABLED, enabled),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_ENABLED, enabled),
 
     setHybridInputAutoFocus: (enabled: boolean) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS, enabled),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS, enabled),
 
     setColorScheme: (schemeId: string) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_COLOR_SCHEME, schemeId),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_COLOR_SCHEME, schemeId),
 
     setCustomSchemes: (schemesJson: string) =>
-      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_CUSTOM_SCHEMES, schemesJson),
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_CUSTOM_SCHEMES, schemesJson),
 
-    importColorScheme: () => _typedInvoke(CHANNELS.TERMINAL_CONFIG_IMPORT_COLOR_SCHEME),
+    importColorScheme: () => _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_IMPORT_COLOR_SCHEME),
+
+    setScreenReaderMode: (mode: "auto" | "on" | "off") =>
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_SCREEN_READER_MODE, mode),
+
+    setResourceMonitoring: (enabled: boolean) =>
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_RESOURCE_MONITORING, enabled),
   },
 
-  // Sidecar API
-  sidecar: {
+  // Accessibility API
+  accessibility: {
+    getEnabled: () => _unwrappingInvoke(CHANNELS.ACCESSIBILITY_GET_ENABLED),
+
+    onSupportChanged: (callback: (data: { enabled: boolean }) => void) =>
+      _typedOn(CHANNELS.ACCESSIBILITY_SUPPORT_CHANGED, callback),
+  },
+
+  // Portal API
+  portal: {
     create: (payload: { tabId: string; url: string }) =>
-      ipcRenderer.invoke(CHANNELS.SIDECAR_CREATE, payload),
+      _unwrappingInvoke(CHANNELS.PORTAL_CREATE, payload),
 
     show: (payload: {
       tabId: string;
       bounds: { x: number; y: number; width: number; height: number };
-    }) => ipcRenderer.invoke(CHANNELS.SIDECAR_SHOW, payload),
+    }) => _unwrappingInvoke(CHANNELS.PORTAL_SHOW, payload),
 
-    hide: () => ipcRenderer.invoke(CHANNELS.SIDECAR_HIDE),
+    hide: () => _unwrappingInvoke(CHANNELS.PORTAL_HIDE),
 
     resize: (bounds: { x: number; y: number; width: number; height: number }) =>
-      ipcRenderer.invoke(CHANNELS.SIDECAR_RESIZE, bounds),
+      _unwrappingInvoke(CHANNELS.PORTAL_RESIZE, bounds),
 
-    closeTab: (payload: { tabId: string }) =>
-      ipcRenderer.invoke(CHANNELS.SIDECAR_CLOSE_TAB, payload),
+    closeTab: (payload: { tabId: string }) => _unwrappingInvoke(CHANNELS.PORTAL_CLOSE_TAB, payload),
 
     navigate: (payload: { tabId: string; url: string }) =>
-      ipcRenderer.invoke(CHANNELS.SIDECAR_NAVIGATE, payload),
+      _unwrappingInvoke(CHANNELS.PORTAL_NAVIGATE, payload),
 
-    goBack: (tabId: string) => ipcRenderer.invoke(CHANNELS.SIDECAR_GO_BACK, tabId),
+    goBack: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_GO_BACK, tabId),
 
-    goForward: (tabId: string) => ipcRenderer.invoke(CHANNELS.SIDECAR_GO_FORWARD, tabId),
+    goForward: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_GO_FORWARD, tabId),
 
-    reload: (tabId: string) => ipcRenderer.invoke(CHANNELS.SIDECAR_RELOAD, tabId),
+    reload: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_RELOAD, tabId),
 
-    showNewTabMenu: (payload: SidecarShowNewTabMenuPayload) =>
-      _typedInvoke(CHANNELS.SIDECAR_SHOW_NEW_TAB_MENU, payload),
+    showNewTabMenu: (payload: PortalShowNewTabMenuPayload) =>
+      _unwrappingInvoke(CHANNELS.PORTAL_SHOW_NEW_TAB_MENU, payload),
 
     onNavEvent: (callback: (data: { tabId: string; title: string; url: string }) => void) =>
-      _typedOn(CHANNELS.SIDECAR_NAV_EVENT, callback),
+      _typedOn(CHANNELS.PORTAL_NAV_EVENT, callback),
 
-    onFocus: (callback: () => void) => _typedOn(CHANNELS.SIDECAR_FOCUS, callback),
+    onFocus: (callback: () => void) => _typedOn(CHANNELS.PORTAL_FOCUS, callback),
 
-    onBlur: (callback: () => void) => _typedOn(CHANNELS.SIDECAR_BLUR, callback),
+    onBlur: (callback: () => void) => _typedOn(CHANNELS.PORTAL_BLUR, callback),
 
-    onNewTabMenuAction: (callback: (action: SidecarNewTabMenuAction) => void) =>
-      _typedOn(CHANNELS.SIDECAR_NEW_TAB_MENU_ACTION, callback),
+    onNewTabMenuAction: (callback: (action: PortalNewTabMenuAction) => void) =>
+      _typedOn(CHANNELS.PORTAL_NEW_TAB_MENU_ACTION, callback),
+
+    onTabEvicted: (callback: (data: { tabId: string }) => void) =>
+      _typedOn(CHANNELS.PORTAL_TAB_EVICTED, callback),
+    onTabsEvicted: (callback: (payload: { tabIds: string[] }) => void) =>
+      _typedOn(CHANNELS.PORTAL_TABS_EVICTED, callback),
   },
 
   // Webview API
   webview: {
     setLifecycleState: (webContentsId: number, frozen: boolean): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.WEBVIEW_SET_LIFECYCLE_STATE, webContentsId, frozen),
+      _unwrappingInvoke(CHANNELS.WEBVIEW_SET_LIFECYCLE_STATE, webContentsId, frozen),
     registerPanel: (webContentsId: number, panelId: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.WEBVIEW_REGISTER_PANEL, { webContentsId, panelId }),
+      _unwrappingInvoke(CHANNELS.WEBVIEW_REGISTER_PANEL, { webContentsId, panelId }),
     respondToDialog: (dialogId: string, confirmed: boolean, response?: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.WEBVIEW_DIALOG_RESPONSE, { dialogId, confirmed, response }),
+      _unwrappingInvoke(CHANNELS.WEBVIEW_DIALOG_RESPONSE, { dialogId, confirmed, response }),
     onDialogRequest: (
       callback: (payload: {
         dialogId: string;
@@ -1588,13 +1688,13 @@ const api: ElectronAPI = {
       callback: (payload: { panelId: string; shortcut: "find" | "next" | "prev" | "close" }) => void
     ): (() => void) => _typedOn(CHANNELS.WEBVIEW_FIND_SHORTCUT, callback),
     startConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.WEBVIEW_START_CONSOLE_CAPTURE, webContentsId, paneId),
+      _unwrappingInvoke(CHANNELS.WEBVIEW_START_CONSOLE_CAPTURE, webContentsId, paneId),
     stopConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.WEBVIEW_STOP_CONSOLE_CAPTURE, webContentsId, paneId),
+      _unwrappingInvoke(CHANNELS.WEBVIEW_STOP_CONSOLE_CAPTURE, webContentsId, paneId),
     clearConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.WEBVIEW_CLEAR_CONSOLE_CAPTURE, webContentsId, paneId),
+      _unwrappingInvoke(CHANNELS.WEBVIEW_CLEAR_CONSOLE_CAPTURE, webContentsId, paneId),
     getConsoleProperties: (webContentsId: number, objectId: string) =>
-      ipcRenderer.invoke(CHANNELS.WEBVIEW_GET_CONSOLE_PROPERTIES, webContentsId, objectId),
+      _unwrappingInvoke(CHANNELS.WEBVIEW_GET_CONSOLE_PROPERTIES, webContentsId, objectId),
     onConsoleMessage: (
       callback: (row: import("../shared/types/ipc/webviewConsole.js").SerializedConsoleRow) => void
     ): (() => void) => _typedOn(CHANNELS.WEBVIEW_CONSOLE_MESSAGE, callback),
@@ -1606,22 +1706,32 @@ const api: ElectronAPI = {
   // Hibernation API
   hibernation: {
     getConfig: (): Promise<{ enabled: boolean; inactiveThresholdHours: number }> =>
-      ipcRenderer.invoke(CHANNELS.HIBERNATION_GET_CONFIG),
+      _unwrappingInvoke(CHANNELS.HIBERNATION_GET_CONFIG),
 
     updateConfig: (
       config: Partial<{ enabled: boolean; inactiveThresholdHours: number }>
     ): Promise<{ enabled: boolean; inactiveThresholdHours: number }> =>
-      ipcRenderer.invoke(CHANNELS.HIBERNATION_UPDATE_CONFIG, config),
+      _unwrappingInvoke(CHANNELS.HIBERNATION_UPDATE_CONFIG, config),
+
+    onProjectHibernated: (
+      callback: (payload: {
+        projectId: string;
+        projectName: string;
+        reason: "scheduled" | "memory-pressure";
+        terminalsKilled: number;
+        timestamp: number;
+      }) => void
+    ): (() => void) => _typedOn(CHANNELS.HIBERNATION_PROJECT_HIBERNATED, callback),
   },
 
   // System Sleep API
   systemSleep: {
-    getMetrics: () => _typedInvoke(CHANNELS.SYSTEM_SLEEP_GET_METRICS),
+    getMetrics: () => _unwrappingInvoke(CHANNELS.SYSTEM_SLEEP_GET_METRICS),
 
     getAwakeTimeSince: (startTimestamp: number) =>
-      _typedInvoke(CHANNELS.SYSTEM_SLEEP_GET_AWAKE_TIME, startTimestamp),
+      _unwrappingInvoke(CHANNELS.SYSTEM_SLEEP_GET_AWAKE_TIME, startTimestamp),
 
-    reset: () => _typedInvoke(CHANNELS.SYSTEM_SLEEP_RESET),
+    reset: () => _unwrappingInvoke(CHANNELS.SYSTEM_SLEEP_RESET),
 
     onSuspend: (callback: () => void) => _typedOn(CHANNELS.SYSTEM_SLEEP_ON_SUSPEND, callback),
 
@@ -1631,27 +1741,27 @@ const api: ElectronAPI = {
 
   // Keybinding API
   keybinding: {
-    getOverrides: () => _typedInvoke(CHANNELS.KEYBINDING_GET_OVERRIDES),
+    getOverrides: () => _unwrappingInvoke(CHANNELS.KEYBINDING_GET_OVERRIDES),
 
     setOverride: (actionId: KeyAction, combo: string[]) =>
-      _typedInvoke(CHANNELS.KEYBINDING_SET_OVERRIDE, { actionId, combo }),
+      _unwrappingInvoke(CHANNELS.KEYBINDING_SET_OVERRIDE, { actionId, combo }),
 
     removeOverride: (actionId: KeyAction) =>
-      _typedInvoke(CHANNELS.KEYBINDING_REMOVE_OVERRIDE, actionId),
+      _unwrappingInvoke(CHANNELS.KEYBINDING_REMOVE_OVERRIDE, actionId),
 
-    resetAll: () => _typedInvoke(CHANNELS.KEYBINDING_RESET_ALL),
+    resetAll: () => _unwrappingInvoke(CHANNELS.KEYBINDING_RESET_ALL),
 
-    exportProfile: () => _typedInvoke(CHANNELS.KEYBINDING_EXPORT_PROFILE),
+    exportProfile: () => _unwrappingInvoke(CHANNELS.KEYBINDING_EXPORT_PROFILE),
 
-    importProfile: () => _typedInvoke(CHANNELS.KEYBINDING_IMPORT_PROFILE),
+    importProfile: () => _unwrappingInvoke(CHANNELS.KEYBINDING_IMPORT_PROFILE),
   },
 
   // Worktree Config API
   worktreeConfig: {
-    get: () => _typedInvoke(CHANNELS.WORKTREE_CONFIG_GET),
+    get: () => _unwrappingInvoke(CHANNELS.WORKTREE_CONFIG_GET),
 
     setPattern: (pattern: string) =>
-      _typedInvoke(CHANNELS.WORKTREE_CONFIG_SET_PATTERN, { pattern }),
+      _unwrappingInvoke(CHANNELS.WORKTREE_CONFIG_SET_PATTERN, { pattern }),
   },
 
   // Window API
@@ -1662,41 +1772,49 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.WINDOW_FULLSCREEN_CHANGE, handler);
       return () => ipcRenderer.removeListener(CHANNELS.WINDOW_FULLSCREEN_CHANGE, handler);
     },
-    toggleFullscreen: (): Promise<boolean> => _typedInvoke(CHANNELS.WINDOW_TOGGLE_FULLSCREEN),
-    reload: (): Promise<void> => _typedInvoke(CHANNELS.WINDOW_RELOAD),
-    forceReload: (): Promise<void> => _typedInvoke(CHANNELS.WINDOW_FORCE_RELOAD),
-    toggleDevTools: (): Promise<void> => _typedInvoke(CHANNELS.WINDOW_TOGGLE_DEVTOOLS),
-    zoomIn: (): Promise<void> => _typedInvoke(CHANNELS.WINDOW_ZOOM_IN),
-    zoomOut: (): Promise<void> => _typedInvoke(CHANNELS.WINDOW_ZOOM_OUT),
-    zoomReset: (): Promise<void> => _typedInvoke(CHANNELS.WINDOW_ZOOM_RESET),
-    close: (): Promise<void> => _typedInvoke(CHANNELS.WINDOW_CLOSE),
+    toggleFullscreen: (): Promise<boolean> => _unwrappingInvoke(CHANNELS.WINDOW_TOGGLE_FULLSCREEN),
+    reload: (): Promise<void> => _unwrappingInvoke(CHANNELS.WINDOW_RELOAD),
+    forceReload: (): Promise<void> => _unwrappingInvoke(CHANNELS.WINDOW_FORCE_RELOAD),
+    toggleDevTools: (): Promise<void> => _unwrappingInvoke(CHANNELS.WINDOW_TOGGLE_DEVTOOLS),
+    zoomIn: (): Promise<void> => _unwrappingInvoke(CHANNELS.WINDOW_ZOOM_IN),
+    zoomOut: (): Promise<void> => _unwrappingInvoke(CHANNELS.WINDOW_ZOOM_OUT),
+    zoomReset: (): Promise<void> => _unwrappingInvoke(CHANNELS.WINDOW_ZOOM_RESET),
+    getZoomFactor: (): number => webFrame.getZoomFactor(),
+    close: (): Promise<void> => _unwrappingInvoke(CHANNELS.WINDOW_CLOSE),
+    onDestroyHiddenWebviews: (callback: (payload: { tier: 1 | 2 }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { tier: 1 | 2 }) =>
+        callback(payload);
+      ipcRenderer.on(CHANNELS.WINDOW_DESTROY_HIDDEN_WEBVIEWS, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.WINDOW_DESTROY_HIDDEN_WEBVIEWS, handler);
+    },
   },
 
   // Notification API
   notification: {
-    updateBadge: (state: { waitingCount: number; failedCount: number }) =>
+    updateBadge: (state: { waitingCount: number }) =>
       ipcRenderer.send(CHANNELS.NOTIFICATION_UPDATE, state),
     getSettings: (): Promise<{
+      enabled: boolean;
       completedEnabled: boolean;
       waitingEnabled: boolean;
-      failedEnabled: boolean;
       soundEnabled: boolean;
       soundFile: string;
       waitingEscalationEnabled: boolean;
       waitingEscalationDelayMs: number;
-    }> => _typedInvoke(CHANNELS.NOTIFICATION_SETTINGS_GET),
+    }> => _unwrappingInvoke(CHANNELS.NOTIFICATION_SETTINGS_GET),
     setSettings: (
       settings: Partial<{
+        enabled: boolean;
         completedEnabled: boolean;
         waitingEnabled: boolean;
-        failedEnabled: boolean;
         soundEnabled: boolean;
         soundFile: string;
         waitingEscalationEnabled: boolean;
         waitingEscalationDelayMs: number;
       }>
-    ) => _typedInvoke(CHANNELS.NOTIFICATION_SETTINGS_SET, settings),
-    playSound: (soundFile: string) => _typedInvoke(CHANNELS.NOTIFICATION_PLAY_SOUND, soundFile),
+    ) => _unwrappingInvoke(CHANNELS.NOTIFICATION_SETTINGS_SET, settings),
+    playSound: (soundFile: string) =>
+      _unwrappingInvoke(CHANNELS.NOTIFICATION_PLAY_SOUND, soundFile),
     showNative: (payload: { title: string; body: string }) =>
       ipcRenderer.send(CHANNELS.NOTIFICATION_SHOW_NATIVE, payload),
     showWatchNotification: (payload: {
@@ -1729,16 +1847,16 @@ const api: ElectronAPI = {
     onUpdateError: (callback: (info: { message: string }) => void) =>
       _typedOn(CHANNELS.UPDATE_ERROR, callback),
 
-    quitAndInstall: () => _typedInvoke(CHANNELS.UPDATE_QUIT_AND_INSTALL),
+    quitAndInstall: () => _unwrappingInvoke(CHANNELS.UPDATE_QUIT_AND_INSTALL),
 
-    checkForUpdates: () => _typedInvoke(CHANNELS.UPDATE_CHECK_FOR_UPDATES),
+    checkForUpdates: () => _unwrappingInvoke(CHANNELS.UPDATE_CHECK_FOR_UPDATES),
   },
 
   // Gemini API
   gemini: {
-    getStatus: () => _typedInvoke(CHANNELS.GEMINI_GET_STATUS),
+    getStatus: () => _unwrappingInvoke(CHANNELS.GEMINI_GET_STATUS),
 
-    enableAlternateBuffer: () => _typedInvoke(CHANNELS.GEMINI_ENABLE_ALTERNATE_BUFFER),
+    enableAlternateBuffer: () => _unwrappingInvoke(CHANNELS.GEMINI_ENABLE_ALTERNATE_BUFFER),
   },
 
   // Commands API
@@ -1749,7 +1867,7 @@ const api: ElectronAPI = {
       projectId?: string;
       cwd?: string;
       agentId?: string;
-    }) => ipcRenderer.invoke(CHANNELS.COMMANDS_LIST, context),
+    }) => _unwrappingInvoke(CHANNELS.COMMANDS_LIST, context),
 
     get: (payload: {
       commandId: string;
@@ -1760,7 +1878,7 @@ const api: ElectronAPI = {
         cwd?: string;
         agentId?: string;
       };
-    }) => ipcRenderer.invoke(CHANNELS.COMMANDS_GET, payload),
+    }) => _unwrappingInvoke(CHANNELS.COMMANDS_GET, payload),
 
     execute: (payload: {
       commandId: string;
@@ -1772,23 +1890,23 @@ const api: ElectronAPI = {
         agentId?: string;
       };
       args?: Record<string, unknown>;
-    }) => ipcRenderer.invoke(CHANNELS.COMMANDS_EXECUTE, payload),
+    }) => _unwrappingInvoke(CHANNELS.COMMANDS_EXECUTE, payload),
 
-    getBuilder: (commandId: string) => ipcRenderer.invoke(CHANNELS.COMMANDS_GET_BUILDER, commandId),
+    getBuilder: (commandId: string) => _unwrappingInvoke(CHANNELS.COMMANDS_GET_BUILDER, commandId),
   },
 
   // App Agent API - Configuration and API key management
   appAgent: {
-    getConfig: () => ipcRenderer.invoke(CHANNELS.APP_AGENT_GET_CONFIG),
+    getConfig: () => _unwrappingInvoke(CHANNELS.APP_AGENT_GET_CONFIG),
 
     setConfig: (config: { provider?: string; model?: string; apiKey?: string; baseUrl?: string }) =>
-      ipcRenderer.invoke(CHANNELS.APP_AGENT_SET_CONFIG, config),
+      _unwrappingInvoke(CHANNELS.APP_AGENT_SET_CONFIG, config),
 
-    hasApiKey: () => ipcRenderer.invoke(CHANNELS.APP_AGENT_HAS_API_KEY),
+    hasApiKey: () => _unwrappingInvoke(CHANNELS.APP_AGENT_HAS_API_KEY),
 
-    testApiKey: (apiKey: string) => ipcRenderer.invoke(CHANNELS.APP_AGENT_TEST_API_KEY, apiKey),
+    testApiKey: (apiKey: string) => _unwrappingInvoke(CHANNELS.APP_AGENT_TEST_API_KEY, apiKey),
 
-    testModel: (model: string) => ipcRenderer.invoke(CHANNELS.APP_AGENT_TEST_MODEL, model),
+    testModel: (model: string) => _unwrappingInvoke(CHANNELS.APP_AGENT_TEST_MODEL, model),
 
     // Listen for action dispatch requests from main process
     onDispatchActionRequest: (
@@ -1861,22 +1979,22 @@ const api: ElectronAPI = {
 
   // Agent Capabilities API
   agentCapabilities: {
-    getRegistry: () => _typedInvoke(CHANNELS.AGENT_CAPABILITIES_GET_REGISTRY),
+    getRegistry: () => _unwrappingInvoke(CHANNELS.AGENT_CAPABILITIES_GET_REGISTRY),
 
-    getAgentIds: () => _typedInvoke(CHANNELS.AGENT_CAPABILITIES_GET_AGENT_IDS),
+    getAgentIds: () => _unwrappingInvoke(CHANNELS.AGENT_CAPABILITIES_GET_AGENT_IDS),
 
     getAgentMetadata: (agentId: string) =>
-      _typedInvoke(CHANNELS.AGENT_CAPABILITIES_GET_AGENT_METADATA, agentId),
+      _unwrappingInvoke(CHANNELS.AGENT_CAPABILITIES_GET_AGENT_METADATA, agentId),
 
     isAgentEnabled: (agentId: string) =>
-      _typedInvoke(CHANNELS.AGENT_CAPABILITIES_IS_AGENT_ENABLED, agentId),
+      _unwrappingInvoke(CHANNELS.AGENT_CAPABILITIES_IS_AGENT_ENABLED, agentId),
   },
 
   // Clipboard API
   clipboard: {
-    saveImage: () => _typedInvoke(CHANNELS.CLIPBOARD_SAVE_IMAGE),
+    saveImage: () => _unwrappingInvoke(CHANNELS.CLIPBOARD_SAVE_IMAGE),
     thumbnailFromPath: (filePath: string) =>
-      _typedInvoke(CHANNELS.CLIPBOARD_THUMBNAIL_FROM_PATH, filePath),
+      _unwrappingInvoke(CHANNELS.CLIPBOARD_THUMBNAIL_FROM_PATH, filePath),
   },
 
   // Web Utils API
@@ -1885,60 +2003,74 @@ const api: ElectronAPI = {
   },
 
   appTheme: {
-    get: () => _typedInvoke(CHANNELS.APP_THEME_GET),
+    get: () => _unwrappingInvoke(CHANNELS.APP_THEME_GET),
 
     setColorScheme: (schemeId: string) =>
-      _typedInvoke(CHANNELS.APP_THEME_SET_COLOR_SCHEME, schemeId),
+      _unwrappingInvoke(CHANNELS.APP_THEME_SET_COLOR_SCHEME, schemeId),
 
     setCustomSchemes: (schemesJson: string) =>
-      _typedInvoke(CHANNELS.APP_THEME_SET_CUSTOM_SCHEMES, schemesJson),
+      _unwrappingInvoke(CHANNELS.APP_THEME_SET_CUSTOM_SCHEMES, schemesJson),
 
-    importTheme: () => _typedInvoke(CHANNELS.APP_THEME_IMPORT),
+    importTheme: () => _unwrappingInvoke(CHANNELS.APP_THEME_IMPORT),
 
     setColorVisionMode: (mode: ColorVisionMode) =>
-      _typedInvoke(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE, mode),
+      _unwrappingInvoke(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE, mode),
   },
 
   telemetry: {
-    get: () => _typedInvoke(CHANNELS.TELEMETRY_GET),
-    setEnabled: (enabled: boolean) => _typedInvoke(CHANNELS.TELEMETRY_SET_ENABLED, enabled),
-    markPromptShown: () => _typedInvoke(CHANNELS.TELEMETRY_MARK_PROMPT_SHOWN),
+    get: () => _unwrappingInvoke(CHANNELS.TELEMETRY_GET),
+    setEnabled: (enabled: boolean) => _unwrappingInvoke(CHANNELS.TELEMETRY_SET_ENABLED, enabled),
+    markPromptShown: () => _unwrappingInvoke(CHANNELS.TELEMETRY_MARK_PROMPT_SHOWN),
     track: (event: string, properties: Record<string, unknown>) =>
-      _typedInvoke(CHANNELS.TELEMETRY_TRACK, event, properties),
+      _unwrappingInvoke(CHANNELS.TELEMETRY_TRACK, event, properties),
+  },
+
+  gpu: {
+    getStatus: () => _unwrappingInvoke(CHANNELS.GPU_GET_STATUS),
+    setHardwareAcceleration: (enabled: boolean) =>
+      _unwrappingInvoke(CHANNELS.GPU_SET_HARDWARE_ACCELERATION, enabled),
   },
 
   privacy: {
-    getSettings: () => _typedInvoke(CHANNELS.PRIVACY_GET_SETTINGS),
+    getSettings: () => _unwrappingInvoke(CHANNELS.PRIVACY_GET_SETTINGS),
     setTelemetryLevel: (level: "off" | "errors" | "full") =>
-      _typedInvoke(CHANNELS.PRIVACY_SET_TELEMETRY_LEVEL, level),
+      _unwrappingInvoke(CHANNELS.PRIVACY_SET_TELEMETRY_LEVEL, level),
     setLogRetention: (days: 7 | 30 | 90 | 0) =>
-      _typedInvoke(CHANNELS.PRIVACY_SET_LOG_RETENTION, days),
-    openDataFolder: () => _typedInvoke(CHANNELS.PRIVACY_OPEN_DATA_FOLDER),
-    clearCache: () => _typedInvoke(CHANNELS.PRIVACY_CLEAR_CACHE),
-    resetAllData: () => _typedInvoke(CHANNELS.PRIVACY_RESET_ALL_DATA),
-    getDataFolderPath: () => _typedInvoke(CHANNELS.PRIVACY_GET_DATA_FOLDER_PATH),
+      _unwrappingInvoke(CHANNELS.PRIVACY_SET_LOG_RETENTION, days),
+    openDataFolder: () => _unwrappingInvoke(CHANNELS.PRIVACY_OPEN_DATA_FOLDER),
+    clearCache: () => _unwrappingInvoke(CHANNELS.PRIVACY_CLEAR_CACHE),
+    resetAllData: () => _unwrappingInvoke(CHANNELS.PRIVACY_RESET_ALL_DATA),
+    getDataFolderPath: () => _unwrappingInvoke(CHANNELS.PRIVACY_GET_DATA_FOLDER_PATH),
   },
 
   onboarding: {
-    get: () => _typedInvoke(CHANNELS.ONBOARDING_GET),
+    get: () => _unwrappingInvoke(CHANNELS.ONBOARDING_GET),
     migrate: (payload: {
       agentSelectionDismissed: boolean;
       agentSetupComplete: boolean;
       firstRunToastSeen: boolean;
-    }) => _typedInvoke(CHANNELS.ONBOARDING_MIGRATE, payload),
-    setStep: (step: string | null) => _typedInvoke(CHANNELS.ONBOARDING_SET_STEP, step),
-    complete: () => _typedInvoke(CHANNELS.ONBOARDING_COMPLETE),
-    markToastSeen: () => _typedInvoke(CHANNELS.ONBOARDING_MARK_TOAST_SEEN),
-    markNewsletterSeen: () => _typedInvoke(CHANNELS.ONBOARDING_MARK_NEWSLETTER_SEEN),
-    getChecklist: () => _typedInvoke(CHANNELS.ONBOARDING_CHECKLIST_GET),
-    dismissChecklist: () => _typedInvoke(CHANNELS.ONBOARDING_CHECKLIST_DISMISS),
+    }) => _unwrappingInvoke(CHANNELS.ONBOARDING_MIGRATE, payload),
+    setStep: (step: string | null) => _unwrappingInvoke(CHANNELS.ONBOARDING_SET_STEP, step),
+    complete: () => _unwrappingInvoke(CHANNELS.ONBOARDING_COMPLETE),
+    markToastSeen: () => _unwrappingInvoke(CHANNELS.ONBOARDING_MARK_TOAST_SEEN),
+    markNewsletterSeen: () => _unwrappingInvoke(CHANNELS.ONBOARDING_MARK_NEWSLETTER_SEEN),
+    getChecklist: () => _unwrappingInvoke(CHANNELS.ONBOARDING_CHECKLIST_GET),
+    dismissChecklist: () => _unwrappingInvoke(CHANNELS.ONBOARDING_CHECKLIST_DISMISS),
     markChecklistItem: (item: ChecklistItemId) =>
-      _typedInvoke(CHANNELS.ONBOARDING_CHECKLIST_MARK_ITEM, item),
+      _unwrappingInvoke(CHANNELS.ONBOARDING_CHECKLIST_MARK_ITEM, item),
+    markChecklistCelebrationShown: () =>
+      _unwrappingInvoke(CHANNELS.ONBOARDING_CHECKLIST_MARK_CELEBRATION_SHOWN),
+  },
+
+  shortcutHints: {
+    getCounts: () => _unwrappingInvoke(CHANNELS.SHORTCUT_HINTS_GET_COUNTS),
+    incrementCount: (actionId: string) =>
+      _unwrappingInvoke(CHANNELS.SHORTCUT_HINTS_INCREMENT_COUNT, actionId),
   },
 
   // Voice Input API
   voiceInput: {
-    getSettings: () => _typedInvoke(CHANNELS.VOICE_INPUT_GET_SETTINGS),
+    getSettings: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_GET_SETTINGS),
     setSettings: (
       patch: Partial<{
         enabled: boolean;
@@ -1952,10 +2084,10 @@ const api: ElectronAPI = {
         correctionCustomInstructions: string;
         paragraphingStrategy: "spoken-command" | "manual";
       }>
-    ) => _typedInvoke(CHANNELS.VOICE_INPUT_SET_SETTINGS, patch),
-    start: () => _typedInvoke(CHANNELS.VOICE_INPUT_START),
-    stop: () => _typedInvoke(CHANNELS.VOICE_INPUT_STOP),
-    flushParagraph: () => _typedInvoke(CHANNELS.VOICE_INPUT_FLUSH_PARAGRAPH),
+    ) => _unwrappingInvoke(CHANNELS.VOICE_INPUT_SET_SETTINGS, patch),
+    start: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_START),
+    stop: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_STOP),
+    flushParagraph: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_FLUSH_PARAGRAPH),
     sendAudioChunk: (chunk: ArrayBuffer) =>
       ipcRenderer.send(CHANNELS.VOICE_INPUT_AUDIO_CHUNK, chunk),
     onTranscriptionDelta: (callback: (delta: string) => void) =>
@@ -1974,28 +2106,22 @@ const api: ElectronAPI = {
     onError: (callback: (error: string) => void) => _typedOn(CHANNELS.VOICE_INPUT_ERROR, callback),
     onStatus: (callback: (status: VoiceInputStatus) => void) =>
       _typedOn(CHANNELS.VOICE_INPUT_STATUS, callback),
-    checkMicPermission: () => _typedInvoke(CHANNELS.VOICE_INPUT_CHECK_MIC_PERMISSION),
-    requestMicPermission: () => _typedInvoke(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION),
-    openMicSettings: () => _typedInvoke(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS),
-    validateApiKey: (apiKey: string) => _typedInvoke(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, apiKey),
+    checkMicPermission: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_CHECK_MIC_PERMISSION),
+    requestMicPermission: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION),
+    openMicSettings: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS),
+    validateApiKey: (apiKey: string) =>
+      _unwrappingInvoke(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, apiKey),
     validateCorrectionApiKey: (apiKey: string) =>
-      _typedInvoke(CHANNELS.VOICE_INPUT_VALIDATE_CORRECTION_API_KEY, apiKey),
+      _unwrappingInvoke(CHANNELS.VOICE_INPUT_VALIDATE_CORRECTION_API_KEY, apiKey),
   },
 
   mcpServer: {
-    getStatus: () => _typedInvoke(CHANNELS.MCP_SERVER_GET_STATUS),
-    setEnabled: (enabled: boolean) => _typedInvoke(CHANNELS.MCP_SERVER_SET_ENABLED, enabled),
-    setPort: (port: number | null) => _typedInvoke(CHANNELS.MCP_SERVER_SET_PORT, port),
-    setApiKey: (apiKey: string) => _typedInvoke(CHANNELS.MCP_SERVER_SET_API_KEY, apiKey),
-    generateApiKey: () => _typedInvoke(CHANNELS.MCP_SERVER_GENERATE_API_KEY),
-    getConfigSnippet: () => _typedInvoke(CHANNELS.MCP_SERVER_GET_CONFIG_SNIPPET),
-  },
-
-  projectMcp: {
-    getStatuses: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_MCP_GET_STATUSES, projectId),
-    onStatusChanged: (
-      callback: (payload: { projectId: string; servers: ProjectMcpServerRunState[] }) => void
-    ) => _typedOn(CHANNELS.PROJECT_MCP_STATUS_CHANGED, callback),
+    getStatus: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_STATUS),
+    setEnabled: (enabled: boolean) => _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_ENABLED, enabled),
+    setPort: (port: number | null) => _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_PORT, port),
+    setApiKey: (apiKey: string) => _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_API_KEY, apiKey),
+    generateApiKey: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GENERATE_API_KEY),
+    getConfigSnippet: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_CONFIG_SNIPPET),
   },
 
   mcpBridge: {
@@ -2032,28 +2158,50 @@ const api: ElectronAPI = {
   },
 
   crashRecovery: {
-    getPending: () => _typedInvoke(CHANNELS.CRASH_RECOVERY_GET_PENDING),
+    getPending: () => _unwrappingInvoke(CHANNELS.CRASH_RECOVERY_GET_PENDING),
     resolve: (action: { kind: "restore"; panelIds: string[] } | { kind: "fresh" }) =>
-      _typedInvoke(CHANNELS.CRASH_RECOVERY_RESOLVE, action),
-    getConfig: () => _typedInvoke(CHANNELS.CRASH_RECOVERY_GET_CONFIG),
+      _unwrappingInvoke(CHANNELS.CRASH_RECOVERY_RESOLVE, action),
+    getConfig: () => _unwrappingInvoke(CHANNELS.CRASH_RECOVERY_GET_CONFIG),
     setConfig: (config: { autoRestoreOnCrash?: boolean }) =>
-      _typedInvoke(CHANNELS.CRASH_RECOVERY_SET_CONFIG, config),
+      _unwrappingInvoke(CHANNELS.CRASH_RECOVERY_SET_CONFIG, config),
   },
   ...(isDemoMode
     ? {
         demo: {
           moveTo: (x: number, y: number, durationMs: number) =>
-            _typedInvoke(CHANNELS.DEMO_MOVE_TO, { x, y, durationMs }),
-          click: () => _typedInvoke(CHANNELS.DEMO_CLICK),
+            _unwrappingInvoke(CHANNELS.DEMO_MOVE_TO, { x, y, durationMs }),
+          moveToSelector: (
+            selector: string,
+            durationMs: number,
+            offsetX?: number,
+            offsetY?: number
+          ) =>
+            _unwrappingInvoke(CHANNELS.DEMO_MOVE_TO_SELECTOR, {
+              selector,
+              durationMs,
+              offsetX,
+              offsetY,
+            }),
+          click: () => _unwrappingInvoke(CHANNELS.DEMO_CLICK),
           type: (selector: string, text: string, cps?: number) =>
-            _typedInvoke(CHANNELS.DEMO_TYPE, { selector, text, cps }),
+            _unwrappingInvoke(CHANNELS.DEMO_TYPE, { selector, text, cps }),
           setZoom: (factor: number, durationMs?: number) =>
-            _typedInvoke(CHANNELS.DEMO_SET_ZOOM, { factor, durationMs }),
-          screenshot: () => _typedInvoke(CHANNELS.DEMO_SCREENSHOT),
+            _unwrappingInvoke(CHANNELS.DEMO_SET_ZOOM, { factor, durationMs }),
+          screenshot: () => _unwrappingInvoke(CHANNELS.DEMO_SCREENSHOT),
           waitForSelector: (selector: string, timeoutMs?: number) =>
-            _typedInvoke(CHANNELS.DEMO_WAIT_FOR_SELECTOR, { selector, timeoutMs }),
-          pause: () => _typedInvoke(CHANNELS.DEMO_PAUSE),
-          resume: () => _typedInvoke(CHANNELS.DEMO_RESUME),
+            _unwrappingInvoke(CHANNELS.DEMO_WAIT_FOR_SELECTOR, { selector, timeoutMs }),
+          pause: () => _unwrappingInvoke(CHANNELS.DEMO_PAUSE),
+          resume: () => _unwrappingInvoke(CHANNELS.DEMO_RESUME),
+          sleep: (durationMs: number) => _unwrappingInvoke(CHANNELS.DEMO_SLEEP, { durationMs }),
+          startCapture: (payload: { fps?: number; maxFrames?: number; outputDir?: string }) =>
+            _unwrappingInvoke(CHANNELS.DEMO_START_CAPTURE, payload),
+          stopCapture: () => _unwrappingInvoke(CHANNELS.DEMO_STOP_CAPTURE),
+          getCaptureStatus: () => _unwrappingInvoke(CHANNELS.DEMO_GET_CAPTURE_STATUS),
+          encode: (payload: import("../shared/types/ipc/demo.js").DemoEncodePayload) =>
+            _unwrappingInvoke(CHANNELS.DEMO_ENCODE, payload),
+          onEncodeProgress: (
+            callback: (event: import("../shared/types/ipc/demo.js").DemoEncodeProgressEvent) => void
+          ) => _typedOn(CHANNELS.DEMO_ENCODE_PROGRESS, callback),
           onExecCommand: (
             channel: string,
             callback: (payload: Record<string, unknown>) => void
@@ -2088,4 +2236,19 @@ if (window.top === window && isTrustedRendererUrl(window.location.href)) {
       window.location.href
     );
   }
+}
+
+// Private listener: reclaim renderer memory when notified by the main process.
+// Not exposed through window.electron — this is an internal optimization.
+ipcRenderer.on(CHANNELS.WINDOW_RECLAIM_MEMORY, () => {
+  webFrame.clearCache();
+  (globalThis as unknown as { gc?: () => void }).gc?.();
+});
+
+// E2E test bridge: expose renderer-side IPC listener introspection in fault mode.
+// Gated by CANOPY_E2E_FAULT_MODE to avoid production surface area.
+if (process.env.CANOPY_E2E_FAULT_MODE === "1") {
+  contextBridge.exposeInMainWorld("__CANOPY_E2E_IPC__", {
+    getRendererListenerCount: (channel: string) => ipcRenderer.listenerCount(channel),
+  });
 }

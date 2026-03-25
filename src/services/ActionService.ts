@@ -10,6 +10,8 @@ import type {
   ActionError,
 } from "../../shared/types/actions.js";
 import { logWarn } from "@/utils/logger";
+import { keybindingService } from "./KeybindingService";
+import { shortcutHintStore } from "../store/shortcutHintStore";
 
 /** Fields that should be redacted from event payloads to prevent secret leakage */
 const SENSITIVE_ARG_FIELDS = new Set(["token", "password", "secret", "key", "auth", "credential"]);
@@ -117,7 +119,7 @@ export class ActionService {
       return { ok: false, error };
     }
 
-    await this.emitActionDispatchedEvent({
+    void this.emitActionDispatchedEvent({
       actionId,
       args: this.redactSensitiveArgs(args),
       context,
@@ -127,6 +129,7 @@ export class ActionService {
 
     try {
       const result = await definition.run(validatedArgs, context);
+      this.emitShortcutHint(actionId, source);
       return { ok: true, result: result as Result };
     } catch (err) {
       const error: ActionError = {
@@ -235,6 +238,25 @@ export class ActionService {
     return result;
   }
 
+  private emitShortcutHint(actionId: ActionId, source: ActionSource): void {
+    if (source !== "user") return;
+    try {
+      const combo = keybindingService.getEffectiveCombo(actionId);
+      if (!combo) return;
+
+      const state = shortcutHintStore.getState();
+      if (!state.hydrated) return;
+
+      const displayCombo = keybindingService.getDisplayCombo(actionId);
+      const shown = state.show(actionId, displayCombo);
+      if (shown) {
+        state.incrementCount(actionId);
+      }
+    } catch {
+      // never break dispatch flow
+    }
+  }
+
   private async emitActionDispatchedEvent(payload: {
     actionId: ActionId;
     args?: unknown;
@@ -259,6 +281,17 @@ export class ActionService {
 }
 
 export const actionService = new ActionService();
+
+// Expose dispatch function for E2E tests (WebGL renderer has no DOM-level action API).
+// Registered unconditionally but gated at call time — the function is harmless
+// in production and avoids import-time env var timing issues.
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__canopyDispatchAction = (
+    actionId: string,
+    args?: unknown,
+    options?: { source?: string; confirmed?: boolean }
+  ) => actionService.dispatch(actionId as ActionId, args, options as ActionDispatchOptions);
+}
 
 export function getActionContext(): ActionContext {
   return actionService.getContext();

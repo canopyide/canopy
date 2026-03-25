@@ -5,11 +5,11 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
-import { useProjectSettingsStore } from "@/store/projectSettingsStore";
+
 import { agentSettingsClient, systemClient } from "@/clients";
 import type { AgentSettings, CliAvailability } from "@shared/types";
 import { generateAgentCommand, buildAgentLaunchFlags } from "@shared/types";
-import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
+import { getAgentConfig, isRegisteredAgent, getAgentDisplayTitle } from "@/config/agents";
 
 const CLIPBOARD_DIR_NAME = "canopy-clipboard";
 
@@ -19,6 +19,7 @@ export interface LaunchAgentOptions {
   worktreeId?: string;
   prompt?: string;
   interactive?: boolean;
+  modelId?: string;
 }
 
 export interface UseAgentLauncherReturn {
@@ -34,8 +35,6 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const { worktreeMap } = useWorktrees();
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const currentProject = useProjectStore((state) => state.currentProject);
-  const projectSettings = useProjectSettingsStore((state) => state.settings);
-
   const availability = useCliAvailabilityStore((state) => state.availability);
   const isLoading = useCliAvailabilityStore((state) => state.isLoading);
   const isRefreshing = useCliAvailabilityStore((state) => state.isRefreshing);
@@ -131,34 +130,37 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
           }
         }
 
-        const projectInstructions = projectSettings?.agentInstructions?.trim();
-        const effectivePrompt =
-          projectInstructions && launchOptions?.prompt
-            ? `${projectInstructions}\n\n${launchOptions.prompt}`
-            : projectInstructions || launchOptions?.prompt;
-
         command = generateAgentCommand(agentConfig.command, entry, agentId, {
-          initialPrompt: effectivePrompt,
+          initialPrompt: launchOptions?.prompt,
           interactive: launchOptions?.interactive ?? true,
           clipboardDirectory,
+          modelId: launchOptions?.modelId,
         });
 
         // Capture process-level flags for session resume persistence
         if (isAgent) {
-          launchFlags = buildAgentLaunchFlags(entry, agentId);
+          launchFlags = buildAgentLaunchFlags(entry, agentId, {
+            modelId: launchOptions?.modelId,
+          });
         }
       }
+
+      const title =
+        launchOptions?.modelId && isAgent
+          ? getAgentDisplayTitle(agentId, launchOptions.modelId)
+          : (agentConfig?.name ?? "Terminal");
 
       const options: AddTerminalOptions = {
         kind: isAgent ? "agent" : "terminal",
         type: isAgent ? (agentId as any) : "terminal",
         agentId: isAgent ? agentId : undefined,
-        title: agentConfig?.name ?? "Terminal",
+        title,
         cwd,
         worktreeId: targetWorktreeId || undefined,
         command,
         location: launchOptions?.location,
         agentLaunchFlags: launchFlags,
+        agentModelId: launchOptions?.modelId,
       };
 
       try {
@@ -169,7 +171,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         return null;
       }
     },
-    [activeWorktreeId, worktreeMap, addTerminal, currentProject, agentSettings, projectSettings]
+    [activeWorktreeId, worktreeMap, addTerminal, currentProject, agentSettings]
   );
 
   return {

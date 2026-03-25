@@ -14,11 +14,13 @@ import os from "node:os";
 import { PtyManager } from "./services/PtyManager.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { ProcessTreeCache } from "./services/ProcessTreeCache.js";
+import { TerminalResourceMonitor } from "./services/pty/TerminalResourceMonitor.js";
 import { events } from "./services/events.js";
 import { SharedRingBuffer, PacketFramer } from "../shared/utils/SharedRingBuffer.js";
 import { selectShard } from "../shared/utils/shardSelection.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
 import type { PtyHostEvent, SpawnResult } from "../shared/types/pty-host.js";
+import { normalizeScrollbackLines } from "../shared/config/scrollback.js";
 import {
   appendEmergencyLog,
   emergencyLogFatal,
@@ -69,6 +71,11 @@ process.on("unhandledRejection", (reason) => {
 
 const ptyManager = new PtyManager();
 const processTreeCache = new ProcessTreeCache(2500); // 2.5s poll interval (reduced CPU load)
+const terminalResourceMonitor = new TerminalResourceMonitor(
+  processTreeCache,
+  ptyManager,
+  sendEvent
+);
 let ptyPool: PtyPool | null = null;
 
 // Zero-copy ring buffers for terminal I/O (set via init-buffers message)
@@ -111,6 +118,7 @@ const ipcQueueManager = new IpcQueueManager({
 
 const resourceGovernor = new ResourceGovernor({
   getTerminals: () => ptyManager.getAll(),
+  getTerminalPids: () => ptyManager.getAll().map((t) => ({ id: t.id, pid: t.ptyProcess.pid })),
   incrementPauseCount: (count) => {
     backpressureManager.stats.pauseCount += count;
   },
@@ -263,6 +271,17 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
     }
   }
 
+  // Direct MessagePort output: send data directly to renderer, bypassing main process
+  if (!visualWritten && !isBackgrounded && !isSuspended && rendererPort) {
+    try {
+      rendererPort.postMessage({ type: "data", id, data: toStringForIpc(data) });
+      visualWritten = true;
+    } catch {
+      rendererPort = null;
+      rendererPortMessageHandler = null;
+    }
+  }
+
   // IPC Data Mirror: Always send data via IPC for terminals that need main-process
   // monitoring (e.g., UrlDetector for dev preview URL detection), even when SAB write succeeded.
   // Skip mirroring for suspended/backgrounded terminals to respect backpressure semantics.
@@ -350,7 +369,12 @@ events.on("agent:state-changed", (payload) => {
       trigger: payload.trigger,
       confidence: payload.confidence,
       worktreeId: payload.worktreeId,
+      waitingReason: payload.waitingReason,
     });
+
+    if (payload.state === "waiting" || payload.state === "completed") {
+      ptyManager.flushAgentSnapshot(payload.terminalId);
+    }
   }
 });
 
@@ -408,20 +432,6 @@ events.on("agent:completed", (payload) => {
       agentId: payload.agentId,
       exitCode: payload.exitCode,
       duration: payload.duration,
-      timestamp: payload.timestamp,
-      traceId: payload.traceId,
-      terminalId: payload.terminalId,
-      worktreeId: payload.worktreeId,
-    },
-  });
-});
-
-events.on("agent:failed", (payload) => {
-  sendEvent({
-    type: "agent-failed",
-    payload: {
-      agentId: payload.agentId,
-      error: payload.error,
       timestamp: payload.timestamp,
       traceId: payload.traceId,
       terminalId: payload.terminalId,
@@ -627,6 +637,14 @@ port.on("message", async (rawMsg: any) => {
 
           receivedPort.on("message", rendererPortMessageHandler);
 
+          receivedPort.on("close", () => {
+            if (rendererPort === receivedPort) {
+              rendererPort = null;
+              rendererPortMessageHandler = null;
+              console.log("[PtyHost] MessagePort closed, falling back to IPC");
+            }
+          });
+
           console.log("[PtyHost] MessagePort listener installed");
         } else {
           console.warn("[PtyHost] connect-port message received but no ports provided");
@@ -718,9 +736,15 @@ port.on("message", async (rawMsg: any) => {
         ptyManager.resize(msg.id, msg.cols, msg.rows);
         break;
 
-      case "kill":
+      case "kill": {
+        const termInfo = ptyManager.getTerminal(msg.id);
+        const killedPid = termInfo?.ptyProcess.pid;
         ptyManager.kill(msg.id, msg.reason);
+        if (killedPid !== undefined) {
+          resourceGovernor.trackKilledPid(killedPid);
+        }
         break;
+      }
 
       case "trash":
         ptyManager.trash(msg.id);
@@ -925,6 +949,15 @@ port.on("message", async (rawMsg: any) => {
         }
         break;
 
+      case "trim-state": {
+        const targetLines = normalizeScrollbackLines(msg.targetLines);
+        ptyManager.trimScrollback(targetLines);
+        setTimeout(() => {
+          if (global.gc) global.gc();
+        }, 100);
+        break;
+      }
+
       case "get-snapshot":
         sendEvent({
           type: "snapshot",
@@ -949,7 +982,6 @@ port.on("message", async (rawMsg: any) => {
             agentId: s.agentId,
             agentState: s.agentState,
             lastStateChange: s.lastStateChange,
-            error: s.error,
             spawnedAt: s.spawnedAt,
           })),
         });
@@ -1058,12 +1090,16 @@ port.on("message", async (rawMsg: any) => {
                 cwd: terminal.cwd,
                 worktreeId: terminal.worktreeId,
                 agentState: terminal.agentState,
+                waitingReason: terminal.waitingReason,
                 lastStateChange: terminal.lastStateChange,
                 spawnedAt: terminal.spawnedAt,
                 isTrashed: terminal.isTrashed,
                 trashExpiresAt: terminal.trashExpiresAt,
                 activityTier: ptyManager.getActivityTier(msg.id),
                 hasPty,
+                agentSessionId: terminal.agentSessionId,
+                agentLaunchFlags: terminal.agentLaunchFlags,
+                agentModelId: terminal.agentModelId,
               }
             : null,
         });
@@ -1177,12 +1213,16 @@ port.on("message", async (rawMsg: any) => {
             cwd: t.cwd,
             worktreeId: t.worktreeId,
             agentState: t.agentState,
+            waitingReason: t.waitingReason,
             lastStateChange: t.lastStateChange,
             spawnedAt: t.spawnedAt,
             isTrashed: t.isTrashed,
             trashExpiresAt: t.trashExpiresAt,
             activityTier: ptyManager.getActivityTier(t.id),
             hasPty: !t.wasKilled && !t.isExited,
+            agentSessionId: t.agentSessionId,
+            agentLaunchFlags: t.agentLaunchFlags,
+            agentModelId: t.agentModelId,
           })),
         });
         break;
@@ -1203,12 +1243,16 @@ port.on("message", async (rawMsg: any) => {
             cwd: t.cwd,
             worktreeId: t.worktreeId,
             agentState: t.agentState,
+            waitingReason: t.waitingReason,
             lastStateChange: t.lastStateChange,
             spawnedAt: t.spawnedAt,
             isTrashed: t.isTrashed,
             trashExpiresAt: t.trashExpiresAt,
             activityTier: ptyManager.getActivityTier(t.id),
             hasPty: !t.wasKilled && !t.isExited,
+            agentSessionId: t.agentSessionId,
+            agentLaunchFlags: t.agentLaunchFlags,
+            agentModelId: t.agentModelId,
           })),
         });
         break;
@@ -1229,16 +1273,24 @@ port.on("message", async (rawMsg: any) => {
             cwd: t.cwd,
             worktreeId: t.worktreeId,
             agentState: t.agentState,
+            waitingReason: t.waitingReason,
             lastStateChange: t.lastStateChange,
             spawnedAt: t.spawnedAt,
             isTrashed: t.isTrashed,
             trashExpiresAt: t.trashExpiresAt,
             activityTier: ptyManager.getActivityTier(t.id),
             hasPty: !t.wasKilled && !t.isExited,
+            agentSessionId: t.agentSessionId,
+            agentLaunchFlags: t.agentLaunchFlags,
+            agentModelId: t.agentModelId,
           })),
         });
         break;
       }
+
+      case "set-resource-monitoring":
+        terminalResourceMonitor.setEnabled(msg.enabled === true);
+        break;
 
       case "dispose":
         cleanup();
@@ -1260,6 +1312,7 @@ function cleanup(): void {
   backpressureManager.dispose();
   ipcQueueManager.dispose();
 
+  terminalResourceMonitor.dispose();
   processTreeCache.stop();
 
   if (ptyPool) {
@@ -1268,6 +1321,13 @@ function cleanup(): void {
   }
 
   ptyManager.dispose();
+
+  // Release SharedArrayBuffer references so V8 can GC shared memory regions
+  visualBuffers = [];
+  visualSignalView = null;
+  analysisBuffer = null;
+  ipcDataMirrorTerminals.clear();
+
   events.removeAllListeners();
 
   console.log("[PtyHost] Disposed");

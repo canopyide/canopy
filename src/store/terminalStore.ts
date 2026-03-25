@@ -32,11 +32,11 @@ import type {
 import { TerminalRefreshTier as TerminalRefreshTierEnum } from "@/types";
 import { terminalRegistryController } from "@/controllers";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { useTerminalInputStore } from "./terminalInputStore";
-import { useConsoleCaptureStore } from "./consoleCaptureStore";
+import { useWorktreeSelectionStore } from "./worktreeStore";
 import type { CrashType } from "@shared/types/pty-host";
 import { isAgentTerminal } from "@/utils/terminalType";
 import { logInfo, logWarn, logError } from "@/utils/logger";
+import { useResourceMonitoringStore } from "./resourceMonitoringStore";
 
 export type { TerminalInstance, AddTerminalOptions, QueuedCommand, CrashType };
 export { isAgentReady };
@@ -72,8 +72,14 @@ export function getTerminalRefreshTier(
     return TerminalRefreshTierEnum.FOCUSED;
   }
 
-  // All terminals stay at VISIBLE minimum - we don't use BACKGROUND for reliability.
-  return TerminalRefreshTierEnum.VISIBLE;
+  // Agent terminals stay at VISIBLE minimum — they must never be hibernated
+  if (isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId)) {
+    return TerminalRefreshTierEnum.VISIBLE;
+  }
+
+  // Non-agent, non-focused terminals drop to BACKGROUND so idle instances
+  // can be hibernated (xterm.js disposed) to free memory.
+  return TerminalRefreshTierEnum.BACKGROUND;
 }
 
 export type BackendStatus = "connected" | "disconnected" | "recovering";
@@ -100,34 +106,18 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
   const getTerminal = (id: string) => get().terminals.find((t) => t.id === id);
 
   const registrySlice = createTerminalRegistrySlice({
-    onTerminalRemoved: (id, removedIndex, remainingTerminals, removedTerminal) => {
+    onTerminalRemoved: (id, removedIndex, remainingTerminals, _removedTerminal) => {
       clearTerminalRestartGuard(id);
       get().clearQueue(id);
       get().handleTerminalRemoved(id, remainingTerminals, removedIndex);
-      useTerminalInputStore.getState().clearTerminalState(id);
-      useConsoleCaptureStore.getState().removePane(id);
 
       // Auto-clear watch if panel is removed while watched
       get().unwatchPanel(id);
-
-      // Clean up stale tab group mappings
-      const validPanelIds = new Set(remainingTerminals.map((t) => t.id));
-      get().cleanupStaleTabs(validPanelIds);
-
-      // Clean up worktree focus tracking if this was the last focused terminal
-      if (removedTerminal?.worktreeId) {
-        void import("@/store/worktreeStore").then(({ useWorktreeSelectionStore }) => {
-          const store = useWorktreeSelectionStore.getState();
-          const lastFocused = store.lastFocusedTerminalByWorktree.get(removedTerminal.worktreeId!);
-          if (lastFocused === id) {
-            store.clearWorktreeFocusTracking(removedTerminal.worktreeId!);
-          }
-        });
-      }
     },
   })(set, get, api);
 
-  const focusSlice = createTerminalFocusSlice(getTerminals)(set, get, api);
+  const getActiveWorktreeId = () => useWorktreeSelectionStore.getState().activeWorktreeId;
+  const focusSlice = createTerminalFocusSlice(getTerminals, getActiveWorktreeId)(set, get, api);
   const commandQueueSlice = createTerminalCommandQueueSlice(getTerminal)(set, get, api);
   const mruSlice = createTerminalMruSlice(set, get, api);
   const watchedPanelsSlice = createWatchedPanelsSlice()(set, get, api);
@@ -139,7 +129,8 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
     (id) => get().moveTerminalToDock(id),
     (id) => get().moveTerminalToGrid(id),
     () => get().focusedId,
-    (id) => set({ focusedId: id })
+    (id) => set({ focusedId: id }),
+    getActiveWorktreeId
   )(set, get, api);
 
   return {
@@ -157,6 +148,7 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
 
     addTerminal: async (options: AddTerminalOptions) => {
       const id = await registrySlice.addTerminal(options);
+      if (id === null) return null;
       if (!options.location || options.location === "grid") {
         set({ focusedId: id });
       }
@@ -174,8 +166,13 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
         updates.focusedId = gridTerminals[0]?.id ?? null;
       }
 
-      if (state.maximizedId === id) {
-        updates.maximizedId = null;
+      if (state.maximizedId) {
+        const group = registrySlice.getPanelGroup(id);
+        if (state.maximizedId === id || (group && group.panelIds.includes(state.maximizedId))) {
+          updates.maximizedId = null;
+          updates.maximizeTarget = null;
+          updates.preMaximizeLayout = null;
+        }
       }
 
       if (Object.keys(updates).length > 0) {
@@ -285,10 +282,10 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
           : groupPanelIds[0];
       set({ focusedId: focusId, activeDockTerminalId: null });
 
-      // Seed activeTabByGroup for dock groups to preserve active tab state
+      // Sync the registry's active tab for restored groups
       const group = get().getPanelGroup(focusId);
       if (group) {
-        focusSlice.setActiveTab(group.id, focusId);
+        get().setActiveTab(group.id, focusId);
       }
     },
 
@@ -329,53 +326,6 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       }
     },
 
-    // Override setActiveTab to update both activeTabByGroup (focus slice) and TabGroup.activeTabId (registry)
-    // This ensures the active tab selection is persisted and survives restart
-    setActiveTab: (groupId: string, panelId: string) => {
-      // First validate that this is a real group with the panel as a member
-      const group = get().tabGroups.get(groupId);
-      const isValidGroupMember = group && group.panelIds.includes(panelId);
-
-      // Only update focus map if panel is in the group (prevents split-brain state)
-      if (isValidGroupMember) {
-        focusSlice.setActiveTab(groupId, panelId);
-      } else {
-        // For virtual groups (no explicit TabGroup), still update focus map for UI
-        if (!group) {
-          focusSlice.setActiveTab(groupId, panelId);
-        }
-        // If group exists but panel not in it, skip focus update to maintain consistency
-        return;
-      }
-
-      // Also update the TabGroup.activeTabId in the registry for persistence
-      set((state) => {
-        const currentGroup = state.tabGroups.get(groupId);
-        if (!currentGroup) {
-          // Not an explicit tab group (virtual single-panel group)
-          return state;
-        }
-
-        // Only update if the panel is actually in this group
-        if (!currentGroup.panelIds.includes(panelId)) {
-          return state;
-        }
-
-        // Update the group's activeTabId
-        const newTabGroups = new Map(state.tabGroups);
-        newTabGroups.set(groupId, { ...currentGroup, activeTabId: panelId });
-
-        // Persist synchronously from latest state to avoid race conditions
-        // Use get() to ensure we persist the most recent tabGroups, not a stale snapshot
-        import("./slices/terminalRegistry/persistence").then(({ saveTabGroups }) => {
-          saveTabGroups(get().tabGroups);
-        });
-
-        return { tabGroups: newTabGroups };
-      });
-    },
-
-    // Override focusNext/focusPrevious to sync activeTabByGroup when landing on a docked tab group panel
     focusNext: () => {
       focusSlice.focusNext();
       const focusedId = get().focusedId;
@@ -400,26 +350,6 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       }
     },
 
-    // Override hydrateTabGroups to also seed activeTabByGroup from persisted TabGroup.activeTabId
-    // This ensures the active tab state is restored after restart
-    hydrateTabGroups: (tabGroups, options) => {
-      // First, call the registry's hydrateTabGroups to sanitize and store the groups
-      // Forward options to respect skipPersist flag during error recovery
-      registrySlice.hydrateTabGroups(tabGroups, options);
-
-      // Then seed activeTabByGroup from the hydrated TabGroup.activeTabId values
-      const hydratedGroups = get().tabGroups;
-      const newActiveTabByGroup = new Map<string, string>();
-      for (const [groupId, group] of hydratedGroups) {
-        if (group.activeTabId) {
-          newActiveTabByGroup.set(groupId, group.activeTabId);
-        }
-      }
-
-      // Update the focus slice's activeTabByGroup map
-      set({ activeTabByGroup: newActiveTabByGroup });
-    },
-
     reset: async () => {
       const state = get();
 
@@ -439,14 +369,14 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
 
       await Promise.all(killPromises);
 
-      useTerminalInputStore.getState().clearAllDraftInputs();
+      const { useTerminalInputStore: inputStore } = await import("./terminalInputStore");
+      inputStore.getState().clearAllDraftInputs();
 
       set({
         terminals: [],
         trashedTerminals: new Map(),
         backgroundedTerminals: new Map(),
         tabGroups: new Map(),
-        activeTabByGroup: new Map(),
         focusedId: null,
         maximizedId: null,
         activeDockTerminalId: null,
@@ -487,7 +417,6 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
         trashedTerminals: new Map(),
         backgroundedTerminals: new Map(),
         tabGroups: new Map(),
-        activeTabByGroup: new Map(),
         focusedId: null,
         maximizedId: null,
         activeDockTerminalId: null,
@@ -515,6 +444,7 @@ let backendReadyUnsubscribe: (() => void) | null = null;
 let spawnResultUnsubscribe: (() => void) | null = null;
 let reduceScrollbackUnsubscribe: (() => void) | null = null;
 let restoreScrollbackUnsubscribe: (() => void) | null = null;
+let resourceMetricsUnsubscribe: (() => void) | null = null;
 let recoveryTimer: NodeJS.Timeout | null = null;
 let beforeUnloadHandler: (() => void) | null = null;
 
@@ -607,6 +537,10 @@ export function cleanupTerminalStoreListeners() {
     restoreScrollbackUnsubscribe();
     restoreScrollbackUnsubscribe = null;
   }
+  if (resourceMetricsUnsubscribe) {
+    resourceMetricsUnsubscribe();
+    resourceMetricsUnsubscribe = null;
+  }
   if (recoveryTimer) {
     clearTimeout(recoveryTimer);
     recoveryTimer = null;
@@ -627,7 +561,7 @@ export function setupTerminalStoreListeners() {
 
   agentStateUnsubscribe = terminalRegistryController.onAgentStateChanged(
     (data: AgentStateChangePayload) => {
-      const { terminalId, state, timestamp, trigger, confidence } = data;
+      const { terminalId, state, timestamp, trigger, confidence, waitingReason } = data;
 
       if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
         logWarn("Invalid timestamp in agent state event", { data });
@@ -663,7 +597,15 @@ export function setupTerminalStoreListeners() {
 
       useTerminalStore
         .getState()
-        .updateAgentState(terminalId, state, undefined, timestamp, trigger, clampedConfidence);
+        .updateAgentState(
+          terminalId,
+          state,
+          undefined,
+          timestamp,
+          trigger,
+          clampedConfidence,
+          waitingReason
+        );
 
       if (state === "waiting" || state === "idle") {
         useTerminalStore.getState().processQueue(terminalId);
@@ -752,6 +694,9 @@ export function setupTerminalStoreListeners() {
     if (terminal.isRestarting) {
       return;
     }
+
+    // Clean up resource metrics for exited terminal
+    useResourceMonitoringStore.getState().removeTerminal(id);
 
     // Store exit code on the terminal before applying exit behavior
     useTerminalStore.setState((s) => ({
@@ -883,6 +828,14 @@ export function setupTerminalStoreListeners() {
       }
     }
   );
+
+  // Resource metrics listener
+  resourceMetricsUnsubscribe = window.electron.terminal.onResourceMetrics((data) => {
+    const rmStore = useResourceMonitoringStore.getState();
+    if (rmStore.enabled) {
+      rmStore.updateMetrics(data.metrics);
+    }
+  });
 
   // Flush pending terminal persistence on window close to prevent data loss
   beforeUnloadHandler = () => {

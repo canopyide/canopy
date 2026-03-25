@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, ChevronUp, X, FolderOpen, Bot, GitBranch } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { actionService } from "@/services/ActionService";
 import type { ChecklistState } from "@shared/types/ipc/maps";
+import { CHECKLIST_ITEMS } from "./checklistItems";
 
 interface GettingStartedChecklistProps {
   checklist: ChecklistState;
@@ -10,24 +12,6 @@ interface GettingStartedChecklistProps {
   onDismiss: () => void;
   onToggleCollapse: () => void;
 }
-
-const CHECKLIST_ITEMS = [
-  {
-    id: "openedProject" as const,
-    label: "Open a project",
-    icon: FolderOpen,
-  },
-  {
-    id: "launchedAgent" as const,
-    label: "Launch an AI agent",
-    icon: Bot,
-  },
-  {
-    id: "createdWorktree" as const,
-    label: "Create a worktree",
-    icon: GitBranch,
-  },
-];
 
 export function GettingStartedChecklist({
   checklist,
@@ -51,7 +35,7 @@ export function GettingStartedChecklist({
         "fixed bottom-4 z-[var(--z-toast)] pointer-events-none p-4",
         "flex justify-end w-full max-w-[320px]"
       )}
-      style={{ right: "calc(var(--sidecar-right-offset, 0px))" }}
+      style={{ right: "calc(var(--portal-right-offset, 0px))" }}
     >
       <div
         className={cn(
@@ -76,7 +60,7 @@ export function GettingStartedChecklist({
             <h4 className="font-medium leading-tight tracking-tight text-xs font-mono text-canopy-accent">
               Getting Started
             </h4>
-            <span className="text-[10px] text-canopy-text/50 font-mono">
+            <span className="text-[10px] text-canopy-text/50 font-mono tabular-nums">
               {completedCount}/{totalCount}
             </span>
             {collapsed ? (
@@ -107,19 +91,13 @@ export function GettingStartedChecklist({
             "overflow-hidden transition-all duration-300 ease-in-out",
             collapsed ? "h-0" : "h-auto"
           )}
+          {...(collapsed ? { inert: true } : {})}
         >
           <div className="px-3 pb-3 space-y-1.5">
-            {CHECKLIST_ITEMS.map(({ id, label, icon: Icon }) => {
+            {CHECKLIST_ITEMS.map(({ id, label, icon: Icon, actionId }) => {
               const done = checklist.items[id];
-              return (
-                <div
-                  key={id}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-[var(--radius-xs)] px-2 py-1.5",
-                    "transition-colors duration-200",
-                    done ? "opacity-60" : "opacity-100"
-                  )}
-                >
+              const content = (
+                <>
                   <div
                     className={cn(
                       "h-4 w-4 rounded-full border flex items-center justify-center shrink-0 transition-colors duration-200",
@@ -142,7 +120,41 @@ export function GettingStartedChecklist({
                   >
                     {label}
                   </span>
-                </div>
+                </>
+              );
+
+              const sharedClasses = cn(
+                "flex items-center gap-2.5 rounded-[var(--radius-xs)] px-2 py-1.5",
+                "transition-colors duration-200",
+                done ? "opacity-60" : "opacity-100"
+              );
+
+              if (done) {
+                return (
+                  <div key={id} className={sharedClasses}>
+                    {content}
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() =>
+                    void actionService.dispatch(actionId, undefined, {
+                      source: "user",
+                    })
+                  }
+                  className={cn(
+                    sharedClasses,
+                    "w-full text-left cursor-pointer",
+                    "hover:bg-tint/10",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+                  )}
+                >
+                  {content}
+                </button>
               );
             })}
           </div>

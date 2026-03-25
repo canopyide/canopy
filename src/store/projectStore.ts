@@ -20,6 +20,7 @@ import {
 } from "./projectSettingsStore";
 import { logErrorWithContext } from "@/utils/errorContext";
 import { useUrlHistoryStore } from "./urlHistoryStore";
+import { useProjectGroupsStore } from "./projectGroupsStore";
 import {
   prepareProjectSwitchRendererCache,
   cancelPreparedProjectSwitchRendererCache,
@@ -106,6 +107,38 @@ function getProjectOpenErrorMessage(error: unknown): string {
 // Monotonically incrementing counter to ignore stale background switch callbacks.
 // Captured before each projectClient.switch/reopen call; checked in .then/.catch.
 let switchEpoch = 0;
+
+// Safety timeout: auto-clears isSwitching if the main process never responds.
+// Uses its own epoch to avoid entangling with the IPC staleness guard above.
+export const SWITCH_SAFETY_TIMEOUT_MS = 30_000;
+let switchSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+let switchSafetyEpoch = 0;
+
+function armSwitchSafetyTimeout(get: () => ProjectState): void {
+  if (switchSafetyTimer != null) {
+    clearTimeout(switchSafetyTimer);
+  }
+  const capturedEpoch = ++switchSafetyEpoch;
+  switchSafetyTimer = setTimeout(() => {
+    switchSafetyTimer = null;
+    if (capturedEpoch !== switchSafetyEpoch) return;
+    if (!get().isSwitching) return;
+    notify({
+      type: "warning",
+      title: "Project switch timed out",
+      message: "The project switch took too long. You may need to try again.",
+      duration: 6000,
+    });
+    get().finishProjectSwitch();
+  }, SWITCH_SAFETY_TIMEOUT_MS);
+}
+
+function clearSwitchSafetyTimeout(): void {
+  if (switchSafetyTimer != null) {
+    clearTimeout(switchSafetyTimer);
+    switchSafetyTimer = null;
+  }
+}
 
 function evictRendererTerminalInstances(terminalIds: string[]): void {
   if (terminalIds.length === 0) {
@@ -246,6 +279,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       switchingToProjectName: targetProject?.name ?? null,
       error: null,
     });
+    armSwitchSafetyTimeout(get);
     try {
       // Save current project's panel state BEFORE switching
       if (oldProjectId) {
@@ -325,6 +359,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       console.log("[ProjectSwitch] Resetting renderer stores...");
       await resetAllStoresForProjectSwitch({
         preserveTerminalIds,
+        outgoingProjectId: oldProjectId,
       });
 
       // Pre-populate stores from cached snapshots for an instant UI.
@@ -375,6 +410,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             message,
             duration: 6000,
           });
+          clearSwitchSafetyTimeout();
           set({
             error: message,
             currentProject: currentProject,
@@ -396,6 +432,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     } catch (error) {
       // This catch handles errors from the synchronous setup phase
       // (store resets, snapshot, terminal persistence, etc.)
+      clearSwitchSafetyTimeout();
       cancelPreparedProjectSwitchRendererCache(oldProjectId);
       logErrorWithContext(error, {
         operation: "switch_project_setup",
@@ -460,6 +497,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await projectClient.remove(id);
+      useProjectGroupsStore.getState().removeProjectFromAllGroups(id);
       await get().loadProjects();
       if (get().currentProject?.id === id) {
         set({ currentProject: null });
@@ -542,7 +580,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         `[ProjectStore] Closed active project ${projectId}, transitioning to no-project state`
       );
 
-      await resetAllStoresForProjectSwitch({ preserveTerminalIds: new Set() });
+      await resetAllStoresForProjectSwitch({
+        preserveTerminalIds: new Set(),
+        outgoingProjectId: projectId,
+      });
       set({ currentProject: null });
       await get().loadProjects();
 
@@ -577,6 +618,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       switchingToProjectName: targetProject?.name ?? null,
       error: null,
     });
+    armSwitchSafetyTimeout(get);
     try {
       // Save current project's panel state BEFORE switching (same as switchProject)
       if (oldProjectId) {
@@ -648,6 +690,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       console.log("[ProjectStore] Resetting renderer stores...");
       await resetAllStoresForProjectSwitch({
         preserveTerminalIds,
+        outgoingProjectId: oldProjectId,
       });
 
       // Pre-populate stores from cached snapshots for an instant UI.
@@ -680,6 +723,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         })
         .catch((error) => {
           if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
+          clearSwitchSafetyTimeout();
           cancelPreparedProjectSwitchRendererCache(oldProjectId);
           logErrorWithContext(error, {
             operation: "reopen_project",
@@ -709,6 +753,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
 
       // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event
     } catch (error) {
+      clearSwitchSafetyTimeout();
       cancelPreparedProjectSwitchRendererCache(oldProjectId);
       logErrorWithContext(error, {
         operation: "reopen_project_setup",
@@ -762,6 +807,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   },
 
   finishProjectSwitch: () => {
+    clearSwitchSafetyTimeout();
     set({ isSwitching: false, switchingToProjectName: null });
   },
 

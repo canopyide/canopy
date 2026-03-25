@@ -2,7 +2,6 @@ import PQueue from "p-queue";
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
 import { useLayoutConfigStore } from "@/store/layoutConfigStore";
-import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import type { AgentState } from "@/types";
 import { isAgentTerminal } from "../../utils/terminalType";
 import { validateTerminals, type ValidationResult } from "@/utils/terminalValidation";
@@ -26,7 +25,6 @@ export interface TerminalBulkActionsSlice {
   bulkRestartPreflightCheckByWorktree: (worktreeId: string) => Promise<BulkRestartValidation>;
   bulkMoveToDock: () => void;
   bulkMoveToGrid: () => void;
-  restartFailedAgents: () => Promise<void>;
   restartIdleAgents: () => Promise<void>;
   getCountByState: (state: AgentState) => number;
   getCountByWorktree: (worktreeId: string, state?: AgentState) => number;
@@ -42,7 +40,8 @@ export const createTerminalBulkActionsSlice = (
   moveTerminalToDock: (id: string) => void,
   moveTerminalToGrid: (id: string) => void,
   getFocusedId: () => string | null,
-  setFocusedId: (id: string | null) => void
+  setFocusedId: (id: string | null) => void,
+  getActiveWorktreeId: () => string | null
 ): StateCreator<TerminalBulkActionsSlice, [], [], TerminalBulkActionsSlice> => {
   const restartQueue = new PQueue({ concurrency: 4, timeout: 30_000 });
 
@@ -200,7 +199,7 @@ export const createTerminalBulkActionsSlice = (
 
     bulkMoveToDock: () => {
       const terminals = getTerminals();
-      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+      const activeWorktreeId = getActiveWorktreeId();
       const gridTerminals = terminals.filter(
         (t) =>
           (t.location === "grid" || t.location === undefined) &&
@@ -211,7 +210,7 @@ export const createTerminalBulkActionsSlice = (
 
     bulkMoveToGrid: () => {
       const terminals = getTerminals();
-      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+      const activeWorktreeId = getActiveWorktreeId();
       const dockedTerminals = terminals.filter(
         (t) =>
           t.location === "dock" && (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
@@ -244,14 +243,6 @@ export const createTerminalBulkActionsSlice = (
       if (hasGridFocus && currentFocusId) {
         setFocusedId(currentFocusId);
       }
-    },
-
-    restartFailedAgents: async () => {
-      const terminals = getTerminals();
-      const failedAgents = terminals.filter(
-        (t) => t.agentState === "failed" && isAgentTerminal(t.kind ?? t.type, t.agentId)
-      );
-      await restartTerminals(failedAgents);
     },
 
     restartIdleAgents: async () => {

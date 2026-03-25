@@ -1,4 +1,6 @@
 import { EventEmitter } from "events";
+import { execFileSync } from "child_process";
+import fs from "fs";
 import { events } from "./events.js";
 import type { AgentEvent } from "./AgentStateMachine.js";
 import type { AgentStateChangeTrigger } from "../schemas/agent.js";
@@ -15,6 +17,7 @@ import {
   TerminalSnapshot,
   type PtyManagerEvents,
 } from "./pty/index.js";
+import { computeSpawnContext, acquirePtyProcess } from "./pty/terminalSpawn.js";
 import { disposeTerminalSerializerService } from "./pty/TerminalSerializerService.js";
 import { deleteSessionFile } from "./pty/terminalSessionPersistence.js";
 
@@ -72,6 +75,12 @@ export class PtyManager extends EventEmitter {
     }
     if (process.env.CANOPY_VERBOSE) {
       logDebug(`SAB mode ${enabled ? "enabled" : "disabled"}`);
+    }
+  }
+
+  trimScrollback(targetLines: number): void {
+    for (const terminal of this.registry.getAll()) {
+      terminal.trimScrollback(targetLines);
     }
   }
 
@@ -161,6 +170,13 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Flush an event-driven session snapshot for an agent terminal.
+   */
+  flushAgentSnapshot(terminalId: string): void {
+    this.registry.get(terminalId)?.flushEventDrivenSnapshot();
+  }
+
+  /**
    * Set the PTY pool for terminal reuse.
    */
   setPtyPool(pool: PtyPool): void {
@@ -181,29 +197,59 @@ export class PtyManager extends EventEmitter {
     }
     logInfo(`Spawning terminal ${id} (kind: ${options.kind}, type: ${options.type})`);
 
-    const terminalProcess = new TerminalProcess(
+    const spawnContext = computeSpawnContext(id, options);
+    const ptyProcess = acquirePtyProcess(
       id,
       options,
-      {
-        emitData: (termId, data) => this.emitData(termId, data),
-        onExit: (termId, exitCode) => {
-          // Guard against stale exit events from previous terminal with same ID
-          if (this.registry.get(termId) !== terminalProcess) {
-            return;
-          }
-          this.emit("exit", termId, exitCode);
-          if (!terminalProcess.shouldPreserveOnExit(exitCode)) {
-            this.registry.delete(termId);
-          }
-        },
-      },
-      {
-        agentStateService: this.agentStateService,
-        ptyPool: this.ptyPool,
-        sabModeEnabled: this.sabModeEnabled,
-        processTreeCache: this.processTreeCache,
+      spawnContext.env,
+      spawnContext.shell,
+      spawnContext.args,
+      spawnContext.isAgentTerminal,
+      this.ptyPool,
+      (error, context) => {
+        console.error(
+          `[PtyManager] PTY ${context.operation} failed for ${id} during pool acquisition`,
+          error
+        );
       }
     );
+
+    let terminalProcess: TerminalProcess;
+    try {
+      terminalProcess = new TerminalProcess(
+        id,
+        options,
+        {
+          emitData: (termId, data) => this.emitData(termId, data),
+          onExit: (termId, exitCode) => {
+            // Guard against stale exit events from previous terminal with same ID
+            if (this.registry.get(termId) !== terminalProcess) {
+              return;
+            }
+            this.emit("exit", termId, exitCode);
+            if (!terminalProcess.shouldPreserveOnExit(exitCode)) {
+              this.registry.delete(termId);
+            }
+          },
+        },
+        {
+          agentStateService: this.agentStateService,
+          ptyPool: this.ptyPool,
+          sabModeEnabled: this.sabModeEnabled,
+          processTreeCache: this.processTreeCache,
+        },
+        spawnContext,
+        ptyProcess
+      );
+    } catch (error) {
+      logError(`TerminalProcess constructor failed for ${id}, killing orphaned PTY`, error);
+      try {
+        ptyProcess.kill();
+      } catch {
+        // Process may already be dead
+      }
+      throw error;
+    }
 
     this.registry.add(id, terminalProcess);
   }
@@ -260,7 +306,7 @@ export class PtyManager extends EventEmitter {
   /**
    * Kill a terminal process.
    */
-  kill(id: string, reason?: string): void {
+  kill(id: string, reason?: string, options?: { preserveSession?: boolean }): void {
     this.registry.clearTrashTimeout(id);
 
     const terminal = this.registry.get(id);
@@ -273,9 +319,11 @@ export class PtyManager extends EventEmitter {
       }
     }
 
-    deleteSessionFile(id).catch((err) => {
-      logWarn(`Failed to delete session file for terminal ${id}`, err);
-    });
+    if (!options?.preserveSession) {
+      deleteSessionFile(id).catch((err) => {
+        logWarn(`Failed to delete session file for terminal ${id}`, err);
+      });
+    }
   }
 
   /**
@@ -373,6 +421,23 @@ export class PtyManager extends EventEmitter {
     return terminal.getSerializedStateAsync();
   }
 
+  private resolveTtyPath(pid: number): string | undefined {
+    try {
+      if (process.platform === "win32") return undefined;
+      if (process.platform === "linux") {
+        return fs.readlinkSync(`/proc/${pid}/fd/0`);
+      }
+      // macOS
+      const tty = execFileSync("ps", ["-p", String(pid), "-o", "tty="], { timeout: 500 })
+        .toString()
+        .trim();
+      if (!tty || tty === "??" || tty === "?") return undefined;
+      return `/dev/${tty}`;
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
    * Get terminal information for diagnostic display.
    */
@@ -382,6 +447,8 @@ export class PtyManager extends EventEmitter {
       return null;
     }
     const terminalInfo = terminal.getInfo();
+    const hasPty = !terminalInfo.wasKilled && !terminalInfo.isExited;
+    const ptyProcess = hasPty ? terminalInfo.ptyProcess : undefined;
 
     return {
       id: terminalInfo.id,
@@ -402,11 +469,17 @@ export class PtyManager extends EventEmitter {
       outputBufferSize: terminalInfo.outputBuffer.length,
       semanticBufferLines: terminalInfo.semanticBuffer.length,
       restartCount: terminalInfo.restartCount,
-      hasPty: !terminalInfo.wasKilled && !terminalInfo.isExited,
+      hasPty,
       isAgentTerminal: terminal.getIsAgentTerminal(),
       detectedAgentType: terminalInfo.detectedAgentType,
       analysisEnabled: terminalInfo.analysisEnabled,
       resizeStrategy: terminal.getResizeStrategy(),
+      ptyPid: ptyProcess?.pid,
+      ptyCols: ptyProcess?.cols,
+      ptyRows: ptyProcess?.rows,
+      ptyForegroundProcess: ptyProcess?.process,
+      ptyTty: ptyProcess ? this.resolveTtyPath(ptyProcess.pid) : undefined,
+      exitCode: terminalInfo.exitCode,
     };
   }
 
@@ -504,7 +577,7 @@ export class PtyManager extends EventEmitter {
    * Gracefully kill a terminal, capturing its session ID if it's an agent terminal.
    * Falls back to immediate kill for non-agent terminals.
    */
-  async gracefulKill(id: string): Promise<string | null> {
+  async gracefulKill(id: string, options?: { preserveSession?: boolean }): Promise<string | null> {
     this.registry.clearTrashTimeout(id);
 
     const terminal = this.registry.get(id);
@@ -516,7 +589,7 @@ export class PtyManager extends EventEmitter {
     // For non-agent terminals (or agents without shutdown config), it returns null
     // without killing. Fall back to immediate kill in that case.
     if (!terminal.getInfo().wasKilled && !terminal.getInfo().isExited) {
-      this.kill(id, "graceful-kill-fallback");
+      this.kill(id, "graceful-kill-fallback", options);
     }
 
     return sessionId;
@@ -526,7 +599,8 @@ export class PtyManager extends EventEmitter {
    * Gracefully kill all terminals for a project, capturing session IDs.
    */
   async gracefulKillByProject(
-    projectId: string
+    projectId: string,
+    options?: { preserveSession?: boolean }
   ): Promise<Array<{ id: string; agentSessionId: string | null }>> {
     const terminalIds = this.registry.getForProject(projectId);
     if (terminalIds.length === 0) return [];
@@ -536,12 +610,12 @@ export class PtyManager extends EventEmitter {
     const results = await Promise.all(
       terminalIds.map(async (terminalId) => {
         try {
-          const sessionId = await this.gracefulKill(terminalId);
+          const sessionId = await this.gracefulKill(terminalId, options);
           return { id: terminalId, agentSessionId: sessionId };
         } catch (error) {
           logError(`Failed to graceful-kill terminal ${terminalId}`, error);
           try {
-            this.kill(terminalId, "graceful-kill-fallback");
+            this.kill(terminalId, "graceful-kill-fallback", options);
           } catch {
             // already dead
           }

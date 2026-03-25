@@ -1,6 +1,6 @@
 {
   "name": "canopy-app",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Canopy IDE - An Electron-based development environment",
   "author": {
     "name": "Greg Priday",
@@ -16,6 +16,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:fresh": "cross-env CANOPY_RESET_DATA=1 node scripts/dev.mjs",
     "dev:vite": "vite",
     "dev:electron": "nodemon --delay 500ms --watch dist-electron/.build-ready.js --ext js --exec \"cross-env NODE_ENV=development electron .\"",
     "build:main": "cross-env NODE_ENV=production node scripts/build-main.mjs",
@@ -26,7 +27,7 @@
     "package:win": "npm run build && electron-builder --win",
     "package:linux": "npm run build && electron-builder --linux",
     "rebuild": "electron-rebuild -f -w node-pty,better-sqlite3 && node node_modules/node-pty/scripts/post-install.js",
-    "postinstall": "electron-rebuild -f -w node-pty,better-sqlite3 && node node_modules/node-pty/scripts/post-install.js",
+    "postinstall": "node scripts/postinstall.cjs",
     "preview": "vite preview",
     "pretest": "npm rebuild better-sqlite3 --silent",
     "test": "vitest run",
@@ -47,6 +48,7 @@
     "test:e2e": "npx playwright test",
     "test:e2e:core": "npx playwright test --project=core",
     "test:e2e:online": "npx playwright test --project=online",
+    "test:e2e:nightly": "npx playwright test --project=nightly --workers=1",
     "perf:smoke": "tsx scripts/perf/run.ts --mode smoke",
     "perf:ci": "tsx scripts/perf/run.ts --mode ci",
     "perf:nightly": "tsx scripts/perf/run.ts --mode nightly",
@@ -88,6 +90,7 @@
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@rolldown/plugin-babel": "^0.2.2",
     "@sentry/electron": "^7.10.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.17",
@@ -115,13 +118,14 @@
     "@xterm/xterm": "^6.0.0",
     "anser": "^2.3.5",
     "autoprefixer": "^10.4.27",
+    "babel-plugin-react-compiler": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "concurrently": "^9.1.0",
     "cross-env": "^10.1.0",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.1",
-    "electron": "^40.8.2",
+    "electron": "^40.8.3",
     "electron-builder": "^26.8.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.3.0",
@@ -129,8 +133,10 @@
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react-compiler": "^19.1.0-rc.2",
     "eslint-plugin-react-hooks": "7.1.0-canary-c80a0750-20260312",
     "execa": "^9.6.0",
+    "ffmpeg-static": "^5.2.0",
     "fix-path": "^5.0.0",
     "framer-motion": "^12.37.0",
     "frimousse": "^0.3.0",
@@ -195,8 +201,7 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "!node_modules/node-pty/bin",
-      "!node_modules/node-pty/prebuilds"
+      "!node_modules/node-pty/bin"
     ],
     "extraResources": [],
     "asarUnpack": [
@@ -213,6 +218,7 @@
       "loadBrowserProcessSpecificV8Snapshot": false,
       "grantFileProtocolExtraPrivileges": false
     },
+    "beforeBuild": "./scripts/beforeBuild.cjs",
     "afterPack": "./scripts/afterPack.cjs",
     "mac": {
       "extraResources": [

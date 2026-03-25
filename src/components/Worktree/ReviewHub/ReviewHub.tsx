@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { StagingStatus, GitStatus } from "@shared/types";
 import type { CrossWorktreeFile } from "@shared/types/ipc/git";
@@ -324,32 +324,31 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     [baseBranchFiles, baseBranchLoading, fetchBaseBranch]
   );
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (selectedFile) {
-          setSelectedFile(null);
-        } else if (selectedBaseBranchFile) {
-          setSelectedBaseBranchFile(null);
-        } else {
-          onClose();
-        }
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (selectedFile) {
+        setSelectedFile(null);
+      } else if (selectedBaseBranchFile) {
+        setSelectedBaseBranchFile(null);
+      } else {
+        onClose();
       }
-    },
-    [onClose, selectedFile, selectedBaseBranchFile]
-  );
+    }
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timeoutId = setTimeout(() => closeButtonRef.current?.focus(), 50);
+    return () => clearTimeout(timeoutId);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     document.addEventListener("keydown", handleKeyDown, { capture: true });
-    const timeoutId = setTimeout(() => closeButtonRef.current?.focus(), 50);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown, { capture: true });
-      clearTimeout(timeoutId);
-    };
-  }, [isOpen, handleKeyDown]);
+    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [isOpen]);
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
@@ -371,7 +370,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       <div
         className={cn(
           "fixed inset-0 z-[var(--z-modal)] flex items-center justify-center",
-          "bg-black/60 backdrop-blur-sm",
+          "bg-scrim-medium backdrop-blur-sm",
           "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150"
         )}
         onClick={handleBackdropClick}
@@ -383,10 +382,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         <div
           className={cn(
             "relative flex flex-col",
-            "w-[min(600px,calc(100vw-80px))] max-h-[calc(100vh-80px)] min-h-[320px]",
+            "w-[min(720px,calc(100vw-80px))] max-h-[calc(100vh-80px)] min-h-[320px]",
             "bg-canopy-bg rounded-xl",
             "border border-divider",
-            "shadow-2xl shadow-black/40",
+            "shadow-[var(--theme-shadow-dialog)]",
             "motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-200"
           )}
           onClick={(e) => e.stopPropagation()}

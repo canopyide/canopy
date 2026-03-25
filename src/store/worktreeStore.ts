@@ -20,6 +20,11 @@ interface QuickCreateState {
   pr: GitHubPR | null;
 }
 
+interface BulkCreateDialogState {
+  isOpen: boolean;
+  selectedIssues: GitHubIssue[];
+}
+
 interface CrossDiffDialogState {
   isOpen: boolean;
   initialWorktreeId: string | null;
@@ -32,6 +37,7 @@ interface WorktreeSelectionState {
   expandedWorktrees: Set<string>;
   expandedTerminals: Set<string>;
   createDialog: CreateDialogState;
+  bulkCreateDialog: BulkCreateDialogState;
   quickCreate: QuickCreateState;
   crossDiffDialog: CrossDiffDialogState;
   _policyGeneration: number;
@@ -53,6 +59,8 @@ interface WorktreeSelectionState {
   ) => void;
   openCreateDialogForPR: (pr: GitHubPR) => void;
   closeCreateDialog: () => void;
+  openBulkCreateDialog: (selectedIssues: GitHubIssue[]) => void;
+  closeBulkCreateDialog: () => void;
   openQuickCreate: (context?: { issue?: GitHubIssue | null; pr?: GitHubPR | null }) => void;
   closeQuickCreate: () => void;
   openCrossWorktreeDiff: (initialWorktreeId?: string | null) => void;
@@ -81,6 +89,10 @@ export function suppressMruRecording(suppress: boolean): void {
   mruRecordingSuppressed = suppress;
 }
 
+export function isMruRecordingSuppressed(): boolean {
+  return mruRecordingSuppressed;
+}
+
 function mruListsEqual(a: string[] | undefined, b: string[]): boolean {
   if (!a || a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -89,7 +101,7 @@ function mruListsEqual(a: string[] | undefined, b: string[]): boolean {
   return true;
 }
 
-function persistMruList(list: string[]): void {
+export function persistMruList(list: string[]): void {
   if (mruListsEqual(pendingPersistMruList ?? lastPersistedMruList, list)) {
     return;
   }
@@ -216,6 +228,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
   expandedWorktrees: new Set<string>(),
   expandedTerminals: new Set<string>(),
   createDialog: { isOpen: false, initialIssue: null, initialPR: null, initialRecipeId: null },
+  bulkCreateDialog: { isOpen: false, selectedIssues: [] },
   quickCreate: { isOpen: false, issue: null, pr: null },
   crossDiffDialog: { isOpen: false, initialWorktreeId: null },
   _policyGeneration: 0,
@@ -420,6 +433,15 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       createDialog: { isOpen: false, initialIssue: null, initialPR: null, initialRecipeId: null },
     }),
 
+  openBulkCreateDialog: (selectedIssues) => {
+    if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("canopy:toggle-focus-mode"));
+    }
+    set({ bulkCreateDialog: { isOpen: true, selectedIssues } });
+  },
+
+  closeBulkCreateDialog: () => set({ bulkCreateDialog: { isOpen: false, selectedIssues: [] } }),
+
   openQuickCreate: (context) => {
     if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
       window.dispatchEvent(new Event("canopy:toggle-focus-mode"));
@@ -463,6 +485,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       expandedWorktrees: new Set<string>(),
       expandedTerminals: new Set<string>(),
       createDialog: { isOpen: false, initialIssue: null, initialPR: null, initialRecipeId: null },
+      bulkCreateDialog: { isOpen: false, selectedIssues: [] },
       quickCreate: { isOpen: false, issue: null, pr: null },
       crossDiffDialog: { isOpen: false, initialWorktreeId: null },
       lastFocusedTerminalByWorktree: new Map<string, string>(),
@@ -472,61 +495,6 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 export const useWorktreeSelectionStore = create<WorktreeSelectionState>()(
   createWorktreeSelectionStore
 );
-
-let focusTrackingUnsubscribe: (() => void) | null = null;
-
-export function setupWorktreeFocusTracking() {
-  if (focusTrackingUnsubscribe !== null) {
-    return () => {
-      focusTrackingUnsubscribe?.();
-      focusTrackingUnsubscribe = null;
-    };
-  }
-
-  void loadTerminalStoreModule()
-    .then(({ useTerminalStore }) => {
-      let previousFocusedId: string | null = null;
-
-      focusTrackingUnsubscribe = useTerminalStore.subscribe((state) => {
-        const focusedId = state.focusedId;
-
-        // Only track when focus changes
-        if (focusedId === previousFocusedId) return;
-        previousFocusedId = focusedId;
-
-        if (!focusedId) return;
-
-        const terminal = state.terminals.find((t) => t.id === focusedId);
-        if (terminal?.worktreeId) {
-          useWorktreeSelectionStore.getState().trackTerminalFocus(terminal.worktreeId, focusedId);
-        }
-
-        // Record terminal MRU on focus change (suppressed during hydration)
-        if (!mruRecordingSuppressed) {
-          state.recordMru(`terminal:${focusedId}`);
-          persistMruList(useTerminalStore.getState().mruList);
-        }
-      });
-    })
-    .catch((error) => {
-      logErrorWithContext(error, {
-        operation: "import_terminal_store_for_focus_tracking",
-        component: "worktreeStore",
-      });
-    });
-
-  return () => {
-    focusTrackingUnsubscribe?.();
-    focusTrackingUnsubscribe = null;
-  };
-}
-
-export function cleanupWorktreeFocusTracking() {
-  if (focusTrackingUnsubscribe) {
-    focusTrackingUnsubscribe();
-    focusTrackingUnsubscribe = null;
-  }
-}
 
 function applyWorktreeTerminalPolicy(
   get: () => WorktreeSelectionState,

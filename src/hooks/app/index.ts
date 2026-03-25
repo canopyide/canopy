@@ -1,6 +1,6 @@
 export { useAppHydration } from "./useAppHydration";
 export { useProjectSwitchRehydration } from "./useProjectSwitchRehydration";
-export { useFirstRunToasts } from "./useFirstRunToasts";
+export { useShortcutHints } from "./useShortcutHints";
 export { useTerminalStoreBootstrap } from "./useTerminalStoreBootstrap";
 export { useSemanticWorkerLifecycle } from "./useSemanticWorkerLifecycle";
 export { useSystemWakeHandler } from "./useSystemWakeHandler";
@@ -15,3 +15,4 @@ export { useWorktreeOverview } from "./useWorktreeOverview";
 export { useAppEventListeners } from "./useAppEventListeners";
 export { useErrorRetry } from "./useErrorRetry";
 export { useActiveWorktreeSync } from "./useActiveWorktreeSync";
+export { useDeferredNewsletterPrompt } from "./useDeferredNewsletterPrompt";

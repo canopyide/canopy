@@ -1,6 +1,5 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { EditorSelection } from "@codemirror/state";
-import type { AgentState } from "@/types";
 import type { LegacyAgentType } from "@shared/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { buildTerminalSendPayload } from "@/lib/terminalInput";
@@ -26,21 +25,18 @@ interface LatestRefShape {
   disabled: boolean;
   value: string;
   onSend: (payload: { data: string; trackerData: string; text: string }) => void;
-  addToHistory: (terminalId: string, command: string) => void;
-  resetHistoryIndex: (terminalId: string) => void;
+  addToHistory: (terminalId: string, command: string, projectId?: string) => void;
+  resetHistoryIndex: (terminalId: string, projectId?: string) => void;
   clearDraftInput: (terminalId: string, projectId?: string) => void;
 }
 
 interface UseTokenResolutionParams {
   latestRef: React.RefObject<LatestRefShape | null>;
-  agentStateRef: React.RefObject<AgentState | undefined>;
-  errorChipDismissedRef: React.RefObject<boolean>;
   applyEditorValue: (
     nextValue: string,
     options?: { selection?: EditorSelection; focus?: boolean }
   ) => void;
   setIsExpanded: Dispatch<SetStateAction<boolean>>;
-  setErrorChipDismissed: Dispatch<SetStateAction<boolean>>;
   setAtContext: Dispatch<SetStateAction<AtFileContext | null>>;
   setSlashContext: Dispatch<SetStateAction<SlashCommandContext | null>>;
   setDiffContext: Dispatch<SetStateAction<AtDiffContext | null>>;
@@ -53,11 +49,8 @@ interface UseTokenResolutionParams {
 
 export function useTokenResolution({
   latestRef,
-  agentStateRef,
-  errorChipDismissedRef,
   applyEditorValue,
   setIsExpanded,
-  setErrorChipDismissed,
   setAtContext,
   setSlashContext,
   setDiffContext,
@@ -144,33 +137,10 @@ export function useTokenResolution({
         }
       }
 
-      if (
-        agentStateRef.current === "failed" &&
-        !errorChipDismissedRef.current &&
-        terminalTokens.length === 0
-      ) {
-        const managed = terminalInstanceService.get(terminalId);
-        if (managed) {
-          const buffer = managed.terminal.buffer.active;
-          const start = Math.max(0, buffer.length - 100);
-          const lines: string[] = [];
-          for (let i = start; i < buffer.length; i++) {
-            const line = buffer.getLine(i);
-            if (line) lines.push(line.translateToString(true));
-          }
-          const content = lines.join("\n").trimEnd();
-          if (content) {
-            resolvedText = "```\n" + content + "\n```\n\n" + resolvedText;
-          }
-        }
-        setErrorChipDismissed(true);
-        (errorChipDismissedRef as React.MutableRefObject<boolean>).current = true;
-      }
-
       const payload = buildTerminalSendPayload(resolvedText);
       latest.onSend({ data: payload.data, trackerData: payload.trackerData, text: resolvedText });
-      latest.addToHistory(latest.terminalId, text);
-      latest.resetHistoryIndex(latest.terminalId);
+      latest.addToHistory(latest.terminalId, text, latest.projectId);
+      latest.resetHistoryIndex(latest.terminalId, latest.projectId);
       if (latest.projectId) {
         useCommandHistoryStore.getState().recordPrompt(latest.projectId, text, agentId ?? null);
       }

@@ -1,4 +1,4 @@
-import { simpleGit, SimpleGit, BranchSummary } from "simple-git";
+import type { SimpleGit, BranchSummary } from "simple-git";
 import { resolve, dirname, normalize, sep, isAbsolute } from "path";
 import { existsSync } from "fs";
 import { readFile, stat } from "fs/promises";
@@ -6,6 +6,7 @@ import { logDebug, logError, logWarn } from "../utils/logger.js";
 import type { GitStatus, WorktreeChanges } from "../../shared/types/index.js";
 import { WorktreeRemovedError, GitError } from "../utils/errorTypes.js";
 import type { CrossWorktreeDiffResult, CrossWorktreeFile } from "../../shared/types/ipc/git.js";
+import { createHardenedGit } from "../utils/hardenedGit.js";
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -31,7 +32,7 @@ export class GitService {
 
   constructor(rootPath: string) {
     this.rootPath = rootPath;
-    this.git = simpleGit(rootPath);
+    this.git = createHardenedGit(rootPath);
   }
 
   async listBranches(): Promise<BranchInfo[]> {
@@ -250,7 +251,13 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }
 
     try {
-      const diff = await this.git.diff(["HEAD", "--no-color", "--", normalizedPath]);
+      const diff = await this.git.diff([
+        "HEAD",
+        "--no-ext-diff",
+        "--no-color",
+        "--",
+        normalizedPath,
+      ]);
 
       if (diff.includes("Binary files")) {
         return "BINARY_FILE";
@@ -285,7 +292,14 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     if (filePath) {
       // Return the unified diff for a specific file
       try {
-        const diff = await this.git.raw(["diff", "--no-color", range, "--", filePath]);
+        const diff = await this.git.raw([
+          "diff",
+          "--no-ext-diff",
+          "--no-color",
+          range,
+          "--",
+          filePath,
+        ]);
 
         if (!diff.trim()) {
           return "NO_CHANGES";
@@ -313,7 +327,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
     // Return the list of changed files
     try {
-      const output = await this.git.raw(["diff", "--name-status", range]);
+      const output = await this.git.raw(["diff", "--no-ext-diff", "--name-status", range]);
       const files: CrossWorktreeFile[] = [];
 
       for (const line of output.split("\n")) {
@@ -373,7 +387,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   async getRemoteUrl(repoPath: string): Promise<string | null> {
     return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
+      const git = createHardenedGit(repoPath);
       const remotes = await git.getRemotes(true);
       const origin = remotes.find((r) => r.name === "origin");
       return origin?.refs?.fetch || null;
@@ -390,7 +404,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   async getRepositoryRoot(repoPath: string): Promise<string> {
     return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
+      const git = createHardenedGit(repoPath);
       const root = await git.revparse(["--show-toplevel"]);
       return root.trim();
     }, "getRepositoryRoot");
@@ -473,6 +487,19 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           rootPath: this.rootPath,
         });
         throw wtError;
+      }
+
+      if (errorMessage.includes("not a git repository")) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        const gitError = new GitError(
+          `Git operation failed: ${context}`,
+          { rootPath: this.rootPath },
+          cause
+        );
+        logWarn(`Git operation failed: not a git repository (${context})`, {
+          rootPath: this.rootPath,
+        });
+        throw gitError;
       }
 
       const cause = error instanceof Error ? error : new Error(String(error));

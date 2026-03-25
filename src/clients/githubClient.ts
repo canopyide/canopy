@@ -1,5 +1,6 @@
 import type {
   RepositoryStats,
+  ProjectHealthData,
   GitHubCliStatus,
   GitHubTokenConfig,
   GitHubTokenValidation,
@@ -20,6 +21,10 @@ export const githubClient = {
     return window.electron.github.getRepoStats(cwd, bypassCache);
   },
 
+  getProjectHealth: (cwd: string, bypassCache = false): Promise<ProjectHealthData> => {
+    return window.electron.github.getProjectHealth(cwd, bypassCache);
+  },
+
   openIssues: (cwd: string, query?: string, state?: string): Promise<void> => {
     return window.electron.github.openIssues(cwd, query, state);
   },
@@ -28,8 +33,8 @@ export const githubClient = {
     return window.electron.github.openPRs(cwd, query, state);
   },
 
-  openCommits: (cwd: string): Promise<void> => {
-    return window.electron.github.openCommits(cwd);
+  openCommits: (cwd: string, branch?: string): Promise<void> => {
+    return window.electron.github.openCommits(cwd, branch);
   },
 
   openIssue: (cwd: string, issueNumber: number): Promise<void> => {

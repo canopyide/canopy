@@ -69,90 +69,128 @@ describe("AgentStateService", () => {
     expect(terminal.agentState).toBe("idle");
   });
 
-  it("recovers from failed to working on user input and clears error", () => {
+  it("transitions working → completed on crash-signal exit (no failed state)", () => {
     const service = new AgentStateService();
-    const terminal = createTerminal({ agentState: "failed", error: "auth failure" });
-    const stateChanges: Array<{ state: string; previousState: string }> = [];
+    const terminal = createTerminal({ agentState: "working" });
 
-    events.on("agent:state-changed", (payload) => {
-      stateChanges.push({ state: payload.state, previousState: payload.previousState });
-    });
-
-    const changed = service.updateAgentState(terminal, { type: "input" });
+    // SIGSEGV: exit code 139 = 128 + 11
+    const changed = service.updateAgentState(terminal, { type: "exit", code: 139 });
 
     expect(changed).toBe(true);
-    expect(terminal.agentState).toBe("working");
-    expect(terminal.error).toBeUndefined();
-    expect(stateChanges).toHaveLength(1);
-    expect(stateChanges[0]?.previousState).toBe("failed");
-    expect(stateChanges[0]?.state).toBe("working");
+    expect(terminal.agentState).toBe("completed");
   });
 
-  it("does not recover from failed on heuristic busy event", () => {
+  it("transitions working → completed on routine exit", () => {
     const service = new AgentStateService();
-    const terminal = createTerminal({ agentState: "failed", error: "network timeout" });
+    const terminal = createTerminal({ agentState: "working" });
 
-    const changed = service.updateAgentState(terminal, { type: "busy" });
+    const changed = service.updateAgentState(terminal, { type: "exit", code: 0 });
+
+    expect(changed).toBe(true);
+    expect(terminal.agentState).toBe("completed");
+  });
+
+  it("error event is a no-op and does not change state", () => {
+    const service = new AgentStateService();
+    const terminal = createTerminal({ agentState: "working" });
+
+    const changed = service.updateAgentState(terminal, { type: "error", error: "transient error" });
 
     expect(changed).toBe(false);
-    expect(terminal.agentState).toBe("failed");
-    expect(terminal.error).toBe("network timeout");
+    expect(terminal.agentState).toBe("working");
   });
 
-  it("does not recover from failed on prompt or completion events", () => {
+  it("handleActivityState with timeout trigger transitions working to waiting", () => {
     const service = new AgentStateService();
-    const terminal = createTerminal({ agentState: "failed", error: "api error" });
-
-    expect(service.updateAgentState(terminal, { type: "prompt" })).toBe(false);
-    expect(terminal.agentState).toBe("failed");
-
-    expect(service.updateAgentState(terminal, { type: "completion" })).toBe(false);
-    expect(terminal.agentState).toBe("failed");
-  });
-
-  it("updates error message on failed → failed without emitting state-changed", () => {
-    const service = new AgentStateService();
-    const terminal = createTerminal({ agentState: "failed", error: "old error" });
-    const stateChanges: unknown[] = [];
+    const terminal = createTerminal({ agentState: "working" });
+    const stateChanges: Array<{ trigger: string; confidence: number; state: string }> = [];
 
     events.on("agent:state-changed", (payload) => {
-      stateChanges.push(payload);
+      stateChanges.push({
+        trigger: payload.trigger,
+        confidence: payload.confidence,
+        state: payload.state,
+      });
     });
 
-    const changed = service.updateAgentState(terminal, { type: "error", error: "new error" });
+    service.handleActivityState(terminal, "idle", { trigger: "timeout" });
 
-    expect(changed).toBe(false);
-    expect(terminal.agentState).toBe("failed");
-    expect(terminal.error).toBe("new error");
-    expect(stateChanges).toHaveLength(0);
+    expect(terminal.agentState).toBe("waiting");
+    expect(stateChanges).toHaveLength(1);
+    expect(stateChanges[0]?.trigger).toBe("timeout");
+    expect(stateChanges[0]?.confidence).toBe(0.6);
+    expect(stateChanges[0]?.state).toBe("waiting");
   });
 
-  it("handleActivityState with trigger input recovers from failed with input trigger", () => {
+  it("includes waitingReason in state-changed payload when transitioning to waiting", () => {
     const service = new AgentStateService();
-    const terminal = createTerminal({ agentState: "failed", error: "some error" });
-    const stateChanges: Array<{ trigger: string; state: string }> = [];
+    const terminal = createTerminal({ agentState: "working" });
+    const stateChanges: Array<{ state: string; waitingReason?: string }> = [];
 
     events.on("agent:state-changed", (payload) => {
-      stateChanges.push({ trigger: payload.trigger, state: payload.state });
+      stateChanges.push({ state: payload.state, waitingReason: payload.waitingReason });
     });
 
-    service.handleActivityState(terminal, "busy", { trigger: "input" });
+    service.updateAgentState(terminal, { type: "prompt" }, "activity", 1.0, "prompt");
+
+    expect(terminal.agentState).toBe("waiting");
+    expect(terminal.waitingReason).toBe("prompt");
+    expect(stateChanges).toHaveLength(1);
+    expect(stateChanges[0]?.waitingReason).toBe("prompt");
+  });
+
+  it("clears waitingReason when transitioning away from waiting", () => {
+    const service = new AgentStateService();
+    const terminal = createTerminal({ agentState: "waiting" });
+    terminal.waitingReason = "prompt";
+    const stateChanges: Array<{ state: string; waitingReason?: string }> = [];
+
+    events.on("agent:state-changed", (payload) => {
+      stateChanges.push({ state: payload.state, waitingReason: payload.waitingReason });
+    });
+
+    service.updateAgentState(terminal, { type: "input" });
 
     expect(terminal.agentState).toBe("working");
-    expect(terminal.error).toBeUndefined();
+    expect(terminal.waitingReason).toBeUndefined();
     expect(stateChanges).toHaveLength(1);
-    expect(stateChanges[0]?.trigger).toBe("input");
-    expect(stateChanges[0]?.state).toBe("working");
+    expect(stateChanges[0]?.waitingReason).toBeUndefined();
   });
 
-  it("handleActivityState with trigger output does not recover from failed", () => {
+  it("does not include waitingReason for non-waiting states", () => {
     const service = new AgentStateService();
-    const terminal = createTerminal({ agentState: "failed", error: "some error" });
+    const terminal = createTerminal({ agentState: "idle" });
+    const stateChanges: Array<{ state: string; waitingReason?: string }> = [];
 
-    service.handleActivityState(terminal, "busy", { trigger: "output" });
+    events.on("agent:state-changed", (payload) => {
+      stateChanges.push({ state: payload.state, waitingReason: payload.waitingReason });
+    });
 
-    expect(terminal.agentState).toBe("failed");
-    expect(terminal.error).toBe("some error");
+    service.updateAgentState(terminal, { type: "input" });
+
+    expect(terminal.agentState).toBe("working");
+    expect(stateChanges).toHaveLength(1);
+    expect(stateChanges[0]?.waitingReason).toBeUndefined();
+  });
+
+  it("handleActivityState threads waitingReason for idle transitions", () => {
+    const service = new AgentStateService();
+    const terminal = createTerminal({ agentState: "working" });
+    const stateChanges: Array<{ state: string; waitingReason?: string }> = [];
+
+    events.on("agent:state-changed", (payload) => {
+      stateChanges.push({ state: payload.state, waitingReason: payload.waitingReason });
+    });
+
+    service.handleActivityState(terminal, "idle", {
+      trigger: "timeout",
+      waitingReason: "question",
+    });
+
+    expect(terminal.agentState).toBe("waiting");
+    expect(terminal.waitingReason).toBe("question");
+    expect(stateChanges).toHaveLength(1);
+    expect(stateChanges[0]?.waitingReason).toBe("question");
   });
 
   it("emits completed event with non-negative duration", () => {

@@ -1,8 +1,10 @@
 import { ipcMain, shell } from "electron";
+import path from "path";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
   RepositoryStats,
+  ProjectHealthData,
   GitHubCliStatus,
   GitHubTokenConfig,
   GitHubTokenValidation,
@@ -57,6 +59,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof cwd !== "string" || !cwd) {
       throw new Error("Invalid working directory");
     }
+    if (!path.isAbsolute(cwd)) {
+      throw new Error("Working directory must be an absolute path");
+    }
 
     const fs = await import("fs/promises");
     const pathModule = await import("path");
@@ -103,6 +108,82 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.GITHUB_GET_REPO_STATS, handleGitHubGetRepoStats);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_GET_REPO_STATS));
 
+  const handleGitHubGetProjectHealth = async (
+    _event: Electron.IpcMainInvokeEvent,
+    cwd: string,
+    bypassCache = false
+  ): Promise<ProjectHealthData> => {
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+    if (!path.isAbsolute(cwd)) {
+      throw new Error("Working directory must be an absolute path");
+    }
+
+    const fs = await import("fs/promises");
+    const pathModule = await import("path");
+    const { getProjectHealth } = await import("../../services/GitHubService.js");
+
+    try {
+      const resolved = pathModule.resolve(cwd);
+      const stat = await fs.stat(resolved);
+      if (!stat.isDirectory()) {
+        return {
+          ciStatus: "none",
+          issueCount: 0,
+          prCount: 0,
+          latestRelease: null,
+          securityAlerts: { visible: false, count: 0 },
+          mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
+          repoUrl: "",
+          hasRemote: false,
+          loading: false,
+          error: "Path is not a directory",
+        };
+      }
+
+      const result = await getProjectHealth(resolved, bypassCache);
+
+      if (result.health) {
+        return {
+          ...result.health,
+          hasRemote: true,
+          loading: false,
+          error: result.error,
+        };
+      }
+
+      return {
+        ciStatus: "none",
+        issueCount: 0,
+        prCount: 0,
+        latestRelease: null,
+        securityAlerts: { visible: false, count: 0 },
+        mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
+        repoUrl: "",
+        hasRemote: result.error !== "Not a GitHub repository",
+        loading: false,
+        error: result.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        ciStatus: "none",
+        issueCount: 0,
+        prCount: 0,
+        latestRelease: null,
+        securityAlerts: { visible: false, count: 0 },
+        mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
+        repoUrl: "",
+        hasRemote: false,
+        loading: false,
+        error: message,
+      };
+    }
+  };
+  ipcMain.handle(CHANNELS.GITHUB_GET_PROJECT_HEALTH, handleGitHubGetProjectHealth);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_GET_PROJECT_HEALTH));
+
   const handleGitHubOpenIssues = async (
     _event: Electron.IpcMainInvokeEvent,
     cwd: string,
@@ -111,6 +192,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   ) => {
     if (typeof cwd !== "string" || !cwd) {
       throw new Error("Invalid working directory");
+    }
+    if (!path.isAbsolute(cwd)) {
+      throw new Error("Working directory must be an absolute path");
     }
     const { getRepoUrl } = await import("../../services/GitHubService.js");
     const repoUrl = await getRepoUrl(cwd);
@@ -133,6 +217,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof cwd !== "string" || !cwd) {
       throw new Error("Invalid working directory");
     }
+    if (!path.isAbsolute(cwd)) {
+      throw new Error("Working directory must be an absolute path");
+    }
     const { getRepoUrl } = await import("../../services/GitHubService.js");
     const repoUrl = await getRepoUrl(cwd);
     if (!repoUrl) {
@@ -145,16 +232,27 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.GITHUB_OPEN_PRS, handleGitHubOpenPRs);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PRS));
 
-  const handleGitHubOpenCommits = async (_event: Electron.IpcMainInvokeEvent, cwd: string) => {
+  const handleGitHubOpenCommits = async (
+    _event: Electron.IpcMainInvokeEvent,
+    cwd: string,
+    branch?: string
+  ) => {
     if (typeof cwd !== "string" || !cwd) {
       throw new Error("Invalid working directory");
+    }
+    if (!path.isAbsolute(cwd)) {
+      throw new Error("Working directory must be an absolute path");
+    }
+    if (branch !== undefined && (typeof branch !== "string" || !branch.trim())) {
+      throw new Error("Invalid branch name");
     }
     const { getRepoUrl } = await import("../../services/GitHubService.js");
     const repoUrl = await getRepoUrl(cwd);
     if (!repoUrl) {
       throw new Error("Not a GitHub repository");
     }
-    await shell.openExternal(`${repoUrl}/commits`);
+    const url = branch ? `${repoUrl}/commits/${encodeURIComponent(branch)}` : `${repoUrl}/commits`;
+    await shell.openExternal(url);
   };
   ipcMain.handle(CHANNELS.GITHUB_OPEN_COMMITS, handleGitHubOpenCommits);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_COMMITS));
@@ -168,6 +266,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     }
     if (typeof payload.cwd !== "string" || !payload.cwd) {
       throw new Error("Invalid working directory");
+    }
+    if (!path.isAbsolute(payload.cwd)) {
+      throw new Error("Working directory must be an absolute path");
     }
     if (typeof payload.issueNumber !== "number" || payload.issueNumber <= 0) {
       throw new Error("Invalid issue number");
@@ -297,6 +398,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!options || typeof options.cwd !== "string" || !options.cwd) {
       throw new Error("Invalid options: cwd is required");
     }
+    if (!path.isAbsolute(options.cwd)) {
+      throw new Error("Working directory must be an absolute path");
+    }
 
     const { listIssues } = await import("../../services/GitHubService.js");
     return listIssues(options);
@@ -318,6 +422,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!options || typeof options.cwd !== "string" || !options.cwd) {
       throw new Error("Invalid options: cwd is required");
     }
+    if (!path.isAbsolute(options.cwd)) {
+      throw new Error("Working directory must be an absolute path");
+    }
 
     const { listPullRequests } = await import("../../services/GitHubService.js");
     return listPullRequests(options);
@@ -334,6 +441,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     }
     if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
       throw new Error("Invalid working directory");
+    }
+    if (!path.isAbsolute(payload.cwd)) {
+      throw new Error("Working directory must be an absolute path");
     }
     if (
       typeof payload.issueNumber !== "number" ||
@@ -363,6 +473,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
       return null;
     }
+    if (!path.isAbsolute(payload.cwd)) {
+      return null;
+    }
     if (
       typeof payload.issueNumber !== "number" ||
       !Number.isInteger(payload.issueNumber) ||
@@ -385,6 +498,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
       return null;
     }
     if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
+      return null;
+    }
+    if (!path.isAbsolute(payload.cwd)) {
       return null;
     }
     if (
@@ -411,6 +527,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
       return null;
     }
+    if (!path.isAbsolute(payload.cwd)) {
+      return null;
+    }
     if (
       typeof payload.issueNumber !== "number" ||
       !Number.isInteger(payload.issueNumber) ||
@@ -435,6 +554,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
       return null;
     }
+    if (!path.isAbsolute(payload.cwd)) {
+      return null;
+    }
     if (
       typeof payload.issueNumber !== "number" ||
       !Number.isInteger(payload.issueNumber) ||
@@ -457,6 +579,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
       return null;
     }
     if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
+      return null;
+    }
+    if (!path.isAbsolute(payload.cwd)) {
       return null;
     }
     if (

@@ -13,6 +13,8 @@ import type { TerminalSpawnOptions } from "../../../types/index.js";
 import { TerminalSpawnOptionsSchema } from "../../../schemas/ipc.js";
 import { getDefaultShell } from "../../../services/pty/terminalShell.js";
 
+export const COMMAND_DELAY_MS = 100;
+
 export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): () => void {
   const { ptyClient } = deps;
   if (!ptyClient) {
@@ -57,10 +59,21 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
 
     const id = validatedOptions.id || crypto.randomUUID();
 
-    // Snapshot current project ONCE to avoid race conditions during async filesystem checks
-    const currentProject = projectStore.getCurrentProject();
-    const projectId = currentProject?.id;
-    const projectPath = currentProject?.path;
+    // Prefer explicit projectId from renderer (captured at action time) over global state.
+    // Falls back to global state for backward compatibility (e.g., agent/workflow spawns).
+    let resolvedProject = validatedOptions.projectId
+      ? projectStore.getProjectById(validatedOptions.projectId)
+      : null;
+    if (!resolvedProject) {
+      if (validatedOptions.projectId) {
+        console.warn(
+          `[TerminalSpawn] Explicit projectId ${validatedOptions.projectId.slice(0, 8)} not found, falling back to current project`
+        );
+      }
+      resolvedProject = projectStore.getCurrentProject();
+    }
+    const projectId = resolvedProject?.id;
+    const projectPath = resolvedProject?.path;
 
     // Fetch project-level terminal overrides for non-agent terminals
     let projectShell: string | undefined;
@@ -115,7 +128,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     if (process.env.CANOPY_VERBOSE) {
       console.log(`[TerminalSpawn] Spawning terminal ${id.slice(0, 8)}:`, {
         projectId: projectId?.slice(0, 8) ?? "undefined",
-        projectName: currentProject?.name ?? "none",
+        projectName: resolvedProject?.name ?? "none",
         kind,
         type,
       });
@@ -133,11 +146,37 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     const resolvedShell = validatedOptions.shell || projectShell;
     const resolvedArgs = projectArgs;
 
+    // For agent terminals on Unix with a command, pass it via shell -c flag
+    // instead of writing to stdin. This avoids all shell init noise (echoed
+    // commands, prompts, stty tricks) since the shell runs the command directly
+    // after sourcing rc files, with no interactive prompt.
+    const trimmedCommand = validatedOptions.command?.trim() || "";
+    const isAgent = kind === "agent" || Boolean(agentId);
+    const useShellExec = isAgent && trimmedCommand.length > 0 && process.platform !== "win32";
+
+    let spawnArgs = resolvedArgs;
+    if (useShellExec) {
+      if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
+        console.error("Multi-line commands not allowed for security, ignoring");
+      } else {
+        const agentCommand = `exec ${trimmedCommand}`;
+        const shellToUse = (resolvedShell || getDefaultShell()).toLowerCase();
+        if (shellToUse.includes("zsh") || shellToUse.includes("bash")) {
+          // -l: login shell (sources .zprofile/.bash_profile)
+          // -i: interactive (sources .zshrc/.bashrc for PATH setup like nvm)
+          // -c: run command then exit (no prompt displayed)
+          spawnArgs = ["-lic", agentCommand];
+        } else {
+          spawnArgs = ["-c", agentCommand];
+        }
+      }
+    }
+
     try {
       ptyClient.spawn(id, {
         cwd,
         shell: resolvedShell,
-        args: resolvedArgs,
+        args: spawnArgs,
         cols,
         rows,
         env: validatedOptions.env,
@@ -149,18 +188,16 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         projectId,
         restore: validatedOptions.restore,
         isEphemeral: validatedOptions.isEphemeral,
+        agentLaunchFlags: validatedOptions.agentLaunchFlags,
+        agentModelId: validatedOptions.agentModelId,
       });
 
-      if (validatedOptions.command) {
-        const trimmedCommand = validatedOptions.command.trim();
-
-        if (trimmedCommand.length === 0) {
-          console.warn("Empty command provided, ignoring");
-        } else if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
+      // For non-agent terminals (or Windows agent terminals), write command to stdin
+      if (trimmedCommand.length > 0 && !useShellExec) {
+        if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
           console.error("Multi-line commands not allowed for security, ignoring");
         } else {
           let finalCommand = trimmedCommand;
-          const isAgent = kind === "agent" || Boolean(agentId);
           if (isAgent) {
             if (process.platform === "win32") {
               const shell = (resolvedShell || getDefaultShell()).toLowerCase();
@@ -170,8 +207,6 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
               } else {
                 finalCommand = `${trimmedCommand}; exit`;
               }
-            } else {
-              finalCommand = `exec ${trimmedCommand}`;
             }
           }
 
@@ -179,7 +214,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
             if (ptyClient.hasTerminal(id)) {
               ptyClient.write(id, `${finalCommand}\r`);
             }
-          }, 100);
+          }, COMMAND_DELAY_MS);
         }
       }
 
@@ -236,6 +271,12 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
   };
   ipcMain.handle(CHANNELS.TERMINAL_RESTORE, handleTerminalRestore);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_RESTORE));
+
+  const handleTerminalRestartService = async () => {
+    ptyClient.manualRestart();
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_RESTART_SERVICE, handleTerminalRestartService);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_RESTART_SERVICE));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

@@ -73,6 +73,7 @@ export function bridgePtyEvent(event: PtyHostEvent, config?: PtyEventsBridgeConf
         trigger: normalizeAgentTrigger(event.trigger),
         confidence: normalizeConfidence(event.confidence),
         worktreeId: event.worktreeId,
+        waitingReason: event.waitingReason,
       });
       return true;
 
@@ -104,10 +105,6 @@ export function bridgePtyEvent(event: PtyHostEvent, config?: PtyEventsBridgeConf
 
     case "agent-completed":
       events.emit("agent:completed", event.payload);
-      return true;
-
-    case "agent-failed":
-      events.emit("agent:failed", event.payload);
       return true;
 
     case "agent-killed":

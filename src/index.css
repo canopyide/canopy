@@ -1,31 +1,48 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+@import "./styles/components/toolbar.css";
+@import "./styles/components/settings.css";
+@import "./styles/components/pulse.css";
+@import "./styles/components/sidebar.css";
+@import "./styles/components/panels.css";
 
 @theme inline {
   --color-*: initial;
 
   --color-white: #ffffff;
   --color-black: #000000;
-  --color-tint: var(--theme-tint, #ffffff);
 
   --color-surface-canvas: var(--theme-surface-canvas);
   --color-surface-sidebar: var(--theme-surface-sidebar);
+  --color-surface-toolbar: var(--theme-surface-toolbar);
   --color-surface-panel: var(--theme-surface-panel);
   --color-surface-panel-elevated: var(--theme-surface-panel-elevated);
   --color-surface-grid: var(--theme-surface-grid);
+  --color-surface-input: var(--theme-surface-input);
+  --color-surface-inset: var(--theme-surface-inset);
+  --color-surface-hover: var(--theme-surface-hover);
+  --color-surface-active: var(--theme-surface-active);
   --color-text-primary: var(--theme-text-primary);
   --color-text-secondary: var(--theme-text-secondary);
   --color-text-muted: var(--theme-text-muted);
+  --color-text-placeholder: var(--theme-text-placeholder);
   --color-text-inverse: var(--theme-text-inverse);
+  --color-text-link: var(--theme-text-link);
   --color-border-default: var(--theme-border-default);
   --color-border-subtle: var(--theme-border-subtle);
   --color-border-strong: var(--theme-border-strong);
   --color-border-divider: var(--theme-border-divider);
+  --color-border-interactive: var(--theme-border-interactive);
   --color-accent-primary: var(--theme-accent-primary);
+  --color-accent-hover: var(--theme-accent-hover);
   --color-accent-foreground: var(--theme-accent-foreground);
   --color-accent-primary-foreground: var(--theme-accent-foreground);
   --color-accent-soft: var(--theme-accent-soft);
   --color-accent-muted: var(--theme-accent-muted);
+  --color-accent-rgb: var(--theme-accent-rgb);
+  --color-accent-secondary: var(--theme-accent-secondary);
+  --color-accent-secondary-soft: var(--theme-accent-secondary-soft);
+  --color-accent-secondary-muted: var(--theme-accent-secondary-muted);
   --color-focus-ring: var(--theme-focus-ring);
   --color-status-success: var(--theme-status-success);
   --color-status-warning: var(--theme-status-warning);
@@ -35,19 +52,44 @@
   --color-activity-idle: var(--theme-activity-idle);
   --color-activity-working: var(--theme-activity-working);
   --color-activity-waiting: var(--theme-activity-waiting);
+  --color-activity-completed: var(--theme-activity-completed);
+  --color-overlay-base: var(--theme-overlay-base);
   --color-overlay-subtle: var(--theme-overlay-subtle);
   --color-overlay-soft: var(--theme-overlay-soft);
   --color-overlay-medium: var(--theme-overlay-medium);
   --color-overlay: var(--theme-border-strong);
   --color-overlay-strong: var(--theme-overlay-strong);
   --color-overlay-emphasis: var(--theme-overlay-emphasis);
+  --color-overlay-hover: var(--theme-overlay-hover);
+  --color-overlay-active: var(--theme-overlay-active);
+  --color-overlay-selected: var(--theme-overlay-selected);
+  --color-overlay-elevated: var(--theme-overlay-elevated);
+  --color-wash-subtle: var(--theme-wash-subtle);
+  --color-wash-medium: var(--theme-wash-medium);
+  --color-wash-strong: var(--theme-wash-strong);
   --color-scrim-soft: var(--theme-scrim-soft);
   --color-scrim-medium: var(--theme-scrim-medium);
   --color-scrim-strong: var(--theme-scrim-strong);
+  --color-shadow-color: var(--theme-shadow-color);
+  --shadow-ambient: var(--theme-shadow-ambient);
+  --shadow-floating: var(--theme-shadow-floating);
+  --shadow-dialog: var(--theme-shadow-dialog);
+  --color-tint: var(--theme-tint);
   --color-github-open: var(--theme-github-open);
   --color-github-merged: var(--theme-github-merged);
   --color-github-closed: var(--theme-github-closed);
   --color-github-draft: var(--theme-github-draft);
+  --color-search-highlight-background: var(--theme-search-highlight-background);
+  --color-search-highlight-text: var(--theme-search-highlight-text);
+  --color-search-selected-result-border: var(--theme-search-selected-result-border);
+  --color-search-selected-result-icon: var(--theme-search-selected-result-icon);
+  --color-search-match-badge-background: var(--theme-search-match-badge-background);
+  --color-search-match-badge-text: var(--theme-search-match-badge-text);
+  --color-terminal-background: var(--theme-terminal-background);
+  --color-terminal-foreground: var(--theme-terminal-foreground);
+  --color-terminal-muted: var(--theme-terminal-muted);
+  --color-terminal-cursor: var(--theme-terminal-cursor);
+  --color-terminal-cursor-accent: var(--theme-terminal-cursor-accent);
   --color-terminal-selection: var(--theme-terminal-selection);
   --color-terminal-black: var(--theme-terminal-black);
   --color-terminal-red: var(--theme-terminal-red);
@@ -87,6 +129,15 @@
   --color-category-pink: var(--theme-category-pink);
   --color-category-violet: var(--theme-category-violet);
   --color-category-slate: var(--theme-category-slate);
+  --color-diff-insert-background: var(--theme-diff-insert-background);
+  --color-diff-insert-edit-background: var(--theme-diff-insert-edit-background);
+  --color-diff-delete-background: var(--theme-diff-delete-background);
+  --color-diff-delete-edit-background: var(--theme-diff-delete-edit-background);
+  --color-diff-gutter-insert: var(--theme-diff-gutter-insert);
+  --color-diff-gutter-delete: var(--theme-diff-gutter-delete);
+  --color-diff-selected-background: var(--theme-diff-selected-background);
+  --color-diff-omit-gutter-line: var(--theme-diff-omit-gutter-line);
+  --radius: calc(0.625rem * var(--theme-radius-scale, 1));
 
   --color-category-blue-subtle: color-mix(
     in oklch,
@@ -301,7 +352,6 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --radius: 0.625rem;
   --radius-xs: calc(var(--radius) - 6px);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -313,25 +363,25 @@
   --height-sm: 2rem;
   --height-md: 2.5rem;
   --height-lg: 3rem;
-  --color-canopy-bg: var(--theme-legacy-canopy-bg);
-  --color-canopy-sidebar: var(--theme-legacy-canopy-sidebar);
-  --color-canopy-border: var(--theme-legacy-canopy-border);
-  --color-canopy-text: var(--theme-legacy-canopy-text);
-  --color-canopy-accent: var(--theme-legacy-canopy-accent);
+  --color-canopy-bg: var(--theme-surface-canvas);
+  --color-canopy-sidebar: var(--theme-surface-sidebar);
+  --color-canopy-border: var(--theme-border-default);
+  --color-canopy-text: var(--theme-text-primary);
+  --color-canopy-accent: var(--theme-accent-primary);
   --color-canopy-accent-rgb: var(--theme-accent-rgb);
-  --color-surface: var(--theme-legacy-surface);
-  --color-surface-highlight: var(--theme-legacy-surface-highlight);
-  --color-grid-bg: var(--theme-legacy-grid-bg);
-  --color-canopy-focus: var(--theme-legacy-canopy-focus);
-  --color-status-error: var(--theme-legacy-status-error);
-  --color-state-active: var(--theme-legacy-state-active);
-  --color-state-idle: var(--theme-legacy-state-idle);
-  --color-state-working: var(--theme-legacy-state-working);
-  --color-state-waiting: var(--theme-legacy-state-waiting);
-  --color-server-running: var(--theme-legacy-server-running);
-  --color-server-stopped: var(--theme-legacy-server-stopped);
-  --color-server-starting: var(--theme-legacy-server-starting);
-  --color-server-error: var(--theme-legacy-server-error);
+  --color-surface: var(--theme-surface-panel);
+  --color-surface-highlight: var(--theme-surface-panel-elevated);
+  --color-grid-bg: var(--panel-grid-bg, var(--terminal-grid-bg, var(--theme-surface-grid)));
+  --color-canopy-focus: var(--theme-focus-ring);
+  --color-status-error: var(--theme-status-danger);
+  --color-state-active: var(--theme-activity-active);
+  --color-state-idle: var(--theme-activity-idle);
+  --color-state-working: var(--theme-activity-working);
+  --color-state-waiting: var(--theme-activity-waiting);
+  --color-server-running: var(--theme-status-success);
+  --color-server-stopped: var(--theme-activity-idle);
+  --color-server-starting: var(--theme-status-warning);
+  --color-server-error: var(--theme-status-danger);
   --color-cat-blue: var(--theme-category-blue);
   --color-cat-purple: var(--theme-category-purple);
   --color-cat-cyan: var(--theme-category-cyan);
@@ -458,7 +508,7 @@ code.hljs {
    * Higher tiers always appear above lower tiers.
    *
    * Tier 40: Fixed panels (dock, sidebars)
-   * Tier 50: Sidecar overlay
+   * Tier 50: Portal overlay
    * Tier 55: Maximized content (terminals)
    * Tier 60: Modal dialogs (full-screen overlays)
    * Tier 70: Popovers, dropdowns, tooltips (can appear above modals)
@@ -466,7 +516,7 @@ code.hljs {
    * Tier 80: Toast notifications (always visible)
    */
   --z-panel: 40;
-  --z-sidecar: 50;
+  --z-portal: 50;
   --z-maximized: 55;
   --z-modal: 60;
   --z-popover: 70;
@@ -475,18 +525,18 @@ code.hljs {
 
   --shadow-overlay:
     0 1px 0 var(--theme-overlay-soft) inset,
-    0 12px 40px color-mix(in oklch, var(--theme-scrim-medium) 89%, transparent);
+    0 12px 40px color-mix(in oklch, var(--theme-shadow-color) 89%, transparent);
   --shadow-modal:
     0 1px 0 var(--theme-overlay-medium) inset,
-    0 20px 56px color-mix(in oklch, var(--theme-scrim-strong) 81%, transparent);
+    0 20px 56px color-mix(in oklch, var(--theme-shadow-color) 81%, transparent);
   --shadow-dock-popover:
     0 1px 0 var(--theme-overlay-strong) inset,
-    0 25px 70px -10px color-mix(in oklch, var(--theme-scrim-strong) 97%, transparent);
+    0 25px 70px -10px color-mix(in oklch, var(--theme-shadow-color) 97%, transparent);
   --shadow-dock-panel-popover:
     0 1px 0 var(--theme-overlay-strong) inset,
-    0 10px 40px -10px color-mix(in oklch, var(--theme-scrim-medium) 78%, transparent),
-    0 20px 60px -15px color-mix(in oklch, var(--theme-scrim-medium) 56%, transparent),
-    0 30px 80px -20px color-mix(in oklch, var(--theme-scrim-soft) 75%, transparent);
+    0 10px 40px -10px color-mix(in oklch, var(--theme-shadow-color) 78%, transparent),
+    0 20px 60px -15px color-mix(in oklch, var(--theme-shadow-color) 56%, transparent),
+    0 30px 80px -20px color-mix(in oklch, var(--theme-shadow-color) 75%, transparent);
   --border-overlay: var(--theme-border-strong);
   --border-dock-popup: color-mix(
     in oklab,
@@ -497,7 +547,7 @@ code.hljs {
 
   --dock-bg: var(--color-canopy-sidebar);
   --dock-border: var(--border-divider);
-  --dock-shadow: 0 -2px 12px color-mix(in oklch, var(--theme-scrim-soft) 75%, transparent);
+  --dock-shadow: 0 -2px 12px color-mix(in oklch, var(--theme-shadow-color) 75%, transparent);
   --dock-padding-x: 0.5rem;
   --dock-padding-y: 0.375rem;
   --dock-gap: 0.375rem;
@@ -507,10 +557,22 @@ code.hljs {
   --dock-item-bg-active: color-mix(in oklab, var(--theme-accent-primary) 12%, transparent);
   --dock-item-border: var(--theme-border-subtle);
   --dock-item-border-active: rgba(var(--theme-accent-rgb), 0.32);
-  --dock-item-bg-waiting: color-mix(in oklab, var(--color-state-waiting) 8%, transparent);
-  --dock-item-border-waiting: color-mix(in oklab, var(--color-state-waiting) 35%, transparent);
-  --dock-item-bg-failed: color-mix(in oklab, var(--color-status-error) 8%, transparent);
-  --dock-item-border-failed: color-mix(in oklab, var(--color-status-error) 40%, transparent);
+  --state-chip-bg-opacity: var(--theme-state-chip-bg-opacity, 0.15);
+  --state-chip-border-opacity: var(--theme-state-chip-border-opacity, 0.4);
+  --label-pill-bg-opacity: var(--theme-label-pill-bg-opacity, 0.1);
+  --label-pill-border-opacity: var(--theme-label-pill-border-opacity, 0.2);
+  --scrollbar-width: var(--theme-scrollbar-width, 6px);
+  --scrollbar-thumb: var(--theme-scrollbar-thumb, var(--color-state-idle));
+  --scrollbar-thumb-hover: var(
+    --theme-scrollbar-thumb-hover,
+    color-mix(in oklab, var(--scrollbar-thumb) 85%, var(--color-text-primary))
+  );
+  --scrollbar-track: var(--theme-scrollbar-track, transparent);
+  --panel-state-edge-width: var(--theme-panel-state-edge-width, 2px);
+  --panel-state-edge-inset-block: var(--theme-panel-state-edge-inset-block, 4px);
+  --panel-state-edge-radius: var(--theme-panel-state-edge-radius, 2px);
+  --focus-ring-offset: var(--theme-focus-ring-offset, 2px);
+  --chrome-noise-texture: var(--theme-chrome-noise-texture, none);
 
   --animation-duration: 150ms;
   --transition-duration: 150ms;
@@ -534,7 +596,7 @@ code.hljs {
   --destructive: var(--theme-status-danger);
   --destructive-foreground: var(--theme-text-inverse);
   --border: var(--theme-border-default);
-  --input: var(--theme-border-default);
+  --input: var(--theme-surface-input);
   --ring: var(--theme-focus-ring);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -598,29 +660,29 @@ code.hljs {
   /* Global scrollbar styling */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-state-idle) transparent;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-width);
   }
 
   *::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--scrollbar-track);
   }
 
   *::-webkit-scrollbar-thumb {
-    background: var(--color-state-idle);
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--color-state-idle) 85%, var(--color-text-primary));
+    background: var(--scrollbar-thumb-hover);
   }
 
   *::-webkit-scrollbar-corner {
-    background: transparent;
+    background: var(--scrollbar-track);
   }
 
   /* Color vision deficiency overrides — Red-Green (Deuteranopia / Protanopia) */
@@ -960,6 +1022,12 @@ body,
   will-change: opacity;
 }
 
+.animate-pulse-immediate {
+  opacity: 1;
+  animation: pulse-delayed 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: opacity;
+}
+
 /* Agent status working state - pulsing gradient animation */
 @keyframes status-pulse {
   0%,
@@ -1043,6 +1111,7 @@ body,
   .animate-breathe,
   .animate-spin-slow,
   .animate-pulse-delayed,
+  .animate-pulse-immediate,
   .status-working,
   .animate-badge-bump,
   .animate-activity-blip,
@@ -1121,6 +1190,35 @@ body,
   border-bottom-color: var(--border-overlay);
 }
 
+/* Panel Agent State Borders — grid panel container state-driven styling */
+.panel-state-waiting {
+  border-color: color-mix(in oklab, var(--color-activity-waiting) 75%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--color-activity-waiting) 15%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--color-activity-waiting) 10%, transparent);
+}
+
+.panel-state-working {
+  animation: panel-working-breathe 4s ease-in-out infinite;
+}
+
+@keyframes panel-working-breathe {
+  0%,
+  100% {
+    border-color: color-mix(in oklab, var(--color-activity-working) 25%, transparent);
+  }
+  50% {
+    border-color: color-mix(in oklab, var(--color-activity-working) 55%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-state-working {
+    animation: none;
+    border-color: color-mix(in oklab, var(--color-activity-working) 35%, transparent);
+  }
+}
+
 /* Backwards compatibility for older selection class */
 .terminal-focused {
   border-color: color-mix(in oklab, var(--theme-border-strong) 84%, var(--theme-text-primary));
@@ -1170,13 +1268,13 @@ body,
 
 @keyframes terminal-ping-border {
   0% {
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--theme-tint) 0%, transparent);
   }
   35% {
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--theme-tint) 25%, transparent);
   }
   100% {
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--theme-tint) 0%, transparent);
   }
 }
 
@@ -1186,7 +1284,7 @@ body,
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: rgb(255 255 255 / 0.12);
+  background: color-mix(in oklch, var(--theme-tint) 12%, transparent);
   animation: terminal-ping-overlay var(--terminal-ping-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
   will-change: opacity;
 }
@@ -1233,13 +1331,13 @@ body,
 
 @keyframes terminal-header-border {
   0% {
-    border-bottom-color: rgb(255 255 255 / 0.05);
+    border-bottom-color: color-mix(in oklch, var(--theme-tint) 5%, transparent);
   }
   35% {
-    border-bottom-color: rgb(255 255 255 / 0.25);
+    border-bottom-color: color-mix(in oklch, var(--theme-tint) 25%, transparent);
   }
   100% {
-    border-bottom-color: rgb(255 255 255 / 0.05);
+    border-bottom-color: color-mix(in oklch, var(--theme-tint) 5%, transparent);
   }
 }
 
@@ -1252,13 +1350,13 @@ body,
 /* Title glow - same animation for both variants */
 @keyframes title-glow {
   0% {
-    text-shadow: 0 0 0 rgb(255 255 255 / 0);
+    text-shadow: 0 0 0 color-mix(in oklch, var(--theme-tint) 0%, transparent);
   }
   35% {
-    text-shadow: 0 0 8px rgb(255 255 255 / 0.3);
+    text-shadow: 0 0 8px color-mix(in oklch, var(--theme-tint) 30%, transparent);
   }
   100% {
-    text-shadow: 0 0 0 rgb(255 255 255 / 0);
+    text-shadow: 0 0 0 color-mix(in oklch, var(--theme-tint) 0%, transparent);
   }
 }
 
@@ -1639,7 +1737,8 @@ body[data-performance-mode="true"] *::after {
 }
 
 /* Ensure delayed skeletons don't stay invisible when animations are disabled */
-body[data-performance-mode="true"] .animate-pulse-delayed {
+body[data-performance-mode="true"] .animate-pulse-delayed,
+body[data-performance-mode="true"] .animate-pulse-immediate {
   opacity: 1 !important;
 }
 
@@ -1660,6 +1759,12 @@ body[data-performance-mode="true"] .surface-chrome {
   background-color: var(--color-surface-sidebar) !important;
 }
 
+body[data-performance-mode="true"] .surface-toolbar {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background-color: var(--color-surface-toolbar) !important;
+}
+
 /* Disable terminal glow in performance mode */
 body[data-performance-mode="true"] .terminal-selected,
 body[data-performance-mode="true"] .terminal-focused {
@@ -1672,21 +1777,87 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
   backdrop-filter: none !important;
 }
 
+/* Windows High Contrast / forced-colors support
+   In forced-colors mode the UA overrides color, background-color, border-color,
+   outline-color and removes box-shadow entirely. We ensure critical UI boundaries
+   remain visible by using CSS system color keywords. */
+@media (forced-colors: active) {
+  *:focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px !important;
+  }
+
+  .xterm {
+    forced-color-adjust: none;
+  }
+
+  .terminal-selected {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+    border-color: Highlight;
+  }
+
+  .terminal-focused {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+    border-color: Highlight;
+  }
+
+  .panel-state-waiting {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .panel-state-working {
+    border-color: Highlight;
+    animation: none;
+  }
+
+  .terminal-pane {
+    border-color: ButtonText;
+  }
+
+  button,
+  [role="button"],
+  [type="button"],
+  [type="submit"],
+  [type="reset"] {
+    border: 1px solid ButtonText;
+  }
+
+  input,
+  select,
+  textarea {
+    border: 1px solid FieldText;
+  }
+}
+
+/* Increased contrast mode — heavier borders for visibility */
+@media (prefers-contrast: more) {
+  .terminal-selected,
+  .terminal-focused {
+    border-width: 2px;
+  }
+
+  .panel-state-waiting,
+  .panel-state-working {
+    border-width: 2px;
+  }
+
+  *:focus-visible {
+    outline-width: 3px;
+  }
+}
+
 @layer utilities {
   .surface-overlay {
     background-color: var(--color-surface-sidebar);
     background-color: color-mix(in oklab, var(--color-surface-sidebar) 94%, transparent);
     border: 1px solid var(--border-overlay);
-    -webkit-backdrop-filter: blur(10px) saturate(120%);
-    backdrop-filter: blur(10px) saturate(120%);
-  }
-
-  .surface-chrome {
-    background-color: var(--color-surface-sidebar);
-    background-color: color-mix(in oklab, var(--color-surface-sidebar) 95%, transparent);
-    box-shadow: inset 0 1px 0 var(--theme-overlay-soft);
-    -webkit-backdrop-filter: blur(10px) saturate(120%);
-    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(var(--theme-material-blur))
+      saturate(var(--theme-material-saturation));
+    backdrop-filter: blur(var(--theme-material-blur)) saturate(var(--theme-material-saturation));
   }
 
   .control-hover:hover {
@@ -1730,5 +1901,10 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
   .settings-highlight {
     animation: settings-pulse 1.5s ease-out;
     border-radius: var(--radius-md);
+  }
+
+  [data-dragging="true"] webview,
+  [data-dragging="true"] iframe {
+    pointer-events: none !important;
   }
 }

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Loader2, Settings } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, Settings } from "lucide-react";
 import type {
   TerminalType,
   TerminalRestartError,
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { TerminalSearchBar } from "./TerminalSearchBar";
+import { TerminalScrollIndicator } from "./TerminalScrollIndicator";
 import { TerminalRestartStatusBanner } from "./TerminalRestartStatusBanner";
 import { getRestartBannerVariant } from "./restartStatus";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
@@ -35,9 +36,9 @@ import { InputTracker } from "@/services/clearCommandDetection";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { terminalClient } from "@/clients";
 import { HybridInputBar, type HybridInputBarHandle } from "./HybridInputBar";
-import { getTerminalFocusTarget } from "./terminalFocus";
+import { getTerminalFocusTarget, shouldSuppressUnfocusedClick } from "./terminalFocus";
 import { registerPanelFocusHandler } from "./terminalFocusRegistry";
-import { getCanopyCommand, isEscapedCommand, unescapeCommand } from "./canopySlashCommands";
+
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 export type { TerminalType };
@@ -75,6 +76,8 @@ export interface TerminalPaneProps {
   spawnError?: SpawnError;
   gridPanelCount?: number;
   detectedProcessId?: string;
+  // Group-level ambient state: highest-urgency state across all tabs, for container border styling
+  ambientAgentState?: AgentState;
   // Tab support
   tabs?: import("@/components/Panel/TabButton").TabInfo[];
   onTabClick?: (tabId: string) => void;
@@ -110,12 +113,14 @@ function TerminalPaneComponent({
   spawnError,
   gridPanelCount,
   detectedProcessId,
+  ambientAgentState,
   tabs,
   onTabClick,
   onTabClose,
   onTabRename,
   onAddTab,
 }: TerminalPaneProps) {
+  "use memo";
   const containerRef = useRef<HTMLDivElement>(null);
   const prevFocusedRef = useRef(isFocused);
   const justFocusedUntilRef = useRef<number>(0);
@@ -124,6 +129,7 @@ function TerminalPaneComponent({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
   const [isAutoRestarting, setIsAutoRestarting] = useState(false);
+  const [isRestartingService, setIsRestartingService] = useState(false);
   const autoRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestartAttemptRef = useRef(0);
   const processStartTimeRef = useRef<number>(0);
@@ -182,6 +188,18 @@ function TerminalPaneComponent({
 
   const isBackendDisconnected = backendStatus === "disconnected";
   const isBackendRecovering = backendStatus === "recovering";
+
+  useEffect(() => {
+    if (backendStatus !== "disconnected") {
+      setIsRestartingService(false);
+    }
+  }, [backendStatus]);
+
+  useEffect(() => {
+    if (!isRestartingService) return;
+    const timeout = setTimeout(() => setIsRestartingService(false), 15_000);
+    return () => clearTimeout(timeout);
+  }, [isRestartingService]);
   const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
   const effectiveAgentId = (
@@ -433,34 +451,43 @@ function TerminalPaneComponent({
       const xtermElement = target?.closest(".xterm");
       if (!xtermElement) return;
 
-      if (xtermElement.classList.contains("xterm-cursor-pointer")) {
-        return;
-      }
-
       const focusTarget = getTerminalFocusTarget({
         isAgentTerminal,
-        isInputDisabled: isBackendDisconnected || isBackendRecovering,
+        isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
       });
 
-      if (focusTarget !== "hybridInput") return;
-      if (isFocused) return;
+      const suppressTarget = shouldSuppressUnfocusedClick({
+        location,
+        isFocused,
+        isCursorPointer: xtermElement.classList.contains("xterm-cursor-pointer"),
+        focusTarget,
+      });
+
+      if (!suppressTarget) return;
 
       e.preventDefault();
       e.stopPropagation();
 
       setFocused(id);
       terminalInstanceService.boostRefreshRate(id);
-      requestAnimationFrame(() => inputBarRef.current?.focusWithCursorAtEnd());
+
+      if (suppressTarget === "hybridInput") {
+        requestAnimationFrame(() => inputBarRef.current?.focusWithCursorAtEnd());
+      } else {
+        requestAnimationFrame(() => terminalInstanceService.focus(id));
+      }
     },
     [
       id,
+      location,
       isAgentTerminal,
       hybridInputEnabled,
       hybridInputAutoFocus,
       isBackendDisconnected,
       isBackendRecovering,
+      isInputLocked,
       isFocused,
       setFocused,
     ]
@@ -607,6 +634,7 @@ function TerminalPaneComponent({
       flowStatus={flowStatus}
       isPinged={isPinged}
       wasJustSelected={wasJustSelected}
+      ambientAgentState={ambientAgentState}
       tabs={tabs}
       onTabClick={onTabClick}
       onTabClose={onTabClose}
@@ -617,8 +645,7 @@ function TerminalPaneComponent({
         isExited && "opacity-75 grayscale",
         isPinged &&
           allowPing &&
-          (wasJustSelected ? "animate-terminal-ping-select" : "animate-terminal-ping"),
-        agentState === "failed" && "ring-1 ring-inset ring-status-error/25"
+          (wasJustSelected ? "animate-terminal-ping-select" : "animate-terminal-ping")
       )}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
@@ -732,20 +759,22 @@ function TerminalPaneComponent({
             )}
           </div>
 
+          <TerminalScrollIndicator terminalId={id} />
+
           {/* Backend Disconnect Overlay */}
           {(isBackendDisconnected || isBackendRecovering) && (
             <div
-              className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+              className="absolute inset-0 z-50 flex items-center justify-center bg-scrim-strong backdrop-blur-sm"
               role={isBackendRecovering ? "status" : "alert"}
               aria-live={isBackendRecovering ? "polite" : "assertive"}
             >
               {isBackendRecovering ? (
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none text-status-warning" />
-                  <span className="text-white font-medium">Reconnecting...</span>
+                  <span className="text-text-inverse font-medium">Reconnecting...</span>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-4 p-6 bg-canopy-sidebar border border-canopy-border rounded-xl shadow-2xl max-w-md text-center">
+                <div className="flex flex-col items-center gap-4 p-6 bg-canopy-sidebar border border-canopy-border rounded-xl shadow-[var(--theme-shadow-dialog)] max-w-md text-center">
                   <div className="flex items-center gap-3 text-status-error">
                     <AlertTriangle className="w-6 h-6" />
                     <h3 className="font-semibold text-lg">
@@ -789,14 +818,33 @@ function TerminalPaneComponent({
                     </p>
                   )}
 
-                  <button
-                    onClick={() =>
-                      void actionService.dispatch("ui.refresh", undefined, { source: "user" })
-                    }
-                    className="px-4 py-2 bg-status-error/20 hover:bg-status-error/30 text-status-error rounded-lg border border-status-error/30 transition-colors"
-                  >
-                    Restart Application
-                  </button>
+                  <div className="flex flex-col gap-2 w-full">
+                    <button
+                      onClick={() => {
+                        setIsRestartingService(true);
+                        terminalClient.restartService().catch(() => {
+                          setIsRestartingService(false);
+                        });
+                      }}
+                      disabled={isRestartingService}
+                      className="px-4 py-2 bg-canopy-accent/20 hover:bg-canopy-accent/30 text-canopy-accent rounded-lg border border-canopy-accent/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isRestartingService ? (
+                        <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      {isRestartingService ? "Restarting..." : "Restart Terminal Service"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        void actionService.dispatch("ui.refresh", undefined, { source: "user" })
+                      }
+                      className="px-4 py-2 bg-status-error/10 hover:bg-status-error/20 text-canopy-text/60 rounded-lg border border-canopy-border transition-colors text-sm"
+                    >
+                      Restart Application
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -816,25 +864,6 @@ function TerminalPaneComponent({
             onActivate={handleClick}
             onSend={({ trackerData, text }) => {
               if (!isInputLocked) {
-                if (isEscapedCommand(text)) {
-                  const unescapedText = unescapeCommand(text);
-                  terminalInstanceService.notifyUserInput(id);
-                  terminalClient.submit(id, unescapedText);
-                  handleInput(trackerData);
-                  return;
-                }
-
-                const canopyCommand = getCanopyCommand(text);
-                if (canopyCommand) {
-                  terminalInstanceService.notifyUserInput(id);
-                  void Promise.resolve(canopyCommand.execute({ terminalId: id, worktreeId })).catch(
-                    (error) => {
-                      console.error(`Canopy command '${canopyCommand.label}' failed:`, error);
-                    }
-                  );
-                  return;
-                }
-
                 terminalInstanceService.notifyUserInput(id);
                 terminalClient.submit(id, text);
                 handleInput(trackerData);

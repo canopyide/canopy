@@ -63,8 +63,8 @@ export function AgentButton({
   const handleContextMenu = async (event: React.MouseEvent) => {
     const worktreeItems: MenuItemOption[] = worktrees.map((wt) => ({
       id: `launch:worktree:${wt.id}`,
-      label: wt.branch?.trim() || wt.name,
-      sublabel: wt.branch?.trim() ? wt.name : undefined,
+      label: wt.isMainWorktree ? wt.name : wt.branch?.trim() || wt.name,
+      sublabel: wt.isMainWorktree ? undefined : wt.branch?.trim() ? wt.name : undefined,
       submenu: [
         { id: `launch:worktree:${wt.id}:grid`, label: "Grid" },
         { id: `launch:worktree:${wt.id}:dock`, label: "Dock" },
@@ -138,8 +138,9 @@ export function AgentButton({
               disabled={isLoading}
               data-toolbar-item={dataToolbarItem}
               className={cn(
-                "text-canopy-text hover:bg-tint/[0.06] transition-colors",
-                isAvailable && "hover:text-canopy-accent focus-visible:text-canopy-accent",
+                "toolbar-agent-button text-canopy-text transition-colors",
+                isAvailable &&
+                  "hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] focus-visible:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))]",
                 !isAvailable && !isLoading && "opacity-60"
               )}
               aria-label={ariaLabel}

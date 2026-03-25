@@ -1,7 +1,13 @@
+import { readdir, stat } from "fs/promises";
+import path from "path";
 import type { AgentState } from "../../shared/types/agent.js";
+import type { HibernationProjectHibernatedPayload } from "../../shared/types/ipc/hibernation.js";
 import { store } from "../store.js";
 import { projectStore } from "./ProjectStore.js";
 import { logInfo, logError } from "../utils/logger.js";
+import { getMainWindow } from "../window/windowRef.js";
+import { CHANNELS } from "../ipc/channels.js";
+import { writeHibernatedMarker } from "./pty/terminalSessionPersistence.js";
 
 export interface HibernationConfig {
   enabled: boolean;
@@ -14,6 +20,15 @@ const DEFAULT_CONFIG: HibernationConfig = {
 };
 
 const MEMORY_PRESSURE_INACTIVE_MS = 30 * 60 * 1000;
+const GIT_SENTINEL_NAMES = new Set([
+  "index.lock",
+  "MERGE_HEAD",
+  "REBASE_HEAD",
+  "CHERRY_PICK_HEAD",
+  "REVERT_HEAD",
+  "rebase-merge",
+  "rebase-apply",
+]);
 const ACTIVE_AGENT_STATES: ReadonlySet<AgentState> = new Set([
   "working",
   "running",
@@ -42,6 +57,15 @@ export class HibernationService {
   private checkInterval: NodeJS.Timeout | null = null;
   private initialCheckTimer: NodeJS.Timeout | null = null;
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // Every hour
+  private readonly hibernationCallbacks: Array<(projectId: string) => void | Promise<void>> = [];
+
+  onProjectHibernated(callback: (projectId: string) => void | Promise<void>): () => void {
+    this.hibernationCallbacks.push(callback);
+    return () => {
+      const idx = this.hibernationCallbacks.indexOf(callback);
+      if (idx >= 0) this.hibernationCallbacks.splice(idx, 1);
+    };
+  }
 
   private normalizeThreshold(value: unknown, fallback: number): number {
     if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -65,6 +89,53 @@ export class HibernationService {
         DEFAULT_CONFIG.inactiveThresholdHours
       ),
     };
+  }
+
+  private async hasActiveGitOperation(
+    projectPath: string,
+    staleThresholdMs: number
+  ): Promise<boolean> {
+    const mainGitDir = path.join(projectPath, ".git");
+    const gitDirs = [mainGitDir];
+
+    try {
+      const worktreeEntries = await readdir(path.join(mainGitDir, "worktrees"), {
+        withFileTypes: true,
+      });
+      for (const entry of worktreeEntries) {
+        if (entry.isDirectory()) {
+          gitDirs.push(path.join(mainGitDir, "worktrees", entry.name));
+        }
+      }
+    } catch {
+      // No linked worktrees or .git/worktrees doesn't exist
+    }
+
+    for (const gitDir of gitDirs) {
+      try {
+        const entries = await readdir(gitDir);
+        const sentinels = entries.filter((e) => GIT_SENTINEL_NAMES.has(e));
+
+        for (const sentinel of sentinels) {
+          if (sentinel === "index.lock") {
+            try {
+              const lockStat = await stat(path.join(gitDir, sentinel));
+              if (Date.now() - lockStat.mtimeMs < staleThresholdMs) {
+                return true;
+              }
+            } catch {
+              // Lock disappeared between readdir and stat — not active
+            }
+          } else {
+            return true;
+          }
+        }
+      } catch {
+        // gitdir doesn't exist or isn't readable — skip
+      }
+    }
+
+    return false;
   }
 
   start(): void {
@@ -126,35 +197,57 @@ export class HibernationService {
     const { getPtyManager } = await import("./PtyManager.js");
 
     const ptyManager = getPtyManager();
+    const allTerminals = ptyManager.getAll();
 
     for (const project of projects) {
       // Never hibernate the active project
       if (project.id === currentProjectId) continue;
 
+      // Skip projects with missing/invalid lastOpened to avoid treating them as infinitely inactive
+      if (!project.lastOpened) continue;
+
       // Check if project has been inactive long enough
-      const inactiveDuration = now - (project.lastOpened || 0);
+      const inactiveDuration = now - project.lastOpened;
       if (inactiveDuration < thresholdMs) continue;
 
       // Check if project has running terminals
-      const ptyStats = ptyManager.getProjectStats(project.id);
-      const processCount = ptyStats.terminalCount;
+      const projectTerminals = allTerminals.filter((t) => t.projectId === project.id);
+      if (projectTerminals.length === 0) continue;
 
-      if (processCount === 0) {
-        continue; // No processes to hibernate
+      // Skip projects with active AI agents
+      const hasActiveAgent = projectTerminals.some(
+        (t) => t.agentState && ACTIVE_AGENT_STATES.has(t.agentState)
+      );
+      if (hasActiveAgent) {
+        logInfo("scheduled-hibernate-skip-active-agent", {
+          project: project.name,
+          projectId: project.id,
+        });
+        continue;
+      }
+
+      // Skip projects with in-progress git operations
+      if (await this.hasActiveGitOperation(project.path, thresholdMs)) {
+        logInfo("scheduled-hibernate-skip-git-operation", {
+          project: project.name,
+          projectId: project.id,
+        });
+        continue;
       }
 
       const hoursInactive = Math.floor(inactiveDuration / 3600000);
       console.log(
         `[HibernationService] Auto-hibernating project "${project.name}" ` +
-          `(inactive for ${hoursInactive} hours, ${processCount} processes)`
+          `(inactive for ${hoursInactive} hours, ${projectTerminals.length} processes)`
       );
 
       try {
-        // Gracefully kill terminals (allows agents to print session IDs before dying).
-        // Project state (state.json) is preserved so terminal IDs remain valid
-        // for matching .restore snapshot files on re-open.
-        const results = await ptyManager.gracefulKillByProject(project.id);
-        const terminalsKilled = results.length;
+        const terminalsKilled = await this.hibernateProject(
+          project.id,
+          project.name,
+          "scheduled",
+          ptyManager
+        );
 
         console.log(
           `[HibernationService] Hibernated "${project.name}": ${terminalsKilled} terminals killed`
@@ -177,7 +270,9 @@ export class HibernationService {
     for (const project of projects) {
       if (project.id === currentProjectId) continue;
 
-      const inactiveDuration = now - (project.lastOpened || 0);
+      if (!project.lastOpened) continue;
+
+      const inactiveDuration = now - project.lastOpened;
       if (inactiveDuration < MEMORY_PRESSURE_INACTIVE_MS) continue;
 
       const projectTerminals = allTerminals.filter((t) => t.projectId === project.id);
@@ -188,6 +283,14 @@ export class HibernationService {
       );
       if (hasActiveAgent) continue;
 
+      if (await this.hasActiveGitOperation(project.path, MEMORY_PRESSURE_INACTIVE_MS)) {
+        logInfo("memory-pressure-hibernate-skip-git-operation", {
+          project: project.name,
+          projectId: project.id,
+        });
+        continue;
+      }
+
       logInfo("memory-pressure-hibernate-project", {
         project: project.name,
         projectId: project.id,
@@ -196,7 +299,7 @@ export class HibernationService {
       });
 
       try {
-        await ptyManager.gracefulKillByProject(project.id);
+        await this.hibernateProject(project.id, project.name, "memory-pressure", ptyManager);
       } catch (error) {
         logError("memory-pressure-hibernate-failed", error, {
           project: project.name,
@@ -204,6 +307,48 @@ export class HibernationService {
         });
       }
     }
+  }
+
+  private async hibernateProject(
+    projectId: string,
+    projectName: string,
+    reason: "scheduled" | "memory-pressure",
+    ptyManager: {
+      gracefulKillByProject: (
+        id: string,
+        opts?: { preserveSession?: boolean }
+      ) => Promise<Array<{ id: string; agentSessionId: string | null }>>;
+    }
+  ): Promise<number> {
+    const results = await ptyManager.gracefulKillByProject(projectId, { preserveSession: true });
+    const terminalsKilled = results.length;
+
+    // Write hibernation markers for each killed terminal
+    for (const result of results) {
+      writeHibernatedMarker(result.id);
+    }
+
+    // Invoke registered callbacks (e.g., DevPreview cleanup)
+    await Promise.allSettled(this.hibernationCallbacks.map((cb) => Promise.resolve(cb(projectId))));
+
+    // Emit event to renderer
+    const win = getMainWindow();
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      const payload: HibernationProjectHibernatedPayload = {
+        projectId,
+        projectName,
+        reason,
+        terminalsKilled,
+        timestamp: Date.now(),
+      };
+      try {
+        win.webContents.send(CHANNELS.HIBERNATION_PROJECT_HIBERNATED, payload);
+      } catch {
+        // Window may be closing
+      }
+    }
+
+    return terminalsKilled;
   }
 
   getConfig(): HibernationConfig {

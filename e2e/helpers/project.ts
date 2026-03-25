@@ -17,7 +17,7 @@ export async function openProject(
 export async function dismissTelemetryConsent(window: Page): Promise<void> {
   const dialog = window.getByRole("dialog", { name: "Crash reporting consent" });
   if (await dialog.isVisible().catch(() => false)) {
-    await dialog.getByRole("button", { name: "No thanks" }).click();
+    await dialog.getByRole("button", { name: "Disable" }).click();
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   }
 }
@@ -33,7 +33,7 @@ export async function completeOnboarding(window: Page, name: string): Promise<vo
   const nameInput = window.getByRole("textbox", { name: "Project Name" });
   await nameInput.fill(name);
 
-  await window.getByRole("button", { name: "Finish" }).click();
+  await window.getByRole("button", { name: "Finish", exact: true }).click();
   await expect(heading).not.toBeVisible({ timeout: closeTimeout });
 
   await dismissTelemetryConsent(window);

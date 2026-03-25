@@ -14,7 +14,7 @@ vi.mock("react-dom", async () => {
 });
 
 vi.mock("@/store/worktreeDataStore", () => ({
-  useWorktreeDataStore: vi.fn((selector: (s: { worktrees: Map<string, any> }) => unknown) =>
+  useWorktreeDataStore: vi.fn((selector: (s: { worktrees: Map<string, unknown> }) => unknown) =>
     selector({ worktrees: new Map() })
   ),
 }));
@@ -139,7 +139,7 @@ describe("GitHubListItem", () => {
       fireEvent.click(copyButton);
     });
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("42");
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("#42");
   });
 
   it("shows check icon after copy then reverts after timeout", async () => {
@@ -180,10 +180,46 @@ describe("GitHubListItem", () => {
     expect(btn.className).toContain("opacity-0");
   });
 
-  it("renders CI status dot for open PRs with ciStatus", () => {
+  it("renders CI status check icon for successful PRs", () => {
     const prWithCI: GitHubPR = { ...basePR, ciStatus: "SUCCESS" };
     render(<GitHubListItem item={prWithCI} type="pr" />);
-    expect(screen.getByLabelText("All checks passed")).toBeTruthy();
+    const indicator = screen.getByLabelText("All checks passed");
+    expect(indicator.querySelector("svg")).not.toBeNull();
+    expect(indicator.querySelector(".text-status-success")).not.toBeNull();
+    expect(indicator.querySelector(".rounded-full")).toBeNull();
+  });
+
+  it("renders CI status X icon for failing PRs", () => {
+    const prWithCI: GitHubPR = { ...basePR, ciStatus: "FAILURE" };
+    render(<GitHubListItem item={prWithCI} type="pr" />);
+    const indicator = screen.getByLabelText("Checks failing");
+    expect(indicator.querySelector("svg")).not.toBeNull();
+    expect(indicator.querySelector(".text-status-error")).not.toBeNull();
+    expect(indicator.querySelector(".rounded-full")).toBeNull();
+  });
+
+  it("renders CI status X icon for error PRs", () => {
+    const prWithCI: GitHubPR = { ...basePR, ciStatus: "ERROR" };
+    render(<GitHubListItem item={prWithCI} type="pr" />);
+    const indicator = screen.getByLabelText("Checks failing");
+    expect(indicator.querySelector("svg")).not.toBeNull();
+    expect(indicator.querySelector(".text-status-error")).not.toBeNull();
+  });
+
+  it("renders CI status dot for pending PRs", () => {
+    const prWithCI: GitHubPR = { ...basePR, ciStatus: "PENDING" };
+    render(<GitHubListItem item={prWithCI} type="pr" />);
+    const indicator = screen.getByLabelText("Checks pending");
+    expect(indicator.querySelector("svg")).toBeNull();
+    expect(indicator.querySelector(".bg-status-warning")).not.toBeNull();
+  });
+
+  it("renders CI status dot for expected PRs", () => {
+    const prWithCI: GitHubPR = { ...basePR, ciStatus: "EXPECTED" };
+    render(<GitHubListItem item={prWithCI} type="pr" />);
+    const indicator = screen.getByLabelText("Checks pending");
+    expect(indicator.querySelector("svg")).toBeNull();
+    expect(indicator.querySelector(".bg-status-warning")).not.toBeNull();
   });
 
   it("renders linked PR icon button for issues", () => {
@@ -220,11 +256,95 @@ describe("GitHubListItem", () => {
     expect(copyButton.textContent).toBe("#42");
   });
 
-  it("applies selected state when isActive", () => {
+  it("applies active highlight when isActive but not selected", () => {
     const { container } = render(<GitHubListItem item={baseIssue} type="issue" isActive />);
     const option = container.querySelector("[role='option']");
-    expect(option?.getAttribute("aria-selected")).toBe("true");
+    expect(option?.getAttribute("aria-selected")).toBe("false");
     expect(option?.className).toContain("bg-muted/50");
+  });
+
+  it("applies selected styling and aria-selected when isSelected", () => {
+    const { container } = render(
+      <GitHubListItem
+        item={baseIssue}
+        type="issue"
+        isSelected
+        isSelectionActive
+        onToggleSelect={vi.fn()}
+      />
+    );
+    const option = container.querySelector("[role='option']");
+    expect(option?.getAttribute("aria-selected")).toBe("true");
+    expect(option?.className).toContain("bg-canopy-accent/10");
+  });
+
+  it("shows checked checkbox when selected", () => {
+    const { container } = render(
+      <GitHubListItem
+        item={baseIssue}
+        type="issue"
+        isSelected
+        isSelectionActive
+        onToggleSelect={vi.fn()}
+      />
+    );
+    const checkboxes = container.querySelectorAll("[aria-hidden='true']");
+    const checked = Array.from(checkboxes).find((el) =>
+      (el.getAttribute("class") ?? "").includes("bg-canopy-accent")
+    );
+    expect(checked).not.toBeUndefined();
+  });
+
+  it("scopes checkbox hover to icon area via named group", () => {
+    const { container } = render(
+      <GitHubListItem item={baseIssue} type="issue" onToggleSelect={vi.fn()} />
+    );
+    const iconWrapper = container.querySelector(".group\\/icon");
+    expect(iconWrapper).not.toBeNull();
+
+    const children = iconWrapper!.querySelectorAll(":scope > span");
+    const stateIcon = children[0];
+    const checkbox = children[1];
+
+    expect(stateIcon?.className).toContain("group-hover/icon:hidden");
+    expect(stateIcon?.className).not.toContain("group-hover:hidden");
+
+    expect(checkbox?.className).toContain("group-hover/icon:flex");
+    expect(checkbox?.className).not.toContain("group-hover:flex");
+  });
+
+  it("shows checkbox unconditionally when selection is active", () => {
+    const { container } = render(
+      <GitHubListItem item={baseIssue} type="issue" isSelectionActive onToggleSelect={vi.fn()} />
+    );
+    const iconWrapper = container.querySelector(".group\\/icon");
+    expect(iconWrapper).not.toBeNull();
+
+    const children = iconWrapper!.querySelectorAll(":scope > span");
+    const stateIcon = children[0];
+    const checkbox = children[1];
+
+    expect(stateIcon?.className).toContain("hidden");
+    expect(stateIcon?.className).not.toContain("group-hover/icon:hidden");
+
+    expect(checkbox?.className).toContain("flex");
+    expect(checkbox?.className).not.toContain("group-hover/icon:flex");
+  });
+
+  it("calls onToggleSelect when clicking title during active selection", () => {
+    const onToggleSelect = vi.fn();
+    vi.mocked(actionService.dispatch).mockClear();
+    render(
+      <GitHubListItem
+        item={baseIssue}
+        type="issue"
+        isSelectionActive
+        onToggleSelect={onToggleSelect}
+      />
+    );
+    fireEvent.click(screen.getByText("Fix the thing"));
+    expect(onToggleSelect).toHaveBeenCalled();
+    expect(actionService.dispatch).not.toHaveBeenCalled();
   });
 
   it("renders assignee avatar for issues with assignees", () => {
@@ -291,6 +411,37 @@ describe("GitHubListItem", () => {
     const forkPR: GitHubPR = { ...basePR, isFork: true };
     render(<GitHubListItem item={forkPR} type="pr" onCreateWorktree={vi.fn()} />);
     expect(screen.queryByLabelText("Create worktree")).toBeNull();
+  });
+
+  it("shows comment count for issues with commentCount >= 1", () => {
+    render(<GitHubListItem item={{ ...baseIssue, commentCount: 3 }} type="issue" />);
+    expect(screen.getByText("3")).toBeTruthy();
+  });
+
+  it("hides comment count for issues with commentCount 0", () => {
+    render(<GitHubListItem item={{ ...baseIssue, commentCount: 0 }} type="issue" />);
+    // The "0" should not appear as a comment count
+    const allText = screen.queryAllByText("0");
+    expect(allText).toHaveLength(0);
+  });
+
+  it("shows comment count for PRs with commentCount >= 1", () => {
+    render(<GitHubListItem item={{ ...basePR, commentCount: 7 }} type="pr" />);
+    expect(screen.getByText("7")).toBeTruthy();
+  });
+
+  it("hides comment count for PRs with commentCount 0", () => {
+    const { container } = render(
+      <GitHubListItem item={{ ...basePR, commentCount: 0 }} type="pr" />
+    );
+    const svgs = container.querySelectorAll("svg.lucide-message-square");
+    expect(svgs).toHaveLength(0);
+  });
+
+  it("hides comment count for PRs without commentCount", () => {
+    const { container } = render(<GitHubListItem item={basePR} type="pr" />);
+    const svgs = container.querySelectorAll("svg.lucide-message-square");
+    expect(svgs).toHaveLength(0);
   });
 
   it("does not show Copy icon - only # prefix and Check on copy", async () => {

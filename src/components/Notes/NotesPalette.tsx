@@ -21,7 +21,7 @@ import {
   ExternalLink,
   X,
   AlertTriangle,
-  StickyNote,
+  Leaf,
   ChevronDown,
   PenLine,
   Eye,
@@ -196,7 +196,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     <>
       {createPortal(
         <div
-          className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 backdrop-blur-xs backdrop-saturate-[1.25] motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150"
+          className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-scrim-medium backdrop-blur-xs backdrop-saturate-[1.25] motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150"
           onClick={actions.handleBackdropClick}
           role="dialog"
           aria-modal="true"
@@ -226,12 +226,11 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                     <TooltipTrigger asChild>
                       <Button
                         onClick={() => actions.handleCreateNote()}
-                        size="sm"
+                        variant="ghost"
+                        size="icon-sm"
                         aria-label="Create new note"
-                        className="h-7 px-2.5 text-xs"
                       >
-                        <Plus size={14} className="mr-1" />
-                        New
+                        <Plus />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
@@ -568,7 +567,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                   </>
                 ) : (
                   <div className="flex-1 flex flex-col items-center justify-center text-canopy-text/30">
-                    <StickyNote size={32} className="mb-3" />
+                    <Leaf size={32} className="mb-3" />
                     <p className="text-sm">Select a note to view</p>
                     <p className="text-xs mt-2">
                       or press{" "}

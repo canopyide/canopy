@@ -16,9 +16,12 @@ import { usePerformanceModeStore } from "@/store/performanceModeStore";
 import { useTerminalFontStore } from "@/store/terminalFontStore";
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
 import { getXtermOptions } from "@/config/xtermConfig";
+import { useScreenReaderStore } from "@/store/screenReaderStore";
 import { useTerminalColorSchemeStore } from "@/store/terminalColorSchemeStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useLayoutConfigStore } from "@/store/layoutConfigStore";
+import { usePanelLimitStore, evaluatePanelLimit } from "@/store/panelLimitStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import { saveTerminals, saveTabGroups } from "./persistence";
 import { optimizeForDock } from "./layout";
 import {
@@ -31,6 +34,17 @@ import {
   stopDevPreviewByPanelId,
 } from "./helpers";
 import type { TrashExpiryHelpers } from "./trash";
+
+// Lazy accessor to break circular dependency: core -> projectStore -> terminalPersistence -> core.
+// Resolved on first call (after app init), then cached.
+let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
+async function resolveProjectStore() {
+  if (!_cachedProjectStore) {
+    const mod = await import("@/store/projectStore");
+    _cachedProjectStore = mod.useProjectStore;
+  }
+  return _cachedProjectStore;
+}
 
 type Set = TerminalRegistryStoreApi["setState"];
 type Get = TerminalRegistryStoreApi["getState"];
@@ -55,6 +69,55 @@ export const createCorePanelActions = (
   | "toggleTerminalLocation"
 > => ({
   addTerminal: async (options) => {
+    // Panel limit enforcement (Tier 2: confirmation, Tier 3: hard block)
+    if (!options.bypassLimits) {
+      const { softWarningLimit, confirmationLimit, hardLimit, requestConfirmation } =
+        usePanelLimitStore.getState();
+      const globalCount = get().terminals.filter((t) => t.location !== "trash").length;
+      const tier = evaluatePanelLimit(globalCount, {
+        softWarningLimit,
+        confirmationLimit,
+        hardLimit,
+      });
+
+      if (tier === "hard") {
+        useNotificationStore.getState().addNotification({
+          type: "warning",
+          priority: "high",
+          title: "Panel limit reached",
+          message: `Maximum of ${hardLimit} panels reached. Close some panels before adding new ones.`,
+          duration: 5000,
+        });
+        return null;
+      }
+
+      if (tier === "confirm") {
+        let memoryMB: number | null = null;
+        try {
+          const metrics = await import("@/clients").then((m) => m.systemClient.getAppMetrics());
+          memoryMB = metrics.totalMemoryMB;
+        } catch {
+          // Memory info unavailable
+        }
+
+        const confirmed = await requestConfirmation(globalCount, memoryMB);
+        if (!confirmed) return null;
+
+        // Re-check count after confirmation in case panels were closed during the dialog
+        const postConfirmCount = get().terminals.filter((t) => t.location !== "trash").length;
+        if (postConfirmCount >= hardLimit) {
+          useNotificationStore.getState().addNotification({
+            type: "warning",
+            priority: "high",
+            title: "Panel limit reached",
+            message: `Maximum of ${hardLimit} panels reached. Close some panels before adding new ones.`,
+            duration: 5000,
+          });
+          return null;
+        }
+      }
+    }
+
     const requestedKind = options.kind ?? (options.agentId ? "agent" : "terminal");
     const legacyType = options.type || "terminal";
 
@@ -234,13 +297,18 @@ export const createCorePanelActions = (
     const shouldBackground = location === "dock" || (location === "grid" && !isInActiveWorktree);
     const runtimeStatus: TerminalRuntimeStatus = shouldBackground ? "background" : "running";
 
+    // Capture project ID synchronously before any async work to avoid race conditions
+    // if the user switches projects during async operations (issue #3690).
+    // resolveProjectStore() is cached after first call, so subsequent calls resolve immediately.
+    const projectStore = await resolveProjectStore();
+    const capturedProjectId = projectStore.getState().currentProject?.id;
+
     // Fetch project environment variables and merge with spawn options
     // Precedence: spawn-time env > project env (spawn-time overrides project)
     let mergedEnv: Record<string, string> | undefined = options.env;
     try {
-      const currentProject = await projectClient.getCurrent();
-      if (currentProject?.id) {
-        const projectSettings = await projectClient.getSettings(currentProject.id);
+      if (capturedProjectId) {
+        const projectSettings = await projectClient.getSettings(capturedProjectId);
         if (
           projectSettings?.environmentVariables &&
           Object.keys(projectSettings.environmentVariables).length > 0
@@ -266,6 +334,7 @@ export const createCorePanelActions = (
         const commandToExecute = options.skipCommandExecution ? undefined : options.command;
         id = await terminalClient.spawn({
           id: options.requestedId,
+          projectId: capturedProjectId,
           cwd: options.cwd,
           shell: options.shell,
           cols: 80,
@@ -278,6 +347,8 @@ export const createCorePanelActions = (
           worktreeId: options.worktreeId,
           env: mergedEnv,
           restore: options.restore,
+          agentLaunchFlags: options.agentLaunchFlags,
+          agentModelId: options.agentModelId,
         });
       }
 
@@ -299,12 +370,14 @@ export const createCorePanelActions = (
           : getScrollbackForType(legacyType, projectScrollback ?? scrollbackLines);
 
         const { getEffectiveTheme } = useTerminalColorSchemeStore.getState();
+        const screenReaderMode = useScreenReaderStore.getState().resolvedScreenReaderEnabled();
         const terminalOptions = getXtermOptions({
           fontSize,
           fontFamily,
           scrollback: effectiveScrollback,
           performanceMode,
           theme: getEffectiveTheme(),
+          screenReaderMode,
         });
 
         // Prewarm ALL terminal types to ensure managed instance exists.
@@ -382,6 +455,7 @@ export const createCorePanelActions = (
         exitBehavior: options.exitBehavior,
         agentSessionId: options.agentSessionId,
         agentLaunchFlags: options.agentLaunchFlags,
+        agentModelId: options.agentModelId,
         spawnedBy: options.spawnedBy,
         startedAt: Date.now(),
         // Dev-preview specific fields
@@ -524,7 +598,15 @@ export const createCorePanelActions = (
     });
   },
 
-  updateAgentState: (id, agentState, error, lastStateChange, trigger, confidence) => {
+  updateAgentState: (
+    id,
+    agentState,
+    error,
+    lastStateChange,
+    trigger,
+    confidence,
+    waitingReason
+  ) => {
     set((state) => {
       const terminal = state.terminals.find((t) => t.id === id);
       if (!terminal) {
@@ -541,6 +623,7 @@ export const createCorePanelActions = (
               lastStateChange: lastStateChange ?? Date.now(),
               stateChangeTrigger: trigger,
               stateChangeConfidence: confidence,
+              waitingReason: agentState === "waiting" ? waitingReason : undefined,
             }
           : t
       );

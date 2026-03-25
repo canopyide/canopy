@@ -1,9 +1,5 @@
 import type { CommandOverride } from "@shared/types/commands";
-import type {
-  CopyTreeSettings,
-  ProjectTerminalSettings,
-  ProjectMcpServerConfig,
-} from "@shared/types/project";
+import type { CopyTreeSettings, ProjectTerminalSettings } from "@shared/types/project";
 import type { NotificationSettings } from "@shared/types/ipc/api";
 
 export interface ProjectSettingsSnapshot {
@@ -26,10 +22,9 @@ export interface ProjectSettingsSnapshot {
   copyTreeSettings: CopyTreeSettings;
   branchPrefixMode: "none" | "username" | "custom";
   branchPrefixCustom: string;
-  agentInstructions: string;
+
   worktreePathPattern: string;
   terminalSettings: ProjectTerminalSettings | undefined;
-  mcpServers: Record<string, ProjectMcpServerConfig>;
   notificationOverrides: Partial<NotificationSettings> | undefined;
 }
 
@@ -63,10 +58,8 @@ export function createProjectSettingsSnapshot(
   branchPrefixMode: "none" | "username" | "custom" = "none",
   branchPrefixCustom: string = "",
   devServerLoadTimeout: number | undefined = undefined,
-  agentInstructions: string = "",
   worktreePathPattern: string = "",
   terminalSettings: ProjectTerminalSettings | undefined = undefined,
-  mcpServers: Record<string, ProjectMcpServerConfig> = {},
   notificationOverrides: Partial<NotificationSettings> | undefined = undefined
 ): ProjectSettingsSnapshot {
   const envVarRecord: Record<string, string> = {};
@@ -144,34 +137,10 @@ export function createProjectSettingsSnapshot(
     copyTreeSettings: normalizedCopyTreeSettings,
     branchPrefixMode: normalizedMode,
     branchPrefixCustom: normalizedMode === "custom" ? trimmedCustom : "",
-    agentInstructions: agentInstructions.trim(),
     worktreePathPattern: worktreePathPattern.trim(),
     terminalSettings: normalizeTerminalSettings(terminalSettings),
-    mcpServers: normalizeMcpServers(mcpServers),
     notificationOverrides: normalizeNotificationOverrides(notificationOverrides),
   };
-}
-
-function normalizeMcpServers(
-  servers: Record<string, ProjectMcpServerConfig>
-): Record<string, ProjectMcpServerConfig> {
-  const names = Object.keys(servers).sort();
-  const result: Record<string, ProjectMcpServerConfig> = {};
-  for (const name of names) {
-    const s = servers[name];
-    const normalized: ProjectMcpServerConfig = { command: s.command };
-    if (s.args && s.args.length > 0) normalized.args = [...s.args];
-    if (s.env && Object.keys(s.env).length > 0) {
-      const sortedEnv: Record<string, string> = {};
-      for (const k of Object.keys(s.env).sort()) {
-        sortedEnv[k] = s.env[k];
-      }
-      normalized.env = sortedEnv;
-    }
-    if (s.cwd?.trim()) normalized.cwd = s.cwd.trim();
-    result[name] = normalized;
-  }
-  return result;
 }
 
 function normalizeTerminalSettings(
@@ -195,7 +164,6 @@ function normalizeNotificationOverrides(
   if (overrides.completedEnabled !== undefined)
     result.completedEnabled = overrides.completedEnabled;
   if (overrides.waitingEnabled !== undefined) result.waitingEnabled = overrides.waitingEnabled;
-  if (overrides.failedEnabled !== undefined) result.failedEnabled = overrides.failedEnabled;
   if (overrides.soundEnabled !== undefined) result.soundEnabled = overrides.soundEnabled;
   if (overrides.soundFile !== undefined) result.soundFile = overrides.soundFile;
   if (overrides.waitingEscalationEnabled !== undefined)
@@ -283,7 +251,7 @@ export function areSnapshotsEqual(a: ProjectSettingsSnapshot, b: ProjectSettings
 
   if (a.branchPrefixMode !== b.branchPrefixMode) return false;
   if (a.branchPrefixCustom !== b.branchPrefixCustom) return false;
-  if (a.agentInstructions !== b.agentInstructions) return false;
+
   if (a.worktreePathPattern !== b.worktreePathPattern) return false;
 
   // Terminal settings comparison
@@ -300,25 +268,6 @@ export function areSnapshotsEqual(a: ProjectSettingsSnapshot, b: ProjectSettings
     if (!areStringArraysEqual(aTs.shellArgs, bTs.shellArgs)) return false;
   }
 
-  // MCP servers comparison
-  const aMcpKeys = Object.keys(a.mcpServers);
-  const bMcpKeys = Object.keys(b.mcpServers);
-  if (aMcpKeys.length !== bMcpKeys.length) return false;
-  for (const name of aMcpKeys) {
-    const aServer = a.mcpServers[name];
-    const bServer = b.mcpServers[name];
-    if (!bServer) return false;
-    if (aServer.command !== bServer.command) return false;
-    if (aServer.cwd !== bServer.cwd) return false;
-    if (!areStringArraysEqual(aServer.args, bServer.args)) return false;
-    const aEnvKeys = Object.keys(aServer.env ?? {});
-    const bEnvKeys = Object.keys(bServer.env ?? {});
-    if (aEnvKeys.length !== bEnvKeys.length) return false;
-    for (const k of aEnvKeys) {
-      if (aServer.env![k] !== bServer.env?.[k]) return false;
-    }
-  }
-
   // Notification overrides comparison
   const aNotif = a.notificationOverrides;
   const bNotif = b.notificationOverrides;
@@ -329,7 +278,6 @@ export function areSnapshotsEqual(a: ProjectSettingsSnapshot, b: ProjectSettings
   } else {
     if (aNotif.completedEnabled !== bNotif.completedEnabled) return false;
     if (aNotif.waitingEnabled !== bNotif.waitingEnabled) return false;
-    if (aNotif.failedEnabled !== bNotif.failedEnabled) return false;
     if (aNotif.soundEnabled !== bNotif.soundEnabled) return false;
     if (aNotif.soundFile !== bNotif.soundFile) return false;
     if (aNotif.waitingEscalationEnabled !== bNotif.waitingEscalationEnabled) return false;

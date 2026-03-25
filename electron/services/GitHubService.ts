@@ -16,7 +16,9 @@ import type {
 
 import {
   GitHubAuth,
+  GITHUB_API_TIMEOUT_MS,
   REPO_STATS_QUERY,
+  PROJECT_HEALTH_QUERY,
   LIST_ISSUES_QUERY,
   LIST_PRS_QUERY,
   SEARCH_QUERY,
@@ -33,6 +35,9 @@ import type {
   PRCheckResult,
   PRCheckCandidate,
   BatchPRCheckResult,
+  CIStatus,
+  ProjectHealth,
+  ProjectHealthResult,
 } from "./github/index.js";
 
 export type { GitHubTokenConfig, GitHubTokenValidation } from "./github/index.js";
@@ -44,6 +49,9 @@ export type {
   PRCheckResult,
   PRCheckCandidate,
   BatchPRCheckResult,
+  CIStatus,
+  ProjectHealth,
+  ProjectHealthResult,
 };
 
 // Caches
@@ -51,6 +59,7 @@ const repoContextCache = new Cache<string, RepoContext>({ defaultTTL: 300000 });
 const repoStatsCache = new Cache<string, RepoStats>({ defaultTTL: 60000 });
 const issueListCache = new Cache<string, GitHubListResponse<GitHubIssue>>({ defaultTTL: 60000 });
 const prListCache = new Cache<string, GitHubListResponse<GitHubPR>>({ defaultTTL: 60000 });
+const projectHealthCache = new Cache<string, ProjectHealth>({ defaultTTL: 60000 });
 const issueTooltipCache = new Cache<string, IssueTooltipData>({ defaultTTL: 300000 }); // 5 min TTL
 const prTooltipCache = new Cache<string, PRTooltipData>({ defaultTTL: 300000 }); // 5 min TTL
 
@@ -219,6 +228,7 @@ export async function getRepoStats(
     const result = (await client(REPO_STATS_QUERY, {
       owner: context.owner,
       repo: context.repo,
+      request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
     })) as GraphQlQueryResponseData;
 
     const repository = result?.repository;
@@ -272,6 +282,165 @@ export async function getRepoStats(
       };
     }
     return { stats: null, error: parseGitHubError(error) };
+  }
+}
+
+function parseCIStatus(statusCheckRollup: { state?: string } | null | undefined): CIStatus {
+  if (!statusCheckRollup) return "none";
+  const state = statusCheckRollup.state?.toUpperCase();
+  switch (state) {
+    case "SUCCESS":
+      return "success";
+    case "FAILURE":
+      return "failure";
+    case "ERROR":
+      return "error";
+    case "PENDING":
+      return "pending";
+    case "EXPECTED":
+      return "expected";
+    default:
+      return "none";
+  }
+}
+
+function extractMergedCounts(data: Record<string, unknown>): Record<60 | 120 | 180, number> {
+  const getCount = (key: string): number => {
+    const entry = data[key] as { issueCount?: number } | undefined;
+    return entry?.issueCount ?? 0;
+  };
+  return {
+    60: getCount("mergedPRs60"),
+    120: getCount("mergedPRs120"),
+    180: getCount("mergedPRs180"),
+  };
+}
+
+function parseProjectHealthResponse(
+  repository: Record<string, unknown>,
+  mergedCounts: Record<60 | 120 | 180, number>,
+  repoUrl: string
+): ProjectHealth {
+  const defaultBranchRef = repository.defaultBranchRef as {
+    target?: { statusCheckRollup?: { state?: string } | null };
+  } | null;
+  const statusCheckRollup = defaultBranchRef?.target?.statusCheckRollup ?? null;
+
+  const latestRelease = repository.latestRelease as {
+    tagName: string;
+    publishedAt: string | null;
+    url: string;
+  } | null;
+
+  const vulnerabilityAlerts = repository.vulnerabilityAlerts as {
+    totalCount: number;
+  } | null;
+
+  return {
+    ciStatus: parseCIStatus(statusCheckRollup),
+    issueCount: (repository.issues as { totalCount?: number })?.totalCount ?? 0,
+    prCount: (repository.pullRequests as { totalCount?: number })?.totalCount ?? 0,
+    latestRelease: latestRelease
+      ? {
+          tagName: latestRelease.tagName,
+          publishedAt: latestRelease.publishedAt,
+          url: latestRelease.url,
+        }
+      : null,
+    securityAlerts: {
+      visible: vulnerabilityAlerts != null,
+      count: vulnerabilityAlerts?.totalCount ?? 0,
+    },
+    mergeVelocity: {
+      mergedCounts,
+    },
+    repoUrl,
+    lastUpdated: Date.now(),
+  };
+}
+
+export async function getProjectHealth(
+  cwd: string,
+  bypassCache = false
+): Promise<ProjectHealthResult> {
+  const context = await getRepoContext(cwd);
+  if (!context) {
+    return { health: null, error: "Not a GitHub repository" };
+  }
+
+  const cacheKey = `${context.owner}/${context.repo}`;
+  const repoUrl = `https://github.com/${context.owner}/${context.repo}`;
+
+  const client = GitHubAuth.createClient();
+  if (!client) {
+    return { health: null, error: "GitHub token not configured. Set it in Settings." };
+  }
+
+  if (!bypassCache) {
+    const cached = projectHealthCache.get(cacheKey);
+    if (cached) {
+      return { health: cached };
+    }
+  }
+
+  try {
+    const repoQualifier = `repo:${context.owner}/${context.repo}`;
+    const mergedSearchBase = `${repoQualifier} is:pr is:merged`;
+    const now = new Date();
+    const mergedQueryVars = Object.fromEntries(
+      ([60, 120, 180] as const).map((days) => {
+        const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        const dateStr = since.toISOString().slice(0, 10);
+        return [`merged${days}`, `${mergedSearchBase} merged:>=${dateStr}`];
+      })
+    );
+
+    const result = (await client(PROJECT_HEALTH_QUERY, {
+      owner: context.owner,
+      repo: context.repo,
+      ...mergedQueryVars,
+      request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
+    })) as GraphQlQueryResponseData;
+
+    const repository = result?.repository;
+    if (!repository) {
+      return { health: null, error: "Repository not found" };
+    }
+
+    const mergedCounts = extractMergedCounts(result);
+    const health = parseProjectHealthResponse(
+      repository as Record<string, unknown>,
+      mergedCounts,
+      repoUrl
+    );
+    projectHealthCache.set(cacheKey, health);
+    return { health };
+  } catch (error: unknown) {
+    // @octokit/graphql throws GraphqlResponseError on partial failures
+    // (e.g., vulnerabilityAlerts FORBIDDEN). Extract partial data if available.
+    if (error instanceof Error && "data" in error && (error as { data?: unknown }).data) {
+      const partialData = (error as { data: Record<string, unknown> }).data;
+      const repository = partialData?.repository as Record<string, unknown> | undefined;
+      if (repository) {
+        const mergedCounts = extractMergedCounts(partialData);
+        const health = parseProjectHealthResponse(repository, mergedCounts, repoUrl);
+        projectHealthCache.set(cacheKey, health);
+        return { health };
+      }
+    }
+
+    if (isRepoNotFoundError(error)) {
+      repoContextCache.invalidate(cwd);
+      const freshContext = await getRepoContext(cwd);
+      if (
+        freshContext &&
+        (freshContext.owner !== context.owner || freshContext.repo !== context.repo)
+      ) {
+        return getProjectHealth(cwd, bypassCache);
+      }
+    }
+
+    return { health: null, error: parseGitHubError(error) };
   }
 }
 
@@ -421,7 +590,9 @@ export async function batchCheckLinkedPRs(
 
   try {
     const query = buildBatchPRQuery(context.owner, context.repo, candidates);
-    const response = (await client(query)) as Record<string, unknown>;
+    const response = (await client(query, {
+      request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
+    })) as Record<string, unknown>;
 
     const results = parseBatchPRResponse(response, candidates);
     return { results };
@@ -435,7 +606,9 @@ export async function batchCheckLinkedPRs(
       ) {
         try {
           const retryQuery = buildBatchPRQuery(freshContext.owner, freshContext.repo, candidates);
-          const retryResponse = (await client(retryQuery)) as Record<string, unknown>;
+          const retryResponse = (await client(retryQuery, {
+            request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
+          })) as Record<string, unknown>;
           return { results: parseBatchPRResponse(retryResponse, candidates) };
         } catch (retryError) {
           return { results: new Map(), error: parseGitHubError(retryError) };
@@ -486,6 +659,7 @@ export async function assignIssue(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ assignees: [username] }),
+        signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -596,6 +770,7 @@ function updateIssueAssigneeInCache(
 
 function parseGitHubError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  const isTimeout = error instanceof Error && error.name === "TimeoutError";
 
   if (message.includes("rate limit") || message.includes("API rate limit")) {
     return "GitHub rate limit exceeded. Try again in a few minutes.";
@@ -614,13 +789,15 @@ function parseGitHubError(error: unknown): string {
   }
 
   if (
+    isTimeout ||
     message.includes("ENOTFOUND") ||
     message.includes("ETIMEDOUT") ||
     message.includes("ECONNREFUSED") ||
     message.includes("ECONNRESET") ||
     message.includes("EAI_AGAIN") ||
     message.includes("network") ||
-    message.includes("fetch failed")
+    message.includes("fetch failed") ||
+    message.includes("timed out")
   ) {
     return "Cannot reach GitHub. Check your internet connection.";
   }
@@ -635,6 +812,7 @@ function parseGitHubError(error: unknown): string {
 export function clearGitHubCaches(): void {
   repoContextCache.clear();
   repoStatsCache.clear();
+  projectHealthCache.clear();
   issueListCache.clear();
   prListCache.clear();
   issueTooltipCache.clear();
@@ -782,6 +960,7 @@ function parseIssueNode(node: Record<string, unknown>): GitHubIssue {
 function parsePRNode(node: Record<string, unknown>): GitHubPR {
   const author = node.author as { login?: string; avatarUrl?: string } | null;
   const reviewsData = node.reviews as { totalCount?: number };
+  const commentsData = node.comments as { totalCount?: number };
   const merged = node.merged as boolean;
   const rawState = node.state as string;
   const headRepo = node.headRepository as { nameWithOwner?: string } | null;
@@ -815,6 +994,7 @@ function parsePRNode(node: Record<string, unknown>): GitHubPR {
       avatarUrl: author?.avatarUrl ?? "",
     },
     reviewCount: reviewsData?.totalCount,
+    commentCount: commentsData?.totalCount,
     headRefName: (node.headRefName as string) || undefined,
     isFork: isFork ?? undefined,
     ciStatus,
@@ -865,6 +1045,7 @@ export async function listIssues(
           type: "ISSUE",
           cursor: options.cursor,
           limit: 20,
+          request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
 
         const search = response?.search;
@@ -887,6 +1068,7 @@ export async function listIssues(
           cursor: options.cursor,
           limit: 20,
           orderBy,
+          request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
 
         const issues = response?.repository?.issues;
@@ -980,6 +1162,7 @@ export async function listPullRequests(
           type: "ISSUE",
           cursor: options.cursor,
           limit: 20,
+          request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
 
         const search = response?.search;
@@ -1002,6 +1185,7 @@ export async function listPullRequests(
           cursor: options.cursor,
           limit: 20,
           orderBy,
+          request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
 
         const pullRequests = response?.repository?.pullRequests;
@@ -1076,6 +1260,7 @@ export async function getIssueTooltip(
         owner: context.owner,
         repo: context.repo,
         number: issueNumber,
+        request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
 
       const issue = response?.repository?.issue;
@@ -1135,6 +1320,7 @@ export async function getPRTooltip(cwd: string, prNumber: number): Promise<PRToo
         owner: context.owner,
         repo: context.repo,
         number: prNumber,
+        request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
 
       const pr = response?.repository?.pullRequest;
@@ -1199,6 +1385,7 @@ export async function getIssueByNumber(
         owner: context.owner,
         repo: context.repo,
         number: issueNumber,
+        request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
 
       const issue = response?.repository?.issue;
@@ -1232,6 +1419,7 @@ export async function getPRByNumber(cwd: string, prNumber: number): Promise<GitH
         owner: context.owner,
         repo: context.repo,
         number: prNumber,
+        request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
 
       const pr = response?.repository?.pullRequest;

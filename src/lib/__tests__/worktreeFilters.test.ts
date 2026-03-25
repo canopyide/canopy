@@ -5,11 +5,13 @@ import {
   scoreWorktree,
   computeStatus,
   matchesFilters,
+  matchesQuickStateFilter,
   sortWorktrees,
   sortWorktreesByRelevance,
   groupByType,
   hasAnyFilters,
   findIntegrationWorktree,
+  filterTriageWorktrees,
   type DerivedWorktreeMeta,
   type FilterState,
 } from "../worktreeFilters";
@@ -35,13 +37,13 @@ const createEmptyFilters = (): FilterState => ({
 });
 
 const createEmptyMeta = (): DerivedWorktreeMeta => ({
-  hasErrors: false,
   terminalCount: 0,
   hasWorkingAgent: false,
   hasRunningAgent: false,
   hasWaitingAgent: false,
-  hasFailedAgent: false,
   hasCompletedAgent: false,
+  hasMergeConflict: false,
+  chipState: null,
 });
 
 describe("getWorktreeType", () => {
@@ -389,7 +391,7 @@ describe("sortWorktreesByRelevance", () => {
 describe("computeStatus", () => {
   it("includes 'active' when worktree is active", () => {
     const worktree = createMockWorktree();
-    const statuses = computeStatus(worktree, true, false);
+    const statuses = computeStatus(worktree, true);
     expect(statuses).toContain("active");
   });
 
@@ -402,37 +404,25 @@ describe("computeStatus", () => {
         changedFileCount: 5,
       },
     });
-    const statuses = computeStatus(worktree, false, false);
+    const statuses = computeStatus(worktree, false);
     expect(statuses).toContain("dirty");
-  });
-
-  it("includes 'error' when mood is error", () => {
-    const worktree = createMockWorktree({ mood: "error" });
-    const statuses = computeStatus(worktree, false, false);
-    expect(statuses).toContain("error");
-  });
-
-  it("includes 'error' when hasErrors is true", () => {
-    const worktree = createMockWorktree();
-    const statuses = computeStatus(worktree, false, true);
-    expect(statuses).toContain("error");
   });
 
   it("includes 'stale' when mood is stale", () => {
     const worktree = createMockWorktree({ mood: "stale" });
-    const statuses = computeStatus(worktree, false, false);
+    const statuses = computeStatus(worktree, false);
     expect(statuses).toContain("stale");
   });
 
   it("includes 'idle' when no other status", () => {
     const worktree = createMockWorktree();
-    const statuses = computeStatus(worktree, false, false);
+    const statuses = computeStatus(worktree, false);
     expect(statuses).toContain("idle");
   });
 
   it("includes 'idle' when only active", () => {
     const worktree = createMockWorktree();
-    const statuses = computeStatus(worktree, true, false);
+    const statuses = computeStatus(worktree, true);
     expect(statuses).toContain("idle");
   });
 });
@@ -863,6 +853,69 @@ describe("sortWorktrees", () => {
   });
 });
 
+describe("sortWorktrees manual order", () => {
+  it("sorts by manual order", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "a" }),
+      createMockWorktree({ id: "2", name: "b" }),
+      createMockWorktree({ id: "3", name: "c" }),
+    ];
+    const sorted = sortWorktrees(worktrees, "manual", [], ["3", "1", "2"]);
+    expect(sorted.map((w) => w.id)).toEqual(["3", "1", "2"]);
+  });
+
+  it("appends worktrees not in manualOrder to the end", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "a" }),
+      createMockWorktree({ id: "2", name: "b" }),
+      createMockWorktree({ id: "3", name: "c" }),
+    ];
+    const sorted = sortWorktrees(worktrees, "manual", [], ["2"]);
+    expect(sorted[0].id).toBe("2");
+    // remaining items sorted alphabetically as tiebreaker
+    expect(sorted.slice(1).map((w) => w.id)).toEqual(["1", "3"]);
+  });
+
+  it("ignores stale IDs in manualOrder", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "a" }),
+      createMockWorktree({ id: "2", name: "b" }),
+    ];
+    const sorted = sortWorktrees(worktrees, "manual", [], ["99", "2", "1"]);
+    expect(sorted.map((w) => w.id)).toEqual(["2", "1"]);
+  });
+
+  it("respects main worktree precedence in manual mode", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "feature" }),
+      createMockWorktree({ id: "2", name: "main", isMainWorktree: true }),
+    ];
+    const sorted = sortWorktrees(worktrees, "manual", [], ["1", "2"]);
+    expect(sorted[0].id).toBe("2"); // main always first
+  });
+
+  it("respects pinned worktree precedence in manual mode", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "a" }),
+      createMockWorktree({ id: "2", name: "b" }),
+      createMockWorktree({ id: "3", name: "c" }),
+    ];
+    const sorted = sortWorktrees(worktrees, "manual", ["3"], ["1", "2", "3"]);
+    expect(sorted[0].id).toBe("3"); // pinned first
+    expect(sorted.slice(1).map((w) => w.id)).toEqual(["1", "2"]); // then manual order
+  });
+
+  it("falls back to name sort with empty manualOrder", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "charlie" }),
+      createMockWorktree({ id: "2", name: "alpha" }),
+    ];
+    const sorted = sortWorktrees(worktrees, "manual", [], []);
+    // all items have same position (manualOrder.length = 0), tiebreaker is name
+    expect(sorted.map((w) => w.name)).toEqual(["alpha", "charlie"]);
+  });
+});
+
 describe("groupByType", () => {
   it("groups worktrees by type", () => {
     const worktrees = [
@@ -1045,5 +1098,170 @@ describe("findIntegrationWorktree", () => {
     ];
     const result = findIntegrationWorktree(worktrees, "main");
     expect(result).toBeNull();
+  });
+});
+
+describe("filterTriageWorktrees", () => {
+  const buildMetaMap = (entries: [string, Partial<DerivedWorktreeMeta>][]) => {
+    const map = new Map<string, DerivedWorktreeMeta>();
+    for (const [id, overrides] of entries) {
+      map.set(id, { ...createEmptyMeta(), ...overrides });
+    }
+    return map;
+  };
+
+  it("includes worktrees with hasWaitingAgent", () => {
+    const worktrees = [createMockWorktree({ id: "w1", name: "feat-a" })];
+    const metaMap = buildMetaMap([["w1", { hasWaitingAgent: true }]]);
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, undefined, "");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("w1");
+  });
+
+  it("includes worktrees with hasMergeConflict", () => {
+    const worktrees = [createMockWorktree({ id: "w1", name: "feat-a" })];
+    const metaMap = buildMetaMap([["w1", { hasMergeConflict: true }]]);
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, undefined, "");
+    expect(result).toHaveLength(1);
+  });
+
+  it("excludes worktrees with no qualifying conditions", () => {
+    const worktrees = [createMockWorktree({ id: "w1", name: "feat-a" })];
+    const metaMap = buildMetaMap([["w1", {}]]);
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, undefined, "");
+    expect(result).toHaveLength(0);
+  });
+
+  it("excludes worktrees with missing meta", () => {
+    const worktrees = [createMockWorktree({ id: "w1", name: "feat-a" })];
+    const metaMap = new Map<string, DerivedWorktreeMeta>();
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, undefined, "");
+    expect(result).toHaveLength(0);
+  });
+
+  it("excludes main worktree even when qualifying", () => {
+    const worktrees = [
+      createMockWorktree({ id: "main-id", name: "main", isMainWorktree: true }),
+      createMockWorktree({ id: "w1", name: "feat-a" }),
+    ];
+    const metaMap = buildMetaMap([
+      ["main-id", { hasWaitingAgent: true }],
+      ["w1", { hasWaitingAgent: true }],
+    ]);
+    const result = filterTriageWorktrees(worktrees, metaMap, "main-id", undefined, "");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("w1");
+  });
+
+  it("excludes integration worktree even when qualifying", () => {
+    const worktrees = [
+      createMockWorktree({ id: "dev-id", name: "develop", branch: "develop" }),
+      createMockWorktree({ id: "w1", name: "feat-a" }),
+    ];
+    const metaMap = buildMetaMap([
+      ["dev-id", { hasWaitingAgent: true }],
+      ["w1", { hasMergeConflict: true }],
+    ]);
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, "dev-id", "");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("w1");
+  });
+
+  it("filters by text search query", () => {
+    const worktrees = [
+      createMockWorktree({ id: "w1", name: "auth-fix", branch: "bugfix/auth" }),
+      createMockWorktree({ id: "w2", name: "payment-feat", branch: "feature/payment" }),
+    ];
+    const metaMap = buildMetaMap([
+      ["w1", { hasMergeConflict: true }],
+      ["w2", { hasWaitingAgent: true }],
+    ]);
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, undefined, "auth");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("w1");
+  });
+
+  it("filters by #number query matching issueNumber", () => {
+    const worktrees = [
+      createMockWorktree({ id: "w1", name: "feat-a", issueNumber: 42 }),
+      createMockWorktree({ id: "w2", name: "feat-b", issueNumber: 99 }),
+    ];
+    const metaMap = buildMetaMap([
+      ["w1", { hasMergeConflict: true }],
+      ["w2", { hasWaitingAgent: true }],
+    ]);
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, undefined, "#42");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("w1");
+  });
+
+  it("returns all qualifying worktrees when query is empty", () => {
+    const worktrees = [
+      createMockWorktree({ id: "w1", name: "feat-a" }),
+      createMockWorktree({ id: "w2", name: "feat-b" }),
+      createMockWorktree({ id: "w3", name: "feat-c" }),
+    ];
+    const metaMap = buildMetaMap([
+      ["w1", { hasWaitingAgent: true }],
+      ["w2", {}],
+      ["w3", { hasMergeConflict: true }],
+    ]);
+    const result = filterTriageWorktrees(worktrees, metaMap, undefined, undefined, "");
+    expect(result).toHaveLength(2);
+    expect(result.map((w) => w.id)).toEqual(["w1", "w3"]);
+  });
+});
+
+describe("matchesQuickStateFilter", () => {
+  it('"all" matches everything', () => {
+    expect(matchesQuickStateFilter("all", createEmptyMeta())).toBe(true);
+  });
+
+  it('"working" matches when hasWorkingAgent and chipState is null', () => {
+    const meta = { ...createEmptyMeta(), hasWorkingAgent: true, chipState: null };
+    expect(matchesQuickStateFilter("working", meta)).toBe(true);
+  });
+
+  it('"working" matches when hasRunningAgent and chipState is null', () => {
+    const meta = { ...createEmptyMeta(), hasRunningAgent: true, chipState: null };
+    expect(matchesQuickStateFilter("working", meta)).toBe(true);
+  });
+
+  it('"working" does NOT match when chipState overrides to "waiting"', () => {
+    const meta = { ...createEmptyMeta(), hasWorkingAgent: true, chipState: "waiting" as const };
+    expect(matchesQuickStateFilter("working", meta)).toBe(false);
+  });
+
+  it('"working" does NOT match when chipState is "complete"', () => {
+    const meta = { ...createEmptyMeta(), hasWorkingAgent: true, chipState: "complete" as const };
+    expect(matchesQuickStateFilter("working", meta)).toBe(false);
+  });
+
+  it('"working" does NOT match when no active agents', () => {
+    expect(matchesQuickStateFilter("working", createEmptyMeta())).toBe(false);
+  });
+
+  it('"waiting" matches when chipState is "waiting"', () => {
+    const meta = { ...createEmptyMeta(), chipState: "waiting" as const };
+    expect(matchesQuickStateFilter("waiting", meta)).toBe(true);
+  });
+
+  it('"finished" matches chipState "complete"', () => {
+    const meta = { ...createEmptyMeta(), chipState: "complete" as const };
+    expect(matchesQuickStateFilter("finished", meta)).toBe(true);
+  });
+
+  it('"finished" matches chipState "cleanup"', () => {
+    const meta = { ...createEmptyMeta(), chipState: "cleanup" as const };
+    expect(matchesQuickStateFilter("finished", meta)).toBe(true);
+  });
+
+  it('"finished" does NOT match chipState null', () => {
+    expect(matchesQuickStateFilter("finished", createEmptyMeta())).toBe(false);
+  });
+
+  it('"finished" does NOT match chipState "waiting"', () => {
+    const meta = { ...createEmptyMeta(), chipState: "waiting" as const };
+    expect(matchesQuickStateFilter("finished", meta)).toBe(false);
   });
 });

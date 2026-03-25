@@ -7,11 +7,9 @@ const SUMMARY_PATH = resolve(__dirname, "../PulseSummary.tsx");
 const HEATMAP_PATH = resolve(__dirname, "../PulseHeatmap.tsx");
 
 describe("ProjectPulseCard — visual contrast (issue #2645)", () => {
-  it("card shell uses bg-canopy-sidebar for consistent card styling", async () => {
+  it("card shell uses pulse component vars for per-theme shell styling", async () => {
     const content = await readFile(CARD_PATH, "utf-8");
-    expect(content).toContain("bg-canopy-sidebar");
-    expect(content).not.toContain("p-4 bg-surface ");
-    expect(content).not.toContain('"w-fit bg-surface ');
+    expect(content).toContain('"pulse-card');
   });
 
   it("Activity icon does not use reduced-opacity status-success", async () => {
@@ -41,16 +39,14 @@ describe("ProjectPulseCard — visual contrast (issue #2645)", () => {
     expect(content).toContain("text-canopy-text/80");
   });
 
-  it("button hover uses tint overlay pattern, not surface token", async () => {
+  it("button hover uses the pulse control hover component var", async () => {
     const content = await readFile(CARD_PATH, "utf-8");
-    expect(content).toContain("hover:bg-tint/5");
-    expect(content).not.toContain("hover:bg-surface-highlight");
+    expect(content).toContain('"pulse-control');
   });
 
-  it("dropdown selected item uses accent tint, not surface token", async () => {
+  it("inline selector active item uses accent tint fill, not a surface token", async () => {
     const content = await readFile(CARD_PATH, "utf-8");
-    expect(content).toContain("bg-canopy-accent/15");
-    // bg-surface-highlight for active item would be invisible on elevated card
+    expect(content).toContain("color-mix(in oklab, var(--color-accent-primary) 12%, transparent)");
     expect(content).not.toMatch(/rangeDays.*bg-surface-highlight/);
   });
 });
@@ -83,15 +79,16 @@ describe("PulseSummary — visual contrast (issue #2645)", () => {
 });
 
 describe("PulseHeatmap — contrast on elevated card (issue #2645)", () => {
-  it("BEFORE_PROJECT_COLOR uses text-tone neutral mix (not raw canvas bg)", async () => {
+  it("heatmap uses square indicators and pulse component vars", async () => {
     const content = await readFile(HEATMAP_PATH, "utf-8");
-    // bg-canopy-bg (#19191a) has only 1.24:1 against elevated card #2b2b2c
-    expect(content).not.toContain('"bg-canopy-bg"');
+    expect(content).toContain("rounded-[2px]");
+    expect(content).toContain("var(--pulse-empty-bg");
+    expect(content).toContain("var(--pulse-missed-bg)");
   });
 
-  it("MISSED_DAY_COLOR uses at least 30% error mix for visibility on elevated card", async () => {
+  it("most-recent-active ring uses the pulse ring offset token", async () => {
     const content = await readFile(HEATMAP_PATH, "utf-8");
-    // 20% was too close to card bg; 32% provides better separation
-    expect(content).toContain("status-error)_32%");
+    expect(content).toContain("var(--pulse-ring-offset");
+    expect(content).not.toContain('cell.isToday && "ring-2');
   });
 });

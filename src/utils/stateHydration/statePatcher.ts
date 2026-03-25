@@ -37,7 +37,9 @@ export interface AddTerminalArgs {
   exitBehavior?: PanelExitBehavior;
   agentSessionId?: string;
   agentLaunchFlags?: string[];
+  agentModelId?: string;
   restore?: boolean;
+  bypassLimits?: boolean;
 }
 
 export interface SavedTerminalData {
@@ -64,6 +66,7 @@ export interface SavedTerminalData {
   exitBehavior?: PanelExitBehavior;
   agentSessionId?: string;
   agentLaunchFlags?: string[];
+  agentModelId?: string;
 }
 
 interface BackendTerminalData {
@@ -77,6 +80,9 @@ interface BackendTerminalData {
   agentState?: AgentState;
   lastStateChange?: number;
   activityTier?: "active" | "background";
+  agentSessionId?: string;
+  agentLaunchFlags?: string[];
+  agentModelId?: string;
 }
 
 interface ReconnectedTerminalData {
@@ -90,6 +96,9 @@ interface ReconnectedTerminalData {
   agentState?: AgentState;
   lastStateChange?: number;
   activityTier?: "active" | "background";
+  agentSessionId?: string;
+  agentLaunchFlags?: string[];
+  agentModelId?: string;
 }
 
 interface AgentSettingsData {
@@ -176,8 +185,9 @@ export function buildArgsForBackendTerminal(
     browserZoom: isDevPreview ? saved.browserZoom : undefined,
     devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
     exitBehavior: saved.exitBehavior,
-    agentSessionId: saved.agentSessionId,
-    agentLaunchFlags: saved.agentLaunchFlags,
+    agentSessionId: backendTerminal.agentSessionId ?? saved.agentSessionId,
+    agentLaunchFlags: backendTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
+    agentModelId: backendTerminal.agentModelId ?? saved.agentModelId,
   };
 }
 
@@ -224,8 +234,9 @@ export function buildArgsForReconnectedFallback(
     browserZoom: isDevPreview ? saved.browserZoom : undefined,
     devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
     exitBehavior: saved.exitBehavior,
-    agentSessionId: saved.agentSessionId,
-    agentLaunchFlags: saved.agentLaunchFlags,
+    agentSessionId: reconnectedTerminal.agentSessionId ?? saved.agentSessionId,
+    agentLaunchFlags: reconnectedTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
+    agentModelId: reconnectedTerminal.agentModelId ?? saved.agentModelId,
   };
 }
 
@@ -262,7 +273,7 @@ export function buildArgsForRespawn(
           baseCommand,
           agentSettings.agents?.[agentId] ?? {},
           agentId,
-          { clipboardDirectory }
+          { clipboardDirectory, modelId: saved.agentModelId }
         );
       }
     } else if (agentSettings) {
@@ -270,6 +281,7 @@ export function buildArgsForRespawn(
       const baseCommand = agentConfig?.command || agentId;
       command = generateAgentCommand(baseCommand, agentSettings.agents?.[agentId] ?? {}, agentId, {
         clipboardDirectory,
+        modelId: saved.agentModelId,
       });
     }
   }
@@ -296,6 +308,7 @@ export function buildArgsForRespawn(
     devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
     exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
     agentLaunchFlags: saved.agentLaunchFlags,
+    agentModelId: saved.agentModelId,
     restore: true,
   };
 }
@@ -350,5 +363,8 @@ export function buildArgsForOrphanedTerminal(
     existingId: terminal.id,
     agentState: terminal.agentState,
     lastStateChange: terminal.lastStateChange,
+    agentSessionId: terminal.agentSessionId,
+    agentLaunchFlags: terminal.agentLaunchFlags,
+    agentModelId: terminal.agentModelId,
   };
 }

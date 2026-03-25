@@ -1,4 +1,7 @@
 import {
+  Suspense,
+  lazy,
+  startTransition,
   useState,
   useEffect,
   useDeferredValue,
@@ -8,7 +11,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
-  useSidecarStore,
+  usePortalStore,
   usePerformanceModeStore,
   useScrollbackStore,
   useLayoutConfigStore,
@@ -18,14 +21,13 @@ import {
 } from "@/store";
 import {
   X,
-  Waypoints,
+  TreeDeciduous,
   Code,
   Github,
   LayoutGrid,
   PanelRight,
   Keyboard,
-  GitBranch,
-  Terminal,
+  SquareTerminal,
   Settings as SettingsIcon,
   Settings2,
   LifeBuoy,
@@ -38,27 +40,60 @@ import {
   KeyRound,
   Shield,
 } from "lucide-react";
+import { WorktreeIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { useVerticalScrollShadows } from "@/hooks/useVerticalScrollShadows";
 import { appClient } from "@/clients";
 import { AppDialog } from "@/components/ui/AppDialog";
-import { AgentSettings } from "./AgentSettings";
 import { GeneralTab } from "./GeneralTab";
-import { TerminalSettingsTab } from "./TerminalSettingsTab";
-import { TerminalAppearanceTab } from "./TerminalAppearanceTab";
-import { GitHubSettingsTab } from "./GitHubSettingsTab";
-import { TroubleshootingTab } from "./TroubleshootingTab";
-import { NotificationSettingsTab } from "./NotificationSettingsTab";
-import { SidecarSettingsTab } from "./SidecarSettingsTab";
-import { KeyboardShortcutsTab } from "./KeyboardShortcutsTab";
-import { WorktreeSettingsTab } from "./WorktreeSettingsTab";
-import { ToolbarSettingsTab } from "./ToolbarSettingsTab";
-import { EditorIntegrationTab } from "./EditorIntegrationTab";
-import { ImageViewerTab } from "./ImageViewerTab";
-import { VoiceInputSettingsTab } from "./VoiceInputSettingsTab";
-import { McpServerSettingsTab } from "./McpServerSettingsTab";
-import { EnvironmentSettingsTab } from "./EnvironmentSettingsTab";
-import { PrivacyDataTab } from "./PrivacyDataTab";
+const LazyAgentSettings = lazy(() =>
+  import("./AgentSettings").then((m) => ({ default: m.AgentSettings }))
+);
+const LazyTerminalSettingsTab = lazy(() =>
+  import("./TerminalSettingsTab").then((m) => ({ default: m.TerminalSettingsTab }))
+);
+const LazyTerminalAppearanceTab = lazy(() =>
+  import("./TerminalAppearanceTab").then((m) => ({ default: m.TerminalAppearanceTab }))
+);
+const LazyGitHubSettingsTab = lazy(() =>
+  import("./GitHubSettingsTab").then((m) => ({ default: m.GitHubSettingsTab }))
+);
+const LazyTroubleshootingTab = lazy(() =>
+  import("./TroubleshootingTab").then((m) => ({ default: m.TroubleshootingTab }))
+);
+const LazyNotificationSettingsTab = lazy(() =>
+  import("./NotificationSettingsTab").then((m) => ({ default: m.NotificationSettingsTab }))
+);
+const LazyPortalSettingsTab = lazy(() =>
+  import("./PortalSettingsTab").then((m) => ({ default: m.PortalSettingsTab }))
+);
+const LazyKeyboardShortcutsTab = lazy(() =>
+  import("./KeyboardShortcutsTab").then((m) => ({ default: m.KeyboardShortcutsTab }))
+);
+const LazyWorktreeSettingsTab = lazy(() =>
+  import("./WorktreeSettingsTab").then((m) => ({ default: m.WorktreeSettingsTab }))
+);
+const LazyToolbarSettingsTab = lazy(() =>
+  import("./ToolbarSettingsTab").then((m) => ({ default: m.ToolbarSettingsTab }))
+);
+const LazyEditorIntegrationTab = lazy(() =>
+  import("./EditorIntegrationTab").then((m) => ({ default: m.EditorIntegrationTab }))
+);
+const LazyImageViewerTab = lazy(() =>
+  import("./ImageViewerTab").then((m) => ({ default: m.ImageViewerTab }))
+);
+const LazyVoiceInputSettingsTab = lazy(() =>
+  import("./VoiceInputSettingsTab").then((m) => ({ default: m.VoiceInputSettingsTab }))
+);
+const LazyMcpServerSettingsTab = lazy(() =>
+  import("./McpServerSettingsTab").then((m) => ({ default: m.McpServerSettingsTab }))
+);
+const LazyEnvironmentSettingsTab = lazy(() =>
+  import("./EnvironmentSettingsTab").then((m) => ({ default: m.EnvironmentSettingsTab }))
+);
+const LazyPrivacyDataTab = lazy(() =>
+  import("./PrivacyDataTab").then((m) => ({ default: m.PrivacyDataTab }))
+);
 import { SETTINGS_SEARCH_INDEX } from "./settingsSearchIndex";
 import {
   filterSettings,
@@ -67,6 +102,8 @@ import {
   parseQuery,
 } from "./settingsSearchUtils";
 import { SCROLLBACK_DEFAULT } from "@shared/config/scrollback";
+
+let rememberedTab: SettingsTab = "general";
 
 export interface SettingsNavTarget {
   tab: SettingsTab;
@@ -91,7 +128,7 @@ export type SettingsTab =
   | "worktree"
   | "agents"
   | "github"
-  | "sidecar"
+  | "portal"
   | "toolbar"
   | "notifications"
   | "editor"
@@ -110,23 +147,39 @@ export function SettingsDialog({
   defaultSectionId,
   onSettingsChange,
 }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? rememberedTab);
+  const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTab>>(
+    () => new Set<SettingsTab>([defaultTab ?? rememberedTab])
+  );
+
+  useEffect(() => {
+    rememberedTab = activeTab;
+  }, [activeTab]);
+  const markTabVisited = useCallback((tab: SettingsTab) => {
+    setVisitedTabs((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
+  }, []);
   const [activeSubtabs, setActiveSubtabs] = useState<Partial<Record<SettingsTab, string>>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const deferredQuery = useDeferredValue(searchQuery);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const setSidecarOpen = useSidecarStore((state) => state.setOpen);
+  const setPortalOpen = usePortalStore((state) => state.setOpen);
 
   useEffect(() => {
     if (isOpen) {
-      setSidecarOpen(false);
+      setPortalOpen(false);
     }
-  }, [isOpen, setSidecarOpen]);
+  }, [isOpen, setPortalOpen]);
 
   const [appVersion, setAppVersion] = useState<string>("Loading...");
 
   useEffect(() => {
     if (isOpen && defaultTab) {
+      markTabVisited(defaultTab);
       if (defaultTab !== activeTab) {
         setActiveTab(defaultTab);
       }
@@ -190,12 +243,20 @@ export function SettingsDialog({
   const twoPaneSplitConfig = useTwoPaneSplitStore((s) => s.config);
   const showProjectPulse = usePreferencesStore((s) => s.showProjectPulse);
   const showDeveloperTools = usePreferencesStore((s) => s.showDeveloperTools);
+  const showGridAgentHighlights = usePreferencesStore((s) => s.showGridAgentHighlights);
+  const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);
 
   const modifiedTabs = useMemo(() => {
     const tabs = new Set<SettingsTab>();
 
-    // General defaults: showProjectPulse=true, showDeveloperTools=false
-    if (!showProjectPulse || showDeveloperTools) tabs.add("general");
+    // General defaults: showProjectPulse=true, showDeveloperTools=false, showGridAgentHighlights=false, showDockAgentHighlights=false
+    if (
+      !showProjectPulse ||
+      showDeveloperTools ||
+      showGridAgentHighlights ||
+      showDockAgentHighlights
+    )
+      tabs.add("general");
 
     // Terminal defaults: performanceMode=false, scrollback=SCROLLBACK_DEFAULT, strategy=automatic,
     // hybridInput=true, hybridAutoFocus=true, twoPaneSplit.enabled=true, preferPreview=false, ratio=0.5
@@ -216,6 +277,8 @@ export function SettingsDialog({
   }, [
     showProjectPulse,
     showDeveloperTools,
+    showGridAgentHighlights,
+    showDockAgentHighlights,
     performanceMode,
     scrollbackLines,
     layoutConfig.strategy,
@@ -240,13 +303,14 @@ export function SettingsDialog({
   const isSearching = searchQuery.trim().length > 0;
 
   const handleResultClick = ({ tab, subtab, sectionId }: SettingsNavTarget) => {
-    setActiveTab(tab);
+    markTabVisited(tab);
     setSearchQuery("");
     setScrollToSection(sectionId ?? null);
     if (subtab !== undefined) {
       setActiveSubtabs((prev) => ({ ...prev, [tab]: subtab }));
     }
     searchInputRef.current?.blur();
+    startTransition(() => setActiveTab(tab));
   };
 
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
@@ -284,25 +348,39 @@ export function SettingsDialog({
   useEffect(() => {
     if (!scrollToSection || isSearching) return;
     let highlightTimer: ReturnType<typeof setTimeout>;
-    const timer = setTimeout(() => {
+    let attempt = 0;
+    const maxAttempts = 20;
+    const tryScroll = () => {
       const el = document.getElementById(scrollToSection);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
         el.classList.add("settings-highlight");
         highlightTimer = setTimeout(() => el.classList.remove("settings-highlight"), 1500);
+        return;
       }
-    }, 100);
+      attempt++;
+      if (attempt < maxAttempts) {
+        timers.push(setTimeout(tryScroll, 100));
+      }
+    };
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(setTimeout(tryScroll, 100));
     return () => {
-      clearTimeout(timer);
+      timers.forEach(clearTimeout);
       clearTimeout(highlightTimer);
     };
   }, [scrollToSection, activeTab, isSearching]);
 
-  const handleNavSelect = useCallback((tab: SettingsTab) => {
-    setActiveTab(tab);
-    setSearchQuery("");
-    setScrollToSection(null);
-  }, []);
+  const handleNavSelect = useCallback(
+    (tab: SettingsTab) => {
+      markTabVisited(tab);
+      setSearchQuery("");
+      setScrollToSection(null);
+      startTransition(() => setActiveTab(tab));
+    },
+    [markTabVisited]
+  );
 
   const tablistRef = useRef<HTMLDivElement>(null);
   const { canScrollUp, canScrollDown } = useVerticalScrollShadows(tablistRef);
@@ -351,7 +429,7 @@ export function SettingsDialog({
     worktree: "Worktree Paths",
     agents: "CLI Agents",
     github: "GitHub Integration",
-    sidecar: "Sidecar Links",
+    portal: "Portal Links",
     toolbar: "Toolbar Customization",
     notifications: "Notifications",
     editor: "Editor Integration",
@@ -364,23 +442,23 @@ export function SettingsDialog({
   };
 
   const tabIcons: Record<SettingsTab, React.ReactNode> = {
-    general: <Settings2 className="w-5 h-5 text-canopy-text/60" />,
-    keyboard: <Keyboard className="w-5 h-5 text-canopy-text/60" />,
-    terminal: <LayoutGrid className="w-5 h-5 text-canopy-text/60" />,
-    terminalAppearance: <Terminal className="w-5 h-5 text-canopy-text/60" />,
-    worktree: <GitBranch className="w-5 h-5 text-canopy-text/60" />,
-    agents: <Waypoints className="w-5 h-5 text-canopy-text/60" />,
-    github: <Github className="w-5 h-5 text-canopy-text/60" />,
-    sidecar: <PanelRight className="w-5 h-5 text-canopy-text/60" />,
-    toolbar: <SettingsIcon className="w-5 h-5 text-canopy-text/60" />,
-    notifications: <Bell className="w-5 h-5 text-canopy-text/60" />,
-    editor: <Code className="w-5 h-5 text-canopy-text/60" />,
-    imageViewer: <Image className="w-5 h-5 text-canopy-text/60" />,
-    voice: <Mic className="w-5 h-5 text-canopy-text/60" />,
-    mcp: <Plug className="w-5 h-5 text-canopy-text/60" />,
-    environment: <KeyRound className="w-5 h-5 text-canopy-text/60" />,
-    privacy: <Shield className="w-5 h-5 text-canopy-text/60" />,
-    troubleshooting: <LifeBuoy className="w-5 h-5 text-canopy-text/60" />,
+    general: <Settings2 className="w-5 h-5 text-text-secondary" />,
+    keyboard: <Keyboard className="w-5 h-5 text-text-secondary" />,
+    terminal: <LayoutGrid className="w-5 h-5 text-text-secondary" />,
+    terminalAppearance: <SquareTerminal className="w-5 h-5 text-text-secondary" />,
+    worktree: <WorktreeIcon className="w-5 h-5 text-text-secondary" />,
+    agents: <TreeDeciduous className="w-5 h-5 text-text-secondary" />,
+    github: <Github className="w-5 h-5 text-text-secondary" />,
+    portal: <PanelRight className="w-5 h-5 text-text-secondary" />,
+    toolbar: <SettingsIcon className="w-5 h-5 text-text-secondary" />,
+    notifications: <Bell className="w-5 h-5 text-text-secondary" />,
+    editor: <Code className="w-5 h-5 text-text-secondary" />,
+    imageViewer: <Image className="w-5 h-5 text-text-secondary" />,
+    voice: <Mic className="w-5 h-5 text-text-secondary" />,
+    mcp: <Plug className="w-5 h-5 text-text-secondary" />,
+    environment: <KeyRound className="w-5 h-5 text-text-secondary" />,
+    privacy: <Shield className="w-5 h-5 text-text-secondary" />,
+    troubleshooting: <LifeBuoy className="w-5 h-5 text-text-secondary" />,
   };
 
   return (
@@ -389,21 +467,21 @@ export function SettingsDialog({
       onClose={onClose}
       size="4xl"
       maxHeight="h-[75vh]"
-      className="min-h-[500px] max-h-[800px]"
+      className="settings-shell min-h-[500px] max-h-[800px]"
     >
       <div className="flex h-full overflow-hidden">
-        <div className="w-48 border-r border-canopy-border bg-canopy-bg/50 p-3 flex flex-col shrink-0">
+        <div className="settings-sidebar w-48 border-r border-canopy-border p-3 flex flex-col shrink-0">
           <h2 className="text-sm font-semibold text-canopy-text mb-2 px-2">Settings</h2>
 
           <div
             className={cn(
               "flex items-center gap-1.5 px-2 py-1.5 mb-2 rounded-[var(--radius-md)]",
-              "bg-canopy-bg border border-canopy-border",
+              "settings-search border border-canopy-border",
               "focus-within:border-canopy-accent focus-within:ring-1 focus-within:ring-canopy-accent/20"
             )}
           >
             <Search
-              className="w-3.5 h-3.5 shrink-0 text-canopy-text/40 pointer-events-none"
+              className="settings-search-icon w-3.5 h-3.5 shrink-0 pointer-events-none"
               aria-hidden="true"
             />
             <input
@@ -414,7 +492,7 @@ export function SettingsDialog({
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               aria-label="Search settings"
-              className="flex-1 min-w-0 text-xs bg-transparent text-canopy-text placeholder:text-text-muted focus:outline-none"
+              className="settings-search-input flex-1 min-w-0 text-xs bg-transparent text-canopy-text focus:outline-none"
             />
             {searchQuery && (
               <button
@@ -443,7 +521,7 @@ export function SettingsDialog({
             {canScrollUp && (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-canopy-bg to-transparent z-10"
+                className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-[var(--settings-sidebar-bg,var(--theme-surface-sidebar))] to-transparent z-10"
               />
             )}
             <div
@@ -467,7 +545,7 @@ export function SettingsDialog({
                 />
                 <NavItem
                   tab="terminalAppearance"
-                  icon={<Terminal className="w-4 h-4" />}
+                  icon={<SquareTerminal className="w-4 h-4" />}
                   label="Appearance"
                   activeTab={activeTab}
                   isSearching={isSearching}
@@ -516,7 +594,7 @@ export function SettingsDialog({
                 />
                 <NavItem
                   tab="worktree"
-                  icon={<GitBranch className="w-4 h-4" />}
+                  icon={<WorktreeIcon className="w-4 h-4" />}
                   label="Worktree"
                   activeTab={activeTab}
                   isSearching={isSearching}
@@ -546,7 +624,7 @@ export function SettingsDialog({
               <NavGroup label="Integrations">
                 <NavItem
                   tab="agents"
-                  icon={<Waypoints className="w-4 h-4" />}
+                  icon={<TreeDeciduous className="w-4 h-4" />}
                   label="CLI Agents"
                   activeTab={activeTab}
                   isSearching={isSearching}
@@ -581,12 +659,12 @@ export function SettingsDialog({
                   onSelect={handleNavSelect}
                 />
                 <NavItem
-                  tab="sidecar"
+                  tab="portal"
                   icon={<PanelRight className="w-4 h-4" />}
-                  label="Sidecar"
+                  label="Portal"
                   activeTab={activeTab}
                   isSearching={isSearching}
-                  matchCount={matchCounts.sidecar}
+                  matchCount={matchCounts.portal}
                   onSelect={handleNavSelect}
                 />
                 <NavItem
@@ -627,22 +705,22 @@ export function SettingsDialog({
             {canScrollDown && (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-canopy-bg to-transparent z-10"
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[var(--settings-sidebar-bg,var(--theme-surface-sidebar))] to-transparent z-10"
               />
             )}
           </div>
 
           <div className="pt-2 mt-2 border-t border-canopy-border px-2">
-            <span className="text-[10px] text-canopy-text/30 font-mono">{appVersion}</span>
+            <span className="settings-meta font-mono">{appVersion}</span>
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
+        <div className="settings-shell flex-1 flex flex-col min-w-0">
+          <div className="settings-header flex items-center justify-between px-6 py-4 border-b border-canopy-border shrink-0">
             <h3 className="text-lg font-medium text-canopy-text flex items-center gap-2">
               {isSearching ? (
                 <>
-                  <Search className="w-5 h-5 text-canopy-text/60" />
+                  <Search className="w-5 h-5 text-text-secondary" />
                   Search Results
                 </>
               ) : (
@@ -684,10 +762,11 @@ export function SettingsDialog({
                   <GeneralTab
                     appVersion={appVersion}
                     onNavigateToAgents={(agentId?: string) => {
-                      setActiveTab("agents");
+                      markTabVisited("agents");
                       if (agentId) {
                         setActiveSubtabs((prev) => ({ ...prev, agents: agentId }));
                       }
+                      startTransition(() => setActiveTab("agents"));
                     }}
                     activeSubtab={activeSubtabs["general"] ?? null}
                     onSubtabChange={(id) => setActiveSubtabs((prev) => ({ ...prev, general: id }))}
@@ -701,7 +780,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "keyboard" ? "" : "hidden"}
                 >
-                  <KeyboardShortcutsTab />
+                  {visitedTabs.has("keyboard") && (
+                    <Suspense fallback={null}>
+                      <LazyKeyboardShortcutsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -711,10 +794,16 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "terminal" ? "" : "hidden"}
                 >
-                  <TerminalSettingsTab
-                    activeSubtab={activeSubtabs["terminal"] ?? null}
-                    onSubtabChange={(id) => setActiveSubtabs((prev) => ({ ...prev, terminal: id }))}
-                  />
+                  {visitedTabs.has("terminal") && (
+                    <Suspense fallback={null}>
+                      <LazyTerminalSettingsTab
+                        activeSubtab={activeSubtabs["terminal"] ?? null}
+                        onSubtabChange={(id) =>
+                          setActiveSubtabs((prev) => ({ ...prev, terminal: id }))
+                        }
+                      />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -724,12 +813,16 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "terminalAppearance" ? "" : "hidden"}
                 >
-                  <TerminalAppearanceTab
-                    activeSubtab={activeSubtabs["terminalAppearance"] ?? null}
-                    onSubtabChange={(id) =>
-                      setActiveSubtabs((prev) => ({ ...prev, terminalAppearance: id }))
-                    }
-                  />
+                  {visitedTabs.has("terminalAppearance") && (
+                    <Suspense fallback={null}>
+                      <LazyTerminalAppearanceTab
+                        activeSubtab={activeSubtabs["terminalAppearance"] ?? null}
+                        onSubtabChange={(id) =>
+                          setActiveSubtabs((prev) => ({ ...prev, terminalAppearance: id }))
+                        }
+                      />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -739,7 +832,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "worktree" ? "" : "hidden"}
                 >
-                  <WorktreeSettingsTab />
+                  {visitedTabs.has("worktree") && (
+                    <Suspense fallback={null}>
+                      <LazyWorktreeSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -749,11 +846,17 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "agents" ? "" : "hidden"}
                 >
-                  <AgentSettings
-                    activeSubtab={activeSubtabs["agents"] ?? null}
-                    onSubtabChange={(id) => setActiveSubtabs((prev) => ({ ...prev, agents: id }))}
-                    onSettingsChange={onSettingsChange}
-                  />
+                  {visitedTabs.has("agents") && (
+                    <Suspense fallback={null}>
+                      <LazyAgentSettings
+                        activeSubtab={activeSubtabs["agents"] ?? null}
+                        onSubtabChange={(id) =>
+                          setActiveSubtabs((prev) => ({ ...prev, agents: id }))
+                        }
+                        onSettingsChange={onSettingsChange}
+                      />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -763,17 +866,25 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "github" ? "" : "hidden"}
                 >
-                  <GitHubSettingsTab />
+                  {visitedTabs.has("github") && (
+                    <Suspense fallback={null}>
+                      <LazyGitHubSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
                   role="tabpanel"
-                  id="settings-panel-sidecar"
-                  aria-labelledby="settings-tab-sidecar"
+                  id="settings-panel-portal"
+                  aria-labelledby="settings-tab-portal"
                   tabIndex={0}
-                  className={activeTab === "sidecar" ? "" : "hidden"}
+                  className={activeTab === "portal" ? "" : "hidden"}
                 >
-                  <SidecarSettingsTab />
+                  {visitedTabs.has("portal") && (
+                    <Suspense fallback={null}>
+                      <LazyPortalSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -783,7 +894,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "toolbar" ? "" : "hidden"}
                 >
-                  <ToolbarSettingsTab />
+                  {visitedTabs.has("toolbar") && (
+                    <Suspense fallback={null}>
+                      <LazyToolbarSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -793,7 +908,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "notifications" ? "" : "hidden"}
                 >
-                  <NotificationSettingsTab />
+                  {visitedTabs.has("notifications") && (
+                    <Suspense fallback={null}>
+                      <LazyNotificationSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -803,7 +922,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "editor" ? "" : "hidden"}
                 >
-                  <EditorIntegrationTab />
+                  {visitedTabs.has("editor") && (
+                    <Suspense fallback={null}>
+                      <LazyEditorIntegrationTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -813,7 +936,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "imageViewer" ? "" : "hidden"}
                 >
-                  <ImageViewerTab />
+                  {visitedTabs.has("imageViewer") && (
+                    <Suspense fallback={null}>
+                      <LazyImageViewerTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -823,7 +950,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "voice" ? "" : "hidden"}
                 >
-                  <VoiceInputSettingsTab />
+                  {visitedTabs.has("voice") && (
+                    <Suspense fallback={null}>
+                      <LazyVoiceInputSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -833,7 +964,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "mcp" ? "" : "hidden"}
                 >
-                  <McpServerSettingsTab />
+                  {visitedTabs.has("mcp") && (
+                    <Suspense fallback={null}>
+                      <LazyMcpServerSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -843,7 +978,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "environment" ? "" : "hidden"}
                 >
-                  <EnvironmentSettingsTab />
+                  {visitedTabs.has("environment") && (
+                    <Suspense fallback={null}>
+                      <LazyEnvironmentSettingsTab />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -853,10 +992,16 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "privacy" ? "" : "hidden"}
                 >
-                  <PrivacyDataTab
-                    activeSubtab={activeSubtabs["privacy"] ?? null}
-                    onSubtabChange={(id) => setActiveSubtabs((prev) => ({ ...prev, privacy: id }))}
-                  />
+                  {visitedTabs.has("privacy") && (
+                    <Suspense fallback={null}>
+                      <LazyPrivacyDataTab
+                        activeSubtab={activeSubtabs["privacy"] ?? null}
+                        onSubtabChange={(id) =>
+                          setActiveSubtabs((prev) => ({ ...prev, privacy: id }))
+                        }
+                      />
+                    </Suspense>
+                  )}
                 </div>
 
                 <div
@@ -866,7 +1011,11 @@ export function SettingsDialog({
                   tabIndex={0}
                   className={activeTab === "troubleshooting" ? "" : "hidden"}
                 >
-                  <TroubleshootingTab />
+                  {visitedTabs.has("troubleshooting") && (
+                    <Suspense fallback={null}>
+                      <LazyTroubleshootingTab />
+                    </Suspense>
+                  )}
                 </div>
               </>
             )}
@@ -881,7 +1030,7 @@ function NavGroup({ label, children }: { label: string; children: React.ReactNod
   return (
     <div role="none">
       <span
-        className="text-[10px] font-medium uppercase tracking-wider text-canopy-text/30 px-3 mb-1 block select-none"
+        className="settings-meta font-medium uppercase tracking-wider px-3 mb-1 block select-none"
         aria-hidden="true"
       >
         {label}
@@ -928,10 +1077,12 @@ function NavItem({
       className={cn(
         "relative text-left px-3 py-1.5 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2 w-full",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
+        "settings-nav-item",
         active
-          ? "bg-overlay-soft text-canopy-text before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-          : "text-canopy-text/60 hover:bg-overlay-soft hover:text-canopy-text"
+          ? "text-canopy-text before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
+          : "text-text-secondary hover:text-canopy-text"
       )}
+      data-active={active ? "true" : undefined}
     >
       <span className="relative">
         {icon}
@@ -1000,17 +1151,12 @@ function SearchResults({
     <div className="space-y-1">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-canopy-text/40">
-          {results.length} result{results.length === 1 ? "" : "s"}
+          <span className="tabular-nums">{results.length}</span> result
+          {results.length === 1 ? "" : "s"}
         </p>
         <p className="text-[10px] text-canopy-text/30">
-          <kbd className="px-1 py-0.5 rounded bg-canopy-bg border border-canopy-border font-mono">
-            ↑↓
-          </kbd>{" "}
-          navigate{" "}
-          <kbd className="px-1 py-0.5 rounded bg-canopy-bg border border-canopy-border font-mono">
-            ↵
-          </kbd>{" "}
-          go
+          <kbd className="settings-kbd px-1 py-0.5 rounded border font-mono">↑↓</kbd> navigate{" "}
+          <kbd className="settings-kbd px-1 py-0.5 rounded border font-mono">↵</kbd> go
         </p>
       </div>
       {results.map((result, index) => (

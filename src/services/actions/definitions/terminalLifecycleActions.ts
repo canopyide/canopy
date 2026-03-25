@@ -302,6 +302,21 @@ export function registerTerminalLifecycleActions(
     },
   }));
 
+  actions.set("terminal.restartService", () => ({
+    id: "terminal.restartService",
+    title: "Restart Terminal Service",
+    description:
+      "Restart the PTY host process without reloading the application. Only available when the terminal backend is disconnected.",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    isEnabled: () => useTerminalStore.getState().backendStatus === "disconnected",
+    run: async () => {
+      await terminalClient.restartService();
+    },
+  }));
+
   actions.set("terminal.watch", () => ({
     id: "terminal.watch",
     title: "Watch This Terminal",
@@ -324,12 +339,7 @@ export function registerTerminalLifecycleActions(
         // Fire immediately if agent is already in a terminal attention state
         if (terminal?.agentState === "completed" || terminal?.agentState === "waiting") {
           const { fireWatchNotification } = await import("@/lib/watchNotification");
-          fireWatchNotification(
-            targetId,
-            terminal.title ?? targetId,
-            terminal.agentState,
-            terminal.worktreeId ?? undefined
-          );
+          fireWatchNotification(targetId, terminal.title ?? targetId, terminal.agentState);
         } else {
           state.watchPanel(targetId);
         }

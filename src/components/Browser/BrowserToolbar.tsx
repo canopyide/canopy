@@ -10,7 +10,7 @@ import {
   ZoomIn,
   ZoomOut,
   Camera,
-  Terminal,
+  SquareTerminal,
   Code,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -415,7 +415,7 @@ export function BrowserToolbar({
         {isDropdownOpen && suggestions.length > 0 && (
           <div
             ref={dropdownRef}
-            className="absolute left-0 right-0 top-full mt-1 z-50 bg-canopy-bg border border-overlay rounded shadow-lg overflow-hidden"
+            className="absolute left-0 right-0 top-full mt-1 z-50 bg-canopy-bg border border-overlay rounded shadow-[var(--theme-shadow-floating)] overflow-hidden"
           >
             {suggestions.map((entry, index) => (
               <button
@@ -491,7 +491,7 @@ export function BrowserToolbar({
                 aria-label="Toggle console"
                 aria-pressed={isConsoleOpen}
               >
-                <Terminal className="w-4 h-4" />
+                <SquareTerminal className="w-4 h-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

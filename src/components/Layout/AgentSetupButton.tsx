@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { PackagePlus } from "lucide-react";
+import { CanopyAgentIcon } from "@/components/icons";
 
 export function AgentSetupButton({
   "data-toolbar-item": dataToolbarItem,
@@ -18,10 +18,10 @@ export function AgentSetupButton({
             onClick={() => {
               window.dispatchEvent(new CustomEvent("canopy:open-agent-setup-wizard"));
             }}
-            className="text-canopy-text hover:bg-tint/[0.06] hover:text-canopy-accent focus-visible:text-canopy-accent transition-colors"
+            className="toolbar-agent-button text-canopy-text hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] focus-visible:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] transition-colors"
             aria-label="Install AI Agents"
           >
-            <PackagePlus className="text-canopy-accent" />
+            <CanopyAgentIcon className="text-canopy-accent" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">Install AI Agents</TooltipContent>

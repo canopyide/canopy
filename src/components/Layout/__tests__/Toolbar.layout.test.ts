@@ -92,7 +92,7 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     });
 
     it("uses renderLeftButtons for the left button group", () => {
-      expect(source).toContain("renderLeftButtons(toolbarLayout.leftButtons)");
+      expect(source).toContain("renderLeftButtons(toolbarLayout.leftButtons");
     });
 
     it("divider element has aria-hidden for accessibility", () => {
@@ -130,11 +130,11 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     });
 
     it("branch badge has shrink-0 to stay visible during truncation", () => {
-      expect(source).toContain("shrink-0 rounded-full border border-border-subtle bg-overlay-soft");
+      expect(source).toContain("shrink-0 inline-flex items-center gap-1 rounded-full border");
     });
 
     it("chevron icons have shrink-0", () => {
-      const chevronMatches = source.match(/ml-0\.5 h-3 w-3 shrink-0 text-text-muted/g);
+      const chevronMatches = source.match(/ml-0\.5 h-3 w-3 shrink-0/g);
       expect(chevronMatches).not.toBeNull();
     });
   });

@@ -1,9 +1,9 @@
-import { Terminal, IDisposable } from "@xterm/xterm";
+import { Terminal, IDisposable, IMarker } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { TerminalRefreshTier, TerminalType, TerminalKind, AgentState } from "@/types";
 
 export type RefreshTierProvider = () => TerminalRefreshTier;
@@ -19,10 +19,10 @@ export interface ManagedTerminal {
   agentStateSubscribers: Set<AgentStateCallback>;
   fitAddon: FitAddon;
   serializeAddon: SerializeAddon;
-  webLinksAddon: WebLinksAddon;
-  imageAddon: ImageAddon;
+  imageAddon: ImageAddon | null;
   searchAddon: SearchAddon;
-  fileLinksDisposable: IDisposable;
+  fileLinksDisposable: IDisposable | null;
+  webLinksAddon: WebLinksAddon | null;
   hostElement: HTMLDivElement;
   isOpened: boolean;
   listeners: Array<() => void>;
@@ -42,12 +42,21 @@ export interface ManagedTerminal {
   lastAppliedTier?: TerminalRefreshTier; // The tier currently in effect
   pendingTier?: TerminalRefreshTier; // Target tier for scheduled downgrade
   tierChangeTimer?: number;
-  // Resize debouncing state
-  resizeJob?: number;
+  // Resize scheduling state
+  resizeJob?: AbortController;
+  resizeDebounceTimer?: number;
   latestCols: number;
   latestRows: number;
   latestWasAtBottom: boolean;
   isUserScrolledBack: boolean;
+
+  // Viewport pinning: suppress scroll tracking during programmatic scrollToBottom
+  _suppressScrollTracking?: boolean;
+  // Viewport pinning: set by wheel/keyboard events to distinguish user-initiated scroll
+  _userScrollIntent?: boolean;
+
+  // Last activity marker for scroll-to-last-activity
+  lastActivityMarker?: IMarker;
 
   // Project-switch resize suppression
   resizeSuppressionTimer?: number;
@@ -90,9 +99,16 @@ export interface ManagedTerminal {
 
   // Project-switch detach state: instance is alive but not in any visible container
   isDetached?: boolean;
+
+  // Hibernation: xterm.js Terminal instance disposed to free memory
+  isHibernated?: boolean;
+  hibernationTimer?: ReturnType<typeof setTimeout>;
+  ipcListenerCount: number;
 }
 
 export const TIER_DOWNGRADE_HYSTERESIS_MS = 500;
+
+export const HIBERNATION_DELAY_MS = 30_000;
 
 export const INCREMENTAL_RESTORE_CONFIG = {
   chunkBytes: 32768,

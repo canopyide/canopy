@@ -131,17 +131,13 @@ export class ProjectIdentityFiles {
       devServerLoadTimeout?: number;
       copyTreeSettings?: CopyTreeSettings;
       excludedPaths?: string[];
-      agentInstructions?: string;
+
       worktreePathPattern?: string;
       terminalSettings?: {
         shellArgs?: string[];
         defaultWorkingDirectory?: string;
         scrollbackLines?: number;
       };
-      mcpServers?: Record<
-        string,
-        { command: string; args?: string[]; env?: Record<string, string>; cwd?: string }
-      >;
     } = { version: 1 };
 
     if (settings.runCommands?.length) payload.runCommands = settings.runCommands;
@@ -149,8 +145,7 @@ export class ProjectIdentityFiles {
     if (settings.devServerLoadTimeout) payload.devServerLoadTimeout = settings.devServerLoadTimeout;
     if (settings.copyTreeSettings) payload.copyTreeSettings = settings.copyTreeSettings;
     if (settings.excludedPaths?.length) payload.excludedPaths = settings.excludedPaths;
-    if (settings.agentInstructions?.trim())
-      payload.agentInstructions = settings.agentInstructions.trim();
+
     if (settings.worktreePathPattern) payload.worktreePathPattern = settings.worktreePathPattern;
 
     if (settings.terminalSettings) {
@@ -167,10 +162,6 @@ export class ProjectIdentityFiles {
       if (settings.terminalSettings.scrollbackLines !== undefined)
         shareableTerminal.scrollbackLines = settings.terminalSettings.scrollbackLines;
       if (Object.keys(shareableTerminal).length > 0) payload.terminalSettings = shareableTerminal;
-    }
-
-    if (settings.mcpServers && Object.keys(settings.mcpServers).length > 0) {
-      payload.mcpServers = settings.mcpServers;
     }
 
     const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

@@ -32,6 +32,7 @@ import os from "os";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { logInfo, logWarn } from "../utils/logger.js";
+import { getTrashedPidTracker } from "./TrashedPidTracker.js";
 import { RequestResponseBroker } from "./rpc/index.js";
 import { bridgePtyEvent } from "./pty/PtyEventsBridge.js";
 import type {
@@ -43,6 +44,7 @@ import type {
   CrashType,
   HostCrashPayload,
   SpawnResult,
+  TerminalResourceBatchPayload,
 } from "../../shared/types/pty-host.js";
 import type { TerminalSnapshot } from "./PtyManager.js";
 import type { AgentStateChangeTrigger } from "../types/index.js";
@@ -62,6 +64,7 @@ interface TerminalInfoResponse {
   cwd: string;
   worktreeId?: string;
   agentState?: AgentState;
+  waitingReason?: string;
   lastStateChange?: number;
   spawnedAt: number;
   isTrashed?: boolean;
@@ -69,6 +72,9 @@ interface TerminalInfoResponse {
   activityTier?: "active" | "background";
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
+  agentSessionId?: string;
+  agentLaunchFlags?: string[];
+  agentModelId?: string;
 }
 
 export interface PtyClientConfig {
@@ -152,6 +158,7 @@ export class PtyClient extends EventEmitter {
   private isWaitingForHandshake = false;
   private handshakeTimeout: NodeJS.Timeout | null = null;
   private pendingSpawns: Map<string, PtyHostSpawnOptions> = new Map();
+  private ipcDataMirrorIds = new Set<string>();
   private pendingKillCount: Map<string, number> = new Map();
   private needsRespawn = false;
   private activeProjectId: string | null = null;
@@ -159,6 +166,7 @@ export class PtyClient extends EventEmitter {
   private shouldResyncProjectContext = false;
   private pendingMessagePort: MessagePortMain | null = null;
   private terminalPids: Map<string, number> = new Map();
+  private resourceMonitoringEnabled = false;
 
   /** Watchdog: Track missed heartbeat responses to detect deadlocks */
   private missedHeartbeats = 0;
@@ -296,7 +304,8 @@ export class PtyClient extends EventEmitter {
       this.readyReject = reject;
     });
 
-    const hostPath = path.join(__dirname, "pty-host.js");
+    const electronDir = path.basename(__dirname) === "chunks" ? path.dirname(__dirname) : __dirname;
+    const hostPath = path.join(electronDir, "pty-host.js");
 
     console.log(`[PtyClient] Starting Pty Host from: ${hostPath}`);
 
@@ -480,6 +489,7 @@ export class PtyClient extends EventEmitter {
         break;
 
       case "exit": {
+        getTrashedPidTracker().removeTrashed(event.id);
         const killCount = this.pendingKillCount.get(event.id) ?? 0;
         if (killCount > 0) {
           // Exit from a kill() call — a new spawn() may have already
@@ -662,6 +672,16 @@ export class PtyClient extends EventEmitter {
         break;
       }
 
+      case "resource-metrics": {
+        const rmEvent = event as {
+          type: "resource-metrics";
+          metrics: TerminalResourceBatchPayload;
+          timestamp: number;
+        };
+        this.emit("resource-metrics", rmEvent.metrics, rmEvent.timestamp);
+        break;
+      }
+
       default:
         console.warn("[PtyClient] Unknown event type:", (event as { type: string }).type);
     }
@@ -701,6 +721,16 @@ export class PtyClient extends EventEmitter {
     for (const [id, options] of this.pendingSpawns) {
       console.log(`[PtyClient] Respawning terminal: ${id}`);
       this.send({ type: "spawn", id, options });
+    }
+
+    // Re-enable IPC data mirrors that were active before crash
+    for (const id of this.ipcDataMirrorIds) {
+      this.send({ type: "set-ipc-data-mirror", id, enabled: true });
+    }
+
+    // Re-enable resource monitoring if it was active
+    if (this.resourceMonitoringEnabled) {
+      this.send({ type: "set-resource-monitoring", enabled: true });
     }
   }
 
@@ -878,8 +908,10 @@ export class PtyClient extends EventEmitter {
   }
 
   kill(id: string, reason?: string): void {
+    getTrashedPidTracker().removeTrashed(id);
     this.pendingKillCount.set(id, (this.pendingKillCount.get(id) ?? 0) + 1);
     this.pendingSpawns.delete(id);
+    this.ipcDataMirrorIds.delete(id);
     this.send({ type: "kill", id, reason });
   }
 
@@ -889,12 +921,13 @@ export class PtyClient extends EventEmitter {
   }
 
   trash(id: string): void {
+    getTrashedPidTracker().persistTrashed(id, this.terminalPids.get(id));
     this.send({ type: "trash", id });
   }
 
   /** Restore terminal from trash. Returns true if terminal was tracked. */
   restore(id: string): boolean {
-    // Optimistically return true if we know about this terminal
+    getTrashedPidTracker().removeTrashed(id);
     const wasTracked = this.pendingSpawns.has(id);
     this.send({ type: "restore", id });
     return wasTracked;
@@ -904,12 +937,22 @@ export class PtyClient extends EventEmitter {
     this.send({ type: "set-activity-tier", id, tier });
   }
 
+  setResourceMonitoring(enabled: boolean): void {
+    this.resourceMonitoringEnabled = enabled;
+    this.send({ type: "set-resource-monitoring", enabled });
+  }
+
   /**
    * Enable/disable IPC data mirroring for a terminal.
    * When enabled, PTY data is always sent via IPC in addition to SharedArrayBuffer,
    * allowing main-process consumers (like UrlDetector for dev preview) to receive data events.
    */
   setIpcDataMirror(id: string, enabled: boolean): void {
+    if (enabled) {
+      this.ipcDataMirrorIds.add(id);
+    } else {
+      this.ipcDataMirrorIds.delete(id);
+    }
     this.send({ type: "set-ipc-data-mirror", id, enabled });
   }
 
@@ -1178,6 +1221,11 @@ export class PtyClient extends EventEmitter {
     });
   }
 
+  /** Request PtyHost to trim scrollback on all terminals to reduce memory */
+  trimState(targetLines: number): void {
+    this.send({ type: "trim-state", targetLines });
+  }
+
   /** Pause all PTY processes during system sleep to prevent buffer overflow */
   pauseAll(): void {
     this.send({ type: "pause-all" });
@@ -1294,12 +1342,36 @@ export class PtyClient extends EventEmitter {
   // Note: Project switching is now handled via onProjectSwitch(projectId) which
   // preserves the host and active terminals while changing filtering/backgrounding.
 
+  manualRestart(): void {
+    if (this.isDisposed) {
+      console.warn("[PtyClient] Cannot manual restart - already disposed");
+      return;
+    }
+
+    if (this.child !== null) {
+      console.warn("[PtyClient] Cannot manual restart - host process already exists");
+      return;
+    }
+
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+
+    this.restartAttempts = 0;
+    this.needsRespawn = true;
+
+    console.log("[PtyClient] Manual restart initiated");
+    this.startHost();
+  }
+
   dispose(): void {
     if (this.isDisposed) return;
     this.isDisposed = true;
     this.shouldResyncProjectContext = false;
     this.needsRespawn = false;
 
+    getTrashedPidTracker().clearAll();
     console.log("[PtyClient] Disposing...");
 
     if (this.healthCheckInterval) {
@@ -1353,6 +1425,7 @@ export class PtyClient extends EventEmitter {
 
     this.pendingSpawns.clear();
     this.pendingKillCount.clear();
+    this.ipcDataMirrorIds.clear();
     this.terminalPids.clear();
     this.snapshotCallbacks.clear();
     this.snapshotTimeouts.clear();

@@ -3,11 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fsMock = vi.hoisted(() => ({
   existsSync: vi.fn<(p: string) => boolean>(),
+  readdirSync: vi.fn<(p: string) => string[]>(),
+  rmSync: vi.fn(),
 }));
 
 vi.mock("fs", () => ({
-  default: { existsSync: fsMock.existsSync },
+  default: {
+    existsSync: fsMock.existsSync,
+    readdirSync: fsMock.readdirSync,
+    rmSync: fsMock.rmSync,
+  },
   existsSync: fsMock.existsSync,
+  readdirSync: fsMock.readdirSync,
+  rmSync: fsMock.rmSync,
 }));
 
 vi.mock("electron", () => ({
@@ -17,6 +25,7 @@ vi.mock("electron", () => ({
     setPath: vi.fn(),
     commandLine: { appendSwitch: vi.fn() },
     enableSandbox: vi.fn(),
+    disableHardwareAcceleration: vi.fn(),
     on: vi.fn(),
   },
 }));
@@ -42,8 +51,34 @@ const originalPlatform = process.platform;
 const originalArgv = [...process.argv];
 
 function getCandidatePaths(): string[] {
-  return fsMock.existsSync.mock.calls.map((c) => c[0]);
+  return fsMock.existsSync.mock.calls
+    .map((c) => c[0])
+    .filter((p) => !p.includes("gpu-disabled.flag"));
 }
+
+describe("V8 flag setup", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
+    process.argv = ["electron", "main.js"];
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    process.argv = originalArgv;
+  });
+
+  it("sets --optimize_for_size V8 flag for compact code generation", async () => {
+    fsMock.existsSync.mockReturnValue(false);
+
+    await import("../environment.js");
+
+    const nodeV8 = (await import("node:v8")).default;
+    expect(nodeV8.setFlagsFromString).toHaveBeenCalledWith("--expose_gc");
+    expect(nodeV8.setFlagsFromString).toHaveBeenCalledWith("--optimize_for_size");
+  });
+});
 
 describe("Windows Git PATH discovery", () => {
   beforeEach(() => {
@@ -197,5 +232,108 @@ describe("Windows Git PATH discovery", () => {
       const candidateIdx = pathStr.indexOf(candidate);
       expect(candidateIdx).toBeLessThan(existingIdx);
     }
+  });
+});
+
+describe("reset-data", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
+    process.argv = ["electron", "main.js"];
+    delete process.env.CANOPY_RESET_DATA;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    process.argv = originalArgv;
+    delete process.env.CANOPY_RESET_DATA;
+  });
+
+  it("wipes userData when CANOPY_RESET_DATA=1 is set", async () => {
+    process.env.CANOPY_RESET_DATA = "1";
+    fsMock.existsSync.mockReturnValue(true);
+    fsMock.readdirSync.mockReturnValue(["Local Storage", "config.json"]);
+
+    await import("../environment.js");
+
+    expect(fsMock.readdirSync).toHaveBeenCalledWith("/tmp/test-appdata");
+    expect(fsMock.rmSync).toHaveBeenCalledTimes(2);
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "Local Storage"), {
+      recursive: true,
+      force: true,
+    });
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "config.json"), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it("wipes userData when --reset-data argv is present", async () => {
+    process.argv = ["electron", "main.js", "--reset-data"];
+    fsMock.existsSync.mockReturnValue(true);
+    fsMock.readdirSync.mockReturnValue(["db.sqlite"]);
+
+    await import("../environment.js");
+
+    expect(fsMock.readdirSync).toHaveBeenCalledWith("/tmp/test-appdata");
+    expect(fsMock.rmSync).toHaveBeenCalledTimes(1);
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "db.sqlite"), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it("does not wipe when neither trigger is present", async () => {
+    fsMock.existsSync.mockReturnValue(false);
+
+    await import("../environment.js");
+
+    expect(fsMock.readdirSync).not.toHaveBeenCalled();
+    expect(fsMock.rmSync).not.toHaveBeenCalled();
+  });
+
+  it("skips wipe when userData directory does not exist", async () => {
+    process.env.CANOPY_RESET_DATA = "1";
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.includes("gpu-disabled.flag")) return false;
+      return false; // userData path does not exist
+    });
+
+    await import("../environment.js");
+
+    expect(fsMock.readdirSync).not.toHaveBeenCalled();
+  });
+
+  it("continues wiping other entries when rmSync throws on one", async () => {
+    process.env.CANOPY_RESET_DATA = "1";
+    fsMock.existsSync.mockReturnValue(true);
+    fsMock.readdirSync.mockReturnValue(["locked-file", "deletable-file"]);
+    fsMock.rmSync
+      .mockImplementationOnce(() => {
+        throw new Error("EBUSY: resource busy");
+      })
+      .mockImplementationOnce(() => {});
+
+    await import("../environment.js");
+
+    expect(fsMock.rmSync).toHaveBeenCalledTimes(2);
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "locked-file"), {
+      recursive: true,
+      force: true,
+    });
+    expect(fsMock.rmSync).toHaveBeenCalledWith(path.join("/tmp/test-appdata", "deletable-file"), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it("ignores CANOPY_RESET_DATA values other than '1'", async () => {
+    process.env.CANOPY_RESET_DATA = "true";
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    expect(fsMock.readdirSync).not.toHaveBeenCalled();
   });
 });

@@ -61,7 +61,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     tabLabel: "Panel Grid",
     section: "Settings Navigation",
     title: "Panel Grid",
-    description: "Terminal grid layout, scrollback, split pane, and performance settings",
+    description: "Panel grid layout, scrollback, split pane, and performance settings",
     keywords: ["terminal", "panel", "grid", "layout", "panes"],
   },
   {
@@ -125,13 +125,13 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["integrations", "image", "viewer", "photo", "picture"],
   },
   {
-    id: "tab-nav-sidecar",
-    tab: "sidecar",
-    tabLabel: "Sidecar Links",
+    id: "tab-nav-portal",
+    tab: "portal",
+    tabLabel: "Portal Links",
     section: "Settings Navigation",
-    title: "Sidecar Links",
-    description: "Default and custom links for the sidecar browser panel",
-    keywords: ["integrations", "sidecar", "links", "browser", "bookmarks"],
+    title: "Portal Links",
+    description: "Default and custom links for the portal browser panel",
+    keywords: ["integrations", "portal", "links", "browser", "bookmarks"],
   },
   {
     id: "tab-nav-mcp",
@@ -249,6 +249,28 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     description: "Show problems panel button in the toolbar",
     keywords: ["developer", "debug", "problems", "panel", "toolbar"],
   },
+  {
+    id: "general-grid-agent-highlights",
+    tab: "general",
+    tabLabel: "General",
+    subtab: "display",
+    subtabLabel: "Display",
+    section: "Display",
+    title: "Grid Panel Agent Highlights",
+    description: "Show waiting and working state borders on grid panels",
+    keywords: ["agent", "highlight", "border", "waiting", "working", "grid", "panel", "state"],
+  },
+  {
+    id: "general-dock-agent-highlights",
+    tab: "general",
+    tabLabel: "General",
+    subtab: "display",
+    subtabLabel: "Display",
+    section: "Display",
+    title: "Dock Item Agent Highlights",
+    description: "Show waiting state borders on dock items",
+    keywords: ["agent", "highlight", "border", "waiting", "dock", "item", "state"],
+  },
 
   // Keyboard Shortcuts
   {
@@ -350,6 +372,28 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["grid", "layout", "columns", "rows", "panels", "arrangement", "strategy"],
   },
 
+  {
+    id: "terminal-screen-reader",
+    tab: "terminal",
+    tabLabel: "Panel Grid",
+    subtab: "accessibility",
+    subtabLabel: "Accessibility",
+    section: "Screen Reader Mode",
+    title: "Screen Reader Mode",
+    description:
+      "Enable screen reader support for terminal output. Auto mode follows OS accessibility state.",
+    keywords: [
+      "screen reader",
+      "accessibility",
+      "a11y",
+      "voiceover",
+      "jaws",
+      "nvda",
+      "screenReaderMode",
+      "assistive",
+    ],
+  },
+
   // Appearance
   {
     id: "appearance-theme",
@@ -439,7 +483,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     section: "Global Agent Settings",
     title: "Default Agent",
     description:
-      'Agent used for automated workflows ("What\'s Next?", onboarding, project explanations). Distinct from the Sidecar "Default New Tab Agent".',
+      'Agent used for automated workflows ("What\'s Next?", onboarding, project explanations). Distinct from the Portal "Default New Tab Agent".',
     keywords: [
       "default",
       "agent",
@@ -530,42 +574,33 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["github", "token", "authentication", "auth", "PAT", "access", "scopes", "API"],
   },
 
-  // Sidecar Links
+  // Portal Links
   {
-    id: "sidecar-default-agent",
-    tab: "sidecar",
-    tabLabel: "Sidecar Links",
+    id: "portal-default-agent",
+    tab: "portal",
+    tabLabel: "Portal Links",
     section: "Default New Tab Agent",
     title: "Default New Tab Agent",
-    description: "Choose which agent opens when you click the + button in the sidecar",
-    keywords: ["sidecar", "agent", "default", "new tab", "browser"],
+    description: "Choose which agent opens when you click the + button in the portal",
+    keywords: ["portal", "agent", "default", "new tab", "browser"],
   },
   {
-    id: "sidecar-default-links",
-    tab: "sidecar",
-    tabLabel: "Sidecar Links",
+    id: "portal-default-links",
+    tab: "portal",
+    tabLabel: "Portal Links",
     section: "Default Links",
     title: "Default Links",
-    description: "System-provided links shown in the sidecar panel",
-    keywords: ["sidecar", "links", "default", "browser", "bookmarks"],
+    description: "System-provided links shown in the portal panel",
+    keywords: ["portal", "links", "default", "browser", "bookmarks"],
   },
   {
-    id: "sidecar-custom-links",
-    tab: "sidecar",
-    tabLabel: "Sidecar Links",
+    id: "portal-custom-links",
+    tab: "portal",
+    tabLabel: "Portal Links",
     section: "Custom Links",
     title: "Custom Links",
-    description: "Add custom URLs and links to the sidecar panel",
-    keywords: ["sidecar", "custom", "links", "url", "add", "bookmark"],
-  },
-  {
-    id: "sidecar-width",
-    tab: "sidecar",
-    tabLabel: "Sidecar Links",
-    section: "Default Width",
-    title: "Sidecar Default Width",
-    description: "Set the default width of the sidecar panel",
-    keywords: ["sidecar", "width", "size", "panel", "resize"],
+    description: "Add custom URLs and links to the portal panel",
+    keywords: ["portal", "custom", "links", "url", "add", "bookmark"],
   },
 
   // Toolbar Customization
@@ -625,15 +660,6 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     title: "Agent Waiting for Input",
     description: "Show a notification when an agent needs input",
     keywords: ["notification", "waiting", "input", "agent", "prompt", "pause"],
-  },
-  {
-    id: "notifications-failed",
-    tab: "notifications",
-    tabLabel: "Notifications",
-    section: "Agent Notifications",
-    title: "Agent Failed Notification",
-    description: "Show a notification when an agent encounters an error",
-    keywords: ["notification", "error", "failed", "agent", "alert"],
   },
   {
     id: "notifications-sound",
@@ -846,6 +872,25 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
 
   // Troubleshooting
+  {
+    id: "troubleshooting-gpu-acceleration",
+    tab: "troubleshooting",
+    tabLabel: "Troubleshooting",
+    section: "Hardware Acceleration",
+    title: "Hardware Acceleration",
+    description:
+      "Disable GPU hardware acceleration if you experience blank panels or rendering issues",
+    keywords: [
+      "gpu",
+      "hardware",
+      "acceleration",
+      "blank",
+      "white",
+      "crash",
+      "rendering",
+      "graphics",
+    ],
+  },
   {
     id: "troubleshooting-health",
     tab: "troubleshooting",

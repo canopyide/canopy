@@ -15,7 +15,16 @@ import {
   Activity,
   Plus,
   Bell,
+  BellOff,
+  ChevronLeft,
+  ChevronRight,
+  CopyPlus,
   Ellipsis,
+  Info,
+  Lock,
+  Pencil,
+  Trash2,
+  Unlock,
 } from "lucide-react";
 import {
   DndContext,
@@ -30,13 +39,17 @@ import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import type { PanelKind, TerminalType } from "@/types";
 import { cn, getBaseTitle } from "@/lib/utils";
-import { createTooltipWithShortcut, formatShortcutForTooltip } from "@/lib/platform";
+import { formatShortcutForTooltip, createTooltipWithShortcut } from "@/lib/platform";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
-import { DockToBottomIcon } from "@/components/icons";
+import { MoveToDockIcon, MoveToGridIcon, WatchAlertIcon } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
-import { useBackgroundPanelStats, useHorizontalScrollControls } from "@/hooks";
+import {
+  useBackgroundPanelStats,
+  useHorizontalScrollControls,
+  useKeybindingDisplay,
+} from "@/hooks";
 import { useTerminalStore } from "@/store/terminalStore";
 import {
   DropdownMenu,
@@ -47,7 +60,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TabButton, type TabInfo } from "./TabButton";
 import { SortableTabButton } from "./SortableTabButton";
-import { panelKindCanRestart } from "@shared/config/panelKindRegistry";
+import { useShallow } from "zustand/react/shallow";
+import { panelKindCanRestart, panelKindHasPty } from "@shared/config/panelKindRegistry";
+import { actionService } from "@/services/ActionService";
+import { fireWatchNotification } from "@/lib/watchNotification";
 
 export interface PanelHeaderProps {
   id: string;
@@ -144,6 +160,7 @@ function PanelHeaderComponent({
   // Armed restart confirmation state (2-click pattern with 3s timeout)
   const [armedRestartId, setArmedRestartId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [overflowTooltipOpen, setOverflowTooltipOpen] = useState(false);
   const armedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ARMED_TIMEOUT_MS = 3000;
@@ -184,13 +201,26 @@ function PanelHeaderComponent({
 
   // Watch state — only relevant for agent panels
   const isWatched = useTerminalStore((state) => state.watchedPanels.has(id));
+  const watchPanel = useTerminalStore((state) => state.watchPanel);
   const unwatchPanel = useTerminalStore((state) => state.unwatchPanel);
   const showWatchButton = !!agentId;
 
+  const duplicateShortcut = useKeybindingDisplay("terminal.duplicate");
+  const moveToDockShortcut = useKeybindingDisplay("terminal.moveToDock");
+  const toggleDockShortcut = useKeybindingDisplay("terminal.toggleDock");
+  const maximizeShortcut = useKeybindingDisplay("terminal.maximize");
+  const closeShortcut = useKeybindingDisplay("terminal.close");
+
+  // Terminal record for overflow menu actions (single shallow selector, matching TerminalContextMenu pattern)
+  const terminal = useTerminalStore(
+    useShallow((state) => state.terminals.find((t) => t.id === id))
+  );
+  const isInputLocked = terminal?.isInputLocked ?? false;
+  const hasPty = panelKindHasPty(kind);
+
   // Whether the overflow "..." menu has any items to show
   const showMoveToDock = !!onMinimize && !isMaximized && location !== "dock";
-  const showCancelWatch = showWatchButton && isWatched;
-  const hasOverflowItems = (canRestart && !!onRestart) || showCancelWatch || !!headerActions;
+  const hasOverflowItems = true;
 
   // Restart handler for Radix DropdownMenu onSelect
   const handleRestartSelect = useCallback(
@@ -243,6 +273,16 @@ function PanelHeaderComponent({
     [id, armedRestartId, onRestart]
   );
 
+  const handleWatchToggle = useCallback(() => {
+    if (isWatched) {
+      unwatchPanel(id);
+    } else if (terminal?.agentState === "completed" || terminal?.agentState === "waiting") {
+      fireWatchNotification(id, terminal.title ?? id, terminal.agentState);
+    } else {
+      watchPanel(id);
+    }
+  }, [id, isWatched, unwatchPanel, watchPanel, terminal]);
+
   // In dock, show shortened title without command summary for space efficiency
   const displayTitle = location === "dock" ? getBaseTitle(title) : title;
 
@@ -279,8 +319,12 @@ function PanelHeaderComponent({
   const canReorderTabs = hasTabs && !!onTabReorder && !!groupId;
   const tabIds = tabs?.map((t) => t.id) ?? [];
 
-  const { canScrollLeft: tabsCanScrollLeft, canScrollRight: tabsCanScrollRight } =
-    useHorizontalScrollControls(tabListRef);
+  const {
+    canScrollLeft: tabsCanScrollLeft,
+    canScrollRight: tabsCanScrollRight,
+    scrollLeft: tabsScrollLeft,
+    scrollRight: tabsScrollRight,
+  } = useHorizontalScrollControls(tabListRef);
 
   const activeTabId = tabs?.find((t) => t.isActive)?.id ?? null;
 
@@ -414,10 +458,20 @@ function PanelHeaderComponent({
                 {tabsCanScrollLeft && (
                   <div
                     className={cn(
-                      "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent",
+                      "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent flex items-center",
                       tabFadeFrom
                     )}
-                  />
+                  >
+                    <button
+                      type="button"
+                      onClick={tabsScrollLeft}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="pointer-events-auto p-1 text-canopy-text/60 hover:text-canopy-text transition-colors"
+                      aria-label="Scroll left"
+                    >
+                      <ChevronLeft className="w-3 h-3" aria-hidden="true" />
+                    </button>
+                  </div>
                 )}
                 <div
                   ref={tabListRef}
@@ -462,7 +516,12 @@ function PanelHeaderComponent({
                               <Plus className="w-3 h-3" aria-hidden="true" />
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
+                          <TooltipContent side="bottom">
+                            {createTooltipWithShortcut(
+                              "Duplicate panel as new tab",
+                              duplicateShortcut
+                            )}
+                          </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
@@ -471,10 +530,20 @@ function PanelHeaderComponent({
                 {tabsCanScrollRight && (
                   <div
                     className={cn(
-                      "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent",
+                      "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent flex items-center justify-end",
                       tabFadeFrom
                     )}
-                  />
+                  >
+                    <button
+                      type="button"
+                      onClick={tabsScrollRight}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="pointer-events-auto p-1 text-canopy-text/60 hover:text-canopy-text transition-colors"
+                      aria-label="Scroll right"
+                    >
+                      <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                    </button>
+                  </div>
                 )}
               </div>
             </SortableContext>
@@ -484,10 +553,20 @@ function PanelHeaderComponent({
             {tabsCanScrollLeft && (
               <div
                 className={cn(
-                  "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent",
+                  "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent flex items-center",
                   tabFadeFrom
                 )}
-              />
+              >
+                <button
+                  type="button"
+                  onClick={tabsScrollLeft}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="pointer-events-auto p-1 text-canopy-text/60 hover:text-canopy-text transition-colors"
+                  aria-label="Scroll left"
+                >
+                  <ChevronLeft className="w-3 h-3" aria-hidden="true" />
+                </button>
+              </div>
             )}
             <div
               ref={tabListRef}
@@ -530,7 +609,9 @@ function PanelHeaderComponent({
                           <Plus className="w-3 h-3" aria-hidden="true" />
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
+                      <TooltipContent side="bottom">
+                        {createTooltipWithShortcut("Duplicate panel as new tab", duplicateShortcut)}
+                      </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 )}
@@ -539,10 +620,20 @@ function PanelHeaderComponent({
             {tabsCanScrollRight && (
               <div
                 className={cn(
-                  "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent",
+                  "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent flex items-center justify-end",
                   tabFadeFrom
                 )}
-              />
+              >
+                <button
+                  type="button"
+                  onClick={tabsScrollRight}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="pointer-events-auto p-1 text-canopy-text/60 hover:text-canopy-text transition-colors"
+                  aria-label="Scroll right"
+                >
+                  <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                </button>
+              </div>
             )}
           </div>
         )
@@ -608,10 +699,7 @@ function PanelHeaderComponent({
               aria-label="Watching — waiting for agent completion"
               className="text-canopy-accent cursor-default"
             >
-              <Bell
-                className="w-3 h-3 animate-pulse motion-reduce:animate-none"
-                aria-hidden="true"
-              />
+              <WatchAlertIcon className="w-3 h-3 animate-pulse motion-reduce:animate-none" />
             </span>
           )}
 
@@ -633,7 +721,9 @@ function PanelHeaderComponent({
                     <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
+                <TooltipContent side="bottom">
+                  {createTooltipWithShortcut("Duplicate panel as new tab", duplicateShortcut)}
+                </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -649,9 +739,9 @@ function PanelHeaderComponent({
         >
           <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold max-w-[300px]">
             <Grid2X2 className="w-3 h-3 shrink-0" aria-hidden="true" />
-            <span className="truncate">{activeCount} Background</span>
+            <span className="truncate tabular-nums">{activeCount} Background</span>
             {workingCount > 0 && (
-              <span className="flex items-center gap-1 text-state-working ml-1">
+              <span className="flex items-center gap-1 text-state-working tabular-nums ml-1">
                 <Activity
                   className="w-3 h-3 animate-pulse motion-reduce:animate-none"
                   aria-hidden="true"
@@ -664,51 +754,148 @@ function PanelHeaderComponent({
       )}
 
       <div className="flex items-center gap-1">
-        {/* Overflow menu — contains Restart, Cancel Watch, and headerActions */}
+        {/* Overflow menu — panel management actions */}
         {hasOverflowItems && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                className="p-1.5 hover:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2 text-canopy-text/60 hover:text-canopy-text transition-colors"
-                aria-label="More panel actions"
-              >
-                <Ellipsis className="w-3 h-3" aria-hidden="true" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
-              {canRestart && onRestart && (
+          <TooltipProvider>
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) setOverflowTooltipOpen(false);
+              }}
+            >
+              <Tooltip open={overflowTooltipOpen} onOpenChange={setOverflowTooltipOpen}>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="p-1.5 hover:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2 text-canopy-text/60 hover:text-canopy-text transition-colors"
+                      aria-label="More panel actions"
+                    >
+                      <Ellipsis className="w-3 h-3" aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">More panel actions</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="min-w-[160px]">
+                {/* Session group */}
+                {canRestart && onRestart && (
+                  <DropdownMenuItem
+                    onSelect={handleRestartSelect}
+                    className={cn(
+                      armedRestartId === id && "bg-status-warning/10 text-status-warning"
+                    )}
+                    data-testid={armedRestartId === id ? "panel-restart-confirm" : "panel-restart"}
+                    aria-label={
+                      armedRestartId === id
+                        ? `Armed — click again to confirm restart. ${countdown !== null ? `${countdown} seconds remaining` : ""}`
+                        : "Restart Session"
+                    }
+                  >
+                    <RotateCcw className="w-3 h-3 mr-2" aria-hidden="true" />
+                    {armedRestartId === id
+                      ? `Confirm Restart (${countdown ?? 0}s)`
+                      : "Restart Session"}
+                  </DropdownMenuItem>
+                )}
+
+                {/* Management group */}
+                {canRestart && onRestart && <DropdownMenuSeparator />}
+                {location === "dock" && onRestore && (
+                  <DropdownMenuItem onSelect={() => onRestore()}>
+                    <MoveToGridIcon className="w-3 h-3 mr-2" aria-hidden="true" />
+                    Restore to Grid
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
-                  onSelect={handleRestartSelect}
-                  className={cn(
-                    armedRestartId === id && "bg-status-warning/10 text-status-warning"
-                  )}
-                  data-testid={armedRestartId === id ? "panel-restart-confirm" : "panel-restart"}
-                  aria-label={
-                    armedRestartId === id
-                      ? `Armed — click again to confirm restart. ${countdown !== null ? `${countdown} seconds remaining` : ""}`
-                      : "Restart Session"
+                  onSelect={() =>
+                    void actionService.dispatch(
+                      "terminal.rename",
+                      { terminalId: id },
+                      { source: "menu" }
+                    )
                   }
                 >
-                  <RotateCcw className="w-3 h-3 mr-2" aria-hidden="true" />
-                  {armedRestartId === id
-                    ? `Confirm Restart (${countdown ?? 0}s)`
-                    : "Restart Session"}
+                  <Pencil className="w-3 h-3 mr-2" aria-hidden="true" />
+                  Rename
                 </DropdownMenuItem>
-              )}
-              {showCancelWatch && (
-                <DropdownMenuItem onSelect={() => unwatchPanel(id)}>
-                  <Bell className="w-3 h-3 mr-2" aria-hidden="true" />
-                  Cancel Watch
+                <DropdownMenuItem
+                  onSelect={() =>
+                    void actionService.dispatch(
+                      "terminal.duplicate",
+                      { terminalId: id },
+                      { source: "menu" }
+                    )
+                  }
+                >
+                  <CopyPlus className="w-3 h-3 mr-2" aria-hidden="true" />
+                  Duplicate
                 </DropdownMenuItem>
-              )}
-              {headerActions && ((canRestart && !!onRestart) || showCancelWatch) && (
+                {hasPty && (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      void actionService.dispatch(
+                        "terminal.toggleInputLock",
+                        { terminalId: id },
+                        { source: "menu" }
+                      )
+                    }
+                  >
+                    {isInputLocked ? (
+                      <Unlock className="w-3 h-3 mr-2" aria-hidden="true" />
+                    ) : (
+                      <Lock className="w-3 h-3 mr-2" aria-hidden="true" />
+                    )}
+                    {isInputLocked ? "Unlock Input" : "Lock Input"}
+                  </DropdownMenuItem>
+                )}
+                {showWatchButton && (
+                  <DropdownMenuItem onSelect={handleWatchToggle}>
+                    {isWatched ? (
+                      <BellOff className="w-3 h-3 mr-2" aria-hidden="true" />
+                    ) : (
+                      <Bell className="w-3 h-3 mr-2" aria-hidden="true" />
+                    )}
+                    {isWatched ? "Cancel Watch" : "Watch"}
+                  </DropdownMenuItem>
+                )}
+                {hasPty && (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      void actionService.dispatch(
+                        "terminal.viewInfo",
+                        { terminalId: id },
+                        { source: "menu" }
+                      )
+                    }
+                  >
+                    <Info className="w-3 h-3 mr-2" aria-hidden="true" />
+                    View Terminal Info
+                  </DropdownMenuItem>
+                )}
+
+                {/* Header actions slot */}
+                {headerActions && <DropdownMenuSeparator />}
+                {headerActions}
+
+                {/* Destructive group */}
                 <DropdownMenuSeparator />
-              )}
-              {headerActions}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuItem
+                  destructive
+                  onSelect={() =>
+                    void actionService.dispatch(
+                      "terminal.trash",
+                      { terminalId: id },
+                      { source: "menu" }
+                    )
+                  }
+                >
+                  <Trash2 className="w-3 h-3 mr-2" aria-hidden="true" />
+                  Trash
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TooltipProvider>
         )}
 
         {/* Move to Dock — visible button for grid panels */}
@@ -726,32 +913,37 @@ function PanelHeaderComponent({
                   aria-label="Move to Dock"
                   data-testid="panel-move-to-dock"
                 >
-                  <DockToBottomIcon className="w-3 h-3" aria-hidden="true" />
+                  <MoveToDockIcon className="w-3 h-3" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Move to Dock</TooltipContent>
+              <TooltipContent side="bottom">
+                {createTooltipWithShortcut("Move to Dock", moveToDockShortcut)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
 
-        {/* Middle control: Maximize / Exit Focus / Restore-to-Grid */}
-        {location === "dock" && onRestore ? (
+        {/* Middle control: Collapse-to-Dock / Maximize / Exit Focus */}
+        {location === "dock" && onMinimize ? (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRestore();
+                    onMinimize();
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
                   className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2 text-canopy-text/60 hover:text-canopy-text transition-colors"
-                  aria-label="Restore to grid"
+                  aria-label="Collapse to Dock"
+                  data-testid="panel-collapse-to-dock"
                 >
-                  <Maximize2 className="w-3 h-3" aria-hidden="true" />
+                  <MoveToDockIcon className="w-3 h-3" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Restore to grid</TooltipContent>
+              <TooltipContent side="bottom">
+                {createTooltipWithShortcut("Collapse to Dock", toggleDockShortcut)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : onToggleMaximize && isMaximized ? (
@@ -773,7 +965,8 @@ function PanelHeaderComponent({
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {createTooltipWithShortcut("Restore Grid View", "Ctrl+Shift+F")}
+                {createTooltipWithShortcut("Restore Grid View", maximizeShortcut) +
+                  " · double-click header"}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -796,7 +989,8 @@ function PanelHeaderComponent({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  {createTooltipWithShortcut("Maximize", "Ctrl+Shift+F")}
+                  {createTooltipWithShortcut("Maximize", maximizeShortcut) +
+                    " · double-click header"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -830,7 +1024,9 @@ function PanelHeaderComponent({
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {formatShortcutForTooltip("Close Session (Alt+Click to force close)")}
+              {createTooltipWithShortcut("Close Session", closeShortcut) +
+                " · " +
+                formatShortcutForTooltip("Alt+Click to force close")}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

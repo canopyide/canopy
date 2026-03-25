@@ -1,4 +1,10 @@
-import type { AgentState, AgentStateChangeTrigger, AgentId, LegacyAgentType } from "./agent.js";
+import type {
+  AgentState,
+  AgentStateChangeTrigger,
+  AgentId,
+  LegacyAgentType,
+  WaitingReason,
+} from "./agent.js";
 import type { BrowserHistory } from "./browser.js";
 
 /** Built-in panel kinds */
@@ -199,8 +205,6 @@ interface PtyPanelData extends BasePanelData {
   agentState?: AgentState;
   /** Timestamp when agentState last changed (milliseconds since epoch) */
   lastStateChange?: number;
-  /** Error message if agentState is 'failed' */
-  error?: string;
   /** What triggered the most recent state change */
   stateChangeTrigger?: AgentStateChangeTrigger;
   /** Confidence in the most recent state detection (0.0-1.0) */
@@ -259,6 +263,8 @@ interface PtyPanelData extends BasePanelData {
   agentSessionId?: string;
   /** Process-level flags captured at launch time, persisted for session resume */
   agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
   /** Timestamp when this terminal was created */
@@ -355,9 +361,9 @@ export interface TerminalInstance {
   rows?: number;
   agentState?: AgentState;
   lastStateChange?: number;
-  error?: string;
   stateChangeTrigger?: AgentStateChangeTrigger;
   stateChangeConfidence?: number;
+  waitingReason?: WaitingReason;
   activityHeadline?: string;
   activityStatus?: "working" | "waiting" | "success" | "failure";
   activityType?: "interactive" | "background" | "idle";
@@ -408,6 +414,8 @@ export interface TerminalInstance {
   agentSessionId?: string;
   /** Process-level flags captured at launch time, persisted for session resume */
   agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
   /** Timestamp when this terminal was created */

@@ -4,6 +4,7 @@ import {
   CircleDot,
   Code,
   Copy,
+  FileText,
   Folder,
   GitCommitHorizontal,
   GitCompare,
@@ -12,17 +13,18 @@ import {
   Layers,
   Link,
   Maximize2,
-  Minimize2,
+  PanelTopClose,
+  PanelTopOpen,
   Pin,
   PinOff,
-  Play,
   RefreshCw,
   RotateCcw,
   Save,
-  Terminal,
+  SquareTerminal,
   Trash2,
   X,
 } from "lucide-react";
+import { MoveToDockIcon, CopyTreeIcon, TerminalRecipeIcon } from "@/components/icons";
 
 type MenuComponent = React.ElementType;
 type LaunchAgentIcon = React.ComponentType<{ className?: string }>;
@@ -58,30 +60,32 @@ export interface WorktreeMenuItemsProps {
     dock: number;
     active: number;
     completed: number;
-    failed: number;
     all: number;
   };
   onLaunchAgent?: (agentId: string) => void;
   onCopyContextFull: () => void;
   onCopyContextModified: () => void;
+  onCopyPath: () => void;
   onOpenEditor: () => void;
   onRevealInFinder: () => void;
-  onOpenIssueSidecar?: () => void;
+  onOpenIssuePortal?: () => void;
   onOpenIssueExternal?: () => void;
-  onOpenPRSidecar?: () => void;
+  onOpenPRPortal?: () => void;
   onOpenPRExternal?: () => void;
   onAttachIssue?: () => void;
+  onViewPlan?: () => void;
   onOpenReviewHub?: () => void;
   onCompareDiff?: () => void;
   onRunRecipe: (recipeId: string) => void;
   onSaveLayout?: () => void;
   onTogglePin?: () => void;
-  onMinimizeAll: () => void;
+  onToggleCollapse?: () => void;
+  isCollapsed?: boolean;
+  onDockAll: () => void;
   onMaximizeAll: () => void;
   onRestartAll: () => void;
   onResetRenderers: () => void;
   onCloseCompleted: () => void;
-  onCloseFailed: () => void;
   onCloseAll: () => void;
   onEndAll: () => void;
   onDeleteWorktree?: () => void;
@@ -99,30 +103,33 @@ export function WorktreeMenuItems({
   onLaunchAgent,
   onCopyContextFull,
   onCopyContextModified,
+  onCopyPath,
   onOpenEditor,
   onRevealInFinder,
-  onOpenIssueSidecar,
+  onOpenIssuePortal,
   onOpenIssueExternal,
-  onOpenPRSidecar,
+  onOpenPRPortal,
   onOpenPRExternal,
   onAttachIssue,
+  onViewPlan,
   onOpenReviewHub,
   onCompareDiff,
   onRunRecipe,
   onSaveLayout,
   onTogglePin,
-  onMinimizeAll,
+  onToggleCollapse,
+  isCollapsed,
+  onDockAll,
   onMaximizeAll,
   onRestartAll,
   onResetRenderers,
   onCloseCompleted,
-  onCloseFailed,
   onCloseAll,
   onEndAll,
   onDeleteWorktree,
 }: WorktreeMenuItemsProps) {
-  const hasIssueSub = Boolean(worktree.issueNumber && (onOpenIssueSidecar || onOpenIssueExternal));
-  const hasPRSub = Boolean(worktree.prNumber && (onOpenPRSidecar || onOpenPRExternal));
+  const hasIssueSub = Boolean(worktree.issueNumber && (onOpenIssuePortal || onOpenIssueExternal));
+  const hasPRSub = Boolean(worktree.prNumber && (onOpenPRPortal || onOpenPRExternal));
   const hasIssueOrPrSection = hasIssueSub || hasPRSub;
   const hasRecipes = recipes.length > 0;
   const hasRecipeSection = hasRecipes || (onSaveLayout && counts.active > 0);
@@ -133,7 +140,7 @@ export function WorktreeMenuItems({
       {/* Launch submenu */}
       <C.Sub>
         <C.SubTrigger>
-          <Terminal className="w-3.5 h-3.5 mr-2" />
+          <SquareTerminal className="w-3.5 h-3.5 mr-2" />
           Launch
         </C.SubTrigger>
         <C.SubContent>
@@ -148,7 +155,7 @@ export function WorktreeMenuItems({
                 {Icon ? (
                   <Icon className="w-3.5 h-3.5 mr-2" />
                 ) : (
-                  <Terminal className="w-3.5 h-3.5 mr-2" />
+                  <SquareTerminal className="w-3.5 h-3.5 mr-2" />
                 )}
                 {agent.name}
               </C.Item>
@@ -156,7 +163,7 @@ export function WorktreeMenuItems({
           })}
           {launchAgents.length > 0 && <C.Separator />}
           <C.Item onSelect={() => onLaunchAgent?.("terminal")} disabled={!onLaunchAgent}>
-            <Terminal className="w-3.5 h-3.5 mr-2" />
+            <SquareTerminal className="w-3.5 h-3.5 mr-2" />
             Open Terminal
           </C.Item>
           <C.Item onSelect={() => onLaunchAgent?.("browser")} disabled={!onLaunchAgent}>
@@ -173,9 +180,9 @@ export function WorktreeMenuItems({
           Sessions
         </C.SubTrigger>
         <C.SubContent>
-          <C.Item onSelect={onMinimizeAll} disabled={counts.grid === 0}>
-            <Minimize2 className="w-3.5 h-3.5 mr-2" />
-            Minimize All
+          <C.Item onSelect={onDockAll} disabled={counts.grid === 0}>
+            <MoveToDockIcon className="w-3.5 h-3.5 mr-2" />
+            Dock All
             <C.Shortcut>({counts.grid})</C.Shortcut>
           </C.Item>
           <C.Item onSelect={onMaximizeAll} disabled={counts.dock === 0}>
@@ -205,11 +212,6 @@ export function WorktreeMenuItems({
             Close Completed
             <C.Shortcut>({counts.completed})</C.Shortcut>
           </C.Item>
-          <C.Item onSelect={onCloseFailed} disabled={counts.failed === 0}>
-            Close Failed
-            <C.Shortcut>({counts.failed})</C.Shortcut>
-          </C.Item>
-
           <C.Separator />
 
           <C.Item onSelect={onCloseAll} disabled={counts.active === 0}>
@@ -235,6 +237,13 @@ export function WorktreeMenuItems({
         </C.Item>
       )}
 
+      {onViewPlan && (
+        <C.Item onSelect={onViewPlan}>
+          <FileText className="w-3.5 h-3.5 mr-2" />
+          View Plan
+        </C.Item>
+      )}
+
       {onOpenReviewHub && (
         <C.Item onSelect={onOpenReviewHub}>
           <GitCommitHorizontal className="w-3.5 h-3.5 mr-2" />
@@ -252,7 +261,7 @@ export function WorktreeMenuItems({
       {/* Copy Context submenu */}
       <C.Sub>
         <C.SubTrigger>
-          <Copy className="w-3.5 h-3.5 mr-2" />
+          <CopyTreeIcon className="w-3.5 h-3.5 mr-2" />
           Copy Context
         </C.SubTrigger>
         <C.SubContent>
@@ -268,6 +277,10 @@ export function WorktreeMenuItems({
       <C.Item onSelect={onRevealInFinder}>
         <Folder className="w-3.5 h-3.5 mr-2" />
         Reveal in Finder
+      </C.Item>
+      <C.Item onSelect={onCopyPath}>
+        <Copy className="w-3.5 h-3.5 mr-2" />
+        Copy Path
       </C.Item>
 
       {onTogglePin && !worktree.isMainWorktree && (
@@ -286,6 +299,22 @@ export function WorktreeMenuItems({
         </C.Item>
       )}
 
+      {onToggleCollapse && (
+        <C.Item onSelect={onToggleCollapse}>
+          {isCollapsed ? (
+            <>
+              <PanelTopOpen className="w-3.5 h-3.5 mr-2" />
+              Expand Card
+            </>
+          ) : (
+            <>
+              <PanelTopClose className="w-3.5 h-3.5 mr-2" />
+              Collapse Card
+            </>
+          )}
+        </C.Item>
+      )}
+
       {/* Issue / PR submenus */}
       {hasIssueOrPrSection && <C.Separator />}
       {hasIssueSub && (
@@ -295,7 +324,7 @@ export function WorktreeMenuItems({
             Open Issue #{worktree.issueNumber}
           </C.SubTrigger>
           <C.SubContent>
-            {onOpenIssueSidecar && <C.Item onSelect={onOpenIssueSidecar}>In Sidecar</C.Item>}
+            {onOpenIssuePortal && <C.Item onSelect={onOpenIssuePortal}>In Portal</C.Item>}
             {onOpenIssueExternal && (
               <C.Item onSelect={onOpenIssueExternal}>In External Browser</C.Item>
             )}
@@ -309,7 +338,7 @@ export function WorktreeMenuItems({
             Open PR #{worktree.prNumber}
           </C.SubTrigger>
           <C.SubContent>
-            {onOpenPRSidecar && <C.Item onSelect={onOpenPRSidecar}>In Sidecar</C.Item>}
+            {onOpenPRPortal && <C.Item onSelect={onOpenPRPortal}>In Portal</C.Item>}
             {onOpenPRExternal && <C.Item onSelect={onOpenPRExternal}>In External Browser</C.Item>}
           </C.SubContent>
         </C.Sub>
@@ -320,7 +349,7 @@ export function WorktreeMenuItems({
       {hasRecipes && (
         <C.Sub>
           <C.SubTrigger>
-            <Play className="w-3.5 h-3.5 mr-2" />
+            <TerminalRecipeIcon className="w-3.5 h-3.5 mr-2" />
             Run Recipe
           </C.SubTrigger>
           <C.SubContent>

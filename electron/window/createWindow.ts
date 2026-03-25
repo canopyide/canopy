@@ -86,7 +86,7 @@ export function setupBrowserWindow(dirname: string): CreateWindowResult {
       sandbox: true,
       webviewTag: true,
       navigateOnDragDrop: false,
-      backgroundThrottling: false,
+      v8CacheOptions: "code",
     },
     ...(process.platform === "darwin"
       ? {
@@ -239,6 +239,34 @@ export function setupBrowserWindow(dirname: string): CreateWindowResult {
   });
   win.on("leave-html-full-screen", () => {
     sendToRenderer(win, CHANNELS.WINDOW_FULLSCREEN_CHANGE, false);
+  });
+
+  // Memory reclamation: clear renderer caches after sustained minimize
+  const RECLAIM_DELAY_MS = 5_000;
+  let reclaimTimer: ReturnType<typeof setTimeout> | null = null;
+
+  win.on("minimize", () => {
+    if (reclaimTimer) clearTimeout(reclaimTimer);
+    reclaimTimer = setTimeout(() => {
+      reclaimTimer = null;
+      if (!win.isDestroyed() && win.isMinimized()) {
+        sendToRenderer(win, CHANNELS.WINDOW_RECLAIM_MEMORY, { reason: "minimize" });
+      }
+    }, RECLAIM_DELAY_MS);
+  });
+
+  win.on("restore", () => {
+    if (reclaimTimer) {
+      clearTimeout(reclaimTimer);
+      reclaimTimer = null;
+    }
+  });
+
+  win.once("closed", () => {
+    if (reclaimTimer) {
+      clearTimeout(reclaimTimer);
+      reclaimTimer = null;
+    }
   });
 
   // Window IPC handlers

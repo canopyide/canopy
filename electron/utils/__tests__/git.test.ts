@@ -8,12 +8,9 @@ const mockGit = {
   revparse: vi.fn(),
 };
 
-vi.mock("simple-git", () => {
-  return {
-    simpleGit: vi.fn(() => mockGit),
-    default: vi.fn(() => mockGit),
-  };
-});
+vi.mock("../hardenedGit.js", () => ({
+  createHardenedGit: vi.fn(() => mockGit),
+}));
 
 vi.mock("fs", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -34,7 +31,7 @@ vi.mock("../logger.js", () => ({
 }));
 
 import { getLatestTrackedFileMtime, getWorktreeChangesWithStats, listCommits } from "../git.js";
-import { simpleGit } from "simple-git";
+import { createHardenedGit } from "../hardenedGit.js";
 import { promises as fs } from "fs";
 
 describe("getLatestTrackedFileMtime", () => {
@@ -49,7 +46,7 @@ describe("getLatestTrackedFileMtime", () => {
     const timestamp = await getLatestTrackedFileMtime("/test/path");
 
     expect(timestamp).toBe(commitUnixTime * 1000);
-    expect(simpleGit).toHaveBeenCalledWith("/test/path");
+    expect(createHardenedGit).toHaveBeenCalledWith("/test/path");
     expect(mockGit.raw).toHaveBeenCalledWith(["log", "-1", "--format=%ct"]);
   });
 
@@ -135,6 +132,35 @@ describe("getWorktreeChangesWithStats", () => {
 
     await expect(getWorktreeChangesWithStats("/valid/worktree", true)).rejects.not.toThrow(
       WorktreeRemovedError
+    );
+  });
+});
+
+describe("getWorktreeChangesWithStats --no-ext-diff", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (fs.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    mockGit.status.mockResolvedValue({
+      modified: ["src/app.ts"],
+      created: [],
+      deleted: [],
+      renamed: [],
+      staged: [],
+      conflicted: [],
+      not_added: [],
+      files: [{ path: "src/app.ts", index: " ", working_dir: "M" }],
+    });
+    mockGit.revparse.mockResolvedValue("/test/path\n");
+    mockGit.raw.mockResolvedValue("100\t0\tsome msg");
+    mockGit.diff.mockResolvedValue("1\t0\tsrc/app.ts");
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 1000 });
+  });
+
+  it("passes --no-ext-diff in numstat diff call", async () => {
+    await getWorktreeChangesWithStats("/test/path", true);
+
+    expect(mockGit.diff).toHaveBeenCalledWith(
+      expect.arrayContaining(["--no-ext-diff", "--numstat"])
     );
   });
 });

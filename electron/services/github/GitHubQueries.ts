@@ -9,6 +9,41 @@ export const REPO_STATS_QUERY = `
   }
 `;
 
+export const PROJECT_HEALTH_QUERY = `
+  query GetProjectHealth($owner: String!, $repo: String!, $merged60: String!, $merged120: String!, $merged180: String!) {
+    repository(owner: $owner, name: $repo) {
+      issues(states: OPEN) { totalCount }
+      pullRequests(states: OPEN) { totalCount }
+      defaultBranchRef {
+        target {
+          ... on Commit {
+            statusCheckRollup {
+              state
+            }
+          }
+        }
+      }
+      latestRelease {
+        tagName
+        publishedAt
+        url
+      }
+      vulnerabilityAlerts(first: 1) {
+        totalCount
+      }
+    }
+    mergedPRs60: search(query: $merged60, type: ISSUE, first: 1) {
+      issueCount
+    }
+    mergedPRs120: search(query: $merged120, type: ISSUE, first: 1) {
+      issueCount
+    }
+    mergedPRs180: search(query: $merged180, type: ISSUE, first: 1) {
+      issueCount
+    }
+  }
+`;
+
 export const LIST_ISSUES_QUERY = `
   query GetIssues($owner: String!, $repo: String!, $states: [IssueState!], $cursor: String, $limit: Int = 20, $orderBy: IssueOrder) {
     repository(owner: $owner, name: $repo) {
@@ -104,6 +139,9 @@ export const LIST_PRS_QUERY = `
           reviews(first: 1) {
             totalCount
           }
+          comments {
+            totalCount
+          }
           commits(last: 1) {
             nodes {
               commit {
@@ -174,6 +212,9 @@ export const SEARCH_QUERY = `
             avatarUrl
           }
           reviews(first: 1) {
+            totalCount
+          }
+          comments {
             totalCount
           }
           commits(last: 1) {
@@ -287,6 +328,9 @@ export const GET_PR_QUERY = `
           }
         }
         reviews(first: 1) {
+          totalCount
+        }
+        comments {
           totalCount
         }
       }

@@ -11,7 +11,6 @@ import { DockedTerminalItem } from "./DockedTerminalItem";
 import { DockedTabGroup } from "./DockedTabGroup";
 import { TrashContainer } from "./TrashContainer";
 import { WaitingContainer } from "./WaitingContainer";
-import { FailedContainer } from "./FailedContainer";
 import { BackgroundContainer } from "./BackgroundContainer";
 import {
   SortableDockItem,
@@ -184,7 +183,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
         <div
           ref={combinedRef}
           className={cn(
-            "flex items-center gap-[var(--dock-gap)] overflow-x-auto flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1",
+            "flex items-center gap-[var(--dock-gap)] overflow-x-auto overscroll-x-none flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1",
             isOver &&
               "bg-overlay-soft ring-2 ring-canopy-accent/30 ring-inset rounded-[var(--radius-md)]"
           )}
@@ -260,11 +259,10 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
       {/* Separator between terminals and action containers */}
       {tabGroups.length > 0 && <div className="w-px h-5 bg-[var(--dock-border)] mx-1 shrink-0" />}
 
-      {/* Action containers: Background + Waiting + Failed + Trash */}
+      {/* Action containers: Background + Waiting + Trash */}
       <div className="shrink-0 pl-1 flex items-center gap-2">
         <BackgroundContainer compact={isCompact} />
         <WaitingContainer compact={isCompact} />
-        <FailedContainer compact={isCompact} />
         <TrashContainer trashedTerminals={trashedItems} compact={isCompact} />
       </div>
     </div>

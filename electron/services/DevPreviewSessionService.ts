@@ -26,6 +26,7 @@ interface DevPreviewSession extends DevPreviewSessionState {
   needsInstall: boolean;
   isRunningInstall: boolean;
   installAttemptedGeneration: number | null;
+  startupReplayTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
@@ -36,6 +37,7 @@ const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const STALE_START_RECOVERY_MS = 10000;
+const STARTUP_REPLAY_DELAY_MS = 1500;
 const REPLAY_HISTORY_MAX_LINES = 300;
 const READINESS_TIMEOUT_MS = 30000;
 const READINESS_POLL_INTERVAL_MS = 500;
@@ -104,6 +106,7 @@ export class DevPreviewSessionService {
     this.ptyClient.off("data", this.onDataListener);
     this.ptyClient.off("exit", this.onExitListener);
     for (const session of this.sessions.values()) {
+      this.clearStartupReplay(session);
       session.readinessAbort?.abort();
     }
     for (const terminalId of this.terminalToSession.keys()) {
@@ -277,6 +280,37 @@ export class DevPreviewSessionService {
     );
   }
 
+  async stopByProject(projectId: string): Promise<void> {
+    const targets = [...this.sessions.entries()].filter(
+      ([, session]) => session.projectId === projectId
+    );
+
+    await Promise.all(
+      targets.map(async ([key, session]) => {
+        await this.runLocked(key, async () => {
+          try {
+            await this.stopSessionTerminal(session, "project-hibernated");
+            this.updateSession(session, {
+              status: "stopped",
+              url: null,
+              error: null,
+              terminalId: null,
+              isRestarting: false,
+            });
+            this.sessions.delete(key);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn("[DevPreviewSessionService] stopByProject failed for session", {
+              panelId: session.panelId,
+              projectId: session.projectId,
+              error: message,
+            });
+          }
+        });
+      })
+    );
+  }
+
   getState(request: DevPreviewSessionRequest): DevPreviewSessionState {
     this.validateSessionRequest(request);
     return this.getSessionState(request.projectId, request.panelId);
@@ -366,6 +400,7 @@ export class DevPreviewSessionService {
       needsInstall: false,
       isRunningInstall: false,
       installAttemptedGeneration: null,
+      startupReplayTimer: null,
     };
     this.sessions.set(key, session);
     return session;
@@ -544,6 +579,36 @@ export class DevPreviewSessionService {
         console.warn("[DevPreviewSessionService] Failed to submit dev command:", err);
       }
     }, 100);
+
+    this.scheduleStartupReplay(session);
+  }
+
+  private clearStartupReplay(session: DevPreviewSession): void {
+    if (session.startupReplayTimer !== null) {
+      clearTimeout(session.startupReplayTimer);
+      session.startupReplayTimer = null;
+    }
+  }
+
+  private scheduleStartupReplay(session: DevPreviewSession): void {
+    this.clearStartupReplay(session);
+    const generation = session.generation;
+    const terminalId = session.terminalId;
+    if (!terminalId) return;
+
+    session.startupReplayTimer = setTimeout(() => {
+      session.startupReplayTimer = null;
+      if (
+        session.generation !== generation ||
+        session.terminalId !== terminalId ||
+        session.status !== "starting" ||
+        session.url ||
+        session.pendingUrl
+      ) {
+        return;
+      }
+      void this.replayRecentOutput(terminalId);
+    }, STARTUP_REPLAY_DELAY_MS);
   }
 
   private createTerminalId(session: DevPreviewSession): string {
@@ -557,6 +622,7 @@ export class DevPreviewSessionService {
   private attachTerminal(session: DevPreviewSession, terminalId: string): void {
     const key = createSessionKey(session.projectId, session.panelId);
     if (session.terminalId && session.terminalId !== terminalId) {
+      this.clearStartupReplay(session);
       this.terminalToSession.delete(session.terminalId);
       this.ptyClient.setIpcDataMirror(session.terminalId, false);
     }
@@ -573,6 +639,7 @@ export class DevPreviewSessionService {
   }
 
   private async stopSessionTerminal(session: DevPreviewSession, context: string): Promise<void> {
+    this.clearStartupReplay(session);
     session.readinessAbort?.abort();
     session.readinessAbort = null;
     session.pendingUrl = null;
@@ -693,6 +760,7 @@ export class DevPreviewSessionService {
     const session = this.sessions.get(sessionKey);
     if (!session || session.terminalId !== id) return;
 
+    this.clearStartupReplay(session);
     session.readinessAbort?.abort();
     session.readinessAbort = null;
     session.pendingUrl = null;

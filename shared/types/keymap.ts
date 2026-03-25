@@ -67,7 +67,6 @@ export type KeyAction =
   | "worktree.sessions.restartAll"
   | "worktree.sessions.endAll"
   | "worktree.sessions.closeCompleted"
-  | "worktree.sessions.closeFailed"
   | "worktree.sessions.trashAll"
   | "worktree.sessions.resetRenderers"
 
@@ -114,6 +113,9 @@ export type KeyAction =
   | "terminal.contextMenu"
   | "terminal.stashInput"
   | "terminal.popStash"
+  | "terminal.scrollToLastActivity"
+  | "terminal.sendToAgent"
+  | "terminal.bulkCommand"
 
   // Agent spawning
   | "agent.palette"
@@ -121,7 +123,6 @@ export type KeyAction =
   | "agent.terminal"
   | "agent.focusNextWaiting"
   | "agent.focusNextWorking"
-  | "agent.focusNextFailed"
   | "agent.focusNextAgent"
   | "agent.focusPreviousAgent"
   | "dock.focusNextWaiting"
@@ -137,16 +138,16 @@ export type KeyAction =
   // Panel management
   | "panel.palette"
   | "panel.toggleDiagnostics"
-  | "panel.toggleSidecar"
+  | "panel.togglePortal"
   | "panel.diagnosticsLogs"
   | "panel.diagnosticsEvents"
   | "panel.diagnosticsMessages"
 
-  // Sidecar actions
-  | "sidecar.newTab"
-  | "sidecar.closeTab"
-  | "sidecar.nextTab"
-  | "sidecar.prevTab"
+  // Portal actions
+  | "portal.newTab"
+  | "portal.closeTab"
+  | "portal.nextTab"
+  | "portal.prevTab"
 
   // Notes actions
   | "notes.openPalette"
@@ -165,6 +166,10 @@ export type KeyAction =
 
   // Voice input
   | "voiceInput.toggle"
+
+  // Layout undo/redo
+  | "layout.undo"
+  | "layout.redo"
 
   // System actions
   | "app.quit"
@@ -229,7 +234,6 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "worktree.sessions.restartAll",
   "worktree.sessions.endAll",
   "worktree.sessions.closeCompleted",
-  "worktree.sessions.closeFailed",
   "worktree.sessions.trashAll",
   "worktree.sessions.resetRenderers",
   "tab.next",
@@ -271,12 +275,14 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "terminal.contextMenu",
   "terminal.stashInput",
   "terminal.popStash",
+  "terminal.scrollToLastActivity",
+  "terminal.sendToAgent",
+  "terminal.bulkCommand",
   "agent.palette",
   ...BUILT_IN_AGENT_KEY_ACTIONS,
   "agent.terminal",
   "agent.focusNextWaiting",
   "agent.focusNextWorking",
-  "agent.focusNextFailed",
   "agent.focusNextAgent",
   "agent.focusPreviousAgent",
   "dock.focusNextWaiting",
@@ -286,14 +292,14 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "window.zoomReset",
   "panel.palette",
   "panel.toggleDiagnostics",
-  "panel.toggleSidecar",
+  "panel.togglePortal",
   "panel.diagnosticsLogs",
   "panel.diagnosticsEvents",
   "panel.diagnosticsMessages",
-  "sidecar.newTab",
-  "sidecar.closeTab",
-  "sidecar.nextTab",
-  "sidecar.prevTab",
+  "portal.newTab",
+  "portal.closeTab",
+  "portal.nextTab",
+  "portal.prevTab",
   "notes.openPalette",
   "action.palette",
   "action.palette.open",
@@ -302,6 +308,8 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "help.shortcutsAlt",
   "app.settings",
   "voiceInput.toggle",
+  "layout.undo",
+  "layout.redo",
   "app.quit",
   "app.forceQuit",
   "modal.close",

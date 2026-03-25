@@ -4,6 +4,7 @@ import { renderHook, act } from "@testing-library/react";
 import {
   useDockBlockedState,
   getGroupBlockedAgentState,
+  getGroupAmbientAgentState,
   isGroupDeprioritized,
 } from "../useDockBlockedState";
 import type { AgentState } from "shared/types/agent";
@@ -38,17 +39,6 @@ describe("useDockBlockedState", () => {
     expect(result.current).toBe("waiting");
   });
 
-  it("returns 'failed' after debounce delay", () => {
-    const { result } = renderHook(() => useDockBlockedState("failed"));
-    expect(result.current).toBe(null);
-
-    act(() => {
-      vi.advanceTimersByTime(800);
-    });
-
-    expect(result.current).toBe("failed");
-  });
-
   it("clears immediately when leaving blocked state", () => {
     const { result, rerender } = renderHook(({ state }) => useDockBlockedState(state), {
       initialProps: { state: "waiting" as AgentState },
@@ -79,41 +69,6 @@ describe("useDockBlockedState", () => {
       vi.advanceTimersByTime(800);
     });
     expect(result.current).toBe(null);
-  });
-
-  it("swaps immediately between blocked states", () => {
-    const { result, rerender } = renderHook(({ state }) => useDockBlockedState(state), {
-      initialProps: { state: "waiting" as AgentState },
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(800);
-    });
-    expect(result.current).toBe("waiting");
-
-    rerender({ state: "failed" as const });
-    expect(result.current).toBe("failed");
-  });
-
-  it("swaps blocked states during pending debounce without extra delay", () => {
-    const { result, rerender } = renderHook(({ state }) => useDockBlockedState(state), {
-      initialProps: { state: "waiting" as AgentState },
-    });
-
-    // Advance partway through debounce
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    expect(result.current).toBe(null);
-
-    // Switch to failed while timer still pending
-    rerender({ state: "failed" as const });
-
-    // The new blocked state should debounce from scratch
-    act(() => {
-      vi.advanceTimersByTime(800);
-    });
-    expect(result.current).toBe("failed");
   });
 
   it("handles rapid flapping without stale state updates", () => {
@@ -163,18 +118,54 @@ describe("getGroupBlockedAgentState", () => {
     expect(getGroupBlockedAgentState(panels)).toBe("waiting");
   });
 
-  it("returns 'failed' when any panel is failed and none waiting", () => {
-    const panels = [{ agentState: "working" as const }, { agentState: "failed" as const }];
-    expect(getGroupBlockedAgentState(panels)).toBe("failed");
+  it("returns undefined for empty panels", () => {
+    expect(getGroupBlockedAgentState([])).toBe(undefined);
+  });
+});
+
+describe("getGroupAmbientAgentState", () => {
+  it("returns undefined when all panels are idle or completed", () => {
+    const panels = [{ agentState: "idle" as const }, { agentState: "completed" as const }];
+    expect(getGroupAmbientAgentState(panels)).toBe(undefined);
   });
 
-  it("returns 'waiting' when both waiting and failed are present", () => {
-    const panels = [{ agentState: "waiting" as const }, { agentState: "failed" as const }];
-    expect(getGroupBlockedAgentState(panels)).toBe("waiting");
+  it("returns 'waiting' when any panel is waiting (highest priority)", () => {
+    const panels = [{ agentState: "working" as const }, { agentState: "waiting" as const }];
+    expect(getGroupAmbientAgentState(panels)).toBe("waiting");
+  });
+
+  it("returns 'working' when any panel is working and none blocked", () => {
+    const panels = [{ agentState: "idle" as const }, { agentState: "working" as const }];
+    expect(getGroupAmbientAgentState(panels)).toBe("working");
+  });
+
+  it("returns 'working' for running state (treated as working tier)", () => {
+    const panels = [{ agentState: "idle" as const }, { agentState: "running" as const }];
+    expect(getGroupAmbientAgentState(panels)).toBe("working");
+  });
+
+  it("returns 'waiting' when waiting outranks working", () => {
+    const panels = [{ agentState: "waiting" as const }, { agentState: "working" as const }];
+    expect(getGroupAmbientAgentState(panels)).toBe("waiting");
   });
 
   it("returns undefined for empty panels", () => {
-    expect(getGroupBlockedAgentState([])).toBe(undefined);
+    expect(getGroupAmbientAgentState([])).toBe(undefined);
+  });
+
+  it("returns undefined for undefined agentState panels", () => {
+    const panels = [{ agentState: undefined }, { agentState: undefined }];
+    expect(getGroupAmbientAgentState(panels)).toBe(undefined);
+  });
+
+  it("ignores directing state (not in working tier)", () => {
+    const panels = [{ agentState: "directing" as const }, { agentState: "idle" as const }];
+    expect(getGroupAmbientAgentState(panels)).toBe(undefined);
+  });
+
+  it("returns 'working' for completed + working mix", () => {
+    const panels = [{ agentState: "completed" as const }, { agentState: "working" as const }];
+    expect(getGroupAmbientAgentState(panels)).toBe("working");
   });
 });
 
@@ -210,11 +201,6 @@ describe("isGroupDeprioritized", () => {
 
   it("returns false when any panel is waiting", () => {
     const panels = [{ agentState: "completed" as const }, { agentState: "waiting" as const }];
-    expect(isGroupDeprioritized(panels)).toBe(false);
-  });
-
-  it("returns false when any panel is failed", () => {
-    const panels = [{ agentState: "idle" as const }, { agentState: "failed" as const }];
     expect(isGroupDeprioritized(panels)).toBe(false);
   });
 

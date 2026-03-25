@@ -1,6 +1,9 @@
-import {
+import React, {
   Profiler,
+  Suspense,
+  lazy,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -9,7 +12,7 @@ import {
   useTransition,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw } from "lucide-react";
+import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw, Radio } from "lucide-react";
 import { ScrollIndicator } from "./components/Worktree/ScrollIndicator";
 import {
   isElectronAvailable,
@@ -21,6 +24,7 @@ import {
   useTerminalConfig,
   useAppThemeConfig,
   useGlobalKeybindings,
+  useGlobalEscapeDispatcher,
   useContextInjection,
   useProjectSettings,
   useGridNavigation,
@@ -31,6 +35,7 @@ import {
   useErrors,
   useReEntrySummary,
 } from "./hooks";
+import { useHibernationNotifications } from "./hooks/useHibernationNotifications";
 import { useActionRegistry } from "./hooks/useActionRegistry";
 import { useUpdateListener } from "./hooks/useUpdateListener";
 import { useWorkflowListener } from "./hooks/useWorkflowListener";
@@ -41,19 +46,22 @@ import { useQuickCreatePalette } from "./hooks/useQuickCreatePalette";
 import { useDoubleShift } from "./hooks/useDoubleShift";
 import { useMcpBridge } from "./hooks/useMcpBridge";
 import { useFileDropGuard } from "./hooks/useFileDropGuard";
+import { removeStartupSkeleton } from "./utils/removeStartupSkeleton";
 import { createTooltipWithShortcut } from "./lib/platform";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { useCrashRecoveryGate } from "./hooks/app/useCrashRecoveryGate";
 import { CrashRecoveryDialog } from "./components/Recovery/CrashRecoveryDialog";
 import {
   useAppHydration,
   useProjectSwitchRehydration,
-  useFirstRunToasts,
+  useShortcutHints,
   useTerminalStoreBootstrap,
   useSemanticWorkerLifecycle,
   useSystemWakeHandler,
   useDevServerDiscovery,
   useAccessibilityAnnouncements,
   useGettingStartedChecklist,
+  useDeferredNewsletterPrompt,
   useUnloadCleanup,
   useHomeDir,
   usePerformanceMonitors,
@@ -72,14 +80,16 @@ import {
   WorktreeSidebarSearchBar,
   WorktreeOverviewModal,
   QuickCreatePalette,
+  QuickStateFilterBar,
 } from "./components/Worktree";
 import { CrossWorktreeDiff } from "./components/Worktree/CrossWorktreeDiff";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
+import { BulkCreateWorktreeDialog } from "./components/GitHub/BulkCreateWorktreeDialog";
 import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialogHost";
 import { FileViewerModalHost } from "./components/FileViewer/FileViewerModalHost";
 import { NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
-import { MORE_AGENTS_PANEL_ID } from "./hooks/usePanelPalette";
+import { MORE_AGENTS_PANEL_ID, DEFAULT_MODEL_OPTION_ID } from "./hooks/usePanelPalette";
 import { GitInitDialog, ProjectOnboardingWizard, WelcomeScreen } from "./components/Project";
 import { VoiceRecordingAnnouncer } from "./components/Terminal/VoiceRecordingAnnouncer";
 import { AccessibilityAnnouncer } from "./components/Accessibility/AccessibilityAnnouncer";
@@ -87,19 +97,34 @@ import { CreateProjectFolderDialog } from "./components/Project/CreateProjectFol
 import { ProjectSwitcherPalette } from "./components/Project/ProjectSwitcherPalette";
 import { ActionPalette } from "./components/ActionPalette";
 import { QuickSwitcher } from "./components/QuickSwitcher";
+import { SendToAgentPalette } from "./components/Terminal/SendToAgentPalette";
+import { useSendToAgentPalette } from "./hooks/useSendToAgentPalette";
+import { BulkCommandPalette } from "./components/BulkCommandCenter";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
+import { PanelLimitConfirmDialog } from "./components/Terminal/PanelLimitConfirmDialog";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { NotesPalette } from "./components/Notes";
 import { WorkflowSection } from "./components/Workflow";
-import { SettingsDialog } from "./components/Settings";
+const LazySettingsDialog = lazy(() =>
+  import("./components/Settings/SettingsDialog").then((m) => ({ default: m.SettingsDialog }))
+);
 import { ShortcutReferenceDialog } from "./components/KeyboardShortcuts";
 import { Toaster } from "./components/ui/toaster";
+import { ShortcutHint } from "./components/ui/ShortcutHint";
 import { ReEntrySummary } from "./components/ui/ReEntrySummary";
 import { UpdateNotification } from "./components/UpdateNotification";
 import { OnboardingFlow } from "./components/Onboarding/OnboardingFlow";
+import { NewsletterStep } from "./components/Onboarding/NewsletterStep";
 import { GettingStartedChecklist } from "./components/Onboarding/GettingStartedChecklist";
+import { CelebrationConfetti } from "./components/Onboarding/CelebrationConfetti";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { WorktreeCardErrorFallback } from "./components/Worktree/WorktreeCardErrorFallback";
 import { DndProvider } from "./components/DragDrop";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableWorktreeCard,
+  getWorktreeSortDragId,
+} from "./components/DragDrop/SortableWorktreeCard";
 import {
   useTerminalStore,
   useWorktreeSelectionStore,
@@ -107,6 +132,7 @@ import {
   useErrorStore,
   useAgentPreferencesStore,
   usePaletteStore,
+  useNotificationSettingsStore,
 } from "./store";
 import { useShallow } from "zustand/react/shallow";
 import { useMacroFocusStore } from "./store/macroFocusStore";
@@ -119,6 +145,7 @@ registerBuiltInPanelComponents();
 import { useWorktreeFilterStore } from "./store/worktreeFilterStore";
 import {
   matchesFilters,
+  matchesQuickStateFilter,
   sortWorktrees,
   sortWorktreesByRelevance,
   groupByType,
@@ -126,12 +153,215 @@ import {
   scoreWorktree,
   type DerivedWorktreeMeta,
   type FilterState,
+  type QuickStateFilter,
 } from "./lib/worktreeFilters";
+import { computeChipState } from "./components/Worktree/utils/computeChipState";
 import { parseExactNumber } from "./lib/parseExactNumber";
 import type { WorktreeState, PanelKind } from "./types";
 import { actionService } from "./services/ActionService";
 import { voiceRecordingService } from "./services/VoiceRecordingService";
+import { terminalInstanceService } from "./services/terminal/TerminalInstanceService";
+import { SIDEBAR_TOGGLE_LOCK_MS } from "./lib/terminalLayout";
 import { useRenderProfiler } from "./utils/renderProfiler";
+import { useWorktreeDataStore } from "./store/worktreeDataStore";
+import type { WorktreeActions } from "./hooks/useWorktreeActions";
+import type { UseAgentLauncherReturn } from "./hooks/useAgentLauncher";
+
+interface SidebarWorktreeRowProps {
+  worktreeId: string;
+  activeWorktreeId: string | null;
+  focusedWorktreeId: string | null;
+  totalWorktreeCount: number;
+  selectWorktree: (id: string) => void;
+  worktreeActions: WorktreeActions;
+  availability: UseAgentLauncherReturn["availability"];
+  agentSettings: UseAgentLauncherReturn["agentSettings"];
+  homeDir: string | undefined;
+  dragStartOrder: string[];
+  isSortDisabled: boolean;
+  isPinned: boolean;
+}
+
+const SidebarWorktreeRow = React.memo(function SidebarWorktreeRow({
+  worktreeId,
+  activeWorktreeId,
+  focusedWorktreeId,
+  totalWorktreeCount,
+  selectWorktree,
+  worktreeActions,
+  availability,
+  agentSettings,
+  homeDir,
+  dragStartOrder,
+  isSortDisabled,
+  isPinned,
+}: SidebarWorktreeRowProps) {
+  const worktree = useWorktreeDataStore((state) => state.worktrees.get(worktreeId));
+
+  const onSelect = useCallback(() => selectWorktree(worktreeId), [selectWorktree, worktreeId]);
+  const onCopyTree = useCallback(
+    () => worktree && worktreeActions.handleCopyTree(worktree),
+    [worktree, worktreeActions]
+  );
+  const onOpenEditor = useCallback(
+    () => worktree && worktreeActions.handleOpenEditor(worktree),
+    [worktree, worktreeActions]
+  );
+  const onSaveLayout = useCallback(
+    () => worktree && worktreeActions.handleSaveLayout(worktree),
+    [worktree, worktreeActions]
+  );
+  const onLaunchAgent = useCallback(
+    (agentId: string) => worktreeActions.handleLaunchAgent(worktreeId, agentId),
+    [worktreeActions, worktreeId]
+  );
+
+  if (!worktree) return null;
+
+  const showDragHandle = !isSortDisabled && !isPinned;
+  const isActive = worktreeId === activeWorktreeId;
+  const isFocused = worktreeId === focusedWorktreeId;
+  const isSingleWorktree = totalWorktreeCount === 1;
+
+  if (showDragHandle) {
+    return (
+      <SortableWorktreeCard
+        worktreeId={worktreeId}
+        dragStartOrder={dragStartOrder}
+        disabled={isSortDisabled || isPinned}
+      >
+        {({ isDraggingSort, dragHandleListeners, dragHandleActivatorRef }) => (
+          <ErrorBoundary
+            variant="component"
+            componentName="WorktreeCard"
+            fallback={WorktreeCardErrorFallback}
+            resetKeys={[worktreeId]}
+            context={{ worktreeId }}
+          >
+            <WorktreeCard
+              worktree={worktree}
+              isActive={isActive}
+              isFocused={isFocused}
+              isSingleWorktree={isSingleWorktree}
+              onSelect={onSelect}
+              onCopyTree={onCopyTree}
+              onOpenEditor={onOpenEditor}
+              onSaveLayout={onSaveLayout}
+              onLaunchAgent={onLaunchAgent}
+              agentAvailability={availability}
+              agentSettings={agentSettings}
+              homeDir={homeDir}
+              dragHandleListeners={dragHandleListeners}
+              dragHandleActivatorRef={dragHandleActivatorRef}
+              isDraggingSort={isDraggingSort}
+            />
+          </ErrorBoundary>
+        )}
+      </SortableWorktreeCard>
+    );
+  }
+
+  return (
+    <SortableWorktreeCard worktreeId={worktreeId} dragStartOrder={dragStartOrder} disabled={true}>
+      {({ isDraggingSort }) => (
+        <ErrorBoundary
+          variant="component"
+          componentName="WorktreeCard"
+          fallback={WorktreeCardErrorFallback}
+          resetKeys={[worktreeId]}
+          context={{ worktreeId }}
+        >
+          <WorktreeCard
+            worktree={worktree}
+            isActive={isActive}
+            isFocused={isFocused}
+            isSingleWorktree={isSingleWorktree}
+            onSelect={onSelect}
+            onCopyTree={onCopyTree}
+            onOpenEditor={onOpenEditor}
+            onSaveLayout={onSaveLayout}
+            onLaunchAgent={onLaunchAgent}
+            agentAvailability={availability}
+            agentSettings={agentSettings}
+            homeDir={homeDir}
+            isDraggingSort={isDraggingSort}
+          />
+        </ErrorBoundary>
+      )}
+    </SortableWorktreeCard>
+  );
+});
+
+interface StaticWorktreeRowProps {
+  worktreeId: string;
+  activeWorktreeId: string | null;
+  focusedWorktreeId: string | null;
+  totalWorktreeCount: number;
+  selectWorktree: (id: string) => void;
+  worktreeActions: WorktreeActions;
+  availability: UseAgentLauncherReturn["availability"];
+  agentSettings: UseAgentLauncherReturn["agentSettings"];
+  homeDir: string | undefined;
+}
+
+const StaticWorktreeRow = React.memo(function StaticWorktreeRow({
+  worktreeId,
+  activeWorktreeId,
+  focusedWorktreeId,
+  totalWorktreeCount,
+  selectWorktree,
+  worktreeActions,
+  availability,
+  agentSettings,
+  homeDir,
+}: StaticWorktreeRowProps) {
+  const worktree = useWorktreeDataStore((state) => state.worktrees.get(worktreeId));
+
+  const onSelect = useCallback(() => selectWorktree(worktreeId), [selectWorktree, worktreeId]);
+  const onCopyTree = useCallback(
+    () => worktree && worktreeActions.handleCopyTree(worktree),
+    [worktree, worktreeActions]
+  );
+  const onOpenEditor = useCallback(
+    () => worktree && worktreeActions.handleOpenEditor(worktree),
+    [worktree, worktreeActions]
+  );
+  const onSaveLayout = useCallback(
+    () => worktree && worktreeActions.handleSaveLayout(worktree),
+    [worktree, worktreeActions]
+  );
+  const onLaunchAgent = useCallback(
+    (agentId: string) => worktreeActions.handleLaunchAgent(worktreeId, agentId),
+    [worktreeActions, worktreeId]
+  );
+
+  if (!worktree) return null;
+
+  return (
+    <ErrorBoundary
+      variant="component"
+      componentName="WorktreeCard"
+      fallback={WorktreeCardErrorFallback}
+      resetKeys={[worktreeId]}
+      context={{ worktreeId }}
+    >
+      <WorktreeCard
+        worktree={worktree}
+        isActive={worktreeId === activeWorktreeId}
+        isFocused={worktreeId === focusedWorktreeId}
+        isSingleWorktree={totalWorktreeCount === 1}
+        onSelect={onSelect}
+        onCopyTree={onCopyTree}
+        onOpenEditor={onOpenEditor}
+        onSaveLayout={onSaveLayout}
+        onLaunchAgent={onLaunchAgent}
+        agentAvailability={availability}
+        agentSettings={agentSettings}
+        homeDir={homeDir}
+      />
+    </ErrorBoundary>
+  );
+});
 
 interface SidebarContentProps {
   onOpenOverview: () => void;
@@ -139,20 +369,30 @@ interface SidebarContentProps {
 
 function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
+  const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
   const currentProject = useProjectStore((state) => state.currentProject);
   useProjectSettings();
   const { launchAgent, availability, agentSettings } = useAgentLauncher();
-  const { activeWorktreeId, focusedWorktreeId, selectWorktree, createDialog, closeCreateDialog } =
-    useWorktreeSelectionStore(
-      useShallow((state) => ({
-        activeWorktreeId: state.activeWorktreeId,
-        focusedWorktreeId: state.focusedWorktreeId,
-        selectWorktree: state.selectWorktree,
-        createDialog: state.createDialog,
-        closeCreateDialog: state.closeCreateDialog,
-      }))
-    );
+  const {
+    activeWorktreeId,
+    focusedWorktreeId,
+    selectWorktree,
+    createDialog,
+    closeCreateDialog,
+    bulkCreateDialog,
+    closeBulkCreateDialog,
+  } = useWorktreeSelectionStore(
+    useShallow((state) => ({
+      activeWorktreeId: state.activeWorktreeId,
+      focusedWorktreeId: state.focusedWorktreeId,
+      selectWorktree: state.selectWorktree,
+      createDialog: state.createDialog,
+      closeCreateDialog: state.closeCreateDialog,
+      bulkCreateDialog: state.bulkCreateDialog,
+      closeBulkCreateDialog: state.closeBulkCreateDialog,
+    }))
+  );
 
   // Filter/sort state - destructured for stable memoization
   const {
@@ -167,6 +407,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     alwaysShowActive,
     alwaysShowWaiting,
     pinnedWorktrees,
+    manualOrder,
   } = useWorktreeFilterStore(
     useShallow((state) => ({
       query: state.query,
@@ -180,11 +421,14 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       alwaysShowActive: state.alwaysShowActive,
       alwaysShowWaiting: state.alwaysShowWaiting,
       pinnedWorktrees: state.pinnedWorktrees,
+      manualOrder: state.manualOrder,
     }))
   );
   const clearAllFilters = useWorktreeFilterStore((state) => state.clearAll);
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
   const unpinWorktree = useWorktreeFilterStore((state) => state.unpinWorktree);
+  const collapsedWorktrees = useWorktreeFilterStore((state) => state.collapsedWorktrees);
+  const expandWorktree = useWorktreeFilterStore((state) => state.expandWorktree);
 
   // Terminal store for derived metadata
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
@@ -197,6 +441,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [hiddenAbove, setHiddenAbove] = useState(0);
   const [hiddenBelow, setHiddenBelow] = useState(0);
+
+  const [quickStateFilter, setQuickStateFilter] = useState<QuickStateFilter>("all");
 
   const [isRecipeEditorOpen, setIsRecipeEditorOpen] = useState(false);
   const [recipeEditorWorktreeId, setRecipeEditorWorktreeId] = useState<string | undefined>(
@@ -219,44 +465,98 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     });
   }, [isRefreshing, startRefreshTransition]);
 
-  // Clean up stale pinned worktrees
+  const setManualOrder = useWorktreeFilterStore((state) => state.setManualOrder);
+
+  // Clean up stale pinned and collapsed worktrees
   useEffect(() => {
     const existingIds = new Set(worktrees.map((w) => w.id));
     const stalePins = pinnedWorktrees.filter((id) => !existingIds.has(id));
     stalePins.forEach((id) => unpinWorktree(id));
-  }, [worktrees, pinnedWorktrees, unpinWorktree]);
+    const staleCollapsed = collapsedWorktrees.filter((id) => !existingIds.has(id));
+    staleCollapsed.forEach((id) => expandWorktree(id));
+  }, [worktrees, pinnedWorktrees, unpinWorktree, collapsedWorktrees, expandWorktree]);
+
+  // Clean up stale manual order entries
+  useEffect(() => {
+    if (manualOrder.length === 0) return;
+    const existingIds = new Set(worktrees.map((w) => w.id));
+    const cleaned = manualOrder.filter((id) => existingIds.has(id));
+    if (cleaned.length !== manualOrder.length) {
+      setManualOrder(cleaned);
+    }
+  }, [worktrees, manualOrder, setManualOrder]);
 
   // Compute derived metadata for each worktree
   const derivedMetaMap = useMemo(() => {
     const map = new Map<string, DerivedWorktreeMeta>();
-    for (const worktree of worktrees) {
+    for (const worktree of deferredWorktrees) {
       const worktreeTerminals = terminals.filter(
         (t) => t.worktreeId === worktree.id && t.location !== "trash"
       );
-      const errors = getWorktreeErrors(worktree.id);
+      const waitingTerminalCount = worktreeTerminals.filter(
+        (t) => t.agentState === "waiting"
+      ).length;
+
+      // chipState logic mirrors useWorktreeStatus.ts — keep in sync
+      const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
+      const isComplete =
+        !!worktree.issueNumber &&
+        !!worktree.prNumber &&
+        !hasChanges &&
+        worktree.worktreeChanges !== null;
+
+      let lifecycleStage: "in-review" | "merged" | "ready-for-cleanup" | null = null;
+      if (!worktree.isMainWorktree && worktree.worktreeChanges !== null) {
+        if (worktree.prState === "merged") {
+          lifecycleStage = worktree.issueNumber ? "ready-for-cleanup" : "merged";
+        } else if (worktree.prState === "open") {
+          lifecycleStage = "in-review";
+        }
+      }
+
+      const chipState = computeChipState({
+        waitingTerminalCount,
+        lifecycleStage,
+        isComplete,
+      });
+
       map.set(worktree.id, {
-        hasErrors: errors.length > 0,
         terminalCount: worktreeTerminals.length,
         hasWorkingAgent: worktreeTerminals.some((t) => t.agentState === "working"),
         hasRunningAgent: worktreeTerminals.some((t) => t.agentState === "running"),
         hasWaitingAgent: worktreeTerminals.some((t) => t.agentState === "waiting"),
-        hasFailedAgent: worktreeTerminals.some((t) => t.agentState === "failed"),
         hasCompletedAgent: worktreeTerminals.some((t) => t.agentState === "completed"),
+        hasMergeConflict:
+          worktree.worktreeChanges?.changes.some((c) => c.status === "conflicted") ?? false,
+        chipState,
       });
     }
     return map;
-  }, [worktrees, terminals, getWorktreeErrors]);
+  }, [deferredWorktrees, terminals, getWorktreeErrors]);
 
   // Apply filters and sorting
   const mainWorktree = useMemo(
-    () => worktrees.find((w) => w.isMainWorktree) ?? worktrees[0] ?? null,
-    [worktrees]
+    () => deferredWorktrees.find((w) => w.isMainWorktree) ?? deferredWorktrees[0] ?? null,
+    [deferredWorktrees]
   );
 
   const integrationWorktree = useMemo(
-    () => findIntegrationWorktree(worktrees, mainWorktree?.id),
-    [worktrees, mainWorktree]
+    () => findIntegrationWorktree(deferredWorktrees, mainWorktree?.id),
+    [deferredWorktrees, mainWorktree]
   );
+
+  const quickStateCounts = useMemo(() => {
+    const counts = { working: 0, waiting: 0, finished: 0 };
+    for (const w of deferredWorktrees) {
+      if (w.id === mainWorktree?.id || w.id === integrationWorktree?.id) continue;
+      const meta = derivedMetaMap.get(w.id);
+      if (!meta) continue;
+      if (matchesQuickStateFilter("working", meta)) counts.working++;
+      if (matchesQuickStateFilter("waiting", meta)) counts.waiting++;
+      if (matchesQuickStateFilter("finished", meta)) counts.finished++;
+    }
+    return counts;
+  }, [deferredWorktrees, derivedMetaMap, mainWorktree, integrationWorktree]);
 
   const { filteredWorktrees, groupedSections } = useMemo(() => {
     const filters: FilterState = {
@@ -269,40 +569,49 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     };
 
     // Filter non-main worktrees only (exclude main and integration by ID)
-    const nonMain = worktrees.filter(
+    const nonMain = deferredWorktrees.filter(
       (w) => w.id !== mainWorktree?.id && w.id !== integrationWorktree?.id
     );
     const filtered = nonMain.filter((worktree) => {
       const derived = derivedMetaMap.get(worktree.id) ?? {
-        hasErrors: false,
         terminalCount: 0,
         hasWorkingAgent: false,
         hasRunningAgent: false,
         hasWaitingAgent: false,
-        hasFailedAgent: false,
         hasCompletedAgent: false,
+        hasMergeConflict: false,
+        chipState: null,
       };
       const isActive = worktree.id === activeWorktreeId;
       const hasActiveQuery = query.trim().length > 0;
 
-      if (alwaysShowActive && isActive && !hasActiveQuery) {
+      if (alwaysShowActive && isActive && !hasActiveQuery && quickStateFilter === "all") {
         return true;
       }
 
-      if (alwaysShowWaiting && derived.hasWaitingAgent && !hasActiveQuery) {
+      if (
+        alwaysShowWaiting &&
+        derived.hasWaitingAgent &&
+        !hasActiveQuery &&
+        quickStateFilter === "all"
+      ) {
         return true;
+      }
+
+      if (quickStateFilter !== "all" && !matchesQuickStateFilter(quickStateFilter, derived)) {
+        return false;
       }
 
       return matchesFilters(worktree, filters, derived, isActive);
     });
 
-    const existingWorktreeIds = new Set(worktrees.map((w) => w.id));
+    const existingWorktreeIds = new Set(deferredWorktrees.map((w) => w.id));
     const validPinnedWorktrees = pinnedWorktrees.filter((id) => existingWorktreeIds.has(id));
 
     const hasQuery = query.trim().length > 0;
     const sorted = hasQuery
-      ? sortWorktreesByRelevance(filtered, query, orderBy, validPinnedWorktrees)
-      : sortWorktrees(filtered, orderBy, validPinnedWorktrees);
+      ? sortWorktreesByRelevance(filtered, query, orderBy, validPinnedWorktrees, manualOrder)
+      : sortWorktrees(filtered, orderBy, validPinnedWorktrees, manualOrder);
 
     if (isGroupedByType && !hasQuery) {
       return {
@@ -313,7 +622,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
     return { filteredWorktrees: sorted, groupedSections: null };
   }, [
-    worktrees,
+    deferredWorktrees,
     query,
     orderBy,
     isGroupedByType,
@@ -325,10 +634,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     alwaysShowActive,
     alwaysShowWaiting,
     pinnedWorktrees,
+    manualOrder,
     mainWorktree,
     integrationWorktree,
     derivedMetaMap,
     activeWorktreeId,
+    quickStateFilter,
   ]);
 
   const updateScrollIndicators = useCallback(() => {
@@ -444,6 +755,13 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     setRecipeEditorInitialTerminals(undefined);
   }, []);
 
+  const sortableIds = useMemo(
+    () => filteredWorktrees.map((w) => getWorktreeSortDragId(w.id)),
+    [filteredWorktrees]
+  );
+
+  const dragStartOrder = useMemo(() => filteredWorktrees.map((w) => w.id), [filteredWorktrees]);
+
   if (isLoading && worktrees.length === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -507,8 +825,9 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   }
 
   const rootPath = currentProject?.path ?? "";
-  const hasNonMainWorktrees = worktrees.length > 1;
-  const hasFilters = hasActiveFilters();
+  const hasNonMainWorktrees = deferredWorktrees.length > 1;
+  const hasQuickFilter = quickStateFilter !== "all";
+  const hasFilters = hasActiveFilters() || hasQuickFilter;
   const worktreeMatchesQuery = (w: WorktreeState) => {
     if (!query) return true;
     const exactNum = parseExactNumber(query);
@@ -521,149 +840,268 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const integrationMatchesQuery = integrationWorktree && worktreeMatchesQuery(integrationWorktree);
   const visibleCount = hasFilters
     ? filteredWorktrees.length + (mainMatchesQuery ? 1 : 0) + (integrationMatchesQuery ? 1 : 0)
-    : worktrees.length;
+    : deferredWorktrees.length;
+
+  const hasQuery = query.trim().length > 0;
+  const isSortDisabled = isGroupedByType || hasQuery;
 
   const renderWorktreeCard = (worktree: WorktreeState) => (
-    <WorktreeCard
+    <StaticWorktreeRow
       key={worktree.id}
-      worktree={worktree}
-      isActive={worktree.id === activeWorktreeId}
-      isFocused={worktree.id === focusedWorktreeId}
-      isSingleWorktree={worktrees.length === 1}
-      onSelect={() => selectWorktree(worktree.id)}
-      onCopyTree={() => worktreeActions.handleCopyTree(worktree)}
-      onOpenEditor={() => worktreeActions.handleOpenEditor(worktree)}
-      onSaveLayout={() => worktreeActions.handleSaveLayout(worktree)}
-      onLaunchAgent={(type) => worktreeActions.handleLaunchAgent(worktree.id, type)}
-      agentAvailability={availability}
+      worktreeId={worktree.id}
+      activeWorktreeId={activeWorktreeId}
+      focusedWorktreeId={focusedWorktreeId}
+      totalWorktreeCount={deferredWorktrees.length}
+      selectWorktree={selectWorktree}
+      worktreeActions={worktreeActions}
+      availability={availability}
       agentSettings={agentSettings}
       homeDir={homeDir}
     />
   );
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header Section */}
-      <div className="group/header flex items-center justify-between px-4 py-2 border-b border-divider bg-transparent shrink-0">
-        <div className="flex items-baseline gap-1.5">
-          <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
-          <span className="text-canopy-text/50 text-xs">
-            {hasFilters && visibleCount !== worktrees.length
-              ? `(${visibleCount} of ${worktrees.length})`
-              : `(${worktrees.length})`}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="invisible group-hover/header:visible group-focus-within/header:visible flex items-center gap-1">
-            <button
-              onClick={onOpenOverview}
-              className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
-              title={createTooltipWithShortcut("Open worktrees overview", "Cmd+Shift+O")}
-              aria-label="Open worktrees overview"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={handleRefreshAll}
-              disabled={isRefreshing}
-              className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Refresh sidebar"
-              aria-label="Refresh sidebar"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-            </button>
+    <TooltipProvider delayDuration={400} skipDelayDuration={300}>
+      <div className="flex flex-col h-full">
+        {/* Header Section */}
+        <div className="group/header flex items-center justify-between px-4 py-2 border-b border-divider bg-transparent shrink-0">
+          <div className="flex items-baseline gap-1.5">
+            <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
+            <span className="text-canopy-text/50 text-xs">
+              {hasFilters && visibleCount !== deferredWorktrees.length
+                ? `(${visibleCount} of ${deferredWorktrees.length})`
+                : `(${deferredWorktrees.length})`}
+            </span>
           </div>
-          <button
-            onClick={() =>
-              actionService.dispatch("worktree.createDialog.open", undefined, {
-                source: "user",
-              })
-            }
-            className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
-            title="Create new worktree"
-            aria-label="Create new worktree"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Inline search bar — only when there are non-main worktrees */}
-      {hasNonMainWorktrees && <WorktreeSidebarSearchBar inputRef={searchInputRef} />}
-
-      {/* Main worktree — visible unless excluded by text search */}
-      {mainMatchesQuery && <div className="shrink-0">{renderWorktreeCard(mainWorktree)}</div>}
-
-      {/* Integration branch (develop/trunk/next) — pinned below main, subject to text search */}
-      {integrationMatchesQuery && (
-        <div className="shrink-0">{renderWorktreeCard(integrationWorktree)}</div>
-      )}
-
-      {/* Strong divider between pinned worktrees and scrollable list */}
-      {hasNonMainWorktrees && <div className="shrink-0 border-b-2 border-divider/60" />}
-
-      {/* Non-main worktree list */}
-      <div className="relative flex-1 min-h-0">
-        <div ref={scrollContainerRef} className="h-full overflow-y-auto">
-          <div ref={scrollContentRef}>
-            {filteredWorktrees.length === 0 && hasActiveFilters() ? (
-              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                <FilterX className="w-10 h-10 text-canopy-text/40 mb-3" />
-                <p className="text-sm text-canopy-text/60 mb-3">No worktrees match your filters</p>
+          <div className="flex items-center gap-1">
+            <div className="invisible group-hover/header:visible group-focus-within/header:visible flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onOpenOverview}
+                    className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
+                    aria-label="Open worktrees overview"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {createTooltipWithShortcut("Open worktrees overview", "Cmd+Shift+O")}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() =>
+                      actionService.dispatch("terminal.bulkCommand", undefined, {
+                        source: "user",
+                      })
+                    }
+                    className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
+                    aria-label="Bulk command center"
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {createTooltipWithShortcut("Bulk command center", "Cmd+Shift+B")}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleRefreshAll}
+                    disabled={isRefreshing}
+                    className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="Refresh sidebar"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Refresh sidebar</TooltipContent>
+              </Tooltip>
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <button
-                  onClick={clearAllFilters}
-                  className="text-xs px-3 py-1.5 text-canopy-accent hover:bg-canopy-accent/10 rounded transition-colors"
+                  onClick={() =>
+                    actionService.dispatch("worktree.createDialog.open", undefined, {
+                      source: "user",
+                    })
+                  }
+                  className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
+                  aria-label="Create new worktree"
                 >
-                  Clear filters
+                  <Plus className="w-3.5 h-3.5" />
                 </button>
-              </div>
-            ) : groupedSections ? (
-              <div className="flex flex-col">
-                {groupedSections.map((section) => (
-                  <div key={section.type}>
-                    <div className="sticky top-0 z-10 px-4 py-2 text-[10px] font-medium text-canopy-text/50 uppercase tracking-wide bg-canopy-sidebar border-b border-divider">
-                      {section.displayName} ({section.worktrees.length})
-                    </div>
-                    {section.worktrees.map(renderWorktreeCard)}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col">{filteredWorktrees.map(renderWorktreeCard)}</div>
-            )}
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Create new worktree</TooltipContent>
+            </Tooltip>
           </div>
         </div>
-        <ScrollIndicator direction="above" count={hiddenAbove} onClick={scrollToTop} />
-        <ScrollIndicator direction="below" count={hiddenBelow} onClick={scrollToBottom} />
-      </div>
 
-      <WorkflowSection />
+        {/* Inline search bar — only when there are non-main worktrees */}
+        {hasNonMainWorktrees && <WorktreeSidebarSearchBar inputRef={searchInputRef} />}
 
-      <RecipeEditor
-        worktreeId={recipeEditorWorktreeId}
-        initialTerminals={recipeEditorInitialTerminals}
-        isOpen={isRecipeEditorOpen}
-        onClose={handleCloseRecipeEditor}
-      />
+        {/* Main worktree — visible unless excluded by text search */}
+        {mainMatchesQuery && <div className="shrink-0">{renderWorktreeCard(mainWorktree)}</div>}
 
-      {rootPath && (
-        <NewWorktreeDialog
-          isOpen={createDialog.isOpen}
-          onClose={closeCreateDialog}
-          rootPath={rootPath}
-          onWorktreeCreated={refresh}
-          initialIssue={createDialog.initialIssue}
-          initialPR={createDialog.initialPR}
-          initialRecipeId={createDialog.initialRecipeId}
+        {/* Integration branch (develop/trunk/next) — pinned below main, subject to text search */}
+        {integrationMatchesQuery && (
+          <div className="shrink-0">{renderWorktreeCard(integrationWorktree)}</div>
+        )}
+
+        {/* Strong divider between pinned worktrees and scrollable list */}
+        {hasNonMainWorktrees && <div className="shrink-0 border-b border-border-default" />}
+
+        {/* Non-main worktree list */}
+        <div className="relative flex-1 min-h-0">
+          <div ref={scrollContainerRef} className="h-full overflow-y-auto scrollbar-none">
+            <div ref={scrollContentRef}>
+              {hasNonMainWorktrees && (
+                <QuickStateFilterBar
+                  value={quickStateFilter}
+                  onChange={setQuickStateFilter}
+                  counts={quickStateCounts}
+                />
+              )}
+              {filteredWorktrees.length === 0 && hasFilters ? (
+                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                  <FilterX className="w-10 h-10 text-canopy-text/40 mb-3" />
+                  <p className="text-sm text-canopy-text/60 mb-3">
+                    No worktrees match your filters
+                  </p>
+                  <button
+                    onClick={() => {
+                      clearAllFilters();
+                      setQuickStateFilter("all");
+                    }}
+                    className="text-xs px-3 py-1.5 text-canopy-accent hover:bg-canopy-accent/10 rounded transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              ) : groupedSections ? (
+                <div className="flex flex-col">
+                  {groupedSections.map((section) => (
+                    <div key={section.type}>
+                      <div className="sticky top-0 z-10 px-4 py-2 text-[10px] font-medium text-canopy-text/50 uppercase tracking-wide bg-canopy-sidebar border-b border-divider">
+                        {section.displayName} ({section.worktrees.length})
+                      </div>
+                      {section.worktrees.map(renderWorktreeCard)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col">
+                    {filteredWorktrees.map((worktree) => {
+                      const isPinned = pinnedWorktrees.includes(worktree.id);
+                      return (
+                        <SidebarWorktreeRow
+                          key={worktree.id}
+                          worktreeId={worktree.id}
+                          activeWorktreeId={activeWorktreeId}
+                          focusedWorktreeId={focusedWorktreeId}
+                          totalWorktreeCount={deferredWorktrees.length}
+                          selectWorktree={selectWorktree}
+                          worktreeActions={worktreeActions}
+                          availability={availability}
+                          agentSettings={agentSettings}
+                          homeDir={homeDir}
+                          dragStartOrder={dragStartOrder}
+                          isSortDisabled={isSortDisabled}
+                          isPinned={isPinned}
+                        />
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+              )}
+            </div>
+          </div>
+          <ScrollIndicator direction="above" count={hiddenAbove} onClick={scrollToTop} />
+          <ScrollIndicator direction="below" count={hiddenBelow} onClick={scrollToBottom} />
+        </div>
+
+        <WorkflowSection />
+
+        <RecipeEditor
+          worktreeId={recipeEditorWorktreeId}
+          initialTerminals={recipeEditorInitialTerminals}
+          isOpen={isRecipeEditorOpen}
+          onClose={handleCloseRecipeEditor}
         />
-      )}
-    </div>
+
+        {rootPath && (
+          <NewWorktreeDialog
+            isOpen={createDialog.isOpen}
+            onClose={closeCreateDialog}
+            rootPath={rootPath}
+            onWorktreeCreated={refresh}
+            initialIssue={createDialog.initialIssue}
+            initialPR={createDialog.initialPR}
+            initialRecipeId={createDialog.initialRecipeId}
+          />
+        )}
+
+        <BulkCreateWorktreeDialog
+          isOpen={bulkCreateDialog.isOpen}
+          onClose={closeBulkCreateDialog}
+          selectedIssues={bulkCreateDialog.selectedIssues}
+          onComplete={closeBulkCreateDialog}
+        />
+      </div>
+    </TooltipProvider>
   );
+}
+
+function E2EFaultInjector() {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const handler = () => setTick((t) => t + 1);
+    window.addEventListener("__canopy_e2e_trigger_render__", handler);
+    return () => window.removeEventListener("__canopy_e2e_trigger_render__", handler);
+  }, []);
+
+  if (window.__CANOPY_E2E_FAULT__?.renderError) {
+    throw new Error("E2E_FAULT_INJECTION");
+  }
+  return null;
 }
 
 function App() {
   useErrors();
+  useHibernationNotifications();
   useUnloadCleanup();
+  useEffect(() => removeStartupSkeleton(), []);
+
+  useEffect(() => {
+    window.__CANOPY_E2E_ERROR_STORE__ = () =>
+      useErrorStore.getState().errors.map((e) => ({
+        id: e.id,
+        source: e.source,
+        message: e.message,
+        fromPreviousSession: e.fromPreviousSession,
+      }));
+    window.__CANOPY_E2E_ADD_ERROR__ = (message: string) => {
+      useErrorStore.getState().addError({
+        type: "unknown",
+        message,
+        isTransient: false,
+        source: "e2e-test",
+      });
+    };
+    window.__CANOPY_E2E_CLEAR_ERRORS__ = () => {
+      useErrorStore.getState().clearAll();
+    };
+    return () => {
+      delete window.__CANOPY_E2E_ERROR_STORE__;
+      delete window.__CANOPY_E2E_ADD_ERROR__;
+      delete window.__CANOPY_E2E_CLEAR_ERRORS__;
+    };
+  }, []);
 
   const { crossDiffDialog, closeCrossWorktreeDiff } = useWorktreeSelectionStore(
     useShallow((state) => ({
@@ -700,6 +1138,7 @@ function App() {
   const projectSwitcherPalette = useProjectSwitcherPalette();
   const actionPalette = useActionPalette();
   const quickSwitcher = useQuickSwitcher();
+  const sendToAgentPalette = useSendToAgentPalette();
   useDoubleShift(actionPalette.toggle);
   const currentProject = useProjectStore((state) => state.currentProject);
   const gitInitDialogOpen = useProjectStore((state) => state.gitInitDialogOpen);
@@ -735,6 +1174,10 @@ function App() {
     handleOpenSettingsTab,
     setIsSettingsOpen,
   } = useSettingsDialog();
+  const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  useEffect(() => {
+    if (isSettingsOpen) setHasOpenedSettings(true);
+  }, [isSettingsOpen]);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const isNotesPaletteOpen = usePaletteStore((state) => state.activePaletteId === "notes");
   const {
@@ -759,9 +1202,13 @@ function App() {
 
   // App lifecycle hooks
   const { isStateLoaded } = useAppHydration(crashResolved);
+  useEffect(() => {
+    useNotificationSettingsStore.getState().hydrate();
+  }, []);
   useProjectSwitchRehydration();
-  useFirstRunToasts(isStateLoaded);
+  useShortcutHints(isStateLoaded);
   const gettingStarted = useGettingStartedChecklist(isStateLoaded);
+  const deferredNewsletter = useDeferredNewsletterPrompt(isStateLoaded);
 
   const handleLaunchAgent = useCallback(
     async (type: string) => {
@@ -800,6 +1247,12 @@ function App() {
   const { inject } = useContextInjection();
 
   const handleToggleSidebar = useCallback(() => {
+    const activeWtId = useWorktreeSelectionStore.getState().activeWorktreeId;
+    const gridIds = useTerminalStore
+      .getState()
+      .terminals.filter((t) => t.location !== "dock" && t.worktreeId === activeWtId)
+      .map((t) => t.id);
+    terminalInstanceService.suppressResizesDuringLayoutTransition(gridIds, SIDEBAR_TOGGLE_LOCK_MS);
     window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
   }, []);
 
@@ -828,6 +1281,7 @@ function App() {
     getActiveWorktreeId: () => activeWorktree?.id,
     getWorktrees: () => worktrees,
     getFocusedId: () => focusedId,
+    getIsSettingsOpen: () => isSettingsOpen,
     getGridNavigation: () => ({ findNearest, findByIndex, findDockByIndex, getCurrentLocation }),
   });
 
@@ -843,6 +1297,7 @@ function App() {
   // Global keybinding handler - provides chord support and priority resolution
   // All keybindings dispatch through ActionService via this centralized handler
   useGlobalKeybindings(electronAvailable);
+  useGlobalEscapeDispatcher();
 
   // App lifecycle hooks
   useTerminalStoreBootstrap();
@@ -886,6 +1341,7 @@ function App() {
 
   return (
     <ErrorBoundary variant="fullscreen" componentName="App">
+      <E2EFaultInjector />
       <DndProvider>
         <VoiceRecordingAnnouncer />
         <AccessibilityAnnouncer />
@@ -908,7 +1364,7 @@ function App() {
           >
             <Profiler id="content-grid" onRender={onContentGridRender}>
               {currentProject === null ? (
-                <WelcomeScreen />
+                <WelcomeScreen gettingStarted={gettingStarted} />
               ) : (
                 <ContentGrid
                   key={currentProject.id}
@@ -935,6 +1391,20 @@ function App() {
         selectItem={quickSwitcher.selectItem}
         confirmSelection={quickSwitcher.confirmSelection}
       />
+      <SendToAgentPalette
+        isOpen={sendToAgentPalette.isOpen}
+        query={sendToAgentPalette.query}
+        results={sendToAgentPalette.results}
+        totalResults={sendToAgentPalette.totalResults}
+        selectedIndex={sendToAgentPalette.selectedIndex}
+        close={sendToAgentPalette.close}
+        setQuery={sendToAgentPalette.setQuery}
+        selectPrevious={sendToAgentPalette.selectPrevious}
+        selectNext={sendToAgentPalette.selectNext}
+        selectItem={sendToAgentPalette.selectItem}
+        confirmSelection={sendToAgentPalette.confirmSelection}
+      />
+      <BulkCommandPalette />
       <NewTerminalPalette
         isOpen={newTerminalPalette.isOpen}
         query={newTerminalPalette.query}
@@ -965,6 +1435,7 @@ function App() {
       <QuickCreatePalette palette={quickCreatePalette} />
       <PanelPalette
         isOpen={panelPalette.isOpen}
+        phase={panelPalette.phase}
         query={panelPalette.query}
         results={panelPalette.results}
         totalResults={panelPalette.totalResults}
@@ -973,16 +1444,24 @@ function App() {
         onSelectPrevious={panelPalette.selectPrevious}
         onSelectNext={panelPalette.selectNext}
         onSelect={(kind) => {
-          panelPalette.handleSelect(kind);
-          if (kind.id === MORE_AGENTS_PANEL_ID) return;
-          if (kind.id.startsWith("agent:")) {
-            const agentId = kind.id.slice("agent:".length);
+          const result = panelPalette.handleSelect(kind);
+          if (!result) return;
+          if (result.category === "model") {
+            const agentId = panelPalette.pendingAgentId;
+            if (agentId) {
+              const modelId = result.id === DEFAULT_MODEL_OPTION_ID ? undefined : result.id;
+              launchAgent(agentId, { modelId });
+            }
+            return;
+          }
+          if (result.id.startsWith("agent:")) {
+            const agentId = result.id.slice("agent:".length);
             if (agentId) {
               launchAgent(agentId);
             }
           } else {
             addTerminal({
-              kind: kind.id as PanelKind,
+              kind: result.id as PanelKind,
               cwd: defaultTerminalCwd,
               worktreeId: activeWorktreeId ?? undefined,
               location: "grid",
@@ -990,24 +1469,32 @@ function App() {
           }
         }}
         onConfirm={() => {
+          const currentPhase = panelPalette.phase;
+          const pendingAgent = panelPalette.pendingAgentId;
           const selected = panelPalette.confirmSelection();
-          if (selected && selected.id !== MORE_AGENTS_PANEL_ID) {
-            if (selected.id.startsWith("agent:")) {
-              const agentId = selected.id.slice("agent:".length);
-              if (agentId) {
-                launchAgent(agentId);
-              }
-            } else {
-              addTerminal({
-                kind: selected.id as PanelKind,
-                cwd: defaultTerminalCwd,
-                worktreeId: activeWorktreeId ?? undefined,
-                location: "grid",
-              });
+          if (!selected) return;
+          if (currentPhase === "model" && selected.category === "model" && pendingAgent) {
+            const modelId = selected.id === DEFAULT_MODEL_OPTION_ID ? undefined : selected.id;
+            launchAgent(pendingAgent, { modelId });
+            return;
+          }
+          if (selected.id === MORE_AGENTS_PANEL_ID) return;
+          if (selected.id.startsWith("agent:")) {
+            const agentId = selected.id.slice("agent:".length);
+            if (agentId) {
+              launchAgent(agentId);
             }
+          } else {
+            addTerminal({
+              kind: selected.id as PanelKind,
+              cwd: defaultTerminalCwd,
+              worktreeId: activeWorktreeId ?? undefined,
+              location: "grid",
+            });
           }
         }}
         onClose={panelPalette.close}
+        onBack={panelPalette.backToPanel}
       />
       <ProjectSwitcherPalette
         isOpen={projectSwitcherPalette.isOpen && projectSwitcherPalette.mode === "modal"}
@@ -1035,6 +1522,14 @@ function App() {
         onRemoveConfirmClose={() => projectSwitcherPalette.setRemoveConfirmProject(null)}
         onConfirmRemove={projectSwitcherPalette.confirmRemoveProject}
         isRemovingProject={projectSwitcherPalette.isRemovingProject}
+        groups={projectSwitcherPalette.groups}
+        onCreateGroup={projectSwitcherPalette.createGroup}
+        onAssignProjectToGroup={projectSwitcherPalette.assignProjectToGroup}
+        onRemoveProjectFromGroup={projectSwitcherPalette.removeProjectFromGroup}
+        onRenameGroup={projectSwitcherPalette.renameGroup}
+        onDeleteGroup={projectSwitcherPalette.deleteGroup}
+        onMoveGroupUp={projectSwitcherPalette.moveGroupUp}
+        onMoveGroupDown={projectSwitcherPalette.moveGroupDown}
       />
       <ConfirmDialog
         isOpen={projectSwitcherPalette.stopConfirmProjectId != null}
@@ -1089,14 +1584,18 @@ function App() {
         initialWorktreeId={crossDiffDialog.initialWorktreeId}
       />
 
-      <SettingsDialog
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        defaultTab={settingsTab}
-        defaultSubtab={settingsSubtab}
-        defaultSectionId={settingsSectionId}
-        onSettingsChange={refreshSettings}
-      />
+      {(isSettingsOpen || hasOpenedSettings) && (
+        <Suspense fallback={null}>
+          <LazySettingsDialog
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            defaultTab={settingsTab}
+            defaultSubtab={settingsSubtab}
+            defaultSectionId={settingsSectionId}
+            onSettingsChange={refreshSettings}
+          />
+        </Suspense>
+      )}
 
       <ShortcutReferenceDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
 
@@ -1127,8 +1626,10 @@ function App() {
       />
 
       <PanelTransitionOverlay />
+      <PanelLimitConfirmDialog />
 
       <Toaster />
+      <ShortcutHint />
       <ReEntrySummary state={reEntrySummary} />
       <UpdateNotification />
       <OnboardingFlow
@@ -1136,7 +1637,7 @@ function App() {
         onRefreshSettings={refreshSettings}
         onComplete={gettingStarted.notifyOnboardingComplete}
       />
-      {gettingStarted.visible && gettingStarted.checklist && (
+      {currentProject !== null && gettingStarted.visible && gettingStarted.checklist && (
         <GettingStartedChecklist
           checklist={gettingStarted.checklist}
           collapsed={gettingStarted.collapsed}
@@ -1144,6 +1645,8 @@ function App() {
           onToggleCollapse={gettingStarted.toggleCollapse}
         />
       )}
+      {gettingStarted.showCelebration && <CelebrationConfetti />}
+      {deferredNewsletter.visible && <NewsletterStep onDismiss={deferredNewsletter.dismiss} />}
     </ErrorBoundary>
   );
 }

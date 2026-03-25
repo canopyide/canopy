@@ -176,6 +176,17 @@ describe("PtyClient Handshake Protocol", () => {
       );
     });
 
+    it("should not include --expose-gc in execArgv", () => {
+      createClient();
+      expect(forkMock).toHaveBeenCalledWith(
+        expect.any(String),
+        [],
+        expect.objectContaining({
+          execArgv: expect.not.arrayContaining(["--expose-gc"]),
+        })
+      );
+    });
+
     it("should forward stdout/stderr lines into the main log buffer", () => {
       createClient();
 
@@ -227,6 +238,90 @@ describe("PtyClient Handshake Protocol", () => {
       // Verify interval is running correctly
       vi.advanceTimersByTime(1000);
       expect(mockChild.postMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("IPC data mirror persistence", () => {
+    it("re-sends setIpcDataMirror after host restart", () => {
+      const client = createClient();
+
+      // Spawn a terminal and enable mirror
+      client.spawn("test-terminal", {
+        cwd: "/repo",
+        cols: 80,
+        rows: 30,
+        restore: false,
+      } as any);
+      client.setIpcDataMirror("test-terminal", true);
+
+      mockChild.postMessage.mockClear();
+
+      // Create new mock child for restart
+      const newChild = Object.assign(new EventEmitter(), {
+        postMessage: vi.fn(),
+        kill: vi.fn(),
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+      });
+      forkMock.mockReturnValue(newChild);
+
+      // Simulate host crash
+      mockChild.emit("exit", 1);
+
+      // Advance past restart delay
+      vi.advanceTimersByTime(2000);
+
+      // Simulate new host ready
+      newChild.emit("message", { type: "ready" });
+
+      // Should have respawned the terminal AND re-enabled the mirror
+      const spawnCalls = newChild.postMessage.mock.calls.filter(
+        (c: unknown[]) => (c[0] as any)?.type === "spawn"
+      );
+      const mirrorCalls = newChild.postMessage.mock.calls.filter(
+        (c: unknown[]) => (c[0] as any)?.type === "set-ipc-data-mirror"
+      );
+
+      expect(spawnCalls.length).toBe(1);
+      expect(spawnCalls[0][0]).toMatchObject({ type: "spawn", id: "test-terminal" });
+      expect(mirrorCalls.length).toBe(1);
+      expect(mirrorCalls[0][0]).toMatchObject({
+        type: "set-ipc-data-mirror",
+        id: "test-terminal",
+        enabled: true,
+      });
+    });
+
+    it("does not re-send mirror for killed terminals", () => {
+      const client = createClient();
+
+      client.spawn("test-terminal", {
+        cwd: "/repo",
+        cols: 80,
+        rows: 30,
+        restore: false,
+      } as any);
+      client.setIpcDataMirror("test-terminal", true);
+      client.kill("test-terminal", "test");
+
+      mockChild.postMessage.mockClear();
+
+      const newChild = Object.assign(new EventEmitter(), {
+        postMessage: vi.fn(),
+        kill: vi.fn(),
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+      });
+      forkMock.mockReturnValue(newChild);
+
+      mockChild.emit("exit", 1);
+      vi.advanceTimersByTime(2000);
+      newChild.emit("message", { type: "ready" });
+
+      const mirrorCalls = newChild.postMessage.mock.calls.filter(
+        (c: unknown[]) => (c[0] as any)?.type === "set-ipc-data-mirror"
+      );
+      expect(mirrorCalls.length).toBe(0);
     });
   });
 

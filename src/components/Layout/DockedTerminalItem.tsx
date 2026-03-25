@@ -7,19 +7,23 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import {
   useTerminalInputStore,
   useTerminalStore,
-  useSidecarStore,
+  usePortalStore,
   useFocusStore,
   type TerminalInstance,
 } from "@/store";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
-import { STATE_ICONS, STATE_COLORS } from "@/components/Worktree/terminalStateConfig";
+import {
+  getEffectiveStateIcon,
+  getEffectiveStateColor,
+} from "@/components/Worktree/terminalStateConfig";
 import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
 import { useDockBlockedState } from "./useDockBlockedState";
 import { handleDockInteractOutside } from "./dockPopoverGuard";
+import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DockedTerminalItemProps {
@@ -56,7 +60,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     return () => clearTimeout(timer);
   }, [isOpen]);
 
-  const { isOpen: sidecarOpen, width: sidecarWidth } = useSidecarStore(
+  const { isOpen: portalOpen, width: portalWidth } = usePortalStore(
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
   );
 
@@ -68,9 +72,9 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
       top: basePadding,
       left: isFocusMode ? 8 : basePadding,
       bottom: basePadding,
-      right: sidecarOpen ? sidecarWidth + basePadding : basePadding,
+      right: portalOpen ? portalWidth + basePadding : basePadding,
     };
-  }, [isFocusMode, sidecarOpen, sidecarWidth]);
+  }, [isFocusMode, portalOpen, portalWidth]);
 
   // Toggle buffering based on popover open state
   useEffect(() => {
@@ -184,11 +188,14 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const brandColor = getBrandColorHex(terminal.agentId ?? terminal.type);
   const agentState = terminal.agentState;
   const blockedState = useDockBlockedState(terminal.agentState);
+  const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);
   // Use shortened title without command summary for dock items
   const displayTitle = getBaseTitle(terminal.title);
   // Only show icon for non-idle, non-completed states (reduce noise)
   const showStateIcon = agentState && agentState !== "idle" && agentState !== "completed";
-  const StateIcon = showStateIcon ? STATE_ICONS[agentState] : null;
+  const StateIcon = showStateIcon
+    ? getEffectiveStateIcon(agentState, terminal.waitingReason)
+    : null;
   const isDeprioritized =
     !isOpen && (!agentState || agentState === "idle" || agentState === "completed");
 
@@ -206,11 +213,9 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               isOpen &&
                 "bg-[var(--dock-item-bg-active)] text-canopy-text border-[var(--dock-item-border-active)] ring-1 ring-inset ring-canopy-accent/30",
               !isOpen &&
+                showDockAgentHighlights &&
                 blockedState === "waiting" &&
                 "bg-[var(--dock-item-bg-waiting)] border-[var(--dock-item-border-waiting)]",
-              !isOpen &&
-                blockedState === "failed" &&
-                "bg-[var(--dock-item-bg-failed)] border-[var(--dock-item-border-failed)]",
               isDeprioritized && "opacity-50"
             )}
             onClick={(e) => {
@@ -268,7 +273,12 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className={cn("flex items-center shrink-0", STATE_COLORS[agentState])}>
+                    <div
+                      className={cn(
+                        "flex items-center shrink-0",
+                        getEffectiveStateColor(agentState, terminal.waitingReason)
+                      )}
+                    >
                       <StateIcon
                         className={cn(
                           "w-3.5 h-3.5",

@@ -3,13 +3,13 @@ import { nextAgentState, getStateChangeTimestamp, type AgentEvent } from "../Age
 // AgentState type used implicitly via TerminalInfo.agentState
 import {
   AgentStateChangedSchema,
-  AgentFailedSchema,
   AgentCompletedSchema,
   AgentKilledSchema,
   type AgentStateChangeTrigger,
 } from "../../schemas/agent.js";
 import type { TerminalInfo } from "./types.js";
 import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
+import type { WaitingReason } from "../../../shared/types/agent.js";
 
 /**
  * Service responsible for agent state machine logic and event emission.
@@ -39,9 +39,13 @@ export class AgentStateService {
         return "activity";
       case "exit":
         return "exit";
+      case "kill":
+        return "exit";
       case "start":
         return "activity";
       case "error":
+        return "activity";
+      case "completion":
         return "activity";
       default:
         return "output";
@@ -99,7 +103,8 @@ export class AgentStateService {
     terminal: TerminalInfo,
     event: AgentEvent,
     trigger?: AgentStateChangeTrigger,
-    confidence?: number
+    confidence?: number,
+    waitingReason?: WaitingReason
   ): boolean {
     if (!terminal.agentId) {
       return false;
@@ -108,21 +113,53 @@ export class AgentStateService {
     const previousState = terminal.agentState || "idle";
     const newState = nextAgentState(previousState, event);
 
-    // Update error message even if staying in failed state
-    if (event.type === "error") {
-      terminal.error = event.error;
-    }
-
     if (newState === previousState) {
-      return false;
-    }
+      // Allow waitingReason updates within the same "waiting" state
+      if (
+        newState === "waiting" &&
+        waitingReason !== undefined &&
+        waitingReason !== terminal.waitingReason
+      ) {
+        terminal.waitingReason = waitingReason;
 
-    if (previousState === "failed" && newState !== "failed") {
-      terminal.error = undefined;
+        const inferredTrigger = trigger ?? this.inferTrigger(event);
+        const inferredConfidence = this.normalizeConfidence(
+          confidence ?? this.inferConfidence(event, inferredTrigger)
+        );
+
+        const stateChangePayload = {
+          agentId: terminal.agentId,
+          state: newState,
+          previousState,
+          timestamp: getStateChangeTimestamp(),
+          traceId: terminal.traceId,
+          terminalId: terminal.id,
+          worktreeId: terminal.worktreeId,
+          trigger: inferredTrigger,
+          confidence: inferredConfidence,
+          waitingReason,
+        };
+
+        const validated = AgentStateChangedSchema.safeParse(stateChangePayload);
+        if (validated.success) {
+          events.emit("agent:state-changed", validated.data);
+        }
+
+        this.emitTerminalActivity(terminal);
+        return true;
+      }
+      return false;
     }
 
     terminal.agentState = newState;
     terminal.lastStateChange = getStateChangeTimestamp();
+
+    // Store/clear waitingReason on terminal
+    if (newState === "waiting") {
+      terminal.waitingReason = waitingReason;
+    } else {
+      terminal.waitingReason = undefined;
+    }
 
     const inferredTrigger = trigger ?? this.inferTrigger(event);
     const inferredConfidence = this.normalizeConfidence(
@@ -140,6 +177,7 @@ export class AgentStateService {
       worktreeId: terminal.worktreeId,
       trigger: inferredTrigger,
       confidence: inferredConfidence,
+      ...(newState === "waiting" && waitingReason ? { waitingReason } : {}),
     };
 
     const validatedStateChange = AgentStateChangedSchema.safeParse(stateChangePayload);
@@ -154,11 +192,6 @@ export class AgentStateService {
 
     // Emit terminal activity event for UI headline updates
     this.emitTerminalActivity(terminal);
-
-    // Emit specific failure event
-    if (newState === "failed" && event.type === "error") {
-      this.emitAgentFailed(terminal, event.error);
-    }
 
     return true;
   }
@@ -186,31 +219,6 @@ export class AgentStateService {
     }
 
     return this.updateAgentState(terminal, event, trigger, confidence);
-  }
-
-  emitAgentFailed(terminal: TerminalInfo, error: string): void {
-    if (!terminal.agentId || !terminal.lastStateChange) {
-      return;
-    }
-
-    const failedPayload = {
-      agentId: terminal.agentId,
-      error,
-      timestamp: terminal.lastStateChange,
-      traceId: terminal.traceId,
-      terminalId: terminal.id,
-      worktreeId: terminal.worktreeId,
-    };
-
-    const validatedFailed = AgentFailedSchema.safeParse(failedPayload);
-    if (validatedFailed.success) {
-      events.emit("agent:failed", validatedFailed.data);
-    } else {
-      console.error(
-        "[AgentStateService] Invalid agent:failed payload:",
-        validatedFailed.error.format()
-      );
-    }
   }
 
   emitAgentCompleted(terminal: TerminalInfo, exitCode: number): void {
@@ -273,7 +281,11 @@ export class AgentStateService {
   handleActivityState(
     terminal: TerminalInfo,
     activity: "busy" | "idle" | "completed",
-    metadata?: { trigger: "input" | "output" | "pattern"; patternConfidence?: number }
+    metadata?: {
+      trigger: "input" | "output" | "pattern" | "timeout";
+      patternConfidence?: number;
+      waitingReason?: WaitingReason;
+    }
   ): void {
     if (!terminal.agentId) {
       return;
@@ -288,15 +300,17 @@ export class AgentStateService {
           ? { type: "completion" }
           : { type: "prompt" };
 
-    if (metadata?.trigger === "pattern") {
+    if (metadata?.trigger === "timeout") {
+      this.updateAgentState(terminal, event, "timeout", 0.6, metadata?.waitingReason);
+    } else if (metadata?.trigger === "pattern") {
       const confidence = metadata.patternConfidence ?? 0.9;
-      this.updateAgentState(terminal, event, "heuristic", confidence);
+      this.updateAgentState(terminal, event, "heuristic", confidence, metadata?.waitingReason);
     } else if (metadata?.trigger === "output") {
-      this.updateAgentState(terminal, event, "output", 1.0);
+      this.updateAgentState(terminal, event, "output", 1.0, metadata?.waitingReason);
     } else if (metadata?.trigger === "input") {
-      this.updateAgentState(terminal, event, "input", 1.0);
+      this.updateAgentState(terminal, event, "input", 1.0, metadata?.waitingReason);
     } else {
-      this.updateAgentState(terminal, event, "activity", 1.0);
+      this.updateAgentState(terminal, event, "activity", 1.0, metadata?.waitingReason);
     }
   }
 
@@ -306,6 +320,7 @@ export class AgentStateService {
       terminalType: terminal.type,
       agentId: terminal.agentId,
       agentState: terminal.agentState,
+      waitingReason: terminal.waitingReason,
     });
 
     events.emit("terminal:activity", {

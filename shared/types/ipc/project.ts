@@ -6,6 +6,8 @@ export interface ProjectSwitchPayload {
   project: Project;
   /** Unique identifier for this switch operation */
   switchId: string;
+  /** If the workspace host failed to load worktrees (e.g. non-git directory) */
+  worktreeLoadError?: string;
 }
 
 /** Result from project:close operation */
@@ -17,17 +19,6 @@ export interface ProjectCloseResult {
   /** Number of terminals killed */
   terminalsKilled: number;
   /** Error message if operation failed */
-  error?: string;
-}
-
-/** Status of a per-project MCP server process */
-export type ProjectMcpServerStatus = "starting" | "running" | "stopped" | "error";
-
-/** Runtime state of a per-project MCP server process */
-export interface ProjectMcpServerRunState {
-  name: string;
-  status: ProjectMcpServerStatus;
-  pid?: number;
   error?: string;
 }
 
@@ -44,3 +35,12 @@ export interface ProjectStats {
   /** Process IDs of running terminals */
   processIds: number[];
 }
+
+/** Per-project entry in bulk stats response, includes agent counts */
+export interface BulkProjectStatsEntry extends ProjectStats {
+  activeAgentCount: number;
+  waitingAgentCount: number;
+}
+
+/** Bulk project stats response keyed by project ID */
+export type BulkProjectStats = Record<string, BulkProjectStatsEntry>;

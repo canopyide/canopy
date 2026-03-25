@@ -13,6 +13,16 @@ import { saveTerminals } from "./persistence";
 import { optimizeForDock } from "./layout";
 import { deriveRuntimeStatus, getDefaultTitle } from "./helpers";
 
+// Lazy accessor to break circular dependency: restart -> projectStore -> terminalPersistence -> core.
+let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
+async function resolveProjectStore() {
+  if (!_cachedProjectStore) {
+    const mod = await import("@/store/projectStore");
+    _cachedProjectStore = mod.useProjectStore;
+  }
+  return _cachedProjectStore;
+}
+
 type Set = TerminalRegistryStoreApi["setState"];
 type Get = TerminalRegistryStoreApi["getState"];
 
@@ -177,7 +187,7 @@ export const createRestartActions = (
               baseCommand,
               agentSettings.agents?.[effectiveAgentId] ?? {},
               effectiveAgentId,
-              { clipboardDirectory }
+              { clipboardDirectory, modelId: currentTerminal.agentModelId }
             );
           }
         } catch (error) {
@@ -250,12 +260,15 @@ export const createRestartActions = (
 
       await terminalInstanceService.waitForInstance(id, { timeoutMs: 5000 });
 
+      // Capture project ID before async work to avoid race conditions (issue #3690).
+      const projectStore = await resolveProjectStore();
+      const capturedProjectId = projectStore.getState().currentProject?.id;
+
       // Fetch project environment variables for restart
       let restartEnv: Record<string, string> | undefined;
       try {
-        const currentProject = await projectClient.getCurrent();
-        if (currentProject?.id) {
-          const projectSettings = await projectClient.getSettings(currentProject.id);
+        if (capturedProjectId) {
+          const projectSettings = await projectClient.getSettings(capturedProjectId);
           if (
             projectSettings?.environmentVariables &&
             Object.keys(projectSettings.environmentVariables).length > 0
@@ -269,6 +282,7 @@ export const createRestartActions = (
 
       await terminalClient.spawn({
         id,
+        projectId: capturedProjectId,
         cwd: currentTerminal.cwd,
         cols: spawnCols,
         rows: spawnRows,
@@ -280,6 +294,8 @@ export const createRestartActions = (
         command: spawnCommand,
         restore: false,
         env: restartEnv,
+        agentLaunchFlags: currentTerminal.agentLaunchFlags,
+        agentModelId: currentTerminal.agentModelId,
       });
 
       if (targetLocation === "dock") {
@@ -364,8 +380,6 @@ export const createRestartActions = (
   },
 
   moveTerminalToWorktree: (id, worktreeId) => {
-    console.log(`[TERM_DEBUG] moveTerminalToWorktree id=${id} worktree=${worktreeId}`);
-
     const terminal = get().terminals.find((t) => t.id === id);
     if (!terminal) {
       console.warn(`Cannot move terminal ${id}: terminal not found`);
@@ -611,12 +625,15 @@ export const createRestartActions = (
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
+      // Capture project ID before async work to avoid race conditions (issue #3690).
+      const projectStoreForConvert = await resolveProjectStore();
+      const capturedProjectId = projectStoreForConvert.getState().currentProject?.id;
+
       // Fetch project environment variables for conversion
       let convertEnv: Record<string, string> | undefined;
       try {
-        const currentProject = await projectClient.getCurrent();
-        if (currentProject?.id) {
-          const projectSettings = await projectClient.getSettings(currentProject.id);
+        if (capturedProjectId) {
+          const projectSettings = await projectClient.getSettings(capturedProjectId);
           if (
             projectSettings?.environmentVariables &&
             Object.keys(projectSettings.environmentVariables).length > 0
@@ -630,6 +647,7 @@ export const createRestartActions = (
 
       await terminalClient.spawn({
         id,
+        projectId: capturedProjectId,
         cwd: terminal.cwd,
         cols: spawnCols,
         rows: spawnRows,

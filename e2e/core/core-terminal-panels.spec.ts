@@ -3,7 +3,12 @@ import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openProject, dismissTelemetryConsent } from "../helpers/project";
 import { waitForTerminalText, runTerminalCommand } from "../helpers/terminal";
-import { getFirstGridPanel, getGridPanelCount, getDockPanelCount } from "../helpers/panels";
+import {
+  getFirstGridPanel,
+  getGridPanelCount,
+  getDockPanelCount,
+  openTerminal,
+} from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
@@ -36,7 +41,7 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const nameInput = window.getByRole("textbox", { name: "Project Name" });
       await nameInput.fill("Terminal Panels Test");
 
-      await window.getByRole("button", { name: "Finish" }).click();
+      await window.getByRole("button", { name: "Finish", exact: true }).click();
 
       const heading = window.locator("h2", { hasText: "Set up your project" });
       await expect(heading).not.toBeVisible({ timeout: T_MEDIUM });
@@ -60,7 +65,7 @@ test.describe.serial("Core: Terminal & Panels", () => {
   test.describe.serial("Terminal Panel Lifecycle", () => {
     test("open terminal via toolbar button", async () => {
       const { window } = ctx;
-      await window.locator(SEL.toolbar.openTerminal).click();
+      await openTerminal(window);
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
     });
@@ -121,7 +126,7 @@ test.describe.serial("Core: Terminal & Panels", () => {
   test.describe.serial("Terminal Operations", () => {
     test("open terminal via toolbar", async () => {
       const { window } = ctx;
-      await window.locator(SEL.toolbar.openTerminal).click();
+      await openTerminal(window);
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
     });
@@ -212,7 +217,7 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const { window } = ctx;
 
       for (let i = 0; i < 3; i++) {
-        await window.locator(SEL.toolbar.openTerminal).click();
+        await openTerminal(window);
         await window.waitForTimeout(T_SETTLE);
       }
 

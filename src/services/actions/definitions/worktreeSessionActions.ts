@@ -10,7 +10,7 @@ export function registerWorktreeSessionActions(
 ): void {
   actions.set("worktree.sessions.minimizeAll", () => ({
     id: "worktree.sessions.minimizeAll",
-    title: "Minimize All Sessions",
+    title: "Dock All Sessions",
     description: "Move all grid sessions for a worktree to the dock",
     category: "worktree",
     kind: "command",
@@ -93,23 +93,6 @@ export function registerWorktreeSessionActions(
       const targetWorktreeId = worktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) return;
       useTerminalStore.getState().bulkCloseByWorktree(targetWorktreeId, "completed");
-    },
-  }));
-
-  actions.set("worktree.sessions.closeFailed", () => ({
-    id: "worktree.sessions.closeFailed",
-    title: "Close Failed Sessions",
-    description: "Close failed sessions for a worktree",
-    category: "worktree",
-    kind: "command",
-    danger: "confirm",
-    scope: "renderer",
-    argsSchema: z.object({ worktreeId: z.string().optional() }),
-    run: async (args: unknown, ctx: ActionContext) => {
-      const { worktreeId } = args as { worktreeId?: string };
-      const targetWorktreeId = worktreeId ?? ctx.activeWorktreeId;
-      if (!targetWorktreeId) return;
-      useTerminalStore.getState().bulkCloseByWorktree(targetWorktreeId, "failed");
     },
   }));
 

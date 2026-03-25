@@ -28,6 +28,7 @@ const createMockProjectClient = () => ({
   close: vi.fn().mockResolvedValue({ success: true }),
   reopen: vi.fn().mockResolvedValue({}),
   getStats: vi.fn().mockResolvedValue({}),
+  getBulkStats: vi.fn().mockResolvedValue({}),
   initGit: vi.fn().mockResolvedValue(undefined),
   initGitGuided: vi.fn().mockResolvedValue({ success: true, completedSteps: [] }),
   onInitGitProgress: vi.fn().mockReturnValue(() => {}),
@@ -157,6 +158,7 @@ describe("TerminalPersistence", () => {
         location: "grid",
         command: "  claude --model sonnet-4  ",
         agentState: "working",
+        lastStateChange: 1700000000000,
         activityHeadline: "Processing",
       });
 
@@ -174,6 +176,8 @@ describe("TerminalPersistence", () => {
           worktreeId: "wt-1",
           location: "grid",
           command: "claude --model sonnet-4",
+          agentState: "working",
+          lastStateChange: 1700000000000,
         },
       ]);
     });

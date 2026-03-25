@@ -1,5 +1,5 @@
 export {
-  inputTheme,
+  buildInputBarTheme,
   setInterimRange,
   interimMarkField,
   setPendingAIRanges,
@@ -10,6 +10,8 @@ export {
   createPlaceholder,
   createContentAttributes,
   createPlainPasteKeymap,
+  formatFileSize,
+  removeChipRange,
 } from "./base";
 export type { AutoSizeConfig } from "./base";
 

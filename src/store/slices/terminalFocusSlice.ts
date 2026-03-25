@@ -1,7 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isAgentTerminal } from "@/utils/terminalType";
 
@@ -41,9 +40,6 @@ export interface TerminalFocusSlice {
   activeDockTerminalId: string | null;
   pingedId: string | null;
   preMaximizeLayout: PreMaximizeLayoutSnapshot | null;
-  /** Tracks which panel is active in each tab group (groupId -> panelId) */
-  activeTabByGroup: Map<string, string>;
-
   setFocused: (id: string | null, shouldPing?: boolean) => void;
   pingTerminal: (id: string) => void;
   toggleMaximize: (
@@ -81,13 +77,11 @@ export interface TerminalFocusSlice {
   // Agent state navigation
   focusNextWaiting: (isInTrash: (id: string) => boolean, validWorktreeIds: Set<string>) => void;
   focusNextWorking: (isInTrash: (id: string) => boolean, validWorktreeIds: Set<string>) => void;
-  focusNextFailed: (isInTrash: (id: string) => boolean, validWorktreeIds: Set<string>) => void;
-
   // Agent cycling (any state)
   focusNextAgent: (isInTrash: (id: string) => boolean, validWorktreeIds: Set<string>) => void;
   focusPreviousAgent: (isInTrash: (id: string) => boolean, validWorktreeIds: Set<string>) => void;
 
-  // Dock-specific blocked agent cycling (failed > waiting priority)
+  // Dock-specific blocked agent cycling (waiting agents)
   focusNextBlockedDock: (
     activeWorktreeId: string | undefined,
     getPanelGroup?: (panelId: string) => { id: string; panelIds: string[] } | undefined
@@ -98,19 +92,12 @@ export interface TerminalFocusSlice {
     terminals: TerminalInstance[],
     removedIndex: number
   ) => void;
-
-  // Tab group active tab tracking
-  /** Set the active tab for a tab group */
-  setActiveTab: (groupId: string, panelId: string) => void;
-  /** Get the active tab ID for a tab group, returns null if group not tracked */
-  getActiveTabId: (groupId: string) => string | null;
-  /** Clean up stale entries when panels are removed (called internally) */
-  cleanupStaleTabs: (validPanelIds: Set<string>) => void;
 }
 
 export const createTerminalFocusSlice =
   (
-    getTerminals: () => TerminalInstance[]
+    getTerminals: () => TerminalInstance[],
+    getActiveWorktreeId: () => string | null
   ): StateCreator<TerminalFocusSlice, [], [], TerminalFocusSlice> =>
   (set, get) => {
     let pingTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -122,8 +109,6 @@ export const createTerminalFocusSlice =
       activeDockTerminalId: null,
       pingedId: null,
       preMaximizeLayout: null,
-      activeTabByGroup: new Map(),
-
       setFocused: (id, shouldPing = false) => {
         set({ focusedId: id });
         if (id) {
@@ -153,7 +138,7 @@ export const createTerminalFocusSlice =
 
       toggleMaximize: (id, currentGridCols, currentGridItemCount, getPanelGroup) =>
         set((state) => {
-          const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+          const activeWorktreeId = getActiveWorktreeId();
 
           // Check if we're unmaximizing
           // Unmaximize if:
@@ -267,7 +252,7 @@ export const createTerminalFocusSlice =
 
       focusNext: () => {
         const terminals = getTerminals();
-        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+        const activeWorktreeId = getActiveWorktreeId();
         const worktreeMatch = (t: TerminalInstance) =>
           (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined);
 
@@ -286,7 +271,7 @@ export const createTerminalFocusSlice =
 
       focusPrevious: () => {
         const terminals = getTerminals();
-        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+        const activeWorktreeId = getActiveWorktreeId();
         const worktreeMatch = (t: TerminalInstance) =>
           (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined);
 
@@ -385,41 +370,6 @@ export const createTerminalFocusSlice =
         const nextIndex = (currentIndex + 1) % waitingTerminals.length;
         const nextTerminal = waitingTerminals[nextIndex];
 
-        const worktreeStore = useWorktreeSelectionStore.getState();
-        if (nextTerminal.worktreeId && nextTerminal.worktreeId !== worktreeStore.activeWorktreeId) {
-          worktreeStore.trackTerminalFocus(nextTerminal.worktreeId, nextTerminal.id);
-          worktreeStore.selectWorktree(nextTerminal.worktreeId);
-        }
-
-        // Activate and ping the terminal for visual feedback
-        activateTerminal(nextTerminal.id);
-        pingTerminal(nextTerminal.id);
-      },
-
-      focusNextFailed: (isInTrash, validWorktreeIds) => {
-        const terminals = getTerminals();
-        const { focusedId, activateTerminal, pingTerminal } = get();
-
-        // Find all failed terminals excluding trash and orphaned
-        const failedTerminals = terminals.filter(
-          (t) => t.agentState === "failed" && isTerminalVisible(t, isInTrash, validWorktreeIds)
-        );
-
-        if (failedTerminals.length === 0) return;
-
-        // Find current index in failed list
-        const currentIndex = failedTerminals.findIndex((t) => t.id === focusedId);
-
-        // Calculate next index with wrap-around
-        const nextIndex = (currentIndex + 1) % failedTerminals.length;
-        const nextTerminal = failedTerminals[nextIndex];
-
-        const worktreeStore = useWorktreeSelectionStore.getState();
-        if (nextTerminal.worktreeId && nextTerminal.worktreeId !== worktreeStore.activeWorktreeId) {
-          worktreeStore.trackTerminalFocus(nextTerminal.worktreeId, nextTerminal.id);
-          worktreeStore.selectWorktree(nextTerminal.worktreeId);
-        }
-
         // Activate and ping the terminal for visual feedback
         activateTerminal(nextTerminal.id);
         pingTerminal(nextTerminal.id);
@@ -442,12 +392,6 @@ export const createTerminalFocusSlice =
         // Calculate next index with wrap-around
         const nextIndex = (currentIndex + 1) % workingTerminals.length;
         const nextTerminal = workingTerminals[nextIndex];
-
-        const worktreeStore = useWorktreeSelectionStore.getState();
-        if (nextTerminal.worktreeId && nextTerminal.worktreeId !== worktreeStore.activeWorktreeId) {
-          worktreeStore.trackTerminalFocus(nextTerminal.worktreeId, nextTerminal.id);
-          worktreeStore.selectWorktree(nextTerminal.worktreeId);
-        }
 
         // Activate and ping the terminal for visual feedback
         activateTerminal(nextTerminal.id);
@@ -474,12 +418,6 @@ export const createTerminalFocusSlice =
         const nextIndex = (currentIndex + 1) % agentTerminals.length;
         const nextTerminal = agentTerminals[nextIndex];
 
-        const worktreeStore = useWorktreeSelectionStore.getState();
-        if (nextTerminal.worktreeId && nextTerminal.worktreeId !== worktreeStore.activeWorktreeId) {
-          worktreeStore.trackTerminalFocus(nextTerminal.worktreeId, nextTerminal.id);
-          worktreeStore.selectWorktree(nextTerminal.worktreeId);
-        }
-
         // Activate and ping the terminal for visual feedback
         activateTerminal(nextTerminal.id);
         pingTerminal(nextTerminal.id);
@@ -505,12 +443,6 @@ export const createTerminalFocusSlice =
         const prevIndex = currentIndex <= 0 ? agentTerminals.length - 1 : currentIndex - 1;
         const prevTerminal = agentTerminals[prevIndex];
 
-        const worktreeStore = useWorktreeSelectionStore.getState();
-        if (prevTerminal.worktreeId && prevTerminal.worktreeId !== worktreeStore.activeWorktreeId) {
-          worktreeStore.trackTerminalFocus(prevTerminal.worktreeId, prevTerminal.id);
-          worktreeStore.selectWorktree(prevTerminal.worktreeId);
-        }
-
         // Activate and ping the terminal for visual feedback
         activateTerminal(prevTerminal.id);
         pingTerminal(prevTerminal.id);
@@ -518,22 +450,21 @@ export const createTerminalFocusSlice =
 
       focusNextBlockedDock: (activeWorktreeId, getPanelGroup) => {
         const terminals = getTerminals();
-        const { activeDockTerminalId, openDockTerminal, setActiveTab, pingTerminal } = get();
+        const { activeDockTerminalId, openDockTerminal, pingTerminal } = get();
+        // setActiveTab lives on TerminalRegistrySlice; accessed via composed store at runtime
+        const setActiveTab = (get() as unknown as { setActiveTab: (g: string, p: string) => void })
+          .setActiveTab;
 
         const dockTerminals = terminals.filter(
           (t) =>
             t.location === "dock" &&
             (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined) &&
-            (t.agentState === "failed" || t.agentState === "waiting")
+            t.agentState === "waiting"
         );
 
         if (dockTerminals.length === 0) return;
 
-        // Sort: failed first, then waiting; preserve original order within each group
-        const sorted = [
-          ...dockTerminals.filter((t) => t.agentState === "failed"),
-          ...dockTerminals.filter((t) => t.agentState === "waiting"),
-        ];
+        const sorted = dockTerminals;
 
         const currentIndex = sorted.findIndex((t) => t.id === activeDockTerminalId);
         const nextIndex = (currentIndex + 1) % sorted.length;
@@ -566,7 +497,7 @@ export const createTerminalFocusSlice =
           }
 
           if (state.focusedId === removedId) {
-            const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+            const activeWorktreeId = getActiveWorktreeId();
             const gridTerminals = remainingTerminals.filter(
               (t) =>
                 (t.location === "grid" || !t.location) &&
@@ -607,35 +538,6 @@ export const createTerminalFocusSlice =
           }
 
           return Object.keys(updates).length > 0 ? updates : state;
-        });
-      },
-
-      setActiveTab: (groupId, panelId) => {
-        set((state) => {
-          const newMap = new Map(state.activeTabByGroup);
-          newMap.set(groupId, panelId);
-          return { activeTabByGroup: newMap };
-        });
-      },
-
-      getActiveTabId: (groupId) => {
-        return get().activeTabByGroup.get(groupId) ?? null;
-      },
-
-      cleanupStaleTabs: (validPanelIds) => {
-        set((state) => {
-          const newMap = new Map<string, string>();
-          let changed = false;
-
-          for (const [groupId, panelId] of state.activeTabByGroup) {
-            if (validPanelIds.has(panelId)) {
-              newMap.set(groupId, panelId);
-            } else {
-              changed = true;
-            }
-          }
-
-          return changed ? { activeTabByGroup: newMap } : state;
         });
       },
     };

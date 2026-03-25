@@ -73,7 +73,6 @@ function FilterChip({ label, isActive, onClick }: FilterChipProps) {
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "dirty", label: "Dirty" },
-  { value: "error", label: "Error" },
   { value: "stale", label: "Stale" },
   { value: "idle", label: "Idle" },
 ];
@@ -109,7 +108,6 @@ const SESSION_OPTIONS: { value: SessionFilter; label: string }[] = [
   { value: "working", label: "Working" },
   { value: "running", label: "Running" },
   { value: "waiting", label: "Waiting" },
-  { value: "failed", label: "Failed" },
   { value: "completed", label: "Completed" },
 ];
 
@@ -124,6 +122,7 @@ const ORDER_OPTIONS: { value: OrderBy; label: string }[] = [
   { value: "created", label: "Date created" },
   { value: "recent", label: "Recently updated" },
   { value: "alpha", label: "Alphabetical" },
+  { value: "manual", label: "Custom order" },
 ];
 
 interface WorktreeFilterPopoverProps {
@@ -265,37 +264,39 @@ export function WorktreeFilterPopover({ hideSearchInput = false }: WorktreeFilte
               Sort by
             </div>
             <div className="flex flex-col gap-1">
-              {ORDER_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setOrderBy(option.value)}
-                  role="radio"
-                  aria-checked={orderBy === option.value}
-                  className={cn(
-                    "flex items-center gap-2 px-2 py-1 text-xs rounded",
-                    orderBy === option.value
-                      ? "bg-canopy-accent/10 text-canopy-accent"
-                      : "text-canopy-text/70 hover:bg-overlay-medium"
-                  )}
-                >
-                  <div
+              {ORDER_OPTIONS.filter((option) => !(option.value === "manual" && groupByType)).map(
+                (option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setOrderBy(option.value)}
+                    role="radio"
+                    aria-checked={orderBy === option.value}
                     className={cn(
-                      "w-3 h-3 rounded-full border",
+                      "flex items-center gap-2 px-2 py-1 text-xs rounded",
                       orderBy === option.value
-                        ? "border-canopy-accent bg-canopy-accent"
-                        : "border-canopy-border"
+                        ? "bg-canopy-accent/10 text-canopy-accent"
+                        : "text-canopy-text/70 hover:bg-overlay-medium"
                     )}
                   >
-                    {orderBy === option.value && (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                      </div>
-                    )}
-                  </div>
-                  {option.label}
-                </button>
-              ))}
+                    <div
+                      className={cn(
+                        "w-3 h-3 rounded-full border",
+                        orderBy === option.value
+                          ? "border-canopy-accent bg-canopy-accent"
+                          : "border-canopy-border"
+                      )}
+                    >
+                      {orderBy === option.value && (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="w-1.5 h-1.5 bg-text-inverse rounded-full" />
+                        </div>
+                      )}
+                    </div>
+                    {option.label}
+                  </button>
+                )
+              )}
             </div>
           </div>
 

@@ -44,7 +44,7 @@ export const DEFAULT_SCHEME_ID = "canopy";
 
 const defaultAppScheme = resolveAppTheme(DEFAULT_APP_THEME_ID);
 const daintreeAppScheme = resolveAppTheme("daintree");
-const highlandsAppScheme = resolveAppTheme("highlands");
+const bondiAppScheme = resolveAppTheme("bondi");
 
 export const BUILT_IN_SCHEMES: TerminalColorScheme[] = [
   {
@@ -62,11 +62,11 @@ export const BUILT_IN_SCHEMES: TerminalColorScheme[] = [
     colors: getTerminalThemeFromAppScheme(daintreeAppScheme),
   },
   {
-    id: "highlands",
-    name: "Highlands",
-    type: "dark",
+    id: "bondi",
+    name: "Bondi",
+    type: "light",
     builtin: true,
-    colors: getTerminalThemeFromAppScheme(highlandsAppScheme),
+    colors: getTerminalThemeFromAppScheme(bondiAppScheme),
   },
   {
     id: "fiordland",
@@ -748,17 +748,7 @@ export function getSchemeById(id: string): TerminalColorScheme | undefined {
 
 export const APP_THEME_TERMINAL_SCHEME_MAP: Record<string, string> = {
   daintree: "daintree",
-  fiordland: "fiordland",
-  highlands: "highlands",
-  arashiyama: "canopy-ember",
-  galapagos: "github-dark",
-  namib: "canopy-ember",
-  redwoods: "redwoods",
-  bondi: "solarized-light",
-  svalbard: "atom-one-light",
-  atacama: "atom-one-light",
-  serengeti: "solarized-light",
-  hokkaido: "hokkaido",
+  bondi: "bondi",
 };
 
 export function getMappedTerminalScheme(appThemeId: string): TerminalColorScheme | undefined {

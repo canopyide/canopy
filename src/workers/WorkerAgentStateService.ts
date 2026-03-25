@@ -31,10 +31,6 @@ export interface StateChangeResult {
 
 /** Calculate the next agent state based on current state and event */
 function nextAgentState(current: AgentState, event: AgentEvent): AgentState {
-  if (event.type === "error") {
-    return "failed";
-  }
-
   switch (event.type) {
     case "start":
       if (current === "idle") {
@@ -43,7 +39,7 @@ function nextAgentState(current: AgentState, event: AgentEvent): AgentState {
       break;
 
     case "busy":
-      if (current === "waiting" || current === "idle") {
+      if (current === "waiting" || current === "idle" || current === "completed") {
         return "working";
       }
       break;
@@ -53,25 +49,23 @@ function nextAgentState(current: AgentState, event: AgentEvent): AgentState {
       break;
 
     case "prompt":
-      if (current === "working") {
+      if (current === "working" || current === "completed") {
         return "waiting";
       }
       break;
 
     case "input":
-      if (
-        current === "waiting" ||
-        current === "idle" ||
-        current === "completed" ||
-        current === "failed"
-      ) {
+      if (current === "waiting" || current === "idle" || current === "completed") {
         return "working";
       }
       break;
 
     case "exit":
       if (current === "working" || current === "waiting") {
-        return event.code === 0 ? "completed" : "failed";
+        return "completed";
+      }
+      if (current === "completed") {
+        return "completed";
       }
       break;
   }

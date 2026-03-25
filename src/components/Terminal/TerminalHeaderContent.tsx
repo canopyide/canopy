@@ -1,11 +1,42 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Pause, Lock } from "lucide-react";
-import type { TerminalType, AgentState, PanelKind } from "@/types";
+import type { TerminalType, AgentState, PanelKind, AgentStateChangeTrigger } from "@/types";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { STATE_ICONS, STATE_COLORS } from "@/components/Worktree/terminalStateConfig";
+import {
+  getEffectiveStateIcon,
+  getEffectiveStateColor,
+} from "@/components/Worktree/terminalStateConfig";
 import type { ActivityState } from "./TerminalPane";
 import { useTerminalStore } from "@/store";
+import { useShallow } from "zustand/react/shallow";
+import { formatElapsedDuration } from "@/utils/formatElapsedDuration";
+import { formatTimeAgo } from "@/utils/timeAgo";
+import { useResourceMonitoringStore } from "@/store/resourceMonitoringStore";
+import { TerminalResourceSparkline } from "./TerminalResourceSparkline";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+
+function ElapsedTime({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return <> · {formatElapsedDuration(now - startedAt)}</>;
+}
+
+const TRIGGER_LABELS: Record<AgentStateChangeTrigger, string> = {
+  input: "Input",
+  output: "Output",
+  heuristic: "Heuristic",
+  "ai-classification": "AI classification",
+  timeout: "Timeout",
+  exit: "Exit",
+  activity: "Activity",
+  title: "Title",
+};
 
 export interface TerminalHeaderContentProps {
   id: string;
@@ -20,6 +51,18 @@ export interface TerminalHeaderContentProps {
   flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
 }
 
+function formatMemory(kb: number): string {
+  if (kb >= 1048576) return `${(kb / 1048576).toFixed(1)}G`;
+  if (kb >= 1024) return `${Math.round(kb / 1024)}M`;
+  return `${kb}K`;
+}
+
+function getResourceSeverity(cpuPercent: number, memoryKb: number): "muted" | "amber" | "red" {
+  if (cpuPercent >= 80 || memoryKb >= 2097152) return "red";
+  if (cpuPercent >= 50 || memoryKb >= 1048576) return "amber";
+  return "muted";
+}
+
 function TerminalHeaderContentComponent({
   id,
   kind,
@@ -32,8 +75,30 @@ function TerminalHeaderContentComponent({
   queueCount = 0,
   flowStatus,
 }: TerminalHeaderContentProps) {
-  const isInputLocked = useTerminalStore(
-    (state) => state.terminals.find((t) => t.id === id)?.isInputLocked ?? false
+  const resourceEnabled = useResourceMonitoringStore((s) => s.enabled);
+  const resourceState = useResourceMonitoringStore((s) => s.metrics.get(id));
+  const isPtyPanel = kind == null || panelKindHasPty(kind);
+  const showResource = resourceEnabled && isPtyPanel && resourceState != null;
+
+  const {
+    isInputLocked,
+    startedAt,
+    lastStateChange,
+    stateChangeTrigger,
+    stateChangeConfidence,
+    waitingReason,
+  } = useTerminalStore(
+    useShallow((state) => {
+      const t = state.terminals.find((t) => t.id === id);
+      return {
+        isInputLocked: t?.isInputLocked ?? false,
+        startedAt: t?.startedAt,
+        lastStateChange: t?.lastStateChange,
+        stateChangeTrigger: t?.stateChangeTrigger,
+        stateChangeConfidence: t?.stateChangeConfidence,
+        waitingReason: t?.waitingReason,
+      };
+    })
   );
 
   // Show command pill only for plain terminals (not agent terminals)
@@ -46,22 +111,20 @@ function TerminalHeaderContentComponent({
       return null;
     }
 
-    const StateIcon = STATE_ICONS[agentState];
+    const StateIcon = getEffectiveStateIcon(agentState, waitingReason);
     if (!StateIcon) return null;
 
     const chipStyle =
       agentState === "working"
         ? "bg-[color-mix(in_oklab,var(--color-state-working)_15%,transparent)] border-state-working/40"
-        : agentState === "waiting"
-          ? "bg-[color-mix(in_oklab,var(--color-state-waiting)_15%,transparent)] border-state-waiting/40"
-          : agentState === "directing"
-            ? "bg-[color-mix(in_oklab,var(--color-category-blue)_15%,transparent)] border-category-blue/40"
-            : agentState === "running"
-              ? "bg-[color-mix(in_oklab,var(--color-status-info)_15%,transparent)] border-status-info/40"
-              : "bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] border-status-error/40";
+        : agentState === "directing"
+          ? "bg-[color-mix(in_oklab,var(--color-category-blue)_15%,transparent)] border-category-blue/40"
+          : agentState === "running"
+            ? "bg-[color-mix(in_oklab,var(--color-status-info)_15%,transparent)] border-status-info/40"
+            : "bg-[color-mix(in_oklab,var(--color-state-waiting)_15%,transparent)] border-state-waiting/40";
 
-    // Build tooltip - show activity headline or just the agent state
-    const tooltip = activity?.headline?.trim() || `Agent ${agentState}`;
+    const headline = activity?.headline?.trim() || `Agent ${agentState}`;
+    const showConfidence = stateChangeConfidence != null && stateChangeConfidence < 1;
 
     return (
       <TooltipProvider>
@@ -71,7 +134,7 @@ function TerminalHeaderContentComponent({
               className={cn(
                 "inline-flex items-center justify-center w-5 h-5 rounded-full border shrink-0",
                 chipStyle,
-                STATE_COLORS[agentState]
+                getEffectiveStateColor(agentState, waitingReason)
               )}
               role="status"
               aria-label={`Agent state: ${agentState}`}
@@ -86,7 +149,25 @@ function TerminalHeaderContentComponent({
               />
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom">{tooltip}</TooltipContent>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">
+                {headline}
+                {startedAt != null && <ElapsedTime startedAt={startedAt} />}
+              </span>
+              {isExited && exitCode != null && (
+                <span className="text-status-error tabular-nums">Exit code: {exitCode}</span>
+              )}
+              <span>
+                State: {agentState}
+                {stateChangeTrigger && <> · {TRIGGER_LABELS[stateChangeTrigger]}</>}
+                {showConfidence && <> ({Math.round(stateChangeConfidence * 100)}%)</>}
+              </span>
+              {lastStateChange != null && lastStateChange > 0 && (
+                <span className="text-canopy-text/60">Since: {formatTimeAgo(lastStateChange)}</span>
+              )}
+            </div>
+          </TooltipContent>
         </Tooltip>
       </TooltipProvider>
     );
@@ -188,6 +269,69 @@ function TerminalHeaderContentComponent({
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom">Input locked (read-only monitor mode)</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {/* Resource monitoring badge */}
+      {showResource && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className={cn(
+                  "inline-flex items-center gap-1 text-[11px] font-mono shrink-0 ml-1",
+                  {
+                    "text-canopy-text/40":
+                      getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) ===
+                      "muted",
+                    "text-status-warning":
+                      getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) ===
+                      "amber",
+                    "text-status-error":
+                      getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) ===
+                      "red",
+                  }
+                )}
+                style={{ fontVariantNumeric: "tabular-nums" }}
+                role="status"
+              >
+                <TerminalResourceSparkline history={resourceState.cpuHistory} />
+                <span>
+                  {Math.round(resourceState.cpuPercent)}% · {formatMemory(resourceState.memoryKb)}
+                </span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs">
+              <div className="flex flex-col gap-1">
+                <div className="font-medium" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  CPU: {resourceState.cpuPercent.toFixed(1)}% · Memory:{" "}
+                  {formatMemory(resourceState.memoryKb)}
+                </div>
+                {resourceState.breakdown.length > 0 && (
+                  <table className="text-xs" style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <thead>
+                      <tr className="text-canopy-text/60">
+                        <th className="text-left pr-2">PID</th>
+                        <th className="text-left pr-2">Name</th>
+                        <th className="text-right pr-2">CPU</th>
+                        <th className="text-right">Mem</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resourceState.breakdown.map((p) => (
+                        <tr key={p.pid}>
+                          <td className="pr-2 text-canopy-text/60">{p.pid}</td>
+                          <td className="pr-2 truncate max-w-[8rem]">{p.comm}</td>
+                          <td className="text-right pr-2">{p.cpuPercent.toFixed(1)}%</td>
+                          <td className="text-right">{formatMemory(p.memoryKb)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}

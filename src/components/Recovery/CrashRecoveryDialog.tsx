@@ -5,12 +5,12 @@ import {
   ChevronRight,
   ExternalLink,
   FileText,
-  Terminal,
+  SquareTerminal,
   Globe,
-  StickyNote,
+  Leaf,
   Monitor,
-  Bot,
 } from "lucide-react";
+import { CanopyAgentIcon } from "@/components/icons";
 import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/button";
 import type {
@@ -32,15 +32,15 @@ interface CrashRecoveryDialogProps {
 function getPanelIcon(kind: string) {
   switch (kind) {
     case "agent":
-      return <Bot className="h-3.5 w-3.5" />;
+      return <CanopyAgentIcon className="h-3.5 w-3.5" />;
     case "browser":
       return <Globe className="h-3.5 w-3.5" />;
     case "notes":
-      return <StickyNote className="h-3.5 w-3.5" />;
+      return <Leaf className="h-3.5 w-3.5" />;
     case "dev-preview":
       return <Monitor className="h-3.5 w-3.5" />;
     default:
-      return <Terminal className="h-3.5 w-3.5" />;
+      return <SquareTerminal className="h-3.5 w-3.5" />;
   }
 }
 
@@ -171,7 +171,7 @@ export function CrashRecoveryDialog({
                 >
                   {allSelected ? "Deselect all" : "Select all"}
                 </button>
-                <span className="text-xs text-canopy-text/50">
+                <span className="text-xs tabular-nums text-canopy-text/50">
                   {selectedCount} of {panels.length} selected
                 </span>
               </div>
@@ -195,8 +195,9 @@ export function CrashRecoveryDialog({
                 className="text-xs text-status-warning/90 bg-status-warning/10 rounded px-2 py-1.5"
                 data-testid="suspect-warning"
               >
-                {suspectCount} panel{suspectCount > 1 ? "s were" : " was"} created shortly before
-                the crash and may be related.
+                <span className="tabular-nums">{suspectCount}</span> panel
+                {suspectCount > 1 ? "s were" : " was"} created shortly before the crash and may be
+                related.
               </p>
             )}
 
@@ -207,7 +208,7 @@ export function CrashRecoveryDialog({
                 className="flex-1"
                 data-testid="restore-selected-button"
               >
-                Restore selected ({selectedCount})
+                Restore selected (<span className="tabular-nums">{selectedCount}</span>)
               </Button>
               <Button
                 variant="ghost"
@@ -399,6 +400,11 @@ function PanelRow({
         {panel.cwd && <div className="text-xs text-canopy-text/40 truncate">{panel.cwd}</div>}
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
+        {panel.agentState && (
+          <span className="text-xs text-canopy-text/50" data-testid={`agent-state-${panel.id}`}>
+            {panel.agentState}
+          </span>
+        )}
         <span className="text-xs text-canopy-text/40">{panel.location}</span>
         {panel.isSuspect && (
           <span

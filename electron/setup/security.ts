@@ -1,10 +1,26 @@
 import { app, ipcMain, session } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
 import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
+import { classifyPartition } from "../utils/webviewCsp.js";
+import {
+  wrapSuccess,
+  wrapError,
+  serializeError,
+} from "../../shared/utils/ipcErrorSerialization.js";
+import { FAULT_MODE_ENABLED, applyInvokeFault, initFaultRegistry } from "../ipc/faultRegistry.js";
+
+function sanitizePaths(msg: string): string {
+  return msg
+    .replace(/\/(?:Users|home|tmp|private|var)\/[^\s:]+/gi, "<path>")
+    .replace(/[A-Z]:[/\\](?:Users|Program Files|Windows|ProgramData)[^\s:]*/gi, "<path>")
+    .replace(/\\\\(?:[^\s\\]+)\\(?:[^\s:]+)/g, "<path>");
+}
 
 // Wrap ipcMain.handle globally to enforce sender validation on ALL IPC handlers
 // This must run before any handlers are registered
 export function enforceIpcSenderValidation(): void {
+  if (FAULT_MODE_ENABLED) initFaultRegistry();
+
   const originalHandle = ipcMain.handle.bind(ipcMain);
   const originalHandleOnce = ipcMain.handleOnce?.bind(ipcMain);
 
@@ -15,24 +31,29 @@ export function enforceIpcSenderValidation(): void {
     return originalHandle(channel, async (event, ...args) => {
       const senderUrl = event.senderFrame?.url;
       if (!senderUrl || !isTrustedRendererUrl(senderUrl)) {
-        throw new Error(
-          `IPC call from untrusted origin rejected: channel=${channel}, url=${senderUrl || "unknown"}`
+        return wrapError(
+          new Error(
+            `IPC call from untrusted origin rejected: channel=${channel}, url=${senderUrl || "unknown"}`
+          )
         );
       }
       try {
-        return await listener(event, ...args);
+        if (FAULT_MODE_ENABLED) await applyInvokeFault(channel);
+        const result = await listener(event, ...args);
+        return wrapSuccess(result);
       } catch (error) {
         if (app.isPackaged) {
           console.error(`[IPC] Error on channel ${channel}:`, error);
-          const msg = (error instanceof Error ? error.message : String(error))
-            .replace(/\/(?:Users|home|tmp|private|var)\/[^\s:]+/gi, "<path>")
-            .replace(/[A-Z]:[/\\](?:Users|Program Files|Windows|ProgramData)[^\s:]*/gi, "<path>")
-            .replace(/\\\\(?:[^\s\\]+)\\(?:[^\s:]+)/g, "<path>");
-          const safe = new Error(msg);
-          safe.stack = undefined;
-          throw safe;
+          const serialized = serializeError(error);
+          serialized.message = sanitizePaths(serialized.message);
+          serialized.stack = undefined;
+          serialized.path = undefined;
+          serialized.context = undefined;
+          serialized.cause = undefined;
+          serialized.properties = undefined;
+          return { __canopyIpcEnvelope: true as const, ok: false as const, error: serialized };
         }
-        throw error;
+        return wrapError(error);
       }
     });
   } as typeof ipcMain.handle;
@@ -45,24 +66,29 @@ export function enforceIpcSenderValidation(): void {
       return originalHandleOnce(channel, async (event, ...args) => {
         const senderUrl = event.senderFrame?.url;
         if (!senderUrl || !isTrustedRendererUrl(senderUrl)) {
-          throw new Error(
-            `IPC call from untrusted origin rejected: channel=${channel}, url=${senderUrl || "unknown"}`
+          return wrapError(
+            new Error(
+              `IPC call from untrusted origin rejected: channel=${channel}, url=${senderUrl || "unknown"}`
+            )
           );
         }
         try {
-          return await listener(event, ...args);
+          if (FAULT_MODE_ENABLED) await applyInvokeFault(channel);
+          const result = await listener(event, ...args);
+          return wrapSuccess(result);
         } catch (error) {
           if (app.isPackaged) {
             console.error(`[IPC] Error on channel ${channel}:`, error);
-            const msg = (error instanceof Error ? error.message : String(error))
-              .replace(/\/(?:Users|home|tmp|private|var)\/[^\s:]+/gi, "<path>")
-              .replace(/[A-Z]:[/\\](?:Users|Program Files|Windows|ProgramData)[^\s:]*/gi, "<path>")
-              .replace(/\\\\(?:[^\s\\]+)\\(?:[^\s:]+)/g, "<path>");
-            const safe = new Error(msg);
-            safe.stack = undefined;
-            throw safe;
+            const serialized = serializeError(error);
+            serialized.message = sanitizePaths(serialized.message);
+            serialized.stack = undefined;
+            serialized.path = undefined;
+            serialized.context = undefined;
+            serialized.cause = undefined;
+            serialized.properties = undefined;
+            return { __canopyIpcEnvelope: true as const, ok: false as const, error: serialized };
           }
-          throw error;
+          return wrapError(error);
         }
       });
     } as typeof ipcMain.handleOnce;
@@ -121,45 +147,105 @@ export function enforceIpcSenderValidation(): void {
   console.log("[MAIN] IPC sender validation enforced globally (handle + on)");
 }
 
+/**
+ * Log a permission denial for debugging.
+ * Uses [SECURITY] prefix to distinguish from general [MAIN] logs.
+ */
+function logPermissionDenial(
+  sessionLabel: string,
+  handler: "request" | "check",
+  permission: string,
+  requestingUrl?: string
+): void {
+  const url = requestingUrl || "unknown";
+  console.warn(
+    `[SECURITY] Permission denied: ${permission} (session=${sessionLabel}, handler=${handler}, url=${url})`
+  );
+}
+
+// Electron 40 permission types (from electron.d.ts) — kept as reference for auditing.
+// setPermissionRequestHandler: clipboard-read, clipboard-sanitized-write, display-capture,
+//   fullscreen, geolocation, idle-detection, media, mediaKeySystem, midi, midiSysex,
+//   notifications, pointerLock, keyboardLock, openExternal, speaker-selection,
+//   storage-access, top-level-storage-access, window-management, unknown, fileSystem
+// setPermissionCheckHandler: clipboard-read, clipboard-sanitized-write, geolocation,
+//   fullscreen, hid, idle-detection, media, mediaKeySystem, midi, midiSysex,
+//   notifications, openExternal, pointerLock, serial, storage-access,
+//   top-level-storage-access, usb, deprecated-sync-clipboard-read, fileSystem
+
+const TRUSTED_SESSION_PERMISSIONS = new Set([
+  "clipboard-sanitized-write",
+  "clipboard-read",
+  "media",
+]);
+
+const PORTAL_SESSION_PERMISSIONS = new Set(["clipboard-sanitized-write"]);
+
+let permissionLockdownInitialized = false;
+
 export function setupPermissionLockdown(): void {
-  // Lock down permissions on untrusted sessions to prevent OS permission prompts
-  function lockdownUntrustedPermissions(ses: Electron.Session): void {
-    ses.setPermissionRequestHandler((_wc, _perm, callback) => callback(false));
-    ses.setPermissionCheckHandler(() => false);
-  }
-
-  function lockdownTrustedPermissions(ses: Electron.Session): void {
-    const trustedPermissions = new Set(["clipboard-sanitized-write", "clipboard-read", "media"]);
-    ses.setPermissionRequestHandler((_wc, permission, callback) => {
-      callback(trustedPermissions.has(permission));
+  function lockdownUntrustedPermissions(ses: Electron.Session, label: string): void {
+    ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+      logPermissionDenial(label, "request", permission, details?.requestingUrl);
+      callback(false);
     });
-    ses.setPermissionCheckHandler((_wc, permission) => {
-      return trustedPermissions.has(permission);
+    ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+      logPermissionDenial(label, "check", permission, requestingOrigin);
+      return false;
     });
   }
 
-  // Lock down default session (trusted app renderer) with clipboard allowlist
-  lockdownTrustedPermissions(session.defaultSession);
+  function lockdownTrustedPermissions(
+    ses: Electron.Session,
+    label: string,
+    allowed: Set<string>
+  ): void {
+    ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+      const granted = allowed.has(permission);
+      if (!granted) {
+        logPermissionDenial(label, "request", permission, details?.requestingUrl);
+      }
+      callback(granted);
+    });
+    ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+      const granted = allowed.has(permission);
+      if (!granted) {
+        logPermissionDenial(label, "check", permission, requestingOrigin);
+      }
+      return granted;
+    });
+  }
 
-  // Lock down known untrusted sessions
-  lockdownUntrustedPermissions(session.fromPartition("persist:browser"));
+  // Lock down default session (trusted app renderer) with clipboard + media allowlist
+  lockdownTrustedPermissions(session.defaultSession, "default", TRUSTED_SESSION_PERMISSIONS);
 
-  // Sidecar needs clipboard access for AI chat copy buttons (navigator.clipboard.writeText)
+  // Lock down browser session — fully untrusted
+  lockdownUntrustedPermissions(session.fromPartition("persist:browser"), "browser");
+
+  // Portal needs clipboard access for AI chat copy buttons (navigator.clipboard.writeText)
   // but all other permissions (camera, mic, geolocation, etc.) remain denied
-  const sidecarSession = session.fromPartition("persist:sidecar");
-  sidecarSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === "clipboard-sanitized-write");
-  });
-  sidecarSession.setPermissionCheckHandler((_wc, permission) => {
-    return permission === "clipboard-sanitized-write";
-  });
+  lockdownTrustedPermissions(
+    session.fromPartition("persist:portal"),
+    "portal",
+    PORTAL_SESSION_PERMISSIONS
+  );
 
   // Catch all dynamically created sessions (e.g., persist:dev-preview-*)
-  app.on("session-created", (ses) => {
-    const partition = (ses as any).partition ?? "";
-    // Dev-preview and any other dynamic partitions are untrusted
-    if (partition.startsWith("persist:dev-preview") || partition.startsWith("persist:browser")) {
-      lockdownUntrustedPermissions(ses);
-    }
-  });
+  // Guard against duplicate listeners when createWindow is called multiple times (macOS dock)
+  if (!permissionLockdownInitialized) {
+    permissionLockdownInitialized = true;
+    app.on("session-created", (ses) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electron typing gap: Session.partition is not exposed
+      const partition: string = (ses as any).partition ?? "";
+      const type = classifyPartition(partition);
+      if (type === "dev-preview" || type === "browser") {
+        lockdownUntrustedPermissions(ses, partition);
+      }
+    });
+  }
+}
+
+/** @internal Reset idempotency guard for testing only. */
+export function _resetPermissionLockdownForTesting(): void {
+  permissionLockdownInitialized = false;
 }

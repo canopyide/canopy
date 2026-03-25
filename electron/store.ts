@@ -26,6 +26,8 @@ export interface StoreSchema {
     performanceMode: boolean;
     hybridInputEnabled?: boolean;
     hybridInputAutoFocus?: boolean;
+    screenReaderMode?: "auto" | "on" | "off";
+    resourceMonitoringEnabled?: boolean;
   };
   hibernation: {
     enabled: boolean;
@@ -69,6 +71,8 @@ export interface StoreSchema {
       devCommand?: string;
       browserConsoleOpen?: boolean;
       devPreviewConsoleOpen?: boolean;
+      agentState?: string;
+      lastStateChange?: number;
     }>;
     /** @deprecated Recipes are now stored per-project. This field is kept for migration only. */
     recipes?: Array<{
@@ -97,9 +101,9 @@ export interface StoreSchema {
   };
   agentSettings: AgentSettings;
   notificationSettings: {
+    enabled: boolean;
     completedEnabled: boolean;
     waitingEnabled: boolean;
-    failedEnabled: boolean;
     soundEnabled: boolean;
     soundFile: string;
     waitingEscalationEnabled: boolean;
@@ -139,6 +143,9 @@ export interface StoreSchema {
     apiKey: string;
   };
   pendingErrors: AppError[];
+  gpu: {
+    hardwareAccelerationDisabled: boolean;
+  };
   crashRecovery: {
     autoRestoreOnCrash: boolean;
   };
@@ -151,6 +158,7 @@ export interface StoreSchema {
     migratedFromLocalStorage: boolean;
     checklist: {
       dismissed: boolean;
+      celebrationShown: boolean;
       items: {
         openedProject: boolean;
         launchedAgent: boolean;
@@ -158,6 +166,7 @@ export interface StoreSchema {
       };
     };
   };
+  shortcutHintCounts: Record<string, number>;
 }
 
 const storeOptions = {
@@ -175,6 +184,7 @@ const storeOptions = {
       performanceMode: false,
       hybridInputEnabled: true,
       hybridInputAutoFocus: true,
+      screenReaderMode: "auto" as const,
     },
     hibernation: {
       enabled: false,
@@ -194,9 +204,9 @@ const storeOptions = {
     },
     agentSettings: DEFAULT_AGENT_SETTINGS,
     notificationSettings: {
+      enabled: true,
       completedEnabled: false,
       waitingEnabled: false,
-      failedEnabled: false,
       soundEnabled: false,
       soundFile: "chime.wav",
       waitingEscalationEnabled: true,
@@ -240,6 +250,9 @@ const storeOptions = {
       apiKey: "",
     },
     pendingErrors: [],
+    gpu: {
+      hardwareAccelerationDisabled: false,
+    },
     crashRecovery: {
       autoRestoreOnCrash: false,
     },
@@ -252,6 +265,7 @@ const storeOptions = {
       migratedFromLocalStorage: false,
       checklist: {
         dismissed: false,
+        celebrationShown: false,
         items: {
           openedProject: false,
           launchedAgent: false,
@@ -259,6 +273,7 @@ const storeOptions = {
         },
       },
     },
+    shortcutHintCounts: {},
   },
   cwd: process.env.CANOPY_USER_DATA,
 };
