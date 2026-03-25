@@ -56,6 +56,7 @@ vi.mock("electron-updater", () => ({
   autoUpdater: autoUpdaterMock,
 }));
 
+import type { BrowserWindow } from "electron";
 import { autoUpdaterService } from "../AutoUpdaterService.js";
 import { CHANNELS } from "../../ipc/channels.js";
 
@@ -107,7 +108,9 @@ describe("AutoUpdaterService", () => {
       throw new Error("sync initial failure");
     });
 
-    expect(() => autoUpdaterService.initialize(windowMock as any)).not.toThrow();
+    expect(() =>
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow)
+    ).not.toThrow();
   });
 
   it("does not crash on synchronous throw during periodic checks", () => {
@@ -120,13 +123,13 @@ describe("AutoUpdaterService", () => {
       throw new Error("sync periodic failure");
     });
 
-    autoUpdaterService.initialize(windowMock as any);
+    autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
     expect(() => vi.advanceTimersByTime(CHECK_INTERVAL_MS + 1)).not.toThrow();
   });
 
   it("detaches every registered listener on dispose", () => {
-    autoUpdaterService.initialize(windowMock as any);
+    autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
     autoUpdaterService.dispose();
 
     const expectedEvents = [
@@ -148,10 +151,14 @@ describe("AutoUpdaterService", () => {
       throw new Error("listener registration failed");
     });
 
-    expect(() => autoUpdaterService.initialize(windowMock as any)).not.toThrow();
+    expect(() =>
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow)
+    ).not.toThrow();
 
     (autoUpdaterMock.on as Mock).mockClear();
-    expect(() => autoUpdaterService.initialize(windowMock as any)).not.toThrow();
+    expect(() =>
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow)
+    ).not.toThrow();
     expect((autoUpdaterMock.on as Mock).mock.calls.length).toBeGreaterThan(0);
   });
 
@@ -161,7 +168,7 @@ describe("AutoUpdaterService", () => {
     let availableHandler: (info: { version: string }) => void;
 
     beforeEach(() => {
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       notAvailableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
         (args) => args[0] === "update-not-available"
@@ -274,7 +281,7 @@ describe("AutoUpdaterService", () => {
     let downloadedHandler: (info: { version: string }) => void;
 
     beforeEach(() => {
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       quitAndInstallHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
@@ -320,7 +327,7 @@ describe("AutoUpdaterService", () => {
     it("skips initialization on Linux without APPIMAGE and without package-type marker", () => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(autoUpdaterMock.on).not.toHaveBeenCalled();
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
@@ -334,7 +341,7 @@ describe("AutoUpdaterService", () => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
       process.env.APPIMAGE = "/path/to/app.AppImage";
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(autoUpdaterMock.on).toHaveBeenCalled();
       expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
@@ -345,7 +352,7 @@ describe("AutoUpdaterService", () => {
       fsMock.existsSync.mockReturnValue(true);
       fsMock.readFileSync.mockReturnValue("deb");
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(autoUpdaterMock.on).toHaveBeenCalled();
       expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
@@ -356,7 +363,7 @@ describe("AutoUpdaterService", () => {
       fsMock.existsSync.mockReturnValue(true);
       fsMock.readFileSync.mockReturnValue("  \n  ");
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(autoUpdaterMock.on).not.toHaveBeenCalled();
     });
@@ -368,7 +375,7 @@ describe("AutoUpdaterService", () => {
         throw new Error("EACCES");
       });
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(autoUpdaterMock.on).not.toHaveBeenCalled();
     });
@@ -376,7 +383,7 @@ describe("AutoUpdaterService", () => {
     it("does not schedule periodic checks on blocked Linux init", () => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
       vi.advanceTimersByTime(CHECK_INTERVAL_MS * 2);
 
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
@@ -385,7 +392,7 @@ describe("AutoUpdaterService", () => {
     it("does not register IPC handlers on blocked Linux init", () => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(ipcMainMock.handle).not.toHaveBeenCalled();
     });
@@ -393,7 +400,7 @@ describe("AutoUpdaterService", () => {
     it("probes the correct package-type path", () => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(fsMock.existsSync).toHaveBeenCalledWith("/mock/resources/package-type");
     });
@@ -402,7 +409,7 @@ describe("AutoUpdaterService", () => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
       process.env.APPIMAGE = "/path/to/app.AppImage";
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(fsMock.existsSync).not.toHaveBeenCalled();
     });
@@ -410,7 +417,7 @@ describe("AutoUpdaterService", () => {
     it("does not affect non-Linux platforms", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
 
-      autoUpdaterService.initialize(windowMock as any);
+      autoUpdaterService.initialize(windowMock as unknown as BrowserWindow);
 
       expect(autoUpdaterMock.on).toHaveBeenCalled();
       expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
