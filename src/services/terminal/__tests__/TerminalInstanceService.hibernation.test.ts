@@ -153,6 +153,8 @@ function makeMockManaged(overrides: Record<string, unknown> = {}) {
     deferredOutput: [] as Array<string | Uint8Array>,
     isHibernated: false,
     hibernationTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    isInputLocked: false,
+    ipcListenerCount: 0,
     ...overrides,
   };
 }
