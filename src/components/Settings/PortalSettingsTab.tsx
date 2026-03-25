@@ -1,9 +1,8 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { Plus, Trash2, Globe, Check, X, Search, PanelRight, Link, Maximize2 } from "lucide-react";
+import { useId, useState } from "react";
+import { Plus, Trash2, Globe, Check, X, Search, PanelRight, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { usePortalStore } from "@/store/portalStore";
-import { PORTAL_MIN_WIDTH, PORTAL_MAX_WIDTH, PORTAL_DEFAULT_WIDTH } from "@shared/types";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { actionService } from "@/services/ActionService";
 import { SettingsSection } from "./SettingsSection";
@@ -48,7 +47,6 @@ function FaviconIcon({ url }: { url: string }) {
 
 export function PortalSettingsTab() {
   const links = usePortalStore((s) => s.links);
-  const width = usePortalStore((s) => s.width);
   const defaultNewTabUrl = usePortalStore((s) => s.defaultNewTabUrl);
   const [newLinkName, setNewLinkName] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
@@ -56,19 +54,11 @@ export function PortalSettingsTab() {
   const [editName, setEditName] = useState("");
   const [editUrl, setEditUrl] = useState("");
   const [urlError, setUrlError] = useState("");
-  const [localWidth, setLocalWidth] = useState(width);
-  const isAdjustingWidthRef = useRef(false);
   const [showCustomUrlInput, setShowCustomUrlInput] = useState(false);
   const [customDefaultUrl, setCustomDefaultUrl] = useState("");
   const [customUrlError, setCustomUrlError] = useState("");
   const customUrlErrorId = useId();
   const addLinkErrorId = useId();
-
-  const clampWidth = (v: number) => Math.min(PORTAL_MAX_WIDTH, Math.max(PORTAL_MIN_WIDTH, v));
-
-  useEffect(() => {
-    if (!isAdjustingWidthRef.current) setLocalWidth(width);
-  }, [width]);
 
   const systemLinks = links.filter((l) => l.type === "system");
   const userLinks = links.filter((l) => l.type === "user");
@@ -455,71 +445,6 @@ export function PortalSettingsTab() {
               {urlError}
             </p>
           )}
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        icon={Maximize2}
-        title="Default Width"
-        description="Set the default width of the portal panel. You can still resize it manually."
-      >
-        <div className="space-y-3">
-          <div className="flex items-center gap-4">
-            <input
-              type="range"
-              min={PORTAL_MIN_WIDTH}
-              max={PORTAL_MAX_WIDTH}
-              value={localWidth}
-              onChange={(e) => setLocalWidth(clampWidth(Number(e.currentTarget.value)))}
-              onPointerDown={() => {
-                isAdjustingWidthRef.current = true;
-              }}
-              onPointerUp={(e) => {
-                isAdjustingWidthRef.current = false;
-                void actionService.dispatch(
-                  "portal.width.set",
-                  { width: clampWidth(Number(e.currentTarget.value)) },
-                  { source: "user" }
-                );
-              }}
-              onBlur={(e) => {
-                isAdjustingWidthRef.current = false;
-                void actionService.dispatch(
-                  "portal.width.set",
-                  { width: clampWidth(Number(e.currentTarget.value)) },
-                  { source: "user" }
-                );
-              }}
-              className="flex-1 h-2 bg-canopy-border rounded-lg appearance-none cursor-pointer accent-canopy-accent"
-              aria-label="Default portal width"
-            />
-            <span className="text-sm font-mono text-canopy-text/70 w-16 text-right">
-              {localWidth}px
-            </span>
-          </div>
-
-          <div className="h-4 bg-canopy-bg rounded-[var(--radius-sm)] border border-canopy-border overflow-hidden">
-            <div
-              className="h-full bg-canopy-accent/30 transition-all"
-              style={{
-                width: `${Math.max(0, Math.min(100, ((localWidth - PORTAL_MIN_WIDTH) / (PORTAL_MAX_WIDTH - PORTAL_MIN_WIDTH)) * 100))}%`,
-              }}
-            />
-          </div>
-
-          <div className="flex justify-between text-[11px] text-canopy-text/40">
-            <span>{PORTAL_MIN_WIDTH}px (min)</span>
-            <button
-              onClick={() => {
-                setLocalWidth(PORTAL_DEFAULT_WIDTH);
-                void actionService.dispatch("portal.resetWidth", undefined, { source: "user" });
-              }}
-              className="hover:text-canopy-text/70 transition-colors"
-            >
-              Reset to {PORTAL_DEFAULT_WIDTH}px
-            </button>
-            <span>{PORTAL_MAX_WIDTH}px (max)</span>
-          </div>
         </div>
       </SettingsSection>
     </div>
