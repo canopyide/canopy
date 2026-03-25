@@ -4,7 +4,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
+import type { ITheme } from "@xterm/xterm";
 import {
+  buildInputBarTheme,
   computeAutoSize,
   createAutoSize,
   createCustomKeymap,
@@ -19,7 +21,9 @@ import {
   diffChipField,
   terminalChipField,
   selectionChipField,
+  formatFileSize,
 } from "../inputEditorExtensions";
+import { resolveInputBarColors } from "@/utils/terminalTheme";
 
 describe("computeAutoSize", () => {
   it("snaps height to line height increments with epsilon tolerance", () => {
@@ -1261,5 +1265,114 @@ describe("selectionChipField", () => {
     });
     const chipState = state.field(selectionChipField);
     expect(chipState.tokens).toHaveLength(0);
+  });
+});
+
+describe("formatFileSize", () => {
+  it("formats bytes", () => {
+    expect(formatFileSize(0)).toBe("0 B");
+    expect(formatFileSize(512)).toBe("512 B");
+    expect(formatFileSize(1023)).toBe("1023 B");
+  });
+
+  it("formats kilobytes", () => {
+    expect(formatFileSize(1024)).toBe("1.0 KB");
+    expect(formatFileSize(2048)).toBe("2.0 KB");
+    expect(formatFileSize(1536)).toBe("1.5 KB");
+  });
+
+  it("formats megabytes", () => {
+    expect(formatFileSize(1024 * 1024)).toBe("1.0 MB");
+    expect(formatFileSize(5.5 * 1024 * 1024)).toBe("5.5 MB");
+  });
+});
+
+describe("resolveInputBarColors", () => {
+  const fullTheme: ITheme = {
+    background: "#1e1e2e",
+    foreground: "#cdd6f4",
+    cursor: "#f5e0dc",
+    selectionBackground: "#585b70",
+    red: "#f38ba8",
+    green: "#a6e3a1",
+    blue: "#89b4fa",
+    cyan: "#94e2d5",
+    brightCyan: "#b4f9f0",
+  };
+
+  it("maps all fields from a full theme", () => {
+    const colors = resolveInputBarColors(fullTheme);
+    expect(colors.accent).toBe("#f5e0dc");
+    expect(colors.foreground).toBe("#cdd6f4");
+    expect(colors.background).toBe("#1e1e2e");
+    expect(colors.selectionBg).toBe("#585b70");
+    expect(colors.chipColor).toBe("#94e2d5");
+    expect(colors.errorColor).toBe("#f38ba8");
+    expect(colors.successColor).toBe("#a6e3a1");
+  });
+
+  it("falls back cursor to blue when cursor is missing", () => {
+    const colors = resolveInputBarColors({ ...fullTheme, cursor: undefined });
+    expect(colors.accent).toBe("#89b4fa");
+  });
+
+  it("falls back chipColor to brightCyan when cyan is missing", () => {
+    const colors = resolveInputBarColors({ ...fullTheme, cyan: undefined });
+    expect(colors.chipColor).toBe("#b4f9f0");
+  });
+
+  it("falls back chipColor to cursor when both cyan and brightCyan are missing", () => {
+    const colors = resolveInputBarColors({
+      ...fullTheme,
+      cyan: undefined,
+      brightCyan: undefined,
+    });
+    expect(colors.chipColor).toBe("#f5e0dc");
+  });
+
+  it("returns valid fallback colors for an empty theme", () => {
+    const colors = resolveInputBarColors({});
+    expect(colors.accent).toBe("#58a6ff");
+    expect(colors.foreground).toBe("#cccccc");
+    expect(colors.background).toBe("#1e1e1e");
+    expect(colors.selectionBg).toBe("#264f78");
+    expect(colors.chipColor).toBe("#58a6ff");
+    expect(colors.errorColor).toBe("#f44747");
+    expect(colors.successColor).toBe("#89d185");
+  });
+});
+
+describe("buildInputBarTheme", () => {
+  const theme: ITheme = {
+    background: "#282a36",
+    foreground: "#f8f8f2",
+    cursor: "#ff79c6",
+    red: "#ff5555",
+    green: "#50fa7b",
+    cyan: "#8be9fd",
+  };
+
+  it("produces a valid Extension", () => {
+    const ext = buildInputBarTheme(theme);
+    expect(ext).toBeDefined();
+    expect(ext).not.toBeNull();
+  });
+
+  it("does not throw for a partial theme", () => {
+    expect(() => buildInputBarTheme({})).not.toThrow();
+  });
+
+  it("returns different extensions for different themes", () => {
+    const ext1 = buildInputBarTheme(theme);
+    const ext2 = buildInputBarTheme({ ...theme, cursor: "#000000" });
+    expect(ext1).not.toBe(ext2);
+  });
+
+  it("can be used to create an EditorState", () => {
+    const state = EditorState.create({
+      doc: "test",
+      extensions: [buildInputBarTheme(theme)],
+    });
+    expect(state.doc.toString()).toBe("test");
   });
 });

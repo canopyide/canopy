@@ -3,14 +3,7 @@ import { BUILT_IN_TERMINAL_TYPES } from "../../shared/config/agentIds.js";
 
 export const TerminalTypeSchema = z.enum(BUILT_IN_TERMINAL_TYPES);
 
-export const AgentStateSchema = z.enum([
-  "idle",
-  "working",
-  "running",
-  "waiting",
-  "completed",
-  "failed",
-]);
+export const AgentStateSchema = z.enum(["idle", "working", "running", "waiting", "completed"]);
 
 // @see shared/types/events.ts for the TypeScript interface definition.
 export const EventContextSchema = z.object({
@@ -51,6 +44,7 @@ export const AgentStateChangedSchema = EventContextSchema.extend({
   trigger: AgentStateChangeTriggerSchema,
   // Confidence in the state detection (0.0 = uncertain, 1.0 = certain)
   confidence: z.number().min(0).max(1),
+  waitingReason: z.enum(["prompt", "question"]).optional(),
 });
 
 export const AgentOutputSchema = EventContextSchema.extend({
@@ -68,13 +62,6 @@ export const AgentCompletedSchema = EventContextSchema.extend({
   traceId: z.string().optional(),
 });
 
-export const AgentFailedSchema = EventContextSchema.extend({
-  agentId: z.string().min(1),
-  error: z.string().trim().min(1),
-  timestamp: z.number().int().positive(),
-  traceId: z.string().optional(),
-});
-
 export const AgentKilledSchema = EventContextSchema.extend({
   agentId: z.string().min(1),
   reason: z.string().optional(),
@@ -87,7 +74,6 @@ export const AgentEventPayloadSchema = z.union([
   AgentStateChangedSchema,
   AgentOutputSchema,
   AgentCompletedSchema,
-  AgentFailedSchema,
   AgentKilledSchema,
 ]);
 
@@ -97,6 +83,5 @@ export type AgentStateChanged = z.infer<typeof AgentStateChangedSchema>;
 export type AgentStateChangeTrigger = z.infer<typeof AgentStateChangeTriggerSchema>;
 export type AgentOutput = z.infer<typeof AgentOutputSchema>;
 export type AgentCompleted = z.infer<typeof AgentCompletedSchema>;
-export type AgentFailed = z.infer<typeof AgentFailedSchema>;
 export type AgentKilled = z.infer<typeof AgentKilledSchema>;
 export type AgentEventPayload = z.infer<typeof AgentEventPayloadSchema>;

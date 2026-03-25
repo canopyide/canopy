@@ -2,9 +2,16 @@ import { useEffect, useRef, useCallback, useId, createContext, useContext } from
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
-import { useOverlayState } from "@/hooks";
-import { useSidecarStore } from "@/store";
+import { useOverlayState, useEscapeStack } from "@/hooks";
+import { usePortalStore } from "@/store";
 import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
+import {
+  UI_ENTER_DURATION,
+  UI_EXIT_DURATION,
+  UI_ENTER_EASING,
+  UI_EXIT_EASING,
+  getUiTransitionDuration,
+} from "@/lib/animationUtils";
 import { X, Loader2 } from "lucide-react";
 import { Button } from "./button";
 
@@ -70,10 +77,10 @@ export function AppDialog({
   const titleId = useId();
   const descriptionId = useId();
 
-  const { isOpen: sidecarOpen, width: sidecarWidth } = useSidecarStore(
+  const { isOpen: portalOpen, width: portalWidth } = usePortalStore(
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
   );
-  const sidecarOffset = sidecarOpen ? sidecarWidth : 0;
+  const portalOffset = portalOpen ? portalWidth : 0;
 
   const restoreFocus = useCallback(() => {
     if (previousActiveElement.current) {
@@ -84,6 +91,7 @@ export function AppDialog({
 
   const { isVisible, shouldRender } = useAnimatedPresence({
     isOpen,
+    animationDuration: getUiTransitionDuration("exit"),
     onAnimateOut: restoreFocus,
   });
 
@@ -129,45 +137,39 @@ export function AppDialog({
     }
   }, [dismissible, onBeforeClose, onClose]);
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        handleClose();
+  useEscapeStack(isOpen, handleClose);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Tab" && dialogRef.current) {
+      // Don't interfere if another modal (e.g., a nested dialog portal) has focus
+      const activeEl = document.activeElement;
+      if (activeEl) {
+        const closestModal = activeEl.closest('[aria-modal="true"]');
+        if (closestModal && !closestModal.contains(dialogRef.current)) return;
+      }
+
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)
+      );
+
+      if (focusable.length === 0) {
+        e.preventDefault();
+        dialogRef.current.focus();
         return;
       }
 
-      if (e.key === "Tab" && dialogRef.current) {
-        // Don't interfere if another modal (e.g., a nested dialog portal) has focus
-        const activeEl = document.activeElement;
-        if (activeEl) {
-          const closestModal = activeEl.closest('[aria-modal="true"]');
-          if (closestModal && !closestModal.contains(dialogRef.current)) return;
-        }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
 
-        const focusable = Array.from(
-          dialogRef.current.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)
-        );
-
-        if (focusable.length === 0) {
-          e.preventDefault();
-          dialogRef.current.focus();
-          return;
-        }
-
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
-    },
-    [handleClose]
-  );
+    }
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -205,11 +207,14 @@ export function AppDialog({
         className={cn(
           "fixed inset-0 flex items-center justify-center bg-scrim-medium backdrop-blur-md backdrop-saturate-[1.25]",
           zIndex === "nested" ? "z-[var(--z-nested-dialog)]" : "z-[var(--z-modal)]",
-          "transition-opacity duration-150",
+          "transition-opacity",
           "motion-reduce:transition-none motion-reduce:duration-0",
           isVisible ? "opacity-100" : "opacity-0"
         )}
-        style={{ right: sidecarOffset }}
+        style={{
+          right: portalOffset,
+          transitionDuration: isVisible ? `${UI_ENTER_DURATION}ms` : `${UI_EXIT_DURATION}ms`,
+        }}
         onPointerDown={handleBackdropPointerDown}
         onPointerUp={handleBackdropPointerUp}
         onPointerCancel={resetBackdropPointer}
@@ -223,11 +228,11 @@ export function AppDialog({
           ref={dialogRef}
           tabIndex={-1}
           className={cn(
-            "bg-canopy-sidebar border border-[var(--border-overlay)] border-t-overlay-strong rounded-[var(--radius-xl)] shadow-modal mx-4 flex flex-col",
+            "bg-surface-panel border border-border-default rounded-[var(--radius-xl)] shadow-[var(--theme-shadow-dialog)] mx-4 flex flex-col overflow-hidden",
             maxHeight,
             sizeClasses[size],
             "w-full",
-            "transition-all duration-150",
+            "transition-[opacity,transform]",
             "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
             isVisible
               ? "opacity-100 translate-y-0 scale-100"
@@ -235,6 +240,10 @@ export function AppDialog({
             "outline-none",
             className
           )}
+          style={{
+            transitionDuration: isVisible ? `${UI_ENTER_DURATION}ms` : `${UI_EXIT_DURATION}ms`,
+            transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {children}

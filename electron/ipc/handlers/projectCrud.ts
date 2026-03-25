@@ -8,19 +8,19 @@ import { sendToRenderer } from "../utils.js";
 import { randomUUID } from "crypto";
 import type { HandlerDependencies } from "../types.js";
 import type { Project, ProjectSettings } from "../../types/index.js";
+import type { BulkProjectStats, BulkProjectStatsEntry } from "../../../shared/types/ipc/project.js";
 import type {
   GitInitOptions,
   GitInitResult,
   GitInitProgressEvent,
 } from "../../../shared/types/ipc/gitInit.js";
+import { createHardenedGit } from "../../utils/hardenedGit.js";
 
 export function registerProjectCrudHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow } = deps;
   const handlers: Array<() => void> = [];
 
-  // Pass deps directly so ProjectSwitchService sees late-init services
-  // (worktreeService, eventBuffer) when they become available.
-  const projectSwitchService = new ProjectSwitchService(deps);
+  const projectSwitchService = deps.projectSwitchService ?? new ProjectSwitchService(deps);
 
   const handleProjectGetAll = async () => {
     return projectStore.getAllProjects();
@@ -60,6 +60,13 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
     }
+
+    if (deps.ptyClient) {
+      await deps.ptyClient.killByProject(projectId).catch((err: unknown) => {
+        console.error(`[IPC] project:remove: Failed to kill terminals for ${projectId}:`, err);
+      });
+    }
+
     await projectStore.removeProject(projectId);
   };
   ipcMain.handle(CHANNELS.PROJECT_REMOVE, handleProjectRemove);
@@ -214,12 +221,6 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       if (killTerminals) {
         const terminalsKilled = await deps.ptyClient!.killByProject(projectId);
 
-        if (deps.projectMcpManager) {
-          await deps.projectMcpManager.stopForProject(projectId).catch((err: unknown) => {
-            console.error(`[IPC] project:close: Failed to stop MCP servers for ${projectId}:`, err);
-          });
-        }
-
         await projectStore.clearProjectState(projectId);
 
         if (projectId === storeActiveProjectId) {
@@ -262,13 +263,6 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
   };
   ipcMain.handle(CHANNELS.PROJECT_CLOSE, handleProjectClose);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_CLOSE));
-
-  const handleProjectMcpGetStatuses = (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
-    if (typeof projectId !== "string" || !projectId) return [];
-    return deps.projectMcpManager?.getStatuses(projectId) ?? [];
-  };
-  ipcMain.handle(CHANNELS.PROJECT_MCP_GET_STATUSES, handleProjectMcpGetStatuses);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_MCP_GET_STATUSES));
 
   const handleProjectReopen = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
     if (typeof projectId !== "string" || !projectId) {
@@ -326,6 +320,73 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
   };
   ipcMain.handle(CHANNELS.PROJECT_GET_STATS, handleProjectGetStats);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_STATS));
+
+  const handleProjectGetBulkStats = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectIds: string[]
+  ): Promise<BulkProjectStats> => {
+    if (!Array.isArray(projectIds)) {
+      throw new Error("Invalid projectIds: must be an array");
+    }
+
+    const uniqueIds = [...new Set(projectIds.filter((id) => typeof id === "string" && id))];
+    const MEMORY_PER_TERMINAL_MB = 50;
+
+    const entries = await Promise.allSettled(
+      uniqueIds.map(async (projectId): Promise<[string, BulkProjectStatsEntry]> => {
+        const [ptyStats, terminalIds] = await Promise.all([
+          deps.ptyClient!.getProjectStats(projectId),
+          deps.ptyClient!.getTerminalsForProjectAsync(projectId),
+        ]);
+
+        let activeAgentCount = 0;
+        let waitingAgentCount = 0;
+
+        const terminalInfos = await Promise.all(
+          terminalIds.map((id) => deps.ptyClient!.getTerminalAsync(id))
+        );
+
+        for (const terminal of terminalInfos) {
+          if (!terminal) continue;
+          if (terminal.kind === "dev-preview") continue;
+          if (terminal.hasPty === false) continue;
+
+          const isAgent = terminal.kind === "agent" || !!terminal.agentId;
+          if (!isAgent) continue;
+
+          if (terminal.agentState === "waiting") {
+            waitingAgentCount += 1;
+          } else if (terminal.agentState === "working" || terminal.agentState === "running") {
+            activeAgentCount += 1;
+          }
+        }
+
+        return [
+          projectId,
+          {
+            processCount: ptyStats.terminalCount,
+            terminalCount: ptyStats.terminalCount,
+            estimatedMemoryMB: ptyStats.terminalCount * MEMORY_PER_TERMINAL_MB,
+            terminalTypes: ptyStats.terminalTypes,
+            processIds: ptyStats.processIds,
+            activeAgentCount,
+            waitingAgentCount,
+          },
+        ];
+      })
+    );
+
+    const result: BulkProjectStats = {};
+    for (const entry of entries) {
+      if (entry.status === "fulfilled") {
+        const [id, stats] = entry.value;
+        result[id] = stats;
+      }
+    }
+    return result;
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_BULK_STATS, handleProjectGetBulkStats);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_BULK_STATS));
 
   const handleProjectCreateFolder = async (
     _event: Electron.IpcMainInvokeEvent,
@@ -411,8 +472,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       throw new Error("Path is not a directory");
     }
 
-    const simpleGit = await import("simple-git");
-    const git = simpleGit.simpleGit(directoryPath);
+    const git = createHardenedGit(directoryPath);
     await git.init();
   };
   ipcMain.handle(CHANNELS.PROJECT_INIT_GIT, handleProjectInitGit);
@@ -469,8 +529,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         throw new Error("Path is not a directory");
       }
 
-      const simpleGit = await import("simple-git");
-      const git = simpleGit.simpleGit(directoryPath);
+      const git = createHardenedGit(directoryPath);
 
       emitProgress("init", "start", "Initializing Git repository...");
       await git.init();

@@ -10,11 +10,7 @@ import { sanitizeSvg } from "../../shared/utils/svgSanitizer.js";
 import { isSensitiveEnvKey } from "../../shared/utils/envVars.js";
 import { projectEnvSecureStorage } from "./ProjectEnvSecureStorage.js";
 import { getProjectStateDir, settingsFilePath } from "./projectStorePaths.js";
-import {
-  parseMcpServers,
-  parseTerminalSettings,
-  parseNotificationOverrides,
-} from "./projectSettingsParsers.js";
+import { parseTerminalSettings, parseNotificationOverrides } from "./projectSettingsParsers.js";
 
 function cleanupTempFile(tempFilePath: string): void {
   fs.unlink(tempFilePath).catch(() => {});
@@ -36,9 +32,9 @@ export class ProjectSettingsManager {
     if (!overrides) return global;
 
     return {
+      enabled: global.enabled,
       completedEnabled: overrides.completedEnabled ?? global.completedEnabled,
       waitingEnabled: overrides.waitingEnabled ?? global.waitingEnabled,
-      failedEnabled: overrides.failedEnabled ?? global.failedEnabled,
       soundEnabled: overrides.soundEnabled ?? global.soundEnabled,
       soundFile: overrides.soundFile ?? global.soundFile,
       waitingEscalationEnabled:
@@ -184,16 +180,11 @@ export class ProjectSettingsManager {
             : undefined,
         branchPrefixCustom:
           typeof parsed.branchPrefixCustom === "string" ? parsed.branchPrefixCustom : undefined,
-        agentInstructions:
-          typeof parsed.agentInstructions === "string" && parsed.agentInstructions.trim()
-            ? parsed.agentInstructions
-            : undefined,
         worktreePathPattern:
           typeof parsed.worktreePathPattern === "string" && parsed.worktreePathPattern.trim()
             ? parsed.worktreePathPattern.trim()
             : undefined,
         terminalSettings: parseTerminalSettings(parsed.terminalSettings),
-        mcpServers: parseMcpServers(parsed.mcpServers),
         notificationOverrides: parseNotificationOverrides(parsed.notificationOverrides),
       };
 
@@ -267,6 +258,7 @@ export class ProjectSettingsManager {
       secureEnvironmentVariables: secureEnvVarKeys.length > 0 ? secureEnvVarKeys : undefined,
       insecureEnvironmentVariables: undefined,
       unresolvedSecureEnvironmentVariables: undefined,
+      agentInstructions: undefined,
       devServerDismissed:
         typeof settings.devServerDismissed === "boolean" ? settings.devServerDismissed : undefined,
       devServerAutoDetected:

@@ -1,24 +1,24 @@
 import { Terminal, IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { FileLinksAddon } from "./FileLinksAddon";
 
 export interface TerminalAddons {
   fitAddon: FitAddon;
   serializeAddon: SerializeAddon;
-  webLinksAddon: WebLinksAddon;
-  imageAddon: ImageAddon;
+  imageAddon: ImageAddon | null;
   searchAddon: SearchAddon;
-  fileLinksDisposable: IDisposable;
+  fileLinksDisposable: IDisposable | null;
+  webLinksAddon: WebLinksAddon | null;
 }
 
 export function setupTerminalAddons(
   terminal: Terminal,
-  openLink: (url: string, event?: MouseEvent) => void,
-  getCwd: () => string
+  getCwd: () => string,
+  onLinkActivate?: (event: MouseEvent, uri: string) => void
 ): TerminalAddons {
   // Base addons loaded for all terminals. WebGL is managed separately
   // by TerminalWebGLManager (attached only to the focused terminal).
@@ -27,9 +27,6 @@ export function setupTerminalAddons(
   const serializeAddon = new SerializeAddon();
   terminal.loadAddon(fitAddon);
   terminal.loadAddon(serializeAddon);
-
-  const webLinksAddon = new WebLinksAddon((event, uri) => openLink(uri, event));
-  terminal.loadAddon(webLinksAddon);
 
   const imageAddon = new ImageAddon();
   terminal.loadAddon(imageAddon);
@@ -40,12 +37,38 @@ export function setupTerminalAddons(
   const fileLinksAddon = new FileLinksAddon(terminal, getCwd);
   const fileLinksDisposable = terminal.registerLinkProvider(fileLinksAddon);
 
+  let webLinksAddon: WebLinksAddon | null = null;
+  if (onLinkActivate) {
+    webLinksAddon = new WebLinksAddon(onLinkActivate);
+    terminal.loadAddon(webLinksAddon);
+  }
+
   return {
     fitAddon,
     serializeAddon,
-    webLinksAddon,
     imageAddon,
     searchAddon,
     fileLinksDisposable,
+    webLinksAddon,
   };
+}
+
+export function createImageAddon(terminal: Terminal): ImageAddon {
+  const addon = new ImageAddon();
+  terminal.loadAddon(addon);
+  return addon;
+}
+
+export function createFileLinksAddon(terminal: Terminal, getCwd: () => string): IDisposable {
+  const addon = new FileLinksAddon(terminal, getCwd);
+  return terminal.registerLinkProvider(addon);
+}
+
+export function createWebLinksAddon(
+  terminal: Terminal,
+  onActivate: (event: MouseEvent, uri: string) => void
+): WebLinksAddon {
+  const addon = new WebLinksAddon(onActivate);
+  terminal.loadAddon(addon);
+  return addon;
 }

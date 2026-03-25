@@ -1,12 +1,21 @@
 import { useState, useEffect, useMemo, useCallback, useRef, type KeyboardEvent } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Search, ExternalLink, RefreshCw, WifiOff, Plus, Settings, X, Filter } from "lucide-react";
+import {
+  buildCacheKey,
+  getCache,
+  setCache,
+  nextGeneration,
+  getGeneration,
+} from "@/lib/githubResourceCache";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients/githubClient";
 import { actionService } from "@/services/ActionService";
 import { GitHubListItem } from "./GitHubListItem";
+import { IssueBulkActionBar } from "./IssueBulkActionBar";
+import { useIssueSelection } from "@/hooks/useIssueSelection";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeDataStore } from "@/store/worktreeDataStore";
 import {
@@ -15,7 +24,8 @@ import {
   type PRStateFilter,
 } from "@/store/githubFilterStore";
 import type { GitHubIssue, GitHubPR, GitHubSortOrder } from "@shared/types/github";
-import { parseExactNumber } from "@/lib/parseExactNumber";
+import { parseNumberQuery, MULTI_FETCH_CAP } from "@/lib/parseNumberQuery";
+import { GitHubResourceRowsSkeleton, MAX_SKELETON_ITEMS } from "./GitHubDropdownSkeletons";
 
 type StateFilter = IssueStateFilter | PRStateFilter;
 
@@ -30,9 +40,6 @@ interface GitHubResourceListProps {
   onClose?: () => void;
   initialCount?: number | null;
 }
-
-const ITEM_HEIGHT_PX = 68;
-const MAX_SKELETON_ITEMS = 6;
 
 export function GitHubResourceList({
   type,
@@ -56,9 +63,15 @@ export function GitHubResourceList({
   const setSortOrder = useGitHubFilterStore((s) =>
     type === "issue" ? s.setIssueSortOrder : s.setPrSortOrder
   ) as (o: GitHubSortOrder) => void;
-  const [data, setData] = useState<(GitHubIssue | GitHubPR)[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const cacheKey = useMemo(
+    () => buildCacheKey(projectPath, type, filterState as string, sortOrder),
+    [projectPath, type, filterState, sortOrder]
+  );
+  const cachedEntry = useMemo(() => getCache(cacheKey), [cacheKey]);
+
+  const [data, setData] = useState<(GitHubIssue | GitHubPR)[]>(() => cachedEntry?.items ?? []);
+  const [cursor, setCursor] = useState<string | null>(() => cachedEntry?.endCursor ?? null);
+  const [hasMore, setHasMore] = useState(() => cachedEntry?.hasNextPage ?? false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,11 +81,26 @@ export function GitHubResourceList({
   const [sortPopoverOpen, setSortPopoverOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(false);
+
+  const selection = useIssueSelection();
+  const issueCacheRef = useRef<Map<number, GitHubIssue>>(new Map());
+
+  // Accumulate issue objects into the session cache whenever data changes
+  useEffect(() => {
+    if (type !== "issue") return;
+    for (const item of data) {
+      if (!("isDraft" in item)) {
+        issueCacheRef.current.set(item.number, item as GitHubIssue);
+      }
+    }
+  }, [data, type]);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  const exactNumber = useMemo(() => parseExactNumber(searchQuery), [searchQuery]);
+  const numberQuery = useMemo(() => parseNumberQuery(searchQuery), [searchQuery]);
   const exactNumberAbortRef = useRef<AbortController | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const stateTabs = useMemo(() => {
     if (type === "pr") {
@@ -96,9 +124,12 @@ export function GitHubResourceList({
     async (
       currentCursor: string | null | undefined,
       append: boolean = false,
-      abortSignal?: AbortSignal
+      abortSignal?: AbortSignal,
+      options?: { revalidating?: boolean; generation?: number; cacheKey?: string }
     ) => {
       if (!projectPath) return;
+
+      const isRevalidate = options?.revalidating ?? false;
 
       if (append) {
         loadMoreAbortRef.current?.abort();
@@ -108,16 +139,18 @@ export function GitHubResourceList({
 
         setLoadingMore(true);
         setLoadMoreError(null);
-      } else {
+      } else if (!isRevalidate) {
         setLoading(true);
         setError(null);
         setLoadMoreError(null);
       }
 
       try {
-        const options = {
+        const searchOverride =
+          numberQuery?.kind === "open-ended" ? `number:>=${numberQuery.from}` : undefined;
+        const fetchOptions = {
           cwd: projectPath,
-          search: debouncedSearch || undefined,
+          search: searchOverride || debouncedSearch || undefined,
           state: filterState as "open" | "closed" | "merged" | "all",
           cursor: currentCursor || undefined,
           bypassCache: !append,
@@ -127,14 +160,19 @@ export function GitHubResourceList({
         const result =
           type === "issue"
             ? await githubClient.listIssues(
-                options as Parameters<typeof githubClient.listIssues>[0]
+                fetchOptions as Parameters<typeof githubClient.listIssues>[0]
               )
             : await githubClient.listPullRequests(
-                options as Parameters<typeof githubClient.listPullRequests>[0]
+                fetchOptions as Parameters<typeof githubClient.listPullRequests>[0]
               );
 
         // Check if aborted before updating state
         if (abortSignal?.aborted) return;
+
+        // Generation guard: discard stale responses
+        if (options?.generation != null && options.cacheKey != null) {
+          if (getGeneration(options.cacheKey) !== options.generation) return;
+        }
 
         if (append) {
           setData((prev) => [...prev, ...result.items]);
@@ -143,6 +181,16 @@ export function GitHubResourceList({
         }
         setCursor(result.pageInfo.endCursor);
         setHasMore(result.pageInfo.hasNextPage);
+
+        // Write first-page results to cache (skip search-filtered results)
+        if (!append && options?.cacheKey && !debouncedSearch) {
+          setCache(options.cacheKey, {
+            items: result.items,
+            endCursor: result.pageInfo.endCursor,
+            hasNextPage: result.pageInfo.hasNextPage,
+            timestamp: Date.now(),
+          });
+        }
       } catch (err) {
         if (abortSignal?.aborted) return;
         const message = err instanceof Error ? err.message : "Failed to fetch data";
@@ -158,26 +206,49 @@ export function GitHubResourceList({
         }
       }
     },
-    [projectPath, debouncedSearch, filterState, type, sortOrder]
+    [projectPath, debouncedSearch, filterState, type, sortOrder, numberQuery]
   );
 
   useEffect(() => {
-    if (exactNumber !== null) {
+    if (numberQuery !== null) {
       return;
     }
 
     const abortController = new AbortController();
+    loadMoreAbortRef.current?.abort();
+    const gen = nextGeneration(cacheKey);
 
+    if (!mountedRef.current) {
+      // First mount: check if we have cached data (SWR path)
+      mountedRef.current = true;
+      const cached = getCache(cacheKey);
+      if (cached) {
+        // Data already hydrated via useState initializer — background revalidate
+        setError(null);
+        fetchData(null, false, abortController.signal, {
+          revalidating: true,
+          generation: gen,
+          cacheKey,
+        });
+        return () => abortController.abort();
+      }
+    }
+
+    // Cache miss or filter/sort changed while mounted: fresh fetch with skeleton
     setCursor(null);
     setHasMore(false);
     setExactNumberNotFound(null);
-    fetchData(null, false, abortController.signal);
+    setData([]);
+    fetchData(null, false, abortController.signal, {
+      generation: gen,
+      cacheKey,
+    });
 
     return () => abortController.abort();
-  }, [debouncedSearch, filterState, projectPath, type, fetchData, exactNumber]);
+  }, [debouncedSearch, filterState, projectPath, type, fetchData, numberQuery, cacheKey]);
 
   useEffect(() => {
-    if (exactNumber === null) {
+    if (numberQuery === null) {
       return;
     }
 
@@ -188,36 +259,82 @@ export function GitHubResourceList({
 
     setLoading(true);
     setError(null);
+    setLoadMoreError(null);
+    setLoadingMore(false);
     setExactNumberNotFound(null);
     setData([]);
     setCursor(null);
     setHasMore(false);
 
-    const fetchExact = async () => {
+    const getByNumber = (num: number) =>
+      type === "issue"
+        ? githubClient.getIssueByNumber(projectPath, num)
+        : githubClient.getPRByNumber(projectPath, num);
+
+    const matchesFilter = (item: GitHubIssue | GitHubPR) =>
+      filterState === "all" || item.state.toLowerCase() === filterState;
+
+    const fetchNumeric = async () => {
       try {
-        const result =
-          type === "issue"
-            ? await githubClient.getIssueByNumber(projectPath, exactNumber)
-            : await githubClient.getPRByNumber(projectPath, exactNumber);
-
-        if (abortController.signal.aborted) return;
-
-        if (result) {
-          const matchesFilter =
-            filterState === "all" ||
-            (type === "issue" && result.state.toLowerCase() === filterState) ||
-            (type === "pr" && result.state.toLowerCase() === filterState);
-
-          if (matchesFilter) {
-            setData([result]);
-            setExactNumberNotFound(null);
-          } else {
-            setData([]);
-            setExactNumberNotFound(exactNumber);
+        switch (numberQuery.kind) {
+          case "single": {
+            const result = await getByNumber(numberQuery.number);
+            if (abortController.signal.aborted) return;
+            if (result && matchesFilter(result)) {
+              setData([result]);
+            } else {
+              setData([]);
+              setExactNumberNotFound(numberQuery.number);
+            }
+            break;
           }
-        } else {
-          setData([]);
-          setExactNumberNotFound(exactNumber);
+
+          case "multi": {
+            const results = await Promise.all(numberQuery.numbers.map(getByNumber));
+            if (abortController.signal.aborted) return;
+            const filtered = results.filter(
+              (r): r is NonNullable<typeof r> => r !== null && matchesFilter(r)
+            );
+            setData(filtered);
+            break;
+          }
+
+          case "range": {
+            const numbers: number[] = [];
+            for (let n = numberQuery.from; n <= numberQuery.to; n++) {
+              numbers.push(n);
+            }
+            const results = await Promise.all(numbers.map(getByNumber));
+            if (abortController.signal.aborted) return;
+            const filtered = results.filter(
+              (r): r is NonNullable<typeof r> => r !== null && matchesFilter(r)
+            );
+            setData(filtered);
+            break;
+          }
+
+          case "open-ended": {
+            const options = {
+              cwd: projectPath,
+              search: `number:>=${numberQuery.from}`,
+              state: filterState as "open" | "closed" | "merged" | "all",
+              bypassCache: true,
+              sortOrder: "created" as const,
+            };
+            const result =
+              type === "issue"
+                ? await githubClient.listIssues(
+                    options as Parameters<typeof githubClient.listIssues>[0]
+                  )
+                : await githubClient.listPullRequests(
+                    options as Parameters<typeof githubClient.listPullRequests>[0]
+                  );
+            if (abortController.signal.aborted) return;
+            setData(result.items);
+            setCursor(result.pageInfo.endCursor);
+            setHasMore(result.pageInfo.hasNextPage);
+            break;
+          }
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
@@ -230,18 +347,24 @@ export function GitHubResourceList({
       }
     };
 
-    void fetchExact();
+    void fetchNumeric();
 
     return () => {
       abortController.abort();
     };
-  }, [exactNumber, projectPath, type, filterState]);
+  }, [numberQuery, projectPath, type, filterState, retryKey]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
       fetchData(cursor, true, undefined);
     }
   }, [loadingMore, hasMore, fetchData, cursor]);
+
+  const handleClose = useCallback(() => {
+    selection.clear();
+    issueCacheRef.current.clear();
+    onClose?.();
+  }, [onClose, selection]);
 
   const handleOpenInGitHub = () => {
     const query = searchQuery.trim() || undefined;
@@ -259,7 +382,7 @@ export function GitHubResourceList({
         { source: "user" }
       );
     }
-    onClose?.();
+    handleClose();
   };
 
   const handleCreateNew = () => {
@@ -279,17 +402,17 @@ export function GitHubResourceList({
       } else {
         openCreateDialog(item);
       }
-      onClose?.();
+      handleClose();
     },
-    [openCreateDialog, openCreateDialogForPR, onClose]
+    [openCreateDialog, openCreateDialogForPR, handleClose]
   );
 
   const handleSwitchToWorktree = useCallback(
     (worktreeId: string) => {
       selectWorktree(worktreeId);
-      onClose?.();
+      handleClose();
     },
-    [selectWorktree, onClose]
+    [selectWorktree, handleClose]
   );
 
   const handleClearSearch = useCallback(() => {
@@ -298,8 +421,13 @@ export function GitHubResourceList({
   }, [setSearchQuery]);
 
   const handleRetry = () => {
-    setCursor(null);
-    fetchData(null, false, undefined);
+    if (numberQuery !== null) {
+      setRetryKey((k) => k + 1);
+    } else {
+      setCursor(null);
+      const gen = nextGeneration(cacheKey);
+      fetchData(null, false, undefined, { generation: gen, cacheKey });
+    }
   };
 
   const listId = `github-${type}-list`;
@@ -375,12 +503,15 @@ export function GitHubResourceList({
         }
         case "Escape":
           e.preventDefault();
-          if (searchQuery !== "") {
+          if (selection.isSelectionActive) {
+            selection.clear();
+            e.nativeEvent.stopImmediatePropagation();
+          } else if (searchQuery !== "") {
             setSearchQuery("");
             e.nativeEvent.stopImmediatePropagation();
           } else {
             e.stopPropagation();
-            onClose?.();
+            handleClose();
           }
           break;
       }
@@ -392,46 +523,32 @@ export function GitHubResourceList({
       handleLoadMore,
       handleSwitchToWorktree,
       handleCreateWorktree,
-      onClose,
+      handleClose,
       type,
       searchQuery,
+      setSearchQuery,
+      selection,
     ]
   );
 
-  const renderSkeleton = (count: number) => {
-    const safeCount = Number.isFinite(count) ? Math.floor(count) : MAX_SKELETON_ITEMS;
-    const renderCount = Math.min(Math.max(1, safeCount), MAX_SKELETON_ITEMS);
-
+  const isTokenRelatedError = (msg: string | null | undefined): boolean => {
+    if (!msg) return false;
     return (
-      <div role="status" aria-live="polite" aria-busy="true" aria-label="Loading GitHub results">
-        <span className="sr-only">Loading GitHub results</span>
-        <div aria-hidden="true" className="divide-y divide-[var(--border-divider)]">
-          {Array.from({ length: renderCount }).map((_, i) => (
-            <div
-              key={i}
-              className="animate-pulse-delayed box-border"
-              style={{ height: `${ITEM_HEIGHT_PX}px` }}
-            >
-              <div className="flex items-center gap-2 px-3 pt-2.5">
-                <div className="w-4 h-4 rounded-full bg-muted shrink-0" />
-                <div className="h-4 bg-muted rounded flex-1" />
-                <div className="h-4 bg-muted rounded w-8 shrink-0" />
-              </div>
-              <div className="flex items-center gap-1.5 px-3 mt-1.5 pb-2.5">
-                <div className="h-3 bg-muted rounded w-16" />
-                <div className="h-3 bg-muted rounded w-14" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      msg.includes("GitHub token not configured") ||
+      msg.includes("Invalid GitHub token") ||
+      msg.includes("Token lacks required permissions") ||
+      msg.includes("SSO authorization required")
     );
   };
 
-  const isTokenError = error?.includes("GitHub token not configured") ?? false;
+  const isTokenError = isTokenRelatedError(error);
 
   const handleOpenGitHubSettings = () => {
-    void actionService.dispatch("app.settings.openTab", { tab: "github" }, { source: "user" });
+    void actionService.dispatch(
+      "app.settings.openTab",
+      { tab: "github", sectionId: "github-token" },
+      { source: "user" }
+    );
     onClose?.();
   };
 
@@ -457,7 +574,7 @@ export function GitHubResourceList({
   };
 
   return (
-    <div className="w-[450px] flex flex-col max-h-[500px]">
+    <div className="relative w-[450px] flex flex-col max-h-[500px]">
       <div className="p-3 border-b border-[var(--border-divider)] space-y-3 shrink-0">
         <div className="flex items-center gap-2">
           <div
@@ -509,11 +626,11 @@ export function GitHubResourceList({
                   "relative flex items-center justify-center w-7 h-7 rounded shrink-0",
                   "text-canopy-text/60 hover:text-canopy-text hover:bg-tint/[0.06]",
                   "transition-colors",
-                  sortOrder !== "created" && "text-canopy-accent"
+                  sortOrder !== "updated" && "text-canopy-accent"
                 )}
               >
                 <Filter className="w-3.5 h-3.5" />
-                {sortOrder !== "created" && (
+                {sortOrder !== "updated" && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-canopy-accent" />
                 )}
               </button>
@@ -564,7 +681,7 @@ export function GitHubResourceList({
                     >
                       {sortOrder === option.value && (
                         <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                          <div className="w-1.5 h-1.5 bg-text-inverse rounded-full" />
                         </div>
                       )}
                     </div>
@@ -575,6 +692,47 @@ export function GitHubResourceList({
             </PopoverContent>
           </Popover>
         </div>
+
+        {type === "issue" &&
+          searchQuery.trim() !== "" &&
+          data.length > 0 &&
+          !loading &&
+          (() => {
+            const allSelected = data.every((item) => selection.selectedIds.has(item.number));
+            const unassigned = data.filter((item) => (item as GitHubIssue).assignees.length === 0);
+            return (
+              <div
+                className="flex items-center gap-1.5"
+                role="group"
+                aria-label="Selection actions"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (allSelected) {
+                      selection.clear();
+                    } else {
+                      selection.selectAll(data.map((item) => item.number));
+                    }
+                  }}
+                  className="text-xs text-canopy-text/50 hover:text-canopy-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent transition-colors px-1 py-0.5 rounded"
+                >
+                  {allSelected ? "Deselect all" : `Select all (${data.length})`}
+                </button>
+                {unassigned.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      selection.selectAll(unassigned.map((item) => item.number));
+                    }}
+                    className="text-xs text-canopy-text/50 hover:text-canopy-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent transition-colors px-1 py-0.5 rounded"
+                  >
+                    {`Select unassigned (${unassigned.length})`}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
         <div
           className="flex p-0.5 bg-overlay-soft border border-[var(--border-divider)] rounded-[var(--radius-md)]"
@@ -601,11 +759,19 @@ export function GitHubResourceList({
             );
           })}
         </div>
+
+        {numberQuery?.kind === "range" && numberQuery.truncated && (
+          <p className="text-xs text-muted-foreground">
+            Showing first {MULTI_FETCH_CAP} of range (capped)
+          </p>
+        )}
       </div>
 
       <div className="overflow-y-auto flex-1 min-h-0">
         {loading && !data.length ? (
-          renderSkeleton(initialCount && initialCount > 0 ? initialCount : MAX_SKELETON_ITEMS)
+          <GitHubResourceRowsSkeleton
+            count={initialCount && initialCount > 0 ? initialCount : MAX_SKELETON_ITEMS}
+          />
         ) : data.length > 0 ? (
           <>
             {error && (
@@ -639,6 +805,7 @@ export function GitHubResourceList({
               ref={listRef}
               id={listId}
               role="listbox"
+              aria-multiselectable={type === "issue" ? true : undefined}
               className="divide-y divide-[var(--border-divider)]"
             >
               {data.map((item, index) => (
@@ -650,6 +817,19 @@ export function GitHubResourceList({
                   onSwitchToWorktree={handleSwitchToWorktree}
                   optionId={`github-${type}-option-${item.number}`}
                   isActive={activeIndex === index}
+                  isSelected={type === "issue" ? selection.selectedIds.has(item.number) : false}
+                  isSelectionActive={type === "issue" ? selection.isSelectionActive : false}
+                  onToggleSelect={
+                    type === "issue"
+                      ? (e: React.MouseEvent) => {
+                          if (e.shiftKey) {
+                            selection.toggleRange(index, (i) => data[i].number);
+                          } else {
+                            selection.toggle(item.number, index);
+                          }
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -661,7 +841,7 @@ export function GitHubResourceList({
                     <p className="text-xs text-muted-foreground">
                       {sanitizeIpcError(loadMoreError)}
                     </p>
-                    {loadMoreError.includes("GitHub token not configured") ? (
+                    {isTokenRelatedError(loadMoreError) ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -756,6 +936,16 @@ export function GitHubResourceList({
           New
         </Button>
       </div>
+
+      {type === "issue" && (
+        <IssueBulkActionBar
+          selectedIssues={Array.from(selection.selectedIds)
+            .map((id) => issueCacheRef.current.get(id))
+            .filter((issue): issue is GitHubIssue => issue !== undefined)}
+          onClear={selection.clear}
+          onCloseDropdown={onClose}
+        />
+      )}
     </div>
   );
 }

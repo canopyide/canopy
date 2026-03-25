@@ -81,6 +81,7 @@ export class WorkspaceClient extends EventEmitter {
   private currentRootPath: string | null = null;
   private currentProjectScopeId: string | null = null;
   private lastScopeMismatchWarnAt = 0;
+  private loadProjectGeneration = 0;
 
   constructor(config: WorkspaceClientConfig = {}) {
     super();
@@ -134,7 +135,8 @@ export class WorkspaceClient extends EventEmitter {
       this.readyReject = reject;
     });
 
-    const hostPath = path.join(__dirname, "workspace-host.js");
+    const electronDir = path.basename(__dirname) === "chunks" ? path.dirname(__dirname) : __dirname;
+    const hostPath = path.join(electronDir, "workspace-host.js");
     console.log(`[WorkspaceClient] Starting Workspace Host from: ${hostPath}`);
 
     try {
@@ -220,8 +222,12 @@ export class WorkspaceClient extends EventEmitter {
           if (this.currentRootPath) {
             const rootPath = this.currentRootPath;
             const preservedScopeId = this.currentProjectScopeId ?? undefined;
+            const generationAtRestart = this.loadProjectGeneration;
             void this.waitForReady()
-              .then(() => this.loadProject(rootPath, preservedScopeId))
+              .then(() => {
+                if (generationAtRestart !== this.loadProjectGeneration) return;
+                return this.loadProject(rootPath, preservedScopeId);
+              })
               .catch((err) => {
                 console.error(
                   "[WorkspaceClient] Failed to reload project after host restart:",
@@ -598,7 +604,7 @@ export class WorkspaceClient extends EventEmitter {
   }
 
   private generateRequestId(): string {
-    return `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `req-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
   private sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -619,6 +625,8 @@ export class WorkspaceClient extends EventEmitter {
   // Public API - matches WorktreeService interface
 
   async loadProject(rootPath: string, scopeId?: string): Promise<void> {
+    const generation = ++this.loadProjectGeneration;
+
     this.currentRootPath = rootPath;
     this.currentProjectScopeId = scopeId ?? crypto.randomUUID();
     const requestId = this.generateRequestId();
@@ -629,6 +637,10 @@ export class WorkspaceClient extends EventEmitter {
       rootPath,
       projectScopeId: this.currentProjectScopeId,
     });
+
+    if (generation !== this.loadProjectGeneration) {
+      return;
+    }
   }
 
   async sync(
@@ -680,7 +692,7 @@ export class WorkspaceClient extends EventEmitter {
     return result.state;
   }
 
-  async setActiveWorktree(worktreeId: string): Promise<void> {
+  async setActiveWorktree(worktreeId: string, options?: { silent?: boolean }): Promise<void> {
     const requestId = this.generateRequestId();
     const scopeAtStart = this.currentProjectScopeId;
 
@@ -690,8 +702,10 @@ export class WorkspaceClient extends EventEmitter {
       worktreeId,
     });
 
-    // Only notify the renderer if the project hasn't changed since we started the call.
-    if (scopeAtStart !== null && scopeAtStart === this.currentProjectScopeId) {
+    // Only notify the renderer if the project hasn't changed since we started the call
+    // and the caller hasn't opted out (renderer-initiated activations pass silent: true
+    // to avoid an echo loop where the renderer re-selects the worktree it just activated).
+    if (!options?.silent && scopeAtStart !== null && scopeAtStart === this.currentProjectScopeId) {
       this.sendToRenderer(CHANNELS.WORKTREE_ACTIVATED, { worktreeId });
     }
   }

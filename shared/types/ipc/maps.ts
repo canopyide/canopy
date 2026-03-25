@@ -70,19 +70,16 @@ import type {
   StartAgentUpdateResult,
   CliInstallStatus,
   SystemHealthCheckResult,
+  AppMetricsSummary,
 } from "./system.js";
 import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
 import type { RetryAction, AppError, RetryProgressPayload } from "./errors.js";
 import type { EventRecord, EventFilterOptions } from "./events.js";
-import type {
-  ProjectCloseResult,
-  ProjectStats,
-  ProjectSwitchPayload,
-  ProjectMcpServerRunState,
-} from "./project.js";
+import type { ProjectCloseResult, ProjectStats, ProjectSwitchPayload } from "./project.js";
 import type {
   RepositoryStats,
+  ProjectHealthData,
   GitHubCliStatus,
   GitHubTokenConfig,
   GitHubTokenValidation,
@@ -113,6 +110,10 @@ import type {
   DevPreviewSessionState,
   DevPreviewStateChangedPayload,
 } from "./devPreview.js";
+import type {
+  GlobalDevServersGetResult,
+  GlobalDevServersChangedPayload,
+} from "./globalDevServers.js";
 import type { ProjectPulse, PulseRangeDays } from "../pulse.js";
 import type {
   GitCommitListOptions,
@@ -120,16 +121,29 @@ import type {
   IssueTooltipData,
   PRTooltipData,
 } from "../github.js";
-import type { SpawnResult, TerminalStatusPayload } from "../pty-host.js";
-import type { HibernationConfig } from "./hibernation.js";
+import type {
+  SpawnResult,
+  TerminalStatusPayload,
+  TerminalResourceBatchPayload,
+} from "../pty-host.js";
+import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
 import type { AgentRegistry, AgentMetadata } from "./agentCapabilities.js";
 import type { AppThemeConfig } from "../appTheme.js";
 import type {
   DemoMoveToPayload,
+  DemoMoveToSelectorPayload,
   DemoTypePayload,
   DemoSetZoomPayload,
   DemoWaitForSelectorPayload,
+  DemoSleepPayload,
   DemoScreenshotResult,
+  DemoStartCapturePayload,
+  DemoStartCaptureResult,
+  DemoStopCaptureResult,
+  DemoCaptureStatus,
+  DemoEncodePayload,
+  DemoEncodeProgressEvent,
+  DemoEncodeResult,
 } from "./demo.js";
 
 export type ChecklistItemId = "openedProject" | "launchedAgent" | "createdWorktree";
@@ -142,6 +156,7 @@ export interface ChecklistItems {
 
 export interface ChecklistState {
   dismissed: boolean;
+  celebrationShown: boolean;
   items: ChecklistItems;
 }
 
@@ -297,6 +312,10 @@ export interface IpcInvokeMap {
     args: [id: string];
     result: { success: boolean; error?: string };
   };
+  "terminal:restart-service": {
+    args: [];
+    result: void;
+  };
 
   // Files channels
   "files:search": {
@@ -438,6 +457,10 @@ export interface IpcInvokeMap {
   "system:download-diagnostics": {
     args: [];
     result: boolean;
+  };
+  "system:get-app-metrics": {
+    args: [];
+    result: AppMetricsSummary;
   };
 
   // App state channels
@@ -737,6 +760,10 @@ export interface IpcInvokeMap {
     args: [cwd: string, bypassCache?: boolean];
     result: RepositoryStats;
   };
+  "github:get-project-health": {
+    args: [cwd: string, bypassCache?: boolean];
+    result: ProjectHealthData;
+  };
   "github:open-issues": {
     args: [cwd: string, query?: string, state?: string];
     result: void;
@@ -895,6 +922,17 @@ export interface IpcInvokeMap {
       | { ok: false; errors: string[] };
   };
 
+  "terminal-config:set-screen-reader-mode": {
+    args: [mode: "auto" | "on" | "off"];
+    result: void;
+  };
+
+  // Accessibility channels
+  "accessibility:get-enabled": {
+    args: [];
+    result: boolean;
+  };
+
   // Git channels
   "git:get-file-diff": {
     args: [payload: GitGetFileDiffPayload];
@@ -957,45 +995,45 @@ export interface IpcInvokeMap {
     result: string;
   };
 
-  // Sidecar channels
-  "sidecar:create": {
-    args: [payload: import("../sidecar.js").SidecarCreatePayload];
+  // Portal channels
+  "portal:create": {
+    args: [payload: import("../portal.js").PortalCreatePayload];
     result: void;
   };
-  "sidecar:show": {
-    args: [payload: import("../sidecar.js").SidecarShowPayload];
+  "portal:show": {
+    args: [payload: import("../portal.js").PortalShowPayload];
     result: void;
   };
-  "sidecar:hide": {
+  "portal:hide": {
     args: [];
     result: void;
   };
-  "sidecar:resize": {
-    args: [bounds: import("../sidecar.js").SidecarBounds];
+  "portal:resize": {
+    args: [bounds: import("../portal.js").PortalBounds];
     result: void;
   };
-  "sidecar:close-tab": {
-    args: [payload: import("../sidecar.js").SidecarCloseTabPayload];
+  "portal:close-tab": {
+    args: [payload: import("../portal.js").PortalCloseTabPayload];
     result: void;
   };
-  "sidecar:navigate": {
-    args: [payload: import("../sidecar.js").SidecarNavigatePayload];
+  "portal:navigate": {
+    args: [payload: import("../portal.js").PortalNavigatePayload];
     result: void;
   };
-  "sidecar:go-back": {
+  "portal:go-back": {
     args: [tabId: string];
     result: boolean;
   };
-  "sidecar:go-forward": {
+  "portal:go-forward": {
     args: [tabId: string];
     result: boolean;
   };
-  "sidecar:reload": {
+  "portal:reload": {
     args: [tabId: string];
     result: void;
   };
-  "sidecar:show-new-tab-menu": {
-    args: [payload: import("../sidecar.js").SidecarShowNewTabMenuPayload];
+  "portal:show-new-tab-menu": {
+    args: [payload: import("../portal.js").PortalShowNewTabMenuPayload];
     result: void;
   };
 
@@ -1213,6 +1251,12 @@ export interface IpcInvokeMap {
     result: DevPreviewSessionState;
   };
 
+  // Global Dev Servers channels
+  "global-dev-servers:get": {
+    args: [];
+    result: GlobalDevServersGetResult;
+  };
+
   // Auto-update channels
   "update:quit-and-install": {
     args: [];
@@ -1267,7 +1311,6 @@ export interface IpcInvokeMap {
     result: {
       completedEnabled: boolean;
       waitingEnabled: boolean;
-      failedEnabled: boolean;
       soundEnabled: boolean;
       soundFile: string;
       waitingEscalationEnabled: boolean;
@@ -1279,7 +1322,6 @@ export interface IpcInvokeMap {
       Partial<{
         completedEnabled: boolean;
         waitingEnabled: boolean;
-        failedEnabled: boolean;
         soundEnabled: boolean;
         soundFile: string;
         waitingEscalationEnabled: boolean;
@@ -1328,6 +1370,16 @@ export interface IpcInvokeMap {
   };
   "telemetry:track": {
     args: [event: string, properties: Record<string, unknown>];
+    result: void;
+  };
+
+  // GPU
+  "gpu:get-status": {
+    args: [];
+    result: { hardwareAccelerationDisabled: boolean };
+  };
+  "gpu:set-hardware-acceleration": {
+    args: [enabled: boolean];
     result: void;
   };
 
@@ -1406,6 +1458,20 @@ export interface IpcInvokeMap {
   };
   "onboarding:checklist-mark-item": {
     args: [item: ChecklistItemId];
+    result: void;
+  };
+  "onboarding:checklist-mark-celebration-shown": {
+    args: [];
+    result: void;
+  };
+
+  // Shortcut Hints
+  "shortcut-hints:get-counts": {
+    args: [];
+    result: Record<string, number>;
+  };
+  "shortcut-hints:increment-count": {
+    args: [actionId: string];
     result: void;
   };
 
@@ -1538,6 +1604,10 @@ export interface IpcInvokeMap {
     args: [payload: DemoMoveToPayload];
     result: void;
   };
+  "demo:move-to-selector": {
+    args: [payload: DemoMoveToSelectorPayload];
+    result: void;
+  };
   "demo:click": {
     args: [];
     result: void;
@@ -1566,11 +1636,25 @@ export interface IpcInvokeMap {
     args: [];
     result: void;
   };
-
-  // Project MCP server channels
-  "project-mcp:get-statuses": {
-    args: [projectId: string];
-    result: ProjectMcpServerRunState[];
+  "demo:sleep": {
+    args: [payload: DemoSleepPayload];
+    result: void;
+  };
+  "demo:start-capture": {
+    args: [payload: DemoStartCapturePayload];
+    result: DemoStartCaptureResult;
+  };
+  "demo:stop-capture": {
+    args: [];
+    result: DemoStopCaptureResult;
+  };
+  "demo:get-capture-status": {
+    args: [];
+    result: DemoCaptureStatus;
+  };
+  "demo:encode": {
+    args: [payload: DemoEncodePayload];
+    result: DemoEncodeResult;
   };
 }
 
@@ -1590,6 +1674,7 @@ export interface IpcEventMap {
   "terminal:trashed": { id: string; expiresAt: number };
   "terminal:restored": { id: string };
   "terminal:status": TerminalStatusPayload;
+  "terminal:resource-metrics": { metrics: TerminalResourceBatchPayload; timestamp: number };
   "terminal:send-key": [id: string, key: string];
   "terminal:spawn-result": [id: string, result: SpawnResult];
   "terminal:backend-crashed": {
@@ -1644,11 +1729,12 @@ export interface IpcEventMap {
   // System events
   "system:wake": SystemWakePayload;
 
-  // Sidecar events
-  "sidecar:nav-event": import("../sidecar.js").SidecarNavEvent;
-  "sidecar:focus": void;
-  "sidecar:blur": void;
-  "sidecar:new-tab-menu-action": import("../sidecar.js").SidecarNewTabMenuAction;
+  // Portal events
+  "portal:nav-event": import("../portal.js").PortalNavEvent;
+  "portal:focus": void;
+  "portal:blur": void;
+  "portal:new-tab-menu-action": import("../portal.js").PortalNewTabMenuAction;
+  "portal:tab-evicted": { tabId: string };
 
   // System Sleep events
   "system-sleep:on-suspend": void;
@@ -1659,9 +1745,12 @@ export interface IpcEventMap {
 
   // Window events
   "window:fullscreen-change": boolean;
+  "window:reclaim-memory": { reason: string };
+  "window:destroy-hidden-webviews": { tier: 1 | 2 };
+  "portal:tabs-evicted": { tabIds: string[] };
 
   // Notification events
-  "notification:update": { waitingCount: number; failedCount: number };
+  "notification:update": { waitingCount: number };
   "notification:watch-navigate": { panelId: string; panelTitle: string; worktreeId?: string };
 
   // Auto-update events
@@ -1672,6 +1761,9 @@ export interface IpcEventMap {
 
   // Dev Preview events
   "dev-preview:state-changed": DevPreviewStateChangedPayload;
+
+  // Global Dev Servers events
+  "global-dev-servers:changed": GlobalDevServersChangedPayload;
 
   // Notes events
   "notes:updated": {
@@ -1736,18 +1828,21 @@ export interface IpcEventMap {
 
   // Demo mode events (main → renderer command forwarding)
   "demo:exec-move-to": DemoMoveToPayload;
+  "demo:exec-move-to-selector": DemoMoveToSelectorPayload;
   "demo:exec-click": void;
   "demo:exec-type": DemoTypePayload;
   "demo:exec-set-zoom": DemoSetZoomPayload;
   "demo:exec-pause": void;
   "demo:exec-resume": void;
   "demo:exec-wait-for-selector": DemoWaitForSelectorPayload;
+  "demo:exec-sleep": DemoSleepPayload;
+  "demo:encode:progress": DemoEncodeProgressEvent;
 
-  // Project MCP server events
-  "project-mcp:status-changed": {
-    projectId: string;
-    servers: ProjectMcpServerRunState[];
-  };
+  // Accessibility events
+  "accessibility:support-changed": { enabled: boolean };
+
+  // Hibernation events
+  "hibernation:project-hibernated": HibernationProjectHibernatedPayload;
 }
 
 export type IpcInvokeArgs<K extends keyof IpcInvokeMap> = IpcInvokeMap[K]["args"];

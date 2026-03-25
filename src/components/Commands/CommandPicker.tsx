@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { Loader2 } from "lucide-react";
@@ -47,6 +47,7 @@ export function CommandPicker({
   filter,
 }: CommandPickerProps) {
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const filteredCommands = useMemo(() => {
@@ -56,15 +57,15 @@ export function CommandPicker({
       result = result.filter((cmd) => filter.includes(cmd.category));
     }
 
-    if (query.trim()) {
+    if (deferredQuery.trim()) {
       result = result.filter((cmd) => {
         const searchText = `${cmd.id} ${cmd.label} ${cmd.description} ${cmd.keywords?.join(" ") ?? ""}`;
-        return fuzzyMatch(searchText, query.trim());
+        return fuzzyMatch(searchText, deferredQuery.trim());
       });
     }
 
     return result;
-  }, [commands, filter, query]);
+  }, [commands, filter, deferredQuery]);
 
   const groupedCommands = useMemo(() => {
     const groups = new Map<CommandCategory, CommandManifestEntry[]>();
@@ -111,7 +112,7 @@ export function CommandPicker({
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query]);
+  }, [flatCommands]);
 
   const handleSelectPrevious = useCallback(() => {
     setSelectedIndex((prev) => {
@@ -241,6 +242,11 @@ export function CommandPicker({
       itemIdPrefix="command"
       emptyMessage="No commands available"
       noMatchMessage={`No commands match "${query}"`}
+      emptyContent={
+        <p className="mt-2 text-xs text-canopy-text/40">
+          Commands are context-dependent and may vary by project.
+        </p>
+      }
     />
   );
 }

@@ -1,11 +1,10 @@
 import { Menu, dialog, BrowserWindow, shell, app } from "electron";
-import { randomUUID } from "crypto";
 import { projectStore } from "./services/ProjectStore.js";
-import { getWorkspaceClient } from "./services/WorkspaceClient.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { getEffectiveRegistry } from "../shared/config/agentRegistry.js";
 import type { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import * as CliInstallService from "./services/CliInstallService.js";
+import { getProjectSwitchServiceRef } from "./window/windowServices.js";
 import { autoUpdaterService } from "./services/AutoUpdaterService.js";
 
 app.setAboutPanelOptions({
@@ -321,28 +320,14 @@ export async function handleDirectoryOpen(
   if (mainWindow.isDestroyed()) return;
 
   try {
+    const switchService = getProjectSwitchServiceRef();
+    if (!switchService) {
+      console.error("[menu] ProjectSwitchService not available yet, cannot switch project");
+      return;
+    }
+
     const project = await projectStore.addProject(directoryPath);
-
-    await projectStore.setCurrentProject(project.id);
-
-    const updatedProject = projectStore.getProjectById(project.id);
-    if (!updatedProject) {
-      throw new Error(`Project not found after update: ${project.id}`);
-    }
-
-    await getWorkspaceClient().refresh();
-
-    if (!mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-      try {
-        const switchId = randomUUID();
-        mainWindow.webContents.send(CHANNELS.PROJECT_ON_SWITCH, {
-          project: updatedProject,
-          switchId,
-        });
-      } catch {
-        // Silently ignore send failures during window disposal.
-      }
-    }
+    await switchService.switchProject(project.id);
 
     createApplicationMenu(mainWindow, cliAvailabilityService);
   } catch (error) {

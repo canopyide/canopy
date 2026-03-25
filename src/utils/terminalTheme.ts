@@ -1,3 +1,4 @@
+import type { ITheme } from "@xterm/xterm";
 import {
   BUILT_IN_APP_SCHEMES,
   DEFAULT_APP_SCHEME_ID,
@@ -17,6 +18,28 @@ export const CANOPY_TERMINAL_THEME = getTerminalThemeFromAppScheme(DEFAULT_APP_S
  * Background colors for TUI applications are still handled dynamically by xterm.js.
  * This function only returns the base app-aligned terminal palette.
  */
+export interface InputBarColors {
+  accent: string;
+  foreground: string;
+  background: string;
+  selectionBg: string;
+  chipColor: string;
+  errorColor: string;
+  successColor: string;
+}
+
+export function resolveInputBarColors(theme: ITheme): InputBarColors {
+  return {
+    accent: theme.cursor ?? theme.blue ?? "#58a6ff",
+    foreground: theme.foreground ?? "#cccccc",
+    background: theme.background ?? "#1e1e1e",
+    selectionBg: theme.selectionBackground ?? theme.cursor ?? "#264f78",
+    chipColor: theme.cyan ?? theme.brightCyan ?? theme.cursor ?? "#58a6ff",
+    errorColor: theme.red ?? "#f44747",
+    successColor: theme.green ?? "#89d185",
+  };
+}
+
 export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME {
   if (typeof document === "undefined") {
     return { ...CANOPY_TERMINAL_THEME };
@@ -29,8 +52,8 @@ export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME {
   };
 
   return {
-    background: getVar("--theme-surface-canvas", CANOPY_TERMINAL_THEME.background ?? ""),
-    foreground: getVar("--theme-text-primary", CANOPY_TERMINAL_THEME.foreground ?? ""),
+    background: getVar("--theme-terminal-background", CANOPY_TERMINAL_THEME.background ?? ""),
+    foreground: getVar("--theme-terminal-foreground", CANOPY_TERMINAL_THEME.foreground ?? ""),
     cursor: getVar("--theme-accent-primary", CANOPY_TERMINAL_THEME.cursor ?? ""),
     cursorAccent: getVar("--theme-text-inverse", CANOPY_TERMINAL_THEME.cursorAccent ?? ""),
     selectionBackground: getVar(
@@ -38,7 +61,7 @@ export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME {
       CANOPY_TERMINAL_THEME.selectionBackground ?? ""
     ),
     selectionForeground: getVar(
-      "--theme-text-primary",
+      "--theme-terminal-foreground",
       CANOPY_TERMINAL_THEME.selectionForeground ?? ""
     ),
     black: getVar("--theme-terminal-black", CANOPY_TERMINAL_THEME.black ?? ""),

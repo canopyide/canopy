@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, memo } from "react";
-import type { TerminalRecipe, WorktreeState } from "@/types";
+import type { AgentState, TerminalRecipe, WorktreeState } from "@/types";
 import { cn } from "@/lib/utils";
+import { STATE_ICONS, STATE_COLORS, STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
 import { BranchLabel } from "../BranchLabel";
 import {
   WorktreeMenuItems,
@@ -19,19 +20,17 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import {
-  AlertCircle,
-  Check,
+  ChevronRight,
   CircleDot,
   CornerDownRight,
+  FileText,
   GitPullRequest,
   MoreHorizontal,
-  House,
+  Sprout,
   Pin,
-  type LucideIcon,
 } from "lucide-react";
-import type { WorktreeLifecycleStage } from "./hooks/useWorktreeStatus";
 import { useIssueTooltip, usePRTooltip } from "@/hooks/useGitHubTooltip";
 import { IssueTooltipContent, PRTooltipContent, TooltipLoading } from "./GitHubTooltipContent";
 
@@ -78,56 +77,53 @@ const IssueBadge = memo(function IssueBadge({
   );
 
   return (
-    <TooltipProvider>
-      <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen?.();
-            }}
-            className={cn(
-              "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0",
-              isHeadline ? "text-[13px]" : "text-xs"
-            )}
-            aria-label={
-              issueTitle
-                ? `Open issue #${issueNumber}: ${issueTitle}`
-                : `Open issue #${issueNumber} on GitHub`
-            }
-          >
-            <CircleDot
-              className={cn("text-github-open shrink-0", isHeadline ? "w-3.5 h-3.5" : "w-3 h-3")}
-              aria-hidden="true"
-            />
-            <span
-              className={cn(
-                "truncate flex-1 min-w-0",
-                isHeadline
-                  ? isActive
-                    ? "text-text-primary font-medium"
-                    : "text-canopy-text/60 font-medium"
-                  : "text-canopy-text/90"
-              )}
-            >
-              {issueTitle || <span className="text-github-open font-mono">#{issueNumber}</span>}
-            </span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" align="start" className="p-3">
-          {loading ? (
-            <TooltipLoading type="issue" />
-          ) : data ? (
-            <IssueTooltipContent data={data} />
-          ) : error ? (
-            <span className="text-xs text-canopy-text/70">Failed to load issue details</span>
-          ) : (
-            <span className="text-xs text-canopy-text/70">Issue #{issueNumber}</span>
+    <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => {
+            onOpen?.();
+          }}
+          className={cn(
+            "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0",
+            isHeadline ? "text-[13px]" : "text-xs"
           )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          aria-label={
+            issueTitle
+              ? `Open issue #${issueNumber}: ${issueTitle}`
+              : `Open issue #${issueNumber} on GitHub`
+          }
+        >
+          <CircleDot
+            className={cn("text-github-open shrink-0", isHeadline ? "w-3.5 h-3.5" : "w-3 h-3")}
+            aria-hidden="true"
+          />
+          <span
+            className={cn(
+              "truncate flex-1 min-w-0 hover:underline",
+              isHeadline
+                ? isActive
+                  ? "text-text-primary font-medium"
+                  : "text-text-secondary font-medium"
+                : "text-text-primary/90"
+            )}
+          >
+            {issueTitle || <span className="text-github-open font-mono">#{issueNumber}</span>}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" align="start" className="p-3">
+        {loading ? (
+          <TooltipLoading type="issue" />
+        ) : data ? (
+          <IssueTooltipContent data={data} />
+        ) : error ? (
+          <span className="text-xs text-text-secondary">Failed to load issue details</span>
+        ) : (
+          <span className="text-xs text-text-secondary">Issue #{issueNumber}</span>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 });
 
@@ -171,41 +167,35 @@ const PRBadge = memo(function PRBadge({
   const prStateLabel = prState === "merged" ? "merged" : prState === "closed" ? "closed" : "open";
 
   return (
-    <TooltipProvider>
-      <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen?.();
-            }}
-            className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0"
-            aria-label={`Open ${prStateLabel} pull request #${prNumber} on GitHub`}
-          >
-            {isSubordinate && (
-              <CornerDownRight
-                className="w-3 h-3 text-canopy-text/30 shrink-0"
-                aria-hidden="true"
-              />
-            )}
-            <GitPullRequest className={cn("w-3 h-3 shrink-0", prStateColor)} aria-hidden="true" />
-            <span className={cn("font-mono", prStateColor)}>#{prNumber}</span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" align="start" className="p-3">
-          {loading ? (
-            <TooltipLoading type="pr" />
-          ) : data ? (
-            <PRTooltipContent data={data} />
-          ) : error ? (
-            <span className="text-xs text-canopy-text/70">Failed to load PR details</span>
-          ) : (
-            <span className="text-xs text-canopy-text/70">PR #{prNumber}</span>
+    <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => {
+            onOpen?.();
+          }}
+          className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0"
+          aria-label={`Open ${prStateLabel} pull request #${prNumber} on GitHub`}
+        >
+          {isSubordinate && (
+            <CornerDownRight className="w-3 h-3 text-text-muted shrink-0" aria-hidden="true" />
           )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          <GitPullRequest className={cn("w-3 h-3 shrink-0", prStateColor)} aria-hidden="true" />
+          <span className={cn("font-mono hover:underline", prStateColor)}>#{prNumber}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" align="start" className="p-3">
+        {loading ? (
+          <TooltipLoading type="pr" />
+        ) : data ? (
+          <PRTooltipContent data={data} />
+        ) : error ? (
+          <span className="text-xs text-text-secondary">Failed to load PR details</span>
+        ) : (
+          <span className="text-xs text-text-secondary">PR #{prNumber}</span>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 });
 
@@ -214,14 +204,19 @@ export interface WorktreeHeaderProps {
   isActive: boolean;
   isMuted?: boolean;
   isMainWorktree: boolean;
+  isMainOnStandardBranch?: boolean;
   isPinned: boolean;
+  isCollapsed?: boolean;
+  canCollapse?: boolean;
+  onToggleCollapse?: (e: React.MouseEvent) => void;
+  contentId?: string;
   branchLabel: string;
-  lifecycleStage: WorktreeLifecycleStage | null;
-  worktreeErrorCount: number;
-
+  sessionStates?: Record<AgentState, number>;
+  sessionTotal?: number;
   badges: {
     onOpenIssue?: () => void;
     onOpenPR?: () => void;
+    onOpenPlan?: () => void;
   };
 
   menu: {
@@ -234,92 +229,52 @@ export interface WorktreeHeaderProps {
       dock: number;
       active: number;
       completed: number;
-      failed: number;
       all: number;
     };
     onCopyContextFull: () => void;
     onCopyContextModified: () => void;
+    onCopyPath: () => void;
     onOpenEditor: () => void;
     onRevealInFinder: () => void;
-    onOpenIssueSidecar?: () => void;
+    onOpenIssuePortal?: () => void;
     onOpenIssueExternal?: () => void;
-    onOpenPRSidecar?: () => void;
+    onOpenPRPortal?: () => void;
     onOpenPRExternal?: () => void;
     onRunRecipe: (recipeId: string) => void;
     onSaveLayout?: () => void;
     onTogglePin?: () => void;
+    onToggleCollapse?: () => void;
+    isCollapsed?: boolean;
     onLaunchAgent?: (agentId: string) => void;
-    onMinimizeAll: () => void;
+    onDockAll: () => void;
     onMaximizeAll: () => void;
     onRestartAll: () => void;
     onResetRenderers: () => void;
     onCloseCompleted: () => void;
-    onCloseFailed: () => void;
     onCloseAll: () => void;
     onEndAll: () => void;
     onAttachIssue?: () => void;
+    onViewPlan?: () => void;
     onOpenReviewHub?: () => void;
     onCompareDiff?: () => void;
     onDeleteWorktree?: () => void;
   };
 }
 
-const LIFECYCLE_CONFIG: Record<
-  WorktreeLifecycleStage,
-  { icon: LucideIcon; className: string; label: string }
-> = {
-  "in-review": {
-    icon: CircleDot,
-    className: "w-2.5 h-2.5 text-canopy-text/65",
-    label: "In review",
-  },
-  merged: {
-    icon: Check,
-    className: "w-2.5 h-2.5 text-canopy-text/35",
-    label: "Merged",
-  },
-  "ready-for-cleanup": {
-    icon: Check,
-    className: "w-2.5 h-2.5 text-canopy-text/40",
-    label: "Ready for cleanup",
-  },
-};
-
-const LifecycleStageIndicator = memo(function LifecycleStageIndicator({
-  stage,
-}: {
-  stage: WorktreeLifecycleStage | null;
-}) {
-  if (!stage) return null;
-
-  const config = LIFECYCLE_CONFIG[stage];
-  const Icon = config.icon;
-
-  return (
-    <TooltipProvider>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <span className="shrink-0 flex items-center justify-center" aria-label={config.label}>
-            <Icon className={config.className} aria-hidden="true" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          {config.label}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-});
-
 export function WorktreeHeader({
   worktree,
   isActive,
   isMuted,
   isMainWorktree,
+  isMainOnStandardBranch,
   isPinned,
+  isCollapsed,
+  canCollapse,
+  onToggleCollapse,
+  contentId,
   branchLabel,
-  lifecycleStage,
-  worktreeErrorCount,
+  sessionStates,
+  sessionTotal,
   badges,
   menu,
 }: WorktreeHeaderProps) {
@@ -336,22 +291,36 @@ export function WorktreeHeader({
   );
 
   const hasIssueTitle = !!(worktree.issueNumber && worktree.issueTitle);
+  const hasPlanFile = Boolean(worktree.hasPlanFile);
+
+  const { visibleStates, sessionAriaLabel } = useMemo(() => {
+    if (!sessionStates || !sessionTotal || sessionTotal === 0) {
+      return { visibleStates: [] as { state: AgentState; count: number }[], sessionAriaLabel: "" };
+    }
+    const visible = STATE_PRIORITY.filter((s) => s !== "idle" && sessionStates[s] > 0).map((s) => ({
+      state: s,
+      count: sessionStates[s],
+    }));
+    const parts = visible.map((v) => `${v.count} ${STATE_LABELS[v.state]}`);
+    const label = `${sessionTotal} session${sessionTotal !== 1 ? "s" : ""}: ${parts.join(", ")}`;
+    return { visibleStates: visible, sessionAriaLabel: label };
+  }, [sessionStates, sessionTotal]);
 
   return (
     <div>
       <div className="flex items-center gap-2 min-h-[22px]">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isMainWorktree && (
-            <House
-              className="w-3.5 h-3.5 text-canopy-text/60 shrink-0"
-              fill="currentColor"
-              stroke="var(--color-canopy-sidebar)"
-              strokeWidth={2}
+            <Sprout
+              className="w-3.5 h-3.5 text-canopy-text/60 shrink-0 pointer-events-none"
               aria-hidden="true"
             />
           )}
           {isPinned && !isMainWorktree && (
-            <Pin className="w-3 h-3 text-canopy-text/40 shrink-0" aria-label="Pinned" />
+            <Pin
+              className="w-3 h-3 text-canopy-text/40 shrink-0 pointer-events-none"
+              aria-label="Pinned"
+            />
           )}
           {hasIssueTitle ? (
             <IssueBadge
@@ -367,58 +336,95 @@ export function WorktreeHeader({
               label={branchLabel}
               isActive={isActive}
               isMuted={isMuted}
-              isMainWorktree={isMainWorktree}
+              isMainWorktree={isMainOnStandardBranch ?? isMainWorktree}
             />
           )}
-          <LifecycleStageIndicator stage={lifecycleStage} />
           {worktree.isDetached && (
-            <span className="text-status-warning text-xs font-medium shrink-0">(detached)</span>
+            <span className="text-status-warning text-xs font-medium shrink-0 pointer-events-none">
+              (detached)
+            </span>
           )}
         </div>
 
-        {worktreeErrorCount > 0 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex items-center gap-0.5 text-status-error text-xs font-mono shrink-0">
-                  <AlertCircle className="w-3 h-3" />
-                  <span>{worktreeErrorCount}</span>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">
-                {worktreeErrorCount} error{worktreeErrorCount !== 1 ? "s" : ""}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+        {isCollapsed && visibleStates.length > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className="flex items-center gap-1.5 shrink-0"
+                role="img"
+                aria-label={sessionAriaLabel}
+                data-testid="collapsed-session-indicators"
+              >
+                {visibleStates.map(({ state, count }) => {
+                  const Icon = STATE_ICONS[state];
+                  return (
+                    <span
+                      key={state}
+                      aria-hidden="true"
+                      className={cn("flex items-center gap-0.5 text-[10px]", STATE_COLORS[state])}
+                    >
+                      <Icon
+                        className={cn(
+                          "w-2.5 h-2.5",
+                          state === "working" && "animate-spin-slow motion-reduce:animate-none"
+                        )}
+                      />
+                      <span className="font-mono tabular-nums">{count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              {visibleStates.map((v) => `${v.count} ${STATE_LABELS[v.state]}`).join(", ")}
+            </TooltipContent>
+          </Tooltip>
         )}
 
         <div
           data-testid="worktree-actions-wrapper"
           className={cn(
-            "shrink-0 transition-opacity duration-150",
-            isActive
+            "flex items-center gap-0.5 shrink-0 transition-opacity duration-150",
+            isCollapsed
               ? "opacity-100"
-              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+              : isActive
+                ? "opacity-100"
+                : "opacity-0 pointer-events-none group-hover/card:opacity-100 group-hover/card:pointer-events-auto group-focus-within/card:opacity-100 group-focus-within/card:pointer-events-auto"
           )}
         >
+          {canCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="sidebar-action-button p-1.5 text-canopy-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+              aria-expanded={!isCollapsed}
+              aria-controls={isCollapsed ? undefined : contentId}
+              aria-label={isCollapsed ? "Expand card" : "Collapse card"}
+            >
+              <ChevronRight
+                className={cn(
+                  "w-3.5 h-3.5 transition-transform duration-200",
+                  isCollapsed ? "rotate-0" : "rotate-90"
+                )}
+                aria-hidden="true"
+              />
+            </button>
+          )}
           <DropdownMenu>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-1 text-canopy-text/60 hover:text-text-primary hover:bg-overlay-soft rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
-                      aria-label="More actions"
-                      data-testid="worktree-actions-menu"
-                    >
-                      <MoreHorizontal className="w-3.5 h-3.5" />
-                    </button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="top">More actions</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="sidebar-action-button p-1.5 text-canopy-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                    aria-label="More actions"
+                    data-testid="worktree-actions-menu"
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">More actions</TooltipContent>
+            </Tooltip>
             <DropdownMenuContent
               align="end"
               side="bottom"
@@ -439,24 +445,27 @@ export function WorktreeHeader({
                 onLaunchAgent={menu.onLaunchAgent ? handleLaunchAgent : undefined}
                 onCopyContextFull={menu.onCopyContextFull}
                 onCopyContextModified={menu.onCopyContextModified}
+                onCopyPath={menu.onCopyPath}
                 onOpenEditor={menu.onOpenEditor}
                 onRevealInFinder={menu.onRevealInFinder}
-                onOpenIssueSidecar={menu.onOpenIssueSidecar}
+                onOpenIssuePortal={menu.onOpenIssuePortal}
                 onOpenIssueExternal={menu.onOpenIssueExternal}
-                onOpenPRSidecar={menu.onOpenPRSidecar}
+                onOpenPRPortal={menu.onOpenPRPortal}
                 onOpenPRExternal={menu.onOpenPRExternal}
                 onAttachIssue={menu.onAttachIssue}
+                onViewPlan={menu.onViewPlan}
                 onOpenReviewHub={menu.onOpenReviewHub}
                 onCompareDiff={menu.onCompareDiff}
                 onRunRecipe={menu.onRunRecipe}
                 onSaveLayout={menu.onSaveLayout}
                 onTogglePin={menu.onTogglePin}
-                onMinimizeAll={menu.onMinimizeAll}
+                onToggleCollapse={menu.onToggleCollapse}
+                isCollapsed={menu.isCollapsed}
+                onDockAll={menu.onDockAll}
                 onMaximizeAll={menu.onMaximizeAll}
                 onRestartAll={menu.onRestartAll}
                 onResetRenderers={menu.onResetRenderers}
                 onCloseCompleted={menu.onCloseCompleted}
-                onCloseFailed={menu.onCloseFailed}
                 onCloseAll={menu.onCloseAll}
                 onEndAll={menu.onEndAll}
                 onDeleteWorktree={menu.onDeleteWorktree}
@@ -466,37 +475,52 @@ export function WorktreeHeader({
         </div>
       </div>
 
-      {/* Secondary row: branch label when issue title is headline, issue badge fallback, and/or PR badge */}
-      {(hasIssueTitle ||
-        (worktree.issueNumber && !hasIssueTitle) ||
-        (worktree.prNumber && worktree.prState !== "closed")) && (
-        <div className="flex flex-col gap-0.5 mt-1.5">
-          {worktree.issueNumber && !hasIssueTitle && (
-            <IssueBadge
-              issueNumber={worktree.issueNumber}
-              worktreePath={worktree.path}
-              onOpen={badges.onOpenIssue}
-            />
-          )}
-          {worktree.prNumber && worktree.prState !== "closed" && (
-            <PRBadge
-              prNumber={worktree.prNumber}
-              prState={worktree.prState}
-              isSubordinate={!!worktree.issueNumber}
-              worktreePath={worktree.path}
-              onOpen={badges.onOpenPR}
-            />
-          )}
-          {hasIssueTitle && (
-            <BranchLabel
-              label={branchLabel}
-              isActive={isActive}
-              isMuted={isMuted}
-              isMainWorktree={false}
-            />
-          )}
-        </div>
-      )}
+      {/* Secondary row: branch label when issue title is headline, issue badge fallback, PR badge, and/or plan badge */}
+      {!isCollapsed &&
+        (hasIssueTitle ||
+          (worktree.issueNumber && !hasIssueTitle) ||
+          (worktree.prNumber && worktree.prState !== "closed") ||
+          hasPlanFile) && (
+          <div className="flex flex-col gap-0.5 mt-1.5">
+            {worktree.issueNumber && !hasIssueTitle && (
+              <IssueBadge
+                issueNumber={worktree.issueNumber}
+                worktreePath={worktree.path}
+                onOpen={badges.onOpenIssue}
+              />
+            )}
+            {worktree.prNumber && worktree.prState !== "closed" && (
+              <PRBadge
+                prNumber={worktree.prNumber}
+                prState={worktree.prState}
+                isSubordinate={!!worktree.issueNumber}
+                worktreePath={worktree.path}
+                onOpen={badges.onOpenPR}
+              />
+            )}
+            {hasIssueTitle && (
+              <BranchLabel
+                label={branchLabel}
+                isActive={isActive}
+                isMuted={isMuted}
+                isMainWorktree={false}
+              />
+            )}
+            {hasPlanFile && badges.onOpenPlan && (
+              <button
+                type="button"
+                onClick={() => {
+                  badges.onOpenPlan?.();
+                }}
+                className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors text-canopy-text/70 hover:text-canopy-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                aria-label="View agent plan file"
+              >
+                <FileText className="w-3 h-3 shrink-0 text-canopy-accent/70" aria-hidden="true" />
+                <span className="font-mono hover:underline">{worktree.planFilePath ?? "Plan"}</span>
+              </button>
+            )}
+          </div>
+        )}
     </div>
   );
 }

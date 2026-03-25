@@ -13,12 +13,12 @@ export function getTerminalScrollbarDefaults(type: "dark" | "light") {
 
 export function getTerminalThemeFromAppTokens(tokens: AppColorSchemeTokens): ITheme {
   return {
-    background: tokens["surface-canvas"],
-    foreground: tokens["text-primary"],
-    cursor: tokens["accent-primary"],
-    cursorAccent: tokens["text-inverse"],
+    background: tokens["terminal-background"],
+    foreground: tokens["terminal-foreground"],
+    cursor: tokens["terminal-cursor"],
+    cursorAccent: tokens["terminal-cursor-accent"],
     selectionBackground: tokens["terminal-selection"],
-    selectionForeground: tokens["text-primary"],
+    selectionForeground: tokens["terminal-foreground"],
     black: tokens["terminal-black"],
     red: tokens["terminal-red"],
     green: tokens["terminal-green"],

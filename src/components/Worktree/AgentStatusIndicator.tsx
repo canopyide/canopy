@@ -1,6 +1,6 @@
 import { cn } from "../../lib/utils";
 import type { AgentState } from "@/types";
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface AgentStatusIndicatorProps {
   state: AgentState | null | undefined;
@@ -51,14 +51,6 @@ const STATE_CONFIG: Record<
     label: "completed",
     tooltip: "Agent finished this task",
   },
-  failed: {
-    icon: "✗",
-    color: "text-status-error",
-    borderColor: "border-status-error",
-    pulse: false,
-    label: "failed",
-    tooltip: "Agent ran into an issue",
-  },
   directing: {
     icon: "✎",
     color: "text-status-info",
@@ -80,34 +72,31 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
   }
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className={cn(
-              "inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full",
-              config.color,
-              config.bgColor,
-              config.borderColor && "border",
-              config.borderColor,
-              config.glow,
-              config.pulse && "animate-agent-pulse",
-              className
-            )}
-            role="status"
-            aria-label={`Agent status: ${config.label}`}
-          >
-            {config.icon}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{config.tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full",
+            config.color,
+            config.bgColor,
+            config.borderColor && "border",
+            config.borderColor,
+            config.glow,
+            config.pulse && "animate-agent-pulse",
+            className
+          )}
+          role="status"
+          aria-label={`Agent status: ${config.label}`}
+        >
+          {config.icon}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{config.tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
 const STATE_PRIORITY: Record<AgentState, number> = {
-  failed: 7,
   working: 6,
   directing: 5,
   running: 4,

@@ -77,10 +77,14 @@ export interface AddTerminalOptions {
   agentSessionId?: string;
   /** Process-level flags captured at launch time, persisted for session resume */
   agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
   /** Bypass rate limiter during session restore (consumes main-process quota) */
   restore?: boolean;
+  /** Bypass panel limit checks (used during hydration/state restoration) */
+  bypassLimits?: boolean;
   // Note: Tab membership is now managed via createTabGroup/addPanelToGroup, not on terminals
 }
 
@@ -113,7 +117,7 @@ export interface TerminalRegistrySlice {
   /** Explicit tab group storage - single source of truth for tab membership and order */
   tabGroups: Map<string, TabGroup>;
 
-  addTerminal: (options: AddTerminalOptions) => Promise<string>;
+  addTerminal: (options: AddTerminalOptions) => Promise<string | null>;
   removeTerminal: (id: string) => void;
   updateTitle: (id: string, newTitle: string) => void;
   updateAgentState: (
@@ -122,7 +126,8 @@ export interface TerminalRegistrySlice {
     error?: string,
     lastStateChange?: number,
     trigger?: AgentStateChangeTrigger,
-    confidence?: number
+    confidence?: number,
+    waitingReason?: import("@shared/types/agent.js").WaitingReason
   ) => void;
   updateActivity: (
     id: string,
@@ -166,6 +171,7 @@ export interface TerminalRegistrySlice {
     location: "grid" | "dock",
     worktreeId?: string | null
   ) => void;
+  restoreTerminalOrder: (orderedIds: string[]) => void;
 
   restartTerminal: (id: string) => Promise<void>;
   clearTerminalError: (id: string) => void;
@@ -226,6 +232,10 @@ export interface TerminalRegistrySlice {
     location: TabGroupLocation,
     worktreeId?: string | null
   ) => void;
+  /** Set the active tab for a tab group (single source of truth) */
+  setActiveTab: (groupId: string, panelId: string) => void;
+  /** Get the active tab ID for a tab group, returns null if not found */
+  getActiveTabId: (groupId: string) => string | null;
   /** Hydrate tab groups from persisted state, sanitizing invalid data */
   hydrateTabGroups: (tabGroups: TabGroup[], options?: { skipPersist?: boolean }) => void;
   /** @deprecated Use createTabGroup/addPanelToGroup instead */

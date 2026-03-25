@@ -1,17 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IPty } from "node-pty";
 import { TerminalProcess } from "../TerminalProcess.js";
-
-type SpawnFn = (file: string, args: string[], options: Record<string, unknown>) => IPty;
-
-let spawnMock: ReturnType<typeof vi.fn<SpawnFn>>;
+import type { SpawnContext } from "../terminalSpawn.js";
+import type { ProcessTreeCache } from "../../ProcessTreeCache.js";
 
 const persistSyncMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node-pty", () => {
-  return {
-    spawn: (...args: Parameters<SpawnFn>) => spawnMock(...args),
-  };
+  return { spawn: vi.fn() };
 });
 
 vi.mock("../terminalSessionPersistence.js", async (importOriginal) => {
@@ -24,51 +20,124 @@ vi.mock("../terminalSessionPersistence.js", async (importOriginal) => {
   };
 });
 
-function createMockPty(): IPty {
+function createMockPty(overrides?: Partial<IPty>): IPty {
   const pty: Partial<IPty> = {
     pid: 123,
     cols: 80,
     rows: 24,
     write: () => {},
     resize: () => {},
-    kill: () => {},
+    kill: vi.fn(),
     pause: () => {},
     resume: () => {},
     onData: () => ({ dispose: () => {} }),
     onExit: () => ({ dispose: () => {} }),
+    ...overrides,
   };
   return pty as IPty;
 }
 
-type TerminalProcessOptions = ConstructorParameters<typeof TerminalProcess>[1];
+function createMockProcessTreeCache(descendantPids: number[] = []): ProcessTreeCache {
+  return {
+    getDescendantPids: vi.fn().mockReturnValue(descendantPids),
+    getChildPids: vi.fn().mockReturnValue([]),
+    getChildren: vi.fn().mockReturnValue([]),
+    getProcess: vi.fn(),
+    hasChildren: vi.fn().mockReturnValue(false),
+    getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
+    hasActiveDescendants: vi.fn().mockReturnValue(false),
+    start: vi.fn(),
+    stop: vi.fn(),
+    onRefresh: vi.fn().mockReturnValue(() => {}),
+    refresh: vi.fn(),
+    getLastRefreshTime: vi.fn().mockReturnValue(0),
+    getLastError: vi.fn().mockReturnValue(null),
+    getCacheSize: vi.fn().mockReturnValue(0),
+  } as unknown as ProcessTreeCache;
+}
 
-function createTerminal(options?: Partial<TerminalProcessOptions>): TerminalProcess {
+function defaultSpawnContext(overrides?: Partial<SpawnContext>): SpawnContext {
+  return {
+    shell: "/bin/zsh",
+    args: ["-l"],
+    isAgentTerminal: false,
+    agentId: undefined,
+    env: {},
+    ...overrides,
+  };
+}
+
+type TerminalProcessOptions = ConstructorParameters<typeof TerminalProcess>[1];
+type TerminalProcessDeps = ConstructorParameters<typeof TerminalProcess>[3];
+
+function createTerminal(
+  options?: Partial<TerminalProcessOptions>,
+  deps?: Partial<TerminalProcessDeps>,
+  ptyOverrides?: Partial<IPty>
+): TerminalProcess {
+  const merged = {
+    cwd: process.cwd(),
+    cols: 80,
+    rows: 24,
+    kind: "terminal" as const,
+    type: "terminal" as const,
+    ...options,
+  };
+  const isAgent =
+    merged.kind === "agent" || !!merged.agentId || (!!merged.type && merged.type !== "terminal");
+  const ctx = defaultSpawnContext({
+    isAgentTerminal: isAgent,
+    agentId: isAgent
+      ? (((merged as Record<string, unknown>).agentId as string) ?? merged.type)
+      : undefined,
+  });
   return new TerminalProcess(
     "t1",
-    {
-      cwd: process.cwd(),
-      cols: 80,
-      rows: 24,
-      kind: "terminal",
-      type: "terminal",
-      ...options,
-    },
+    merged,
     { emitData: () => {}, onExit: () => {} },
     {
       agentStateService: {
         handleActivityState: () => {},
         updateAgentState: () => {},
         emitAgentKilled: () => {},
-      } as unknown as ConstructorParameters<typeof TerminalProcess>[3]["agentStateService"],
+      } as unknown as TerminalProcessDeps["agentStateService"],
       ptyPool: null,
       processTreeCache: null,
-    }
+      ...deps,
+    },
+    ctx,
+    createMockPty(ptyOverrides)
   );
 }
 
+describe("TerminalProcess.kill — agent state event", () => {
+  it("emits kill event (not error) for agent terminals", () => {
+    const updateAgentStateSpy = vi.fn();
+    const emitAgentKilledSpy = vi.fn();
+
+    const terminal = createTerminal(
+      { kind: "agent", type: "claude", agentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: updateAgentStateSpy,
+          emitAgentKilled: emitAgentKilledSpy,
+        } as never,
+      }
+    );
+
+    terminal.kill("user requested");
+
+    expect(updateAgentStateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: "claude" }),
+      { type: "kill" }
+    );
+    expect(emitAgentKilledSpy).toHaveBeenCalled();
+  });
+});
+
 describe("TerminalProcess.kill — session persistence", () => {
   beforeEach(() => {
-    spawnMock = vi.fn<SpawnFn>(() => createMockPty());
     persistSyncMock.mockReset();
   });
 
@@ -123,6 +192,122 @@ describe("TerminalProcess.kill — session persistence", () => {
     });
 
     // Should not throw
+    expect(() => terminal.kill("test")).not.toThrow();
+  });
+});
+
+describe.skipIf(process.platform === "win32")("TerminalProcess.kill — process tree cleanup", () => {
+  let processKillSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    persistSyncMock.mockReset();
+    processKillSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    processKillSpy.mockRestore();
+  });
+
+  it("sends SIGTERM to descendants bottom-up before killing shell", () => {
+    const mockCache = createMockProcessTreeCache([456, 789]);
+
+    const terminal = createTerminal(undefined, { processTreeCache: mockCache });
+    terminal.kill("test");
+
+    // Cache should be queried with the shell PID
+    expect(mockCache.getDescendantPids).toHaveBeenCalledWith(123);
+
+    // SIGTERM calls should be in bottom-up order: 456 first, then 789
+    const sigTermCalls = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGTERM");
+    expect(sigTermCalls).toHaveLength(2);
+    expect(sigTermCalls[0]).toEqual([456, "SIGTERM"]);
+    expect(sigTermCalls[1]).toEqual([789, "SIGTERM"]);
+  });
+
+  it("escalates to SIGKILL after 500ms on kill()", () => {
+    const mockCache = createMockProcessTreeCache([456]);
+
+    const terminal = createTerminal(undefined, { processTreeCache: mockCache });
+    terminal.kill("test");
+
+    // No SIGKILL yet
+    const sigkillBefore = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGKILL");
+    expect(sigkillBefore).toHaveLength(0);
+
+    // Advance timer
+    vi.advanceTimersByTime(500);
+
+    // Now SIGKILL should have been sent to descendant + shell
+    const sigkillAfter = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGKILL");
+    expect(sigkillAfter).toHaveLength(2); // pid 456 + pid 123 (shell)
+  });
+
+  it("sends SIGKILL immediately on dispose()", () => {
+    const mockCache = createMockProcessTreeCache([456]);
+
+    const terminal = createTerminal(undefined, { processTreeCache: mockCache });
+    terminal.dispose();
+
+    // SIGKILL should be sent synchronously without waiting for timer
+    const sigkillCalls = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGKILL");
+    expect(sigkillCalls).toHaveLength(2); // pid 456 + pid 123
+  });
+
+  it("handles undefined pty pid gracefully", () => {
+    const terminal = createTerminal(undefined, undefined, { pid: undefined as unknown as number });
+    expect(() => terminal.kill("test")).not.toThrow();
+
+    // Should not call process.kill (no PID to target)
+    expect(processKillSpy).not.toHaveBeenCalled();
+  });
+
+  it("handles null processTreeCache gracefully", () => {
+    const terminal = createTerminal(undefined, { processTreeCache: null });
+    terminal.kill("test");
+
+    // No SIGTERM calls to descendants (no cache to query)
+    const sigTermCalls = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGTERM");
+    expect(sigTermCalls).toHaveLength(0);
+
+    // SIGKILL sweep should still fire for shell pid after 500ms
+    vi.advanceTimersByTime(500);
+    const sigkillCalls = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGKILL");
+    expect(sigkillCalls).toHaveLength(1); // Just the shell pid 123
+  });
+
+  it("clears pending kill timer when dispose() follows kill()", () => {
+    const mockCache = createMockProcessTreeCache([456]);
+
+    const terminal = createTerminal(undefined, { processTreeCache: mockCache });
+
+    // kill() schedules a 500ms timer
+    terminal.kill("test");
+    processKillSpy.mockClear();
+
+    // dispose() should clear that timer and do immediate SIGKILL
+    terminal.dispose();
+
+    const sigkillCalls = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGKILL");
+    expect(sigkillCalls.length).toBeGreaterThan(0);
+
+    // Advancing timer should NOT cause a second SIGKILL sweep
+    processKillSpy.mockClear();
+    vi.advanceTimersByTime(500);
+    const lateSigkills = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGKILL");
+    expect(lateSigkills).toHaveLength(0);
+  });
+
+  it("handles process.kill throwing ESRCH gracefully", () => {
+    const mockCache = createMockProcessTreeCache([456]);
+    processKillSpy.mockImplementation(() => {
+      const err = new Error("kill ESRCH") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    });
+
+    const terminal = createTerminal(undefined, { processTreeCache: mockCache });
     expect(() => terminal.kill("test")).not.toThrow();
   });
 });

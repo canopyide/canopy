@@ -10,6 +10,7 @@ import {
   usePerformanceModeStore,
   useTerminalFontStore,
   useProjectSettingsStore,
+  useScreenReaderStore,
 } from "@/store";
 import {
   useTerminalColorSchemeStore,
@@ -56,6 +57,7 @@ function XtermAdapterComponent({
   const exitUnsubRef = useRef<(() => void) | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const resizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingFitRef = useRef(false);
 
   // Store the latest getRefreshTier in a ref to prevent stale closures.
   // This ensures the service always calls the current version of the callback.
@@ -81,6 +83,8 @@ function XtermAdapterComponent({
   useAppThemeStore((s) => s.selectedSchemeId);
   const wrapperBackground = useTerminalColorSchemeStore(selectWrapperBackground);
   const effectiveTheme = useTerminalColorSchemeStore(selectEffectiveTheme);
+
+  const screenReaderEnabled = useScreenReaderStore((s) => s.resolvedScreenReaderEnabled());
 
   // Calculate effective scrollback: performance mode overrides, then project override, then app default
   const effectiveScrollback = useMemo(() => {
@@ -120,8 +124,16 @@ function XtermAdapterComponent({
         scrollback: effectiveScrollback,
         performanceMode,
         theme: effectiveTheme,
+        screenReaderMode: screenReaderEnabled,
       }),
-    [effectiveScrollback, performanceMode, fontSize, fontFamily, effectiveTheme]
+    [
+      effectiveScrollback,
+      performanceMode,
+      fontSize,
+      fontFamily,
+      effectiveTheme,
+      screenReaderEnabled,
+    ]
   );
 
   // Push-based resize handler using ResizeObserver dimensions directly
@@ -137,9 +149,13 @@ function XtermAdapterComponent({
       const width = rect.width;
       const height = rect.height;
 
-      // Filter collapsed/zero states
+      // Filter collapsed/zero states and hidden windows (clientWidth/Height return 0 when hidden)
       if (width === 0 || height === 0) return;
       if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
+      if (document.visibilityState !== "visible") {
+        pendingFitRef.current = true;
+        return;
+      }
 
       const dims = terminalInstanceService.resize(terminalId, width, height);
 
@@ -155,10 +171,12 @@ function XtermAdapterComponent({
     const container = containerRef.current;
     if (!container) return;
 
-    // Retry logic: if container has no size (e.g. during drag/mount transition),
-    // schedule a retry on next animation frame. This fixes blank terminals when
-    // xterm initializes with 0x0 dimensions during drag preview.
     if (container.clientWidth === 0 || container.clientHeight === 0) {
+      if (document.visibilityState !== "visible") {
+        pendingFitRef.current = true;
+        return;
+      }
+      // Retry on next frame for drag/mount transitions where container isn't sized yet
       requestAnimationFrame(() => {
         if (containerRef.current) performFit();
       });
@@ -407,6 +425,18 @@ function XtermAdapterComponent({
     }
   }, [terminalId, stableRefreshTierProvider, currentTier]);
 
+  // Refit terminal when window becomes visible again after being hidden
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && pendingFitRef.current) {
+        pendingFitRef.current = false;
+        performFit();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [performFit]);
+
   // Subscribe to alt buffer state changes for TUI applications (OpenCode, vim, htop, etc.)
   // When in alt buffer, we need to sync the container styling
   // Use useLayoutEffect to avoid flash before first paint
@@ -467,9 +497,13 @@ function XtermAdapterComponent({
         !isAltBuffer && "pl-3 pt-3 pb-3 pr-3 rounded-b-[var(--radius-lg)]",
         className
       )}
-      style={{ backgroundColor: wrapperBackground }}
+      style={{ backgroundColor: wrapperBackground, contain: "strict" }}
     >
-      <div ref={containerRef} className="w-full h-full min-h-0 min-w-0" />
+      <div
+        ref={containerRef}
+        className="w-full h-full min-h-0 min-w-0"
+        aria-label="Terminal output"
+      />
     </div>
   );
 }

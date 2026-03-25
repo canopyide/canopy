@@ -1,4 +1,5 @@
-import { simpleGit, SimpleGit } from "simple-git";
+import type { SimpleGit } from "simple-git";
+import { createHardenedGit } from "../utils/hardenedGit.js";
 import { existsSync } from "fs";
 import { logDebug, logError } from "../utils/logger.js";
 import type {
@@ -143,7 +144,7 @@ export class ProjectPulseService {
       throw new Error(`Worktree path does not exist: ${worktreePath}`);
     }
 
-    const git = simpleGit(worktreePath);
+    const git = createHardenedGit(worktreePath);
     const startTime = Date.now();
 
     const isRepo = await git.checkIsRepo();
@@ -453,7 +454,12 @@ export class ProjectPulseService {
       let deletions = 0;
 
       try {
-        const diffOutput = await git.raw(["diff", "--shortstat", `${baseSha}...HEAD`]);
+        const diffOutput = await git.raw([
+          "diff",
+          "--no-ext-diff",
+          "--shortstat",
+          `${baseSha}...HEAD`,
+        ]);
 
         // Parse: "3 files changed, 45 insertions(+), 12 deletions(-)"
         const filesMatch = diffOutput.match(/(\d+)\s+files?\s+changed/);
@@ -466,7 +472,12 @@ export class ProjectPulseService {
       } catch {
         // Fallback: just count files
         try {
-          const nameOnlyOutput = await git.raw(["diff", "--name-only", `${baseSha}...HEAD`]);
+          const nameOnlyOutput = await git.raw([
+            "diff",
+            "--no-ext-diff",
+            "--name-only",
+            `${baseSha}...HEAD`,
+          ]);
           filesChanged = nameOnlyOutput.split("\n").filter(Boolean).length;
         } catch {
           // Ignore

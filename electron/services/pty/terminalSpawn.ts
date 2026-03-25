@@ -1,9 +1,39 @@
 import * as pty from "node-pty";
 import { getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
-import { filterEnvironment, injectCanopyMetadata } from "./EnvironmentFilter.js";
-import { buildNonInteractiveEnv, AGENT_ENV_EXCLUSIONS } from "./terminalShell.js";
+import { filterEnvironment, injectCanopyMetadata, ensureUtf8Locale } from "./EnvironmentFilter.js";
+import {
+  buildNonInteractiveEnv,
+  AGENT_ENV_EXCLUSIONS,
+  getDefaultShell,
+  getDefaultShellArgs,
+} from "./terminalShell.js";
 import type { PtySpawnOptions } from "./types.js";
 import type { PtyPool } from "../PtyPool.js";
+
+export interface SpawnContext {
+  shell: string;
+  args: string[];
+  isAgentTerminal: boolean;
+  agentId: string | undefined;
+  env: Record<string, string>;
+}
+
+export function computeSpawnContext(id: string, options: PtySpawnOptions): SpawnContext {
+  const shell = options.shell || getDefaultShell();
+  const args = options.args || getDefaultShellArgs(shell);
+
+  const isAgentByKind = options.kind === "agent";
+  const isAgentByAgentId = !!options.agentId;
+  const isAgentByType = !!(options.type && options.type !== "terminal");
+  const isAgentTerminal = isAgentByKind || isAgentByAgentId || isAgentByType;
+  const agentId = isAgentTerminal
+    ? (options.agentId ?? (options.type !== "terminal" ? options.type : id))
+    : undefined;
+
+  const env = buildTerminalEnv(options, id, shell, isAgentTerminal, agentId);
+
+  return { shell, args, isAgentTerminal, agentId, env };
+}
 
 export function buildTerminalEnv(
   options: PtySpawnOptions,
@@ -50,9 +80,11 @@ export function buildTerminalEnv(
     Object.entries(agentEnv).filter(([key]) => !exclusions.has(key) && !key.startsWith("CANOPY_"))
   ) as Record<string, string>;
 
-  return isAgentTerminal
-    ? { ...buildNonInteractiveEnv(mergedEnv, shell, agentId), ...filteredAgentEnv }
-    : mergedEnv;
+  return ensureUtf8Locale(
+    isAgentTerminal
+      ? { ...buildNonInteractiveEnv(mergedEnv, shell, agentId), ...filteredAgentEnv }
+      : mergedEnv
+  );
 }
 
 export function acquirePtyProcess(
@@ -105,7 +137,12 @@ export function acquirePtyProcess(
       }
     } else {
       try {
-        pooledPty.write(`cd "${options.cwd.replace(/"/g, '\\"')}"\r`);
+        // cd to project dir then clear the screen + scrollback so the user
+        // doesn't see the cd command or any pooled-shell init noise.
+        // \033[H  = cursor home, \033[2J = clear screen, \033[3J = clear scrollback
+        pooledPty.write(
+          `cd "${options.cwd.replace(/"/g, '\\"')}" && printf '\\033[H\\033[2J\\033[3J'\r`
+        );
       } catch (error) {
         onWriteError(error, { operation: "write(cwd)" });
       }

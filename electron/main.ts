@@ -1,7 +1,8 @@
 // Environment setup must run first (GC exposure, userData, flags, sandbox)
 import "./setup/environment.js";
 
-import { app, protocol } from "electron";
+import { app, crashReporter, protocol } from "electron";
+import { registerGlobalErrorHandlers } from "./setup/globalErrorHandlers.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PERF_MARKS } from "../shared/perf/marks.js";
@@ -14,14 +15,14 @@ import {
 } from "./setup/protocols.js";
 import { registerAppLifecycleHandlers } from "./lifecycle/appLifecycle.js";
 import { registerShutdownHandler } from "./lifecycle/shutdown.js";
-import { setMainWindow, getMainWindow } from "./window/windowRef.js";
+import { setMainWindow, getMainWindow, setWindowRegistry } from "./window/windowRef.js";
+import { WindowRegistry } from "./window/WindowRegistry.js";
 import { setupBrowserWindow } from "./window/createWindow.js";
 import {
   setupWindowServices,
   getPtyClient,
   setPtyClientRef,
   getWorkspaceClientRef,
-  getProjectMcpManagerRef,
   getCliAvailabilityServiceRef,
   getCleanupIpcHandlers,
   setCleanupIpcHandlers,
@@ -41,6 +42,8 @@ import { pruneOldLogs, initializeLogger } from "./utils/logger.js";
 import { registerCommands } from "./services/commands/index.js";
 import { initializeTelemetry } from "./services/TelemetryService.js";
 import { initializeCrashRecoveryService } from "./services/CrashRecoveryService.js";
+import { initializeGpuCrashMonitor } from "./services/GpuCrashMonitorService.js";
+import { initializeTrashedPidCleanup } from "./services/TrashedPidTracker.js";
 
 // CRITICAL: Run IPC sender validation before any handlers are registered
 enforceIpcSenderValidation();
@@ -54,20 +57,23 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
+      codeCache: true,
     },
   },
   {
     scheme: "canopy-file",
     privileges: {
       secure: true,
-      bypassCSP: true,
       supportFetchAPI: true,
     },
   },
 ]);
 
-// Increase V8 heap size for renderer processes to handle large clipboard data
-app.commandLine.appendSwitch("js-flags", "--max-old-space-size=4096");
+// V8 tuning for renderer processes: heap size, compact code preference, and GC exposure
+app.commandLine.appendSwitch(
+  "js-flags",
+  "--max-old-space-size=4096 --optimize-for-size --expose-gc"
+);
 
 // Keep the renderer process at full priority and prevent AudioContext suspension
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
@@ -92,13 +98,8 @@ const __dirname = path.dirname(__filename);
 
 void initializeTelemetry();
 
-process.on("uncaughtException", (error) => {
-  console.error("[FATAL] Uncaught Exception:", error);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("[FATAL] Unhandled Promise Rejection at:", promise, "reason:", reason);
-});
+crashReporter.start({ uploadToServer: false });
+registerGlobalErrorHandlers();
 
 const distPath = path.join(__dirname, "../../dist");
 
@@ -109,6 +110,11 @@ if (!gotTheLock) {
   app.quit();
 } else {
   initializeCrashRecoveryService();
+  initializeTrashedPidCleanup();
+  initializeGpuCrashMonitor();
+
+  const windowRegistry = new WindowRegistry();
+  setWindowRegistry(windowRegistry);
 
   async function createWindow(): Promise<void> {
     const currentWindow = getMainWindow();
@@ -124,11 +130,13 @@ if (!gotTheLock) {
     const { win, loadRenderer, smokeTestTimer, smokeRendererUnresponsive } =
       setupBrowserWindow(__dirname);
     setMainWindow(win);
+    windowRegistry.register(win);
 
     await setupWindowServices(win, {
       loadRenderer,
       smokeTestTimer,
       smokeRendererUnresponsive,
+      windowRegistry,
     });
 
     setupPowerMonitor({
@@ -145,13 +153,13 @@ if (!gotTheLock) {
     onCreateWindow: createWindow,
     getMainWindow,
     getCliAvailabilityService: getCliAvailabilityServiceRef,
+    windowRegistry,
   });
 
   registerShutdownHandler({
     getPtyClient,
     setPtyClient: setPtyClientRef,
     getWorkspaceClient: getWorkspaceClientRef,
-    getProjectMcpManager: getProjectMcpManagerRef,
     getCleanupIpcHandlers,
     setCleanupIpcHandlers,
     getCleanupErrorHandlers,

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { isCanopyEnvEnabled } from "@/utils/env";
-import { NewsletterStep } from "./NewsletterStep";
 import { TelemetryConsentStep } from "./TelemetryConsentStep";
 import { AgentSelectionStep } from "@/components/Setup/AgentSelectionStep";
 import { AgentSetupWizard } from "@/components/Setup/AgentSetupWizard";
+import { ThemeSelectionStep } from "./ThemeSelectionStep";
 import { OnboardingProgressIndicator } from "./OnboardingProgressIndicator";
 import type { OnboardingState } from "@shared/types";
 import type { CliAvailability } from "@shared/types";
@@ -16,8 +16,13 @@ const LEGACY_KEYS = {
   firstRunToast: "canopy:first-run-toast",
 } as const;
 
-type OnboardingStep = "newsletter" | "telemetry" | "agentSelection" | "agentSetup";
-const STEP_ORDER: OnboardingStep[] = ["newsletter", "telemetry", "agentSelection", "agentSetup"];
+type OnboardingStep = "themeSelection" | "telemetry" | "agentSelection" | "agentSetup";
+const STEP_ORDER: OnboardingStep[] = [
+  "themeSelection",
+  "telemetry",
+  "agentSelection",
+  "agentSetup",
+];
 
 interface OnboardingFlowProps {
   availability: CliAvailability;
@@ -164,14 +169,15 @@ export function OnboardingFlow({
     [onComplete]
   );
 
-  // Newsletter step handler
-  const handleNewsletterDismiss = useCallback(
-    async (_subscribed: boolean) => {
-      await window.electron.onboarding.markNewsletterSeen();
-      await advanceStep("newsletter");
-    },
-    [advanceStep]
-  );
+  // Theme selection handlers
+  const handleThemeSelectionContinue = useCallback(async () => {
+    await advanceStep("themeSelection");
+  }, [advanceStep]);
+
+  const handleThemeSelectionSkip = useCallback(async () => {
+    trackOnboarding("onboarding_step_skipped", { step: "themeSelection" });
+    await advanceStep("themeSelection");
+  }, [advanceStep]);
 
   // Telemetry step handlers
   const handleTelemetryDismiss = useCallback(
@@ -244,8 +250,12 @@ export function OnboardingFlow({
     <>
       <OnboardingProgressIndicator currentIndex={currentStepIndex} total={STEP_ORDER.length} />
 
-      {currentStep === "newsletter" && (
-        <NewsletterStep ref={headingRef} onDismiss={handleNewsletterDismiss} />
+      {currentStep === "themeSelection" && (
+        <ThemeSelectionStep
+          isOpen
+          onContinue={handleThemeSelectionContinue}
+          onSkip={handleThemeSelectionSkip}
+        />
       )}
 
       {currentStep === "telemetry" && (

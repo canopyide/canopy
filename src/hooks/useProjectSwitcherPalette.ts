@@ -1,12 +1,13 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import Fuse, { type IFuseOptions } from "fuse.js";
+import { useShallow } from "zustand/shallow";
 import { useProjectStore } from "@/store/projectStore";
 import { usePaletteStore } from "@/store/paletteStore";
+import { useProjectGroupsStore, type ProjectGroup } from "@/store/projectGroupsStore";
 import { notify } from "@/lib/notify";
-import type { Project, ProjectStats } from "@shared/types";
-import { projectClient, terminalClient } from "@/clients";
-import { panelKindHasPty } from "@shared/config/panelKindRegistry";
-import { isAgentTerminal } from "@/utils/terminalType";
+import type { Project, BulkProjectStatsEntry } from "@shared/types";
+import { projectClient } from "@/clients";
+import { buildSwitcherSections } from "@/components/Project/projectGrouping";
 
 export type ProjectSwitcherMode = "modal" | "dropdown";
 
@@ -55,6 +56,14 @@ export interface UseProjectSwitcherPaletteReturn {
   confirmRemoveProject: () => Promise<void>;
   isRemovingProject: boolean;
   backgroundWaitingCount: number;
+  groups: ProjectGroup[];
+  createGroup: (name: string) => string;
+  assignProjectToGroup: (projectId: string, groupId: string) => void;
+  removeProjectFromGroup: (projectId: string) => void;
+  renameGroup: (groupId: string, name: string) => void;
+  deleteGroup: (groupId: string) => void;
+  moveGroupUp: (groupId: string) => void;
+  moveGroupDown: (groupId: string) => void;
 }
 
 const FUSE_OPTIONS: IFuseOptions<SearchableProject> = {
@@ -77,10 +86,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [projectStats, setProjectStats] = useState<Map<string, ProjectStats>>(new Map());
-  const [terminalCounts, setTerminalCounts] = useState<
-    Map<string, { activeAgentCount: number; waitingAgentCount: number }>
-  >(new Map());
+  const [bulkStats, setBulkStats] = useState<Map<string, BulkProjectStatsEntry>>(new Map());
   const [stopConfirmProjectId, setStopConfirmProjectId] = useState<string | null>(null);
   const [isStoppingProject, setIsStoppingProject] = useState(false);
   const [removeConfirmProject, setRemoveConfirmProject] = useState<SearchableProject | null>(null);
@@ -88,6 +94,8 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
   const selectedProjectIdRef = useRef<string | null>(null);
   const lastFetchRef = useRef(0);
   const lastFetchIdsRef = useRef<string>("");
+
+  const groups = useProjectGroupsStore(useShallow((state) => state.groups));
 
   const projects = useProjectStore((state) => state.projects);
   const currentProject = useProjectStore((state) => state.currentProject);
@@ -135,52 +143,14 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
         lastFetchRef.current = now;
         lastFetchIdsRef.current = projectIds;
 
-        const [statsResults, terminalsResults] = await Promise.allSettled([
-          Promise.allSettled(currentProjects.map((p) => projectClient.getStats(p.id))),
-          Promise.allSettled(currentProjects.map((p) => terminalClient.getForProject(p.id))),
-        ]);
+        const ids = currentProjects.map((p) => p.id);
+        const result = await projectClient.getBulkStats(ids);
 
-        if (statsResults.status === "fulfilled") {
-          const newStats = new Map<string, ProjectStats>();
-          statsResults.value.forEach((result, index) => {
-            if (result.status === "fulfilled") {
-              newStats.set(currentProjects[index].id, result.value);
-            }
-          });
-          setProjectStats(newStats);
+        const newStats = new Map<string, BulkProjectStatsEntry>();
+        for (const [id, entry] of Object.entries(result)) {
+          newStats.set(id, entry);
         }
-
-        if (terminalsResults.status === "fulfilled") {
-          const newCounts = new Map<
-            string,
-            { activeAgentCount: number; waitingAgentCount: number }
-          >();
-          terminalsResults.value.forEach((result, index) => {
-            if (result.status !== "fulfilled") return;
-            const terminals = Array.isArray(result.value) ? result.value : [];
-
-            let activeAgentCount = 0;
-            let waitingAgentCount = 0;
-
-            for (const terminal of terminals) {
-              if (!panelKindHasPty(terminal.kind ?? "terminal")) continue;
-              if (terminal.kind === "dev-preview") continue;
-              if (terminal.hasPty === false) continue; // Skip orphaned terminals without active PTY
-
-              const isAgent = isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId);
-              if (!isAgent) continue;
-
-              if (terminal.agentState === "waiting") {
-                waitingAgentCount += 1;
-              } else if (terminal.agentState === "working" || terminal.agentState === "running") {
-                activeAgentCount += 1;
-              }
-            }
-
-            newCounts.set(currentProjects[index].id, { activeAgentCount, waitingAgentCount });
-          });
-          setTerminalCounts(newCounts);
-        }
+        setBulkStats(newStats);
       } catch (error) {
         console.error("[ProjectSwitcherPalette] Failed to fetch project stats:", error);
       }
@@ -219,7 +189,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
   }, [isOpen, projects, fetchStats]);
 
   useEffect(() => {
-    if (isOpen) return;
+    if (!isOpen) return;
     if (projects.length <= 1) return;
 
     const id = setInterval(() => {
@@ -231,8 +201,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
 
   const searchableProjects = useMemo<SearchableProject[]>(() => {
     return projects.map((p) => {
-      const stats = projectStats.get(p.id);
-      const counts = terminalCounts.get(p.id);
+      const stats = bulkStats.get(p.id);
       const isActive = p.id === currentProject?.id;
       const isMissing = p.status === "missing";
       const hasProcesses = (stats?.processCount ?? 0) > 0;
@@ -250,12 +219,12 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
         isBackground,
         isMissing,
         isPinned: p.pinned ?? false,
-        activeAgentCount: counts?.activeAgentCount ?? 0,
-        waitingAgentCount: counts?.waitingAgentCount ?? 0,
+        activeAgentCount: stats?.activeAgentCount ?? 0,
+        waitingAgentCount: stats?.waitingAgentCount ?? 0,
         processCount: stats?.processCount ?? 0,
       };
     });
-  }, [projects, projectStats, terminalCounts, currentProject?.id]);
+  }, [projects, bulkStats, currentProject?.id]);
 
   const backgroundWaitingCount = useMemo(
     () =>
@@ -293,12 +262,21 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
           deduped.push(p);
         }
       }
-      return deduped.slice(0, MAX_RESULTS);
+      const truncated = deduped.slice(0, MAX_RESULTS);
+
+      // When groups exist, reorder results to match visual section order
+      // so keyboard navigation (selectedIndex) aligns with rendered order
+      if (groups.length > 0) {
+        const sections = buildSwitcherSections(truncated, groups);
+        return sections.flatMap((s) => s.items);
+      }
+
+      return truncated;
     }
 
     const fuseResults = fuse.search(debouncedQuery);
     return fuseResults.slice(0, MAX_RESULTS).map((r) => r.item);
-  }, [debouncedQuery, sortedProjects, fuse]);
+  }, [debouncedQuery, sortedProjects, fuse, groups]);
 
   useEffect(() => {
     if (results.length === 0) {
@@ -483,7 +461,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     try {
       await closeProject(stopConfirmProjectId, { killTerminals: true });
 
-      setProjectStats((prev) => {
+      setBulkStats((prev) => {
         const next = new Map(prev);
         next.set(stopConfirmProjectId, {
           processCount: 0,
@@ -491,12 +469,9 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
           estimatedMemoryMB: 0,
           terminalTypes: {},
           processIds: [],
+          activeAgentCount: 0,
+          waitingAgentCount: 0,
         });
-        return next;
-      });
-      setTerminalCounts((prev) => {
-        const next = new Map(prev);
-        next.set(stopConfirmProjectId, { activeAgentCount: 0, waitingAgentCount: 0 });
         return next;
       });
 
@@ -551,6 +526,34 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     }
   }, [removeConfirmProject, isRemovingProject, closeActiveProject, removeProject]);
 
+  const createGroup = useCallback((name: string) => {
+    return useProjectGroupsStore.getState().createGroup(name);
+  }, []);
+
+  const assignProjectToGroup = useCallback((projectId: string, groupId: string) => {
+    useProjectGroupsStore.getState().addProjectToGroup(groupId, projectId);
+  }, []);
+
+  const removeProjectFromGroupCb = useCallback((projectId: string) => {
+    useProjectGroupsStore.getState().removeProjectFromAllGroups(projectId);
+  }, []);
+
+  const renameGroupCb = useCallback((groupId: string, name: string) => {
+    useProjectGroupsStore.getState().renameGroup(groupId, name);
+  }, []);
+
+  const deleteGroupCb = useCallback((groupId: string) => {
+    useProjectGroupsStore.getState().deleteGroup(groupId);
+  }, []);
+
+  const moveGroupUpCb = useCallback((groupId: string) => {
+    useProjectGroupsStore.getState().moveGroupUp(groupId);
+  }, []);
+
+  const moveGroupDownCb = useCallback((groupId: string) => {
+    useProjectGroupsStore.getState().moveGroupDown(groupId);
+  }, []);
+
   return {
     isOpen,
     mode,
@@ -579,5 +582,13 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     confirmRemoveProject,
     isRemovingProject,
     backgroundWaitingCount,
+    groups,
+    createGroup,
+    assignProjectToGroup,
+    removeProjectFromGroup: removeProjectFromGroupCb,
+    renameGroup: renameGroupCb,
+    deleteGroup: deleteGroupCb,
+    moveGroupUp: moveGroupUpCb,
+    moveGroupDown: moveGroupDownCb,
   };
 }

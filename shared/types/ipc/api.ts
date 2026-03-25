@@ -71,7 +71,16 @@ import type {
   AgentHelpRequest,
   AgentHelpResult,
 } from "./agent.js";
-import type { DemoScreenshotResult } from "./demo.js";
+import type {
+  DemoScreenshotResult,
+  DemoStartCapturePayload,
+  DemoStartCaptureResult,
+  DemoStopCaptureResult,
+  DemoCaptureStatus,
+  DemoEncodePayload,
+  DemoEncodeProgressEvent,
+  DemoEncodeResult,
+} from "./demo.js";
 import type {
   CopyTreeResult,
   CopyTreeOptions,
@@ -92,10 +101,11 @@ import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
 import type { RetryAction, AppError, RetryProgressPayload } from "./errors.js";
 import type { EventRecord, EventFilterOptions } from "./events.js";
-import type { ProjectCloseResult, ProjectStats } from "./project.js";
+import type { ProjectCloseResult, ProjectStats, BulkProjectStats } from "./project.js";
 import type { GitInitOptions, GitInitProgressEvent, GitInitResult } from "./gitInit.js";
 import type {
   RepositoryStats,
+  ProjectHealthData,
   GitHubCliStatus,
   GitHubTokenConfig,
   GitHubTokenValidation,
@@ -105,8 +115,7 @@ import type {
   IssueNotFoundPayload,
 } from "./github.js";
 import type { TerminalConfig } from "./config.js";
-import type { HibernationConfig } from "./hibernation.js";
-import type { ProjectMcpServerRunState } from "./project.js";
+import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
 import type { SystemSleepMetrics } from "./systemSleep.js";
 import type { KeyAction } from "../keymap.js";
 
@@ -117,7 +126,12 @@ export interface KeybindingImportResult {
   skipped: number;
   errors: string[];
 }
-import type { TerminalStatusPayload, PtyHostActivityTier, SpawnResult } from "../pty-host.js";
+import type {
+  TerminalStatusPayload,
+  PtyHostActivityTier,
+  SpawnResult,
+  TerminalResourceBatchPayload,
+} from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
 import type {
   FileSearchPayload,
@@ -147,9 +161,9 @@ import type { AgentRegistry, AgentMetadata } from "./agentCapabilities.js";
 import type { AppThemeConfig } from "../appTheme.js";
 
 export interface NotificationSettings {
+  enabled: boolean;
   completedEnabled: boolean;
   waitingEnabled: boolean;
-  failedEnabled: boolean;
   soundEnabled: boolean;
   soundFile: string;
   waitingEscalationEnabled: boolean;
@@ -233,6 +247,9 @@ export interface ElectronAPI {
     onRestored(callback: (data: { id: string }) => void): () => void;
     forceResume(id: string): Promise<{ success: boolean; error?: string }>;
     onStatus(callback: (data: TerminalStatusPayload) => void): () => void;
+    onResourceMetrics(
+      callback: (data: { metrics: TerminalResourceBatchPayload; timestamp: number }) => void
+    ): () => void;
     onBackendCrashed(
       callback: (data: {
         crashType: string;
@@ -249,6 +266,7 @@ export interface ElectronAPI {
       callback: (data: { terminalIds: string[]; targetLines: number }) => void
     ): () => void;
     onRestoreScrollback(callback: (data: { terminalIds: string[] }) => void): () => void;
+    restartService(): Promise<void>;
   };
   files: {
     search(payload: FileSearchPayload): Promise<FileSearchResult>;
@@ -302,6 +320,7 @@ export interface ElectronAPI {
     startAgentUpdate(payload: StartAgentUpdatePayload): Promise<StartAgentUpdateResult>;
     healthCheck(agentIds?: string[]): Promise<SystemHealthCheckResult>;
     downloadDiagnostics(): Promise<boolean>;
+    getAppMetrics(): Promise<import("./system.js").AppMetricsSummary>;
     onWake(callback: (data: SystemWakePayload) => void): () => void;
   };
   app: {
@@ -358,7 +377,13 @@ export interface ElectronAPI {
     update(projectId: string, updates: Partial<Project>): Promise<Project>;
     switch(projectId: string): Promise<Project>;
     openDialog(): Promise<string | null>;
-    onSwitch(callback: (payload: { project: Project; switchId: string }) => void): () => void;
+    onSwitch(
+      callback: (payload: {
+        project: Project;
+        switchId: string;
+        worktreeLoadError?: string;
+      }) => void
+    ): () => void;
     getSettings(projectId: string): Promise<ProjectSettings>;
     saveSettings(projectId: string, settings: ProjectSettings): Promise<void>;
     detectRunners(projectId: string): Promise<RunCommand[]>;
@@ -374,6 +399,7 @@ export interface ElectronAPI {
      */
     reopen(projectId: string): Promise<Project>;
     getStats(projectId: string): Promise<ProjectStats>;
+    getBulkStats(projectIds: string[]): Promise<BulkProjectStats>;
     createFolder(parentPath: string, folderName: string): Promise<string>;
     initGit(directoryPath: string): Promise<void>;
     /** Initialize git repository with progress events */
@@ -486,9 +512,10 @@ export interface ElectronAPI {
   };
   github: {
     getRepoStats(cwd: string, bypassCache?: boolean): Promise<RepositoryStats>;
+    getProjectHealth(cwd: string, bypassCache?: boolean): Promise<ProjectHealthData>;
     openIssues(cwd: string, query?: string, state?: string): Promise<void>;
     openPRs(cwd: string, query?: string, state?: string): Promise<void>;
-    openCommits(cwd: string): Promise<void>;
+    openCommits(cwd: string, branch?: string): Promise<void>;
     openIssue(cwd: string, issueNumber: number): Promise<void>;
     openPR(prUrl: string): Promise<void>;
     checkCli(): Promise<GitHubCliStatus>;
@@ -625,6 +652,12 @@ export interface ElectronAPI {
     getState(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
     onStateChanged(callback: (data: DevPreviewStateChangedPayload) => void): () => void;
   };
+  globalDevServers: {
+    get(): Promise<import("./globalDevServers.js").GlobalDevServersGetResult>;
+    onChanged(
+      callback: (data: import("./globalDevServers.js").GlobalDevServersChangedPayload) => void
+    ): () => void;
+  };
   git: {
     getFileDiff(cwd: string, filePath: string, status: GitStatus): Promise<string>;
     getProjectPulse(options: {
@@ -680,24 +713,32 @@ export interface ElectronAPI {
         }
       | { ok: false; errors: string[] }
     >;
+    setScreenReaderMode(mode: "auto" | "on" | "off"): Promise<void>;
+    setResourceMonitoring(enabled: boolean): Promise<void>;
   };
-  sidecar: {
-    create(payload: import("../sidecar.js").SidecarCreatePayload): Promise<void>;
-    show(payload: import("../sidecar.js").SidecarShowPayload): Promise<void>;
+  accessibility: {
+    getEnabled(): Promise<boolean>;
+    onSupportChanged(callback: (data: { enabled: boolean }) => void): () => void;
+  };
+  portal: {
+    create(payload: import("../portal.js").PortalCreatePayload): Promise<void>;
+    show(payload: import("../portal.js").PortalShowPayload): Promise<void>;
     hide(): Promise<void>;
-    resize(bounds: import("../sidecar.js").SidecarBounds): Promise<void>;
-    closeTab(payload: import("../sidecar.js").SidecarCloseTabPayload): Promise<void>;
-    navigate(payload: import("../sidecar.js").SidecarNavigatePayload): Promise<void>;
+    resize(bounds: import("../portal.js").PortalBounds): Promise<void>;
+    closeTab(payload: import("../portal.js").PortalCloseTabPayload): Promise<void>;
+    navigate(payload: import("../portal.js").PortalNavigatePayload): Promise<void>;
     goBack(tabId: string): Promise<boolean>;
     goForward(tabId: string): Promise<boolean>;
     reload(tabId: string): Promise<void>;
-    showNewTabMenu(payload: import("../sidecar.js").SidecarShowNewTabMenuPayload): Promise<void>;
-    onNavEvent(callback: (data: import("../sidecar.js").SidecarNavEvent) => void): () => void;
+    showNewTabMenu(payload: import("../portal.js").PortalShowNewTabMenuPayload): Promise<void>;
+    onNavEvent(callback: (data: import("../portal.js").PortalNavEvent) => void): () => void;
     onFocus(callback: () => void): () => void;
     onBlur(callback: () => void): () => void;
     onNewTabMenuAction(
-      callback: (action: import("../sidecar.js").SidecarNewTabMenuAction) => void
+      callback: (action: import("../portal.js").PortalNewTabMenuAction) => void
     ): () => void;
+    onTabEvicted(callback: (data: { tabId: string }) => void): () => void;
+    onTabsEvicted(callback: (payload: { tabIds: string[] }) => void): () => void;
   };
   webview: {
     /** Freeze or unfreeze a webview's JS execution via CDP Page.setWebLifecycleState */
@@ -743,6 +784,9 @@ export interface ElectronAPI {
   hibernation: {
     getConfig(): Promise<HibernationConfig>;
     updateConfig(config: Partial<HibernationConfig>): Promise<HibernationConfig>;
+    onProjectHibernated(
+      callback: (payload: HibernationProjectHibernatedPayload) => void
+    ): () => void;
   };
   systemSleep: {
     /** Get metrics about system sleep tracking */
@@ -793,12 +837,16 @@ export interface ElectronAPI {
     zoomOut(): Promise<void>;
     /** Reset zoom */
     zoomReset(): Promise<void>;
+    /** Get current zoom factor (synchronous, no IPC) */
+    getZoomFactor(): number;
     /** Close window */
     close(): Promise<void>;
+    /** Subscribe to hidden webview destruction events from memory pressure */
+    onDestroyHiddenWebviews(callback: (payload: { tier: 1 | 2 }) => void): () => void;
   };
   notification: {
     /** Update window title and dock badge based on terminal attention state */
-    updateBadge(state: { waitingCount: number; failedCount: number }): void;
+    updateBadge(state: { waitingCount: number }): void;
     /** Get notification settings */
     getSettings(): Promise<NotificationSettings>;
     /** Update notification settings (partial update) */
@@ -923,6 +971,10 @@ export interface ElectronAPI {
     markPromptShown(): Promise<void>;
     track(event: string, properties: Record<string, unknown>): Promise<void>;
   };
+  gpu: {
+    getStatus(): Promise<{ hardwareAccelerationDisabled: boolean }>;
+    setHardwareAcceleration(enabled: boolean): Promise<void>;
+  };
   privacy: {
     getSettings(): Promise<{
       telemetryLevel: "off" | "errors" | "full";
@@ -950,6 +1002,11 @@ export interface ElectronAPI {
     getChecklist(): Promise<ChecklistState>;
     dismissChecklist(): Promise<void>;
     markChecklistItem(item: ChecklistItemId): Promise<void>;
+    markChecklistCelebrationShown(): Promise<void>;
+  };
+  shortcutHints: {
+    getCounts(): Promise<Record<string, number>>;
+    incrementCount(actionId: string): Promise<void>;
   };
   voiceInput: {
     getSettings(): Promise<VoiceInputSettings>;
@@ -1029,12 +1086,6 @@ export interface ElectronAPI {
     /** Get the JSON config snippet to paste into an MCP client config */
     getConfigSnippet(): Promise<string>;
   };
-  projectMcp: {
-    getStatuses(projectId: string): Promise<ProjectMcpServerRunState[]>;
-    onStatusChanged(
-      callback: (payload: { projectId: string; servers: ProjectMcpServerRunState[] }) => void
-    ): () => void;
-  };
   workflow: {
     listWorkflows(): Promise<WorkflowSummary[]>;
     startWorkflow(workflowId: string): Promise<string>;
@@ -1111,6 +1162,12 @@ export interface ElectronAPI {
   };
   demo?: {
     moveTo(x: number, y: number, durationMs: number): Promise<void>;
+    moveToSelector(
+      selector: string,
+      durationMs: number,
+      offsetX?: number,
+      offsetY?: number
+    ): Promise<void>;
     click(): Promise<void>;
     type(selector: string, text: string, cps?: number): Promise<void>;
     setZoom(factor: number, durationMs?: number): Promise<void>;
@@ -1118,6 +1175,12 @@ export interface ElectronAPI {
     waitForSelector(selector: string, timeoutMs?: number): Promise<void>;
     pause(): Promise<void>;
     resume(): Promise<void>;
+    sleep(durationMs: number): Promise<void>;
+    startCapture(payload: DemoStartCapturePayload): Promise<DemoStartCaptureResult>;
+    stopCapture(): Promise<DemoStopCaptureResult>;
+    getCaptureStatus(): Promise<DemoCaptureStatus>;
+    encode(payload: DemoEncodePayload): Promise<DemoEncodeResult>;
+    onEncodeProgress(callback: (event: DemoEncodeProgressEvent) => void): () => void;
     onExecCommand(
       channel: string,
       callback: (payload: Record<string, unknown>) => void

@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { useOverlayState } from "@/hooks";
+import { useOverlayState, useEscapeStack } from "@/hooks";
+import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
 import { usePaletteStore } from "@/store/paletteStore";
+import {
+  UI_ENTER_DURATION,
+  UI_EXIT_DURATION,
+  UI_ENTER_EASING,
+  UI_EXIT_EASING,
+  getUiTransitionDuration,
+} from "@/lib/animationUtils";
 
 export interface AppPaletteDialogProps {
   isOpen: boolean;
@@ -19,32 +27,42 @@ export function AppPaletteDialog({
   ariaLabel,
   className,
 }: AppPaletteDialogProps) {
-  useOverlayState(isOpen);
+  useEscapeStack(isOpen, onClose);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  useLayoutEffect(() => {
-    if (isOpen) {
-      previousFocusRef.current = document.activeElement as HTMLElement;
-      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
-        'input, button, [tabindex]:not([tabindex="-1"])'
-      );
-      firstFocusable?.focus();
-    } else if (previousFocusRef.current) {
+  const restoreFocus = useCallback(() => {
+    if (previousFocusRef.current) {
       if (!usePaletteStore.getState().activePaletteId) {
         previousFocusRef.current.focus();
       }
       previousFocusRef.current = null;
+    }
+  }, []);
+
+  const { isVisible, shouldRender } = useAnimatedPresence({
+    isOpen,
+    animationDuration: getUiTransitionDuration("exit"),
+    onAnimateOut: restoreFocus,
+  });
+
+  useOverlayState(isOpen || shouldRender);
+
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      requestAnimationFrame(() => {
+        const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+          'input, button, [tabindex]:not([tabindex="-1"])'
+        );
+        firstFocusable?.focus();
+      });
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
       if (e.key === "Tab" && dialogRef.current) {
         const focusableElements = dialogRef.current.querySelectorAll<HTMLElement>(
           'input, button, [tabindex]:not([tabindex="-1"])'
@@ -63,7 +81,7 @@ export function AppPaletteDialog({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
@@ -74,11 +92,19 @@ export function AppPaletteDialog({
     [onClose]
   );
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm backdrop-saturate-[1.25]"
+      className={cn(
+        "fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[15vh] bg-scrim-medium backdrop-blur-sm backdrop-saturate-[1.25]",
+        "transition-opacity",
+        "motion-reduce:transition-none motion-reduce:duration-0",
+        isVisible ? "opacity-100" : "opacity-0"
+      )}
+      style={{
+        transitionDuration: isVisible ? `${UI_ENTER_DURATION}ms` : `${UI_EXIT_DURATION}ms`,
+      }}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -88,9 +114,17 @@ export function AppPaletteDialog({
         ref={dialogRef}
         className={cn(
           "w-full max-w-xl mx-4 bg-canopy-bg border border-[var(--border-overlay)] rounded-[var(--radius-xl)] shadow-modal overflow-hidden",
-          "animate-in fade-in slide-in-from-top-4 duration-150",
+          "transition-[opacity,transform]",
+          "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
+          isVisible
+            ? "opacity-100 translate-y-0 scale-100"
+            : "opacity-0 -translate-y-3 scale-[0.97]",
           className
         )}
+        style={{
+          transitionDuration: isVisible ? `${UI_ENTER_DURATION}ms` : `${UI_EXIT_DURATION}ms`,
+          transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -136,7 +170,9 @@ AppPaletteDialog.Body = function AppPaletteBody({
   maxHeight = "max-h-[50vh]",
 }: AppPaletteBodyProps) {
   return (
-    <div className={cn("overflow-y-auto p-2 space-y-1", maxHeight, className)}>{children}</div>
+    <div tabIndex={0} className={cn("overflow-y-auto p-2 space-y-1", maxHeight, className)}>
+      {children}
+    </div>
   );
 };
 
@@ -230,7 +266,7 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
   return (
     <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
       {query.trim() ? <>{noMatchMessage || `No items match "${query}"`}</> : <>{emptyMessage}</>}
-      {children}
+      {!query.trim() && children}
     </div>
   );
 };

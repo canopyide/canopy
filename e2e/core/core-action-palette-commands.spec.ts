@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
-import { getGridPanelCount } from "../helpers/panels";
+import { getGridPanelCount, openTerminal } from "../helpers/panels";
+import { expectPaletteFocused } from "../helpers/focus";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
@@ -45,8 +46,9 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
     test("search input is focused and filters results", async () => {
       const { window } = ctx;
 
+      await expectPaletteFocused(window, "action", T_SHORT);
+
       const searchInput = window.locator(SEL.actionPalette.searchInput);
-      await expect(searchInput).toBeFocused({ timeout: T_SHORT });
 
       // Capture unfiltered count
       const options = window.locator(SEL.actionPalette.options);
@@ -120,7 +122,7 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
 
     test("open a terminal panel as prerequisite", async () => {
       const { window } = ctx;
-      await window.locator(SEL.toolbar.openTerminal).click();
+      await openTerminal(window);
       const panel = window.locator(SEL.panel.gridPanel).first();
       await expect(panel).toBeVisible({ timeout: T_LONG });
     });

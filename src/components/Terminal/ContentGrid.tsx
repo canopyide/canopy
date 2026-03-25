@@ -28,24 +28,24 @@ import {
   GRID_PLACEHOLDER_ID,
   SortableGridPlaceholder,
 } from "@/components/DragDrop";
-import { AlertTriangle, Settings, Play, Pin, BookOpen, Sparkles } from "lucide-react";
+import { AlertTriangle, Settings, Play, Pin } from "lucide-react";
 import { CanopyIcon } from "@/components/icons";
 import { ProjectPulseCard } from "@/components/Pulse";
 import { Kbd } from "@/components/ui/Kbd";
 import { svgToDataUrl, sanitizeSvg } from "@/lib/svg";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { computeGridColumns, MIN_TERMINAL_HEIGHT_PX } from "@/lib/terminalLayout";
+import {
+  computeGridColumns,
+  MIN_TERMINAL_HEIGHT_PX,
+  GRID_TRANSITION_DURATION_MS,
+  GRID_FIT_DELAY_MS,
+} from "@/lib/terminalLayout";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { useNativeContextMenu, useProjectBranding } from "@/hooks";
 import { actionService } from "@/services/ActionService";
 import type { CliAvailability } from "@shared/types";
 import type { MenuItemOption } from "@/types";
 import { getRecipeGridClasses, getRecipeTerminalSummary } from "./utils/recipeUtils";
-import { PROJECT_EXPLANATION_PROMPT, getDefaultAgentId } from "@/lib/projectExplanationPrompt";
-import { buildWhatsNextPrompt } from "@/lib/whatsNextPrompt";
-import { cliAvailabilityClient } from "@/clients";
-import { useToolbarPreferencesStore } from "@/store/toolbarPreferencesStore";
-import { useAgentPreferencesStore } from "@/store/agentPreferencesStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { getEffectiveAgentIds, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
@@ -64,7 +64,6 @@ function EmptyState({
   showProjectPulse,
   projectIconSvg,
   defaultCwd,
-  agentAvailability,
 }: {
   hasActiveWorktree: boolean;
   activeWorktreeName?: string | null;
@@ -72,7 +71,6 @@ function EmptyState({
   showProjectPulse: boolean;
   projectIconSvg?: string;
   defaultCwd?: string;
-  agentAvailability?: CliAvailability;
 }) {
   const allRecipes = useRecipeStore((state) => state.recipes);
   const runRecipe = useRecipeStore((state) => state.runRecipe);
@@ -130,94 +128,6 @@ function EmptyState({
       });
     } catch (error) {
       console.error("Failed to run recipe:", error);
-    }
-  };
-
-  const defaultSelection = useToolbarPreferencesStore((state) => state.launcher.defaultSelection);
-  const defaultAgent = useAgentPreferencesStore((state) => state.defaultAgent);
-  const emptyStateAgentSettings = useAgentSettingsStore((state) => state.settings);
-
-  // undefined = no filter (settings not loaded or pre-migration); Set = loaded, filter to non-hidden
-  const selectedAgentIds = useMemo((): Set<string> | undefined => {
-    if (!emptyStateAgentSettings?.agents) return undefined;
-    return new Set(
-      Object.entries(emptyStateAgentSettings.agents)
-        .filter(([, entry]) => entry.selected !== false)
-        .map(([id]) => id)
-    );
-  }, [emptyStateAgentSettings]);
-
-  const handleExplainProject = async () => {
-    if (!defaultCwd) return;
-
-    try {
-      const availability = agentAvailability ?? (await cliAvailabilityClient.get());
-      const agentId = getDefaultAgentId(
-        defaultAgent,
-        defaultSelection,
-        availability,
-        selectedAgentIds
-      );
-
-      if (!agentId) {
-        console.error("No available agent to explain project");
-        return;
-      }
-
-      void actionService.dispatch(
-        "agent.launch",
-        {
-          agentId,
-          location: "grid",
-          cwd: defaultCwd,
-          prompt: PROJECT_EXPLANATION_PROMPT,
-          interactive: true,
-        },
-        { source: "user" }
-      );
-    } catch (error) {
-      console.error("Failed to launch project explanation:", error);
-    }
-  };
-
-  const [isLaunchingWhatsNext, setIsLaunchingWhatsNext] = React.useState(false);
-
-  const handleWhatsNext = async () => {
-    if (!defaultCwd || !activeWorktreeId || isLaunchingWhatsNext) return;
-
-    setIsLaunchingWhatsNext(true);
-    try {
-      const availability = agentAvailability ?? (await cliAvailabilityClient.get());
-      const agentId = getDefaultAgentId(
-        defaultAgent,
-        defaultSelection,
-        availability,
-        selectedAgentIds
-      );
-
-      if (!agentId) {
-        console.error("No available agent for What's Next workflow");
-        return;
-      }
-
-      const prompt = buildWhatsNextPrompt();
-
-      void actionService.dispatch(
-        "agent.launch",
-        {
-          agentId,
-          location: "grid",
-          cwd: defaultCwd,
-          worktreeId: activeWorktreeId,
-          prompt,
-          interactive: true,
-        },
-        { source: "user" }
-      );
-    } catch (error) {
-      console.error("Failed to launch What's Next workflow:", error);
-    } finally {
-      setTimeout(() => setIsLaunchingWhatsNext(false), 1000);
     }
   };
 
@@ -330,63 +240,10 @@ function EmptyState({
 
         <div className="flex flex-col items-center gap-4 mt-4">
           {hasActiveWorktree && (
-            <>
-              <p className="text-xs text-canopy-text/60 text-center">
-                Tip: Press <Kbd>⌘P</Kbd> to open the command palette or <Kbd>⌘T</Kbd> for a new
-                terminal
-              </p>
-
-              <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-2">
-                <button
-                  type="button"
-                  onClick={handleExplainProject}
-                  disabled={!defaultCwd}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
-                >
-                  <BookOpen className="h-3.5 w-3.5 text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors" />
-                  <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">
-                    What's This Project?
-                  </span>
-                </button>
-
-                <span className="text-canopy-text/20" aria-hidden="true">
-                  ·
-                </span>
-
-                <button
-                  type="button"
-                  onClick={handleWhatsNext}
-                  disabled={!defaultCwd || isLaunchingWhatsNext}
-                  aria-busy={isLaunchingWhatsNext}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
-                >
-                  <Sparkles
-                    className={cn(
-                      "h-3.5 w-3.5 text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors",
-                      isLaunchingWhatsNext && "animate-pulse"
-                    )}
-                  />
-                  <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">
-                    What's Next?
-                  </span>
-                </button>
-
-                <span className="text-canopy-text/20" aria-hidden="true">
-                  ·
-                </span>
-
-                <button
-                  type="button"
-                  onClick={handleOpenHelp}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
-                >
-                  <div className="w-0 h-0 border-t-[2.5px] border-t-transparent border-l-[5px] border-l-canopy-text/50 border-b-[2.5px] border-b-transparent group-hover:border-l-canopy-text/70 transition-colors" />
-                  <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">
-                    Docs
-                  </span>
-                </button>
-              </div>
-            </>
+            <p className="text-xs text-canopy-text/60 text-center">
+              Tip: Press <Kbd>⌘P</Kbd> to open the command palette or <Kbd>⌘T</Kbd> for a new
+              terminal
+            </p>
           )}
 
           {!hasActiveWorktree && (
@@ -408,6 +265,7 @@ function EmptyState({
 }
 
 export function ContentGrid({ className, defaultCwd, agentAvailability }: ContentGridProps) {
+  "use memo";
   const { showMenu } = useNativeContextMenu();
   const {
     terminals,
@@ -455,7 +313,9 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   const activeWorktree = activeWorktreeId ? worktreeMap.get(activeWorktreeId) : null;
   const hasActiveWorktree = activeWorktreeId != null && activeWorktree != null;
   const activeWorktreeName = activeWorktree
-    ? activeWorktree.branch?.trim() || activeWorktree.name?.trim() || "Unknown Worktree"
+    ? activeWorktree.isMainWorktree
+      ? activeWorktree.name?.trim() || "Unknown Worktree"
+      : activeWorktree.branch?.trim() || activeWorktree.name?.trim() || "Unknown Worktree"
     : null;
 
   const isInTrash = useTerminalStore((state) => state.isInTrash);
@@ -507,6 +367,10 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
 
         const options = await buildPanelDuplicateOptions(panel, "grid");
         const newPanelId = await addTerminal(options);
+        if (!newPanelId) {
+          if (createdNewGroup && groupId!) deleteTabGroup(groupId);
+          return;
+        }
 
         addPanelToGroup(groupId, newPanelId);
         setActiveTab(groupId, newPanelId);
@@ -546,6 +410,8 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
 
   // Track container dimensions for responsive layout and capacity calculation
   const gridContainerRef = useRef<HTMLDivElement>(null);
+  const preMaximizeLayoutRef = useRef(preMaximizeLayout);
+  preMaximizeLayoutRef.current = preMaximizeLayout;
   const [gridWidth, setGridWidth] = useState<number | null>(null);
 
   // Get placeholder state from DnD context
@@ -641,22 +507,28 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   }, [setGridDimensions, gridTerminals.length, maximizedId, twoPaneSplitEnabled, showPlaceholder]);
 
   useEffect(() => {
-    if (preMaximizeLayout && preMaximizeLayout.worktreeId !== activeWorktreeId) {
+    if (
+      preMaximizeLayoutRef.current &&
+      preMaximizeLayoutRef.current.worktreeId !== activeWorktreeId
+    ) {
       clearPreMaximizeLayout();
     }
-  }, [activeWorktreeId, preMaximizeLayout, clearPreMaximizeLayout]);
+  }, [activeWorktreeId, clearPreMaximizeLayout]);
 
   useEffect(() => {
-    if (preMaximizeLayout && preMaximizeLayout.gridItemCount !== gridItemCount) {
+    if (
+      preMaximizeLayoutRef.current &&
+      preMaximizeLayoutRef.current.gridItemCount !== gridItemCount
+    ) {
       clearPreMaximizeLayout();
     }
-  }, [gridItemCount, preMaximizeLayout, clearPreMaximizeLayout]);
+  }, [gridItemCount, clearPreMaximizeLayout]);
 
   useEffect(() => {
-    if (preMaximizeLayout) {
+    if (preMaximizeLayoutRef.current) {
       clearPreMaximizeLayout();
     }
-  }, [layoutConfig, preMaximizeLayout, clearPreMaximizeLayout]);
+  }, [layoutConfig, clearPreMaximizeLayout]);
 
   const gridCols = useMemo(() => {
     if (
@@ -757,7 +629,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
           | "fixed-columns"
           | "fixed-rows";
         void actionService.dispatch(
-          "terminal.gridLayout.setStrategy",
+          "panel.gridLayout.setStrategy",
           { strategy: nextStrategy },
           { source: "context-menu" }
         );
@@ -807,7 +679,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
         requestAnimationFrame(processNext);
       };
       processNext();
-    }, 150);
+    }, GRID_FIT_DELAY_MS);
 
     return () => {
       cancelled = true;
@@ -924,7 +796,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
             ref={gridRegionRef}
             role="region"
             tabIndex={-1}
-            aria-label="Terminal grid"
+            aria-label="Panel grid region"
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
@@ -957,7 +829,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
             ref={gridRegionRef}
             role="region"
             tabIndex={-1}
-            aria-label="Terminal grid"
+            aria-label="Panel grid region"
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
@@ -991,7 +863,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
         ref={gridRegionRef}
         role="region"
         tabIndex={-1}
-        aria-label="Terminal grid"
+        aria-label="Panel grid"
         data-macro-focus={isMacroFocused ? "true" : undefined}
         onKeyDown={handleGridRegionKeyDown}
         className={cn(
@@ -1030,7 +902,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
       ref={gridRegionRef}
       role="region"
       tabIndex={-1}
-      aria-label="Terminal grid"
+      aria-label="Panel grid"
       data-macro-focus={isMacroFocused ? "true" : undefined}
       onKeyDown={handleGridRegionKeyDown}
       className={cn(
@@ -1052,15 +924,17 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
             )}
             style={{
               display: "grid",
-              gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+              gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
               gridAutoRows: `minmax(${MIN_TERMINAL_HEIGHT_PX}px, 1fr)`,
               gap: "4px",
               backgroundColor: "var(--color-grid-bg)",
-              transition: isProjectSwitching ? "none" : "grid-template-columns 200ms ease-out",
+              transition: isProjectSwitching
+                ? "none"
+                : `grid-template-columns ${GRID_TRANSITION_DURATION_MS}ms ease-out`,
               overflowY: "auto",
             }}
             role="grid"
-            id="terminal-grid"
+            id="panel-grid"
             aria-label="Panel grid"
             data-grid-container="true"
           >
@@ -1073,7 +947,6 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
                   showProjectPulse={showProjectPulse}
                   projectIconSvg={projectIconSvg}
                   defaultCwd={defaultCwd}
-                  agentAvailability={agentAvailability}
                 />
               </div>
             ) : (

@@ -568,9 +568,7 @@ describe("projectSettingsDirty", () => {
         "",
         undefined,
         "",
-        "",
         undefined,
-        {},
         undefined
       );
       const snapshotB = createProjectSettingsSnapshot(
@@ -588,9 +586,7 @@ describe("projectSettingsDirty", () => {
         "",
         undefined,
         "",
-        "",
         undefined,
-        {},
         { completedEnabled: true }
       );
 
@@ -613,9 +609,7 @@ describe("projectSettingsDirty", () => {
         "",
         undefined,
         "",
-        "",
         undefined,
-        {},
         undefined
       );
       const snapshotB = createProjectSettingsSnapshot(
@@ -633,9 +627,7 @@ describe("projectSettingsDirty", () => {
         "",
         undefined,
         "",
-        "",
         undefined,
-        {},
         {}
       );
 

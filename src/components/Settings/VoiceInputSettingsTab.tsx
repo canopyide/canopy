@@ -104,13 +104,24 @@ export function VoiceInputSettingsTab() {
   const dictionaryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) setLoadState("error");
+    }, 10_000);
+
     window.electron?.voiceInput
       ?.getSettings()
       .then((s) => {
+        settled = true;
+        clearTimeout(timer);
         setSettings(s);
         setLoadState("ready");
       })
-      .catch(() => setLoadState("error"));
+      .catch(() => {
+        settled = true;
+        clearTimeout(timer);
+        setLoadState("error");
+      });
 
     window.electron?.voiceInput
       ?.checkMicPermission()
@@ -118,6 +129,8 @@ export function VoiceInputSettingsTab() {
         if (status) setMicPermission(status);
       })
       .catch(() => {});
+
+    return () => clearTimeout(timer);
   }, []);
 
   const update = (patch: Partial<VoiceInputSettings>) => {
@@ -703,7 +716,7 @@ function DictionarySection({
       <label className="text-sm text-canopy-text/70 flex items-center gap-2">
         <BookText className="w-3.5 h-3.5 text-canopy-text/50" aria-hidden="true" />
         Custom Dictionary
-        <span className="text-xs text-canopy-text/30">
+        <span className="text-xs tabular-nums text-canopy-text/30">
           {words.length > 0 && `${words.length}/100`}
         </span>
       </label>

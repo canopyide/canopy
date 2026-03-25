@@ -27,8 +27,7 @@ export interface UseWorktreeActionsResult {
   handleRunRecipe: (recipeId: string) => Promise<void>;
 
   handleCloseCompleted: () => void;
-  handleCloseFailed: () => void;
-  handleMinimizeAll: () => void;
+  handleDockAll: () => void;
   handleMaximizeAll: () => void;
   handleCloseAll: () => void;
   handleEndAll: () => void;
@@ -102,15 +101,7 @@ export function useWorktreeActions({
     );
   }, [worktree.id]);
 
-  const handleCloseFailed = useCallback(() => {
-    void actionService.dispatch(
-      "worktree.sessions.closeFailed",
-      { worktreeId: worktree.id },
-      { source: "user" }
-    );
-  }, [worktree.id]);
-
-  const handleMinimizeAll = useCallback(() => {
+  const handleDockAll = useCallback(() => {
     void actionService.dispatch(
       "worktree.sessions.minimizeAll",
       { worktreeId: worktree.id },
@@ -205,8 +196,7 @@ export function useWorktreeActions({
     handleCopyTree,
     handleRunRecipe,
     handleCloseCompleted,
-    handleCloseFailed,
-    handleMinimizeAll,
+    handleDockAll,
     handleMaximizeAll,
     handleCloseAll,
     handleEndAll,

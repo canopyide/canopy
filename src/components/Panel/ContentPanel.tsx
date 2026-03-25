@@ -8,6 +8,8 @@ import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import type { PanelKind, TerminalType, AgentState } from "@/types";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 import type { TabInfo } from "./TabButton";
+import { useDockBlockedState } from "@/components/Layout/useDockBlockedState";
+import { usePreferencesStore } from "@/store";
 
 /**
  * Base props for all panel types.
@@ -62,6 +64,10 @@ export interface ContentPanelProps extends BasePanelProps {
   onRestart?: () => void;
   isPinged?: boolean;
   wasJustSelected?: boolean;
+  // Group-level ambient state: highest-urgency agent state across all tabs in a tab group.
+  // When set, this overrides agentState for container border styling so hidden tabs
+  // surface their state on the group container without changing the header chip.
+  ambientAgentState?: AgentState;
 
   // Tab support
   tabs?: TabInfo[];
@@ -113,6 +119,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     onRestart,
     isPinged,
     wasJustSelected,
+    ambientAgentState,
     tabs,
     groupId,
     onTabClick,
@@ -135,7 +142,14 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   }, [titleEditing.isEditingTitle]);
 
   const showGridAttention = location === "grid" && !isMaximized && (gridPanelCount ?? 2) > 1;
+  const showGridAgentHighlights = usePreferencesStore((s) => s.showGridAgentHighlights);
 
+  // Determine effective agent state for container border styling.
+  // ambientAgentState takes priority so tab groups can surface highest-urgency
+  // state from hidden tabs without affecting the header chip (which uses agentState).
+  const effectiveAgentState = ambientAgentState ?? agentState;
+  const blockedState = useDockBlockedState(effectiveAgentState);
+  const isWorkingState = effectiveAgentState === "working";
   // Auto-construct TerminalHeaderContent for terminal/agent kinds if headerContent not provided
   const resolvedHeaderContent = useMemo(() => {
     if (headerContent !== undefined) return headerContent;
@@ -227,16 +241,23 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         ref={ref}
         data-panel-id={id}
         data-panel-location={location}
+        style={{ contain: "content" }}
         className={cn(
           "flex flex-col h-full overflow-hidden group",
           location === "grid" && !isMaximized && "bg-surface",
           (location === "dock" || isMaximized) && "bg-canopy-bg",
-          location === "grid" && !isMaximized && "rounded border shadow-md",
+          location === "grid" &&
+            !isMaximized &&
+            "rounded border shadow-[var(--theme-shadow-ambient)] transition-colors duration-300",
           location === "grid" &&
             !isMaximized &&
             (isFocused && showGridAttention
               ? "terminal-selected"
-              : "border-overlay hover:border-tint/[0.08]"),
+              : showGridAttention && showGridAgentHighlights && blockedState === "waiting"
+                ? "panel-state-waiting"
+                : showGridAttention && showGridAgentHighlights && isWorkingState
+                  ? "panel-state-working"
+                  : "border-overlay hover:border-tint/[0.08]"),
           location === "grid" && isMaximized && "border-0 rounded-none z-[var(--z-maximized)]",
           isTrashing && "terminal-trashing",
           className

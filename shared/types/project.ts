@@ -1,4 +1,4 @@
-import type { AgentId } from "./agent.js";
+import type { AgentId, AgentState } from "./agent.js";
 import type { BrowserHistory } from "./browser.js";
 import type {
   TerminalKind,
@@ -99,6 +99,12 @@ export interface TerminalSnapshot {
   agentSessionId?: string;
   /** Process-level flags captured at launch time, persisted for session resume */
   agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
+  /** Last known agent state for crash recovery display */
+  agentState?: AgentState;
+  /** Timestamp of last agent state change */
+  lastStateChange?: number;
   // Note: Tab membership is now stored in ProjectState.tabGroups, not on terminals
 }
 
@@ -230,14 +236,6 @@ export interface CopyTreeSettings {
   alwaysExclude?: string[];
 }
 
-/** Per-project MCP server configuration (stdio transport) */
-export interface ProjectMcpServerConfig {
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-  cwd?: string;
-}
-
 /** Per-project terminal configuration overrides */
 export interface ProjectTerminalSettings {
   /** Override shell executable path (machine-local, not stored in .canopy/settings.json) */
@@ -302,14 +300,11 @@ export interface ProjectSettings {
   branchPrefixMode?: "none" | "username" | "custom";
   /** Custom branch prefix string when branchPrefixMode is "custom" (e.g., "feature/") */
   branchPrefixCustom?: string;
-  /** Project-specific instructions prepended to every new agent session prompt */
-  agentInstructions?: string;
+
   /** Per-project worktree path pattern override (uses global default when unset) */
   worktreePathPattern?: string;
   /** Per-project terminal configuration overrides */
   terminalSettings?: ProjectTerminalSettings;
-  /** Per-project MCP server definitions (started on project open, stopped on close) */
-  mcpServers?: Record<string, ProjectMcpServerConfig>;
   /** Per-project notification overrides (machine-local, never written to .canopy/settings.json) */
   notificationOverrides?: Partial<NotificationSettings>;
 }

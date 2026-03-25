@@ -12,6 +12,7 @@ import { keybindingService } from "@/services/KeybindingService";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { usePerformanceModeStore } from "@/store/performanceModeStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
+import { useScreenReaderStore } from "@/store/screenReaderStore";
 import { useScrollbackStore } from "@/store/scrollbackStore";
 import { useTerminalFontStore } from "@/store/terminalFontStore";
 import { useTerminalInputStore } from "@/store/terminalInputStore";
@@ -47,6 +48,36 @@ export function registerPreferencesActions(
     run: async (args: unknown) => {
       const { show } = args as { show: boolean };
       usePreferencesStore.getState().setShowDeveloperTools(show);
+    },
+  }));
+
+  actions.set("preferences.showGridAgentHighlights.set", () => ({
+    id: "preferences.showGridAgentHighlights.set",
+    title: "Set Grid Agent Highlights Visibility",
+    description: "Show or hide agent state borders on grid panels",
+    category: "preferences",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ show: z.boolean() }),
+    run: async (args: unknown) => {
+      const { show } = args as { show: boolean };
+      usePreferencesStore.getState().setShowGridAgentHighlights(show);
+    },
+  }));
+
+  actions.set("preferences.showDockAgentHighlights.set", () => ({
+    id: "preferences.showDockAgentHighlights.set",
+    title: "Set Dock Agent Highlights Visibility",
+    description: "Show or hide agent state borders on dock items",
+    category: "preferences",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ show: z.boolean() }),
+    run: async (args: unknown) => {
+      const { show } = args as { show: boolean };
+      usePreferencesStore.getState().setShowDockAgentHighlights(show);
     },
   }));
 
@@ -465,6 +496,30 @@ export function registerPreferencesActions(
         await terminalConfigClient.setHybridInputAutoFocus(enabled);
       } catch (error) {
         state.setHybridInputAutoFocus(previous);
+        throw error;
+      }
+    },
+  }));
+
+  actions.set("terminalConfig.setScreenReaderMode", () => ({
+    id: "terminalConfig.setScreenReaderMode",
+    title: "Set Screen Reader Mode",
+    description: "Set screen reader mode for terminals (auto, on, or off)",
+    category: "settings",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ mode: z.enum(["auto", "on", "off"]) }),
+    run: async (args: unknown) => {
+      const { mode } = args as { mode: "auto" | "on" | "off" };
+      const state = useScreenReaderStore.getState();
+      const previous = state.screenReaderMode;
+      state.setScreenReaderMode(mode);
+
+      try {
+        await terminalConfigClient.setScreenReaderMode(mode);
+      } catch (error) {
+        state.setScreenReaderMode(previous);
         throw error;
       }
     },

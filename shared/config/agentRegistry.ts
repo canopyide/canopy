@@ -68,7 +68,7 @@ export interface AgentDetectionConfig {
   promptScanLineCount?: number;
 
   /**
-   * Activity debounce period in ms (default: 1500).
+   * Activity debounce period in ms (default: 4000).
    * Time to wait after last activity before transitioning to idle.
    */
   debounceMs?: number;
@@ -110,6 +110,12 @@ export interface AgentDetectionConfig {
   };
 }
 
+export interface AgentModelConfig {
+  id: string;
+  name: string;
+  shortLabel: string;
+}
+
 export interface AgentConfig {
   id: string;
   name: string;
@@ -118,6 +124,8 @@ export interface AgentConfig {
   args?: string[];
   color: string;
   iconId: string;
+  /** Available models for per-panel model selection at launch time */
+  models?: AgentModelConfig[];
   supportsContextInjection: boolean;
   shortcut?: string | null;
   tooltip?: string;
@@ -197,7 +205,7 @@ export interface AgentConfig {
    */
   /**
    * Approximate context window size in tokens for this agent's model.
-   * Used by the attachment tray to warn when context usage is high.
+   * Used to warn when context usage is high.
    */
   contextWindow?: number;
   env?: Record<string, string>;
@@ -267,6 +275,11 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         "Run 'claude auth login' to authenticate after installing",
       ],
     },
+    models: [
+      { id: "claude-sonnet-4-6", name: "Sonnet 4.6", shortLabel: "Sonnet" },
+      { id: "claude-opus-4-6", name: "Opus 4.6", shortLabel: "Opus" },
+      { id: "claude-haiku-4-5-20251001", name: "Haiku 4.5", shortLabel: "Haiku" },
+    ],
     contextWindow: 200_000,
     capabilities: {
       scrollback: 10000,
@@ -276,23 +289,27 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     detection: {
       primaryPatterns: [
-        "[✽✻✼✾⟡◇◆●○]\\s+[^()\\n]{2,80}\\s*\\(esc to interrupt",
+        "[·*✢✳✶✻✽●✼✾⟡◇◆○]\\s+[^()\\n]{2,80}\\s*\\(esc to interrupt",
         "esc to interrupt[^)\\n]*\\)?$",
         "\\(\\d+s\\s*[·•]\\s*esc to interrupt",
       ],
-      fallbackPatterns: [
-        "[✽✻✼✾⟡◇◆●○]\\s+(thinking|deliberating|working|reading|writing|searching|executing)",
-      ],
+      fallbackPatterns: ["[✢✳✶✻✽●]\\s+\\w+…"],
       bootCompletePatterns: ["claude\\s+code\\s+v?\\d"],
       promptPatterns: ["^\\s*>\\s*", "^\\s*❯\\s*"],
       promptHintPatterns: ["bypass permissions", "^\\s*>\\s+Try\\b"],
-      completionPatterns: ["\\$\\d+\\.\\d+\\s*·\\s*\\d+\\s*tokens", "Task\\s+completed"],
+      completionPatterns: [
+        "[✢✳✶✻✽●]\\s+\\w+\\s+for\\s+\\d",
+        "Total cost:\\s+\\$\\d",
+        "Total duration",
+        "\\$\\d+\\.\\d+\\s*·\\s*\\d+\\s*tokens",
+        "Task\\s+completed",
+      ],
       completionConfidence: 0.9,
       scanLineCount: 10,
       primaryConfidence: 0.95,
       fallbackConfidence: 0.75,
       promptConfidence: 0.85,
-      debounceMs: 2000,
+      debounceMs: 4000,
     },
     routing: {
       capabilities: [
@@ -349,32 +366,32 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     tooltip: "quick exploration",
     version: {
       args: ["--version"],
-      githubRepo: "google/generative-ai-cli",
-      npmPackage: "@google/generative-ai-cli",
-      releaseNotesUrl: "https://github.com/google/generative-ai-cli/releases",
+      githubRepo: "google-gemini/gemini-cli",
+      npmPackage: "@google/gemini-cli",
+      releaseNotesUrl: "https://github.com/google-gemini/gemini-cli/releases",
     },
     update: {
-      npm: "npm install -g @google/generative-ai-cli@latest",
+      npm: "npm install -g @google/gemini-cli@latest",
     },
     install: {
-      docsUrl: "https://ai.google.dev/gemini-api/docs/cli",
+      docsUrl: "https://github.com/google-gemini/gemini-cli#readme",
       byOs: {
         macos: [
           {
             label: "npm",
-            commands: ["npm install -g @google/generative-ai-cli"],
+            commands: ["npm install -g @google/gemini-cli"],
           },
         ],
         windows: [
           {
             label: "npm",
-            commands: ["npm install -g @google/generative-ai-cli"],
+            commands: ["npm install -g @google/gemini-cli"],
           },
         ],
         linux: [
           {
             label: "npm",
-            commands: ["npm install -g @google/generative-ai-cli"],
+            commands: ["npm install -g @google/gemini-cli"],
           },
         ],
       },
@@ -384,6 +401,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         "Run 'gemini auth login' after installing to authenticate",
       ],
     },
+    models: [
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", shortLabel: "2.5 Pro" },
+      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", shortLabel: "2.5 Flash" },
+    ],
     contextWindow: 1_000_000,
     capabilities: {
       scrollback: 10000,
@@ -410,7 +431,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       primaryConfidence: 0.95,
       fallbackConfidence: 0.7,
       promptConfidence: 0.85,
-      debounceMs: 2000,
+      debounceMs: 4000,
       titleStatePatterns: {
         working: ["\u2726"],
         waiting: ["\u25C7", "\u270B"],
@@ -455,7 +476,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         label: "Gemini CLI",
         versionArgs: ["--version"],
         severity: "fatal",
-        installUrl: "https://ai.google.dev/gemini-api/docs/cli",
+        installUrl: "https://github.com/google-gemini/gemini-cli#readme",
       },
     ],
   },
@@ -506,6 +527,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         "Run 'codex auth login' after installing to authenticate",
       ],
     },
+    models: [
+      { id: "gpt-5.4", name: "GPT-5.4", shortLabel: "GPT-5.4" },
+      { id: "o3", name: "o3", shortLabel: "o3" },
+    ],
     contextWindow: 128_000,
     capabilities: {
       scrollback: 10000,
@@ -537,7 +562,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       primaryConfidence: 0.95,
       fallbackConfidence: 0.75,
       promptConfidence: 0.85,
-      debounceMs: 2000,
+      debounceMs: 4000,
     },
     routing: {
       capabilities: [
@@ -671,11 +696,18 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     detection: {
       primaryPatterns: [
-        "[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+[^\\n]{2,80}\\s*\\(.*esc",
-        "esc\\s*(again\\s+)?interrupt",
-        "Press again to interrupt",
+        "[⣾⣽⣻⢿⡿⣟⣯⣷]\\s+[^\\n]{2,80}\\s*\\(.*esc",
+        "[·•●]\\s+(Generating|Building tool call|Waiting for tool response)",
+        "press\\s+esc\\s+(again\\s+)?to\\s+(interrupt|exit\\s+cancel)",
+        "esc\\s*(again\\s+)?to\\s+(interrupt|cancel)",
       ],
-      fallbackPatterns: ["[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+\\w", "working[…\\.]+", "generating"],
+      fallbackPatterns: [
+        "[⣾⣽⣻⢿⡿⣟⣯⣷]\\s+\\w",
+        "working[…\\.]+",
+        "generating",
+        "waiting for tool response",
+        "building tool call",
+      ],
       bootCompletePatterns: ["Ask anything", "Build\\s+OpenCode"],
       promptPatterns: ["^\\s*[›❯>]\\s*", "Ask anything"],
       promptHintPatterns: ["Ask anything"],
@@ -685,7 +717,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       primaryConfidence: 0.95,
       fallbackConfidence: 0.7,
       promptConfidence: 0.85,
-      debounceMs: 2000,
+      debounceMs: 4000,
     },
     routing: {
       capabilities: [
@@ -774,20 +806,22 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     detection: {
       primaryPatterns: [
-        "\u2B22\\s+(Thinking|Reading|Planning|Searching|Running|Executing|Grepping|Editing|Listing)",
+        "\u2B22\\s*(Thinking|Reading|Planning|Searching|Running|Executing|Grepping|Editing|Listing)",
         "esc to stop",
       ],
-      fallbackPatterns: ["\u2B22\\s+\\w"],
+      fallbackPatterns: ["\u2B22\\s*\\w"],
       bootCompletePatterns: ["Cursor Agent", "Welcome to Cursor Agent"],
       promptPatterns: ["^\u2192\\s*$", "^\u2192\\s"],
       promptHintPatterns: ["\u2192\\s+Add a follow-up"],
-      completionPatterns: ["\u2B22\\s+(Thought|Read|Planned)\\s"],
+      completionPatterns: [
+        "\u2B22\\s*(Thought|Read|Planned|Searched|Ran|Edited|Grepped|Listed)(?=[^a-zA-Z]|$)",
+      ],
       completionConfidence: 0.9,
       scanLineCount: 10,
       primaryConfidence: 0.95,
       fallbackConfidence: 0.7,
       promptConfidence: 0.85,
-      debounceMs: 2000,
+      debounceMs: 4000,
     },
     routing: {
       capabilities: ["javascript", "typescript", "python", "react", "node", "general-purpose"],
@@ -869,4 +903,20 @@ export function isBuiltInAgent(agentId: string): boolean {
 
 export function isUserDefinedAgent(agentId: string): boolean {
   return agentId in userRegistry && !(agentId in AGENT_REGISTRY);
+}
+
+export function getAgentModelConfig(
+  agentId: string,
+  modelId: string
+): AgentModelConfig | undefined {
+  const config = getEffectiveAgentConfig(agentId);
+  return config?.models?.find((m) => m.id === modelId);
+}
+
+export function getAgentDisplayTitle(agentId: string, modelId?: string): string {
+  const config = getEffectiveAgentConfig(agentId);
+  const baseName = config?.name ?? agentId;
+  if (!modelId) return baseName;
+  const model = config?.models?.find((m) => m.id === modelId);
+  return model ? `${baseName} (${model.shortLabel})` : baseName;
 }

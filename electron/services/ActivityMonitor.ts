@@ -12,12 +12,15 @@ import { WorkingSignalDebouncer } from "./pty/WorkingSignalDebouncer.js";
 import { LineRewriteDetector, isStatusLineRewrite } from "./pty/LineRewriteDetector.js";
 import {
   detectPrompt,
+  detectPromptLexeme,
   DEFAULT_PROMPT_PATTERNS,
   type PromptDetectorConfig,
 } from "./pty/PromptDetector.js";
 import { detectCompletion } from "./pty/CompletionDetector.js";
 import { CompletionTimer } from "./pty/CompletionTimer.js";
 import { BootDetector } from "./pty/BootDetector.js";
+import { classifyWaitingReason } from "./pty/WaitingReasonClassifier.js";
+import type { WaitingReason } from "../../shared/types/agent.js";
 
 export interface ProcessStateValidator {
   hasActiveChildren(): boolean;
@@ -68,23 +71,28 @@ export interface ActivityMonitorOptions {
   pollingIntervalMs?: number;
   workingRecoveryDelayMs?: number;
   pollingMaxBootMs?: number;
+  maxWorkingSilenceMs?: number;
 }
 
 export interface ActivityStateMetadata {
-  trigger: "input" | "output" | "pattern";
+  trigger: "input" | "output" | "pattern" | "timeout";
   patternConfidence?: number;
+  waitingReason?: WaitingReason;
 }
 
 export class ActivityMonitor {
   private state: "busy" | "idle" = "idle";
+  private isDisposed = false;
   private debounceTimer: NodeJS.Timeout | null = null;
   private readonly IDLE_DEBOUNCE_MS: number;
-  private readonly PROMPT_DEBOUNCE_MS = 200;
+  private readonly PROMPT_DEBOUNCE_MS = 500;
   private readonly PROMPT_QUIET_MS = 200;
   private readonly PROMPT_HISTORY_FALLBACK_MS = 3000;
-  private readonly WORKING_HOLD_MS = 200;
+  private readonly WORKING_HOLD_MS = 1500;
   private readonly SPINNER_ACTIVE_MS = 1500;
   private readonly COMPLETION_HOLD_MS = 500;
+  private readonly WORKING_INDICATOR_TTL_MS = 5000;
+  private readonly MAX_WORKING_SILENCE_MS: number;
   private workingHoldUntil = 0;
 
   // Subsystem instances
@@ -104,6 +112,7 @@ export class ActivityMonitor {
   private lastActivityTimestamp = Date.now();
   private lastDataTimestamp = Date.now();
   private lastOutputActivityAt = 0;
+  private lastWorkingIndicatorTimestamp = 0;
   private promptStableSince = 0;
   private readonly SLEEP_DETECTION_THRESHOLD_MS = 5000;
   private pendingStateRevalidation = false;
@@ -140,8 +149,9 @@ export class ActivityMonitor {
     ) => void,
     options?: ActivityMonitorOptions
   ) {
-    this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? 2500;
+    this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? 4000;
     this.POLLING_MAX_BOOT_MS = options?.pollingMaxBootMs ?? 15000;
+    this.MAX_WORKING_SILENCE_MS = options?.maxWorkingSilenceMs ?? 180000;
 
     this.processStateValidator = options?.processStateValidator;
 
@@ -151,7 +161,7 @@ export class ActivityMonitor {
       inputConfirmMs: options?.inputConfirmMs,
     });
 
-    this.patternBuf = new PatternBuffer(options?.patternBufferSize ?? 2000);
+    this.patternBuf = new PatternBuffer(options?.patternBufferSize ?? 10000);
 
     this.outputVolumeDetector = new OutputVolumeDetector(options?.outputActivityDetection);
 
@@ -199,6 +209,7 @@ export class ActivityMonitor {
   }
 
   onInput(data: string): void {
+    if (this.isDisposed) return;
     const now = Date.now();
     const result = this.inputTracker.process(data, now);
 
@@ -223,6 +234,7 @@ export class ActivityMonitor {
   }
 
   onData(data?: string): void {
+    if (this.isDisposed) return;
     const now = Date.now();
     const timeSinceLastData = now - this.lastDataTimestamp;
 
@@ -244,18 +256,11 @@ export class ActivityMonitor {
       this.revalidateStateAfterWake();
     }
 
-    if (data && !isLikelyUserEcho && !isCosmeticRedraw) {
-      const spinnerTriggered = this.lineRewriteDetector.update(data, now);
-      if (spinnerTriggered) {
-        if (
-          !this.isResizeSuppressed(now) &&
-          (this.state === "busy" ||
-            this.inputTracker.pendingInputUntil > 0 ||
-            !this.inputTracker.isRecentUserInput(now))
-        ) {
-          this.becomeBusy({ trigger: "output" }, now);
-        }
-      }
+    if (data && !isLikelyUserEcho && isCosmeticRedraw) {
+      // Spinner/status-line rewrite — latch lastSpinnerDetectedAt for polling's isSpinnerActive()
+      // check, but do not call becomeBusy() here. Entry into working state requires pattern
+      // detection or sustained output, not cosmetic line rewrites alone.
+      this.lineRewriteDetector.update(data, now);
     }
 
     // For polling-enabled terminals: check raw stream for patterns FIRST
@@ -323,6 +328,10 @@ export class ActivityMonitor {
       const patternResult = this.patternDetector.detect(this.patternBuf.getText());
       this.lastPatternResult = patternResult;
 
+      if (patternResult.isWorking) {
+        this.lastWorkingIndicatorTimestamp = now;
+      }
+
       if (patternResult.isWorking && !this.isResizeSuppressed(now)) {
         this.becomeBusyFromPattern(patternResult.confidence, now);
       }
@@ -358,6 +367,8 @@ export class ActivityMonitor {
   }
 
   dispose(): void {
+    if (this.isDisposed) return;
+    this.isDisposed = true;
     this.stopPolling();
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
@@ -376,6 +387,7 @@ export class ActivityMonitor {
     this.workingHoldUntil = 0;
     this.lastDataTimestamp = 0;
     this.lastOutputActivityAt = 0;
+    this.lastWorkingIndicatorTimestamp = 0;
     this.promptStableSince = 0;
   }
 
@@ -384,6 +396,7 @@ export class ActivityMonitor {
   }
 
   notifySubmission(): void {
+    if (this.isDisposed) return;
     this.becomeBusy({ trigger: "input" });
   }
 
@@ -401,6 +414,7 @@ export class ActivityMonitor {
   }
 
   startPolling(): void {
+    if (this.isDisposed) return;
     if (!this.getVisibleLines || this.pollingInterval) return;
 
     this.bootDetector.pollingStartTime = Date.now();
@@ -422,6 +436,7 @@ export class ActivityMonitor {
   }
 
   private runPollingCycle(): void {
+    if (this.isDisposed) return;
     if (!this.getVisibleLines) return;
 
     const now = Date.now();
@@ -480,6 +495,14 @@ export class ActivityMonitor {
       } else {
         return; // Still booting, stay busy
       }
+    }
+
+    // Safety timeout: if no PTY output for MAX_WORKING_SILENCE_MS, force idle
+    if (this.isWorkingSilenceTimeout(now)) {
+      this.state = "idle";
+      this.patternBuf.clear();
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
+      return;
     }
 
     const hasRecentOutputActivity =
@@ -595,6 +618,68 @@ export class ActivityMonitor {
       }
     }
 
+    // Prompt fast-path: when the prompt is stable and no working signals are active,
+    // exit busy immediately rather than waiting the full IDLE_DEBOUNCE_MS. This keeps
+    // the idle transition snappy after the prompt appears, even when IDLE_DEBOUNCE_MS
+    // has been raised to cover LLM API call silence gaps.
+    // Require at least 3 seconds of quiet to avoid premature idle during inter-tool-call
+    // gaps (Claude bursts with 1-3s pauses, Codex has 3-5s gaps). This prevents the
+    // working↔waiting jitter that occurs when brief output pauses trigger idle transitions
+    // that immediately flip back to working (Issue #3606).
+    const PROMPT_FAST_PATH_MIN_QUIET_MS = 3000;
+    if (
+      this.state === "busy" &&
+      !this.completionTimer.emitted &&
+      shouldPreferPrompt &&
+      quietForMs >= PROMPT_FAST_PATH_MIN_QUIET_MS &&
+      now >= this.workingHoldUntil &&
+      !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
+    ) {
+      this.state = "idle";
+      this.patternBuf.clear();
+      const waitingReason = classifyWaitingReason(lines, true);
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle", {
+        trigger: "pattern",
+        waitingReason,
+      });
+      return;
+    }
+
+    // Prompt lexeme fallback: when output has stalled and the last visible line
+    // contains a prompt lexeme (?, [y/N], keyword+colon, "press enter"), detect
+    // as a prompt with medium confidence. This catches interactive prompts that
+    // don't match any configured promptPattern or promptHintPattern.
+    const LEXEME_STALL_MIN_QUIET_MS = 3000;
+    if (
+      this.state === "busy" &&
+      !this.completionTimer.emitted &&
+      !isPrompt &&
+      !effectiveWorkingPattern &&
+      !isSpinnerActive &&
+      !hasRecentOutputActivity &&
+      !hasHighOutputActivity &&
+      quietForMs >= LEXEME_STALL_MIN_QUIET_MS &&
+      now >= this.workingHoldUntil &&
+      !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
+    ) {
+      const candidateLine =
+        cursorLine && stripAnsi(cursorLine).trim().length > 0
+          ? cursorLine
+          : lines.length > 0
+            ? lines[lines.length - 1]
+            : "";
+      const lexemeResult = detectPromptLexeme(candidateLine);
+      if (lexemeResult.isPrompt) {
+        this.state = "idle";
+        this.patternBuf.clear();
+        this.onStateChange(this.terminalId, this.spawnedAt, "idle", {
+          trigger: "pattern",
+          patternConfidence: 0.7,
+        });
+        return;
+      }
+    }
+
     if (
       this.state === "busy" &&
       !this.completionTimer.emitted &&
@@ -605,7 +690,11 @@ export class ActivityMonitor {
     ) {
       this.state = "idle";
       this.patternBuf.clear();
-      this.onStateChange(this.terminalId, this.spawnedAt, "idle");
+      const waitingReason = classifyWaitingReason(lines, isPrompt);
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle", {
+        trigger: "timeout",
+        waitingReason,
+      });
     }
   }
 
@@ -618,6 +707,7 @@ export class ActivityMonitor {
   }
 
   setPollingInterval(intervalMs: number): void {
+    if (this.isDisposed) return;
     if (this.POLLING_INTERVAL_MS === intervalMs) {
       return;
     }
@@ -637,6 +727,7 @@ export class ActivityMonitor {
 
   private transitionToCompleted(confidence: number): void {
     this.completionTimer.emit(() => {
+      if (this.isDisposed) return;
       // Guard: ignore stale timer if a new busy cycle started or completion was reset
       if (!this.completionTimer.emitted || this.state !== "busy") {
         return;
@@ -666,6 +757,7 @@ export class ActivityMonitor {
       return;
     }
     if (!actuallyBusy && this.state === "busy") {
+      let waitingReason: WaitingReason | undefined;
       if (this.getVisibleLines) {
         const lines = this.getVisibleLines(
           Math.max(this.promptDetectorConfig.promptScanLineCount, 15)
@@ -677,6 +769,7 @@ export class ActivityMonitor {
         if (!promptResult.isPrompt) {
           return;
         }
+        waitingReason = classifyWaitingReason(lines, promptResult.isPrompt);
       }
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
@@ -684,15 +777,20 @@ export class ActivityMonitor {
       }
       this.state = "idle";
       this.patternBuf.clear();
-      this.onStateChange(this.terminalId, this.spawnedAt, "idle");
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle", {
+        trigger: "timeout",
+        waitingReason,
+      });
     }
   }
 
   private becomeBusy(metadata: ActivityStateMetadata, now: number = Date.now()): void {
+    if (this.isDisposed) return;
     this.inputTracker.clearPendingInput();
     if (metadata.trigger === "input") {
       this.lastActivityTimestamp = now;
     }
+    this.lastDataTimestamp = now;
     this.recordWorkingSignal(now);
     this.resetDebounceTimer();
 
@@ -724,23 +822,58 @@ export class ActivityMonitor {
   }
 
   private resetDebounceTimer(): void {
+    if (this.isDisposed) return;
+
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
 
     this.debounceTimer = setTimeout(() => {
+      if (this.isDisposed) {
+        this.debounceTimer = null;
+        return;
+      }
+
       if (this.getVisibleLines) {
         this.debounceTimer = null;
         return;
       }
 
+      // Safety timeout: if no PTY output for MAX_WORKING_SILENCE_MS, force idle
+      if (this.isWorkingSilenceTimeout(Date.now())) {
+        this.state = "idle";
+        this.patternBuf.clear();
+        this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
+        this.debounceTimer = null;
+        return;
+      }
+
+      // Check process liveness first — if the terminal is dead, don't reschedule
+      // based on stale pattern state
+      const actuallyBusy = this.hasActiveChildrenSafe();
+      if (actuallyBusy === false) {
+        this.state = "idle";
+        this.patternBuf.clear();
+        this.onStateChange(this.terminalId, this.spawnedAt, "idle");
+        this.debounceTimer = null;
+        return;
+      }
+
+      if (actuallyBusy) {
+        this.resetDebounceTimer();
+        return;
+      }
+
+      // actuallyBusy === null (no validator) — fall through to pattern/TTL checks
       if (this.lastPatternResult?.isWorking) {
         this.resetDebounceTimer();
         return;
       }
 
-      const actuallyBusy = this.hasActiveChildrenSafe();
-      if (actuallyBusy) {
+      if (
+        this.lastWorkingIndicatorTimestamp > 0 &&
+        Date.now() - this.lastWorkingIndicatorTimestamp < this.WORKING_INDICATOR_TTL_MS
+      ) {
         this.resetDebounceTimer();
         return;
       }
@@ -755,6 +888,14 @@ export class ActivityMonitor {
       this.onStateChange(this.terminalId, this.spawnedAt, "idle");
       this.debounceTimer = null;
     }, this.IDLE_DEBOUNCE_MS);
+  }
+
+  private isWorkingSilenceTimeout(now: number): boolean {
+    if (this.state !== "busy") return false;
+    if (now - this.lastDataTimestamp < this.MAX_WORKING_SILENCE_MS) return false;
+    // Non-polling terminals have no boot phase; polling terminals must exit boot first
+    if (this.getVisibleLines && !this.bootDetector.hasExitedBootState) return false;
+    return true;
   }
 
   private hasActiveChildrenSafe(): boolean | null {

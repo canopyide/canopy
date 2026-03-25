@@ -20,6 +20,9 @@ const {
   getMock,
   panelKindUsesTerminalUiMock,
   isTerminalWarmInProjectSwitchCacheMock,
+  forceReinitializeWorktreeDataStoreMock,
+  setWorktreeLoadErrorMock,
+  worktreeDataStoreState,
   terminalState,
   worktreeSelectionState,
   storeMocks,
@@ -33,6 +36,12 @@ const {
   getMock: vi.fn(),
   panelKindUsesTerminalUiMock: vi.fn(),
   isTerminalWarmInProjectSwitchCacheMock: vi.fn(),
+  forceReinitializeWorktreeDataStoreMock: vi.fn(),
+  setWorktreeLoadErrorMock: vi.fn(),
+  worktreeDataStoreState: {
+    projectId: null as string | null,
+    isInitialized: false,
+  },
   terminalState: {
     terminals: [] as Array<{
       id: string;
@@ -48,6 +57,7 @@ const {
     addTerminal: vi.fn(),
     setReconnectError: vi.fn(),
     hydrateTabGroups: vi.fn(),
+    restoreTerminalOrder: vi.fn(),
     hydrateMru: vi.fn(),
     setActiveWorktree: vi.fn(),
     loadRecipes: vi.fn(),
@@ -81,7 +91,32 @@ vi.mock("@/store", () => {
     };
     return sel(state);
   }) as ((sel: (s: unknown) => unknown) => unknown) & { getState: () => unknown };
-  selector.getState = () => terminalState;
+  selector.getState = () => ({
+    ...terminalState,
+    addTerminal: storeMocks.addTerminal,
+    setReconnectError: storeMocks.setReconnectError,
+    hydrateTabGroups: storeMocks.hydrateTabGroups,
+    restoreTerminalOrder: storeMocks.restoreTerminalOrder,
+    hydrateMru: storeMocks.hydrateMru,
+  });
+
+  const diagnosticsSelector = ((sel: (s: unknown) => unknown) =>
+    sel({ openDock: storeMocks.openDock })) as ((sel: (s: unknown) => unknown) => unknown) & {
+    getState: () => unknown;
+  };
+  diagnosticsSelector.getState = () => ({ openDock: storeMocks.openDock });
+
+  const focusSelector = ((sel: (s: unknown) => unknown) =>
+    sel({ setFocusMode: storeMocks.setFocusMode })) as ((
+    sel: (s: unknown) => unknown
+  ) => unknown) & { getState: () => unknown };
+  focusSelector.getState = () => ({ setFocusMode: storeMocks.setFocusMode });
+
+  const actionMruSelector = ((sel: (s: unknown) => unknown) =>
+    sel({ hydrateActionMru: storeMocks.hydrateActionMru })) as ((
+    sel: (s: unknown) => unknown
+  ) => unknown) & { getState: () => unknown };
+  actionMruSelector.getState = () => ({ hydrateActionMru: storeMocks.hydrateActionMru });
 
   return {
     useProjectStore: {
@@ -90,23 +125,30 @@ vi.mock("@/store", () => {
       }),
     },
     useTerminalStore: selector,
-    useDiagnosticsStore: (sel: (s: unknown) => unknown) => sel({ openDock: storeMocks.openDock }),
-    useFocusStore: (sel: (s: unknown) => unknown) => sel({ setFocusMode: storeMocks.setFocusMode }),
-    useActionMruStore: (sel: (s: unknown) => unknown) =>
-      sel({ hydrateActionMru: storeMocks.hydrateActionMru }),
+    useDiagnosticsStore: diagnosticsSelector,
+    useFocusStore: focusSelector,
+    useActionMruStore: actionMruSelector,
   };
 });
 
 vi.mock("@/store/worktreeStore", () => {
   const selector = (sel: (s: unknown) => unknown) =>
     sel({ setActiveWorktree: storeMocks.setActiveWorktree });
-  selector.getState = () => worktreeSelectionState;
+  selector.getState = () => ({
+    ...worktreeSelectionState,
+    setActiveWorktree: storeMocks.setActiveWorktree,
+  });
   return { useWorktreeSelectionStore: selector };
 });
 
-vi.mock("@/store/recipeStore", () => ({
-  useRecipeStore: (sel: (s: unknown) => unknown) => sel({ loadRecipes: storeMocks.loadRecipes }),
-}));
+vi.mock("@/store/recipeStore", () => {
+  const selector = ((sel: (s: unknown) => unknown) =>
+    sel({ loadRecipes: storeMocks.loadRecipes })) as ((sel: (s: unknown) => unknown) => unknown) & {
+    getState: () => unknown;
+  };
+  selector.getState = () => ({ loadRecipes: storeMocks.loadRecipes });
+  return { useRecipeStore: selector };
+});
 
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
@@ -122,6 +164,12 @@ vi.mock("@shared/config/panelKindRegistry", () => ({
 vi.mock("@/services/projectSwitchRendererCache", () => ({
   finalizeProjectSwitchRendererCache: finalizeProjectSwitchRendererCacheMock,
   isTerminalWarmInProjectSwitchCache: isTerminalWarmInProjectSwitchCacheMock,
+}));
+
+vi.mock("@/store/worktreeDataStore", () => ({
+  forceReinitializeWorktreeDataStore: forceReinitializeWorktreeDataStoreMock,
+  setWorktreeLoadError: setWorktreeLoadErrorMock,
+  useWorktreeDataStore: { getState: () => worktreeDataStoreState },
 }));
 
 import { useProjectSwitchRehydration } from "../useProjectSwitchRehydration";
@@ -146,6 +194,8 @@ describe("useProjectSwitchRehydration", () => {
     terminalState.terminals = [];
     terminalState.activeDockTerminalId = null;
     worktreeSelectionState.activeWorktreeId = null;
+    worktreeDataStoreState.projectId = null;
+    worktreeDataStoreState.isInitialized = false;
   });
 
   it("ignores stale earlier hydration completions after a newer switch wins", async () => {
@@ -304,5 +354,64 @@ describe("useProjectSwitchRehydration", () => {
     expect(hydrateAppStateMock).not.toHaveBeenCalled();
     expect(finalizeProjectSwitchRendererCacheMock).not.toHaveBeenCalled();
     expect(finishProjectSwitchMock).not.toHaveBeenCalled();
+  });
+
+  it("calls forceReinitializeWorktreeDataStore when store projectId does not match", async () => {
+    hydrateAppStateMock.mockResolvedValue(undefined);
+    worktreeDataStoreState.projectId = "project-old";
+    worktreeDataStoreState.isInitialized = true;
+
+    renderHook(() => useProjectSwitchRehydration());
+
+    onSwitchHandler?.({
+      switchId: "switch-reinit",
+      project: { id: "project-new", name: "Project New" },
+    });
+
+    await vi.waitFor(() => {
+      expect(finishProjectSwitchMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(forceReinitializeWorktreeDataStoreMock).toHaveBeenCalledWith("project-new");
+    expect(setWorktreeLoadErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("skips reinit when store already initialized for the target project", async () => {
+    hydrateAppStateMock.mockResolvedValue(undefined);
+    worktreeDataStoreState.projectId = "project-same";
+    worktreeDataStoreState.isInitialized = true;
+
+    renderHook(() => useProjectSwitchRehydration());
+
+    onSwitchHandler?.({
+      switchId: "switch-same",
+      project: { id: "project-same", name: "Project Same" },
+    });
+
+    await vi.waitFor(() => {
+      expect(finishProjectSwitchMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(forceReinitializeWorktreeDataStoreMock).not.toHaveBeenCalled();
+    expect(setWorktreeLoadErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("calls setWorktreeLoadError when worktreeLoadError is present in switch payload", async () => {
+    hydrateAppStateMock.mockResolvedValue(undefined);
+
+    renderHook(() => useProjectSwitchRehydration());
+
+    onSwitchHandler?.({
+      switchId: "switch-error",
+      project: { id: "project-nogit", name: "Non-Git Dir" },
+      worktreeLoadError: "Not a git repository",
+    } as never);
+
+    await vi.waitFor(() => {
+      expect(finishProjectSwitchMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(setWorktreeLoadErrorMock).toHaveBeenCalledWith("project-nogit", "Not a git repository");
+    expect(forceReinitializeWorktreeDataStoreMock).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,7 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<string |
         return generateAgentCommand(agentConfig.command, entry, panel.agentId, {
           interactive: true,
           clipboardDirectory,
+          modelId: panel.agentModelId,
         });
       } catch (error) {
         console.warn(
@@ -85,6 +86,8 @@ export async function buildPanelDuplicateOptions(
     location: targetLocation,
     exitBehavior: sourcePanel.exitBehavior,
     isInputLocked: sourcePanel.isInputLocked,
+    agentModelId: sourcePanel.agentModelId,
+    agentLaunchFlags: sourcePanel.agentLaunchFlags,
     command,
     ...buildKindSpecificOptions(sourcePanel),
   };

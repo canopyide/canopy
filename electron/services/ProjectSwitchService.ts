@@ -4,6 +4,8 @@ import type { HandlerDependencies } from "../ipc/types.js";
 import { projectStore, DEFAULT_PROJECT_EMOJI } from "./ProjectStore.js";
 import { logBuffer } from "./LogBuffer.js";
 import { taskQueueService } from "./TaskQueueService.js";
+import { taskWorktreeService } from "./TaskWorktreeService.js";
+import { contextInjectionTracker } from "./ContextInjectionTracker.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { sendToRenderer } from "../ipc/utils.js";
 import { randomUUID } from "crypto";
@@ -80,7 +82,7 @@ export class ProjectSwitchService {
         throw new Error(`Project not found after update: ${projectId}`);
       }
 
-      await Promise.all([
+      const [, worktreeLoadError] = await Promise.all([
         cleanupPromise,
         withPerformanceSpan(
           PERF_MARKS.PROJECT_SWITCH_LOAD_PROJECT,
@@ -89,13 +91,11 @@ export class ProjectSwitchService {
         ),
       ]);
 
-      // Start MCP servers for the new project after cleanup is complete
-      await this.startProjectMcpServers(updatedProject);
-
       const switchId = randomUUID();
       sendToRenderer(this.deps.mainWindow, CHANNELS.PROJECT_ON_SWITCH, {
         project: updatedProject,
         switchId,
+        ...(worktreeLoadError ? { worktreeLoadError } : {}),
       });
 
       console.log("[ProjectSwitch] Project switch complete, switchId:", switchId);
@@ -168,7 +168,7 @@ export class ProjectSwitchService {
 
   private async cleanupSupportingServices(
     projectId: string,
-    previousProjectId: string | null
+    _previousProjectId: string | null
   ): Promise<void> {
     console.log("[ProjectSwitch] Cleaning up previous project state...");
 
@@ -180,9 +180,8 @@ export class ProjectSwitchService {
         ? safeCall(() => this.deps.eventBuffer!.onProjectSwitch())
         : Promise.resolve(),
       safeCall(() => taskQueueService.onProjectSwitch(projectId)),
-      previousProjectId && this.deps.projectMcpManager
-        ? safeCall(() => this.deps.projectMcpManager!.stopForProject(previousProjectId!))
-        : Promise.resolve(),
+      safeCall(() => taskWorktreeService.onProjectSwitch()),
+      safeCall(() => contextInjectionTracker.onProjectSwitch()),
     ]);
 
     cleanupResults.forEach((result, index) => {
@@ -192,24 +191,27 @@ export class ProjectSwitchService {
           "LogBuffer",
           "EventBuffer",
           "TaskQueueService",
-          "ProjectMcpManager",
+          "TaskWorktreeService",
+          "ContextInjectionTracker",
         ];
         console.error(`[ProjectSwitch] ${serviceNames[index]} cleanup failed:`, result.reason);
       }
     });
   }
 
-  private async loadNewProject(project: Project): Promise<void> {
+  private async loadNewProject(project: Project): Promise<string | undefined> {
     if (!this.deps.worktreeService) {
-      return;
+      return undefined;
     }
 
     try {
       console.log("[ProjectSwitch] Loading worktrees for new project...");
       await this.deps.worktreeService.loadProject(project.path);
       console.log("[ProjectSwitch] Worktrees loaded successfully");
+      return undefined;
     } catch (err) {
       console.error("Failed to load worktrees for project:", err);
+      return err instanceof Error ? err.message : "Failed to load worktrees";
     }
   }
 
@@ -246,22 +248,6 @@ export class ProjectSwitchService {
       }
     } catch (error) {
       console.error("[ProjectSwitch] Failed to apply in-repo identity:", error);
-    }
-  }
-
-  private async startProjectMcpServers(project: Project): Promise<void> {
-    if (!this.deps.projectMcpManager) return;
-    try {
-      const settings = await projectStore.getProjectSettings(project.id);
-      const servers = settings?.mcpServers;
-      if (servers && Object.keys(servers).length > 0) {
-        await this.deps.projectMcpManager.startForProject(project.id, project.path, servers);
-        console.log(
-          `[ProjectSwitch] Started ${Object.keys(servers).length} MCP server(s) for project ${project.name}`
-        );
-      }
-    } catch (error) {
-      console.error("[ProjectSwitch] Failed to start project MCP servers:", error);
     }
   }
 

@@ -8,11 +8,17 @@ import { useDiagnosticsStore } from "./diagnosticsStore";
 import { useErrorStore } from "./errorStore";
 import { useNotificationStore } from "./notificationStore";
 import { cleanupNotesStore } from "./notesStore";
+import { resetNoteSearchCache } from "@/hooks/useNoteSearch";
 import { useRecipeStore } from "./recipeStore";
 import { resetGitHubFilterStore } from "./githubFilterStore";
 import { useWorkflowStore } from "./workflowStore";
+import { useTerminalInputStore } from "./terminalInputStore";
+import { useVoiceRecordingStore } from "./voiceRecordingStore";
+import { useLayoutUndoStore } from "./layoutUndoStore";
+import { invalidateBrandingCache } from "../hooks/useProjectBranding";
 interface ProjectSwitchResetOptions {
   preserveTerminalIds?: Set<string>;
+  outgoingProjectId?: string | null;
 }
 
 export async function resetAllStoresForProjectSwitch(
@@ -37,6 +43,15 @@ export async function resetAllStoresForProjectSwitch(
   useErrorStore.getState().reset();
   useNotificationStore.getState().reset();
   cleanupNotesStore();
+  resetNoteSearchCache();
   resetGitHubFilterStore();
   useWorkflowStore.getState().reset();
+  useLayoutUndoStore.getState().clearHistory();
+  useVoiceRecordingStore.setState({ panelBuffers: {} });
+  invalidateBrandingCache();
+  if (options.outgoingProjectId) {
+    useTerminalInputStore
+      .getState()
+      .resetForProjectSwitch(options.outgoingProjectId, options.preserveTerminalIds);
+  }
 }

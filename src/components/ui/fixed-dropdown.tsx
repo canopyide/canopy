@@ -2,6 +2,14 @@ import React, { useState, useLayoutEffect, useEffect, useCallback, useRef } from
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
+import {
+  UI_ENTER_DURATION,
+  UI_EXIT_DURATION,
+  UI_ENTER_EASING,
+  UI_EXIT_EASING,
+  getUiTransitionDuration,
+} from "@/lib/animationUtils";
+import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { useUIStore } from "@/store/uiStore";
 
 interface FixedDropdownProps {
@@ -11,6 +19,7 @@ interface FixedDropdownProps {
   children: React.ReactNode;
   className?: string;
   sideOffset?: number;
+  persistThroughChildOverlays?: boolean;
 }
 
 export function FixedDropdown({
@@ -20,11 +29,15 @@ export function FixedDropdown({
   children,
   className,
   sideOffset = 8,
+  persistThroughChildOverlays = false,
 }: FixedDropdownProps) {
   const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState<{ top: number; right: string } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const { isVisible, shouldRender } = useAnimatedPresence({ isOpen: open });
+  const { isVisible, shouldRender } = useAnimatedPresence({
+    isOpen: open,
+    animationDuration: getUiTransitionDuration("exit"),
+  });
   const overlayCount = useUIStore((state) => state.overlayCount);
   const prevOverlayCountRef = useRef<number>(overlayCount);
 
@@ -36,7 +49,7 @@ export function FixedDropdown({
     const buttonRightGap = Math.max(window.innerWidth - rect.right, 8);
     setPosition({
       top: rect.bottom + sideOffset,
-      right: `max(${buttonRightGap}px, calc(var(--sidecar-right-offset, 0px) + 8px))`,
+      right: `max(${buttonRightGap}px, calc(var(--portal-right-offset, 0px) + 8px))`,
     });
   }, [anchorRef, sideOffset]);
 
@@ -51,34 +64,38 @@ export function FixedDropdown({
     };
   }, [open, updatePosition]);
 
+  const childOverlayActive = persistThroughChildOverlays && overlayCount > 0;
+  useEscapeStack(open && !childOverlayActive, () => onOpenChange(false));
+
   useEffect(() => {
     if (!open) return;
+
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (persistThroughChildOverlays && overlayCount > 0) return;
       const target = event.target as Node | null;
       if (contentRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
       onOpenChange(false);
     };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
-    };
-
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("touchstart", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("touchstart", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, onOpenChange, anchorRef]);
+  }, [open, onOpenChange, anchorRef, persistThroughChildOverlays, overlayCount]);
 
   useEffect(() => {
-    if (open && overlayCount > prevOverlayCountRef.current && overlayCount > 0) {
+    if (
+      !persistThroughChildOverlays &&
+      open &&
+      overlayCount > prevOverlayCountRef.current &&
+      overlayCount > 0
+    ) {
       onOpenChange(false);
     }
     prevOverlayCountRef.current = overlayCount;
-  }, [open, overlayCount, onOpenChange]);
+  }, [open, overlayCount, onOpenChange, persistThroughChildOverlays]);
 
   if (!shouldRender || !mounted || !position) return null;
 
@@ -88,14 +105,19 @@ export function FixedDropdown({
         ref={contentRef}
         className={cn(
           "absolute pointer-events-auto overflow-hidden rounded-[var(--radius-lg)] surface-overlay shadow-overlay text-canopy-text",
-          "transition-[opacity,transform] duration-150",
+          "transition-[opacity,transform]",
           "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
           isVisible
             ? "opacity-100 translate-y-0 scale-100"
             : "opacity-0 -translate-y-0.5 scale-[0.99]",
           className
         )}
-        style={{ top: position.top, right: position.right }}
+        style={{
+          top: position.top,
+          right: position.right,
+          transitionDuration: isVisible ? `${UI_ENTER_DURATION}ms` : `${UI_EXIT_DURATION}ms`,
+          transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
+        }}
       >
         {children}
       </div>

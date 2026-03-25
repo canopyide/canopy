@@ -9,6 +9,7 @@ import {
   isDevPreviewPartition,
 } from "../utils/webviewCsp.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
+import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
 import { getWebviewDialogService } from "../services/WebviewDialogService.js";
 import { getMainWindow } from "../window/windowRef.js";
 import { CHANNELS } from "../ipc/channels.js";
@@ -125,7 +126,7 @@ export function setupWebviewCSP(): void {
     }
 
     const partitionType = classifyPartition(partition);
-    if (partitionType === "unknown" || partitionType === "sidecar") {
+    if (partitionType === "unknown" || partitionType === "portal") {
       return;
     }
 
@@ -142,7 +143,7 @@ export function setupWebviewCSP(): void {
     console.log(`[MAIN] CSP configured for partition: ${partition} (${partitionType})`);
   };
 
-  // Configure static partitions (browser only - sidecar excluded)
+  // Configure static partitions (browser only - portal excluded)
   applyCSP("persist:browser");
 
   // Monitor for dynamic dev-preview partitions
@@ -165,6 +166,23 @@ export function setupWebviewCSP(): void {
           console.warn(`[MAIN] Blocked webview window.open for unsupported/empty URL: ${url}`);
         }
         return { action: "deny" };
+      });
+
+      // Block webview guest navigations to non-localhost URLs (closes TOCTOU gap
+      // where will-attach-webview validates src at attachment but the guest can
+      // navigate away afterwards).
+      contents.on("will-navigate", (event, navigationUrl) => {
+        if (!isLocalhostUrl(navigationUrl)) {
+          console.warn(`[MAIN] Blocked webview navigation to non-localhost URL: ${navigationUrl}`);
+          event.preventDefault();
+        }
+      });
+
+      contents.on("will-redirect", (event, redirectUrl) => {
+        if (!isLocalhostUrl(redirectUrl)) {
+          console.warn(`[MAIN] Blocked webview redirect to non-localhost URL: ${redirectUrl}`);
+          event.preventDefault();
+        }
       });
 
       // Intercept JavaScript dialogs (alert/confirm/prompt) from webview guests.

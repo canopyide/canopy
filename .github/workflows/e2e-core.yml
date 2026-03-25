@@ -1,8 +1,6 @@
 name: E2E Core Tests
 
 on:
-  schedule:
-    - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
       platform:
@@ -14,12 +12,20 @@ on:
           - macos
           - linux
           - windows
+      test_file:
+        description: "Single test file to run (e.g. e2e/core/core-terminal-panels.spec.ts). Leave empty to run all."
+        type: string
+        default: ""
   workflow_call:
     inputs:
       platform:
         description: "Platform to test on"
         type: string
         default: "all"
+      test_file:
+        description: "Single test file to run. Leave empty to run all."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -48,6 +54,8 @@ jobs:
             echo 'matrix={"include":[{"os":"ubuntu-22.04","name":"Linux"}]}' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" = "windows" ]; then
             echo 'matrix={"include":[{"os":"windows-latest","name":"Windows"}]}' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" = "non-windows" ]; then
+            echo 'matrix={"include":[{"os":"macos-14","name":"macOS"},{"os":"ubuntu-22.04","name":"Linux"}]}' >> "$GITHUB_OUTPUT"
           else
             echo 'matrix={"include":[{"os":"macos-14","name":"macOS"},{"os":"ubuntu-22.04","name":"Linux"},{"os":"windows-latest","name":"Windows"}]}' >> "$GITHUB_OUTPUT"
           fi
@@ -60,7 +68,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     name: Core (${{ matrix.name }})
-    timeout-minutes: 40
+    timeout-minutes: 120
 
     steps:
       - name: Harden Windows for Electron E2E
@@ -81,6 +89,14 @@ jobs:
           # Disable diagnostics tracking that scans new executables
           Stop-Service -Name "DiagTrack" -Force -ErrorAction SilentlyContinue
           Set-Service -Name "DiagTrack" -StartupType Disabled -ErrorAction SilentlyContinue
+
+          # Set display resolution to 1920x1080 so toolbar buttons don't overflow
+          $device = Get-CimInstance -ClassName Win32_VideoController | Select-Object -First 1
+          try {
+            Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction SilentlyContinue
+          } catch {
+            Write-Host "Set-DisplayResolution not available, continuing with default resolution"
+          }
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -123,6 +139,7 @@ jobs:
         run: |
           mkdir -p ~/.claude
           echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
+          echo '{"model": "claude-haiku-4-5-20251001"}' > ~/.claude/settings.json
 
       - name: Configure Claude Code (Windows)
         if: runner.os == 'Windows'
@@ -130,14 +147,25 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
           '{"hasCompletedOnboarding": true}' | Set-Content "$env:USERPROFILE\.claude.json"
+          '{"model": "claude-haiku-4-5-20251001"}' | Set-Content "$env:USERPROFILE\.claude\settings.json"
+
+      - name: Resolve test command
+        id: test-cmd
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.test_file }}" ]; then
+            echo "args=--project=core ${{ inputs.test_file }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=--project=core" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run core e2e tests (macOS)
         if: runner.os == 'macOS'
-        run: npm run test:e2e:core
+        run: npx playwright test ${{ steps.test-cmd.outputs.args }}
 
       - name: Run core e2e tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum npm run test:e2e:core
+        run: xvfb-run --auto-servernum npx playwright test ${{ steps.test-cmd.outputs.args }}
 
       - name: Verify native modules (Windows)
         if: runner.os == 'Windows'
@@ -149,7 +177,7 @@ jobs:
         if: runner.os == 'Windows'
         env:
           ELECTRON_ENABLE_LOGGING: "1"
-        run: npm run test:e2e:core
+        run: npx playwright test ${{ steps.test-cmd.outputs.args }}
 
       - name: Upload test results
         if: always()

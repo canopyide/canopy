@@ -16,7 +16,7 @@ const registerMocks = vi.hoisted(() => ({
   registerProjectInRepoSettingsHandlers: vi.fn(),
   registerGithubHandlers: vi.fn(),
   registerAppHandlers: vi.fn(),
-  registerSidecarHandlers: vi.fn(),
+  registerPortalHandlers: vi.fn(),
   registerMenuHandlers: vi.fn(),
   registerHibernationHandlers: vi.fn(),
   registerSystemSleepHandlers: vi.fn(),
@@ -27,6 +27,7 @@ const registerMocks = vi.hoisted(() => ({
   registerEventsHandlers: vi.fn(),
   registerNotesHandlers: vi.fn(),
   registerDevPreviewHandlers: vi.fn(),
+  registerGlobalDevServersHandlers: vi.fn(),
   registerCommandHandlers: vi.fn(),
   registerAppAgentHandlers: vi.fn(),
   registerAgentCapabilitiesHandlers: vi.fn(),
@@ -36,11 +37,13 @@ const registerMocks = vi.hoisted(() => ({
   registerTelemetryHandlers: vi.fn(),
   registerPrivacyHandlers: vi.fn(),
   registerOnboardingHandlers: vi.fn(),
+  registerShortcutHintsHandlers: vi.fn(),
   registerVoiceInputHandlers: vi.fn(),
   registerMcpServerHandlers: vi.fn(),
   registerWebviewHandlers: vi.fn(),
   registerDiagnosticsHandlers: vi.fn(),
   registerWorkflowHandlers: vi.fn(),
+  registerAccessibilityHandlers: vi.fn(),
   registerDemoHandlers: vi.fn(),
 }));
 
@@ -89,8 +92,8 @@ vi.mock("../handlers/github.js", () => ({
 vi.mock("../handlers/app.js", () => ({
   registerAppHandlers: registerMocks.registerAppHandlers,
 }));
-vi.mock("../handlers/sidecar.js", () => ({
-  registerSidecarHandlers: registerMocks.registerSidecarHandlers,
+vi.mock("../handlers/portal.js", () => ({
+  registerPortalHandlers: registerMocks.registerPortalHandlers,
 }));
 vi.mock("../handlers/menu.js", () => ({
   registerMenuHandlers: registerMocks.registerMenuHandlers,
@@ -122,6 +125,9 @@ vi.mock("../handlers/notes.js", () => ({
 vi.mock("../handlers/devPreview.js", () => ({
   registerDevPreviewHandlers: registerMocks.registerDevPreviewHandlers,
 }));
+vi.mock("../handlers/globalDevServers.js", () => ({
+  registerGlobalDevServersHandlers: registerMocks.registerGlobalDevServersHandlers,
+}));
 vi.mock("../handlers/commands.js", () => ({
   registerCommandHandlers: registerMocks.registerCommandHandlers,
 }));
@@ -149,6 +155,9 @@ vi.mock("../handlers/privacy.js", () => ({
 vi.mock("../handlers/onboarding.js", () => ({
   registerOnboardingHandlers: registerMocks.registerOnboardingHandlers,
 }));
+vi.mock("../handlers/shortcutHints.js", () => ({
+  registerShortcutHintsHandlers: registerMocks.registerShortcutHintsHandlers,
+}));
 vi.mock("../handlers/voiceInput.js", () => ({
   registerVoiceInputHandlers: registerMocks.registerVoiceInputHandlers,
 }));
@@ -163,6 +172,9 @@ vi.mock("../handlers/diagnostics.js", () => ({
 }));
 vi.mock("../handlers/workflow.js", () => ({
   registerWorkflowHandlers: registerMocks.registerWorkflowHandlers,
+}));
+vi.mock("../handlers/accessibility.js", () => ({
+  registerAccessibilityHandlers: registerMocks.registerAccessibilityHandlers,
 }));
 vi.mock("../handlers/demo.js", () => ({
   registerDemoHandlers: registerMocks.registerDemoHandlers,

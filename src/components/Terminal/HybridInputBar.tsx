@@ -38,12 +38,12 @@ import { useCommandStore } from "@/store/commandStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore, useVoiceRecordingStore, useWorktreeDataStore } from "@/store";
 import { VoiceInputButton } from "./VoiceInputButton";
-import { Archive, Terminal as TerminalIcon, X } from "lucide-react";
+import { Archive } from "lucide-react";
 import { registerInputController, unregisterInputController } from "@/store/terminalInputStore";
 import type { CommandContext, CommandResult } from "@shared/types/commands";
 import { isEnterLikeLineBreakInputEvent } from "./hybridInputEvents";
 import {
-  inputTheme,
+  buildInputBarTheme,
   createContentAttributes,
   createPlaceholder,
   createSlashChipField,
@@ -69,9 +69,13 @@ import {
   createSelectionChipTooltip,
   createAutoSize,
 } from "./inputEditorExtensions";
-import { AttachmentTray } from "./AttachmentTray";
-import type { TrayItem } from "./attachmentTrayUtils";
 import { AppDialog } from "@/components/ui/AppDialog";
+import {
+  useTerminalColorSchemeStore,
+  selectEffectiveTheme,
+} from "@/store/terminalColorSchemeStore";
+import { useAppThemeStore } from "@/store/appThemeStore";
+import { resolveInputBarColors } from "@/utils/terminalTheme";
 
 import { useEditorCompartments } from "./hooks/useEditorCompartments";
 import { useAutocompleteItems } from "./hooks/useAutocompleteItems";
@@ -118,13 +122,14 @@ interface LatestState {
   selectionContext: AtSelectionContext | null;
   onSend: HybridInputBarProps["onSend"];
   onSendKey?: HybridInputBarProps["onSendKey"];
-  addToHistory: (terminalId: string, command: string) => void;
-  resetHistoryIndex: (terminalId: string) => void;
+  addToHistory: (terminalId: string, command: string, projectId?: string) => void;
+  resetHistoryIndex: (terminalId: string, projectId?: string) => void;
   clearDraftInput: (terminalId: string, projectId?: string) => void;
   navigateHistory: (
     terminalId: string,
     direction: "up" | "down",
-    currentInput: string
+    currentInput: string,
+    projectId?: string
   ) => string | null;
   isVoiceActiveForPanel: boolean;
   isExpanded: boolean;
@@ -140,7 +145,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       cwd,
       agentId,
       agentHasLifecycleEvent = false,
-      agentState,
       restartKey = 0,
       disabled = false,
       className,
@@ -153,12 +157,13 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const addToHistory = useTerminalInputStore((s) => s.addToHistory);
     const navigateHistory = useTerminalInputStore((s) => s.navigateHistory);
     const resetHistoryIndex = useTerminalInputStore((s) => s.resetHistoryIndex);
-    const isInHistoryMode = useTerminalInputStore(
-      (s) => (s.historyIndex.get(terminalId) ?? -1) !== -1
-    );
+    const projectId = useProjectStore((s) => s.currentProject?.id);
+    const isInHistoryMode = useTerminalInputStore((s) => {
+      const key = projectId ? `${projectId}:${terminalId}` : terminalId;
+      return (s.historyIndex.get(key) ?? -1) !== -1;
+    });
     const stashEditorState = useTerminalInputStore((s) => s.stashEditorState);
     const popStashedEditorState = useTerminalInputStore((s) => s.popStashedEditorState);
-    const projectId = useProjectStore((s) => s.currentProject?.id);
     const isFocusedTerminal = useTerminalStore((s) => s.focusedId === terminalId);
     const hasStash = useTerminalInputStore((s) => {
       const key = projectId ? `${projectId}:${terminalId}` : terminalId;
@@ -185,14 +190,9 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const [diffContext, setDiffContext] = useState<AtDiffContext | null>(null);
     const [terminalContext, setTerminalContext] = useState<AtTerminalContext | null>(null);
     const [selectionContext, setSelectionContext] = useState<AtSelectionContext | null>(null);
-    const [errorChipDismissed, setErrorChipDismissed] = useState(false);
-    const errorChipDismissedRef = useRef(false);
-    const agentStateRef = useRef<AgentState | undefined>(undefined);
-    const prevAgentStateRef = useRef<AgentState | undefined>(undefined);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const lastQueryRef = useRef<string>("");
     const [menuLeftPx, setMenuLeftPx] = useState<number>(0);
-    const [attachments, setAttachments] = useState<TrayItem[]>([]);
     const [initializationState, setInitializationState] = useState<"initializing" | "initialized">(
       "initializing"
     );
@@ -204,7 +204,10 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const activeVoicePanelId = useVoiceRecordingStore((s) => s.activeTarget?.panelId ?? null);
     const voiceDraftRevision = useTerminalInputStore((s) => s.voiceDraftRevision);
     const panelWorktreeId = useTerminalStore(
-      (s) => s.terminals.find((terminal) => terminal.id === terminalId)?.worktreeId
+      useCallback(
+        (s) => s.terminals.find((terminal) => terminal.id === terminalId)?.worktreeId,
+        [terminalId]
+      )
     );
     const panelWorktree = useWorktreeDataStore((s) =>
       panelWorktreeId ? s.worktrees.get(panelWorktreeId) : undefined
@@ -220,6 +223,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     );
 
     const isAgentTerminal = agentId !== undefined;
+
+    // --- Terminal color scheme ---
+    useAppThemeStore((s) => s.selectedSchemeId);
+    const effectiveTheme = useTerminalColorSchemeStore(selectEffectiveTheme);
+    const inputBarColors = useMemo(() => resolveInputBarColors(effectiveTheme), [effectiveTheme]);
 
     // --- Extracted hooks ---
 
@@ -237,6 +245,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       terminalChipTooltipCompartmentRef,
       selectionChipTooltipCompartmentRef,
       autoSizeCompartmentRef,
+      themeCompartmentRef,
     } = compartments;
 
     const { handleDragEnter, handleDragOver, handleDragLeave, handleDrop, isDragOverFiles } =
@@ -543,11 +552,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     const { sendText } = useTokenResolution({
       latestRef,
-      agentStateRef,
-      errorChipDismissedRef,
       applyEditorValue,
       setIsExpanded,
-      setErrorChipDismissed,
       setAtContext,
       setSlashContext,
       setDiffContext,
@@ -577,15 +583,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     }, [voiceDraftRevision, terminalId, currentProject?.id]);
 
     useVoiceDecorations({ terminalId, editorViewRef, voiceDraftRevision });
-
-    useEffect(() => {
-      agentStateRef.current = agentState;
-      if (agentState === "failed" && prevAgentStateRef.current !== "failed") {
-        setErrorChipDismissed(false);
-        errorChipDismissedRef.current = false;
-      }
-      prevAgentStateRef.current = agentState;
-    }, [agentState]);
 
     const sendFromEditor = useCallback(() => {
       const view = editorViewRef.current;
@@ -622,7 +619,12 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         if (!latest) return false;
         const view = editorViewRef.current;
         const currentValue = view?.state.doc.toString() ?? latest.value;
-        const result = latest.navigateHistory(latest.terminalId, direction, currentValue);
+        const result = latest.navigateHistory(
+          latest.terminalId,
+          direction,
+          currentValue,
+          latest.projectId
+        );
         if (result !== null) {
           applyEditorValue(result, {
             selection: EditorSelection.create([EditorSelection.cursor(result.length)]),
@@ -806,15 +808,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       [focusEditor, focusEditorWithCursorAtEnd]
     );
 
-    const removeAttachment = useCallback((item: TrayItem) => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      const doc = view.state.doc.toString();
-      const deleteTo = item.to < doc.length && doc[item.to] === " " ? item.to + 1 : item.to;
-      view.dispatch({ changes: { from: item.from, to: deleteTo, insert: "" } });
-      view.focus();
-    }, []);
-
     const { editorUpdateListener } = useContextDetection({
       latestRef,
       lastEmittedValueRef,
@@ -825,7 +818,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       setDiffContext,
       setTerminalContext,
       setSelectionContext,
-      setAttachments,
     });
 
     const { keymapExtension, handleStash, handlePopStash } = useEditorKeymap({
@@ -939,7 +931,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       const state = EditorState.create({
         doc: value,
         extensions: [
-          inputTheme,
+          themeCompartmentRef.current.of(buildInputBarTheme(effectiveTheme)),
           EditorView.lineWrapping,
           drawSelection(),
           createContentAttributes(),
@@ -996,6 +988,14 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     // Compartment refs are stable (useRef inside useEditorCompartments) — intentionally omitted from deps.
     /* eslint-disable react-hooks/exhaustive-deps */
+    useEffect(() => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      view.dispatch({
+        effects: themeCompartmentRef.current.reconfigure(buildInputBarTheme(effectiveTheme)),
+      });
+    }, [effectiveTheme]);
+
     useEffect(() => {
       const view = editorViewRef.current;
       if (!view) return;
@@ -1108,42 +1108,40 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       }
     }, [isExpanded]);
 
-    const showErrorChip = agentState === "failed" && !errorChipDismissed;
-
     const barContent = (
-      <div className="group cursor-text bg-canopy-bg px-4 pb-3 pt-3">
-        {showErrorChip && (
-          <div className="flex items-center gap-1.5 px-1 pb-1.5">
-            <div className="flex items-center gap-1.5 rounded-sm bg-status-error/10 px-2 py-0.5 text-status-error">
-              <TerminalIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="text-xs font-medium">Attach error output</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setErrorChipDismissed(true);
-                  errorChipDismissedRef.current = true;
-                }}
-                className="ml-0.5 rounded-sm p-0.5 hover:bg-status-error/20 transition-colors cursor-pointer"
-                aria-label="Dismiss error context"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-        )}
+      <div
+        className="group cursor-text px-4 pb-3 pt-3"
+        style={{ backgroundColor: inputBarColors.background }}
+      >
         <div className="flex items-end gap-2">
           <div
             ref={inputShellRef}
             className={cn(
               "group/shell relative",
-              "flex w-full items-center gap-1.5 rounded-sm border border-border-subtle bg-overlay-soft py-1 shadow-[0_6px_12px_var(--color-scrim-soft)] transition-colors",
-              "group-hover:border-border-default group-hover:bg-overlay-medium",
-              "focus-within:border-canopy-accent/45 focus-within:ring-1 focus-within:ring-canopy-accent/16 focus-within:bg-overlay-medium",
-              isVoiceActiveForPanel &&
-                "border-canopy-accent/60 bg-canopy-accent/[0.12] shadow-[0_0_0_1px_rgba(var(--theme-accent-rgb),0.35),0_0_16px_rgba(var(--theme-accent-rgb),0.15)]",
-              isDragOverFiles && "border-canopy-accent/60 ring-1 ring-canopy-accent/30",
+              "flex w-full items-center gap-1.5 rounded-sm border py-1 transition-colors",
               disabled && "opacity-60"
             )}
+            style={{
+              boxShadow: isVoiceActiveForPanel
+                ? `0 0 0 1px color-mix(in oklab, ${inputBarColors.accent} 35%, transparent), 0 0 16px color-mix(in oklab, ${inputBarColors.accent} 15%, transparent)`
+                : isDragOverFiles
+                  ? `0 0 0 1px color-mix(in oklab, ${inputBarColors.accent} 30%, transparent)`
+                  : `0 6px 12px color-mix(in oklab, ${inputBarColors.background} 30%, transparent)`,
+              ...(isVoiceActiveForPanel
+                ? {
+                    borderColor: `color-mix(in oklab, ${inputBarColors.accent} 60%, transparent)`,
+                    backgroundColor: `color-mix(in oklab, ${inputBarColors.accent} 12%, ${inputBarColors.background})`,
+                  }
+                : isDragOverFiles
+                  ? {
+                      borderColor: `color-mix(in oklab, ${inputBarColors.accent} 60%, transparent)`,
+                      backgroundColor: `color-mix(in oklab, ${inputBarColors.background} 85%, ${inputBarColors.foreground})`,
+                    }
+                  : {
+                      borderColor: `color-mix(in oklab, ${inputBarColors.foreground} 15%, transparent)`,
+                      backgroundColor: `color-mix(in oklab, ${inputBarColors.background} 85%, ${inputBarColors.foreground})`,
+                    }),
+            }}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -1191,11 +1189,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                   editorHostRef.current = node;
                   compactEditorHostRef.current = node;
                 }}
-                className={cn(
-                  "w-full min-h-[20px]",
-                  "text-canopy-text",
-                  disabled && "pointer-events-none"
-                )}
+                className={cn("w-full min-h-[20px]", disabled && "pointer-events-none")}
+                style={{ color: inputBarColors.foreground }}
               />
             </div>
             <div className="flex items-center pr-1.5">
@@ -1216,12 +1211,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 projectId={currentProject?.id}
                 projectName={currentProject?.name}
                 worktreeId={panelWorktreeId}
-                worktreeLabel={panelWorktree?.branch || panelWorktree?.name}
+                worktreeLabel={
+                  panelWorktree?.isMainWorktree
+                    ? panelWorktree?.name
+                    : panelWorktree?.branch || panelWorktree?.name
+                }
                 disabled={disabled}
               />
             </div>
           </div>
-          <AttachmentTray items={attachments} onRemove={removeAttachment} />
         </div>
       </div>
     );

@@ -9,15 +9,34 @@ import type {
   SessionFilter,
   ActivityFilter,
 } from "@/store/worktreeFilterStore";
+import type { ChipState } from "@/components/Worktree/utils/computeChipState";
 
 export interface DerivedWorktreeMeta {
-  hasErrors: boolean;
   terminalCount: number;
   hasWorkingAgent: boolean;
   hasRunningAgent: boolean;
   hasWaitingAgent: boolean;
-  hasFailedAgent: boolean;
   hasCompletedAgent: boolean;
+  hasMergeConflict: boolean;
+  chipState: ChipState;
+}
+
+export type QuickStateFilter = "all" | "working" | "waiting" | "finished";
+
+export function matchesQuickStateFilter(
+  filter: QuickStateFilter,
+  meta: DerivedWorktreeMeta
+): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "working":
+      return (meta.hasWorkingAgent || meta.hasRunningAgent) && meta.chipState === null;
+    case "waiting":
+      return meta.chipState === "waiting";
+    case "finished":
+      return meta.chipState === "complete" || meta.chipState === "cleanup";
+  }
 }
 
 export type WorktreeTypeId =
@@ -91,8 +110,7 @@ export function scoreWorktree(worktree: Worktree | WorktreeState, query: string)
 
 export function computeStatus(
   worktree: Worktree | WorktreeState,
-  isActive: boolean,
-  hasErrors: boolean
+  isActive: boolean
 ): StatusFilter[] {
   const statuses: StatusFilter[] = [];
 
@@ -101,7 +119,6 @@ export function computeStatus(
   const changedFileCount = worktree.worktreeChanges?.changedFileCount ?? 0;
   if (changedFileCount > 0) statuses.push("dirty");
 
-  if (worktree.mood === "error" || hasErrors) statuses.push("error");
   if (worktree.mood === "stale") statuses.push("stale");
 
   // Idle = no special status or only active
@@ -143,7 +160,7 @@ export function matchesFilters(
 
   // Status filters (OR within category)
   if (filters.statusFilters.size > 0) {
-    const statuses = computeStatus(worktree, isActive, derived.hasErrors);
+    const statuses = computeStatus(worktree, isActive);
     const hasMatch = statuses.some((s) => filters.statusFilters.has(s));
     if (!hasMatch) return false;
   }
@@ -175,7 +192,6 @@ export function matchesFilters(
     if (filters.sessionFilters.has("working") && derived.hasWorkingAgent) hasMatch = true;
     if (filters.sessionFilters.has("running") && derived.hasRunningAgent) hasMatch = true;
     if (filters.sessionFilters.has("waiting") && derived.hasWaitingAgent) hasMatch = true;
-    if (filters.sessionFilters.has("failed") && derived.hasFailedAgent) hasMatch = true;
     if (filters.sessionFilters.has("completed") && derived.hasCompletedAgent) hasMatch = true;
 
     if (!hasMatch) return false;
@@ -205,7 +221,8 @@ export function matchesFilters(
 export function sortWorktrees<T extends Worktree | WorktreeState>(
   worktrees: T[],
   orderBy: OrderBy,
-  pinnedWorktrees: string[] = []
+  pinnedWorktrees: string[] = [],
+  manualOrder: string[] = []
 ): T[] {
   const pinnedSet = new Set(pinnedWorktrees);
 
@@ -229,6 +246,15 @@ export function sortWorktrees<T extends Worktree | WorktreeState>(
 
     // Apply normal sorting to unpinned worktrees
     switch (orderBy) {
+      case "manual": {
+        const aIdx = manualOrder.indexOf(a.id);
+        const bIdx = manualOrder.indexOf(b.id);
+        // Items not in manualOrder go to the end
+        const aPos = aIdx === -1 ? manualOrder.length : aIdx;
+        const bPos = bIdx === -1 ? manualOrder.length : bIdx;
+        if (aPos !== bPos) return aPos - bPos;
+        return a.name.localeCompare(b.name);
+      }
       case "recent": {
         const timeA = Math.max(a.lastActivityTimestamp ?? 0, a.createdAt ?? 0);
         const timeB = Math.max(b.lastActivityTimestamp ?? 0, b.createdAt ?? 0);
@@ -253,9 +279,10 @@ export function sortWorktreesByRelevance<T extends Worktree | WorktreeState>(
   worktrees: T[],
   query: string,
   orderBy: OrderBy,
-  pinnedWorktrees: string[] = []
+  pinnedWorktrees: string[] = [],
+  manualOrder: string[] = []
 ): T[] {
-  const sorted = sortWorktrees(worktrees, orderBy, pinnedWorktrees);
+  const sorted = sortWorktrees(worktrees, orderBy, pinnedWorktrees, manualOrder);
   if (!query.trim()) return sorted;
 
   return [...sorted].sort((a, b) => {
@@ -352,6 +379,32 @@ export function hasAnyFilters(filters: FilterState): boolean {
     filters.sessionFilters.size > 0 ||
     filters.activityFilters.size > 0
   );
+}
+
+export function filterTriageWorktrees<T extends Worktree | WorktreeState>(
+  worktrees: T[],
+  derivedMetaMap: Map<string, DerivedWorktreeMeta>,
+  mainWorktreeId: string | undefined,
+  integrationWorktreeId: string | undefined,
+  query: string
+): T[] {
+  const nonMain = worktrees.filter(
+    (w) => w.id !== mainWorktreeId && w.id !== integrationWorktreeId
+  );
+  return nonMain.filter((w) => {
+    const meta = derivedMetaMap.get(w.id);
+    if (!meta) return false;
+    const qualifies = meta.hasWaitingAgent || meta.hasMergeConflict;
+    if (!qualifies) return false;
+    if (query.trim().length > 0) {
+      const exactNum = parseExactNumber(query);
+      if (exactNum !== null) {
+        return w.issueNumber === exactNum || w.prNumber === exactNum;
+      }
+      return scoreWorktree(w, query) > 0;
+    }
+    return true;
+  });
 }
 
 export const INTEGRATION_BRANCH_NAMES = ["develop", "trunk", "next"] as const;

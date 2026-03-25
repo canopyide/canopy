@@ -2,17 +2,54 @@ export const TERMINAL_ANIMATION_DURATION = 150;
 export const UI_ANIMATION_DURATION = 150;
 
 export function getTerminalAnimationDuration(): number {
-  if (typeof window === "undefined") return TERMINAL_ANIMATION_DURATION;
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return TERMINAL_ANIMATION_DURATION;
 
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   return reducedMotion ? 0 : TERMINAL_ANIMATION_DURATION;
 }
 
 export function getUiAnimationDuration(): number {
-  if (typeof window === "undefined") return UI_ANIMATION_DURATION;
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return UI_ANIMATION_DURATION;
 
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const performanceMode = document.body.dataset.performanceMode === "true";
 
   return reducedMotion || performanceMode ? 0 : UI_ANIMATION_DURATION;
+}
+
+export const UI_ENTER_DURATION = 200;
+export const UI_EXIT_DURATION = 120;
+
+export const UI_ENTER_EASING =
+  "linear(0, 0.007, 0.029 2.2%, 0.118 4.7%, 0.625 14.4%, 0.826 19%, 0.902 24%, 0.962 29.8%, 0.984 33.3%, 1.004 37.8%, 1.01 42.4%, 1.011 52.2%, 1.001)";
+export const UI_EXIT_EASING = "cubic-bezier(0.2, 0, 0.7, 0)";
+
+export function getUiTransitionDuration(direction: "enter" | "exit"): number {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return direction === "enter" ? UI_ENTER_DURATION : UI_EXIT_DURATION;
+
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const performanceMode = document.body.dataset.performanceMode === "true";
+
+  if (reducedMotion || performanceMode) return 0;
+
+  return direction === "enter" ? UI_ENTER_DURATION : UI_EXIT_DURATION;
+}
+
+export const PANEL_MINIMIZE_DURATION = 120;
+export const PANEL_RESTORE_DURATION = 200;
+
+export const PANEL_MINIMIZE_EASING = "cubic-bezier(0.3, 0, 0.8, 0.15)";
+export const PANEL_RESTORE_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
+
+export function getPanelTransitionDuration(direction: "minimize" | "restore"): number {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return direction === "minimize" ? PANEL_MINIMIZE_DURATION : PANEL_RESTORE_DURATION;
+
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reducedMotion) return 0;
+
+  return direction === "minimize" ? PANEL_MINIMIZE_DURATION : PANEL_RESTORE_DURATION;
 }

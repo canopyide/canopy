@@ -5,11 +5,13 @@ import {
   GitPullRequest,
   GitMerge,
   GitPullRequestClosed,
-  GitBranch,
   MoreHorizontal,
   ExternalLink,
   Check,
+  X,
+  MessageSquare,
 } from "lucide-react";
+import { WorktreeIcon } from "@/components/icons";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/utils/timeAgo";
@@ -33,6 +35,9 @@ interface GitHubListItemProps {
   onSwitchToWorktree?: (worktreeId: string) => void;
   optionId?: string;
   isActive?: boolean;
+  isSelected?: boolean;
+  isSelectionActive?: boolean;
+  onToggleSelect?: (e: React.MouseEvent) => void;
 }
 
 function getStateIcon(state: string, type: "issue" | "pr") {
@@ -56,18 +61,22 @@ function isPR(item: GitHubIssue | GitHubPR): item is GitHubPR {
   return "isDraft" in item;
 }
 
-function getCIStatusInfo(status: GitHubPRCIStatus): { color: string; tooltip: string } {
+function getCIStatusInfo(status: GitHubPRCIStatus): {
+  icon: typeof Check | null;
+  color: string;
+  tooltip: string;
+} {
   switch (status) {
     case "SUCCESS":
-      return { color: "bg-status-success", tooltip: "All checks passed" };
+      return { icon: Check, color: "text-status-success", tooltip: "All checks passed" };
     case "PENDING":
     case "EXPECTED":
-      return { color: "bg-status-warning", tooltip: "Checks pending" };
+      return { icon: null, color: "bg-status-warning", tooltip: "Checks pending" };
     case "FAILURE":
     case "ERROR":
-      return { color: "bg-status-error", tooltip: "Checks failing" };
+      return { icon: X, color: "text-status-error", tooltip: "Checks failing" };
     default:
-      return { color: "bg-muted-foreground", tooltip: "Check status unknown" };
+      return { icon: null, color: "bg-muted-foreground", tooltip: "Check status unknown" };
   }
 }
 
@@ -78,6 +87,9 @@ export function GitHubListItem({
   onSwitchToWorktree,
   optionId,
   isActive,
+  isSelected = false,
+  isSelectionActive = false,
+  onToggleSelect,
 }: GitHubListItemProps) {
   const isItemPR = isPR(item);
   const StateIcon = getStateIcon(item.state, type);
@@ -116,7 +128,7 @@ export function GitHubListItem({
       clearTimeout(copyTimeoutRef.current);
     }
     try {
-      await navigator.clipboard.writeText(String(item.number));
+      await navigator.clipboard.writeText(`#${item.number}`);
       setCopied(true);
       copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -130,16 +142,51 @@ export function GitHubListItem({
     <div
       id={optionId}
       role="option"
-      aria-selected={isActive}
+      aria-selected={isSelected}
       className={cn(
-        "hover:bg-muted/50 transition-colors group cursor-default",
-        isActive && "bg-muted/50"
+        "hover:bg-muted/50 transition-colors group cursor-default select-none",
+        isActive && "bg-muted/50",
+        isSelected && "bg-canopy-accent/10 border-l-2 border-canopy-accent",
+        !isSelected && "border-l-2 border-transparent"
       )}
+      onClick={isSelectionActive && onToggleSelect ? (e) => onToggleSelect(e) : undefined}
     >
       <div className="flex items-start gap-2 px-3 py-2.5">
-        <span className={cn("shrink-0 mt-0.5", stateColor)}>
-          <StateIcon className="h-4 w-4" />
-        </span>
+        {type === "issue" && onToggleSelect ? (
+          <span className="group/icon shrink-0 mt-0.5 relative w-4 h-4">
+            {/* State icon: visible by default, hidden on hover or when selection active */}
+            <span
+              className={cn(
+                "absolute inset-0",
+                stateColor,
+                isSelectionActive || isSelected ? "hidden" : "group-hover/icon:hidden"
+              )}
+            >
+              <StateIcon className="h-4 w-4" />
+            </span>
+            {/* Checkbox: hidden by default, visible on hover or when selection active */}
+            <span
+              aria-hidden="true"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelect(e);
+              }}
+              className={cn(
+                "absolute inset-0 rounded border flex items-center justify-center transition-colors cursor-pointer",
+                isSelected
+                  ? "bg-canopy-accent border-canopy-accent"
+                  : "border-canopy-border hover:border-canopy-accent/60",
+                isSelectionActive || isSelected ? "flex" : "hidden group-hover/icon:flex"
+              )}
+            >
+              {isSelected && <Check className="w-3 h-3 text-text-inverse" />}
+            </span>
+          </span>
+        ) : (
+          <span className={cn("shrink-0 mt-0.5", stateColor)}>
+            <StateIcon className="h-4 w-4" />
+          </span>
+        )}
 
         <div className="flex-1 min-w-0">
           {/* Title row: title, CI dot, #number copy */}
@@ -148,31 +195,42 @@ export function GitHubListItem({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                handleOpenExternal();
+                if (isSelectionActive && onToggleSelect) {
+                  onToggleSelect(e);
+                } else {
+                  handleOpenExternal();
+                }
               }}
-              className="flex-1 min-w-0 text-sm font-medium text-foreground truncate text-left hover:underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              className={cn(
+                "flex-1 min-w-0 text-sm font-medium text-foreground truncate text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
+                !isSelectionActive && "hover:underline"
+              )}
             >
               {item.title}
             </button>
 
-            {isItemPR && item.state === "OPEN" && item.ciStatus && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className={cn(
-                        "shrink-0 w-2 h-2 rounded-full",
-                        getCIStatusInfo(item.ciStatus).color
-                      )}
-                      aria-label={getCIStatusInfo(item.ciStatus).tooltip}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {getCIStatusInfo(item.ciStatus).tooltip}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+            {isItemPR &&
+              item.state === "OPEN" &&
+              item.ciStatus &&
+              (() => {
+                const ciInfo = getCIStatusInfo(item.ciStatus);
+                return (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="shrink-0" aria-label={ciInfo.tooltip}>
+                          {ciInfo.icon ? (
+                            <ciInfo.icon className={cn("w-3 h-3", ciInfo.color)} />
+                          ) : (
+                            <span className={cn("block w-2 h-2 rounded-full", ciInfo.color)} />
+                          )}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">{ciInfo.tooltip}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              })()}
 
             <TooltipProvider>
               <Tooltip>
@@ -225,6 +283,16 @@ export function GitHubListItem({
               </>
             )}
 
+            {(item.commentCount ?? 0) >= 1 && (
+              <>
+                <span className="shrink-0">&middot;</span>
+                <span className="inline-flex items-center gap-0.5 shrink-0">
+                  <MessageSquare className="w-3 h-3" />
+                  <span>{item.commentCount}</span>
+                </span>
+              </>
+            )}
+
             {!isItemPR && "linkedPR" in item && item.linkedPR && (
               <>
                 <span className="shrink-0">&middot;</span>
@@ -270,7 +338,7 @@ export function GitHubListItem({
                   <TooltipTrigger asChild>
                     {isActiveWorktree ? (
                       <span className="shrink-0 text-canopy-accent">
-                        <GitBranch className="w-3.5 h-3.5" />
+                        <WorktreeIcon className="w-3.5 h-3.5" />
                       </span>
                     ) : onSwitchToWorktree && matchedWorktree ? (
                       <button
@@ -282,11 +350,11 @@ export function GitHubListItem({
                         className="shrink-0 text-github-open hover:text-github-open/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
                         aria-label="Switch to worktree"
                       >
-                        <GitBranch className="w-3.5 h-3.5" />
+                        <WorktreeIcon className="w-3.5 h-3.5" />
                       </button>
                     ) : (
                       <span className="shrink-0 text-github-open">
-                        <GitBranch className="w-3.5 h-3.5" />
+                        <WorktreeIcon className="w-3.5 h-3.5" />
                       </span>
                     )}
                   </TooltipTrigger>
@@ -312,7 +380,7 @@ export function GitHubListItem({
                       className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
                       aria-label="Create worktree"
                     >
-                      <GitBranch className="w-3.5 h-3.5" />
+                      <WorktreeIcon className="w-3.5 h-3.5" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">Create worktree</TooltipContent>
@@ -346,7 +414,7 @@ export function GitHubListItem({
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => onSwitchToWorktree(matchedWorktree.id)}>
-                      <GitBranch className="h-3.5 w-3.5 mr-2" />
+                      <WorktreeIcon className="h-3.5 w-3.5 mr-2" />
                       Switch to Worktree
                     </DropdownMenuItem>
                   </>
@@ -359,7 +427,7 @@ export function GitHubListItem({
                       <DropdownMenuItem disabled>
                         <div className="flex flex-col gap-0.5">
                           <span className="flex items-center gap-2">
-                            <GitBranch className="h-3.5 w-3.5" />
+                            <WorktreeIcon className="h-3.5 w-3.5" />
                             Create Worktree
                           </span>
                           <span className="text-[10px] text-muted-foreground leading-tight">
@@ -369,7 +437,7 @@ export function GitHubListItem({
                       </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem onSelect={() => onCreateWorktree(item)}>
-                        <GitBranch className="h-3.5 w-3.5 mr-2" />
+                        <WorktreeIcon className="h-3.5 w-3.5 mr-2" />
                         Create Worktree
                       </DropdownMenuItem>
                     )}

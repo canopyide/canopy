@@ -7,17 +7,17 @@ export type AgentEvent =
   | { type: "prompt" } // Agent has been idle (no data for debounce period)
   | { type: "completion" } // Agent completed a task (pattern-detected)
   | { type: "input" } // User input received
-  | { type: "exit"; code: number }
-  | { type: "error"; error: string };
+  | { type: "exit"; code: number; signal?: number }
+  | { type: "error"; error: string }
+  | { type: "kill" }; // Intentional kill by user
 
 const VALID_TRANSITIONS: Record<AgentState, AgentState[]> = {
-  idle: ["working", "running", "failed"],
-  working: ["waiting", "completed", "failed"],
+  idle: ["working", "running"],
+  working: ["waiting", "completed"],
   running: ["idle"], // Shell process state - managed by TerminalProcess, not this state machine
-  waiting: ["working", "failed"],
+  waiting: ["working"],
   directing: [], // Renderer-only state, never produced by main process
-  completed: ["working", "waiting", "failed"], // Allow resuming work, prompt, or error override
-  failed: ["failed", "working"],
+  completed: ["working", "waiting"],
 };
 
 export function isValidTransition(from: AgentState, to: AgentState): boolean {
@@ -25,8 +25,13 @@ export function isValidTransition(from: AgentState, to: AgentState): boolean {
 }
 
 export function nextAgentState(current: AgentState, event: AgentEvent): AgentState {
+  // Error events are no-ops
   if (event.type === "error") {
-    return "failed";
+    return current;
+  }
+
+  if (event.type === "kill") {
+    return "idle";
   }
 
   switch (event.type) {
@@ -61,23 +66,14 @@ export function nextAgentState(current: AgentState, event: AgentEvent): AgentSta
       break;
 
     case "input":
-      if (
-        current === "waiting" ||
-        current === "idle" ||
-        current === "completed" ||
-        current === "failed"
-      ) {
+      if (current === "waiting" || current === "idle" || current === "completed") {
         return "working";
       }
       break;
 
     case "exit":
-      if (current === "working" || current === "waiting") {
-        return event.code === 0 ? "completed" : "failed";
-      }
-      if (current === "completed") {
-        // Exit from completed state (e.g., early completion detection before exit)
-        return event.code === 0 ? "completed" : "failed";
+      if (current === "working" || current === "waiting" || current === "completed") {
+        return "completed";
       }
       break;
   }

@@ -4,6 +4,7 @@ import { appClient } from "@/clients";
 import { computeGridColumns } from "@/lib/terminalLayout";
 import { useLayoutConfigStore } from "@/store/layoutConfigStore";
 import { useTerminalStore } from "@/store/terminalStore";
+import { useLayoutUndoStore } from "@/store/layoutUndoStore";
 export function registerTerminalLayoutActions(
   actions: ActionRegistry,
   callbacks: ActionCallbacks
@@ -27,12 +28,8 @@ export function registerTerminalLayoutActions(
           return;
         }
 
-        // Check if moving a group that contains the maximized panel
-        const group = state.getPanelGroup(targetId);
-        if (group && state.maximizedId && group.panelIds.includes(state.maximizedId)) {
-          // Clear maximize state before moving to dock
-          state.setMaximizedId(null);
-        }
+        useLayoutUndoStore.getState().pushLayoutSnapshot();
+
         state.moveTerminalToDock(targetId);
 
         const moved = useTerminalStore.getState().terminals.find((t) => t.id === targetId);
@@ -57,6 +54,7 @@ export function registerTerminalLayoutActions(
       const state = useTerminalStore.getState();
       const targetId = terminalId ?? state.focusedId;
       if (targetId) {
+        useLayoutUndoStore.getState().pushLayoutSnapshot();
         state.moveTerminalToGrid(targetId);
       }
     },
@@ -112,6 +110,7 @@ export function registerTerminalLayoutActions(
       const state = useTerminalStore.getState();
       const { focusedId, terminals, reorderTerminals } = state;
       if (!focusedId) return;
+      useLayoutUndoStore.getState().pushLayoutSnapshot();
       const activeWorktreeId = callbacks.getActiveWorktreeId();
       const gridTerminals = terminals.filter(
         (t) =>
@@ -137,6 +136,7 @@ export function registerTerminalLayoutActions(
       const state = useTerminalStore.getState();
       const { focusedId, terminals, reorderTerminals } = state;
       if (!focusedId) return;
+      useLayoutUndoStore.getState().pushLayoutSnapshot();
       const activeWorktreeId = callbacks.getActiveWorktreeId();
       const gridTerminals = terminals.filter(
         (t) =>
@@ -162,6 +162,7 @@ export function registerTerminalLayoutActions(
       const state = useTerminalStore.getState();
       const { focusedId, terminals, reorderTerminals } = state;
       if (!focusedId) return;
+      useLayoutUndoStore.getState().pushLayoutSnapshot();
       const terminal = terminals.find((t) => t.id === focusedId);
       if (!terminal || terminal.location === "dock") return;
       const activeWorktreeId = callbacks.getActiveWorktreeId();
@@ -197,6 +198,7 @@ export function registerTerminalLayoutActions(
       const state = useTerminalStore.getState();
       const { focusedId, terminals, reorderTerminals } = state;
       if (!focusedId) return;
+      useLayoutUndoStore.getState().pushLayoutSnapshot();
       const terminal = terminals.find((t) => t.id === focusedId);
       if (!terminal || terminal.location === "dock") return;
       const activeWorktreeId = callbacks.getActiveWorktreeId();
@@ -232,15 +234,12 @@ export function registerTerminalLayoutActions(
       const state = useTerminalStore.getState();
       const focusedId = state.focusedId;
       if (!focusedId) return;
+      useLayoutUndoStore.getState().pushLayoutSnapshot();
       const terminal = state.terminals.find((t) => t.id === focusedId);
       if (!terminal) return;
       if (terminal.location === "dock") {
         state.moveTerminalToGrid(focusedId);
       } else {
-        const group = state.getPanelGroup(focusedId);
-        if (group && state.maximizedId && group.panelIds.includes(state.maximizedId)) {
-          state.setMaximizedId(null);
-        }
         state.moveTerminalToDock(focusedId);
         state.openDockTerminal(focusedId);
       }
@@ -256,6 +255,7 @@ export function registerTerminalLayoutActions(
     danger: "safe",
     scope: "renderer",
     run: async () => {
+      useLayoutUndoStore.getState().pushLayoutSnapshot();
       const state = useTerminalStore.getState();
       const activeWorktreeId = callbacks.getActiveWorktreeId();
       const activeTerminals = state.terminals.filter(
@@ -271,6 +271,96 @@ export function registerTerminalLayoutActions(
     },
   }));
 
+  actions.set("layout.undo", () => ({
+    id: "layout.undo",
+    title: "Undo Layout Change",
+    description: "Undo the last panel layout change (drag-and-drop, move, reorder)",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    isEnabled: () => useLayoutUndoStore.getState().canUndo,
+    run: async () => {
+      useLayoutUndoStore.getState().undo();
+    },
+  }));
+
+  actions.set("layout.redo", () => ({
+    id: "layout.redo",
+    title: "Redo Layout Change",
+    description: "Redo the last undone panel layout change",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    isEnabled: () => useLayoutUndoStore.getState().canRedo,
+    run: async () => {
+      useLayoutUndoStore.getState().redo();
+    },
+  }));
+
+  const setStrategySchema = z.object({
+    strategy: z.enum(["automatic", "fixed-columns", "fixed-rows"]),
+  });
+
+  const runSetStrategy = async (args: unknown) => {
+    const { strategy } = args as {
+      strategy: "automatic" | "fixed-columns" | "fixed-rows";
+    };
+    const state = useLayoutConfigStore.getState();
+    const previous = state.layoutConfig;
+    const next = { ...previous, strategy };
+    state.setLayoutConfig(next);
+    try {
+      await appClient.setState({ panelGridConfig: next as any });
+    } catch (error) {
+      state.setLayoutConfig(previous);
+      throw error;
+    }
+  };
+
+  const setValueSchema = z.object({ value: z.number().int().min(1).max(10) });
+
+  const runSetValue = async (args: unknown) => {
+    const { value } = args as { value: number };
+    const state = useLayoutConfigStore.getState();
+    const previous = state.layoutConfig;
+    const next = { ...previous, value };
+    state.setLayoutConfig(next);
+    try {
+      await appClient.setState({ panelGridConfig: next as any });
+    } catch (error) {
+      state.setLayoutConfig(previous);
+      throw error;
+    }
+  };
+
+  // Canonical panel.gridLayout.* action IDs
+  actions.set("panel.gridLayout.setStrategy", () => ({
+    id: "panel.gridLayout.setStrategy",
+    title: "Set Grid Layout Strategy",
+    description: "Set the panel grid layout strategy",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: setStrategySchema,
+    run: runSetStrategy,
+  }));
+
+  actions.set("panel.gridLayout.setValue", () => ({
+    id: "panel.gridLayout.setValue",
+    title: "Set Grid Layout Value",
+    description: "Set the panel grid layout value (columns/rows count)",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: setValueSchema,
+    run: runSetValue,
+  }));
+
+  // Legacy aliases for backward compatibility
   actions.set("terminal.gridLayout.setStrategy", () => ({
     id: "terminal.gridLayout.setStrategy",
     title: "Set Grid Layout Strategy",
@@ -279,24 +369,8 @@ export function registerTerminalLayoutActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({
-      strategy: z.enum(["automatic", "fixed-columns", "fixed-rows"]),
-    }),
-    run: async (args: unknown) => {
-      const { strategy } = args as {
-        strategy: "automatic" | "fixed-columns" | "fixed-rows";
-      };
-      const state = useLayoutConfigStore.getState();
-      const previous = state.layoutConfig;
-      const next = { ...previous, strategy };
-      state.setLayoutConfig(next);
-      try {
-        await appClient.setState({ panelGridConfig: next as any });
-      } catch (error) {
-        state.setLayoutConfig(previous);
-        throw error;
-      }
-    },
+    argsSchema: setStrategySchema,
+    run: runSetStrategy,
   }));
 
   actions.set("terminal.gridLayout.setValue", () => ({
@@ -307,19 +381,7 @@ export function registerTerminalLayoutActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ value: z.number().int().min(1).max(10) }),
-    run: async (args: unknown) => {
-      const { value } = args as { value: number };
-      const state = useLayoutConfigStore.getState();
-      const previous = state.layoutConfig;
-      const next = { ...previous, value };
-      state.setLayoutConfig(next);
-      try {
-        await appClient.setState({ panelGridConfig: next as any });
-      } catch (error) {
-        state.setLayoutConfig(previous);
-        throw error;
-      }
-    },
+    argsSchema: setValueSchema,
+    run: runSetValue,
   }));
 }

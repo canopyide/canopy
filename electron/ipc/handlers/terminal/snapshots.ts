@@ -200,12 +200,16 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
             cwd: terminal.cwd,
             worktreeId: terminal.worktreeId,
             agentState: terminal.agentState,
+            waitingReason: terminal.waitingReason,
             lastStateChange: terminal.lastStateChange,
             spawnedAt: terminal.spawnedAt,
             isTrashed: terminal.isTrashed,
             trashExpiresAt: terminal.trashExpiresAt,
             activityTier: terminal.activityTier,
             hasPty: terminal.hasPty,
+            agentSessionId: terminal.agentSessionId,
+            agentLaunchFlags: terminal.agentLaunchFlags,
+            agentModelId: terminal.agentModelId,
           });
         }
       }
@@ -251,6 +255,9 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
           trashExpiresAt: t.trashExpiresAt,
           activityTier: t.activityTier,
           hasPty: t.hasPty,
+          agentSessionId: t.agentSessionId,
+          agentLaunchFlags: t.agentLaunchFlags,
+          agentModelId: t.agentModelId,
         }));
 
       logInfo(`terminal:getAvailable: found ${sanitized.length} available terminals`);
@@ -269,7 +276,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
         throw new Error("Invalid state: must be a non-empty string");
       }
 
-      const validStates = ["idle", "working", "waiting", "completed", "failed"];
+      const validStates = ["idle", "working", "waiting", "completed"];
       if (!validStates.includes(state)) {
         throw new Error(`Invalid state: must be one of ${validStates.join(", ")}`);
       }
@@ -296,6 +303,9 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
           trashExpiresAt: t.trashExpiresAt,
           activityTier: t.activityTier,
           hasPty: t.hasPty,
+          agentSessionId: t.agentSessionId,
+          agentLaunchFlags: t.agentLaunchFlags,
+          agentModelId: t.agentModelId,
         }));
 
       logInfo(`terminal:getByState(${state}): found ${sanitized.length} terminals`);
@@ -330,6 +340,9 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
           trashExpiresAt: t.trashExpiresAt,
           activityTier: t.activityTier,
           hasPty: t.hasPty,
+          agentSessionId: t.agentSessionId,
+          agentLaunchFlags: t.agentLaunchFlags,
+          agentModelId: t.agentModelId,
         }));
 
       logInfo(`terminal:getAll: found ${sanitized.length} terminals`);
@@ -371,10 +384,14 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
         cwd: terminal.cwd,
         worktreeId: terminal.worktreeId,
         agentState: terminal.agentState,
+        waitingReason: terminal.waitingReason,
         lastStateChange: terminal.lastStateChange,
         spawnedAt: terminal.spawnedAt,
         activityTier: terminal.activityTier,
         hasPty: terminal.hasPty,
+        agentSessionId: terminal.agentSessionId,
+        agentLaunchFlags: terminal.agentLaunchFlags,
+        agentModelId: terminal.agentModelId,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

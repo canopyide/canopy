@@ -15,18 +15,14 @@ import { formatWithBracketedPaste } from "@shared/utils/terminalInputProtocol";
 import { fireWatchNotification } from "@/lib/watchNotification";
 import {
   ArrowDownFromLine,
-  ArrowDownToLine,
   Bell,
   BellOff,
-  Bot,
   Clipboard,
   Copy,
   CopyPlus,
   ExternalLink,
-  GitBranch,
   Globe,
   Info,
-  LayoutGrid,
   Link,
   Lock,
   Maximize2,
@@ -38,10 +34,12 @@ import {
   Repeat2,
   RotateCcw,
   Search,
+  Send,
   SquareTerminal,
   Trash2,
   Unlock,
 } from "lucide-react";
+import { MoveToDockIcon, MoveToGridIcon, CanopyAgentIcon, WorktreeIcon } from "@/components/icons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -275,12 +273,7 @@ export function TerminalContextMenu({
           if (isWatched) {
             unwatchPanel(terminalId);
           } else if (terminal.agentState === "completed" || terminal.agentState === "waiting") {
-            fireWatchNotification(
-              terminalId,
-              terminal.title ?? terminalId,
-              terminal.agentState,
-              terminal.worktreeId ?? undefined
-            );
+            fireWatchNotification(terminalId, terminal.title ?? terminalId, terminal.agentState);
           } else {
             watchPanel(terminalId);
           }
@@ -342,15 +335,19 @@ export function TerminalContextMenu({
           break;
         case "delete-note":
           if (terminal.notePath) {
-            void actionService.dispatch(
-              "notes.delete",
-              {
-                notePath: terminal.notePath,
-                panelId: terminalId,
-                noteTitle: terminal.title,
-              },
-              { source: "context-menu" }
-            );
+            void (async () => {
+              const result = await actionService.dispatch(
+                "notes.delete",
+                {
+                  notePath: terminal.notePath,
+                  noteTitle: terminal.title,
+                },
+                { source: "context-menu" }
+              );
+              if (result.ok) {
+                useTerminalStore.getState().removeTerminal(terminalId);
+              }
+            })();
           }
           break;
         case "reveal-in-palette":
@@ -384,20 +381,21 @@ export function TerminalContextMenu({
       {worktrees.length > 1 && (
         <ContextMenuSub>
           <ContextMenuSubTrigger>
-            <GitBranch className={ICON_CLASS} aria-hidden="true" />
+            <WorktreeIcon className={ICON_CLASS} />
             Move to Worktree
           </ContextMenuSubTrigger>
           <ContextMenuSubContent>
             {worktrees.map((wt) => {
               const isCurrent = wt.id === terminal.worktreeId;
-              const label = (wt.branch || wt.name).trim() || "Untitled worktree";
+              const label =
+                (wt.isMainWorktree ? wt.name : wt.branch || wt.name).trim() || "Untitled worktree";
               return (
                 <ContextMenuItem
                   key={wt.id}
                   disabled={isCurrent}
                   onSelect={() => handleAction(`move-to-worktree:${wt.id}`)}
                 >
-                  <GitBranch className={ICON_CLASS} aria-hidden="true" />
+                  <WorktreeIcon className={ICON_CLASS} />
                   {label}
                 </ContextMenuItem>
               );
@@ -409,9 +407,9 @@ export function TerminalContextMenu({
         onSelect={() => handleAction(currentLocation === "grid" ? "move-to-dock" : "move-to-grid")}
       >
         {currentLocation === "grid" ? (
-          <ArrowDownToLine className={ICON_CLASS} aria-hidden="true" />
+          <MoveToDockIcon className={ICON_CLASS} />
         ) : (
-          <LayoutGrid className={ICON_CLASS} aria-hidden="true" />
+          <MoveToGridIcon className={ICON_CLASS} />
         )}
         {currentLocation === "grid" ? "Move to Dock" : "Move to Grid"}
       </ContextMenuItem>
@@ -596,7 +594,7 @@ export function TerminalContextMenu({
             disabled={isCurrent}
             onSelect={() => handleAction(`convert-to:${agentId}`)}
           >
-            <Bot className={ICON_CLASS} aria-hidden="true" />
+            <CanopyAgentIcon className={ICON_CLASS} />
             {config.name}
           </ContextMenuItem>
         );
@@ -627,6 +625,20 @@ export function TerminalContextMenu({
               <Clipboard className={ICON_CLASS} aria-hidden="true" />
               Paste
               <ContextMenuShortcut>{isMac ? `${modifierKey}V` : "Ctrl+⇧V"}</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={!hasSelection}
+              onSelect={() =>
+                void actionService.dispatch(
+                  "terminal.sendToAgent",
+                  { terminalId },
+                  { source: "context-menu" }
+                )
+              }
+            >
+              <Send className={ICON_CLASS} aria-hidden="true" />
+              Send to Agent
+              <ContextMenuShortcut>{isMac ? "⌘⇧E" : "Ctrl+⇧E"}</ContextMenuShortcut>
             </ContextMenuItem>
             {hoveredUrl && (
               <>

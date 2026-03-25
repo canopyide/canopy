@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { WorktreeState } from "@/types";
+import { isStandardBranch } from "@shared/config/branchPrefixes";
 
 const MAIN_WORKTREE_NOTE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export type SpineState = "error" | "dirty" | "current" | "stale" | "idle";
+export type SpineState = "dirty" | "current" | "stale" | "idle";
 
 export type WorktreeLifecycleStage = "in-review" | "merged" | "ready-for-cleanup";
 
-export type ComputedSubtitleTone = "error" | "warning" | "info" | "muted";
+export type ComputedSubtitleTone = "warning" | "info" | "muted";
 
 export interface ComputedSubtitle {
   text: string;
@@ -16,6 +17,7 @@ export interface ComputedSubtitle {
 
 export interface UseWorktreeStatusResult {
   branchLabel: string;
+  isMainOnStandardBranch: boolean;
   hasChanges: boolean;
   isComplete: boolean;
   lifecycleStage: WorktreeLifecycleStage | null;
@@ -29,10 +31,8 @@ export interface UseWorktreeStatusResult {
 
 export function useWorktreeStatus({
   worktree,
-  worktreeErrorCount,
 }: {
   worktree: WorktreeState;
-  worktreeErrorCount: number;
 }): UseWorktreeStatusResult {
   const [now, setNow] = useState(() => Date.now());
   const isMainWorktree = worktree.isMainWorktree;
@@ -71,7 +71,25 @@ export function useWorktreeStatus({
     return trimmed;
   }, [worktree.aiNote, isMainWorktree, worktree.aiNoteTimestamp, now]);
 
-  const branchLabel = worktree.branch ?? worktree.name;
+  const isMainOnStandardBranch = !!(
+    isMainWorktree &&
+    worktree.branch &&
+    !worktree.isDetached &&
+    isStandardBranch(worktree.branch)
+  );
+
+  let branchLabel: string;
+  if (isMainWorktree) {
+    if (!worktree.branch || worktree.isDetached) {
+      branchLabel = worktree.name;
+    } else if (isMainOnStandardBranch) {
+      branchLabel = `${worktree.name} [${worktree.branch}]`;
+    } else {
+      branchLabel = worktree.branch;
+    }
+  } else {
+    branchLabel = worktree.branch ?? worktree.name;
+  }
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
 
   const rawLastCommitMessage = worktree.worktreeChanges?.lastCommitMessage;
@@ -93,13 +111,6 @@ export function useWorktreeStatus({
   const effectiveSummary = isSummarySameAsCommit ? null : worktree.summary;
 
   const computedSubtitle = useMemo((): ComputedSubtitle => {
-    if (worktreeErrorCount > 0) {
-      return {
-        text: worktreeErrorCount === 1 ? "1 error" : `${worktreeErrorCount} errors`,
-        tone: "error",
-      };
-    }
-
     if (hasChanges && worktree.worktreeChanges) {
       return { text: "", tone: "warning" };
     }
@@ -114,7 +125,6 @@ export function useWorktreeStatus({
 
     return { text: "No recent activity", tone: "muted" };
   }, [
-    worktreeErrorCount,
     hasChanges,
     worktree.worktreeChanges,
     firstLineLastCommitMessage,
@@ -123,12 +133,11 @@ export function useWorktreeStatus({
   ]);
 
   const spineState: SpineState = useMemo(() => {
-    if (worktreeErrorCount > 0 || worktree.mood === "error") return "error";
     if (hasChanges) return "dirty";
     if (worktree.isCurrent) return "current";
     if (worktree.mood === "stale") return "stale";
     return "idle";
-  }, [worktreeErrorCount, worktree.mood, hasChanges, worktree.isCurrent]);
+  }, [hasChanges, worktree.isCurrent, worktree.mood]);
 
   const isComplete =
     !!worktree.issueNumber &&
@@ -171,6 +180,7 @@ export function useWorktreeStatus({
 
   return {
     branchLabel,
+    isMainOnStandardBranch,
     hasChanges,
     isComplete,
     lifecycleStage,

@@ -10,6 +10,7 @@ export { useContextInjection } from "./useContextInjection";
 export type { UseContextInjectionReturn, InjectionStatus } from "./useContextInjection";
 
 export { useErrors } from "./useErrors";
+export { useHibernationNotifications } from "./useHibernationNotifications";
 
 export { useQuickSwitcher } from "./useQuickSwitcher";
 export type { QuickSwitcherItem, UseQuickSwitcherReturn } from "./useQuickSwitcher";
@@ -34,11 +35,18 @@ export { keybindingService } from "../services/KeybindingService";
 export type { KeyScope, KeybindingConfig } from "../services/KeybindingService";
 
 export { useProjectSettings } from "./useProjectSettings";
-export { useProjectBranding } from "./useProjectBranding";
+export {
+  useProjectBranding,
+  invalidateBrandingCache,
+  updateBrandingCache,
+} from "./useProjectBranding";
 
 export { useWaitingTerminalIds, useBackgroundPanelStats } from "./useTerminalSelectors";
 
 export { useOverlayState } from "./useOverlayState";
+
+export { useEscapeStack } from "./useEscapeStack";
+export { useGlobalEscapeDispatcher } from "./useGlobalEscapeDispatcher";
 
 export { useGridNavigation } from "./useGridNavigation";
 export type { NavigationDirection } from "./useGridNavigation";

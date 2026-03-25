@@ -11,8 +11,16 @@ export let exposeGc: (() => void) | undefined;
 try {
   nodeV8.setFlagsFromString("--expose_gc");
   exposeGc = vm.runInNewContext("gc") as () => void;
+  (globalThis as Record<string, unknown>).__canopy_gc = exposeGc;
 } catch {
   // GC exposure not available — non-critical
+}
+
+// Prefer compact code over raw speed — main process is I/O-bound
+try {
+  nodeV8.setFlagsFromString("--optimize_for_size");
+} catch {
+  // Non-critical — app works without this optimization
 }
 
 fixPath();
@@ -26,8 +34,19 @@ if (!app.isPackaged && !hasExplicitUserDataDir) {
   app.setPath("userData", path.join(app.getPath("appData"), `${app.name}-dev`));
 }
 
+// GPU crash fallback: disable hardware acceleration before app.whenReady()
+// This flag is written by GpuCrashMonitorService after repeated GPU crashes.
+const gpuFlagPath = path.join(app.getPath("userData"), "gpu-disabled.flag");
+export const gpuHardwareAccelerationDisabled = fs.existsSync(gpuFlagPath);
+if (gpuHardwareAccelerationDisabled) {
+  app.disableHardwareAcceleration();
+  console.log("[GPU] Hardware acceleration disabled by crash fallback flag");
+}
+
 // Handle --reset-data: wipe userData before Chromium acquires file locks
-if (process.argv.includes("--reset-data")) {
+const shouldResetData =
+  process.argv.includes("--reset-data") || process.env.CANOPY_RESET_DATA === "1";
+if (shouldResetData) {
   const userDataPath = app.getPath("userData");
   if (fs.existsSync(userDataPath)) {
     for (const entry of fs.readdirSync(userDataPath)) {

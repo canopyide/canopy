@@ -3,7 +3,6 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-const simpleGitMock = vi.hoisted(() => vi.fn());
 const gitClientMock = vi.hoisted(() => ({
   branch: vi.fn(),
   diff: vi.fn(),
@@ -12,11 +11,23 @@ const gitClientMock = vi.hoisted(() => ({
   revparse: vi.fn(),
 }));
 
-vi.mock("simple-git", () => ({
-  simpleGit: simpleGitMock,
+const createHardenedGitMock = vi.hoisted(() => vi.fn());
+const logWarnMock = vi.hoisted(() => vi.fn());
+const logErrorMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../../utils/hardenedGit.js", () => ({
+  createHardenedGit: createHardenedGitMock,
+}));
+
+vi.mock("../../utils/logger.js", () => ({
+  logDebug: vi.fn(),
+  logInfo: vi.fn(),
+  logWarn: logWarnMock,
+  logError: logErrorMock,
 }));
 
 import { GitService } from "../GitService.js";
+import { GitError, WorktreeRemovedError } from "../../utils/errorTypes.js";
 
 describe("GitService", () => {
   let tempDir: string;
@@ -24,7 +35,7 @@ describe("GitService", () => {
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "canopy-git-service-"));
     vi.clearAllMocks();
-    simpleGitMock.mockImplementation(() => gitClientMock);
+    createHardenedGitMock.mockImplementation(() => gitClientMock);
     gitClientMock.branch.mockResolvedValue({ branches: {} });
     gitClientMock.diff.mockResolvedValue("");
     gitClientMock.raw.mockResolvedValue("");
@@ -166,5 +177,50 @@ describe("GitService", () => {
         expect.arrayContaining(["main...feature/test", "--", "src/app.ts"])
       );
     });
+  });
+
+  it("passes --no-ext-diff to git.diff for modified files", async () => {
+    gitClientMock.diff.mockResolvedValue("diff --git a/foo.ts b/foo.ts\n+change");
+
+    const service = new GitService(tempDir);
+    await service.getFileDiff("foo.ts", "modified");
+
+    expect(gitClientMock.diff).toHaveBeenCalledWith(expect.arrayContaining(["--no-ext-diff"]));
+  });
+
+  it("passes --no-ext-diff to git.raw for cross-worktree file diff", async () => {
+    gitClientMock.raw.mockResolvedValue("diff --git a/foo.ts b/foo.ts\n+change");
+
+    const service = new GitService(tempDir);
+    await service.compareWorktrees("main", "feature/test", "src/app.ts");
+
+    expect(gitClientMock.raw).toHaveBeenCalledWith(
+      expect.arrayContaining(["diff", "--no-ext-diff"])
+    );
+  });
+
+  it("passes --no-ext-diff to git.raw for cross-worktree file list", async () => {
+    gitClientMock.raw.mockResolvedValue("M\tsrc/app.ts\n");
+
+    const service = new GitService(tempDir);
+    await service.compareWorktrees("main", "feature/test");
+
+    expect(gitClientMock.raw).toHaveBeenCalledWith(
+      expect.arrayContaining(["diff", "--no-ext-diff", "--name-status"])
+    );
+  });
+
+  it("logs at warn level (not error) when path is not a git repository", async () => {
+    gitClientMock.revparse.mockRejectedValue(
+      new Error("fatal: not a git repository (or any of the parent directories): .git\n")
+    );
+
+    const service = new GitService(tempDir);
+
+    const error = await service.getRepositoryRoot(tempDir).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(GitError);
+    expect(error).not.toBeInstanceOf(WorktreeRemovedError);
+    expect(logWarnMock).toHaveBeenCalled();
+    expect(logErrorMock).not.toHaveBeenCalled();
   });
 });

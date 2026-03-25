@@ -14,6 +14,7 @@ const defaultOnboardingState: OnboardingState = {
   newsletterPromptSeen: false,
   checklist: {
     dismissed: false,
+    celebrationShown: false,
     items: { openedProject: false, launchedAgent: false, createdWorktree: false },
   },
 };
@@ -53,14 +54,19 @@ vi.mock("@/utils/env", () => ({
   isCanopyEnvEnabled: () => false,
 }));
 
-vi.mock("../NewsletterStep", () => ({
-  NewsletterStep: vi.fn(({ onDismiss }: { onDismiss: (subscribed: boolean) => void }) => (
-    <div data-testid="newsletter-step">
-      <button data-testid="newsletter-dismiss" onClick={() => onDismiss(false)}>
-        Dismiss
-      </button>
-    </div>
-  )),
+vi.mock("../ThemeSelectionStep", () => ({
+  ThemeSelectionStep: vi.fn(
+    ({ onContinue, onSkip }: { onContinue: () => void; onSkip: () => void }) => (
+      <div data-testid="theme-selection-step">
+        <button data-testid="theme-continue" onClick={onContinue}>
+          Continue
+        </button>
+        <button data-testid="theme-skip" onClick={onSkip}>
+          Skip
+        </button>
+      </div>
+    )
+  ),
 }));
 
 vi.mock("../TelemetryConsentStep", () => ({
@@ -144,9 +150,9 @@ describe("OnboardingFlow progress indicator", () => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", expect.any(Object));
     });
 
-    // Advance to telemetry step
+    // Advance from theme selection to telemetry
     await act(async () => {
-      getByTestId("newsletter-dismiss").click();
+      getByTestId("theme-continue").click();
     });
 
     await vi.waitFor(() => {
@@ -168,9 +174,9 @@ describe("OnboardingFlow progress indicator", () => {
       expect(trackMock).toHaveBeenCalled();
     });
 
-    // Complete the flow: newsletter → telemetry → skip agent selection
+    // Complete the flow: theme → telemetry → skip agent selection
     await act(async () => {
-      getByTestId("newsletter-dismiss").click();
+      getByTestId("theme-continue").click();
     });
     await act(async () => {
       getByTestId("accept").click();
@@ -230,9 +236,29 @@ describe("OnboardingFlow telemetry tracking", () => {
     // Wait for hydration and step_viewed event
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", {
-        step: "newsletter",
+        step: "themeSelection",
         stepIndex: 0,
       });
+    });
+  });
+
+  it("emits onboarding_step_skipped when theme selection is skipped", async () => {
+    const { getByTestId } = await act(async () => {
+      return render(<OnboardingFlow {...defaultProps} />);
+    });
+
+    await vi.waitFor(() => {
+      expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", expect.any(Object));
+    });
+
+    trackMock.mockClear();
+
+    await act(async () => {
+      getByTestId("theme-skip").click();
+    });
+
+    expect(trackMock).toHaveBeenCalledWith("onboarding_step_skipped", {
+      step: "themeSelection",
     });
   });
 
@@ -246,9 +272,9 @@ describe("OnboardingFlow telemetry tracking", () => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", expect.any(Object));
     });
 
-    // Dismiss newsletter to advance to telemetry
+    // Advance through theme selection
     await act(async () => {
-      getByTestId("newsletter-dismiss").click();
+      getByTestId("theme-continue").click();
     });
 
     // Accept telemetry to advance to agent selection
@@ -286,9 +312,9 @@ describe("OnboardingFlow telemetry tracking", () => {
       expect(trackMock).toHaveBeenCalled();
     });
 
-    // Dismiss newsletter
+    // Continue from theme selection
     await act(async () => {
-      getByTestId("newsletter-dismiss").click();
+      getByTestId("theme-continue").click();
     });
 
     // Accept telemetry
@@ -328,7 +354,7 @@ describe("OnboardingFlow telemetry tracking", () => {
     unmount();
 
     expect(trackMock).toHaveBeenCalledWith("onboarding_abandoned", {
-      lastStep: "newsletter",
+      lastStep: "themeSelection",
       lastStepIndex: 0,
     });
   });
@@ -343,9 +369,9 @@ describe("OnboardingFlow telemetry tracking", () => {
       expect(trackMock).toHaveBeenCalled();
     });
 
-    // Dismiss newsletter
+    // Continue from theme selection
     await act(async () => {
-      getByTestId("newsletter-dismiss").click();
+      getByTestId("theme-continue").click();
     });
 
     // Accept telemetry

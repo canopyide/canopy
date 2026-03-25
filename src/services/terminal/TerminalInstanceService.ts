@@ -2,8 +2,18 @@ import { Terminal } from "@xterm/xterm";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier, TerminalType } from "@/types";
 import type { AgentState } from "@/types";
-import { ManagedTerminal, RefreshTierProvider, AgentStateCallback } from "./types";
-import { setupTerminalAddons } from "./TerminalAddonManager";
+import {
+  ManagedTerminal,
+  RefreshTierProvider,
+  AgentStateCallback,
+  HIBERNATION_DELAY_MS,
+} from "./types";
+import {
+  setupTerminalAddons,
+  createImageAddon,
+  createFileLinksAddon,
+  createWebLinksAddon,
+} from "./TerminalAddonManager";
 import { TerminalOutputIngestService } from "./TerminalOutputIngestService";
 import { TerminalParserHandler } from "./TerminalParserHandler";
 import { TerminalUnseenOutputTracker, UnseenOutputSnapshot } from "./TerminalUnseenOutputTracker";
@@ -25,11 +35,39 @@ import { SCROLLBACK_BACKGROUND } from "@shared/config/scrollback";
 // eslint-disable-next-line no-control-regex
 const URXVT_MOUSE_RE = /^\x1b\[\d+;\d+;\d+M/;
 
+// CSI navigation: arrows, Home, End, and modified F1–F4 (with optional ;modifier param)
+// eslint-disable-next-line no-control-regex
+const CSI_NAV_RE = /^\x1b\[(1;\d+)?[ABCDHFPQRS]$/;
+
+// Application-mode arrows, Home/End, F1–F4 (SS3 prefix, unmodified only)
+// eslint-disable-next-line no-control-regex
+const SS3_NAV_RE = /^\x1bO[ABCDHFPQRS]$/;
+
+// Tilde-terminated navigation: Insert(2), Delete(3), PgUp(5), PgDn(6), F5–F12
+// Includes optional ;modifier param. Excludes bracketed paste markers (200~, 201~)
+// eslint-disable-next-line no-control-regex
+const TILDE_NAV_RE = /^\x1b\[(2|3|5|6|15|17|18|19|20|21|23|24)(;\d+)?~$/;
+
 export function isNonKeyboardInput(data: string): boolean {
+  // Mouse sequences
   if (data.startsWith("\x1b[M")) return true;
   if (data.startsWith("\x1b[<")) return true;
-  if (data === "\x1b[I" || data === "\x1b[O") return true;
   if (URXVT_MOUSE_RE.test(data)) return true;
+
+  // Focus reports
+  if (data === "\x1b[I" || data === "\x1b[O") return true;
+
+  // Lone Escape
+  if (data === "\x1b") return true;
+
+  // Navigation / cursor sequences
+  if (CSI_NAV_RE.test(data)) return true;
+  if (SS3_NAV_RE.test(data)) return true;
+  if (TILDE_NAV_RE.test(data)) return true;
+
+  // C0 control characters that are not prompt editing (Ctrl+C, Ctrl+D, Ctrl+L, Ctrl+Z)
+  if (data === "\x03" || data === "\x04" || data === "\x0c" || data === "\x1a") return true;
+
   return false;
 }
 
@@ -93,13 +131,83 @@ class TerminalInstanceService {
 
     this.rendererPolicy = new TerminalRendererPolicy({
       getInstance: (id) => this.instances.get(id),
-      wakeAndRestore: (id) => this.wakeManager.wakeAndRestore(id),
+      wakeAndRestore: (id) => {
+        const m = this.instances.get(id);
+        if (m?.isHibernated) this.unhibernate(id);
+        return this.wakeManager.wakeAndRestore(id);
+      },
       onPostWake: (id) => this.handlePostWake(id),
       onTierApplied: (id, tier, managed) => {
+        // Hibernation timer management
+        if (tier === TerminalRefreshTier.BACKGROUND && managed.kind !== "agent") {
+          if (!managed.hibernationTimer && !managed.isHibernated) {
+            managed.hibernationTimer = setTimeout(() => {
+              managed.hibernationTimer = undefined;
+              this.hibernate(id);
+            }, HIBERNATION_DELAY_MS);
+          }
+        } else {
+          if (managed.hibernationTimer) {
+            clearTimeout(managed.hibernationTimer);
+            managed.hibernationTimer = undefined;
+          }
+        }
+
         if (tier === TerminalRefreshTier.BACKGROUND) {
           reduceScrollback(managed, SCROLLBACK_BACKGROUND);
+
+          if (managed.imageAddon) {
+            try {
+              managed.imageAddon.dispose();
+            } catch {
+              /* ignore */
+            }
+            managed.imageAddon = null;
+          }
+          if (managed.fileLinksDisposable) {
+            try {
+              managed.fileLinksDisposable.dispose();
+            } catch {
+              /* ignore */
+            }
+            managed.fileLinksDisposable = null;
+          }
+          if (managed.webLinksAddon) {
+            try {
+              managed.webLinksAddon.dispose();
+            } catch {
+              /* ignore */
+            }
+            managed.webLinksAddon = null;
+          }
         } else {
           restoreScrollback(managed);
+
+          if (!managed.imageAddon) {
+            try {
+              managed.imageAddon = createImageAddon(managed.terminal);
+            } catch (err) {
+              logWarn("Failed to recreate ImageAddon", { id, error: err });
+            }
+          }
+          if (!managed.fileLinksDisposable) {
+            try {
+              managed.fileLinksDisposable = createFileLinksAddon(managed.terminal, () =>
+                (this.cwdProviders.get(id) ?? (() => ""))()
+              );
+            } catch (err) {
+              logWarn("Failed to recreate FileLinksAddon", { id, error: err });
+            }
+          }
+          if (!managed.webLinksAddon) {
+            try {
+              managed.webLinksAddon = createWebLinksAddon(managed.terminal, (event, uri) =>
+                this.linkHandler.openLink(uri, id, event)
+              );
+            } catch (err) {
+              logWarn("Failed to recreate WebLinksAddon", { id, error: err });
+            }
+          }
         }
 
         if (
@@ -119,11 +227,11 @@ class TerminalInstanceService {
     this.webGLManager.setHardwareAvailable(available);
   }
 
-  notifyUserInput(id: string): void {
-    this.onUserInput(id);
+  notifyUserInput(id: string, data = ""): void {
+    this.onUserInput(id, data);
   }
 
-  private onUserInput(id: string): void {
+  private onUserInput(id: string, data: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;
 
@@ -139,7 +247,11 @@ class TerminalInstanceService {
       this.rendererPolicy.applyRendererPolicy(id, current.getRefreshTier());
     }, 1000);
 
-    this.agentStateController.onUserInput(id);
+    this.agentStateController.onUserInput(id, data);
+  }
+
+  private onEnterPressed(id: string): void {
+    this.agentStateController.onEnterPressed(id);
   }
 
   clearDirectingState(id: string): void {
@@ -196,8 +308,18 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    if (managed.isHibernated) {
+      const bytes =
+        typeof data === "string" ? this.textEncoder.encode(data).length : data.byteLength;
+      this.dataBuffer.notifyWriteComplete(id, bytes);
+      return;
+    }
+
     if (managed.isSerializedRestoreInProgress) {
       managed.deferredOutput.push(data);
+      const deferredBytes =
+        typeof data === "string" ? this.textEncoder.encode(data).length : data.byteLength;
+      this.dataBuffer.notifyWriteComplete(id, deferredBytes);
       return;
     }
 
@@ -234,6 +356,7 @@ class TerminalInstanceService {
       managed.pendingWrites = Math.max(0, (managed.pendingWrites ?? 1) - 1);
 
       terminalClient.acknowledgeData(id, acknowledgedBytes);
+      this.dataBuffer.notifyWriteComplete(id, acknowledgedBytes);
 
       if (shouldSample) {
         const writeDurationMs =
@@ -249,12 +372,17 @@ class TerminalInstanceService {
           bytes: sampledBytes,
         });
       }
+
+      if (!managed.isAltBuffer) {
+        managed.lastActivityMarker?.dispose();
+        managed.lastActivityMarker = terminal.registerMarker(0);
+      }
     });
   }
 
   setVisible(id: string, isVisible: boolean): void {
     const managed = this.instances.get(id);
-    if (!managed) return;
+    if (!managed || managed.isHibernated) return;
 
     const wasVisible = managed.isVisible;
     if (wasVisible !== isVisible) {
@@ -290,8 +418,32 @@ class TerminalInstanceService {
     }
   }
 
-  lockResize(id: string, locked: boolean): void {
-    this.resizeController.lockResize(id, locked);
+  lockResize(id: string, locked: boolean, customTtlMs?: number): void {
+    this.resizeController.lockResize(id, locked, customTtlMs);
+  }
+
+  private layoutTransitionTimer: number | undefined;
+
+  suppressResizesDuringLayoutTransition(terminalIds: string[], durationMs: number): void {
+    if (terminalIds.length === 0) return;
+
+    if (this.layoutTransitionTimer !== undefined) {
+      clearTimeout(this.layoutTransitionTimer);
+    }
+
+    const safetyTtl = durationMs + 100;
+    for (const id of terminalIds) {
+      this.resizeController.lockResize(id, true, safetyTtl);
+    }
+
+    this.layoutTransitionTimer = window.setTimeout(() => {
+      this.layoutTransitionTimer = undefined;
+      for (const id of terminalIds) {
+        if (!this.instances.has(id)) continue;
+        this.resizeController.lockResize(id, false);
+        this.resizeController.fit(id);
+      }
+    }, durationMs);
   }
 
   suppressResizesDuringProjectSwitch(terminalIds: string[], durationMs: number): void {
@@ -350,6 +502,10 @@ class TerminalInstanceService {
   }
 
   wake(id: string): void {
+    const managed = this.instances.get(id);
+    if (managed?.isHibernated) {
+      this.unhibernate(id);
+    }
     this.wakeManager.wake(id);
   }
 
@@ -386,8 +542,10 @@ class TerminalInstanceService {
 
     const terminal = new Terminal(terminalOptions);
     this.cwdProviders.set(id, getCwd ?? (() => ""));
-    const addons = setupTerminalAddons(terminal, openLink, () =>
-      (this.cwdProviders.get(id) ?? (() => ""))()
+    const addons = setupTerminalAddons(
+      terminal,
+      () => (this.cwdProviders.get(id) ?? (() => ""))(),
+      (event, uri) => openLink(uri, event)
     );
 
     const hostElement = document.createElement("div");
@@ -411,7 +569,10 @@ class TerminalInstanceService {
       if (this.shouldSuppressExit(id)) {
         return;
       }
-      terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`);
+      const current = this.instances.get(id);
+      if (current && !current.isHibernated) {
+        current.terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`);
+      }
       exitSubscribers.forEach((cb) => cb(exitCode));
     });
     listeners.push(unsubExit);
@@ -453,6 +614,7 @@ class TerminalInstanceService {
       deferredOutput: [],
       isAltBuffer: false,
       altBufferListeners: new Set(),
+      ipcListenerCount: listeners.length,
     };
 
     managed.parserHandler = new TerminalParserHandler(managed, () => {
@@ -489,22 +651,48 @@ class TerminalInstanceService {
     });
     listeners.push(() => oscDisposable.dispose());
 
+    const writeParsedDisposable = terminal.onWriteParsed(() => {
+      this.dataBuffer.notifyParsed(id);
+      if (managed && !managed.isUserScrolledBack && !managed.isAltBuffer) {
+        this.scrollToBottomSafe(managed);
+      }
+    });
+    listeners.push(() => writeParsedDisposable.dispose());
+
     const scrollDisposable = terminal.onScroll(() => {
       const buffer = terminal.buffer.active;
-      const isAtBottom = buffer.baseY - buffer.viewportY < 1;
+      const isAtBottom = buffer.viewportY >= buffer.baseY;
       managed.latestWasAtBottom = isAtBottom;
-      managed.isUserScrolledBack = !isAtBottom;
+
+      managed._userScrollIntent = false;
+      if (managed._suppressScrollTracking) return;
 
       if (isAtBottom) {
+        managed.isUserScrolledBack = false;
         this.unseenTracker.clearUnseen(id, false);
         if (managed.lastAppliedTier === TerminalRefreshTier.BACKGROUND) {
           reduceScrollback(managed, SCROLLBACK_BACKGROUND);
         }
       } else {
+        managed.isUserScrolledBack = true;
         this.unseenTracker.updateScrollState(id, true);
       }
     });
     listeners.push(() => scrollDisposable.dispose());
+
+    const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"]);
+    const onWheel = () => {
+      managed._userScrollIntent = true;
+    };
+    const onKeydownScroll = (e: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(e.key)) managed._userScrollIntent = true;
+    };
+    hostElement.addEventListener("wheel", onWheel, { passive: true });
+    hostElement.addEventListener("keydown", onKeydownScroll);
+    listeners.push(() => {
+      hostElement.removeEventListener("wheel", onWheel);
+      hostElement.removeEventListener("keydown", onKeydownScroll);
+    });
 
     const selectionDisposable = terminal.onSelectionChange(() => {
       const sel = terminal.getSelection();
@@ -587,8 +775,12 @@ class TerminalInstanceService {
 
     const inputDisposable = terminal.onData((data) => {
       if (!managed.isInputLocked) {
-        if (!isNonKeyboardInput(data)) {
-          this.onUserInput(id);
+        if (isNonKeyboardInput(data)) {
+          if (data === "\x1b") {
+            this.agentStateController.clearDirectingState(id);
+          }
+        } else {
+          this.onUserInput(id, data);
         }
         terminalClient.write(id, data);
         if (onInput) {
@@ -598,10 +790,53 @@ class TerminalInstanceService {
     });
     listeners.push(() => inputDisposable.dispose());
 
+    if (kind === "agent") {
+      const keyDisposable = terminal.onKey(({ domEvent }) => {
+        if (
+          !managed.isInputLocked &&
+          domEvent.key === "Enter" &&
+          !domEvent.isComposing &&
+          !domEvent.shiftKey &&
+          !domEvent.ctrlKey &&
+          !domEvent.altKey &&
+          !domEvent.metaKey
+        ) {
+          this.onEnterPressed(id);
+        }
+      });
+      listeners.push(() => keyDisposable.dispose());
+    }
+
     this.instances.set(id, managed);
 
     const initialTier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
     this.rendererPolicy.applyRendererPolicy(id, initialTier);
+
+    // For terminals starting at BACKGROUND tier, dispose tier-managed addons
+    // immediately. The first applyRendererPolicy call is a no-op when initial
+    // tier matches, so onTierApplied won't fire to dispose them. We also set
+    // lastAppliedTier so that a later promotion is seen as an upgrade.
+    if (initialTier === TerminalRefreshTier.BACKGROUND) {
+      managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+      try {
+        managed.imageAddon?.dispose();
+      } catch {
+        /* ignore */
+      }
+      managed.imageAddon = null;
+      try {
+        managed.fileLinksDisposable?.dispose();
+      } catch {
+        /* ignore */
+      }
+      managed.fileLinksDisposable = null;
+      try {
+        managed.webLinksAddon?.dispose();
+      } catch {
+        /* ignore */
+      }
+      managed.webLinksAddon = null;
+    }
 
     this.notifyReadinessWaiters(id);
 
@@ -667,6 +902,10 @@ class TerminalInstanceService {
     if (!managed) {
       logDebug(`[TIS.attach] No managed instance for ${id}`);
       return null;
+    }
+
+    if (managed.isHibernated) {
+      this.unhibernate(id);
     }
 
     const wasDetached = managed.isDetached === true;
@@ -762,7 +1001,7 @@ class TerminalInstanceService {
 
   detach(id: string, container: HTMLElement | null): void {
     const managed = this.instances.get(id);
-    if (!managed || !container) {
+    if (!managed || !container || managed.isHibernated) {
       logDebug(`[TIS.detach] Skipping ${id} - no managed:${!managed}, no container:${!container}`);
       return;
     }
@@ -840,9 +1079,44 @@ class TerminalInstanceService {
 
   scrollToBottom(id: string): void {
     const managed = this.instances.get(id);
-    if (managed) {
-      managed.terminal.scrollToBottom();
+    if (managed && !managed.isHibernated) {
+      this.scrollToBottomSafe(managed);
     }
+  }
+
+  private scrollToBottomSafe(managed: ManagedTerminal): void {
+    managed._suppressScrollTracking = true;
+    try {
+      managed.terminal.scrollToBottom();
+    } finally {
+      managed._suppressScrollTracking = false;
+    }
+    managed.isUserScrolledBack = false;
+    managed.latestWasAtBottom = true;
+  }
+
+  scrollToLastActivity(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || managed.isHibernated) return;
+
+    if (managed.isAltBuffer) {
+      managed.terminal.scrollToBottom();
+      return;
+    }
+
+    const marker = managed.lastActivityMarker;
+    if (!marker || marker.isDisposed || marker.line < 0) {
+      managed.terminal.scrollToBottom();
+      return;
+    }
+
+    const viewportY = managed.terminal.buffer.active.viewportY;
+    if (Math.abs(viewportY - marker.line) < 2) {
+      managed.terminal.scrollToBottom();
+      return;
+    }
+
+    managed.terminal.scrollToLine(marker.line);
   }
 
   subscribeUnseenOutput(id: string, listener: () => void): () => void {
@@ -857,8 +1131,9 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    managed.isUserScrolledBack = false;
     this.unseenTracker.clearUnseen(id, false);
-    this.scrollToBottom(id);
+    this.scrollToBottomSafe(managed);
   }
 
   setAgentState(id: string, state: AgentState): void {
@@ -869,9 +1144,9 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    // For settled-strategy agents, send a single PTY resize.
-    // For default agents, xterm v6 handles rendering recovery
-    // after wake without needing a row bounce hack.
+    // Settled-strategy agents require atomic xterm+PTY resize (deferred 500ms).
+    // fit() would immediately resize xterm.js while PTY lags, breaking atomicity.
+    // Skip fit() for settled agents and use sendPtyResize which preserves the contract.
     if (this.getResizeStrategyForTerminal(managed) === "settled") {
       const cols = managed.latestCols;
       const rows = managed.latestRows;
@@ -881,6 +1156,13 @@ class TerminalInstanceService {
       return;
     }
 
+    // Re-measure container dimensions after wake so latestCols/latestRows
+    // reflect the current window size rather than pre-hibernation cache.
+    // fit() already guards against offscreen/small terminals (returns null).
+    const fitResult = this.resizeController.fit(id);
+    if (fitResult) return;
+
+    // Fallback: fit() returned null (terminal offscreen or container too small).
     this.resizeController.forceImmediateResize(id);
   }
 
@@ -972,13 +1254,13 @@ class TerminalInstanceService {
 
   focus(id: string): void {
     const managed = this.instances.get(id);
-    if (!managed) return;
+    if (!managed || managed.isHibernated) return;
     managed.terminal.focus();
   }
 
   resetRenderer(id: string): void {
     const managed = this.instances.get(id);
-    if (!managed) return;
+    if (!managed || managed.isHibernated) return;
 
     try {
       if (!managed.hostElement.isConnected) {
@@ -1005,6 +1287,7 @@ class TerminalInstanceService {
 
   handleBackendRecovery(): void {
     this.instances.forEach((managed, id) => {
+      if (managed.isHibernated) return;
       try {
         managed.terminal.write("\x1b[!p");
 
@@ -1029,10 +1312,12 @@ class TerminalInstanceService {
     const textMetricKeys = ["fontSize", "fontFamily", "lineHeight", "letterSpacing", "fontWeight"];
     const textMetricsChanged = textMetricKeys.some((key) => key in options);
 
-    Object.entries(options).forEach(([key, value]) => {
-      // @ts-expect-error xterm options are indexable
-      managed.terminal.options[key] = value;
-    });
+    if (!managed.isHibernated) {
+      Object.entries(options).forEach(([key, value]) => {
+        // @ts-expect-error xterm options are indexable
+        managed.terminal.options[key] = value;
+      });
+    }
 
     if (textMetricsChanged) {
       managed.lastWidth = 0;
@@ -1045,10 +1330,12 @@ class TerminalInstanceService {
     const textMetricsChanged = textMetricKeys.some((key) => key in options);
 
     this.instances.forEach((managed) => {
-      Object.entries(options).forEach(([key, value]) => {
-        // @ts-expect-error xterm options are indexable
-        managed.terminal.options[key] = value;
-      });
+      if (!managed.isHibernated) {
+        Object.entries(options).forEach(([key, value]) => {
+          // @ts-expect-error xterm options are indexable
+          managed.terminal.options[key] = value;
+        });
+      }
 
       if (textMetricsChanged) {
         managed.lastWidth = 0;
@@ -1101,6 +1388,220 @@ class TerminalInstanceService {
     return () => managed.exitSubscribers.delete(cb);
   }
 
+  isHibernated(id: string): boolean {
+    return this.instances.get(id)?.isHibernated === true;
+  }
+
+  hibernate(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || managed.isHibernated || managed.kind === "agent") return;
+
+    logDebug(`[TIS.hibernate] Hibernating terminal ${id}`);
+
+    if (managed.hibernationTimer) {
+      clearTimeout(managed.hibernationTimer);
+      managed.hibernationTimer = undefined;
+    }
+
+    this.restoreController.destroy(id);
+    this.dataBuffer.resetForTerminal(id);
+
+    // Release WebGL context first to avoid context leaks
+    this.webGLManager.onTerminalDestroyed(id);
+
+    // Dispose tier-managed addons
+    try {
+      managed.imageAddon?.dispose();
+    } catch {
+      /* ignore */
+    }
+    managed.imageAddon = null;
+    try {
+      managed.fileLinksDisposable?.dispose();
+    } catch {
+      /* ignore */
+    }
+    managed.fileLinksDisposable = null;
+    try {
+      managed.webLinksAddon?.dispose();
+    } catch {
+      /* ignore */
+    }
+    managed.webLinksAddon = null;
+
+    // Dispose terminal-bound listeners (keep IPC listeners at the beginning)
+    const terminalBoundListeners = managed.listeners.splice(managed.ipcListenerCount);
+    for (const unsub of terminalBoundListeners) {
+      try {
+        unsub();
+      } catch {
+        /* ignore — terminal already disposing */
+      }
+    }
+
+    // Dispose parser handler
+    managed.parserHandler?.dispose();
+    managed.parserHandler = undefined;
+
+    // Dispose last activity marker
+    managed.lastActivityMarker?.dispose();
+    managed.lastActivityMarker = undefined;
+
+    // Dispose terminal instance — this removes xterm's injected DOM elements
+    // from the hostElement but leaves the hostElement itself in the DOM
+    // so XtermAdapter's container ref stays valid for reattachment
+    managed.terminal.dispose();
+
+    managed.isHibernated = true;
+    managed.isOpened = false;
+    managed.keyHandlerInstalled = false;
+
+    // Clear resize state
+    this.resizeController.clearResizeJob(managed);
+    this.resizeController.clearSettledTimer(id);
+  }
+
+  unhibernate(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.isHibernated) return;
+
+    logDebug(`[TIS.unhibernate] Restoring terminal ${id}`);
+
+    // Create fresh Terminal with same options
+    const terminal = new Terminal(managed.terminal.options);
+    managed.terminal = terminal;
+
+    // Create fresh addons
+    const openLink = (url: string, event?: MouseEvent) => {
+      this.linkHandler.openLink(url, id, event);
+    };
+    const addons = setupTerminalAddons(
+      terminal,
+      () => (this.cwdProviders.get(id) ?? (() => ""))(),
+      (event, uri) => openLink(uri, event)
+    );
+    managed.fitAddon = addons.fitAddon;
+    managed.serializeAddon = addons.serializeAddon;
+    managed.searchAddon = addons.searchAddon;
+    managed.imageAddon = addons.imageAddon;
+    managed.fileLinksDisposable = addons.fileLinksDisposable;
+    managed.webLinksAddon = addons.webLinksAddon;
+
+    // Reuse existing hostElement — clear old xterm DOM nodes to prevent ghosting
+    const hostElement = managed.hostElement;
+    while (hostElement.firstChild) {
+      hostElement.removeChild(hostElement.firstChild);
+    }
+
+    // Re-create parser handler
+    managed.parserHandler = new TerminalParserHandler(managed, () => {
+      this.resizeController.applyDeferredResize(id);
+    });
+
+    // Re-register terminal-bound listeners (IPC listeners in managed.listeners survive)
+    const initialIsAltBuffer = terminal.buffer.active.type === "alternate";
+    managed.isAltBuffer = initialIsAltBuffer;
+
+    const bufferDisposable = terminal.buffer.onBufferChange(() => {
+      const newIsAltBuffer = terminal.buffer.active.type === "alternate";
+      if (newIsAltBuffer !== managed.isAltBuffer) {
+        managed.isAltBuffer = newIsAltBuffer;
+        this.handleBufferModeChange(id, newIsAltBuffer);
+      }
+    });
+    managed.listeners.push(() => bufferDisposable.dispose());
+
+    const oscDisposable = terminal.parser.registerOscHandler(11, () => {
+      if (managed.isAltBuffer) {
+        for (const callback of managed.altBufferListeners) {
+          try {
+            callback(true);
+          } catch (err) {
+            logError("Alt buffer callback error", err);
+          }
+        }
+      }
+      return false;
+    });
+    managed.listeners.push(() => oscDisposable.dispose());
+
+    const writeParsedDisposable = terminal.onWriteParsed(() => {
+      this.dataBuffer.notifyParsed(id);
+      if (managed && !managed.isUserScrolledBack && !managed.isAltBuffer) {
+        this.scrollToBottomSafe(managed);
+      }
+    });
+    managed.listeners.push(() => writeParsedDisposable.dispose());
+
+    const scrollDisposable = terminal.onScroll(() => {
+      const buffer = terminal.buffer.active;
+      const isAtBottom = buffer.viewportY >= buffer.baseY;
+      managed.latestWasAtBottom = isAtBottom;
+
+      managed._userScrollIntent = false;
+      if (managed._suppressScrollTracking) return;
+
+      if (isAtBottom) {
+        managed.isUserScrolledBack = false;
+        this.unseenTracker.clearUnseen(id, false);
+        if (managed.lastAppliedTier === TerminalRefreshTier.BACKGROUND) {
+          reduceScrollback(managed, SCROLLBACK_BACKGROUND);
+        }
+      } else {
+        managed.isUserScrolledBack = true;
+        this.unseenTracker.updateScrollState(id, true);
+      }
+    });
+    managed.listeners.push(() => scrollDisposable.dispose());
+
+    const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"]);
+    const onWheel = () => {
+      managed._userScrollIntent = true;
+    };
+    const onKeydownScroll = (e: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(e.key)) managed._userScrollIntent = true;
+    };
+    hostElement.addEventListener("wheel", onWheel, { passive: true });
+    hostElement.addEventListener("keydown", onKeydownScroll);
+    managed.listeners.push(() => {
+      hostElement.removeEventListener("wheel", onWheel);
+      hostElement.removeEventListener("keydown", onKeydownScroll);
+    });
+
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      const sel = terminal.getSelection();
+      if (sel) {
+        this.cachedSelections.set(id, sel);
+      } else if (managed.lastAppliedTier === TerminalRefreshTier.BACKGROUND) {
+        reduceScrollback(managed, SCROLLBACK_BACKGROUND);
+      }
+    });
+    managed.listeners.push(() => selectionDisposable.dispose());
+
+    const inputDisposable = terminal.onData((data) => {
+      if (!managed.isInputLocked) {
+        if (isNonKeyboardInput(data)) {
+          if (data === "\x1b") {
+            this.agentStateController.clearDirectingState(id);
+          }
+        } else {
+          this.onUserInput(id, data);
+        }
+        terminalClient.write(id, data);
+      }
+    });
+    managed.listeners.push(() => inputDisposable.dispose());
+
+    // Reset restore state
+    managed.writeChain = Promise.resolve();
+    managed.restoreGeneration += 1;
+    managed.isSerializedRestoreInProgress = false;
+    managed.deferredOutput = [];
+
+    managed.isHibernated = false;
+    managed.isDetached = false;
+  }
+
   destroy(id: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;
@@ -1134,6 +1635,10 @@ class TerminalInstanceService {
     this.dataBuffer.resetForTerminal(id);
     this.unseenTracker.destroy(id);
 
+    if (managed.hibernationTimer) {
+      clearTimeout(managed.hibernationTimer);
+      managed.hibernationTimer = undefined;
+    }
     if (managed.tierChangeTimer !== undefined) {
       clearTimeout(managed.tierChangeTimer);
       managed.tierChangeTimer = undefined;
@@ -1152,23 +1657,36 @@ class TerminalInstanceService {
       managed.resizeSuppressionTimer = undefined;
     }
 
+    managed.lastActivityMarker?.dispose();
     managed.exitSubscribers.clear();
     managed.agentStateSubscribers.clear();
     managed.altBufferListeners.clear();
 
-    managed.parserHandler?.dispose();
+    if (!managed.isHibernated) {
+      managed.parserHandler?.dispose();
 
-    try {
-      managed.fileLinksDisposable?.dispose();
-    } catch (error) {
-      logWarn("Error disposing file links", { error });
-    }
+      try {
+        managed.fileLinksDisposable?.dispose();
+      } catch (error) {
+        logWarn("Error disposing file links", { error });
+      }
+      try {
+        managed.webLinksAddon?.dispose();
+      } catch (error) {
+        logWarn("Error disposing web links addon", { error });
+      }
+      try {
+        managed.imageAddon?.dispose();
+      } catch (error) {
+        logWarn("Error disposing image addon", { error });
+      }
 
-    this.webGLManager.onTerminalDestroyed(id);
-    managed.terminal.dispose();
+      this.webGLManager.onTerminalDestroyed(id);
+      managed.terminal.dispose();
 
-    if (managed.hostElement.parentElement) {
-      managed.hostElement.parentElement.removeChild(managed.hostElement);
+      if (managed.hostElement.parentElement) {
+        managed.hostElement.parentElement.removeChild(managed.hostElement);
+      }
     }
 
     this.offscreenManager.removeOffscreenSlot(id);
@@ -1211,7 +1729,9 @@ class TerminalInstanceService {
     if (!managed) return;
 
     managed.isInputLocked = locked;
-    managed.terminal.options.disableStdin = locked;
+    if (!managed.isHibernated) {
+      managed.terminal.options.disableStdin = locked;
+    }
   }
 }
 
@@ -1233,5 +1753,37 @@ if (typeof window !== "undefined") {
       if (line) lines.push(line.translateToString(true));
     }
     return lines.join("\n");
+  };
+
+  (window as unknown as Record<string, unknown>).__canopySelectTerminalAll = (
+    panelId: string
+  ): boolean => {
+    const managed = terminalInstanceService["instances"].get(panelId);
+    if (!managed) return false;
+    managed.terminal.selectAll();
+    return true;
+  };
+
+  (window as unknown as Record<string, unknown>).__canopyGetTerminalBufferLength = (
+    panelId: string
+  ): number => {
+    const managed = terminalInstanceService["instances"].get(panelId);
+    if (!managed) return 0;
+    return managed.terminal.buffer.active.length;
+  };
+
+  (window as unknown as Record<string, unknown>).__canopyTriggerTerminalLink = (
+    panelId: string,
+    url: string
+  ): string => {
+    const managed = terminalInstanceService["instances"].get(panelId);
+    if (!managed) return "missing-panel";
+    const isMac = navigator.platform.toLowerCase().includes("mac");
+    const syntheticEvent = new MouseEvent("click", {
+      metaKey: isMac,
+      ctrlKey: !isMac,
+    });
+    terminalInstanceService["linkHandler"].openLink(url, panelId, syntheticEvent);
+    return "ok";
   };
 }

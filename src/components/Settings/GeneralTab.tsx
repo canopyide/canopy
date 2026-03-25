@@ -7,6 +7,8 @@ import {
   AlertCircle,
   Activity,
   Wrench,
+  LayoutGrid,
+  PanelBottom,
   Keyboard,
   Info,
   ExternalLink,
@@ -102,6 +104,8 @@ export function GeneralTab({
 
   const showProjectPulse = usePreferencesStore((s) => s.showProjectPulse);
   const showDeveloperTools = usePreferencesStore((s) => s.showDeveloperTools);
+  const showGridAgentHighlights = usePreferencesStore((s) => s.showGridAgentHighlights);
+  const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);
 
   useEffect(() => {
     return () => {
@@ -110,9 +114,18 @@ export function GeneralTab({
   }, []);
 
   useEffect(() => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled && isMountedRef.current) {
+        setConfigError("Settings load timed out");
+      }
+    }, 10_000);
+
     actionService
       .dispatch("hibernation.getConfig", undefined, { source: "user" })
       .then((result) => {
+        settled = true;
+        clearTimeout(timer);
         if (!isMountedRef.current) return;
         if (!result.ok) {
           throw new Error(result.error.message);
@@ -121,16 +134,33 @@ export function GeneralTab({
         setConfigError(null);
       })
       .catch((error) => {
+        settled = true;
+        clearTimeout(timer);
         if (!isMountedRef.current) return;
         console.error("Failed to load hibernation config:", error);
         setConfigError(error instanceof Error ? error.message : "Failed to load settings");
       });
+
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      actionService.dispatch("cliAvailability.get", undefined, { source: "user" }),
-      actionService.dispatch("agentSettings.get", undefined, { source: "user" }),
+    const STATUS_TIMEOUT_MS = 15_000;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error("Agent status check timed out")),
+        STATUS_TIMEOUT_MS
+      );
+    });
+
+    Promise.race([
+      Promise.all([
+        actionService.dispatch("cliAvailability.get", undefined, { source: "user" }),
+        actionService.dispatch("agentSettings.get", undefined, { source: "user" }),
+      ]),
+      timeout,
     ])
       .then(([availabilityResult, settingsResult]) => {
         if (!isMountedRef.current) return;
@@ -148,7 +178,12 @@ export function GeneralTab({
         if (!isMountedRef.current) return;
         console.error("[GeneralTab] Failed to load agent availability:", error);
         setCliCheckFailed(true);
-      });
+      })
+      .finally(() => clearTimeout(timeoutId));
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   useEffect(() => {
@@ -257,7 +292,7 @@ export function GeneralTab({
         <>
           <div
             id="general-about"
-            className="flex items-start gap-4 p-4 rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg/50"
+            className="settings-card flex items-start gap-4 p-4 rounded-[var(--radius-md)] border border-canopy-border"
           >
             <div className="h-12 w-12 bg-canopy-accent/10 rounded-xl flex items-center justify-center shrink-0">
               <CanopyIcon size={28} className="text-canopy-accent" />
@@ -268,9 +303,9 @@ export function GeneralTab({
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-canopy-accent/15 text-canopy-accent leading-none">
                   Beta
                 </span>
-                <span className="text-xs text-canopy-text/40 font-mono ml-auto">v{appVersion}</span>
+                <span className="text-xs text-text-muted font-mono ml-auto">v{appVersion}</span>
               </div>
-              <p className="text-xs text-canopy-text/50 leading-relaxed">
+              <p className="text-xs text-text-secondary leading-relaxed">
                 An orchestration board for AI coding agents. Start agents on worktrees, monitor
                 progress, and inject context.
               </p>
@@ -282,7 +317,7 @@ export function GeneralTab({
                     { source: "user" }
                   )
                 }
-                className="flex items-center gap-1.5 text-xs text-canopy-text/40 hover:text-canopy-accent transition-colors pt-1"
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-canopy-accent transition-colors pt-1"
               >
                 <ExternalLink className="w-3 h-3" />
                 github.com/canopyide/canopy
@@ -299,7 +334,7 @@ export function GeneralTab({
             {cliCheckFailed ? (
               <div className="text-sm text-status-error/80">Failed to check agent status</div>
             ) : !cliAvailability || !agentSettings ? (
-              <div className="text-sm text-canopy-text/40">Loading agent status...</div>
+              <div className="text-sm text-text-muted">Loading agent status...</div>
             ) : (
               <div className="space-y-2">
                 {getAgentIds().map((id) => {
@@ -308,19 +343,25 @@ export function GeneralTab({
                   const isSelected = agentEntry.selected !== false;
                   const isAvailable = cliAvailability[id] ?? false;
                   const name = config?.name ?? id;
+                  const isUnavailable = isSelected && !isAvailable;
 
                   return (
                     <button
                       type="button"
                       key={id}
-                      className="flex items-center justify-between text-sm px-3 py-2 rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg/30 w-full text-left cursor-pointer transition-colors hover:bg-overlay-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+                      className={cn(
+                        "flex items-center justify-between text-sm px-3 py-2 rounded-[var(--radius-md)] border w-full text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
+                        isUnavailable
+                          ? "border-[color-mix(in_oklab,var(--color-status-warning)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-status-warning)_6%,transparent)] hover:bg-[color-mix(in_oklab,var(--color-status-warning)_10%,transparent)]"
+                          : "settings-list-item border-canopy-border hover:bg-[var(--settings-nav-hover-bg,var(--theme-overlay-hover))]"
+                      )}
                       aria-label={`Go to ${name} agent settings`}
                       onClick={() => onNavigateToAgents?.(id)}
                     >
-                      <span className="text-canopy-text/70">{name}</span>
+                      <span className="text-text-secondary">{name}</span>
                       <span className="flex items-center gap-2">
                         {!isSelected ? (
-                          <span className="text-canopy-text/40 text-xs">Disabled</span>
+                          <span className="text-text-muted text-xs">Disabled</span>
                         ) : isAvailable ? (
                           <>
                             <CheckCircle className="w-3.5 h-3.5 text-status-success" />
@@ -373,7 +414,7 @@ export function GeneralTab({
               <div id="keyboard-shortcuts-content" className="space-y-4">
                 {shortcuts.map((category) => (
                   <div key={category.category} className="space-y-2">
-                    <h5 className="text-xs font-medium text-canopy-text/50 uppercase tracking-wide">
+                    <h5 className="text-xs font-medium text-text-secondary uppercase tracking-wide">
                       {category.category}
                     </h5>
                     <dl className="space-y-1">
@@ -384,7 +425,7 @@ export function GeneralTab({
                         >
                           <dt className="text-canopy-text">{shortcut.description}</dt>
                           <dd>
-                            <kbd className="px-2 py-1 bg-canopy-bg border border-canopy-border rounded text-xs font-mono text-canopy-text">
+                            <kbd className="settings-kbd px-2 py-1 rounded border text-xs font-mono text-canopy-text">
                               {shortcut.key}
                             </kbd>
                           </dd>
@@ -510,6 +551,56 @@ export function GeneralTab({
               onReset={() =>
                 void actionService.dispatch(
                   "preferences.showDeveloperTools.set",
+                  { show: false },
+                  { source: "user" }
+                )
+              }
+            />
+          </div>
+
+          <div id="general-grid-agent-highlights">
+            <SettingsSwitchCard
+              icon={LayoutGrid}
+              title="Grid Panel Agent Highlights"
+              subtitle="Show waiting and working state borders on grid panels. Failed state borders are always visible."
+              isEnabled={showGridAgentHighlights}
+              onChange={() =>
+                void actionService.dispatch(
+                  "preferences.showGridAgentHighlights.set",
+                  { show: !showGridAgentHighlights },
+                  { source: "user" }
+                )
+              }
+              ariaLabel="Grid Panel Agent Highlights Toggle"
+              isModified={showGridAgentHighlights}
+              onReset={() =>
+                void actionService.dispatch(
+                  "preferences.showGridAgentHighlights.set",
+                  { show: false },
+                  { source: "user" }
+                )
+              }
+            />
+          </div>
+
+          <div id="general-dock-agent-highlights">
+            <SettingsSwitchCard
+              icon={PanelBottom}
+              title="Dock Item Agent Highlights"
+              subtitle="Show waiting state borders on dock items. Failed state borders are always visible."
+              isEnabled={showDockAgentHighlights}
+              onChange={() =>
+                void actionService.dispatch(
+                  "preferences.showDockAgentHighlights.set",
+                  { show: !showDockAgentHighlights },
+                  { source: "user" }
+                )
+              }
+              ariaLabel="Dock Item Agent Highlights Toggle"
+              isModified={showDockAgentHighlights}
+              onReset={() =>
+                void actionService.dispatch(
+                  "preferences.showDockAgentHighlights.set",
                   { show: false },
                   { source: "user" }
                 )

@@ -3,7 +3,7 @@ import {
   CornerDownLeft,
   LayoutGrid,
   PanelBottom,
-  Terminal,
+  SquareTerminal,
   Clock,
   ChevronRight,
   ChevronDown,
@@ -507,7 +507,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                   <div
                     role="listbox"
                     onMouseDown={(e) => e.preventDefault()}
-                    className="absolute bottom-full left-0 right-0 z-50 mb-1 flex max-h-64 flex-col overflow-hidden rounded-[var(--radius-md)] border border-border-default bg-surface-panel-elevated shadow-2xl"
+                    className="absolute bottom-full left-0 right-0 z-50 mb-1 flex max-h-64 flex-col overflow-hidden rounded-[var(--radius-md)] border border-border-default bg-surface-panel-elevated shadow-[var(--theme-shadow-floating)]"
                   >
                     <div className="shrink-0 border-b border-border-subtle bg-overlay-soft px-3 py-1 text-[11px] font-sans tracking-wider text-text-muted">
                       COMMANDS
@@ -534,7 +534,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                           ) : item.type === "history" ? (
                             <Clock className="h-3 w-3 opacity-40 shrink-0" />
                           ) : (
-                            <Terminal className="h-3 w-3 opacity-40 shrink-0" />
+                            <SquareTerminal className="h-3 w-3 opacity-40 shrink-0" />
                           )}
                           <div className="flex-1 truncate flex items-start justify-between min-w-0">
                             <div className="truncate">

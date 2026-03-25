@@ -1,3 +1,4 @@
+import { spawnSync } from "child_process";
 import type * as pty from "node-pty";
 import type { Terminal as HeadlessTerminalType } from "@xterm/headless";
 import headless from "@xterm/headless";
@@ -24,10 +25,9 @@ import {
 } from "./types.js";
 import { getTerminalSerializerService } from "./TerminalSerializerService.js";
 import { events } from "../events.js";
-import { AgentSpawnedSchema, AgentStateChangedSchema } from "../../schemas/agent.js";
+import { AgentSpawnedSchema } from "../../schemas/agent.js";
 import type { PtyPool } from "../PtyPool.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
-import { styleUrls } from "./UrlStyler.js";
 
 // Extracted modules
 import {
@@ -62,8 +62,7 @@ import {
 import { TerminalForensicsBuffer } from "./TerminalForensicsBuffer.js";
 import { SemanticBufferManager } from "./SemanticBufferManager.js";
 import { stripAnsiCodes } from "../../../shared/utils/artifactParser.js";
-import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
-import { buildTerminalEnv, acquirePtyProcess } from "./terminalSpawn.js";
+import type { SpawnContext } from "./terminalSpawn.js";
 
 type CursorBuffer = {
   cursorY?: number;
@@ -71,7 +70,7 @@ type CursorBuffer = {
   getLine: (index: number) => { translateToString: (trimRight?: boolean) => string } | undefined;
 };
 
-const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
+const EVENT_DRIVEN_SNAPSHOT_THROTTLE_MS = 2000;
 
 export interface TerminalProcessCallbacks {
   emitData: (id: string, data: string | Uint8Array) => void;
@@ -100,12 +99,14 @@ export class TerminalProcess {
 
   private inputWriteQueue: string[] = [];
   private inputWriteTimeout: NodeJS.Timeout | null = null;
+  private killTreeTimer: NodeJS.Timeout | null = null;
 
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
   private sessionPersistTimer: NodeJS.Timeout | null = null;
   private sessionPersistDirty = false;
   private sessionPersistInFlight = false;
+  private lastEventDrivenFlushAt = -Infinity;
 
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
@@ -113,6 +114,7 @@ export class TerminalProcess {
   private _activityTier: "active" | "background" = "active";
   private _restoreBannerStart: IMarker | null = null;
   private _restoreBannerEnd: IMarker | null = null;
+  private readonly textDecoder = new TextDecoder();
 
   private restoreSessionIfPresent(headlessTerminal: HeadlessTerminalType): void {
     if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
@@ -176,6 +178,23 @@ export class TerminalProcess {
     }
   }
 
+  flushEventDrivenSnapshot(): void {
+    if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
+    if (this.terminalInfo.wasKilled) return;
+
+    const now = performance.now();
+    if (now - this.lastEventDrivenFlushAt < EVENT_DRIVEN_SNAPSHOT_THROTTLE_MS) return;
+    this.lastEventDrivenFlushAt = now;
+
+    const state = this.getSerializedState();
+    if (!state) return;
+    if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) return;
+
+    persistSessionSnapshotAsync(this.id, state).catch((error) => {
+      console.warn(`[TerminalProcess] Event-driven snapshot failed for ${this.id}:`, error);
+    });
+  }
+
   private logWriteError(error: unknown, context: { operation: string; traceId?: string }): void {
     const now = Date.now();
     const THROTTLE_MS = 5000;
@@ -230,31 +249,14 @@ export class TerminalProcess {
     public readonly id: string,
     private options: PtySpawnOptions,
     private callbacks: TerminalProcessCallbacks,
-    private deps: TerminalProcessDependencies
+    private deps: TerminalProcessDependencies,
+    spawnContext: SpawnContext,
+    ptyProcess: pty.IPty
   ) {
-    const shell = options.shell || getDefaultShell();
-    const args = options.args || getDefaultShellArgs(shell);
+    const { shell, isAgentTerminal, agentId } = spawnContext;
     const spawnedAt = Date.now();
 
-    const isAgentByKind = options.kind === "agent";
-    const isAgentByAgentId = !!options.agentId;
-    const isAgentByType = !!(options.type && options.type !== "terminal");
-    this.isAgentTerminal = isAgentByKind || isAgentByAgentId || isAgentByType;
-    const agentId = this.isAgentTerminal
-      ? (options.agentId ?? (options.type !== "terminal" ? options.type : id))
-      : undefined;
-
-    const env = buildTerminalEnv(options, id, shell, this.isAgentTerminal, agentId);
-    const ptyProcess = acquirePtyProcess(
-      id,
-      options,
-      env,
-      shell,
-      args,
-      this.isAgentTerminal,
-      deps.ptyPool,
-      (error, context) => this.logWriteError(error, context)
-    );
+    this.isAgentTerminal = isAgentTerminal;
 
     this._scrollback = this.isAgentTerminal ? AGENT_SCROLLBACK : DEFAULT_SCROLLBACK;
 
@@ -294,6 +296,8 @@ export class TerminalProcess {
       rawOutputBuffer: undefined,
       restartCount: 0,
       analysisEnabled: this.isAgentTerminal,
+      agentLaunchFlags: options.agentLaunchFlags,
+      agentModelId: options.agentModelId,
     };
 
     // NOTE: The headless responder is intentionally NOT installed for agent
@@ -432,8 +436,8 @@ export class TerminalProcess {
       wasKilled: t.wasKilled,
       isExited: t.isExited,
       agentState: t.agentState,
+      waitingReason: t.waitingReason,
       lastStateChange: t.lastStateChange,
-      error: t.error,
       traceId: t.traceId,
       analysisEnabled: t.analysisEnabled,
       lastInputTime: t.lastInputTime,
@@ -443,6 +447,10 @@ export class TerminalProcess {
       restartCount: t.restartCount,
       activityTier: this._activityTier,
       hasPty,
+      agentSessionId: t.agentSessionId,
+      agentLaunchFlags: t.agentLaunchFlags,
+      agentModelId: t.agentModelId,
+      exitCode: t.exitCode,
     };
   }
 
@@ -766,6 +774,88 @@ export class TerminalProcess {
     });
   }
 
+  /**
+   * Kill the entire process tree rooted at the PTY shell.
+   * Sends SIGTERM to all descendants bottom-up (leaves first), then kills the shell.
+   * @param immediate If true, SIGKILL is sent synchronously (for process.on("exit") context
+   *   where timers don't fire). If false, SIGKILL escalation fires after 500ms.
+   */
+  private killProcessTree(immediate: boolean): void {
+    // Clear any pending escalation timer from a prior kill() call
+    if (this.killTreeTimer) {
+      clearTimeout(this.killTreeTimer);
+      this.killTreeTimer = null;
+    }
+
+    const shellPid = this.terminalInfo.ptyProcess.pid;
+
+    if (shellPid === undefined || shellPid <= 0) {
+      try {
+        this.terminalInfo.ptyProcess.kill();
+      } catch {
+        // Process may already be dead
+      }
+      return;
+    }
+
+    // Windows: use taskkill /T /F which handles the entire tree atomically
+    if (process.platform === "win32") {
+      try {
+        spawnSync("taskkill", ["/T", "/F", "/PID", String(shellPid)], {
+          windowsHide: true,
+          stdio: "ignore",
+          timeout: 3000,
+        });
+      } catch {
+        // taskkill may fail if process already exited
+      }
+      try {
+        this.terminalInfo.ptyProcess.kill();
+      } catch {
+        // Process may already be dead
+      }
+      return;
+    }
+
+    // Unix: SIGTERM descendants bottom-up, then kill the shell
+    const descendants = this.deps.processTreeCache?.getDescendantPids(shellPid) ?? [];
+
+    for (const pid of descendants) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // ESRCH: process already exited
+      }
+    }
+
+    try {
+      this.terminalInfo.ptyProcess.kill();
+    } catch {
+      // Process may already be dead
+    }
+
+    // SIGKILL escalation for any survivors
+    const allPids = [...descendants, shellPid];
+    const sigkillSweep = (): void => {
+      for (const pid of allPids) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // ESRCH: process already exited
+        }
+      }
+    };
+
+    if (immediate) {
+      sigkillSweep();
+    } else {
+      this.killTreeTimer = setTimeout(() => {
+        this.killTreeTimer = null;
+        sigkillSweep();
+      }, 500);
+    }
+  }
+
   kill(reason?: string): void {
     const terminal = this.terminalInfo;
 
@@ -807,19 +897,14 @@ export class TerminalProcess {
 
     if (terminal.agentId) {
       this.deps.agentStateService.updateAgentState(terminal, {
-        type: "error",
-        error: reason || "Agent killed by user",
+        type: "kill",
       });
       this.deps.agentStateService.emitAgentKilled(terminal, reason);
     }
 
     this.disposeHeadless();
 
-    try {
-      terminal.ptyProcess.kill();
-    } catch {
-      // Process may already be dead
-    }
+    this.killProcessTree(false);
   }
 
   checkFlooding(): { flooded: boolean; resumed: boolean } {
@@ -839,7 +924,6 @@ export class TerminalProcess {
       agentId: terminal.agentId,
       agentState: terminal.agentState,
       lastStateChange: terminal.lastStateChange,
-      error: terminal.error,
       spawnedAt: terminal.spawnedAt,
     };
   }
@@ -1057,6 +1141,13 @@ export class TerminalProcess {
     // No-op: SAB mode is always used, flow control handled by pty-host.ts
   }
 
+  trimScrollback(targetLines: number): void {
+    if (this._scrollback <= targetLines) return;
+    if (!this.terminalInfo.headlessTerminal) return;
+    this._scrollback = targetLines;
+    this.terminalInfo.headlessTerminal.options.scrollback = targetLines;
+  }
+
   dispose(): void {
     this.stopProcessDetector();
     this.stopActivityMonitor();
@@ -1088,11 +1179,7 @@ export class TerminalProcess {
 
     this.disposeHeadless();
 
-    try {
-      this.terminalInfo.ptyProcess.kill();
-    } catch {
-      // Ignore kill errors - process may already be dead
-    }
+    this.killProcessTree(true);
   }
 
   private setupPtyHandlers(ptyProcess: pty.IPty): void {
@@ -1171,6 +1258,14 @@ export class TerminalProcess {
       }
       this.inputWriteQueue = [];
 
+      this.clearSessionPersistTimer();
+      this.sessionPersistDirty = false;
+
+      if (this.killTreeTimer) {
+        clearTimeout(this.killTreeTimer);
+        this.killTreeTimer = null;
+      }
+
       this.callbacks.onExit(this.id, exitCode ?? 0);
       this.forensicsBuffer.logForensics(
         this.id,
@@ -1184,19 +1279,16 @@ export class TerminalProcess {
         this.deps.agentStateService.updateAgentState(terminal, {
           type: "exit",
           code: exitCode ?? 0,
+          signal: signal ?? undefined,
         });
       }
 
-      if (
-        this.isAgentTerminal &&
-        terminal.agentId &&
-        !terminal.wasKilled &&
-        terminal.agentState !== "failed"
-      ) {
+      if (this.isAgentTerminal && terminal.agentId && !terminal.wasKilled) {
         this.deps.agentStateService.emitAgentCompleted(terminal, exitCode ?? 0);
       }
 
       if (this.shouldPreserveOnExit(exitCode ?? 0)) {
+        terminal.exitCode = exitCode ?? 0;
         terminal.isExited = true;
         return;
       }
@@ -1206,18 +1298,12 @@ export class TerminalProcess {
   }
 
   private emitData(data: string | Uint8Array): void {
-    const text = typeof data === "string" ? data : new TextDecoder().decode(data);
+    const text = typeof data === "string" ? data : this.textDecoder.decode(data);
     this.emitDataDirect(text);
   }
 
   private emitDataDirect(data: string): void {
-    if (TERMINAL_DISABLE_URL_STYLING) {
-      this.callbacks.emitData(this.id, data);
-      return;
-    }
-
-    const styled = styleUrls(data);
-    this.callbacks.emitData(this.id, styled);
+    this.callbacks.emitData(this.id, data);
   }
 
   private handleAgentDetection(result: DetectionResult, spawnedAt: number): void {
@@ -1316,30 +1402,6 @@ export class TerminalProcess {
         worktreeId: this.options.worktreeId,
         lastCommand,
       });
-
-      const newState = result.isBusy ? "running" : "idle";
-
-      if (terminal.agentState !== newState) {
-        const previousState = terminal.agentState || "idle";
-        terminal.agentState = newState;
-        terminal.lastStateChange = Date.now();
-
-        const stateChangePayload = {
-          agentId: this.terminalInfo.agentId,
-          terminalId: this.id,
-          state: newState,
-          previousState,
-          timestamp: terminal.lastStateChange,
-          trigger: "activity" as const,
-          confidence: 1.0,
-          worktreeId: this.options.worktreeId,
-        };
-
-        const validated = AgentStateChangedSchema.safeParse(stateChangePayload);
-        if (validated.success) {
-          events.emit("agent:state-changed", validated.data);
-        }
-      }
     }
   }
 

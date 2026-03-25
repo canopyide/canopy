@@ -1,5 +1,6 @@
-import { Play, Circle, CheckCircle2, XCircle } from "lucide-react";
+import { Play, Circle, CheckCircle2 } from "lucide-react";
 import type { AgentState } from "@/types";
+import type { WaitingReason } from "@shared/types/agent";
 import {
   SpinnerCircle,
   HollowCircle,
@@ -13,7 +14,6 @@ export const STATE_ICONS: Record<AgentState, React.ComponentType<{ className?: s
   directing: InteractingCircle,
   idle: Circle,
   completed: CheckCircle2,
-  failed: XCircle,
 };
 
 export const STATE_COLORS: Record<AgentState, string> = {
@@ -23,7 +23,6 @@ export const STATE_COLORS: Record<AgentState, string> = {
   directing: "text-category-blue",
   idle: "text-canopy-text/40",
   completed: "text-status-success",
-  failed: "text-status-error",
 };
 
 export const STATE_LABELS: Record<AgentState, string> = {
@@ -33,12 +32,10 @@ export const STATE_LABELS: Record<AgentState, string> = {
   waiting: "waiting",
   directing: "directing",
   completed: "done",
-  failed: "error",
 };
 
 export const STATE_PRIORITY: AgentState[] = [
   "working",
-  "failed",
   "directing",
   "waiting",
   "running",
@@ -48,10 +45,30 @@ export const STATE_PRIORITY: AgentState[] = [
 
 export const STATE_SORT_PRIORITY: Record<AgentState, number> = {
   working: 0,
-  failed: 1,
-  directing: 2,
-  waiting: 3,
-  running: 4,
-  idle: 5,
-  completed: 6,
+  directing: 1,
+  waiting: 2,
+  running: 3,
+  idle: 4,
+  completed: 5,
 };
+
+export function getEffectiveStateIcon(
+  agentState: AgentState,
+  _waitingReason?: WaitingReason
+): React.ComponentType<{ className?: string }> {
+  return STATE_ICONS[agentState];
+}
+
+export function getEffectiveStateColor(
+  agentState: AgentState,
+  _waitingReason?: WaitingReason
+): string {
+  return STATE_COLORS[agentState];
+}
+
+export function getEffectiveStateLabel(
+  agentState: AgentState,
+  _waitingReason?: WaitingReason
+): string {
+  return STATE_LABELS[agentState];
+}

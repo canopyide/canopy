@@ -10,6 +10,8 @@ export interface TerminalSpawnOptions {
   kind?: TerminalKind;
   /** Agent ID when kind is 'agent' */
   agentId?: AgentId;
+  /** Project ID to associate with the terminal (captured at action time to avoid race conditions) */
+  projectId?: string;
   /** Working directory for the terminal */
   cwd?: string;
   /** Shell executable to use (defaults to user's shell) */
@@ -32,6 +34,10 @@ export interface TerminalSpawnOptions {
   restore?: boolean;
   /** Whether to kill the PTY when the frontend disconnects (no terminal registry entry) */
   isEphemeral?: boolean;
+  /** Process-level flags captured at launch time */
+  agentLaunchFlags?: string[];
+  /** Model ID selected at launch time */
+  agentModelId?: string;
 }
 
 /** Terminal state for app state persistence */
@@ -93,6 +99,8 @@ export interface TerminalState {
   agentSessionId?: string;
   /** Process-level flags captured at launch time, persisted for session resume */
   agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
 }
 
 /** Terminal data payload for IPC */
@@ -144,6 +152,12 @@ export interface BackendTerminalInfo {
   activityTier?: "active" | "background";
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
+  /** Captured agent session ID from graceful shutdown */
+  agentSessionId?: string;
+  /** Process-level flags captured at launch time */
+  agentLaunchFlags?: string[];
+  /** Model ID selected at launch time */
+  agentModelId?: string;
 }
 
 /** Result from terminal reconnect operation */
@@ -162,7 +176,9 @@ export interface TerminalReconnectResult {
   spawnedAt?: number;
   activityTier?: "active" | "background";
   hasPty?: boolean;
-  error?: string;
+  agentSessionId?: string;
+  agentLaunchFlags?: string[];
+  agentModelId?: string;
 }
 
 /** Terminal information payload for diagnostic display */
@@ -195,6 +211,18 @@ export interface TerminalInfoPayload {
   analysisEnabled?: boolean;
   /** Resize strategy: "default" (immediate) or "settled" (batched for TUI agents) */
   resizeStrategy?: "default" | "settled";
+  /** PTY process PID */
+  ptyPid?: number;
+  /** PTY column count */
+  ptyCols?: number;
+  /** PTY row count */
+  ptyRows?: number;
+  /** Current foreground process name */
+  ptyForegroundProcess?: string;
+  /** TTY device path (e.g., /dev/ttys004) */
+  ptyTty?: string;
+  /** Exit code when terminal has exited */
+  exitCode?: number;
 }
 
 import type { TerminalActivityPayload } from "../terminal.js";

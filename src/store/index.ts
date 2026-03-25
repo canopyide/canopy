@@ -33,6 +33,8 @@ export type { PanelState } from "./focusStore";
 export { useNotificationStore } from "./notificationStore";
 export type { Notification, NotificationType } from "./notificationStore";
 
+export { useNotificationSettingsStore } from "./notificationSettingsStore";
+
 export { useUpdateStore } from "./updateStore";
 export type { UpdateStatus } from "./updateStore";
 
@@ -56,7 +58,7 @@ export { useTerminalColorSchemeStore } from "./terminalColorSchemeStore";
 
 export { useTerminalInputStore } from "./terminalInputStore";
 
-export { useSidecarStore } from "./sidecarStore";
+export { usePortalStore } from "./portalStore";
 
 export { useUIStore } from "./uiStore";
 
@@ -91,3 +93,8 @@ export type { TwoPaneSplitConfig, WorktreeRatioEntry } from "./twoPaneSplitStore
 export { useAppAgentStore, cleanupAppAgentStore } from "./appAgentStore";
 
 export { useActionMruStore } from "./actionMruStore";
+
+export { useScreenReaderStore } from "./screenReaderStore";
+export type { ScreenReaderMode } from "./screenReaderStore";
+
+export { useLayoutUndoStore } from "./layoutUndoStore";

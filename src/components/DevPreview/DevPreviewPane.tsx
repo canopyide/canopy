@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { AlertTriangle, RotateCw, ExternalLink, Settings, Wand2 } from "lucide-react";
+import { AlertTriangle, RotateCw, ExternalLink, Settings, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTerminalStore } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
@@ -24,6 +24,8 @@ import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
+import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
+import { useWebviewEviction } from "@/hooks/useWebviewEviction";
 import { useWebviewDialog } from "@/hooks/useWebviewDialog";
 import { WebviewDialog } from "../Browser/WebviewDialog";
 import { FindBar } from "../Browser/FindBar";
@@ -120,10 +122,14 @@ export function DevPreviewPane({
   const loadTimeoutMs =
     Math.min(Math.max(projectSettings?.devServerLoadTimeout ?? 30, 1), 120) * 1000;
 
+  const hasBeenVisible = useHasBeenVisible(id, location);
+
   const currentUrl = history.present;
   const canGoBack = history.past.length > 0;
   const canGoForward = history.future.length > 0;
   const isUnconfigured = Boolean(currentProjectId) && !isSettingsLoading && !devCommand;
+
+  const { isEvicted, evictingRef } = useWebviewEviction(id, location);
 
   const setWebviewNode = useCallback(
     (node: Electron.WebviewTag | null) => {
@@ -391,6 +397,8 @@ export function DevPreviewPane({
 
     const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
       const navigatedUrl = e.url;
+      // Suppress about:blank navigations triggered by eviction
+      if (navigatedUrl === "about:blank" && evictingRef.current) return;
       // A confirmed new main-frame navigation means we're past any previous failure;
       // reset the retry budget so stale exhaustion doesn't block future attempts.
       failLoadRetryCountRef.current = 0;
@@ -438,7 +446,7 @@ export function DevPreviewPane({
         failLoadRetryRef.current = null;
       }
     };
-  }, [webviewElement, loadTimeoutMs]);
+  }, [webviewElement, loadTimeoutMs, evictingRef]);
 
   useEffect(() => {
     const webview = webviewElement;
@@ -513,13 +521,49 @@ export function DevPreviewPane({
     };
   }, []);
 
-  useWebviewThrottle(id, location, webviewElement, isWebviewReady);
+  // Blank the webview and clear timers before React unmounts it for faster memory reclamation
+  useEffect(() => {
+    if (isEvicted && webviewRef.current) {
+      try {
+        // Save scroll position before eviction
+        const wv = webviewRef.current;
+        const currentWebviewUrl = wv.getURL();
+        if (currentWebviewUrl && currentWebviewUrl !== "about:blank") {
+          wv.executeJavaScript("window.scrollY")
+            .then((scrollY: number) => {
+              if (typeof scrollY === "number" && Number.isFinite(scrollY)) {
+                scrollCache.set(id, { url: currentWebviewUrl, scrollY });
+              }
+            })
+            .catch(() => {});
+        }
+        wv.src = "about:blank";
+      } catch {
+        // webview may already be detached
+      }
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
+        failLoadRetryRef.current = null;
+      }
+    }
+  }, [isEvicted, id]);
+
+  useWebviewThrottle(id, location, isEvicted ? null : webviewElement, isWebviewReady && !isEvicted);
   const { currentDialog, handleDialogRespond } = useWebviewDialog(
     id,
-    webviewElement,
-    isWebviewReady
+    isEvicted ? null : webviewElement,
+    isWebviewReady && !isEvicted
   );
-  const findInPage = useFindInPage(id, webviewElement, isWebviewReady, isFocused);
+  const findInPage = useFindInPage(
+    id,
+    isEvicted ? null : webviewElement,
+    isWebviewReady && !isEvicted,
+    isFocused
+  );
 
   return (
     <ContentPanel
@@ -615,7 +659,7 @@ export function DevPreviewPane({
                         size="sm"
                         className="gap-1.5 px-2.5 py-1.5 group text-canopy-accent/70 hover:text-canopy-accent"
                       >
-                        <Wand2 className="h-3.5 w-3.5" />
+                        <WandSparkles className="h-3.5 w-3.5" />
                         <span className="text-xs">
                           {isAutoDetecting
                             ? "Detecting..."
@@ -644,6 +688,16 @@ export function DevPreviewPane({
                   </p>
                 </div>
               )}
+            </div>
+          ) : !hasBeenVisible ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-canopy-bg text-canopy-text">
+              <p className="text-xs text-canopy-text/50">
+                Preview will load when this panel is first viewed
+              </p>
+            </div>
+          ) : isEvicted ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-canopy-bg text-canopy-text p-6">
+              <p className="text-xs text-canopy-text/50">Reclaimed for memory</p>
             </div>
           ) : (
             <>

@@ -31,6 +31,7 @@ export interface ActionCallbacks {
       worktreeId?: string;
       prompt?: string;
       interactive?: boolean;
+      modelId?: string;
     }
   ) => Promise<string | null>;
   onInject: (worktreeId: string) => void;
@@ -38,6 +39,7 @@ export interface ActionCallbacks {
   getActiveWorktreeId: () => string | undefined;
   getWorktrees: () => Worktree[];
   getFocusedId: () => string | null;
+  getIsSettingsOpen: () => boolean;
   getGridNavigation: () => {
     findNearest: (currentId: string, direction: NavigationDirection) => string | null;
     findByIndex: (index: number) => string | null;

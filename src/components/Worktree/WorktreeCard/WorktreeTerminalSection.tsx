@@ -6,9 +6,16 @@ import type { TerminalInstance } from "@/store/terminalStore";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { cn } from "@/lib/utils";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
-import { STATE_COLORS, STATE_ICONS, STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../../ui/tooltip";
-import { ChevronRight, GripVertical, LayoutGrid, PanelBottom, Terminal } from "lucide-react";
+import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
+import {
+  STATE_LABELS,
+  STATE_PRIORITY,
+  getEffectiveStateIcon,
+  getEffectiveStateColor,
+} from "../terminalStateConfig";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
+import { ChevronRight, GripVertical, PanelBottom, SquareTerminal } from "lucide-react";
+import { MoveToGridIcon } from "@/components/icons";
 import {
   SortableWorktreeTerminal,
   getAccordionDragId,
@@ -20,8 +27,8 @@ interface StateIconProps {
 }
 
 function StateIcon({ state, count }: StateIconProps) {
-  const Icon = STATE_ICONS[state];
-  const colorClass = STATE_COLORS[state];
+  const Icon = getEffectiveStateIcon(state);
+  const colorClass = getEffectiveStateColor(state);
   const label = STATE_LABELS[state];
 
   return (
@@ -39,7 +46,7 @@ function StateIcon({ state, count }: StateIconProps) {
             )}
             aria-hidden
           />
-          <span className="font-mono">{count}</span>
+          <span className="font-mono tabular-nums">{count}</span>
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="text-xs">
@@ -81,6 +88,19 @@ export function WorktreeTerminalSection({
     return null;
   }, [counts.byState]);
 
+  const SummaryIcon = useMemo(() => {
+    if (terminals.length === 0) return null;
+    let commonId: string | null = null;
+    for (const t of terminals) {
+      const effectiveId = t.agentId ?? (t.type && isRegisteredAgent(t.type) ? t.type : undefined);
+      if (!effectiveId) return null;
+      if (commonId === null) commonId = effectiveId;
+      else if (effectiveId !== commonId) return null;
+    }
+    if (!commonId) return null;
+    return getAgentConfig(commonId)?.icon ?? null;
+  }, [terminals]);
+
   const orderedWorktreeTerminals = terminals;
 
   if (!showMetaFooter) {
@@ -90,7 +110,7 @@ export function WorktreeTerminalSection({
   return (
     <div
       id={terminalsId}
-      className="mt-3 rounded-[var(--radius-lg)] border border-border-subtle bg-overlay-subtle"
+      className="mt-3 rounded-[var(--radius-lg)] border border-border-default bg-surface-inset"
     >
       {isExpanded ? (
         <>
@@ -98,11 +118,15 @@ export function WorktreeTerminalSection({
             onClick={onToggle}
             aria-expanded={true}
             aria-controls={terminalsPanelId}
-            className="flex w-full items-center justify-between rounded-t-[var(--radius-lg)] border-b border-border-subtle bg-overlay-soft px-3 py-1.5 text-left transition-colors hover:bg-overlay-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
+            className="worktree-section-button flex w-full items-center justify-between rounded-t-[var(--radius-lg)] border-b border-border-default bg-surface-inset px-3 py-1.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
             id={`${terminalsId}-button`}
           >
             <span className="flex items-center gap-1.5 text-[11px] font-medium text-text-muted">
-              <Terminal className="w-3 h-3" />
+              {SummaryIcon ? (
+                <SummaryIcon className="w-3 h-3" />
+              ) : (
+                <SquareTerminal className="w-3 h-3" />
+              )}
               <span>Active Sessions ({counts.total})</span>
             </span>
             <ChevronRight className="h-3 w-3 rotate-90 text-text-muted" />
@@ -116,7 +140,7 @@ export function WorktreeTerminalSection({
               id={terminalsPanelId}
               role="list"
               aria-labelledby={`${terminalsId}-button`}
-              className="max-h-[300px] overflow-y-auto"
+              className="max-h-[300px] overflow-y-auto bg-surface-inset"
             >
               {orderedWorktreeTerminals.map((term, index) => (
                 <SortableWorktreeTerminal
@@ -126,7 +150,7 @@ export function WorktreeTerminalSection({
                   sourceIndex={index}
                 >
                   {({ listeners }) => (
-                    <div className="group flex items-center justify-between gap-2.5 px-3 py-2 transition-colors hover:bg-overlay-soft">
+                    <div className="worktree-section-button group/termrow flex items-center justify-between gap-2.5 px-3 py-2 transition-colors">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -135,7 +159,7 @@ export function WorktreeTerminalSection({
                         }}
                         className="flex items-center gap-2 min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px] rounded"
                       >
-                        <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <div className="shrink-0 opacity-60 group-hover/termrow:opacity-100 transition-opacity">
                           <TerminalIcon
                             type={term.type}
                             kind={term.kind}
@@ -145,22 +169,20 @@ export function WorktreeTerminalSection({
                           />
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="truncate text-xs font-medium text-text-secondary transition-colors group-hover:text-canopy-text">
+                          <span className="truncate text-xs font-medium text-text-secondary transition-colors group-hover/termrow:text-canopy-text">
                             {term.title}
                           </span>
                           {term.type === "terminal" &&
                             term.agentState === "running" &&
                             term.lastCommand && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="truncate text-[11px] font-mono text-text-muted">
-                                      {term.lastCommand}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom">{term.lastCommand}</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="truncate text-[11px] font-mono text-text-muted">
+                                    {term.lastCommand}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">{term.lastCommand}</TooltipContent>
+                              </Tooltip>
                             )}
                         </div>
                       </button>
@@ -169,12 +191,12 @@ export function WorktreeTerminalSection({
                         {term.agentState &&
                           term.agentState !== "idle" &&
                           (() => {
-                            const Icon = STATE_ICONS[term.agentState];
+                            const Icon = getEffectiveStateIcon(term.agentState, term.waitingReason);
                             return (
                               <Icon
                                 className={cn(
                                   "w-3 h-3",
-                                  STATE_COLORS[term.agentState],
+                                  getEffectiveStateColor(term.agentState, term.waitingReason),
                                   term.agentState === "working" &&
                                     "animate-spin-slow motion-reduce:animate-none"
                                 )}
@@ -183,22 +205,20 @@ export function WorktreeTerminalSection({
                             );
                           })()}
 
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="text-text-muted transition-colors group-hover:text-text-secondary">
-                                {term.location === "dock" ? (
-                                  <PanelBottom className="w-3 h-3" />
-                                ) : (
-                                  <LayoutGrid className="w-3 h-3" />
-                                )}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">
-                              {term.location === "dock" ? "Docked" : "On Grid"}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="text-text-muted transition-colors group-hover/termrow:text-text-secondary">
+                              {term.location === "dock" ? (
+                                <PanelBottom className="w-3 h-3" />
+                              ) : (
+                                <MoveToGridIcon className="w-3 h-3" />
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {term.location === "dock" ? "Docked" : "On Grid"}
+                          </TooltipContent>
+                        </Tooltip>
 
                         <button
                           type="button"
@@ -221,11 +241,15 @@ export function WorktreeTerminalSection({
           onClick={onToggle}
           aria-expanded={false}
           aria-controls={terminalsPanelId}
-          className="flex w-full items-center justify-between rounded-[var(--radius-lg)] px-3 py-1.5 text-left transition-colors hover:bg-overlay-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
+          className="worktree-section-button flex w-full items-center justify-between rounded-[var(--radius-lg)] px-3 py-1.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
           id={`${terminalsId}-button`}
         >
           <div className="flex items-center gap-1.5 text-[11px] text-text-secondary">
-            <Terminal className="w-3 h-3" />
+            {SummaryIcon ? (
+              <SummaryIcon className="w-3 h-3" />
+            ) : (
+              <SquareTerminal className="w-3 h-3" />
+            )}
             <span className="inline-flex items-center gap-1">
               <span className="font-mono tabular-nums">{counts.total}</span>
               <span className="font-sans">active</span>
@@ -233,9 +257,7 @@ export function WorktreeTerminalSection({
           </div>
 
           {topTerminalState && (
-            <TooltipProvider>
-              <StateIcon state={topTerminalState.state} count={topTerminalState.count} />
-            </TooltipProvider>
+            <StateIcon state={topTerminalState.state} count={topTerminalState.count} />
           )}
         </button>
       )}

@@ -35,10 +35,14 @@ vi.mock("../TerminalAddonManager", () => ({
   setupTerminalAddons: vi.fn(() => ({
     fitAddon: { fit: vi.fn() },
     serializeAddon: { serialize: vi.fn() },
-    webLinksAddon: {},
-    imageAddon: {},
+    imageAddon: { dispose: vi.fn() },
     searchAddon: {},
+    fileLinksDisposable: { dispose: vi.fn() },
+    webLinksAddon: { dispose: vi.fn() },
   })),
+  createImageAddon: vi.fn(() => ({ dispose: vi.fn() })),
+  createFileLinksAddon: vi.fn(() => ({ dispose: vi.fn() })),
+  createWebLinksAddon: vi.fn(() => ({ dispose: vi.fn() })),
 }));
 
 describe("TerminalInstanceService detach blur", () => {

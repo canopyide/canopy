@@ -63,6 +63,7 @@ const mocks = vi.hoisted(() => ({
     setFontFamily: vi.fn(),
     setHybridInputEnabled: vi.fn(),
     setHybridInputAutoFocus: vi.fn(),
+    setScreenReaderMode: vi.fn(),
   },
   worktreeConfigClient: {
     get: vi.fn(),
@@ -193,6 +194,7 @@ const { useScrollbackStore } = await import("@/store/scrollbackStore");
 const { useTerminalFontStore } = await import("@/store/terminalFontStore");
 const { useTerminalInputStore } = await import("@/store/terminalInputStore");
 const { usePerformanceModeStore } = await import("@/store/performanceModeStore");
+const { useScreenReaderStore } = await import("@/store/screenReaderStore");
 
 function createCallbacks(overrides: Partial<ActionCallbacks> = {}): ActionCallbacks {
   return {
@@ -218,6 +220,7 @@ function createCallbacks(overrides: Partial<ActionCallbacks> = {}): ActionCallba
     getActiveWorktreeId: () => undefined,
     getWorktrees: () => [],
     getFocusedId: () => null,
+    getIsSettingsOpen: vi.fn(() => false),
     getGridNavigation: () => ({
       findNearest: () => null,
       findByIndex: () => null,
@@ -301,6 +304,7 @@ beforeEach(() => {
     hybridInputEnabled: true,
     hybridInputAutoFocus: true,
   });
+  useScreenReaderStore.setState({ screenReaderMode: "auto", osAccessibilityEnabled: false });
 });
 
 describe("project action hardening", () => {
@@ -503,6 +507,8 @@ describe("preferences action hardening", () => {
     expectRegistryToMatchIds(actions, [
       "preferences.showProjectPulse.set",
       "preferences.showDeveloperTools.set",
+      "preferences.showGridAgentHighlights.set",
+      "preferences.showDockAgentHighlights.set",
       "window.toggleFullscreen",
       "window.reload",
       "window.forceReload",
@@ -527,6 +533,7 @@ describe("preferences action hardening", () => {
       "terminalConfig.setFontFamily",
       "terminalConfig.setHybridInputEnabled",
       "terminalConfig.setHybridInputAutoFocus",
+      "terminalConfig.setScreenReaderMode",
       "worktreeConfig.get",
       "worktreeConfig.setPattern",
       "help.shortcuts",
@@ -560,6 +567,16 @@ describe("preferences action hardening", () => {
 
     expect(usePreferencesStore.getState().showProjectPulse).toBe(false);
     expect(usePreferencesStore.getState().showDeveloperTools).toBe(true);
+
+    await expect(
+      service.dispatch("preferences.showGridAgentHighlights.set", { show: true })
+    ).resolves.toEqual({ ok: true, result: undefined });
+    await expect(
+      service.dispatch("preferences.showDockAgentHighlights.set", { show: true })
+    ).resolves.toEqual({ ok: true, result: undefined });
+
+    expect(usePreferencesStore.getState().showGridAgentHighlights).toBe(true);
+    expect(usePreferencesStore.getState().showDockAgentHighlights).toBe(true);
   });
 
   it.each([
@@ -616,6 +633,15 @@ describe("preferences action hardening", () => {
       initial: true,
       expected: false,
       clientMock: mocks.terminalConfigClient.setHybridInputAutoFocus,
+    },
+    {
+      actionId: "terminalConfig.setScreenReaderMode" as const,
+      successArgs: { mode: "on" },
+      failureArgs: { mode: "off" },
+      read: () => useScreenReaderStore.getState().screenReaderMode,
+      initial: "auto",
+      expected: "on",
+      clientMock: mocks.terminalConfigClient.setScreenReaderMode,
     },
   ])("$actionId rolls state forward on success and back on failure", async (testCase) => {
     testCase.clientMock.mockResolvedValueOnce(undefined);

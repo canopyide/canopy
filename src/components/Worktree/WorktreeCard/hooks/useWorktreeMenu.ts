@@ -3,6 +3,7 @@ import type React from "react";
 import { actionService } from "@/services/ActionService";
 import { useNativeContextMenu } from "@/hooks";
 import type { MenuItemOption, TerminalRecipe, WorktreeState } from "@/types";
+import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
 
 export function useWorktreeMenu({
   worktree,
@@ -18,6 +19,7 @@ export function useWorktreeMenu({
   onEndAll,
   onShowDeleteDialog,
   onShowIssuePicker,
+  onShowPlanViewer,
   onShowReviewHub,
   onShowCompareDiff,
 }: {
@@ -30,7 +32,6 @@ export function useWorktreeMenu({
     dock: number;
     active: number;
     completed: number;
-    failed: number;
     all: number;
   };
   launchAgents: Array<{ id: string; label: string; isEnabled: boolean }>;
@@ -41,6 +42,7 @@ export function useWorktreeMenu({
   onEndAll: () => void;
   onShowDeleteDialog: () => void;
   onShowIssuePicker?: () => void;
+  onShowPlanViewer?: () => void;
   onShowReviewHub?: () => void;
   onShowCompareDiff?: () => void;
 }): {
@@ -67,8 +69,8 @@ export function useWorktreeMenu({
 
     const sessionsSubmenu: MenuItemOption[] = [
       {
-        id: "sessions:minimize-all",
-        label: `Minimize All (${counts.grid})`,
+        id: "sessions:dock-all",
+        label: `Dock All (${counts.grid})`,
         enabled: counts.grid > 0,
       },
       {
@@ -92,11 +94,6 @@ export function useWorktreeMenu({
         id: "sessions:close-completed",
         label: `Close Completed (${counts.completed})`,
         enabled: counts.completed > 0,
-      },
-      {
-        id: "sessions:close-failed",
-        label: `Close Failed (${counts.failed})`,
-        enabled: counts.failed > 0,
       },
       { type: "separator" },
       {
@@ -122,6 +119,10 @@ export function useWorktreeMenu({
         enabled: Boolean(onShowIssuePicker),
       },
       {
+        id: "worktree:view-plan",
+        label: "View Plan",
+      },
+      {
         id: "worktree:review-hub",
         label: "Review & Commit",
       },
@@ -139,6 +140,7 @@ export function useWorktreeMenu({
       },
       { id: "worktree:open-editor", label: "Open in Editor" },
       { id: "worktree:reveal", label: "Reveal in Finder" },
+      { id: "worktree:copy-path", label: "Copy Path" },
     ];
 
     const hasIssueItem = Boolean(worktree.issueNumber);
@@ -151,7 +153,7 @@ export function useWorktreeMenu({
           label: `Open Issue #${worktree.issueNumber}`,
           enabled: false,
           submenu: [
-            { id: "worktree:open-issue-sidecar", label: "In Sidecar" },
+            { id: "worktree:open-issue-portal", label: "In Portal" },
             { id: "worktree:open-issue-external", label: "In External Browser" },
           ],
         });
@@ -162,7 +164,7 @@ export function useWorktreeMenu({
           label: `Open PR #${worktree.prNumber}`,
           enabled: false,
           submenu: [
-            { id: "worktree:open-pr-sidecar", label: "In Sidecar" },
+            { id: "worktree:open-pr-portal", label: "In Portal" },
             { id: "worktree:open-pr-external", label: "In External Browser" },
           ],
         });
@@ -204,7 +206,6 @@ export function useWorktreeMenu({
     counts.all,
     counts.completed,
     counts.dock,
-    counts.failed,
     counts.grid,
     isMainWorktree,
     isRestartValidating,
@@ -255,7 +256,7 @@ export function useWorktreeMenu({
       }
 
       switch (actionId) {
-        case "sessions:minimize-all":
+        case "sessions:dock-all":
           void actionService.dispatch(
             "worktree.sessions.minimizeAll",
             { worktreeId: worktree.id },
@@ -286,13 +287,6 @@ export function useWorktreeMenu({
             { source: "context-menu" }
           );
           break;
-        case "sessions:close-failed":
-          void actionService.dispatch(
-            "worktree.sessions.closeFailed",
-            { worktreeId: worktree.id },
-            { source: "context-menu" }
-          );
-          break;
         case "sessions:close-all":
           onCloseAll();
           break;
@@ -300,18 +294,10 @@ export function useWorktreeMenu({
           onEndAll();
           break;
         case "worktree:copy-context:full":
-          void actionService.dispatch(
-            "worktree.copyTree",
-            { worktreeId: worktree.id },
-            { source: "context-menu" }
-          );
+          void copyContextWithFeedback(worktree.id);
           break;
         case "worktree:copy-context:modified":
-          void actionService.dispatch(
-            "worktree.copyTree",
-            { worktreeId: worktree.id, modified: true },
-            { source: "context-menu" }
-          );
+          void copyContextWithFeedback(worktree.id, { modified: true });
           break;
         case "worktree:open-editor":
           void actionService.dispatch(
@@ -327,9 +313,12 @@ export function useWorktreeMenu({
             { source: "context-menu" }
           );
           break;
-        case "worktree:open-issue-sidecar":
+        case "worktree:copy-path":
+          void navigator.clipboard.writeText(worktree.path);
+          break;
+        case "worktree:open-issue-portal":
           void actionService.dispatch(
-            "worktree.openIssueInSidecar",
+            "worktree.openIssueInPortal",
             { worktreeId: worktree.id },
             { source: "context-menu" }
           );
@@ -341,9 +330,9 @@ export function useWorktreeMenu({
             { source: "context-menu" }
           );
           break;
-        case "worktree:open-pr-sidecar":
+        case "worktree:open-pr-portal":
           void actionService.dispatch(
-            "worktree.openPRInSidecar",
+            "worktree.openPRInPortal",
             { worktreeId: worktree.id },
             { source: "context-menu" }
           );
@@ -365,6 +354,9 @@ export function useWorktreeMenu({
         case "worktree:attach-issue":
           onShowIssuePicker?.();
           break;
+        case "worktree:view-plan":
+          onShowPlanViewer?.();
+          break;
         case "worktree:review-hub":
           onShowReviewHub?.();
           break;
@@ -383,10 +375,12 @@ export function useWorktreeMenu({
       onRestartAll,
       onShowDeleteDialog,
       onShowIssuePicker,
+      onShowPlanViewer,
       onShowReviewHub,
       onShowCompareDiff,
       showMenu,
       worktree.id,
+      worktree.path,
     ]
   );
 

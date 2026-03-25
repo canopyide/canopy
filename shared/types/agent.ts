@@ -1,14 +1,10 @@
 import type { BuiltInAgentId } from "../config/agentIds.js";
 
-/** Agent lifecycle state: idle | working | running | waiting | directing | completed | failed */
-export type AgentState =
-  | "idle"
-  | "working"
-  | "running"
-  | "waiting"
-  | "directing"
-  | "completed"
-  | "failed";
+/** Agent lifecycle state: idle | working | running | waiting | directing | completed */
+export type AgentState = "idle" | "working" | "running" | "waiting" | "directing" | "completed";
+
+/** Classification of why an agent is in the "waiting" state */
+export type WaitingReason = "prompt" | "question";
 
 /** Task state: draft | queued | running | blocked | completed | failed | cancelled */
 export type TaskState =

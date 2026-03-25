@@ -17,23 +17,19 @@ import {
   finalizeProjectSwitchRendererCache,
   isTerminalWarmInProjectSwitchCache,
 } from "@/services/projectSwitchRendererCache";
+import {
+  forceReinitializeWorktreeDataStore,
+  setWorktreeLoadError,
+  useWorktreeDataStore,
+} from "@/store/worktreeDataStore";
 
 interface ProjectSwitchedEventDetail {
   switchId: string;
   projectId: string;
+  worktreeLoadError?: string;
 }
 
 export function useProjectSwitchRehydration() {
-  const addTerminal = useTerminalStore((s) => s.addTerminal);
-  const setReconnectError = useTerminalStore((s) => s.setReconnectError);
-  const hydrateTabGroups = useTerminalStore((s) => s.hydrateTabGroups);
-  const hydrateMru = useTerminalStore((s) => s.hydrateMru);
-  const setActiveWorktree = useWorktreeSelectionStore((s) => s.setActiveWorktree);
-  const loadRecipes = useRecipeStore((s) => s.loadRecipes);
-  const openDiagnosticsDock = useDiagnosticsStore((s) => s.openDock);
-  const setFocusMode = useFocusStore((s) => s.setFocusMode);
-  const hydrateActionMru = useActionMruStore((s) => s.hydrateActionMru);
-
   const currentSwitchIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -41,28 +37,49 @@ export function useProjectSwitchRehydration() {
       return;
     }
 
-    const callbacks: HydrationOptions = {
-      addTerminal: addTerminal as HydrationOptions["addTerminal"],
-      setActiveWorktree,
-      loadRecipes,
-      openDiagnosticsDock,
-      setFocusMode,
-      setReconnectError,
-      hydrateTabGroups,
-      hydrateMru,
-      hydrateActionMru,
-    };
-
     const handleProjectSwitch = async (event: Event) => {
+      const { addTerminal, setReconnectError, hydrateTabGroups, restoreTerminalOrder, hydrateMru } =
+        useTerminalStore.getState();
+      const { setActiveWorktree } = useWorktreeSelectionStore.getState();
+      const { loadRecipes } = useRecipeStore.getState();
+      const { openDock: openDiagnosticsDock } = useDiagnosticsStore.getState();
+      const { setFocusMode } = useFocusStore.getState();
+      const { hydrateActionMru } = useActionMruStore.getState();
+
+      const callbacks: HydrationOptions = {
+        addTerminal: ((opts: Record<string, unknown>) =>
+          addTerminal({ ...opts, bypassLimits: true } as Parameters<
+            typeof addTerminal
+          >[0])) as HydrationOptions["addTerminal"],
+        setActiveWorktree,
+        loadRecipes,
+        openDiagnosticsDock,
+        setFocusMode,
+        setReconnectError,
+        hydrateTabGroups,
+        restoreTerminalOrder,
+        hydrateMru,
+        hydrateActionMru,
+      };
       const customEvent = event as CustomEvent<ProjectSwitchedEventDetail>;
       const switchId = customEvent.detail?.switchId;
       const projectId = customEvent.detail?.projectId;
+      const worktreeLoadError = customEvent.detail?.worktreeLoadError;
 
       if (!switchId || !projectId) {
         console.error(
           "[useProjectSwitchRehydration] Missing switch metadata in project-switched event, skipping hydration"
         );
         return;
+      }
+
+      if (worktreeLoadError) {
+        setWorktreeLoadError(projectId, worktreeLoadError);
+      } else {
+        const storeState = useWorktreeDataStore.getState();
+        if (!(storeState.projectId === projectId && storeState.isInitialized)) {
+          forceReinitializeWorktreeDataStore(projectId);
+        }
       }
 
       currentSwitchIdRef.current = switchId;
@@ -126,13 +143,13 @@ export function useProjectSwitchRehydration() {
     window.addEventListener("project-switched", handleProjectSwitch);
 
     const cleanup = projectClient.onSwitch((payload) => {
-      const { project, switchId } = payload;
+      const { project, switchId, worktreeLoadError } = payload;
       console.log(
         `[useProjectSwitchRehydration] Received PROJECT_ON_SWITCH from main process (project: ${project.name}, switchId: ${switchId}), re-hydrating...`
       );
       window.dispatchEvent(
         new CustomEvent<ProjectSwitchedEventDetail>("project-switched", {
-          detail: { switchId, projectId: project.id },
+          detail: { switchId, projectId: project.id, worktreeLoadError },
         })
       );
     });
@@ -141,15 +158,5 @@ export function useProjectSwitchRehydration() {
       window.removeEventListener("project-switched", handleProjectSwitch);
       cleanup();
     };
-  }, [
-    addTerminal,
-    setActiveWorktree,
-    loadRecipes,
-    openDiagnosticsDock,
-    setFocusMode,
-    setReconnectError,
-    hydrateTabGroups,
-    hydrateMru,
-    hydrateActionMru,
-  ]);
+  }, []);
 }

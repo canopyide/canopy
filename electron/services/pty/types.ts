@@ -1,7 +1,7 @@
 import type * as pty from "node-pty";
 import type { Terminal as HeadlessTerminal } from "@xterm/headless";
 import type { SerializeAddon } from "@xterm/addon-serialize";
-import type { AgentState, AgentId } from "../../../shared/types/agent.js";
+import type { AgentState, AgentId, WaitingReason } from "../../../shared/types/agent.js";
 import type { TerminalType, TerminalKind } from "../../../shared/types/panel.js";
 import type { PtyHostSpawnOptions } from "../../../shared/types/pty-host.js";
 import type { ProcessDetector } from "../ProcessDetector.js";
@@ -31,8 +31,8 @@ export interface TerminalPublicState {
   wasKilled?: boolean;
   isExited?: boolean;
   agentState?: AgentState;
+  waitingReason?: WaitingReason;
   lastStateChange?: number;
-  error?: string;
   traceId?: string;
   analysisEnabled: boolean;
   lastInputTime: number;
@@ -48,6 +48,12 @@ export interface TerminalPublicState {
   hasPty?: boolean;
   /** Captured agent session ID from graceful shutdown */
   agentSessionId?: string;
+  /** Process-level flags captured at launch time (e.g. --dangerously-skip-permissions) */
+  agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
+  /** Exit code from the PTY process (set on clean exit) */
+  exitCode?: number;
 }
 
 /**
@@ -114,7 +120,6 @@ export interface TerminalSnapshot {
   agentId?: AgentId;
   agentState?: AgentState;
   lastStateChange?: number;
-  error?: string;
   spawnedAt: number;
 }
 

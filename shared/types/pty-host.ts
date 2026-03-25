@@ -7,7 +7,7 @@
  * All types are serializable (no functions, no circular refs) for IPC transport.
  */
 
-import type { AgentState, AgentId } from "./agent.js";
+import type { AgentState, AgentId, WaitingReason } from "./agent.js";
 import type { TerminalType, TerminalKind, TerminalFlowStatus } from "./panel.js";
 
 export type { TerminalFlowStatus };
@@ -30,6 +30,10 @@ export interface PtyHostSpawnOptions {
   restore?: boolean;
   /** Whether to kill the PTY when the frontend disconnects (no terminal registry entry) */
   isEphemeral?: boolean;
+  /** Process-level flags captured at launch time (e.g. --dangerously-skip-permissions) */
+  agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
 }
 
 /**
@@ -86,7 +90,9 @@ export type PtyHostRequest =
   | { type: "get-all-terminals"; requestId: string }
   | { type: "set-ipc-data-mirror"; id: string; enabled: boolean }
   | { type: "graceful-kill"; id: string; requestId: string }
-  | { type: "graceful-kill-by-project"; projectId: string; requestId: string };
+  | { type: "graceful-kill-by-project"; projectId: string; requestId: string }
+  | { type: "trim-state"; targetLines: number }
+  | { type: "set-resource-monitoring"; enabled: boolean };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.
@@ -103,7 +109,6 @@ export interface PtyHostTerminalSnapshot {
   agentId?: AgentId;
   agentState?: AgentState;
   lastStateChange?: number;
-  error?: string;
   spawnedAt: number;
 }
 
@@ -140,6 +145,7 @@ export type PtyHostEvent =
       trigger: string;
       confidence: number;
       worktreeId?: string;
+      waitingReason?: WaitingReason;
     }
   | {
       type: "agent-detected";
@@ -158,7 +164,6 @@ export type PtyHostEvent =
   | { type: "agent-spawned"; payload: AgentSpawnedPayload }
   | { type: "agent-output"; payload: AgentOutputPayload }
   | { type: "agent-completed"; payload: AgentCompletedPayload }
-  | { type: "agent-failed"; payload: AgentFailedPayload }
   | { type: "agent-killed"; payload: AgentKilledPayload }
   | { type: "terminal-trashed"; id: string; expiresAt: number }
   | { type: "terminal-restored"; id: string }
@@ -205,6 +210,20 @@ export type PtyHostEvent =
       type: "graceful-kill-by-project-result";
       requestId: string;
       results: Array<{ id: string; agentSessionId: string | null }>;
+    }
+  | {
+      type: "fd-leak-warning";
+      fdCount: number;
+      activeTerminals: number;
+      estimatedLeaked: number;
+      orphanedPids: number[];
+      ptmxLimit: number | null;
+      timestamp: number;
+    }
+  | {
+      type: "resource-metrics";
+      metrics: TerminalResourceBatchPayload;
+      timestamp: number;
     };
 
 /** Terminal info sent from Host → Main for getTerminal queries */
@@ -218,6 +237,7 @@ export interface PtyHostTerminalInfo {
   cwd: string;
   worktreeId?: string;
   agentState?: AgentState;
+  waitingReason?: WaitingReason;
   lastStateChange?: number;
   spawnedAt: number;
   isTrashed?: boolean;
@@ -226,6 +246,12 @@ export interface PtyHostTerminalInfo {
   activityTier?: "active" | "background";
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
+  /** Captured agent session ID from graceful shutdown */
+  agentSessionId?: string;
+  /** Process-level flags captured at launch time (e.g. --dangerously-skip-permissions) */
+  agentLaunchFlags?: string[];
+  /** Model ID selected at launch time for per-panel model selection */
+  agentModelId?: string;
 }
 
 /** Payload for agent:spawned event */
@@ -252,16 +278,6 @@ export interface AgentCompletedPayload {
   agentId: string;
   exitCode: number;
   duration: number;
-  timestamp: number;
-  traceId?: string;
-  terminalId?: string;
-  worktreeId?: string;
-}
-
-/** Payload for agent:failed event */
-export interface AgentFailedPayload {
-  agentId: string;
-  error: string;
   timestamp: number;
   traceId?: string;
   terminalId?: string;
@@ -370,3 +386,27 @@ export interface TerminalReliabilityMetricPayload {
 export type RendererToPtyHostMessage =
   | { type: "write"; id: string; data: string; traceId?: string }
   | { type: "resize"; id: string; cols: number; rows: number };
+
+/**
+ * Messages sent from Pty Host → Renderer via MessagePort (direct channel).
+ * These bypass the Main process for low-latency terminal output.
+ */
+export type PtyHostToRendererMessage = { type: "data"; id: string; data: string };
+
+/** Per-process resource breakdown entry */
+export interface TerminalResourceProcess {
+  pid: number;
+  comm: string;
+  cpuPercent: number;
+  memoryKb: number;
+}
+
+/** Aggregated resource sample for a single terminal */
+export interface TerminalResourceSample {
+  cpuPercent: number;
+  memoryKb: number;
+  breakdown: TerminalResourceProcess[];
+}
+
+/** Batched resource metrics for all monitored terminals */
+export type TerminalResourceBatchPayload = Record<string, TerminalResourceSample>;

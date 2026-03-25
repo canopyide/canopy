@@ -27,9 +27,11 @@ npm run rebuild      # Rebuild native modules
 
 ### CI Testing Strategy
 
-- **PRs:** Run typecheck, lint, format, and unit tests only (no E2E). Fast feedback loop.
-- **Nightly:** Full E2E core and online test suites run on schedule.
+- **PRs / pushes:** Typecheck, lint, format, and unit tests on **Ubuntu only** (no E2E). `ci-ok` gate job is the sole required status check.
+- **Nightly (2 AM UTC):** Full cross-platform CI on all 3 OSes: check + test + build + smoke + E2E core + E2E online. Auto-creates GitHub issue on failure (`nightly-failure` label).
 - **Releases:** Full E2E core and online suites gate the release publish.
+- **Single-file E2E:** `gh workflow run "E2E Core Tests" --ref develop -f platform=linux -f test_file=e2e/core/core-foo.spec.ts` — use this when fixing a specific flaky test instead of re-running the full suite.
+- **Local E2E before push:** When adding a new E2E test or modifying a feature that has an existing E2E test, run that specific test locally and confirm it passes before pushing. Use `npx playwright test e2e/core/core-foo.spec.ts` to run a single test file.
 
 ## Architecture
 
@@ -70,7 +72,7 @@ Panels are the visual units in the panel grid and dock. The system uses discrimi
 
 Access native features via namespaced API in Renderer. Returns Promises or Cleanups.
 
-36 namespaces including: `worktree`, `terminal`, `files`, `copyTree`, `system`, `app`, `menu`, `logs`, `errors`, `events`, `project`, `github`, `notes`, `devPreview`, `git`, `sidecar`, `hibernation`, `keybinding`, `worktreeConfig`, `window`, `notification`, `update`, `gemini`, `commands`, `appAgent`, `agentCapabilities`, `clipboard`, and more.
+36 namespaces including: `worktree`, `terminal`, `files`, `copyTree`, `system`, `app`, `menu`, `logs`, `errors`, `events`, `project`, `github`, `notes`, `devPreview`, `git`, `portal`, `hibernation`, `keybinding`, `worktreeConfig`, `window`, `notification`, `update`, `gemini`, `commands`, `appAgent`, `agentCapabilities`, `clipboard`, and more.
 
 ## Key Features & Implementation
 
@@ -134,7 +136,7 @@ electron/
 │                            #   project, slashCommands, systemSleep, terminalConfig, worktree)
 ├── services/                # ~60 backend services (PtyManager, AgentStateMachine,
 │                            #   CopyTreeService, GitService, GitHubService, WorkflowEngine,
-│                            #   SidecarManager, HibernationService, etc.)
+│                            #   PortalManager, HibernationService, etc.)
 ├── schemas/                 # Zod schemas (agent, external, ipc)
 ├── types/                   # Main process types
 ├── utils/                   # Utilities (git, cache, logger, soundPlayer, webviewCsp, etc.)
@@ -178,7 +180,7 @@ src/
 │   ├── Notes/               # Notes panel
 │   ├── Commands/            # Command palette
 │   ├── ContextInjection/    # Context injection UI
-│   ├── Sidecar/             # Sidecar panel
+│   ├── Portal/             # Portal panel
 │   ├── Pulse/               # Activity pulse
 │   ├── QuickSwitcher/       # Quick panel switcher
 │   ├── Onboarding/          # First-run onboarding
@@ -206,6 +208,10 @@ src/
     └── electron.d.ts        # window.electron types
 ```
 
+### Custom Icons
+
+Custom Canopy-specific icons live in `src/components/icons/custom/`. These are Lucide-style SVG components (24x24 viewBox, 2px stroke, round caps/joins, `currentColor`) that accept `SVGProps`. Brand/agent icons are in `src/components/icons/brands/`. All icons are barrel-exported from `src/components/icons/index.ts`. Design specs are in `~/Desktop/canopy-icons/`.
+
 ## Common Tasks
 
 **Adding a new action:**
@@ -224,6 +230,7 @@ src/
 ## Documentation
 
 - `docs/development.md` — Architecture, IPC patterns, debugging
-- `docs/architecture/theme-system.md` — App theme tokens, normalization, import flow
+- `docs/themes/theme-system.md` — Theme pipeline, core model, component overrides, runtime
+- `docs/themes/theme-tokens.md` — Complete semantic token reference (142 tokens)
 - `docs/e2e-testing.md` — Playwright E2E testing setup and patterns
 - `docs/feature-curation.md` — Feature evaluation criteria

@@ -21,10 +21,11 @@ import {
 import { CliAvailabilityService } from "../services/CliAvailabilityService.js";
 import { AgentVersionService } from "../services/AgentVersionService.js";
 import { AgentUpdateHandler } from "../services/AgentUpdateHandler.js";
-import { SidecarManager } from "../services/SidecarManager.js";
+import { PortalManager } from "../services/PortalManager.js";
 import { EventBuffer } from "../services/EventBuffer.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { createApplicationMenu, handleDirectoryOpen } from "../menu.js";
+import { ProjectSwitchService } from "../services/ProjectSwitchService.js";
 import { projectStore } from "../services/ProjectStore.js";
 import { taskQueueService } from "../services/TaskQueueService.js";
 import { store } from "../store.js";
@@ -47,7 +48,6 @@ import {
 } from "../services/TaskOrchestrator.js";
 import { autoUpdaterService } from "../services/AutoUpdaterService.js";
 import { runSmokeFunctionalChecks } from "../services/smokeTest.js";
-import { ProjectMcpManager } from "../services/ProjectMcpManager.js";
 import {
   initializeHibernationService,
   getHibernationService,
@@ -69,7 +69,8 @@ import {
   startProcessMemoryMonitor,
 } from "../utils/performance.js";
 import { startAppMetricsMonitor } from "../services/ProcessMemoryMonitor.js";
-import { setLoggerWindow } from "../utils/logger.js";
+import { SCROLLBACK_BACKGROUND } from "../../shared/config/scrollback.js";
+import { logInfo, setLoggerWindow } from "../utils/logger.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
 import { isSmokeTest, isDemoMode, smokeTestStart, exposeGc } from "../setup/environment.js";
 import { extractCliPath, getPendingCliPath, setPendingCliPath } from "../lifecycle/appLifecycle.js";
@@ -82,8 +83,8 @@ let workspaceClient: WorkspaceClient | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
 let agentVersionService: AgentVersionService | null = null;
 let agentUpdateHandler: AgentUpdateHandler | null = null;
-let sidecarManager: SidecarManager | null = null;
-let projectMcpManager: ProjectMcpManager | null = null;
+let portalManager: PortalManager | null = null;
+let projectSwitchService: ProjectSwitchService | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
 let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
@@ -104,8 +105,8 @@ export function setPtyClientRef(v: PtyClient | null): void {
 export function getWorkspaceClientRef(): WorkspaceClient | null {
   return workspaceClient;
 }
-export function getProjectMcpManagerRef(): ProjectMcpManager | null {
-  return projectMcpManager;
+export function getProjectSwitchServiceRef(): ProjectSwitchService | null {
+  return projectSwitchService;
 }
 export function getCliAvailabilityServiceRef(): CliAvailabilityService | null {
   return cliAvailabilityService;
@@ -256,6 +257,7 @@ export interface SetupWindowServicesOptions {
   loadRenderer: (reason: string) => void;
   smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   smokeRendererUnresponsive: () => boolean;
+  windowRegistry?: import("./WindowRegistry.js").WindowRegistry;
 }
 
 export async function setupWindowServices(
@@ -352,6 +354,28 @@ export async function setupWindowServices(
   ptyClient.on("host-crash", (code) => {
     console.error(`[MAIN] Pty Host crashed with code ${code} (max restarts exceeded)`);
   });
+  ptyClient.on("host-throttled", (payload) => {
+    if (!payload.isThrottled) {
+      logInfo("pty-host-resumed", { duration: payload.duration });
+      return;
+    }
+    logInfo("pty-host-throttled", { reason: payload.reason });
+    try {
+      session.defaultSession.clearCache().catch(() => {});
+    } catch {
+      /* non-critical */
+    }
+    try {
+      sendToRenderer(win, CHANNELS.WINDOW_RECLAIM_MEMORY, { reason: "pty-host-pressure" });
+    } catch {
+      /* non-critical */
+    }
+    try {
+      ptyClient!.trimState(SCROLLBACK_BACKGROUND);
+    } catch {
+      /* non-critical */
+    }
+  });
   ptyClient.setPortRefreshCallback(() => {
     console.log("[MAIN] Pty Host restarted, refreshing ports...");
     createAndDistributePorts(win);
@@ -365,22 +389,24 @@ export async function setupWindowServices(
   });
 
   eventBuffer = new EventBuffer(1000);
-  sidecarManager = new SidecarManager(win);
-
-  projectMcpManager = new ProjectMcpManager(win);
+  portalManager = new PortalManager(win);
 
   console.log("[MAIN] Registering IPC handlers...");
   const handlerDeps: HandlerDependencies = {
     mainWindow: win,
     ptyClient,
     eventBuffer,
-    sidecarManager,
+    portalManager,
     cliAvailabilityService,
     agentVersionService,
     agentUpdateHandler,
-    projectMcpManager: projectMcpManager ?? undefined,
     isDemoMode,
+    windowRegistry: opts.windowRegistry,
   };
+
+  projectSwitchService = new ProjectSwitchService(handlerDeps);
+  handlerDeps.projectSwitchService = projectSwitchService;
+
   cleanupIpcHandlers = registerIpcHandlers(handlerDeps);
 
   // Wait for pty-host before workspace-host
@@ -484,16 +510,21 @@ export async function setupWindowServices(
     initializeTaskOrchestrator(ptyClient, agentRouter);
     console.log("[MAIN] TaskOrchestrator initialized");
 
-    console.log("[MAIN] Spawning default terminal...");
-    try {
-      ptyClient.spawn(DEFAULT_TERMINAL_ID, {
-        cwd: os.homedir(),
-        cols: 80,
-        rows: 30,
-        projectId: currentProjectId ?? undefined,
-      });
-    } catch (error) {
-      console.error("[MAIN] Failed to spawn default terminal:", error);
+    const pendingCliPath = extractCliPath(process.argv) ?? getPendingCliPath();
+    if (pendingCliPath) {
+      console.log("[MAIN] CLI path pending, skipping default terminal spawn");
+    } else {
+      console.log("[MAIN] Spawning default terminal...");
+      try {
+        ptyClient.spawn(DEFAULT_TERMINAL_ID, {
+          cwd: os.homedir(),
+          cols: 80,
+          rows: 30,
+          projectId: currentProjectId ?? undefined,
+        });
+      } catch (error) {
+        console.error("[MAIN] Failed to spawn default terminal:", error);
+      }
     }
   } else {
     console.warn("[MAIN] PTY service unavailable - skipping terminal setup");
@@ -511,22 +542,6 @@ export async function setupWindowServices(
     }
   } else if (currentProject && !workspaceReady) {
     console.warn("[MAIN] Workspace service unavailable - skipping worktree loading");
-  }
-
-  // Start project MCP servers
-  if (currentProject) {
-    try {
-      const mcpSettings = await projectStore.getProjectSettings(currentProject.id);
-      const servers = mcpSettings?.mcpServers;
-      if (servers && Object.keys(servers).length > 0) {
-        await projectMcpManager!.startForProject(currentProject.id, currentProject.path, servers);
-        console.log(
-          `[MAIN] Started ${Object.keys(servers).length} project MCP server(s) for ${currentProject.name}`
-        );
-      }
-    } catch (error) {
-      console.error("[MAIN] Failed to start project MCP servers:", error);
-    }
   }
 
   // Task queue & workflow
@@ -632,7 +647,7 @@ export async function setupWindowServices(
   }
 
   // Performance monitors
-  if (process.env.CANOPY_PERF_CAPTURE === "1" && !stopEventLoopLagMonitor) {
+  if (!stopEventLoopLagMonitor) {
     stopEventLoopLagMonitor = startEventLoopLagMonitor();
   }
   if (process.env.CANOPY_PERF_CAPTURE === "1" && !stopProcessMemoryMonitor) {
@@ -659,9 +674,36 @@ export async function setupWindowServices(
         } catch {
           /* non-critical */
         }
+        try {
+          sendToRenderer(win, CHANNELS.WINDOW_RECLAIM_MEMORY, { reason: "memory-pressure" });
+        } catch {
+          /* non-critical */
+        }
+      },
+      destroyHiddenWebviews: async (tier) => {
+        // Destroy hidden portal tabs (main-process WebContentsViews)
+        try {
+          if (portalManager) {
+            const evictedTabIds = portalManager.destroyHiddenTabs();
+            if (evictedTabIds.length > 0) {
+              sendToRenderer(win, CHANNELS.PORTAL_TABS_EVICTED, { tabIds: evictedTabIds });
+            }
+          }
+        } catch {
+          /* non-critical */
+        }
+        // Signal renderer to destroy hidden <webview> tags
+        try {
+          sendToRenderer(win, CHANNELS.WINDOW_DESTROY_HIDDEN_WEBVIEWS, { tier });
+        } catch {
+          /* non-critical */
+        }
       },
       hibernateIdleProjects: async () => {
         await getHibernationService().hibernateUnderMemoryPressure();
+      },
+      trimPtyHostState: () => {
+        ptyClient?.trimState(SCROLLBACK_BACKGROUND);
       },
     });
   }
@@ -695,22 +737,19 @@ export async function setupWindowServices(
     ipcMain.removeHandler(CHANNELS.WINDOW_ZOOM_RESET);
     ipcMain.removeHandler(CHANNELS.WINDOW_CLOSE);
 
-    if (projectMcpManager) {
-      projectMcpManager.stopAll().catch(console.error);
-      projectMcpManager = null;
-    }
-
     if (workspaceClient) workspaceClient.dispose();
     workspaceClient = null;
     disposeWorkspaceClient();
 
-    if (sidecarManager) sidecarManager.destroy();
-    sidecarManager = null;
+    if (portalManager) portalManager.destroy();
+    portalManager = null;
 
     disposeTaskOrchestrator();
     disposeAgentRouter();
     disposeAgentAvailabilityStore();
     disposeWorkflowEngine();
+
+    projectSwitchService = null;
 
     if (ptyClient) ptyClient.dispose();
     ptyClient = null;

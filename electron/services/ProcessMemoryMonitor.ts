@@ -37,7 +37,9 @@ interface PidTrendState {
 
 export interface MemoryPressureActions {
   clearCaches: () => Promise<void>;
+  destroyHiddenWebviews: (tier: 1 | 2) => Promise<void>;
   hibernateIdleProjects: () => Promise<void>;
+  trimPtyHostState?: () => void;
 }
 
 function getProcessMemoryMb(proc: Electron.ProcessMetric): number {
@@ -170,6 +172,13 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
             consecutivePressureCount,
           });
           await actions.clearCaches();
+          await actions.destroyHiddenWebviews(1);
+
+          try {
+            actions.trimPtyHostState?.();
+          } catch {
+            /* non-critical */
+          }
 
           if (
             consecutivePressureCount >= PRESSURE_COUNT_TIER2 &&
@@ -179,6 +188,7 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
               pollCount,
               consecutivePressureCount,
             });
+            await actions.destroyHiddenWebviews(2);
             await actions.hibernateIdleProjects();
             lastTier2At = Date.now();
           }

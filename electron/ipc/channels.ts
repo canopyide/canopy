@@ -56,6 +56,8 @@ export const CHANNELS = {
   TERMINAL_AGENT_TITLE_STATE: "terminal:agent-title-state",
   TERMINAL_REDUCE_SCROLLBACK: "terminal:reduce-scrollback",
   TERMINAL_RESTORE_SCROLLBACK: "terminal:restore-scrollback",
+  TERMINAL_RESTART_SERVICE: "terminal:restart-service",
+  TERMINAL_RESOURCE_METRICS: "terminal:resource-metrics",
 
   FILES_SEARCH: "files:search",
   FILES_READ: "files:read",
@@ -100,6 +102,7 @@ export const CHANNELS = {
   SYSTEM_START_AGENT_UPDATE: "system:start-agent-update",
   SYSTEM_HEALTH_CHECK: "system:health-check",
   SYSTEM_DOWNLOAD_DIAGNOSTICS: "system:download-diagnostics",
+  SYSTEM_GET_APP_METRICS: "system:get-app-metrics",
 
   PR_DETECTED: "pr:detected",
   PR_CLEARED: "pr:cleared",
@@ -107,6 +110,7 @@ export const CHANNELS = {
   ISSUE_NOT_FOUND: "issue:not-found",
 
   GITHUB_GET_REPO_STATS: "github:get-repo-stats",
+  GITHUB_GET_PROJECT_HEALTH: "github:get-project-health",
   GITHUB_OPEN_ISSUES: "github:open-issues",
   GITHUB_OPEN_PRS: "github:open-prs",
   GITHUB_OPEN_COMMITS: "github:open-commits",
@@ -175,6 +179,7 @@ export const CHANNELS = {
   PROJECT_CLOSE: "project:close",
   PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
+  PROJECT_GET_BULK_STATS: "project:get-bulk-stats",
   PROJECT_CREATE_FOLDER: "project:create-folder",
   PROJECT_INIT_GIT: "project:init-git",
   PROJECT_INIT_GIT_GUIDED: "project:init-git-guided",
@@ -199,9 +204,6 @@ export const CHANNELS = {
   PROJECT_CHECK_MISSING: "project:check-missing",
   PROJECT_LOCATE: "project:locate",
 
-  PROJECT_MCP_GET_STATUSES: "project-mcp:get-statuses",
-  PROJECT_MCP_STATUS_CHANGED: "project-mcp:status-changed",
-
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",
   AGENT_SETTINGS_RESET: "agent-settings:reset",
@@ -223,6 +225,11 @@ export const CHANNELS = {
   TERMINAL_CONFIG_SET_COLOR_SCHEME: "terminal-config:set-color-scheme",
   TERMINAL_CONFIG_SET_CUSTOM_SCHEMES: "terminal-config:set-custom-schemes",
   TERMINAL_CONFIG_IMPORT_COLOR_SCHEME: "terminal-config:import-color-scheme",
+  TERMINAL_CONFIG_SET_SCREEN_READER_MODE: "terminal-config:set-screen-reader-mode",
+  TERMINAL_CONFIG_SET_RESOURCE_MONITORING: "terminal-config:set-resource-monitoring",
+
+  ACCESSIBILITY_GET_ENABLED: "accessibility:get-enabled",
+  ACCESSIBILITY_SUPPORT_CHANGED: "accessibility:support-changed",
 
   GIT_GET_FILE_DIFF: "git:get-file-diff",
   GIT_GET_PROJECT_PULSE: "git:get-project-pulse",
@@ -238,23 +245,26 @@ export const CHANNELS = {
   GIT_GET_USERNAME: "git:get-username",
   GIT_GET_WORKING_DIFF: "git:get-working-diff",
 
-  SIDECAR_CREATE: "sidecar:create",
-  SIDECAR_SHOW: "sidecar:show",
-  SIDECAR_HIDE: "sidecar:hide",
-  SIDECAR_RESIZE: "sidecar:resize",
-  SIDECAR_CLOSE_TAB: "sidecar:close-tab",
-  SIDECAR_NAVIGATE: "sidecar:navigate",
-  SIDECAR_GO_BACK: "sidecar:go-back",
-  SIDECAR_GO_FORWARD: "sidecar:go-forward",
-  SIDECAR_RELOAD: "sidecar:reload",
-  SIDECAR_SHOW_NEW_TAB_MENU: "sidecar:show-new-tab-menu",
-  SIDECAR_NAV_EVENT: "sidecar:nav-event",
-  SIDECAR_FOCUS: "sidecar:focus",
-  SIDECAR_BLUR: "sidecar:blur",
-  SIDECAR_NEW_TAB_MENU_ACTION: "sidecar:new-tab-menu-action",
+  PORTAL_CREATE: "portal:create",
+  PORTAL_SHOW: "portal:show",
+  PORTAL_HIDE: "portal:hide",
+  PORTAL_RESIZE: "portal:resize",
+  PORTAL_CLOSE_TAB: "portal:close-tab",
+  PORTAL_NAVIGATE: "portal:navigate",
+  PORTAL_GO_BACK: "portal:go-back",
+  PORTAL_GO_FORWARD: "portal:go-forward",
+  PORTAL_RELOAD: "portal:reload",
+  PORTAL_SHOW_NEW_TAB_MENU: "portal:show-new-tab-menu",
+  PORTAL_NAV_EVENT: "portal:nav-event",
+  PORTAL_FOCUS: "portal:focus",
+  PORTAL_BLUR: "portal:blur",
+  PORTAL_NEW_TAB_MENU_ACTION: "portal:new-tab-menu-action",
+  PORTAL_TAB_EVICTED: "portal:tab-evicted",
+  PORTAL_TABS_EVICTED: "portal:tabs-evicted",
 
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
+  HIBERNATION_PROJECT_HIBERNATED: "hibernation:project-hibernated",
 
   WEBVIEW_SET_LIFECYCLE_STATE: "webview:set-lifecycle-state",
   WEBVIEW_REGISTER_PANEL: "webview:register-panel",
@@ -293,6 +303,8 @@ export const CHANNELS = {
   WINDOW_ZOOM_OUT: "window:zoom-out",
   WINDOW_ZOOM_RESET: "window:zoom-reset",
   WINDOW_CLOSE: "window:close",
+  WINDOW_RECLAIM_MEMORY: "window:reclaim-memory",
+  WINDOW_DESTROY_HIDDEN_WEBVIEWS: "window:destroy-hidden-webviews",
 
   NOTIFICATION_UPDATE: "notification:update",
   NOTIFICATION_SETTINGS_GET: "notification:settings-get",
@@ -341,6 +353,9 @@ export const CHANNELS = {
   DEV_PREVIEW_STOP_BY_PANEL: "dev-preview:stop-by-panel",
   DEV_PREVIEW_GET_STATE: "dev-preview:get-state",
   DEV_PREVIEW_STATE_CHANGED: "dev-preview:state-changed",
+
+  GLOBAL_DEV_SERVERS_GET: "global-dev-servers:get",
+  GLOBAL_DEV_SERVERS_CHANGED: "global-dev-servers:changed",
 
   COMMANDS_LIST: "commands:list",
   COMMANDS_GET: "commands:get",
@@ -428,6 +443,15 @@ export const CHANNELS = {
   ONBOARDING_CHECKLIST_GET: "onboarding:checklist-get",
   ONBOARDING_CHECKLIST_DISMISS: "onboarding:checklist-dismiss",
   ONBOARDING_CHECKLIST_MARK_ITEM: "onboarding:checklist-mark-item",
+  ONBOARDING_CHECKLIST_MARK_CELEBRATION_SHOWN: "onboarding:checklist-mark-celebration-shown",
+
+  // Shortcut Hints channels
+  SHORTCUT_HINTS_GET_COUNTS: "shortcut-hints:get-counts",
+  SHORTCUT_HINTS_INCREMENT_COUNT: "shortcut-hints:increment-count",
+
+  // GPU channels
+  GPU_GET_STATUS: "gpu:get-status",
+  GPU_SET_HARDWARE_ACCELERATION: "gpu:set-hardware-acceleration",
 
   // Crash Recovery channels
   CRASH_RECOVERY_GET_PENDING: "crash-recovery:get-pending",
@@ -437,6 +461,7 @@ export const CHANNELS = {
 
   // Demo mode channels (dev-only)
   DEMO_MOVE_TO: "demo:move-to",
+  DEMO_MOVE_TO_SELECTOR: "demo:move-to-selector",
   DEMO_CLICK: "demo:click",
   DEMO_TYPE: "demo:type",
   DEMO_SET_ZOOM: "demo:set-zoom",
@@ -445,13 +470,21 @@ export const CHANNELS = {
   DEMO_PAUSE: "demo:pause",
   DEMO_RESUME: "demo:resume",
   DEMO_EXEC_MOVE_TO: "demo:exec-move-to",
+  DEMO_EXEC_MOVE_TO_SELECTOR: "demo:exec-move-to-selector",
   DEMO_EXEC_CLICK: "demo:exec-click",
   DEMO_EXEC_TYPE: "demo:exec-type",
   DEMO_EXEC_SET_ZOOM: "demo:exec-set-zoom",
   DEMO_EXEC_PAUSE: "demo:exec-pause",
   DEMO_EXEC_RESUME: "demo:exec-resume",
   DEMO_EXEC_WAIT_FOR_SELECTOR: "demo:exec-wait-for-selector",
+  DEMO_SLEEP: "demo:sleep",
+  DEMO_EXEC_SLEEP: "demo:exec-sleep",
   DEMO_COMMAND_DONE: "demo:command-done",
+  DEMO_START_CAPTURE: "demo:start-capture",
+  DEMO_STOP_CAPTURE: "demo:stop-capture",
+  DEMO_GET_CAPTURE_STATUS: "demo:get-capture-status",
+  DEMO_ENCODE: "demo:encode",
+  DEMO_ENCODE_PROGRESS: "demo:encode:progress",
 
   // Workflow approval channels
   WORKFLOW_RESOLVE_APPROVAL: "workflow:resolve-approval",

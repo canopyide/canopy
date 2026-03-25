@@ -383,8 +383,11 @@ class VoiceRecordingService {
         );
 
         if (!panel) {
+          const panelId = activeTarget.panelId;
           void this.stop("Dictation stopped because its panel was closed.", {
             preserveLiveText: true,
+          }).then(() => {
+            useVoiceRecordingStore.getState().clearPanelBuffer(panelId);
           });
         }
       })
@@ -778,7 +781,7 @@ class VoiceRecordingService {
       projectId: currentProject?.id,
       projectName: currentProject?.name,
       worktreeId: panel.worktreeId,
-      worktreeLabel: worktree?.branch || worktree?.name,
+      worktreeLabel: worktree?.isMainWorktree ? worktree?.name : worktree?.branch || worktree?.name,
     };
   }
 

@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { join as pathJoin } from "path";
 import { existsSync } from "fs";
-import { simpleGit } from "simple-git";
+import { createHardenedGit } from "../utils/hardenedGit.js";
 import type PQueue from "p-queue";
 import type { WorktreeChanges, FileChangeDetail } from "../../shared/types/git.js";
 import type {
@@ -21,6 +21,10 @@ import { GitFileWatcher } from "../utils/gitFileWatcher.js";
 
 const GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000;
 const WATCHER_FALLBACK_POLL_INTERVAL_MS = 30_000;
+const WATCHER_RETRY_INTERVAL_MS = 30_000;
+const WATCHER_MAX_RETRIES = 5;
+const WATCHER_WORKTREE_MAX_WAIT_MS = 2000;
+const PLAN_FILE_CANDIDATES = ["TODO.md", "PLAN.md", "plan.md", "TASKS.md"] as const;
 
 export interface WorktreeMonitorConfig {
   basePollingInterval: number;
@@ -62,6 +66,10 @@ export class WorktreeMonitor {
   private aiNote: string | undefined;
   private aiNoteTimestamp: number | undefined;
 
+  // Plan file state
+  private hasPlanFile: boolean = false;
+  private planFilePath: string | undefined;
+
   // Issue/PR state
   private _issueNumber: number | undefined;
   private prNumber: number | undefined;
@@ -85,6 +93,8 @@ export class WorktreeMonitor {
   private gitWatchEnabled: boolean;
   private gitWatchDebounceMs: number;
   private lastGitStatusCompletedAt: number = 0;
+  private watcherRetryTimer: NodeJS.Timeout | null = null;
+  private watcherRetryCount: number = 0;
 
   // Extra state
   private _createdAt: number | undefined;
@@ -351,6 +361,8 @@ export class WorktreeMonitor {
       worktreeId: this.id,
       timestamp: Date.now(),
       lifecycleStatus: this._lifecycleStatus,
+      hasPlanFile: this.hasPlanFile || undefined,
+      planFilePath: this.planFilePath,
     };
 
     return ensureSerializable(snapshot) as WorktreeSnapshot;
@@ -420,13 +432,17 @@ export class WorktreeMonitor {
       onChange: () => this.handleGitFileChange(),
       watchWorktree: true,
       worktreeDebounceMs: 1000,
+      worktreeMaxWaitMs: WATCHER_WORKTREE_MAX_WAIT_MS,
+      onWatcherFailed: () => this.handleWatcherFailed(),
     });
 
     const started = watcher.start();
     if (started) {
       this.gitWatcher = () => watcher.dispose();
+      this.watcherRetryCount = 0;
     } else {
       watcher.dispose();
+      this.scheduleWatcherRetry();
     }
   }
 
@@ -439,6 +455,11 @@ export class WorktreeMonitor {
       clearTimeout(this.gitWatchDebounceTimer);
       this.gitWatchDebounceTimer = null;
     }
+    if (this.watcherRetryTimer) {
+      clearTimeout(this.watcherRetryTimer);
+      this.watcherRetryTimer = null;
+    }
+    this.watcherRetryCount = 0;
     this.gitWatchRefreshPending = false;
   }
 
@@ -447,6 +468,32 @@ export class WorktreeMonitor {
     if (this._isRunning && this.gitWatchEnabled) {
       this.startWatcher();
     }
+  }
+
+  private handleWatcherFailed(): void {
+    if (this.gitWatcher) {
+      this.gitWatcher();
+      this.gitWatcher = null;
+    }
+    this.scheduleWatcherRetry();
+  }
+
+  private scheduleWatcherRetry(): void {
+    if (!this._isRunning || !this.gitWatchEnabled || this.watcherRetryTimer) {
+      return;
+    }
+
+    this.watcherRetryCount++;
+    if (this.watcherRetryCount > WATCHER_MAX_RETRIES) {
+      return;
+    }
+
+    this.watcherRetryTimer = setTimeout(() => {
+      this.watcherRetryTimer = null;
+      if (this._isRunning && this.gitWatchEnabled && !this.gitWatcher) {
+        this.startWatcher();
+      }
+    }, WATCHER_RETRY_INTERVAL_MS);
   }
 
   private handleGitFileChange(): void {
@@ -499,6 +546,10 @@ export class WorktreeMonitor {
     if (this.resumeTimer) {
       clearTimeout(this.resumeTimer);
       this.resumeTimer = null;
+    }
+    if (this.watcherRetryTimer) {
+      clearTimeout(this.watcherRetryTimer);
+      this.watcherRetryTimer = null;
     }
   }
 
@@ -658,12 +709,21 @@ export class WorktreeMonitor {
       }
 
       const noteData = await this.noteReader.read();
+
+      const detectedPlanFile = PLAN_FILE_CANDIDATES.find((candidate) =>
+        existsSync(pathJoin(this.path, candidate))
+      );
+      const nextHasPlanFile = detectedPlanFile !== undefined;
+      const nextPlanFilePath = detectedPlanFile;
+
       const currentHash = this.calculateStateHash(newChanges);
       const stateChanged = currentHash !== this.previousStateHash;
       const noteChanged =
         noteData?.content !== this.aiNote || noteData?.timestamp !== this.aiNoteTimestamp;
+      const planChanged =
+        nextHasPlanFile !== this.hasPlanFile || nextPlanFilePath !== this.planFilePath;
 
-      if (!stateChanged && !noteChanged && !branchChanged && !forceRefresh) {
+      if (!stateChanged && !noteChanged && !branchChanged && !planChanged && !forceRefresh) {
         return;
       }
 
@@ -713,6 +773,8 @@ export class WorktreeMonitor {
       this.mood = nextMood;
       this.aiNote = noteData?.content;
       this.aiNoteTimestamp = noteData?.timestamp;
+      this.hasPlanFile = nextHasPlanFile;
+      this.planFilePath = nextPlanFilePath;
       this._hasInitialStatus = true;
 
       this.emitUpdate();
@@ -793,7 +855,7 @@ export class WorktreeMonitor {
     }
 
     try {
-      const git = simpleGit(this.path);
+      const git = createHardenedGit(this.path);
       const log = await git.log({ maxCount: 1 });
       const lastCommitMsg = log.latest?.message;
 

@@ -39,9 +39,9 @@ export function registerNotificationHandlers(_deps: HandlerDependencies): () => 
     const allowed: Partial<NotificationSettings> = {};
     const s = rawSettings as Record<string, unknown>;
 
+    if (typeof s.enabled === "boolean") allowed.enabled = s.enabled;
     if (typeof s.completedEnabled === "boolean") allowed.completedEnabled = s.completedEnabled;
     if (typeof s.waitingEnabled === "boolean") allowed.waitingEnabled = s.waitingEnabled;
-    if (typeof s.failedEnabled === "boolean") allowed.failedEnabled = s.failedEnabled;
     if (typeof s.soundEnabled === "boolean") allowed.soundEnabled = s.soundEnabled;
     if (typeof s.soundFile === "string" && ALLOWED_SOUND_FILES.has(s.soundFile)) {
       allowed.soundFile = s.soundFile;

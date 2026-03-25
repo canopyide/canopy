@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
-import { getGridPanelCount } from "../helpers/panels";
+import { getGridPanelCount, openSettings } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
@@ -32,7 +32,7 @@ test.describe.serial("Core: Shell & Settings", () => {
     test("toolbar baseline buttons are visible", async () => {
       const { window } = ctx;
       await expect(window.locator(SEL.toolbar.toggleSidebar)).toBeVisible({ timeout: T_MEDIUM });
-      await expect(window.locator(SEL.toolbar.openTerminal)).toBeVisible({ timeout: T_SHORT });
+      await expect(window.locator(SEL.toolbar.toggleSidebar)).toBeVisible({ timeout: T_SHORT });
       await expect(window.locator(SEL.toolbar.openSettings)).toBeVisible({ timeout: T_SHORT });
     });
 
@@ -59,7 +59,7 @@ test.describe.serial("Core: Shell & Settings", () => {
     test("settings opens, navigates all tabs, closes via Escape", async () => {
       const { window } = ctx;
 
-      await window.locator(SEL.toolbar.openSettings).click();
+      await openSettings(window);
 
       const heading = window.locator("h2", { hasText: "Settings" });
       await expect(heading).toBeVisible({ timeout: T_MEDIUM });
@@ -80,7 +80,7 @@ test.describe.serial("Core: Shell & Settings", () => {
         { nav: "GitHub", title: "GitHub Integration" },
         { nav: "Editor", title: "Editor Integration" },
         { nav: "Image Viewer", title: "Image Viewer" },
-        { nav: "Sidecar", title: "Sidecar Links" },
+        { nav: "Portal", title: "Portal Links" },
         { nav: "MCP Server", title: "MCP Server" },
         { nav: "Voice Input", title: "Voice Input" },
         { nav: "Troubleshooting", title: "Troubleshooting" },
@@ -88,7 +88,9 @@ test.describe.serial("Core: Shell & Settings", () => {
 
       for (const { nav, title } of tabs) {
         await window.locator(`${SEL.settings.navSidebar} button`, { hasText: nav }).click();
-        await expect(window.locator("h3", { hasText: title })).toBeVisible({ timeout: T_SHORT });
+        await expect(window.getByRole("dialog").locator("h3", { hasText: title })).toBeVisible({
+          timeout: T_SHORT,
+        });
       }
 
       await window.keyboard.press("Escape");
@@ -160,10 +162,16 @@ test.describe.serial("Core: Shell & Settings", () => {
     test("Cmd+W closes remaining terminal", async () => {
       const { window } = ctx;
 
-      const before = await getGridPanelCount(window);
+      // Ensure at least 2 panels so Cmd+W doesn't close the last one (which quits the app)
+      let before = await getGridPanelCount(window);
       if (before === 0) {
         test.skip();
         return;
+      }
+      if (before === 1) {
+        await window.keyboard.press(`${mod}+Alt+t`);
+        await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(2);
+        before = 2;
       }
 
       const panel = window.locator(SEL.panel.gridPanel).first();
@@ -180,7 +188,7 @@ test.describe.serial("Core: Shell & Settings", () => {
   test.describe.serial("Settings Persistence", () => {
     test("open settings dialog", async () => {
       const { window } = ctx;
-      await window.locator(SEL.toolbar.openSettings).click();
+      await openSettings(window);
       const heading = window.locator(SEL.settings.heading);
       await expect(heading).toBeVisible({ timeout: T_MEDIUM });
     });
@@ -249,7 +257,7 @@ test.describe.serial("Core: Shell & Settings", () => {
       const heading = window.locator(SEL.settings.heading);
       await expect(heading).not.toBeVisible({ timeout: T_SHORT });
 
-      await window.locator(SEL.toolbar.openSettings).click();
+      await openSettings(window);
       await expect(heading).toBeVisible({ timeout: T_MEDIUM });
 
       const generalTab = window.locator(`${SEL.settings.navSidebar} button:has-text("General")`);

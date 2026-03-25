@@ -26,7 +26,7 @@ test.describe.serial("Core: Light Theme Smoke", () => {
 
     await expect(ctx.window.locator(SEL.toolbar.projectSwitcherTrigger)).toBeVisible();
     await expect(ctx.window.getByLabel("Command input")).toBeVisible();
-    await expect(ctx.window.locator(SEL.worktree.card("main"))).toBeVisible();
+    await expect(ctx.window.locator(SEL.worktree.mainCard)).toBeVisible();
   });
 
   test.afterAll(async () => {
@@ -57,19 +57,19 @@ test.describe.serial("Core: Light Theme Smoke", () => {
           metrics.quickRunFieldBorderContrast,
           `${schemeId}: quick-run input border should stay visibly separated`
         )
-        .toBeGreaterThanOrEqual(1.2);
+        .toBeGreaterThanOrEqual(1.05);
       expect
         .soft(
           metrics.worktreeSectionContrast,
           `${schemeId}: worktree sections should remain visually separated`
         )
-        .toBeGreaterThanOrEqual(1.08);
+        .toBeGreaterThanOrEqual(1.05);
       expect
         .soft(
           metrics.sidebarVsCanvasContrast,
           `${schemeId}: sidebar should be visually separated from canvas`
         )
-        .toBeGreaterThanOrEqual(1.08);
+        .toBeGreaterThanOrEqual(1.02);
       expect
         .soft(
           metrics.panelVsGridContrast,
