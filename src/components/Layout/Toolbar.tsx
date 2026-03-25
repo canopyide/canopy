@@ -113,7 +113,7 @@ const OVERFLOW_MENU_META: Partial<
   "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
   "notification-center": { label: "Notifications", icon: Bell },
   notes: { label: "Notes", icon: Leaf },
-  "copy-tree": { label: "Copy Context", icon: Copy },
+  "copy-tree": { label: "Copy Context", icon: CopyTreeIcon },
   settings: { label: "Settings", icon: SlidersHorizontal },
   problems: { label: "Problems", icon: AlertCircle },
 };
