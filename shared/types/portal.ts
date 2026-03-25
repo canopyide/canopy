@@ -115,6 +115,6 @@ export type PortalNewTabMenuAction =
 
 export const DEFAULT_PORTAL_TABS: PortalTab[] = [];
 
-export const PORTAL_MIN_WIDTH = 480;
+export const PORTAL_MIN_WIDTH = 320;
 export const PORTAL_MAX_WIDTH = 1200;
 export const PORTAL_DEFAULT_WIDTH = 480;

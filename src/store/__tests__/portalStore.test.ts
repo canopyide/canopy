@@ -32,6 +32,7 @@ vi.hoisted(() => {
 });
 
 import { usePortalStore } from "../portalStore";
+import { PORTAL_MIN_WIDTH, PORTAL_MAX_WIDTH, PORTAL_DEFAULT_WIDTH } from "@shared/types";
 
 function createLocalStorageMock() {
   const storage = new Map<string, string>();
@@ -125,6 +126,29 @@ describe("portalStore", () => {
     });
     expect(usePortalStore.getState().activeTabId).toBe("tab-2");
     expect(usePortalStore.getState().createdTabs.has("tab-1")).toBe(false);
+  });
+
+  describe("width clamping", () => {
+    it("clamps width below minimum to PORTAL_MIN_WIDTH", () => {
+      usePortalStore.getState().setWidth(PORTAL_MIN_WIDTH - 1);
+      expect(usePortalStore.getState().width).toBe(PORTAL_MIN_WIDTH);
+    });
+
+    it("allows width at exactly PORTAL_MIN_WIDTH", () => {
+      usePortalStore.getState().setWidth(PORTAL_MIN_WIDTH);
+      expect(usePortalStore.getState().width).toBe(PORTAL_MIN_WIDTH);
+    });
+
+    it("clamps width above maximum to PORTAL_MAX_WIDTH", () => {
+      usePortalStore.getState().setWidth(PORTAL_MAX_WIDTH + 1);
+      expect(usePortalStore.getState().width).toBe(PORTAL_MAX_WIDTH);
+    });
+
+    it("resets width to PORTAL_DEFAULT_WIDTH", () => {
+      usePortalStore.getState().setWidth(800);
+      usePortalStore.getState().reset();
+      expect(usePortalStore.getState().width).toBe(PORTAL_DEFAULT_WIDTH);
+    });
   });
 
   it("does not show a stale tab if the close flow is superseded before restore runs", async () => {

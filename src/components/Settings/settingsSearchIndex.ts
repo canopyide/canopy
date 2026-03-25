@@ -602,15 +602,6 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     description: "Add custom URLs and links to the portal panel",
     keywords: ["portal", "custom", "links", "url", "add", "bookmark"],
   },
-  {
-    id: "portal-width",
-    tab: "portal",
-    tabLabel: "Portal Links",
-    section: "Default Width",
-    title: "Portal Default Width",
-    description: "Set the default width of the portal panel",
-    keywords: ["portal", "width", "size", "panel", "resize"],
-  },
 
   // Toolbar Customization
   {
