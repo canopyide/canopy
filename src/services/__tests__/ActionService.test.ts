@@ -320,6 +320,51 @@ describe("ActionService", () => {
     });
   });
 
+  describe("dispatch resilience", () => {
+    it("should complete dispatch even when events.emit never resolves", async () => {
+      const originalWindow = (globalThis as Record<string, unknown>).window;
+      const emitSpy = vi.fn(() => new Promise<void>(() => {})); // never resolves
+      Object.defineProperty(globalThis, "window", {
+        value: {
+          ...globalThis.window,
+          electron: { events: { emit: emitSpy } },
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      try {
+        const mockRun = vi.fn().mockResolvedValue("done");
+        const action: ActionDefinition<void, string> = {
+          id: "actions.list" as ActionId,
+          title: "Test",
+          description: "Test action",
+          category: "test",
+          kind: "command",
+          danger: "safe",
+          scope: "renderer",
+          run: mockRun,
+        };
+
+        service.register(action);
+        const result = await service.dispatch("actions.list");
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.result).toBe("done");
+        }
+        expect(mockRun).toHaveBeenCalled();
+        expect(emitSpy).toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(globalThis, "window", {
+          value: originalWindow,
+          writable: true,
+          configurable: true,
+        });
+      }
+    });
+  });
+
   describe("shortcut hints", () => {
     const {
       mockShow,
