@@ -169,6 +169,23 @@ export function registerTerminalConfigHandlers(): () => void {
   );
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_SCREEN_READER_MODE));
 
+  const handleTerminalConfigSetResourceMonitoring = async (
+    _event: Electron.IpcMainInvokeEvent,
+    enabled: boolean
+  ) => {
+    if (typeof enabled !== "boolean") {
+      console.warn("Invalid terminal resourceMonitoringEnabled:", enabled);
+      return;
+    }
+    const currentConfig = getTerminalConfigObject();
+    store.set("terminalConfig", { ...currentConfig, resourceMonitoringEnabled: enabled });
+  };
+  ipcMain.handle(
+    CHANNELS.TERMINAL_CONFIG_SET_RESOURCE_MONITORING,
+    handleTerminalConfigSetResourceMonitoring
+  );
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_RESOURCE_MONITORING));
+
   const handleTerminalConfigImportColorScheme = async (event: Electron.IpcMainInvokeEvent) => {
     const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
     const dialogOptions = {

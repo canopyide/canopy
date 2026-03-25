@@ -36,6 +36,7 @@ import { useWorktreeSelectionStore } from "./worktreeStore";
 import type { CrashType } from "@shared/types/pty-host";
 import { isAgentTerminal } from "@/utils/terminalType";
 import { logInfo, logWarn, logError } from "@/utils/logger";
+import { useResourceMonitoringStore } from "./resourceMonitoringStore";
 
 export type { TerminalInstance, AddTerminalOptions, QueuedCommand, CrashType };
 export { isAgentReady };
@@ -442,6 +443,7 @@ let backendReadyUnsubscribe: (() => void) | null = null;
 let spawnResultUnsubscribe: (() => void) | null = null;
 let reduceScrollbackUnsubscribe: (() => void) | null = null;
 let restoreScrollbackUnsubscribe: (() => void) | null = null;
+let resourceMetricsUnsubscribe: (() => void) | null = null;
 let recoveryTimer: NodeJS.Timeout | null = null;
 let beforeUnloadHandler: (() => void) | null = null;
 
@@ -533,6 +535,10 @@ export function cleanupTerminalStoreListeners() {
   if (restoreScrollbackUnsubscribe) {
     restoreScrollbackUnsubscribe();
     restoreScrollbackUnsubscribe = null;
+  }
+  if (resourceMetricsUnsubscribe) {
+    resourceMetricsUnsubscribe();
+    resourceMetricsUnsubscribe = null;
   }
   if (recoveryTimer) {
     clearTimeout(recoveryTimer);
@@ -818,6 +824,14 @@ export function setupTerminalStoreListeners() {
       }
     }
   );
+
+  // Resource metrics listener
+  resourceMetricsUnsubscribe = window.electron.terminal.onResourceMetrics((data) => {
+    const rmStore = useResourceMonitoringStore.getState();
+    if (rmStore.enabled) {
+      rmStore.updateMetrics(data.metrics as Record<string, any>);
+    }
+  });
 
   // Flush pending terminal persistence on window close to prevent data loss
   beforeUnloadHandler = () => {
