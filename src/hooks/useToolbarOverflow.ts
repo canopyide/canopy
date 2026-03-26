@@ -2,7 +2,7 @@ import { useState, useRef, useLayoutEffect, useCallback } from "react";
 import type { ToolbarButtonId, ToolbarButtonPriority } from "@shared/types/toolbar";
 import { TOOLBAR_BUTTON_PRIORITIES } from "@shared/types/toolbar";
 
-const OVERFLOW_TRIGGER_WIDTH = 36;
+const OVERFLOW_TRIGGER_WIDTH = 0;
 const HYSTERESIS_BUFFER = 8;
 const DEFAULT_ITEM_WIDTH = 36;
 
