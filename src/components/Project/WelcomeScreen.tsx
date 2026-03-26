@@ -35,7 +35,7 @@ const SHORTCUT_TIPS: { label: string; actionId: string }[] = [
 export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
   const addProject = useProjectStore((state) => state.addProject);
   const openCreateFolderDialog = useProjectStore((state) => state.openCreateFolderDialog);
-  const isLoading = useProjectStore((state) => state.isLoading);
+
   const projects = useProjectStore((state) => state.projects);
   const switchProject = useProjectStore((state) => state.switchProject);
 
@@ -94,16 +94,11 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
         {/* Quick Actions */}
         <div className="w-full">
           <div className="flex flex-wrap gap-3 justify-center">
-            <Button size="lg" onClick={() => void addProject()} disabled={isLoading}>
+            <Button size="lg" onClick={() => void addProject()}>
               <FolderOpen />
               Open Folder
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={openCreateFolderDialog}
-              disabled={isLoading}
-            >
+            <Button size="lg" variant="outline" onClick={openCreateFolderDialog}>
               <FolderPlus />
               Create Project
             </Button>
