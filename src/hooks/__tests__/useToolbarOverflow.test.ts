@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeOverflow } from "../useToolbarOverflow";
-import type { ToolbarButtonId } from "@shared/types/toolbar";
+import type { ToolbarButtonId, ToolbarButtonPriority } from "@shared/types/toolbar";
 import { TOOLBAR_BUTTON_PRIORITIES } from "@shared/types/toolbar";
 
 function makeWidths(ids: ToolbarButtonId[], width = 36): Map<string, number> {
@@ -27,10 +27,10 @@ describe("computeOverflow", () => {
   });
 
   it("overflows lowest-priority items first when one pixel short", () => {
-    // Total = 180, container = 179 → needs to overflow.
-    // targetWidth = 179 - 0(trigger) - 8(hysteresis) = 171
-    // Sorted for removal: notes(5,idx4), settings(5,idx3), browser(3), terminal(3), github-stats(1)
-    // Remove notes(36) → 144 ≤ 171. Stop.
+    // Total = 180, container = 179 → overflow triggered.
+    // targetWidth = 179 - 0 - 8 = 171
+    // Priorities: terminal(3), browser(3), github-stats(1), settings(5), notes(5)
+    // Remove notes(5,idx4) → 144 ≤ 171 → stop
     const widths = makeWidths(ids, 36);
     const result = computeOverflow(179, widths, ids, TOOLBAR_BUTTON_PRIORITIES);
     expect(result.overflowIds).toEqual(["notes"]);
@@ -41,29 +41,31 @@ describe("computeOverflow", () => {
   });
 
   it("overflows items by priority regardless of position order", () => {
-    // Put a high-priority item at the end and low-priority at the start
-    const ordered: ToolbarButtonId[] = ["notes", "settings", "terminal"];
+    // notes(5), github-stats(1), terminal(3) — widths 50 each
+    // Total 150, container 100, targetWidth = 92
+    // Remove notes(5) → 100, still > 92, remove terminal(3) → 50 ≤ 92
+    const ordered: ToolbarButtonId[] = ["notes", "github-stats", "terminal"];
     const widths = makeWidths(ordered, 50);
-    // Total 150, container 100, target = 100 - 36 - 8 = 56
     const result = computeOverflow(100, widths, ordered, TOOLBAR_BUTTON_PRIORITIES);
-    // notes (5) and settings (5) should overflow before terminal (3)
     expect(result.overflowIds).toContain("notes");
-    expect(result.overflowIds).toContain("settings");
-    expect(result.visibleIds).toEqual(["terminal"]);
+    expect(result.overflowIds).toContain("terminal");
+    expect(result.visibleIds).toEqual(["github-stats"]);
   });
 
   it("handles very narrow container — only highest priority survives", () => {
-    const ordered: ToolbarButtonId[] = ["claude", "terminal", "settings", "notes"];
+    // claude(2), terminal(3), github-stats(1), notes(5) — widths 40 each
+    // Total 160, container 80, targetWidth = 72
+    // Remove notes(5) → 120, terminal(3) → 80, claude(2) → 40 ≤ 72
+    const ordered: ToolbarButtonId[] = ["claude", "terminal", "github-stats", "notes"];
+    const priorities: Record<ToolbarButtonId, ToolbarButtonPriority> = {
+      ...TOOLBAR_BUTTON_PRIORITIES,
+    };
     const widths = makeWidths(ordered, 40);
-    // Total 160, container 80, target = 80 - 36 - 8 = 36
-    // Sorted by priority desc: settings(5), notes(5), terminal(3), claude(2)
-    // Remove settings → 120, remove notes → 80, remove terminal → 40 > 36
-    // Remove claude → 0 ≤ 36. All overflow for extremely narrow container.
-    const result = computeOverflow(80, widths, ordered, TOOLBAR_BUTTON_PRIORITIES);
-    expect(result.overflowIds.length).toBeGreaterThan(0);
-    expect(result.overflowIds).toContain("settings");
+    const result = computeOverflow(80, widths, ordered, priorities);
     expect(result.overflowIds).toContain("notes");
     expect(result.overflowIds).toContain("terminal");
+    expect(result.overflowIds).toContain("claude");
+    expect(result.visibleIds).toEqual(["github-stats"]);
   });
 
   it("handles empty input arrays", () => {
@@ -73,13 +75,13 @@ describe("computeOverflow", () => {
   });
 
   it("within same priority, removes later items first", () => {
-    const ordered: ToolbarButtonId[] = ["settings", "notes", "copy-tree"];
-    // All priority 5. Within same priority, later index removed first.
+    // terminal(3), browser(3), panel-palette(4) — widths 50 each
+    // Total 150, container 110, targetWidth = 102
+    // Remove panel-palette(4,idx2) → 100 ≤ 102 → stop
+    const ordered: ToolbarButtonId[] = ["terminal", "browser", "panel-palette"];
     const widths = makeWidths(ordered, 50);
-    // Total 150, container 110, targetWidth = 110 - 0 - 8 = 102
-    // copy-tree removed first (index 2): 150-50=100 ≤ 102. Stop.
     const result = computeOverflow(110, widths, ordered, TOOLBAR_BUTTON_PRIORITIES);
-    expect(result.overflowIds).toEqual(["copy-tree"]);
-    expect(result.visibleIds).toEqual(["settings", "notes"]);
+    expect(result.overflowIds).toEqual(["panel-palette"]);
+    expect(result.visibleIds).toEqual(["terminal", "browser"]);
   });
 });

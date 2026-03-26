@@ -40,12 +40,9 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
   });
 
   describe("Side groups", () => {
-    it("left group uses flex layout with gap", () => {
-      expect(source).toContain('"flex items-center gap-1.5 app-no-drag z-20"');
-    });
-
-    it("right group uses justify-end for right alignment", () => {
-      expect(source).toContain("justify-end");
+    it("left and right groups exist as grid children", () => {
+      expect(source).toContain('aria-label="Navigation and agents"');
+      expect(source).toContain('aria-label="Tools and settings"');
     });
   });
 
