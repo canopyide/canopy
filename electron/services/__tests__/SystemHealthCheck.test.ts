@@ -5,10 +5,15 @@ import {
   resolvePrerequisites,
   BASELINE_PREREQUISITES,
 } from "../SystemHealthCheck.js";
+import { refreshPath } from "../../setup/environment.js";
 import { setUserRegistry, type AgentConfig } from "../../../shared/config/agentRegistry.js";
 
 vi.mock("child_process", () => ({
   execFileSync: vi.fn(),
+}));
+
+vi.mock("../../setup/environment.js", () => ({
+  refreshPath: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockedExecFileSync = vi.mocked(execFileSync);
@@ -132,6 +137,14 @@ describe("runSystemHealthCheck", () => {
       return "";
     });
   }
+
+  it("calls refreshPath before checking prerequisites", async () => {
+    mockAllBaselineAvailable();
+
+    await runSystemHealthCheck();
+
+    expect(refreshPath).toHaveBeenCalled();
+  });
 
   it("returns baseline tools when no agentIds provided", async () => {
     mockAllBaselineAvailable();
@@ -338,6 +351,40 @@ describe("runSystemHealthCheck", () => {
     const gh = result.prerequisites.find((p) => p.tool === "gh");
     expect(gh?.label).toBe("GitHub CLI");
     expect(gh?.severity).toBe("warn");
+  });
+
+  it("forwards installBlocks from spec to result for available tools", async () => {
+    mockAllBaselineAvailable();
+
+    const result = await runSystemHealthCheck();
+
+    const git = result.prerequisites.find((p) => p.tool === "git");
+    expect(git?.installBlocks).toBeDefined();
+    expect(git?.installBlocks?.macos).toBeDefined();
+    expect(git?.installBlocks?.macos?.[0]?.commands).toContain("brew install git");
+
+    const node = result.prerequisites.find((p) => p.tool === "node");
+    expect(node?.installBlocks?.linux?.[0]?.label).toBe("NodeSource");
+
+    const npm = result.prerequisites.find((p) => p.tool === "npm");
+    expect(npm?.installBlocks?.generic).toBeDefined();
+
+    const gh = result.prerequisites.find((p) => p.tool === "gh");
+    expect(gh?.installBlocks?.windows?.[0]?.commands).toContain("winget install --id GitHub.cli");
+  });
+
+  it("forwards installBlocks from spec to result for unavailable tools", async () => {
+    mockedExecFileSync.mockImplementation(() => {
+      throw new Error("not found");
+    });
+
+    const result = await runSystemHealthCheck();
+
+    const git = result.prerequisites.find((p) => p.tool === "git");
+    expect(git?.available).toBe(false);
+    expect(git?.installBlocks?.macos).toBeDefined();
+    expect(git?.installBlocks?.windows).toBeDefined();
+    expect(git?.installBlocks?.linux).toBeDefined();
   });
 
   it("handles gh --version multi-line output correctly", async () => {

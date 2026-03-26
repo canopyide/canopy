@@ -153,6 +153,7 @@ export interface StoreSchema {
     schemaVersion: number;
     completed: boolean;
     currentStep: string | null;
+    agentSetupIds: string[];
     firstRunToastSeen: boolean;
     newsletterPromptSeen: boolean;
     migratedFromLocalStorage: boolean;
@@ -260,6 +261,7 @@ const storeOptions = {
       schemaVersion: 1,
       completed: false,
       currentStep: null,
+      agentSetupIds: [],
       firstRunToastSeen: false,
       newsletterPromptSeen: false,
       migratedFromLocalStorage: false,
@@ -291,7 +293,7 @@ try {
   const memoryStore = new Map();
   storeInstance = {
     get: (key: string) => memoryStore.get(key),
-    set: (key: string, value: any) => memoryStore.set(key, value),
+    set: (key: string, value: unknown) => memoryStore.set(key, value),
     delete: (key: string) => memoryStore.delete(key),
     has: (key: string) => memoryStore.has(key),
     clear: () => memoryStore.clear(),

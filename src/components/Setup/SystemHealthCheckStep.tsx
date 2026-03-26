@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
   CircleCheck,
   CircleDashed,
   CircleX,
@@ -9,6 +11,12 @@ import {
 } from "lucide-react";
 import { systemClient } from "@/clients";
 import type { PrerequisiteCheckResult, SystemHealthCheckResult } from "@shared/types";
+import type { AgentInstallBlock } from "@shared/config/agentRegistry";
+import { detectOS } from "@/lib/agentInstall";
+import { InstallBlock } from "./InstallBlock";
+import { EmbeddedTerminal } from "./EmbeddedTerminal";
+
+const POLL_INTERVAL = 3000;
 
 interface SystemHealthCheckStepProps {
   onSkip: () => void;
@@ -19,25 +27,33 @@ export function SystemHealthCheckStep({ onSkip, agentIds }: SystemHealthCheckSte
   const [result, setResult] = useState<SystemHealthCheckResult | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasRunRef = useRef(false);
+  const activeRef = useRef(true);
+  const isCheckingRef = useRef(false);
 
   const runCheck = useCallback(async () => {
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
     setIsChecking(true);
     setError(null);
     try {
       const data = await systemClient.healthCheck(agentIds ? [...agentIds] : undefined);
-      setResult(data);
+      if (activeRef.current) setResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Health check failed");
+      if (activeRef.current) setError(err instanceof Error ? err.message : "Health check failed");
     } finally {
-      setIsChecking(false);
+      isCheckingRef.current = false;
+      if (activeRef.current) setIsChecking(false);
     }
   }, [agentIds]);
 
   useEffect(() => {
-    if (hasRunRef.current) return;
-    hasRunRef.current = true;
+    activeRef.current = true;
     void runCheck();
+    const id = setInterval(() => void runCheck(), POLL_INTERVAL);
+    return () => {
+      activeRef.current = false;
+      clearInterval(id);
+    };
   }, [runCheck]);
 
   const visibleResults = result?.prerequisites.filter((c) => c.severity !== "silent") ?? [];
@@ -68,6 +84,14 @@ export function SystemHealthCheckStep({ onSkip, agentIds }: SystemHealthCheckSte
                 loading={isChecking}
               />
             ))}
+      </div>
+
+      <div className="border-t border-canopy-border pt-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="text-xs font-medium text-canopy-text/60">Terminal</div>
+          <div className="text-[11px] text-canopy-text/30">Run installation commands here</div>
+        </div>
+        <EmbeddedTerminal />
       </div>
 
       {error && (
@@ -107,6 +131,16 @@ export function SystemHealthCheckStep({ onSkip, agentIds }: SystemHealthCheckSte
   );
 }
 
+function getInstallBlocksForOS(check: PrerequisiteCheckResult): AgentInstallBlock[] | null {
+  if (!check.installBlocks) return null;
+  const currentOS = detectOS();
+  const blocks = check.installBlocks[currentOS];
+  if (blocks && blocks.length > 0) return blocks;
+  const genericBlocks = check.installBlocks.generic;
+  if (genericBlocks && genericBlocks.length > 0) return genericBlocks;
+  return null;
+}
+
 function PrerequisiteRow({
   check,
   loading = false,
@@ -114,41 +148,68 @@ function PrerequisiteRow({
   check: PrerequisiteCheckResult;
   loading?: boolean;
 }) {
+  const needsInstall = !loading && (!check.available || !check.meetsMinVersion);
+  const installBlocks = needsInstall ? getInstallBlocksForOS(check) : null;
+  const [expanded, setExpanded] = useState(false);
   const label = check.label || check.tool;
   const versionMismatch = check.available && !check.meetsMinVersion && check.minVersion;
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg/30">
-      <StatusIcon check={check} loading={loading} />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-canopy-text">{label}</div>
-        {check.version && !versionMismatch && (
-          <div className="text-[11px] text-canopy-text/40">v{check.version}</div>
-        )}
-        {versionMismatch && (
-          <div className="text-[11px] text-status-warning">
-            v{check.version} — requires v{check.minVersion}+
+    <div className="rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg/30">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <StatusIcon check={check} loading={loading} />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-canopy-text">{label}</div>
+          {check.version && !versionMismatch && (
+            <div className="text-[11px] text-canopy-text/40">v{check.version}</div>
+          )}
+          {versionMismatch && (
+            <div className="text-[11px] text-status-warning">
+              v{check.version} — requires v{check.minVersion}+
+            </div>
+          )}
+        </div>
+        {loading ? (
+          <span className="text-[11px] text-canopy-text/30">Checking…</span>
+        ) : check.available && check.meetsMinVersion ? (
+          <span className="text-[11px] text-status-success font-medium">Found</span>
+        ) : (
+          <div className="flex items-center gap-2">
+            {installBlocks && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="inline-flex items-center gap-1 text-[11px] text-canopy-accent hover:underline"
+              >
+                {expanded ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" />
+                )}
+                How to install
+              </button>
+            )}
+            {check.installUrl && (
+              <a
+                href={check.installUrl}
+                className="inline-flex items-center gap-1 text-[11px] text-canopy-text/40 hover:text-canopy-text"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void systemClient.openExternal(check.installUrl!);
+                }}
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
           </div>
         )}
       </div>
-      {loading ? (
-        <span className="text-[11px] text-canopy-text/30">Checking…</span>
-      ) : check.available && check.meetsMinVersion ? (
-        <span className="text-[11px] text-status-success font-medium">Found</span>
-      ) : (
-        check.installUrl && (
-          <a
-            href={check.installUrl}
-            className="inline-flex items-center gap-1 text-[11px] text-canopy-accent hover:underline"
-            onClick={(e) => {
-              e.preventDefault();
-              void systemClient.openExternal(check.installUrl!);
-            }}
-          >
-            <ExternalLink className="w-3 h-3" />
-            Install
-          </a>
-        )
+      {expanded && installBlocks && (
+        <div className="px-3 pb-3 space-y-2">
+          {installBlocks.map((block, i) => (
+            <InstallBlock key={i} block={block} />
+          ))}
+        </div>
       )}
     </div>
   );
