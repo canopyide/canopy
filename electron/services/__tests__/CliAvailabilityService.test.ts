@@ -5,10 +5,15 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { CliAvailabilityService } from "../CliAvailabilityService.js";
 import { execFileSync } from "child_process";
+import { refreshPath } from "../../setup/environment.js";
 
 // Mock child_process execFileSync
 vi.mock("child_process", () => ({
   execFileSync: vi.fn(),
+}));
+
+vi.mock("../../setup/environment.js", () => ({
+  refreshPath: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("CliAvailabilityService", () => {
@@ -179,6 +184,14 @@ describe("CliAvailabilityService", () => {
   });
 
   describe("refresh", () => {
+    it("calls refreshPath before re-checking", async () => {
+      mockedExecFileSync.mockImplementation(() => Buffer.from(""));
+
+      await service.refresh();
+
+      expect(refreshPath).toHaveBeenCalled();
+    });
+
     it("re-checks availability and updates cache", async () => {
       // Initial check - all available
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
