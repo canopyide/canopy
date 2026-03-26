@@ -338,6 +338,19 @@ describe("WelcomeScreen", () => {
     expect(openCreateFolderDialogMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not disable quick action buttons when isLoading is true", () => {
+    storeState = { ...storeState, isLoading: true };
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    const openFolder = screen.getByText("Open Folder").closest("button")!;
+    const createProject = screen.getByText("Create Project").closest("button")!;
+    const launchAgent = screen.getByText("Launch Agent").closest("button")!;
+
+    expect(openFolder.disabled).toBe(false);
+    expect(createProject.disabled).toBe(false);
+    expect(launchAgent.disabled).toBe(false);
+  });
+
   it("dispatches panel.palette when Launch Agent is clicked", () => {
     render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
 
