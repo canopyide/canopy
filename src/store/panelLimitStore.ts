@@ -145,7 +145,7 @@ export const usePanelLimitStore = create<PanelLimitState>()(
               hardwareDefaultsApplied: true,
             });
           } catch {
-            // IPC unavailable (e.g., tests) — keep static defaults
+            _initPromise = null;
           }
         })();
         return _initPromise;
@@ -177,7 +177,7 @@ export const usePanelLimitStore = create<PanelLimitState>()(
           return {
             ...state,
             warningsDisabled: false,
-            hardwareDefaultsApplied: false,
+            hardwareDefaultsApplied: true,
             lastSoftWarningDismissedAt: null,
           };
         }
