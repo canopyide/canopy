@@ -792,7 +792,9 @@ describe("HibernationService", () => {
       (storeMock.get as Mock).mockReturnValue({ enabled: true, inactiveThresholdHours: 24 });
       const service = new HibernationService();
       const testError = new Error("boom");
-      vi.spyOn(service as never, "checkAndHibernate" as never).mockRejectedValue(testError);
+      (
+        vi.spyOn(service as never, "checkAndHibernate" as never) as unknown as Mock
+      ).mockRejectedValue(testError);
 
       service.start();
       await vi.advanceTimersByTimeAsync(3_600_000);
@@ -804,7 +806,9 @@ describe("HibernationService", () => {
       (storeMock.get as Mock).mockReturnValue({ enabled: true, inactiveThresholdHours: 24 });
       const service = new HibernationService();
       const testError = new Error("init-boom");
-      vi.spyOn(service as never, "checkAndHibernate" as never).mockRejectedValue(testError);
+      (
+        vi.spyOn(service as never, "checkAndHibernate" as never) as unknown as Mock
+      ).mockRejectedValue(testError);
 
       service.start();
       await vi.advanceTimersByTimeAsync(5000);
