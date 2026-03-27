@@ -47,7 +47,8 @@ async function createCorruptedFile(
 }
 
 describe("cleanupQuarantinedProjectFiles", () => {
-  const NOW = Date.now();
+  // Round to second boundary to avoid mtime truncation on Linux (ext4 has 1s granularity)
+  const NOW = Math.floor(Date.now() / 1000) * 1000;
 
   it("deletes .corrupted files older than 30 days", async () => {
     const projectDir = await createProjectDir(VALID_PROJECT_ID);
