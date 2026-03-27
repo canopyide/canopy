@@ -149,12 +149,31 @@ describe("cleanupQuarantinedProjectFiles", () => {
     const dir1 = await createProjectDir(VALID_PROJECT_ID);
     const dir2 = await createProjectDir(VALID_PROJECT_ID_2);
 
-    await createCorruptedFile(dir1, "state.json.corrupted", THIRTY_ONE_DAYS_MS, NOW);
-    await createCorruptedFile(dir2, "settings.json.corrupted", THIRTY_ONE_DAYS_MS, NOW);
-    await createCorruptedFile(dir2, "recipes.json.corrupted", TWENTY_NINE_DAYS_MS, NOW);
+    const oldFile1 = await createCorruptedFile(
+      dir1,
+      "state.json.corrupted",
+      THIRTY_ONE_DAYS_MS,
+      NOW
+    );
+    const oldFile2 = await createCorruptedFile(
+      dir2,
+      "settings.json.corrupted",
+      THIRTY_ONE_DAYS_MS,
+      NOW
+    );
+    const freshFile = await createCorruptedFile(
+      dir2,
+      "recipes.json.corrupted",
+      TWENTY_NINE_DAYS_MS,
+      NOW
+    );
 
     const deleted = await cleanupQuarantinedProjectFiles(tmpDir, NOW);
     expect(deleted).toBe(2);
+
+    await expect(fs.access(oldFile1)).rejects.toThrow();
+    await expect(fs.access(oldFile2)).rejects.toThrow();
+    await expect(fs.access(freshFile)).resolves.toBeUndefined();
   });
 
   it("is idempotent — calling twice is safe", async () => {
@@ -171,23 +190,32 @@ describe("cleanupQuarantinedProjectFiles", () => {
   it("boundary: exactly 30 days old is preserved (uses > not >=)", async () => {
     const projectDir = await createProjectDir(VALID_PROJECT_ID);
     const exactlyThirtyDays = 30 * 24 * 60 * 60 * 1000;
-    await createCorruptedFile(projectDir, "state.json.corrupted", exactlyThirtyDays, NOW);
+    const filePath = await createCorruptedFile(
+      projectDir,
+      "state.json.corrupted",
+      exactlyThirtyDays,
+      NOW
+    );
 
     const deleted = await cleanupQuarantinedProjectFiles(tmpDir, NOW);
     expect(deleted).toBe(0);
+    await expect(fs.access(filePath)).resolves.toBeUndefined();
   });
 
-  it("partial failure: one file error does not block others", async () => {
-    const dir1 = await createProjectDir(VALID_PROJECT_ID);
-    const dir2 = await createProjectDir(VALID_PROJECT_ID_2);
+  it("uses the now parameter for age calculation, not wall clock", async () => {
+    const projectDir = await createProjectDir(VALID_PROJECT_ID);
+    // File is only 1 day old relative to wall clock
+    const filePath = await createCorruptedFile(
+      projectDir,
+      "state.json.corrupted",
+      1 * 24 * 60 * 60 * 1000,
+      Date.now()
+    );
 
-    await createCorruptedFile(dir1, "state.json.corrupted", THIRTY_ONE_DAYS_MS, NOW);
-    await createCorruptedFile(dir2, "state.json.corrupted", THIRTY_ONE_DAYS_MS, NOW);
-
-    // Make one project directory unreadable to simulate a failure scenario
-    // We can't easily simulate resilientUnlink failure, but we can verify
-    // that the function processes all directories even if one file is problematic
-    const deleted = await cleanupQuarantinedProjectFiles(tmpDir, NOW);
-    expect(deleted).toBe(2);
+    // But if we pass a `now` far in the future, the file appears old
+    const futureNow = Date.now() + 60 * 24 * 60 * 60 * 1000;
+    const deleted = await cleanupQuarantinedProjectFiles(tmpDir, futureNow);
+    expect(deleted).toBe(1);
+    await expect(fs.access(filePath)).rejects.toThrow();
   });
 });
