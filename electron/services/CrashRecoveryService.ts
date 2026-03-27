@@ -398,7 +398,7 @@ export class CrashRecoveryService {
       if (!Array.isArray(terminals)) return;
 
       entry.panelCount = terminals.length;
-      const kinds: Record<string, number> = {};
+      const kinds: Record<string, number> = Object.create(null);
       for (const t of terminals) {
         const kind =
           typeof (t as Record<string, unknown>).kind === "string"
