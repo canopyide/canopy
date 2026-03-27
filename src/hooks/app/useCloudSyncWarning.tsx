@@ -22,12 +22,7 @@ export function useCloudSyncWarning(homeDir?: string) {
   const notificationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (
-      !currentProject?.id ||
-      settingsProjectId !== currentProject.id ||
-      !settings ||
-      !homeDir
-    ) {
+    if (!currentProject?.id || settingsProjectId !== currentProject.id || !settings || !homeDir) {
       return;
     }
 
@@ -90,5 +85,13 @@ export function useCloudSyncWarning(homeDir?: string) {
         removeNotification(notificationIdRef.current);
       }
     };
-  }, [currentProject?.id, settingsProjectId, settings, homeDir, saveSettings, removeNotification]);
+  }, [
+    currentProject?.id,
+    currentProject?.path,
+    settingsProjectId,
+    settings,
+    homeDir,
+    saveSettings,
+    removeNotification,
+  ]);
 }

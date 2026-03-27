@@ -24,21 +24,17 @@ describe("detectCloudSyncService", () => {
     });
 
     it("is case-insensitive", () => {
-      expect(
-        detectCloudSyncService(
-          `${home}/library/cloudstorage/dropbox/repo`,
-          home,
-          "mac",
-        ),
-      ).toBe("Dropbox");
+      expect(detectCloudSyncService(`${home}/library/cloudstorage/dropbox/repo`, home, "mac")).toBe(
+        "Dropbox"
+      );
     });
 
     it("rejects boundary false positives", () => {
       expect(
-        detectCloudSyncService(`${home}/Library/CloudStorageBackup/repo`, home, "mac"),
+        detectCloudSyncService(`${home}/Library/CloudStorageBackup/repo`, home, "mac")
       ).toBeNull();
       expect(
-        detectCloudSyncService(`${home}/Library/Mobile DocumentsOld/repo`, home, "mac"),
+        detectCloudSyncService(`${home}/Library/Mobile DocumentsOld/repo`, home, "mac")
       ).toBeNull();
     });
   });
@@ -61,15 +57,13 @@ describe("detectCloudSyncService", () => {
         detectCloudSyncService(
           "C:\\Users\\testuser\\OneDrive\\repo",
           "C:\\Users\\testuser",
-          "windows",
-        ),
+          "windows"
+        )
       ).toBe("OneDrive");
     });
 
     it("is case-insensitive", () => {
-      expect(
-        detectCloudSyncService(`${home}/onedrive/repo`, home, "windows"),
-      ).toBe("OneDrive");
+      expect(detectCloudSyncService(`${home}/onedrive/repo`, home, "windows")).toBe("OneDrive");
     });
 
     it("returns null for non-synced paths", () => {
@@ -77,12 +71,8 @@ describe("detectCloudSyncService", () => {
     });
 
     it("rejects boundary false positives", () => {
-      expect(
-        detectCloudSyncService(`${home}/OneDriveOld/repo`, home, "windows"),
-      ).toBeNull();
-      expect(
-        detectCloudSyncService(`${home}/DropboxArchive/repo`, home, "windows"),
-      ).toBeNull();
+      expect(detectCloudSyncService(`${home}/OneDriveOld/repo`, home, "windows")).toBeNull();
+      expect(detectCloudSyncService(`${home}/DropboxArchive/repo`, home, "windows")).toBeNull();
     });
   });
 
@@ -105,9 +95,7 @@ describe("detectCloudSyncService", () => {
     });
 
     it("rejects boundary false positives", () => {
-      expect(
-        detectCloudSyncService(`${home}/DropboxArchive/repo`, home, "linux"),
-      ).toBeNull();
+      expect(detectCloudSyncService(`${home}/DropboxArchive/repo`, home, "linux")).toBeNull();
     });
   });
 
@@ -122,28 +110,20 @@ describe("detectCloudSyncService", () => {
         detectCloudSyncService(
           "/Users/test/Library/CloudStorage/Dropbox/repo/",
           "/Users/test/",
-          "mac",
-        ),
+          "mac"
+        )
       ).toBe("Dropbox");
     });
 
     it("matches exact sync root without subpath", () => {
       expect(
-        detectCloudSyncService(
-          "/Users/test/Library/CloudStorage/Dropbox",
-          "/Users/test",
-          "mac",
-        ),
+        detectCloudSyncService("/Users/test/Library/CloudStorage/Dropbox", "/Users/test", "mac")
       ).toBe("Dropbox");
     });
 
     it("handles mixed path separators on Windows", () => {
       expect(
-        detectCloudSyncService(
-          "C:\\Users\\testuser/OneDrive\\repo",
-          "C:/Users/testuser",
-          "windows",
-        ),
+        detectCloudSyncService("C:\\Users\\testuser/OneDrive\\repo", "C:/Users/testuser", "windows")
       ).toBe("OneDrive");
     });
 
@@ -152,8 +132,8 @@ describe("detectCloudSyncService", () => {
         detectCloudSyncService(
           "/Users/test/Library/CloudStorage/GoogleDrive/repo",
           "/Users/test",
-          "mac",
-        ),
+          "mac"
+        )
       ).toBeNull();
     });
   });

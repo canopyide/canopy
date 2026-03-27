@@ -39,11 +39,7 @@ function buildRoots(home: string, platform: Platform): SyncRoot[] {
   ];
 }
 
-function matchesPrefix(
-  projectPath: string,
-  prefix: string,
-  caseInsensitive: boolean,
-): boolean {
+function matchesPrefix(projectPath: string, prefix: string, caseInsensitive: boolean): boolean {
   const p = caseInsensitive ? projectPath.toLowerCase() : projectPath;
   const r = caseInsensitive ? prefix.toLowerCase() : prefix;
 
@@ -63,7 +59,7 @@ function matchesPrefix(
 export function detectCloudSyncService(
   projectPath: string,
   homeDir: string,
-  platform: Platform,
+  platform: Platform
 ): CloudSyncService | null {
   if (!projectPath || !homeDir) return null;
 
