@@ -103,6 +103,12 @@ describe("detectCloudSyncService", () => {
     it("returns null for non-synced paths", () => {
       expect(detectCloudSyncService(`${home}/projects/repo`, home, "linux")).toBeNull();
     });
+
+    it("rejects boundary false positives", () => {
+      expect(
+        detectCloudSyncService(`${home}/DropboxArchive/repo`, home, "linux"),
+      ).toBeNull();
+    });
   });
 
   describe("edge cases", () => {
@@ -129,6 +135,26 @@ describe("detectCloudSyncService", () => {
           "mac",
         ),
       ).toBe("Dropbox");
+    });
+
+    it("handles mixed path separators on Windows", () => {
+      expect(
+        detectCloudSyncService(
+          "C:\\Users\\testuser/OneDrive\\repo",
+          "C:/Users/testuser",
+          "windows",
+        ),
+      ).toBe("OneDrive");
+    });
+
+    it("rejects GoogleDrive without email suffix on macOS", () => {
+      expect(
+        detectCloudSyncService(
+          "/Users/test/Library/CloudStorage/GoogleDrive/repo",
+          "/Users/test",
+          "mac",
+        ),
+      ).toBeNull();
     });
   });
 });
