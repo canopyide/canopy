@@ -160,14 +160,14 @@ describe("DatabaseMaintenanceService", () => {
     void service.dispose();
   });
 
-  it("dispose runs TRUNCATE checkpoint and closes DB", async () => {
+  it("dispose runs final backup and TRUNCATE checkpoint", async () => {
     const service = new DatabaseMaintenanceService();
     service.initialize();
 
     await service.dispose();
 
+    expect(mockSqlite.backup).toHaveBeenCalled();
     expect(mockSqlite.pragma).toHaveBeenCalledWith("wal_checkpoint(TRUNCATE)");
-    expect(mockDbModule.closeSharedDb).toHaveBeenCalled();
   });
 
   it("dispose is idempotent", async () => {
@@ -175,9 +175,20 @@ describe("DatabaseMaintenanceService", () => {
     service.initialize();
 
     await service.dispose();
-    mockDbModule.closeSharedDb.mockClear();
+    mockSqlite.pragma.mockClear();
 
     await service.dispose();
-    expect(mockDbModule.closeSharedDb).not.toHaveBeenCalled();
+    // Second dispose should not run checkpoint again
+    expect(mockSqlite.pragma).not.toHaveBeenCalledWith("wal_checkpoint(TRUNCATE)");
+  });
+
+  it("initialize is idempotent", () => {
+    const service = new DatabaseMaintenanceService();
+    service.initialize();
+    service.initialize();
+
+    // probeDb should only be called once
+    expect(mockDbModule.probeDb).toHaveBeenCalledTimes(1);
+    void service.dispose();
   });
 });
