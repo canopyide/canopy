@@ -16,10 +16,12 @@ const IDLE_THRESHOLD_S = 60; // 60 seconds of system idle
 class DatabaseMaintenanceService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private removeSuspendListener: (() => void) | null = null;
-  private operationInFlight = false;
+  private backupPromise: Promise<void> | null = null;
   private disposed = false;
 
   initialize(): void {
+    if (this.timer) return; // already initialized
+
     const dbPath = getDbPath();
 
     if (!probeDb(dbPath)) {
@@ -60,10 +62,19 @@ class DatabaseMaintenanceService {
       this.removeSuspendListener = null;
     }
 
-    // Best-effort final backup + checkpoint before closing
+    // Wait for any in-flight backup from a tick before proceeding
+    if (this.backupPromise) {
+      try {
+        await this.backupPromise;
+      } catch {
+        // ignore — backup errors already logged
+      }
+    }
+
+    // Final backup + TRUNCATE checkpoint (DB is NOT closed here —
+    // shutdown.ts may still need it for project state saves afterward)
     await this.runBackup();
     this.checkpoint("TRUNCATE");
-    closeSharedDb();
     console.log("[DatabaseMaintenance] Disposed — final backup + checkpoint complete");
   }
 
@@ -80,7 +91,7 @@ class DatabaseMaintenanceService {
     if (!sqlite) return;
 
     this.checkpoint("PASSIVE");
-    void this.runBackup();
+    this.backupPromise = this.runBackup();
   }
 
   private checkpoint(mode: "PASSIVE" | "TRUNCATE"): void {
@@ -95,7 +106,10 @@ class DatabaseMaintenanceService {
   }
 
   private async runBackup(): Promise<void> {
-    if (this.operationInFlight) return;
+    if (this.backupPromise && !this.disposed) {
+      // Another backup is already in flight from a tick — skip
+      return;
+    }
 
     const sqlite = getSharedSqlite();
     if (!sqlite) return;
@@ -103,7 +117,6 @@ class DatabaseMaintenanceService {
     const backupPath = getBackupPath();
     const tmpPath = backupPath + ".tmp";
 
-    this.operationInFlight = true;
     try {
       await sqlite.backup(tmpPath);
       fs.renameSync(tmpPath, backupPath);
@@ -115,7 +128,7 @@ class DatabaseMaintenanceService {
         // ignore cleanup failure
       }
     } finally {
-      this.operationInFlight = false;
+      this.backupPromise = null;
     }
   }
 }

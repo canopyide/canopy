@@ -88,12 +88,6 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
     getCrashRecoveryService().cleanupOnExit();
     getCrashLoopGuard().markCleanExit();
 
-    try {
-      await getDatabaseMaintenanceService().dispose();
-    } catch (error) {
-      console.warn("[MAIN] Database maintenance dispose failed:", error);
-    }
-
     const ptyClient = deps.getPtyClient();
     const workspaceClient = deps.getWorkspaceClient();
     const gracefulShutdownPromise = (async () => {
@@ -154,7 +148,7 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
           }),
         ])
       )
-      .then(() => {
+      .then(async () => {
         currentPhase = "ipc-cleanup";
         const cleanupIpc = deps.getCleanupIpcHandlers();
         if (cleanupIpc) {
@@ -185,6 +179,12 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         if (stopDisk) {
           stopDisk();
           deps.setStopDiskSpaceMonitor(null);
+        }
+
+        try {
+          await getDatabaseMaintenanceService().dispose();
+        } catch (error) {
+          console.warn("[MAIN] Database maintenance dispose failed:", error);
         }
       });
 
