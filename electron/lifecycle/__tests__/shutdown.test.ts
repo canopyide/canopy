@@ -282,6 +282,7 @@ describe("registerShutdownHandler", () => {
       await vi.advanceTimersByTimeAsync(10_000);
 
       expect(appMock.exit).toHaveBeenCalledWith(1);
+      expect(appMock.exit).toHaveBeenCalledTimes(1);
       expect(consoleSpy).toHaveBeenCalledWith(
         "[MAIN] Error during cleanup:",
         expect.objectContaining({
