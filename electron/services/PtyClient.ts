@@ -1226,6 +1226,11 @@ export class PtyClient extends EventEmitter {
     this.send({ type: "trim-state", targetLines });
   }
 
+  /** Suppress or resume terminal session persistence in the PtyHost */
+  suppressSessionPersistence(suppressed: boolean): void {
+    this.send({ type: "set-session-persist-suppressed", suppressed });
+  }
+
   /** Pause all PTY processes during system sleep to prevent buffer overflow */
   pauseAll(): void {
     this.send({ type: "pause-all" });
