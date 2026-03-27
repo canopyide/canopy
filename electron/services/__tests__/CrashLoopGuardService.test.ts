@@ -69,8 +69,6 @@ describe("CrashLoopGuardService", () => {
   });
 
   it("enters safe mode after 3 consecutive unclean exits", () => {
-    const now = Date.now();
-
     for (let i = 0; i < 3; i++) {
       const guard = new CrashLoopGuardService();
       guard.initialize();
