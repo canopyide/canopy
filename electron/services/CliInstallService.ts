@@ -17,8 +17,7 @@ function isAppImage(): boolean {
 }
 
 function getAppImageWrapperDir(): string {
-  const xdgDataHome =
-    process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
+  const xdgDataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
   return path.join(xdgDataHome, "canopy");
 }
 

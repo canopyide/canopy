@@ -186,9 +186,7 @@ describe("CliInstallService", () => {
       const { install } = await import("../CliInstallService.js");
       await install();
 
-      const writeCall = fsMock.writeFileSync.mock.calls.find(
-        (call) => call[0] === WRAPPER_PATH
-      );
+      const writeCall = fsMock.writeFileSync.mock.calls.find((call) => call[0] === WRAPPER_PATH);
       expect(writeCall).toBeDefined();
       const content = writeCall![1] as string;
       expect(content).toContain("it'\\''s a Canopy");
@@ -215,9 +213,7 @@ describe("CliInstallService", () => {
     });
 
     it("reports up-to-date when symlink points to stable wrapper path", async () => {
-      fsMock.existsSync.mockImplementation(
-        (target) => target === "/usr/local/bin/canopy"
-      );
+      fsMock.existsSync.mockImplementation((target) => target === "/usr/local/bin/canopy");
       fsMock.lstatSync.mockImplementation((targetPath) => ({
         isSymbolicLink: () => targetPath === "/usr/local/bin/canopy",
       }));
@@ -264,9 +260,7 @@ describe("CliInstallService", () => {
       const { install } = await import("../CliInstallService.js");
       await install();
 
-      const writeCall = fsMock.writeFileSync.mock.calls.find(
-        (call) => call[0] === WRAPPER_PATH
-      );
+      const writeCall = fsMock.writeFileSync.mock.calls.find((call) => call[0] === WRAPPER_PATH);
       const content = writeCall![1] as string;
       expect(content).toContain("#!/usr/bin/env bash");
       expect(content).toContain("--cli-path");
