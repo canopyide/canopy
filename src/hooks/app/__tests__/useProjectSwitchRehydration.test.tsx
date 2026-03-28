@@ -58,6 +58,7 @@ const {
     setReconnectError: vi.fn(),
     hydrateTabGroups: vi.fn(),
     restoreTerminalOrder: vi.fn(),
+    clearTerminalStoreForSwitch: vi.fn(),
     hydrateMru: vi.fn(),
     setActiveWorktree: vi.fn(),
     loadRecipes: vi.fn(),
@@ -98,6 +99,7 @@ vi.mock("@/store", () => {
     hydrateTabGroups: storeMocks.hydrateTabGroups,
     restoreTerminalOrder: storeMocks.restoreTerminalOrder,
     hydrateMru: storeMocks.hydrateMru,
+    clearTerminalStoreForSwitch: storeMocks.clearTerminalStoreForSwitch,
   });
 
   const diagnosticsSelector = ((sel: (s: unknown) => unknown) =>
