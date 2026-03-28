@@ -136,6 +136,8 @@ function worktreeStatesEqual(a: WorktreeState, b: WorktreeState): boolean {
     a.taskId === b.taskId &&
     a.hasPlanFile === b.hasPlanFile &&
     a.planFilePath === b.planFilePath &&
+    a.aheadCount === b.aheadCount &&
+    a.behindCount === b.behindCount &&
     worktreeChangesEqual(a.worktreeChanges, b.worktreeChanges) &&
     lifecycleStatusEqual(a.lifecycleStatus, b.lifecycleStatus)
   );
