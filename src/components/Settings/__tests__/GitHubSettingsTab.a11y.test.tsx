@@ -25,7 +25,7 @@ function setupStore(overrides: Record<string, unknown> = {}) {
     initialize: vi.fn(),
     updateConfig: vi.fn(),
     ...overrides,
-  } as any);
+  } as ReturnType<typeof useGitHubConfigStore>);
 }
 
 describe("GitHubSettingsTab accessibility", () => {
