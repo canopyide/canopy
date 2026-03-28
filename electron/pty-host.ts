@@ -252,8 +252,11 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
               backpressureManager.suspendVisualStream(id, `${dur}ms ack timeout`, util, dur, si);
             } else {
               // No pending segments — just resume via coordinator
-              getPauseCoordinator(id)?.resume("backpressure");
-              backpressureManager.emitTerminalStatus(id, "running", util, dur);
+              const timeoutCoord = getPauseCoordinator(id);
+              timeoutCoord?.resume("backpressure");
+              if (!timeoutCoord?.isPaused) {
+                backpressureManager.emitTerminalStatus(id, "running", util, dur);
+              }
               backpressureManager.emitReliabilityMetric({
                 terminalId: id,
                 metricType: "pause-end",
@@ -553,13 +556,17 @@ function resumePausedTerminal(id: string): void {
   const pauseDuration = pauseStart ? Date.now() - pauseStart : undefined;
   backpressureManager.deletePauseStartTime(id);
 
-  getPauseCoordinator(id)?.resume("backpressure");
+  const coordinator = getPauseCoordinator(id);
+  coordinator?.resume("backpressure");
 
   const shardIndex = visualBuffers.length > 0 ? selectShard(id, visualBuffers.length) : 0;
   const s = visualBuffers[shardIndex];
   const utilization = s ? s.getUtilization() : 0;
 
-  backpressureManager.emitTerminalStatus(id, "running", utilization, pauseDuration);
+  // Only emit "running" if no other subsystem still holds a pause
+  if (!coordinator?.isPaused) {
+    backpressureManager.emitTerminalStatus(id, "running", utilization, pauseDuration);
+  }
   backpressureManager.emitReliabilityMetric({
     terminalId: id,
     metricType: "pause-end",
@@ -714,8 +721,18 @@ port.on("message", async (rawMsg: any) => {
       case "spawn": {
         let spawnResult: SpawnResult;
         try {
+          // Remove stale coordinator before spawn (handles ID respawn)
+          const staleCoord = pauseCoordinators.get(msg.id);
+          if (staleCoord) {
+            staleCoord.forceReleaseAll();
+            pauseCoordinators.delete(msg.id);
+          }
+
           ptyManager.spawn(msg.id, msg.options);
           spawnResult = { success: true, id: msg.id };
+
+          // Eagerly create coordinator so all subsystems can pause from the start
+          getOrCreatePauseCoordinator(msg.id);
 
           const terminalInfo = ptyManager.getTerminal(msg.id);
           const pid = terminalInfo?.ptyProcess?.pid;
@@ -785,7 +802,8 @@ port.on("message", async (rawMsg: any) => {
         backpressureManager.deletePauseStartTime(msg.id);
 
         // Release backpressure hold (respects other holds like resource-governor or system-sleep)
-        getPauseCoordinator(msg.id)?.resume("backpressure");
+        const atCoordinator = getPauseCoordinator(msg.id);
+        atCoordinator?.resume("backpressure");
 
         const terminal = ptyManager.getTerminal(msg.id);
         if (terminal) {
@@ -794,7 +812,9 @@ port.on("message", async (rawMsg: any) => {
           ptyManager.setActivityMonitorTier(msg.id, pollingInterval);
         }
 
-        backpressureManager.emitTerminalStatus(msg.id, "running");
+        if (!atCoordinator?.isPaused) {
+          backpressureManager.emitTerminalStatus(msg.id, "running");
+        }
 
         // Emit metrics for pause-end (set-activity-tier unpause path)
         if (wasPaused && pauseDuration !== undefined) {
@@ -826,8 +846,9 @@ port.on("message", async (rawMsg: any) => {
         backpressureManager.deletePauseStartTime(msg.id);
 
         // Release backpressure hold via coordinator (respects other holds)
+        const wakeCoordinator = getPauseCoordinator(msg.id);
         if (wasPaused) {
-          getPauseCoordinator(msg.id)?.resume("backpressure");
+          wakeCoordinator?.resume("backpressure");
         }
 
         // Apply active tier polling (50ms) when waking
@@ -859,7 +880,9 @@ port.on("message", async (rawMsg: any) => {
 
         const wakeLatencyMs = Date.now() - wakeStartTime;
 
-        backpressureManager.emitTerminalStatus(msg.id, "running");
+        if (!wakeCoordinator?.isPaused) {
+          backpressureManager.emitTerminalStatus(msg.id, "running");
+        }
 
         // Emit wake latency metrics (only if enabled to avoid overhead)
         if (metricsEnabled() && state) {
