@@ -69,14 +69,14 @@ describe("V8 flag setup", () => {
     process.argv = originalArgv;
   });
 
-  it("sets --optimize_for_size V8 flag for compact code generation", async () => {
+  it("sets --expose_gc and does not set --optimize_for_size", async () => {
     fsMock.existsSync.mockReturnValue(false);
 
     await import("../environment.js");
 
     const nodeV8 = (await import("node:v8")).default;
     expect(nodeV8.setFlagsFromString).toHaveBeenCalledWith("--expose_gc");
-    expect(nodeV8.setFlagsFromString).toHaveBeenCalledWith("--optimize_for_size");
+    expect(nodeV8.setFlagsFromString).not.toHaveBeenCalledWith("--optimize_for_size");
   });
 });
 
@@ -232,6 +232,41 @@ describe("Windows Git PATH discovery", () => {
       const candidateIdx = pathStr.indexOf(candidate);
       expect(candidateIdx).toBeLessThan(existingIdx);
     }
+  });
+});
+
+describe("GPU memory flags", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
+    process.argv = ["electron", "main.js"];
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    process.argv = originalArgv;
+  });
+
+  it("sets force-gpu-mem-available-mb to 512", async () => {
+    fsMock.existsSync.mockReturnValue(false);
+
+    await import("../environment.js");
+
+    const { app } = await import("electron");
+    expect(app.commandLine.appendSwitch).toHaveBeenCalledWith("force-gpu-mem-available-mb", "512");
+  });
+
+  it("disables GPU rasterization MSAA", async () => {
+    fsMock.existsSync.mockReturnValue(false);
+
+    await import("../environment.js");
+
+    const { app } = await import("electron");
+    expect(app.commandLine.appendSwitch).toHaveBeenCalledWith(
+      "gpu-rasterization-msaa-sample-count",
+      "0"
+    );
   });
 });
 

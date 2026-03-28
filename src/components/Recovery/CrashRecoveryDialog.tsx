@@ -166,7 +166,7 @@ export function CrashRecoveryDialog({
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="text-xs text-canopy-accent hover:text-canopy-accent/80 transition-colors"
+                  className="cursor-pointer text-xs text-canopy-accent hover:text-canopy-accent/80 transition-colors"
                   data-testid="toggle-all-button"
                 >
                   {allSelected ? "Deselect all" : "Select all"}
@@ -230,7 +230,7 @@ export function CrashRecoveryDialog({
               type="button"
               onClick={handleRestoreAll}
               disabled={resolving}
-              className="flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-accent hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="cursor-pointer flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-accent hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
               data-testid="restore-button"
             >
               <div className="mt-0.5 h-5 w-5 rounded-full bg-canopy-accent/20 flex items-center justify-center shrink-0">
@@ -254,7 +254,7 @@ export function CrashRecoveryDialog({
               type="button"
               onClick={handleFresh}
               disabled={resolving}
-              className="flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-border/80 hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="cursor-pointer flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-border/80 hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
               data-testid="fresh-button"
             >
               <div className="mt-0.5 h-5 w-5 rounded-full bg-canopy-text/10 flex items-center justify-center shrink-0">
@@ -274,7 +274,7 @@ export function CrashRecoveryDialog({
           <button
             type="button"
             onClick={() => setDetailsOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-3 py-2 text-sm text-canopy-text/70 hover:text-canopy-text hover:bg-overlay-soft transition-colors"
+            className="cursor-pointer w-full flex items-center justify-between px-3 py-2 text-sm text-canopy-text/70 hover:text-canopy-text hover:bg-overlay-soft transition-colors"
             data-testid="details-toggle"
           >
             <span className="font-medium">Error Details</span>
@@ -320,7 +320,7 @@ export function CrashRecoveryDialog({
               {crash.entry.errorMessage && (
                 <div className="mt-2">
                   <div className="text-xs text-canopy-text/50 mb-1">Error</div>
-                  <pre className="text-xs text-status-danger bg-status-danger/10 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">
+                  <pre className="text-xs text-status-danger bg-status-danger/10 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all select-text">
                     {crash.entry.errorMessage}
                   </pre>
                 </div>
@@ -328,7 +328,7 @@ export function CrashRecoveryDialog({
               {crash.entry.errorStack && (
                 <div>
                   <div className="text-xs text-canopy-text/50 mb-1">Stack trace</div>
-                  <pre className="text-xs text-canopy-text/60 bg-overlay-soft rounded p-2 overflow-x-auto max-h-32 whitespace-pre-wrap break-all">
+                  <pre className="text-xs text-canopy-text/60 bg-overlay-soft rounded p-2 overflow-x-auto max-h-32 whitespace-pre-wrap break-all select-text">
                     {crash.entry.errorStack}
                   </pre>
                 </div>
@@ -357,7 +357,7 @@ export function CrashRecoveryDialog({
                   {copied
                     ? "Copied!"
                     : privacyWarningShown
-                      ? "Copy & open GitHub"
+                      ? "Copy & report on GitHub"
                       : "Report this crash"}
                 </Button>
               </div>
@@ -367,7 +367,8 @@ export function CrashRecoveryDialog({
                   className="text-xs text-status-warning/90 bg-status-warning/10 rounded px-2 py-1.5"
                   data-testid="privacy-warning"
                 >
-                  Crash info may include file paths. Click again to copy and open GitHub Issues.
+                  Crash info may include file paths. Click again to copy to clipboard and open
+                  GitHub Issues. You'll need to paste the info into the form.
                 </p>
               )}
             </div>

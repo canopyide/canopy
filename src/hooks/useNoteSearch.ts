@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { notesClient, type NoteListItem } from "@/clients/notesClient";
+import { getNoteDisplayTitle } from "@/lib/noteTitleDisplay";
 
 export type SortOrder = "modified-desc" | "created-desc" | "created-asc" | "title-asc";
 
@@ -59,6 +60,9 @@ export function useNoteSearch({
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const searchSeqRef = useRef(0);
+  const hasResultsRef = useRef(searchResults.length > 0);
+
+  hasResultsRef.current = searchResults.length > 0;
 
   const availableTags = useMemo(
     () => [...new Set(searchResults.flatMap((n) => n.tags ?? []))].sort(),
@@ -78,7 +82,7 @@ export function useNoteSearch({
         case "created-asc":
           return a.createdAt - b.createdAt;
         case "title-asc":
-          return a.title.localeCompare(b.title);
+          return getNoteDisplayTitle(a).localeCompare(getNoteDisplayTitle(b));
       }
     });
   }, [searchResults, selectedTag, sortOrder]);
@@ -119,7 +123,7 @@ export function useNoteSearch({
     if (cached) {
       setSearchResults(cached.notes);
       setIsSearching(false);
-    } else {
+    } else if (!hasResultsRef.current) {
       setIsSearching(true);
     }
 

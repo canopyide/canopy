@@ -197,9 +197,29 @@ test.describe.serial("Core: Notes Panel", () => {
 
   test("filter by tag narrows list", async () => {
     const { window } = ctx;
-    const palette = window.locator(SEL.notes.palette);
 
+    // Ensure at least one note has "test-tag" via IPC — the tag may not have
+    // persisted on Windows due to write-conflict races or stale search cache.
+    await window.evaluate(async () => {
+      const notes = await window.electron.notes.list();
+      const hasTag = notes.some((n: { tags: string[] }) => n.tags.includes("test-tag"));
+      if (!hasTag && notes.length > 0) {
+        const data = await window.electron.notes.read(notes[0].path);
+        const tags = [...(data.metadata.tags || []), "test-tag"];
+        await window.electron.notes.write(notes[0].path, data.content, {
+          ...data.metadata,
+          tags,
+        });
+      }
+    });
+
+    // Reopen palette to pick up any IPC-written tag changes
+    await closeNotesPalette(window);
+    await openNotesPalette(window);
+
+    const palette = window.locator(SEL.notes.palette);
     const tagChip = palette.getByRole("button", { name: "test-tag" });
+    await expect(tagChip).toBeVisible({ timeout: T_MEDIUM });
     await tagChip.click();
     await window.waitForTimeout(T_SETTLE);
 

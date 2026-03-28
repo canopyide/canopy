@@ -17,13 +17,6 @@ try {
   // GC exposure not available — non-critical
 }
 
-// Prefer compact code over raw speed — main process is I/O-bound
-try {
-  nodeV8.setFlagsFromString("--optimize_for_size");
-} catch {
-  // Non-critical — app works without this optimization
-}
-
 fixPath();
 
 // In development, use a separate userData directory so the dev instance
@@ -69,6 +62,10 @@ if (process.platform === "linux") {
     app.commandLine.appendSwitch("enable-wayland-ime");
   }
 }
+
+// Cap GPU tile memory budget and disable MSAA to reduce VRAM usage
+app.commandLine.appendSwitch("force-gpu-mem-available-mb", "512");
+app.commandLine.appendSwitch("gpu-rasterization-msaa-sample-count", "0");
 
 if (process.platform === "win32") {
   const programFiles = process.env["ProgramFiles"] || "C:\\Program Files";
