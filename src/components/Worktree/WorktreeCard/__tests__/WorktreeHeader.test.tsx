@@ -328,6 +328,28 @@ describe("WorktreeHeader primary worktree standard branch layout", () => {
     expect(screen.getByText("Some issue")).toBeDefined();
   });
 
+  it("applies muted styling to project name when isMuted", () => {
+    renderHeader({
+      worktree: mainWorktree,
+      isMainWorktree: true,
+      isMainOnStandardBranch: true,
+      isActive: false,
+      isMuted: true,
+      branchLabel: "main",
+    });
+    const projectName = screen.getByTestId("primary-worktree-project-name");
+    expect(projectName.className).toContain("text-text-muted");
+  });
+
+  it("falls back to BranchLabel when isMainOnStandardBranch is undefined", () => {
+    renderHeader({
+      worktree: mainWorktree,
+      isMainWorktree: true,
+      branchLabel: "main",
+    });
+    expect(screen.queryByTestId("primary-worktree-project-name")).toBeNull();
+  });
+
   it("hides secondary branch row when collapsed", () => {
     renderHeader({
       worktree: mainWorktree,
