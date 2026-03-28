@@ -117,7 +117,9 @@ export class IpcQueueManager {
           console.warn(
             `[PtyHost] Force resumed IPC PTY ${id} after ${pauseDuration}ms (queue at ${currentUtilization.toFixed(1)}%). Consumer may be stalled.`
           );
-          this.deps.emitTerminalStatus(id, "running", currentUtilization, pauseDuration);
+          if (!coordinator.isPaused) {
+            this.deps.emitTerminalStatus(id, "running", currentUtilization, pauseDuration);
+          }
           this.deps.emitReliabilityMetric({
             terminalId: id,
             metricType: "pause-end",
@@ -151,7 +153,9 @@ export class IpcQueueManager {
     if (coordinator) {
       coordinator.resume("ipc-queue");
       console.log(`[PtyHost] IPC queue cleared to ${utilization.toFixed(1)}%. Resumed PTY ${id}`);
-      this.deps.emitTerminalStatus(id, "running", utilization, pauseDuration);
+      if (!coordinator.isPaused) {
+        this.deps.emitTerminalStatus(id, "running", utilization, pauseDuration);
+      }
       this.deps.emitReliabilityMetric({
         terminalId: id,
         metricType: "pause-end",
