@@ -104,6 +104,26 @@ describe("useWindowNotifications — window focus dim", () => {
     expect(document.body.dataset.windowFocused).toBeUndefined();
   });
 
+  it("cleans up pending debounce timer on unmount", () => {
+    const { unmount } = renderHook(() => useWindowNotifications());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+
+    // Unmount before debounce expires
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    unmount();
+
+    // Advance well past debounce — attribute should never be set
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(document.body.dataset.windowFocused).toBeUndefined();
+  });
+
   it("handles rapid blur/focus/blur cycle correctly", () => {
     renderHook(() => useWindowNotifications());
 
