@@ -86,7 +86,6 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   // tabGroups + terminals are intentional deps: getTabGroups reads both internally.
   const gridGroups = useMemo(
     () => getTabGroups("grid", activeWorktreeId ?? undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [getTabGroups, activeWorktreeId, tabGroups, terminals]
   );
 
@@ -222,7 +221,6 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
         : group.panelIds[0];
       return resolvedId ? [resolvedId] : [];
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getTabGroups, activeWorktreeId, tabGroups, terminals]);
 
   const findByIndex = useCallback(
