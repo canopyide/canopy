@@ -12,12 +12,18 @@ import { getDevServerUrl } from "../../shared/config/devServer.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { sendToRenderer } from "../ipc/handlers.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
+import { notifyError } from "../ipc/errorHandlers.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
 import { markPerformance } from "../utils/performance.js";
 import { isSmokeTest } from "../setup/environment.js";
 import { SMOKE_BOOT_TIMEOUT_MS } from "../services/smokeTest.js";
 
 const CRASH_LOOP_WINDOW_MS = 60_000;
+const CRASH_LOOP_THRESHOLD = 3;
+
+export interface SetupBrowserWindowOptions {
+  onRecreateWindow?: () => Promise<void>;
+}
 
 export interface CreateWindowResult {
   win: BrowserWindow;
@@ -26,7 +32,11 @@ export interface CreateWindowResult {
   smokeRendererUnresponsive: () => boolean;
 }
 
-export function setupBrowserWindow(dirname: string): CreateWindowResult {
+export function setupBrowserWindow(
+  dirname: string,
+  options: SetupBrowserWindowOptions = {}
+): CreateWindowResult {
+  const { onRecreateWindow } = options;
   let smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   let _smokeRendererUnresponsive = false;
 
@@ -271,7 +281,6 @@ export function setupBrowserWindow(dirname: string): CreateWindowResult {
     if (win.isDestroyed()) return;
 
     const now = Date.now();
-    // Prune timestamps outside the crash loop window
     while (
       rendererCrashTimestamps.length > 0 &&
       now - rendererCrashTimestamps[0] > CRASH_LOOP_WINDOW_MS
@@ -280,13 +289,36 @@ export function setupBrowserWindow(dirname: string): CreateWindowResult {
     }
     rendererCrashTimestamps.push(now);
 
-    if (rendererCrashTimestamps.length >= 2) {
+    const isOom = details.reason === "oom";
+
+    if (rendererCrashTimestamps.length >= CRASH_LOOP_THRESHOLD) {
       console.error("[MAIN] Crash loop detected, loading recovery page");
-      const recoveryUrl = getRecoveryUrl(details.reason, details.exitCode);
-      win.webContents.loadURL(recoveryUrl);
+      setImmediate(() => {
+        if (win.isDestroyed()) return;
+        const recoveryUrl = getRecoveryUrl(details.reason, details.exitCode);
+        win.webContents.loadURL(recoveryUrl);
+      });
+    } else if (isOom && onRecreateWindow) {
+      console.warn("[MAIN] OOM crash detected, destroying and recreating window");
+      notifyError(
+        new Error(
+          "The window ran out of memory and was automatically recreated. Some state may have been lost."
+        ),
+        { source: "renderer-crash" }
+      );
+      setImmediate(() => {
+        if (!win.isDestroyed()) win.destroy();
+        void onRecreateWindow();
+      });
     } else {
-      console.log("[MAIN] First crash, auto-reloading renderer");
-      win.webContents.reload();
+      console.log("[MAIN] Renderer crash, auto-reloading");
+      notifyError(new Error("The renderer process crashed and was automatically reloaded."), {
+        source: "renderer-crash",
+      });
+      setImmediate(() => {
+        if (win.isDestroyed()) return;
+        win.webContents.reload();
+      });
     }
   });
 
