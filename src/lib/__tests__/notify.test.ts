@@ -781,5 +781,55 @@ describe("notify()", () => {
       expect(useNotificationStore.getState().notifications).toHaveLength(1);
       Date.now = realDateNow;
     });
+
+    it("does not populate coalesce map during quiet period", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const realDateNow = Date.now;
+      Date.now = () => 1000;
+      _setQuietUntil(6000);
+
+      notify({
+        type: "success",
+        message: "Coalesce quiet",
+        priority: "high",
+        coalesce: {
+          key: "test:quiet",
+          windowMs: 5000,
+          buildMessage: (count: number) => `${count} items`,
+        },
+      });
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+
+      Date.now = () => 7000;
+      const id = notify({
+        type: "success",
+        message: "After quiet",
+        priority: "high",
+        coalesce: {
+          key: "test:quiet",
+          windowMs: 5000,
+          buildMessage: (count: number) => `${count} items`,
+        },
+      });
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationStore.getState().notifications[0].message).toBe("After quiet");
+      expect(id.length).toBeGreaterThan(0);
+      Date.now = realDateNow;
+    });
+
+    it("low priority during quiet period still records to history", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const realDateNow = Date.now;
+      Date.now = () => 1000;
+      _setQuietUntil(6000);
+
+      notify({ type: "info", message: "Low quiet", priority: "low" });
+
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
+      expect(useNotificationHistoryStore.getState().entries[0].seenAsToast).toBe(false);
+      Date.now = realDateNow;
+    });
   });
 });
