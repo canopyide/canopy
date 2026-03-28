@@ -166,7 +166,7 @@ export function CrashRecoveryDialog({
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="text-xs text-canopy-accent hover:text-canopy-accent/80 transition-colors"
+                  className="cursor-pointer text-xs text-canopy-accent hover:text-canopy-accent/80 transition-colors"
                   data-testid="toggle-all-button"
                 >
                   {allSelected ? "Deselect all" : "Select all"}
@@ -230,7 +230,7 @@ export function CrashRecoveryDialog({
               type="button"
               onClick={handleRestoreAll}
               disabled={resolving}
-              className="flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-accent hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="cursor-pointer flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-accent hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
               data-testid="restore-button"
             >
               <div className="mt-0.5 h-5 w-5 rounded-full bg-canopy-accent/20 flex items-center justify-center shrink-0">
@@ -254,7 +254,7 @@ export function CrashRecoveryDialog({
               type="button"
               onClick={handleFresh}
               disabled={resolving}
-              className="flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-border/80 hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="cursor-pointer flex items-start gap-3 p-3 rounded-lg border border-canopy-border hover:border-canopy-border/80 hover:bg-overlay-soft text-left transition-colors disabled:opacity-50 disabled:pointer-events-none"
               data-testid="fresh-button"
             >
               <div className="mt-0.5 h-5 w-5 rounded-full bg-canopy-text/10 flex items-center justify-center shrink-0">
@@ -274,7 +274,7 @@ export function CrashRecoveryDialog({
           <button
             type="button"
             onClick={() => setDetailsOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-3 py-2 text-sm text-canopy-text/70 hover:text-canopy-text hover:bg-overlay-soft transition-colors"
+            className="cursor-pointer w-full flex items-center justify-between px-3 py-2 text-sm text-canopy-text/70 hover:text-canopy-text hover:bg-overlay-soft transition-colors"
             data-testid="details-toggle"
           >
             <span className="font-medium">Error Details</span>
