@@ -1,5 +1,5 @@
 import path from "path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fsMock = vi.hoisted(() => ({
   existsSync: vi.fn<(path: string) => boolean>(),
@@ -24,6 +24,14 @@ vi.mock("electron", () => ({
 const originalResourcesPath = process.resourcesPath;
 
 describe("HelpService", () => {
+  afterAll(() => {
+    Object.defineProperty(process, "resourcesPath", {
+      value: originalResourcesPath,
+      writable: true,
+      configurable: true,
+    });
+  });
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -80,6 +88,9 @@ describe("HelpService", () => {
     const result = getHelpFolderPath();
 
     expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[HelpService] Help folder not found:")
+    );
     warnSpy.mockRestore();
   });
 });
