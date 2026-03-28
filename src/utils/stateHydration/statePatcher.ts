@@ -190,6 +190,7 @@ export function buildArgsForBackendTerminal(
     agentSessionId: backendTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: backendTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: backendTerminal.agentModelId ?? saved.agentModelId,
+    extensionState: saved.extensionState,
   };
 }
 
@@ -239,6 +240,7 @@ export function buildArgsForReconnectedFallback(
     agentSessionId: reconnectedTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: reconnectedTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: reconnectedTerminal.agentModelId ?? saved.agentModelId,
+    extensionState: saved.extensionState,
   };
 }
 
@@ -311,6 +313,7 @@ export function buildArgsForRespawn(
     exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
     agentLaunchFlags: saved.agentLaunchFlags,
     agentModelId: saved.agentModelId,
+    extensionState: saved.extensionState,
     restore: true,
   };
 }

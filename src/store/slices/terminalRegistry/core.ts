@@ -160,6 +160,7 @@ export const createCorePanelActions = (
           location,
           isVisible: location === "grid",
           runtimeStatus,
+          extensionState: options.extensionState,
           browserUrl: options.browserUrl || "http://localhost:3000",
           browserHistory: options.browserHistory,
           browserZoom: options.browserZoom,
@@ -178,6 +179,7 @@ export const createCorePanelActions = (
           location,
           isVisible: location === "grid",
           runtimeStatus,
+          extensionState: options.extensionState,
           notePath: options.notePath ?? "",
           noteId: options.noteId ?? "",
           scope: options.scope ?? "project",
@@ -197,6 +199,7 @@ export const createCorePanelActions = (
           location,
           isVisible: location === "grid",
           runtimeStatus,
+          extensionState: options.extensionState,
           cwd: options.cwd ?? "",
           devCommand: options.devCommand,
           browserUrl: options.browserUrl,
@@ -494,6 +497,7 @@ export const createCorePanelActions = (
                 agentState: terminal.agentState ?? existing.agentState,
                 lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
                 exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
+                extensionState: terminal.extensionState ?? existing.extensionState,
               }
             : terminal;
           newTerminals = state.terminals.map((t, i) =>

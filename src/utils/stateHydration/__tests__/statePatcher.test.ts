@@ -576,6 +576,45 @@ describe("buildArgsForOrphanedTerminal", () => {
   });
 });
 
+describe("buildArgsForBackendTerminal — extensionState", () => {
+  it("forwards extensionState from saved data", () => {
+    const extState = { tab: "overview" };
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", kind: "terminal", title: "Shell", cwd: "/p" },
+      { id: "t1", extensionState: extState },
+      "/p"
+    );
+    expect(result.extensionState).toEqual(extState);
+  });
+});
+
+describe("buildArgsForReconnectedFallback — extensionState", () => {
+  it("forwards extensionState from saved data", () => {
+    const extState = { scroll: 42 };
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", kind: "terminal", title: "Shell", cwd: "/p" },
+      { id: "t1", extensionState: extState },
+      "/p"
+    );
+    expect(result.extensionState).toEqual(extState);
+  });
+});
+
+describe("buildArgsForRespawn — extensionState", () => {
+  it("forwards extensionState from saved data", () => {
+    const extState = { config: true };
+    const result = buildArgsForRespawn(
+      { id: "t1", kind: "terminal", title: "Shell", cwd: "/p", extensionState: extState },
+      "terminal",
+      "/p",
+      undefined,
+      false,
+      undefined
+    );
+    expect(result.extensionState).toEqual(extState);
+  });
+});
+
 describe("buildArgsForBackendTerminal — agent launch flags", () => {
   it("prefers backend agentLaunchFlags over saved", () => {
     const result = buildArgsForBackendTerminal(
