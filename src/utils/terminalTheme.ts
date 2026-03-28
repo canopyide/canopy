@@ -19,6 +19,7 @@ export const CANOPY_TERMINAL_THEME = getTerminalThemeFromAppScheme(DEFAULT_APP_S
  * This function only returns the base app-aligned terminal palette.
  */
 export interface InputBarColors {
+  // Terminal-derived (text & accent match the terminal)
   accent: string;
   foreground: string;
   background: string;
@@ -26,17 +27,41 @@ export interface InputBarColors {
   chipColor: string;
   errorColor: string;
   successColor: string;
+  // App-theme-derived (chrome matches the app surface/shadow system)
+  shellBg: string;
+  shellBorder: string;
+  shellBorderHover: string;
+  shellBorderFocus: string;
+  shellShadow: string;
+  shellFocusRing: string;
+  shellHoverBg: string;
+  shellFocusBg: string;
+  isDark: boolean;
 }
 
 export function resolveInputBarColors(theme: ITheme): InputBarColors {
+  const accent = theme.cursor ?? theme.blue ?? "#58a6ff";
+  const foreground = theme.foreground ?? "#cccccc";
+  const background = theme.background ?? "#1e1e1e";
+  const isDark = (document?.documentElement?.dataset?.colorMode ?? "dark") === "dark";
+
   return {
-    accent: theme.cursor ?? theme.blue ?? "#58a6ff",
-    foreground: theme.foreground ?? "#cccccc",
-    background: theme.background ?? "#1e1e1e",
+    accent,
+    foreground,
+    background,
     selectionBg: theme.selectionBackground ?? theme.cursor ?? "#264f78",
     chipColor: theme.cyan ?? theme.brightCyan ?? theme.cursor ?? "#58a6ff",
     errorColor: theme.red ?? "#f44747",
     successColor: theme.green ?? "#89d185",
+    shellBg: `color-mix(in oklab, ${background} ${isDark ? "96%" : "97%"}, ${isDark ? "black" : "black"})`,
+    shellBorder: `color-mix(in oklab, ${foreground} ${isDark ? "8%" : "10%"}, transparent)`,
+    shellBorderHover: `color-mix(in oklab, ${foreground} ${isDark ? "14%" : "16%"}, transparent)`,
+    shellBorderFocus: `color-mix(in oklab, ${accent} 30%, ${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"})`,
+    shellShadow: `0 2px 6px ${isDark ? "rgba(0,0,0,0.25)" : "rgba(0,0,0,0.08)"}, 0 1px 2px ${isDark ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.04)"}`,
+    shellFocusRing: `color-mix(in oklab, ${accent} 20%, transparent)`,
+    shellHoverBg: `color-mix(in oklab, ${background} ${isDark ? "94%" : "96%"}, ${isDark ? "black" : "black"})`,
+    shellFocusBg: `color-mix(in oklab, ${background} ${isDark ? "93%" : "95%"}, ${isDark ? "black" : "black"})`,
+    isDark,
   };
 }
 
