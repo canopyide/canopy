@@ -245,6 +245,11 @@ describe("CrashRecoveryDialog", () => {
       setup();
       expect(screen.getByText("3 of 3 selected")).toBeTruthy();
     });
+
+    it("toggle-all button has cursor-pointer", () => {
+      setup();
+      expect(screen.getByTestId("toggle-all-button").className).toContain("cursor-pointer");
+    });
   });
 
   describe("without panels (legacy fallback)", () => {
@@ -260,6 +265,12 @@ describe("CrashRecoveryDialog", () => {
       expect(screen.getByTestId("restore-button")).toBeTruthy();
     });
 
+    it("restore and fresh buttons have cursor-pointer", () => {
+      setup({ crash: { panels: [] } });
+      expect(screen.getByTestId("restore-button").className).toContain("cursor-pointer");
+      expect(screen.getByTestId("fresh-button").className).toContain("cursor-pointer");
+    });
+
     it("calls onResolve with restore-all when Restore is clicked in legacy mode", async () => {
       const { onResolve } = setup({ crash: { panels: [] } });
       fireEvent.click(screen.getByTestId("restore-button"));
@@ -270,6 +281,11 @@ describe("CrashRecoveryDialog", () => {
         })
       );
     });
+  });
+
+  it("details-toggle button has cursor-pointer", () => {
+    setup();
+    expect(screen.getByTestId("details-toggle").className).toContain("cursor-pointer");
   });
 
   it("shows error details when toggle is clicked", () => {
