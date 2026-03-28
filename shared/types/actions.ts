@@ -244,6 +244,13 @@ export type BuiltInActionId =
   | "devServer.start"
   | "devServer.openDetected"
   | "worktree.compareDiff"
+  | "terminal.copy"
+  | "terminal.paste"
+  | "terminal.copyLink"
+  | "terminal.deleteNote"
+  | "terminal.contextMenu"
+  | "terminal.sendToAgent"
+  | "terminal.bulkCommand"
   | "terminal.stashInput"
   | "terminal.popStash"
   | "terminal.restartService";

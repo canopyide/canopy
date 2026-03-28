@@ -10,9 +10,6 @@ import { isValidBrowserUrl } from "@/components/Browser/browserUtils";
 import { actionService } from "@/services/ActionService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { terminalClient } from "@/clients";
-import { formatWithBracketedPaste } from "@shared/utils/terminalInputProtocol";
-import { fireWatchNotification } from "@/lib/watchNotification";
 import {
   ArrowDownFromLine,
   Bell,
@@ -118,8 +115,6 @@ export function TerminalContextMenu({
   const { worktrees } = useWorktrees();
 
   const isWatched = useTerminalStore((state) => state.watchedPanels.has(terminalId));
-  const watchPanel = useTerminalStore((state) => state.watchPanel);
-  const unwatchPanel = useTerminalStore((state) => state.unwatchPanel);
 
   const [hasSelection, setHasSelection] = useState(false);
   const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
@@ -146,7 +141,7 @@ export function TerminalContextMenu({
   const modifierKey = isMac ? "⌘" : "Ctrl";
 
   const handleAction = useCallback(
-    async (actionId: string) => {
+    (actionId: string) => {
       if (!terminal) return;
 
       if (actionId.startsWith("open-link:")) {
@@ -157,68 +152,38 @@ export function TerminalContextMenu({
 
       if (actionId.startsWith("copy-link:")) {
         const url = actionId.slice("copy-link:".length);
-        void navigator.clipboard.writeText(url);
+        void actionService.dispatch("terminal.copyLink", { url }, { source: "context-menu" });
         return;
       }
 
       if (actionId.startsWith("move-to-worktree:")) {
         const worktreeId = actionId.slice("move-to-worktree:".length);
-        const result = await actionService.dispatch(
+        void actionService.dispatch(
           "terminal.moveToWorktree",
           { terminalId, worktreeId },
           { source: "context-menu" }
         );
-        if (!result.ok) {
-          console.error("Failed to move terminal to worktree:", result.error);
-        }
         return;
       }
 
       if (actionId.startsWith("convert-to:")) {
         const targetType = actionId.slice("convert-to:".length);
         if (targetType === "terminal" || AGENT_IDS.includes(targetType)) {
-          const result = await actionService.dispatch(
+          void actionService.dispatch(
             "terminal.convertType",
             { terminalId, type: targetType as TerminalType },
             { source: "context-menu" }
           );
-          if (!result.ok) {
-            console.error("Failed to convert terminal type:", result.error);
-          }
         }
         return;
       }
 
       switch (actionId) {
-        case "copy": {
-          const managed = terminalInstanceService.get(terminalId);
-          if (managed?.terminal) {
-            const selection = managed.terminal.getSelection();
-            if (selection) {
-              void navigator.clipboard.writeText(selection);
-            }
-          }
+        case "copy":
+          void actionService.dispatch("terminal.copy", { terminalId }, { source: "context-menu" });
           break;
-        }
         case "paste":
-          if (!terminal.isInputLocked) {
-            void (async () => {
-              try {
-                const text = await navigator.clipboard.readText();
-                if (!text) return;
-                const managed = terminalInstanceService.get(terminalId);
-                if (!managed || managed.isInputLocked) return;
-                if (managed.terminal.modes.bracketedPasteMode) {
-                  terminalClient.write(terminalId, formatWithBracketedPaste(text));
-                } else {
-                  terminalClient.write(terminalId, text.replace(/\r?\n/g, "\r"));
-                }
-                terminalInstanceService.notifyUserInput(terminalId);
-              } catch {
-                // Clipboard API may be denied
-              }
-            })();
-          }
+          void actionService.dispatch("terminal.paste", { terminalId }, { source: "context-menu" });
           break;
         case "move-to-dock":
           void actionService.dispatch(
@@ -270,13 +235,7 @@ export function TerminalContextMenu({
           );
           break;
         case "toggle-watch":
-          if (isWatched) {
-            unwatchPanel(terminalId);
-          } else if (terminal.agentState === "completed" || terminal.agentState === "waiting") {
-            fireWatchNotification(terminalId, terminal.title ?? terminalId, terminal.agentState);
-          } else {
-            watchPanel(terminalId);
-          }
+          void actionService.dispatch("terminal.watch", { terminalId }, { source: "context-menu" });
           break;
         case "duplicate":
           void actionService.dispatch(
@@ -335,19 +294,15 @@ export function TerminalContextMenu({
           break;
         case "delete-note":
           if (terminal.notePath) {
-            void (async () => {
-              const result = await actionService.dispatch(
-                "notes.delete",
-                {
-                  notePath: terminal.notePath,
-                  noteTitle: terminal.title,
-                },
-                { source: "context-menu" }
-              );
-              if (result.ok) {
-                useTerminalStore.getState().removeTerminal(terminalId);
-              }
-            })();
+            void actionService.dispatch(
+              "terminal.deleteNote",
+              {
+                terminalId,
+                notePath: terminal.notePath,
+                noteTitle: terminal.title,
+              },
+              { source: "context-menu", confirmed: true }
+            );
           }
           break;
         case "reveal-in-palette":
@@ -361,7 +316,7 @@ export function TerminalContextMenu({
           break;
       }
     },
-    [terminal, terminalId, isWatched, watchPanel, unwatchPanel]
+    [terminal, terminalId]
   );
 
   if (!terminal) {
