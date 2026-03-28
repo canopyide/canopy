@@ -85,7 +85,7 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   // Derive visual grid groups (one cell per tab group), matching ContentGrid
   const gridGroups = useMemo(
     () => getTabGroups("grid", activeWorktreeId ?? undefined),
-    [getTabGroups, activeWorktreeId, tabGroups]
+    [getTabGroups, activeWorktreeId, tabGroups, terminals]
   );
 
   // Compute gridCols using visual group count, matching ContentGrid's gridItemCount
@@ -220,7 +220,7 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
         : group.panelIds[0];
       return resolvedId ? [resolvedId] : [];
     });
-  }, [getTabGroups, activeWorktreeId, tabGroups]);
+  }, [getTabGroups, activeWorktreeId, tabGroups, terminals]);
 
   const findByIndex = useCallback(
     (index: number): string | null => {
