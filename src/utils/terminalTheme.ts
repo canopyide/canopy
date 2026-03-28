@@ -19,6 +19,7 @@ export const CANOPY_TERMINAL_THEME = getTerminalThemeFromAppScheme(DEFAULT_APP_S
  * This function only returns the base app-aligned terminal palette.
  */
 export interface InputBarColors {
+  // Terminal-derived (text & accent match the terminal)
   accent: string;
   foreground: string;
   background: string;
@@ -26,17 +27,53 @@ export interface InputBarColors {
   chipColor: string;
   errorColor: string;
   successColor: string;
+  // App-theme-derived (chrome matches the app surface/shadow system)
+  shellBg: string;
+  shellBorder: string;
+  shellBorderHover: string;
+  shellBorderFocus: string;
+  shellShadow: string;
+  shellFocusRing: string;
+  shellHoverBg: string;
+  shellFocusBg: string;
+  isDark: boolean;
+}
+
+function getThemeVar(name: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
 }
 
 export function resolveInputBarColors(theme: ITheme): InputBarColors {
+  const accent = theme.cursor ?? theme.blue ?? "#58a6ff";
+  const foreground = theme.foreground ?? "#cccccc";
+  const background = theme.background ?? "#1e1e1e";
+  const isDark = (document?.documentElement?.dataset?.colorMode ?? "dark") === "dark";
+
+  const shadowColor = getThemeVar("--theme-shadow-color", "rgba(0,0,0,0.25)");
+  const focusRing = getThemeVar("--theme-focus-ring", "rgba(255,255,255,0.18)");
+  const borderSubtle = getThemeVar(
+    "--theme-border-subtle",
+    isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"
+  );
   return {
-    accent: theme.cursor ?? theme.blue ?? "#58a6ff",
-    foreground: theme.foreground ?? "#cccccc",
-    background: theme.background ?? "#1e1e1e",
+    accent,
+    foreground,
+    background,
     selectionBg: theme.selectionBackground ?? theme.cursor ?? "#264f78",
     chipColor: theme.cyan ?? theme.brightCyan ?? theme.cursor ?? "#58a6ff",
     errorColor: theme.red ?? "#f44747",
     successColor: theme.green ?? "#89d185",
+    shellBg: `color-mix(in oklab, ${background} ${isDark ? "92%" : "95%"}, ${isDark ? "white" : "black"})`,
+    shellBorder: borderSubtle,
+    shellBorderHover: `color-mix(in oklab, ${accent} 25%, ${borderSubtle})`,
+    shellBorderFocus: `color-mix(in oklab, ${accent} 50%, ${borderSubtle})`,
+    shellShadow: `0 6px 12px ${shadowColor}`,
+    shellFocusRing: focusRing,
+    shellHoverBg: `color-mix(in oklab, ${background} ${isDark ? "88%" : "92%"}, ${isDark ? "white" : "black"})`,
+    shellFocusBg: `color-mix(in oklab, ${background} ${isDark ? "85%" : "90%"}, ${isDark ? "white" : "black"})`,
+    isDark,
   };
 }
 

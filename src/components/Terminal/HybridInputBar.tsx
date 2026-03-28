@@ -1108,40 +1108,53 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       }
     }, [isExpanded]);
 
+    const shellVars = {
+      "--ib-bg": inputBarColors.shellBg,
+      "--ib-border": inputBarColors.shellBorder,
+      "--ib-border-hover": inputBarColors.shellBorderHover,
+      "--ib-border-focus": inputBarColors.shellBorderFocus,
+      "--ib-shadow": inputBarColors.shellShadow,
+      "--ib-focus-ring": inputBarColors.shellFocusRing,
+      "--ib-hover-bg": inputBarColors.shellHoverBg,
+      "--ib-focus-bg": inputBarColors.shellFocusBg,
+      "--ib-accent": inputBarColors.accent,
+    } as React.CSSProperties;
+
+    const isSpecialState = isVoiceActiveForPanel || isDragOverFiles;
+
+    const specialStyle: React.CSSProperties | undefined = isVoiceActiveForPanel
+      ? {
+          borderColor: `color-mix(in oklab, ${inputBarColors.accent} 60%, transparent)`,
+          backgroundColor: `color-mix(in oklab, ${inputBarColors.accent} 12%, ${inputBarColors.background})`,
+          boxShadow: `0 0 0 1px color-mix(in oklab, ${inputBarColors.accent} 35%, transparent), 0 0 16px color-mix(in oklab, ${inputBarColors.accent} 15%, transparent)`,
+        }
+      : isDragOverFiles
+        ? {
+            borderColor: `color-mix(in oklab, ${inputBarColors.accent} 60%, transparent)`,
+            backgroundColor: inputBarColors.shellBg,
+            boxShadow: `0 0 0 1px color-mix(in oklab, ${inputBarColors.accent} 30%, transparent)`,
+          }
+        : undefined;
+
     const barContent = (
       <div
         className="group cursor-text px-4 pb-3 pt-3"
-        style={{ backgroundColor: inputBarColors.background }}
+        style={{ backgroundColor: inputBarColors.background, ...shellVars }}
       >
         <div className="flex items-end gap-2">
           <div
             ref={inputShellRef}
             className={cn(
               "group/shell relative",
-              "flex w-full items-center gap-1.5 rounded-sm border py-1 transition-colors",
+              "flex w-full items-center gap-1.5 rounded-sm border py-1 transition-[border-color,background-color,box-shadow] duration-150",
+              !isSpecialState && [
+                "bg-[var(--ib-bg)] border-[var(--ib-border)] shadow-[var(--ib-shadow)]",
+                "hover:border-[var(--ib-border-hover)] hover:bg-[var(--ib-hover-bg)]",
+                "focus-within:border-[var(--ib-border-focus)] focus-within:ring-1 focus-within:ring-[var(--ib-focus-ring)] focus-within:bg-[var(--ib-focus-bg)]",
+              ],
               disabled && "opacity-60"
             )}
-            style={{
-              boxShadow: isVoiceActiveForPanel
-                ? `0 0 0 1px color-mix(in oklab, ${inputBarColors.accent} 35%, transparent), 0 0 16px color-mix(in oklab, ${inputBarColors.accent} 15%, transparent)`
-                : isDragOverFiles
-                  ? `0 0 0 1px color-mix(in oklab, ${inputBarColors.accent} 30%, transparent)`
-                  : `0 6px 12px color-mix(in oklab, ${inputBarColors.background} 30%, transparent)`,
-              ...(isVoiceActiveForPanel
-                ? {
-                    borderColor: `color-mix(in oklab, ${inputBarColors.accent} 60%, transparent)`,
-                    backgroundColor: `color-mix(in oklab, ${inputBarColors.accent} 12%, ${inputBarColors.background})`,
-                  }
-                : isDragOverFiles
-                  ? {
-                      borderColor: `color-mix(in oklab, ${inputBarColors.accent} 60%, transparent)`,
-                      backgroundColor: `color-mix(in oklab, ${inputBarColors.background} 85%, ${inputBarColors.foreground})`,
-                    }
-                  : {
-                      borderColor: `color-mix(in oklab, ${inputBarColors.foreground} 15%, transparent)`,
-                      backgroundColor: `color-mix(in oklab, ${inputBarColors.background} 85%, ${inputBarColors.foreground})`,
-                    }),
-            }}
+            style={specialStyle}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
