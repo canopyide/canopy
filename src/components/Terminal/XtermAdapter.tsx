@@ -240,6 +240,13 @@ function XtermAdapterComponent({
           return true;
         }
 
+        // During IME/voice composition, let xterm's CompositionHelper handle the
+        // full lifecycle (composed text + \r). keyCode 229 is Chromium's "Process"
+        // key signal during active composition where isComposing may not yet be set.
+        if (event.isComposing || event.keyCode === 229) {
+          return true;
+        }
+
         // Let Shift+F10 and ContextMenu key bubble to DOM for panel context menu
         if (
           event.key === "ContextMenu" ||
