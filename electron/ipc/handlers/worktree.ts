@@ -17,7 +17,11 @@ import { generateWorktreePath, validatePathPattern } from "../../../shared/utils
 import { projectStore } from "../../services/ProjectStore.js";
 import { logDebug, logError } from "../../utils/logger.js";
 import { fileSearchService } from "../../services/FileSearchService.js";
-import { checkRateLimit } from "../utils.js";
+import { checkRateLimit, waitForRateLimitSlot } from "../utils.js";
+
+const WORKTREE_RATE_LIMIT_KEY = "worktreeCreate";
+const WORKTREE_RATE_LIMIT_MAX = 20;
+const WORKTREE_RATE_LIMIT_WINDOW_MS = 30_000;
 import { resolveWorktreePattern } from "../../utils/worktreePattern.js";
 import { taskWorktreeService } from "../../services/TaskWorktreeService.js";
 
@@ -79,7 +83,11 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       options: { baseBranch: string; newBranch: string; path: string; fromRemote?: boolean };
     }
   ): Promise<string> => {
-    checkRateLimit(CHANNELS.WORKTREE_CREATE, 10, 10_000);
+    await waitForRateLimitSlot(
+      WORKTREE_RATE_LIMIT_KEY,
+      WORKTREE_RATE_LIMIT_MAX,
+      WORKTREE_RATE_LIMIT_WINDOW_MS
+    );
     if (!deps.worktreeService) {
       throw new Error("Workspace client not initialized");
     }
@@ -392,7 +400,11 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: CreateForTaskPayload
   ): Promise<WorktreeState> => {
-    checkRateLimit(CHANNELS.WORKTREE_CREATE_FOR_TASK, 10, 10_000);
+    await waitForRateLimitSlot(
+      WORKTREE_RATE_LIMIT_KEY,
+      WORKTREE_RATE_LIMIT_MAX,
+      WORKTREE_RATE_LIMIT_WINDOW_MS
+    );
     if (!deps.worktreeService) {
       throw new Error("Workspace client not initialized");
     }
