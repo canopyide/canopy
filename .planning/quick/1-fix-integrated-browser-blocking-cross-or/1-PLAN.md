@@ -21,7 +21,7 @@ must_haves:
     - "Blocked cross-origin navigations in webview guests are surfaced to the user via IPC notification"
     - "User is offered the option to open the blocked URL in the system browser"
     - "The localhost-only navigation restriction remains intact (TOCTOU guard preserved)"
-    - "Dangerous protocols (javascript:, data:, file:, about:) are blocked silently (no offer to open externally)"
+    - "Dangerous protocols (javascript:, data:, file:, about:) are blocked without offering external open"
     - "Only http/https blocked URLs are offered for external opening (safe protocols)"
   artifacts:
     - path: "electron/setup/protocols.ts"
