@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Globe, FolderOpen, Plus, Trash2, Edit3, Download, FileDown, Check } from "lucide-react";
 import { TerminalRecipeIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,14 @@ export function RecipeManager({
   const [importJson, setImportJson] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const exportTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (exportTimeoutRef.current) {
+        clearTimeout(exportTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleDeleteRecipe = async (recipeId: string) => {
     setDeleteError(null);
