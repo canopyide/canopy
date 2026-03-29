@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isCanopyEnvEnabled } from "@/utils/env";
-import { AgentSelectionStep } from "@/components/Setup/AgentSelectionStep";
 import { AgentSetupWizard } from "@/components/Setup/AgentSetupWizard";
 import { WelcomeStep } from "./WelcomeStep";
 import { OnboardingProgressIndicator } from "./OnboardingProgressIndicator";
@@ -15,8 +14,8 @@ const LEGACY_KEYS = {
   firstRunToast: "canopy:first-run-toast",
 } as const;
 
-type OnboardingStep = "welcome" | "agentSelection" | "agentSetup";
-const STEP_ORDER: OnboardingStep[] = ["welcome", "agentSelection", "agentSetup"];
+type OnboardingStep = "welcome" | "agentSetup";
+const STEP_ORDER: OnboardingStep[] = ["welcome", "agentSetup"];
 
 interface OnboardingFlowProps {
   availability: CliAvailability;
@@ -35,7 +34,6 @@ export function OnboardingFlow({
 }: OnboardingFlowProps) {
   const [state, setState] = useState<OnboardingState | null>(null);
   const [currentStep, setCurrentStep] = useState<OnboardingStep | null>(null);
-  const [agentSetupIds, setAgentSetupIds] = useState<string[]>([]);
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
   const [manualWizardOpen, setManualWizardOpen] = useState(false);
   const flowStartTimeRef = useRef<number>(0);
@@ -82,15 +80,13 @@ export function OnboardingFlow({
       setState(onboardingState);
 
       if (!onboardingState.completed) {
-        let resumeStep = onboardingState.currentStep as OnboardingStep | null;
+        const rawStep = onboardingState.currentStep;
+        const resumeStep = rawStep as OnboardingStep | null;
         if (resumeStep && STEP_ORDER.includes(resumeStep)) {
-          // If resuming at agentSetup but no agent IDs were persisted, fall back to agentSelection
-          if (resumeStep === "agentSetup" && onboardingState.agentSetupIds.length === 0) {
-            resumeStep = "agentSelection";
-          } else if (resumeStep === "agentSetup") {
-            setAgentSetupIds(onboardingState.agentSetupIds);
-          }
           setCurrentStep(resumeStep);
+        } else if (rawStep === "agentSelection") {
+          // Legacy: "agentSelection" no longer exists; map to "agentSetup"
+          setCurrentStep("agentSetup");
         } else {
           setCurrentStep(STEP_ORDER[0]);
         }
@@ -131,28 +127,14 @@ export function OnboardingFlow({
     };
   }, []);
 
-  const skipAgentSetupRef = useRef(false);
-
   const advanceStep = useCallback(
-    async (fromStep: OnboardingStep, persistAgentIds?: string[]) => {
+    async (fromStep: OnboardingStep) => {
       const idx = STEP_ORDER.indexOf(fromStep);
-      let nextStep = STEP_ORDER[idx + 1] ?? null;
-
-      // Skip agent setup if user skipped selection or had no uninstalled agents
-      if (nextStep === "agentSetup" && skipAgentSetupRef.current) {
-        nextStep = STEP_ORDER[idx + 2] ?? null;
-      }
+      const nextStep = STEP_ORDER[idx + 1] ?? null;
 
       if (nextStep) {
         setCurrentStep(nextStep);
-        if (persistAgentIds !== undefined) {
-          await window.electron.onboarding.setStep({
-            step: nextStep,
-            agentSetupIds: persistAgentIds,
-          });
-        } else {
-          await window.electron.onboarding.setStep(nextStep);
-        }
+        await window.electron.onboarding.setStep(nextStep);
       } else {
         // Flow complete
         completedRef.current = true;
@@ -183,32 +165,11 @@ export function OnboardingFlow({
     await advanceStep("welcome");
   }, [advanceStep]);
 
-  // Agent selection handlers
-  const handleAgentSelectionContinue = useCallback(
-    async (uninstalledIds: string[]) => {
-      void onRefreshSettings();
-      if (uninstalledIds.length > 0) {
-        setAgentSetupIds(uninstalledIds);
-        skipAgentSetupRef.current = false;
-      } else {
-        skipAgentSetupRef.current = true;
-      }
-      await advanceStep("agentSelection", uninstalledIds);
-    },
-    [advanceStep, onRefreshSettings]
-  );
-
-  const handleAgentSelectionSkip = useCallback(async () => {
-    trackOnboarding("onboarding_step_skipped", { step: "agentSelection" });
-    skipAgentSetupRef.current = true;
-    await advanceStep("agentSelection", []);
-  }, [advanceStep]);
-
   // Agent setup wizard close
   const handleAgentSetupClose = useCallback(async () => {
-    setAgentSetupIds([]);
+    void onRefreshSettings();
     await advanceStep("agentSetup");
-  }, [advanceStep]);
+  }, [advanceStep, onRefreshSettings]);
 
   // Render nothing until hydration completes or if E2E skip is enabled
   if (SKIP_FIRST_RUN_DIALOGS) {
@@ -254,20 +215,11 @@ export function OnboardingFlow({
         />
       )}
 
-      {currentStep === "agentSelection" && (
-        <AgentSelectionStep
-          isOpen
-          onContinue={handleAgentSelectionContinue}
-          onSkip={handleAgentSelectionSkip}
-        />
-      )}
-
       {currentStep === "agentSetup" && (
         <AgentSetupWizard
           isOpen
           onClose={handleAgentSetupClose}
           initialAvailability={availability}
-          agentIds={agentSetupIds.length > 0 ? agentSetupIds : undefined}
         />
       )}
     </>

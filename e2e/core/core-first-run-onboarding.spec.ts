@@ -45,7 +45,11 @@ test.describe.serial("First-run onboarding flow", () => {
       .locator('button:has-text("Disable")')
       .click();
 
-    // Step 3: Agent selection — verify dialog and click Skip
+    // Step 3: Agent setup wizard — health check then selection
+    await expect(window.locator(SEL.firstRun.agentSetupTitle)).toBeVisible({ timeout: T_MEDIUM });
+    // Advance past health check step
+    await window.locator('button:has-text("Continue")').click();
+    // Selection step — verify and skip
     await expect(window.locator(SEL.firstRun.agentTitle)).toBeVisible({ timeout: T_MEDIUM });
     await window.locator('button:has-text("Skip")').click();
 
