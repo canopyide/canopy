@@ -1842,7 +1842,7 @@ const api: ElectronAPI = {
       callback: (payload: { panelId: string; shortcut: "find" | "next" | "prev" | "close" }) => void
     ): (() => void) => _typedOn(CHANNELS.WEBVIEW_FIND_SHORTCUT, callback),
     onNavigationBlocked: (
-      callback: (payload: { panelId: string; url: string }) => void
+      callback: (payload: { panelId: string; url: string; canOpenExternal: boolean }) => void
     ): (() => void) => _typedOn(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, callback),
     startConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>
       _unwrappingInvoke(CHANNELS.WEBVIEW_START_CONSOLE_CAPTURE, webContentsId, paneId),

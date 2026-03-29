@@ -236,6 +236,7 @@ export function setupWebviewCSP(): void {
                 getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
                   panelId,
                   url: navigationUrl,
+                  canOpenExternal: canOpenExternalUrl(navigationUrl),
                 });
               }
             }
@@ -263,6 +264,7 @@ export function setupWebviewCSP(): void {
                 getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
                   panelId,
                   url: redirectUrl,
+                  canOpenExternal: canOpenExternalUrl(redirectUrl),
                 });
               }
             }

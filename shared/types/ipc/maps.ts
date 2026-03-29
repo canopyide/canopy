@@ -1897,6 +1897,7 @@ export interface IpcEventMap {
   "webview:navigation-blocked": {
     panelId: string;
     url: string;
+    canOpenExternal: boolean;
   };
 
   // Voice input events
