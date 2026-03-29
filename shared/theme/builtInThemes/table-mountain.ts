@@ -129,7 +129,7 @@ export const theme: BuiltInThemeSource = {
     "pulse-skeleton-gradient": "linear-gradient(90deg, #E4DED6 25%, #EDE9E2 50%, #E4DED6 75%)",
     "dialog-header-bg": "rgba(228,222,214,0.50)",
     "settings-kbd-bg": "#F4F1EC",
-    "settings-nav-active-bg": "rgba(60,48,38,0.05)",
+    "settings-nav-active-bg": "rgba(168,69,110,0.08)",
     "settings-nav-active-shadow":
       "0 1px 2px rgba(60,48,38,0.08), inset 0 0 0 1px rgba(60,48,38,0.08)",
     "settings-nav-hover-bg": "rgba(60,48,38,0.04)",
