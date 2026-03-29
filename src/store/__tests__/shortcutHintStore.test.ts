@@ -155,4 +155,39 @@ describe("shortcutHintStore", () => {
 
     expect(shortcutHintStore.getState().counts["terminal.new"]).toBe(1);
   });
+
+  it("shows hint after increment-then-show sequence (ActionService flow)", () => {
+    const s = shortcutHintStore.getState();
+    s.hydrateCounts({});
+    s.recordPointer(100, 200);
+    s.incrementCount("nav.quickSwitcher");
+    const result = s.show("nav.quickSwitcher", "⌘K");
+
+    expect(result).toBe(true);
+    expect(shortcutHintStore.getState().counts["nav.quickSwitcher"]).toBe(1);
+  });
+
+  it("does not show hint after last milestone is reached via increment", () => {
+    const s = shortcutHintStore.getState();
+    s.hydrateCounts({ "nav.quickSwitcher": 150 });
+    s.recordPointer(100, 200);
+    s.incrementCount("nav.quickSwitcher");
+    const result = s.show("nav.quickSwitcher", "⌘K");
+
+    expect(result).toBe(false);
+    expect(shortcutHintStore.getState().counts["nav.quickSwitcher"]).toBe(151);
+  });
+
+  it("tracks actions independently", () => {
+    const s = shortcutHintStore.getState();
+    s.hydrateCounts({ "nav.quickSwitcher": 4 });
+    s.recordPointer(100, 200);
+
+    s.incrementCount("terminal.new");
+    const resultA = s.show("terminal.new", "⌘T");
+    const resultB = s.show("nav.quickSwitcher", "⌘K");
+
+    expect(resultA).toBe(true);
+    expect(resultB).toBe(false);
+  });
 });
