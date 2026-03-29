@@ -24,7 +24,7 @@ vi.mock("../../utils/logger.js", () => ({
   logWarn: vi.fn(),
 }));
 
-import { events } from "../events.js";
+import { events, type CanopyEventMap } from "../events.js";
 import { preAgentSnapshotService } from "../PreAgentSnapshotService.js";
 
 function emitStateChange(previousState: string, state: string, worktreeId?: string) {
@@ -36,7 +36,7 @@ function emitStateChange(previousState: string, state: string, worktreeId?: stri
     timestamp: Date.now(),
     trigger: "heuristic",
     confidence: 1.0,
-  } as any);
+  } as CanopyEventMap["agent:state-changed"]);
 }
 
 describe("PreAgentSnapshotService", () => {
