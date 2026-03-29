@@ -48,10 +48,15 @@ const appMock = vi.hoisted(() => ({
 const mockWebContentsSend = vi.hoisted(() => vi.fn());
 const mockIsDestroyed = vi.hoisted(() => vi.fn(() => false));
 const mockGetMainWindow = vi.hoisted(() =>
-  vi.fn(() => ({
-    isDestroyed: mockIsDestroyed,
-    webContents: { send: mockWebContentsSend },
-  }))
+  vi.fn(
+    (): {
+      isDestroyed: () => boolean;
+      webContents: { send: (...args: unknown[]) => void };
+    } | null => ({
+      isDestroyed: mockIsDestroyed,
+      webContents: { send: mockWebContentsSend },
+    })
+  )
 );
 
 vi.mock("fs", () => ({
