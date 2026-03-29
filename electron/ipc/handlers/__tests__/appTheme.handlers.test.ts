@@ -343,7 +343,7 @@ describe("appTheme handlers", () => {
         "utf-8"
       );
 
-      const written = JSON.parse(fsMock.writeFile.mock.calls[0][1] as string);
+      const written = JSON.parse((fsMock.writeFile.mock.calls as unknown as string[][])[0][1]);
       expect(written.id).toBe("test-theme");
       expect(written.name).toBe("Test Theme");
       expect(written).not.toHaveProperty("location");
