@@ -380,7 +380,7 @@ export class PortalManager {
     return this.viewMap.has(tabId);
   }
 
-  destroyHiddenTabs(): string[] {
+  async destroyHiddenTabs(): Promise<string[]> {
     // Use lastShownTabId as fallback when activeTabId is null (e.g., hideAll was called for overlays)
     const skipId = this.activeTabId ?? this.lastShownTabId;
     const destroyed: string[] = [];

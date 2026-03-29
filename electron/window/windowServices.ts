@@ -876,7 +876,7 @@ export async function setupWindowServices(
             if (wCtx.browserWindow.isDestroyed()) continue;
             try {
               if (wCtx.services.portalManager) {
-                const evictedTabIds = wCtx.services.portalManager.destroyHiddenTabs();
+                const evictedTabIds = await wCtx.services.portalManager.destroyHiddenTabs();
                 if (evictedTabIds.length > 0) {
                   sendToRenderer(wCtx.browserWindow, CHANNELS.PORTAL_TABS_EVICTED, {
                     tabIds: evictedTabIds,
