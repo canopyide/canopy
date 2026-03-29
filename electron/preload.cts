@@ -534,6 +534,8 @@ const CHANNELS = {
   UPDATE_DOWNLOADED: "update:downloaded",
   UPDATE_QUIT_AND_INSTALL: "update:quit-and-install",
   UPDATE_CHECK_FOR_UPDATES: "update:check-for-updates",
+  UPDATE_GET_CHANNEL: "update:get-channel",
+  UPDATE_SET_CHANNEL: "update:set-channel",
 
   // Slash command channels
   SLASH_COMMANDS_LIST: "slash-commands:list",
@@ -1916,6 +1918,11 @@ const api: ElectronAPI = {
     quitAndInstall: () => _unwrappingInvoke(CHANNELS.UPDATE_QUIT_AND_INSTALL),
 
     checkForUpdates: () => _unwrappingInvoke(CHANNELS.UPDATE_CHECK_FOR_UPDATES),
+
+    getChannel: () => _unwrappingInvoke(CHANNELS.UPDATE_GET_CHANNEL),
+
+    setChannel: (channel: "stable" | "nightly") =>
+      _unwrappingInvoke(CHANNELS.UPDATE_SET_CHANNEL, channel),
   },
 
   // Gemini API
