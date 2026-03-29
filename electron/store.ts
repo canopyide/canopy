@@ -179,6 +179,7 @@ export interface StoreSchema {
         openedProject: boolean;
         launchedAgent: boolean;
         createdWorktree: boolean;
+        subscribedNewsletter: boolean;
       };
     };
   };

@@ -120,25 +120,45 @@ import type { ChecklistState } from "@shared/types/ipc/maps";
 const allIncomplete: ChecklistState = {
   dismissed: false,
   celebrationShown: false,
-  items: { openedProject: false, launchedAgent: false, createdWorktree: false },
+  items: {
+    openedProject: false,
+    launchedAgent: false,
+    createdWorktree: false,
+    subscribedNewsletter: false,
+  },
 };
 
 const oneComplete: ChecklistState = {
   dismissed: false,
   celebrationShown: false,
-  items: { openedProject: true, launchedAgent: false, createdWorktree: false },
+  items: {
+    openedProject: true,
+    launchedAgent: false,
+    createdWorktree: false,
+    subscribedNewsletter: false,
+  },
 };
 
 const allComplete: ChecklistState = {
   dismissed: false,
   celebrationShown: false,
-  items: { openedProject: true, launchedAgent: true, createdWorktree: true },
+  items: {
+    openedProject: true,
+    launchedAgent: true,
+    createdWorktree: true,
+    subscribedNewsletter: true,
+  },
 };
 
 const dismissed: ChecklistState = {
   dismissed: true,
   celebrationShown: false,
-  items: { openedProject: false, launchedAgent: false, createdWorktree: false },
+  items: {
+    openedProject: false,
+    launchedAgent: false,
+    createdWorktree: false,
+    subscribedNewsletter: false,
+  },
 };
 
 function makeGettingStarted(
@@ -153,6 +173,7 @@ function makeGettingStarted(
     dismiss: vi.fn(),
     toggleCollapse: vi.fn(),
     notifyOnboardingComplete: vi.fn(),
+    markItem: vi.fn(),
   };
 }
 
