@@ -363,5 +363,32 @@ describe("WindowRegistry", () => {
 
       expect(signalAbortedDuringCleanup).toBe(true);
     });
+
+    it("abort signal listener is notified on unregister", () => {
+      const registry = new WindowRegistry();
+      const win = makeMockWindow(1, 100);
+
+      const ctx = registry.register(win);
+      const spy = vi.fn();
+      ctx.abortController.signal.addEventListener("abort", spy);
+
+      registry.unregister(1);
+
+      expect(spy).toHaveBeenCalledOnce();
+    });
+
+    it("re-registration after unregister provides a fresh AbortController", () => {
+      const registry = new WindowRegistry();
+      const win = makeMockWindow(1, 100);
+
+      const ctx1 = registry.register(win);
+      registry.unregister(1);
+      expect(ctx1.abortController.signal.aborted).toBe(true);
+
+      const win2 = makeMockWindow(1, 100);
+      const ctx2 = registry.register(win2);
+      expect(ctx2.abortController.signal.aborted).toBe(false);
+      expect(ctx2.abortController).not.toBe(ctx1.abortController);
+    });
   });
 });
