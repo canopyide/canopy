@@ -38,6 +38,7 @@ export interface AddTerminalArgs {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  extensionState?: Record<string, unknown>;
   restore?: boolean;
   bypassLimits?: boolean;
 }
@@ -67,6 +68,7 @@ export interface SavedTerminalData {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  extensionState?: Record<string, unknown>;
 }
 
 interface BackendTerminalData {
@@ -188,6 +190,7 @@ export function buildArgsForBackendTerminal(
     agentSessionId: backendTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: backendTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: backendTerminal.agentModelId ?? saved.agentModelId,
+    extensionState: saved.extensionState,
   };
 }
 
@@ -237,6 +240,7 @@ export function buildArgsForReconnectedFallback(
     agentSessionId: reconnectedTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: reconnectedTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: reconnectedTerminal.agentModelId ?? saved.agentModelId,
+    extensionState: saved.extensionState,
   };
 }
 
@@ -309,6 +313,7 @@ export function buildArgsForRespawn(
     exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
     agentLaunchFlags: saved.agentLaunchFlags,
     agentModelId: saved.agentModelId,
+    extensionState: saved.extensionState,
     restore: true,
   };
 }
@@ -341,6 +346,7 @@ export function buildArgsForNonPtyRecreation(
     devCommand,
     devPreviewConsoleOpen: kind === "dev-preview" ? saved.devPreviewConsoleOpen : undefined,
     exitBehavior: saved.exitBehavior,
+    extensionState: saved.extensionState,
   };
 }
 
