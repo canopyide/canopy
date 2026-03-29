@@ -1,18 +1,10 @@
-import { readFileSync, mkdirSync } from "fs";
+import { readFileSync } from "fs";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { resilientAtomicWriteFile, resilientAtomicWriteFileSync } from "../../utils/fs.js";
+import { resilientAtomicWriteFile } from "../../utils/fs.js";
+import type { AgentSessionRecord } from "../../../shared/types/ipc/agentSessionHistory.js";
 
-export interface AgentSessionRecord {
-  sessionId: string;
-  agentId: string;
-  worktreeId: string | null;
-  title: string | null;
-  projectId: string | null;
-  savedAt: number;
-  agentLaunchFlags?: string[];
-  agentModelId?: string;
-}
+export type { AgentSessionRecord };
 
 const MAX_RECORDS_PER_WORKTREE = 50;
 const SESSION_HISTORY_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
