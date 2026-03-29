@@ -1183,7 +1183,9 @@ export interface ElectronAPI {
     list(): Promise<import("../plugin.js").LoadedPluginInfo[]>;
     invoke(pluginId: string, channel: string, ...args: unknown[]): Promise<unknown>;
     on(pluginId: string, channel: string, callback: (payload: unknown) => void): () => void;
-    toolbarButtons(): Promise<import("../../config/toolbarButtonRegistry.js").ToolbarButtonConfig[]>;
+    toolbarButtons(): Promise<
+      import("../../config/toolbarButtonRegistry.js").ToolbarButtonConfig[]
+    >;
     menuItems(): Promise<
       Array<{
         pluginId: string;

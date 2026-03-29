@@ -38,7 +38,7 @@ import {
   CopyTreeIcon,
 } from "@/components/icons";
 import { useToolbarPreferencesStore } from "@/store";
-import type { ToolbarButtonId, AnyToolbarButtonId } from "@/../../shared/types/toolbar";
+import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -132,7 +132,12 @@ interface SortableButtonItemProps {
   allMetadata: Partial<Record<AnyToolbarButtonId, ButtonMetadata>>;
 }
 
-function SortableButtonItem({ buttonId, isVisible, onToggle, allMetadata }: SortableButtonItemProps) {
+function SortableButtonItem({
+  buttonId,
+  isVisible,
+  onToggle,
+  allMetadata,
+}: SortableButtonItemProps) {
   const metadata = allMetadata[buttonId];
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: buttonId,

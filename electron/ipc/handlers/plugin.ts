@@ -1,7 +1,10 @@
 import { ipcMain } from "electron";
 import { CHANNELS } from "../channels.js";
 import { pluginService } from "../../services/PluginService.js";
-import { getPluginToolbarButtonIds, getToolbarButtonConfig } from "../../../shared/config/toolbarButtonRegistry.js";
+import {
+  getPluginToolbarButtonIds,
+  getToolbarButtonConfig,
+} from "../../../shared/config/toolbarButtonRegistry.js";
 import { getPluginMenuItems } from "../../services/pluginMenuRegistry.js";
 import type { LoadedPluginInfo, PluginIpcHandler } from "../../../shared/types/plugin.js";
 import type { ToolbarButtonConfig } from "../../../shared/config/toolbarButtonRegistry.js";

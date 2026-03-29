@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect, useCallback } from "react";
-import type { ToolbarButtonId, ToolbarButtonPriority, AnyToolbarButtonId } from "@shared/types/toolbar";
+import type { ToolbarButtonPriority, AnyToolbarButtonId } from "@shared/types/toolbar";
 import { TOOLBAR_BUTTON_PRIORITIES } from "@shared/types/toolbar";
 
 const OVERFLOW_TRIGGER_WIDTH = 0;

@@ -24,7 +24,9 @@ export const ToolbarButtonContributionSchema = z.object({
   label: z.string().min(1),
   iconId: z.string().min(1),
   actionId: z.string().min(1),
-  priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
+  priority: z
+    .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)])
+    .optional(),
 });
 
 export const MenuItemContributionSchema = z.object({
