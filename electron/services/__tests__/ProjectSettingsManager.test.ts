@@ -112,6 +112,23 @@ describe("ProjectSettingsManager caching", () => {
     expect(second.runCommands).toHaveLength(1);
   });
 
+  it("does not cache when settings file contains invalid JSON", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(settingsPath, "{{invalid json", "utf-8");
+
+    const first = await manager.getProjectSettings(projectId);
+    expect(first).toEqual({ runCommands: [] });
+
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [{ id: "npm-dev", name: "dev", command: "npm run dev" }] }),
+      "utf-8"
+    );
+
+    const second = await manager.getProjectSettings(projectId);
+    expect(second.runCommands).toHaveLength(1);
+  });
+
   it("re-reads after TTL expires", async () => {
     vi.useFakeTimers();
     try {
