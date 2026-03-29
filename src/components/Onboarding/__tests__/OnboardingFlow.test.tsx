@@ -68,21 +68,6 @@ vi.mock("../WelcomeStep", () => ({
   )),
 }));
 
-vi.mock("@/components/Setup/AgentSelectionStep", () => ({
-  AgentSelectionStep: vi.fn(
-    ({ onContinue, onSkip }: { onContinue: (ids: string[]) => void; onSkip: () => void }) => (
-      <div data-testid="agent-selection-step">
-        <button data-testid="continue" onClick={() => onContinue([])}>
-          Continue
-        </button>
-        <button data-testid="skip" onClick={() => onSkip()}>
-          Skip
-        </button>
-      </div>
-    )
-  ),
-}));
-
 vi.mock("@/components/Setup/AgentSetupWizard", () => ({
   AgentSetupWizard: vi.fn(({ onClose }: { onClose: () => void }) => (
     <div data-testid="agent-setup-wizard">
@@ -106,7 +91,7 @@ describe("OnboardingFlow progress indicator", () => {
     onboardingMock.get.mockResolvedValue({ ...defaultOnboardingState });
   });
 
-  it("renders progress indicator with 3 dots on first step", async () => {
+  it("renders progress indicator with 2 dots on first step", async () => {
     const { baseElement } = await act(async () => {
       return render(<OnboardingFlow {...defaultProps} />);
     });
@@ -122,7 +107,7 @@ describe("OnboardingFlow progress indicator", () => {
       '[data-testid="onboarding-progress"]'
     )!;
     const dots = indicator.querySelectorAll('[data-testid^="progress-dot-"]');
-    expect(dots).toHaveLength(3);
+    expect(dots).toHaveLength(2);
     expect(dots[0]?.getAttribute("aria-current")).toBe("step");
     expect(dots[1]?.getAttribute("aria-current")).toBeNull();
   });
@@ -136,7 +121,7 @@ describe("OnboardingFlow progress indicator", () => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", expect.any(Object));
     });
 
-    // Advance from welcome to agentSelection
+    // Advance from welcome to agentSetup
     await act(async () => {
       getByTestId("welcome-continue").click();
     });
@@ -160,15 +145,15 @@ describe("OnboardingFlow progress indicator", () => {
       expect(trackMock).toHaveBeenCalled();
     });
 
-    // Complete the flow: welcome → skip agent selection
+    // Complete the flow: welcome → agent setup wizard → close
     await act(async () => {
       getByTestId("welcome-continue").click();
     });
     await vi.waitFor(() => {
-      expect(getByTestId("agent-selection-step")).toBeTruthy();
+      expect(getByTestId("agent-setup-wizard")).toBeTruthy();
     });
     await act(async () => {
-      getByTestId("skip").click();
+      getByTestId("close-wizard").click();
     });
 
     await vi.waitFor(() => {
@@ -196,7 +181,7 @@ describe("OnboardingFlow progress indicator", () => {
     const srText = baseElement.ownerDocument
       .querySelector('[data-testid="onboarding-progress"]')!
       .querySelector(".sr-only");
-    expect(srText?.textContent).toBe("Step 1 of 3");
+    expect(srText?.textContent).toBe("Step 1 of 2");
   });
 });
 
@@ -216,7 +201,6 @@ describe("OnboardingFlow telemetry tracking", () => {
       render(<OnboardingFlow {...defaultProps} />);
     });
 
-    // Wait for hydration and step_viewed event
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", {
         step: "welcome",
@@ -245,70 +229,34 @@ describe("OnboardingFlow telemetry tracking", () => {
     });
   });
 
-  it("emits onboarding_step_skipped when agent selection is skipped", async () => {
-    const { getByTestId } = await act(async () => {
-      return render(<OnboardingFlow {...defaultProps} />);
-    });
-
-    // Wait for hydration
-    await vi.waitFor(() => {
-      expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", expect.any(Object));
-    });
-
-    // Advance through welcome
-    await act(async () => {
-      getByTestId("welcome-continue").click();
-    });
-
-    // Wait for agent selection step to render
-    await vi.waitFor(() => {
-      expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", {
-        step: "agentSelection",
-        stepIndex: 1,
-      });
-    });
-
-    trackMock.mockClear();
-
-    // Skip agent selection
-    await act(async () => {
-      getByTestId("skip").click();
-    });
-
-    expect(trackMock).toHaveBeenCalledWith("onboarding_step_skipped", {
-      step: "agentSelection",
-    });
-  });
-
   it("emits onboarding_completed when flow finishes", async () => {
     const { getByTestId } = await act(async () => {
       return render(<OnboardingFlow {...defaultProps} />);
     });
 
-    // Wait for hydration
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalled();
     });
 
-    // Continue from welcome
+    // Continue from welcome to agent setup
     await act(async () => {
       getByTestId("welcome-continue").click();
     });
 
-    // Wait for agent selection
+    // Wait for agent setup wizard
     await vi.waitFor(() => {
-      expect(getByTestId("agent-selection-step")).toBeTruthy();
+      expect(getByTestId("agent-setup-wizard")).toBeTruthy();
     });
 
-    // Skip agent selection (skips agent setup too)
+    // Close wizard to complete flow
     await act(async () => {
-      getByTestId("skip").click();
+      getByTestId("close-wizard").click();
     });
 
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalledWith(
         "onboarding_completed",
-        expect.objectContaining({ totalSteps: 3 })
+        expect.objectContaining({ totalSteps: 2 })
       );
     });
   });
@@ -347,14 +295,14 @@ describe("OnboardingFlow telemetry tracking", () => {
       getByTestId("welcome-continue").click();
     });
 
-    // Wait for agent selection
+    // Wait for agent setup wizard
     await vi.waitFor(() => {
-      expect(getByTestId("agent-selection-step")).toBeTruthy();
+      expect(getByTestId("agent-setup-wizard")).toBeTruthy();
     });
 
-    // Skip to complete flow
+    // Close wizard to complete flow
     await act(async () => {
-      getByTestId("skip").click();
+      getByTestId("close-wizard").click();
     });
 
     await vi.waitFor(() => {
@@ -406,7 +354,7 @@ describe("OnboardingFlow telemetry tracking", () => {
   });
 });
 
-describe("OnboardingFlow agent setup persistence", () => {
+describe("OnboardingFlow agent setup", () => {
   const defaultProps = {
     availability: {} as import("@shared/types").CliAvailability,
     onRefreshSettings: vi.fn(() => Promise.resolve()),
@@ -417,18 +365,7 @@ describe("OnboardingFlow agent setup persistence", () => {
     onboardingMock.get.mockResolvedValue({ ...defaultOnboardingState });
   });
 
-  it("persists agentSetupIds when advancing from agent selection", async () => {
-    // Mock AgentSelectionStep to return specific agent IDs
-    const { AgentSelectionStep } = await import("@/components/Setup/AgentSelectionStep");
-    const mockSelection = AgentSelectionStep as unknown as ReturnType<typeof vi.fn>;
-    mockSelection.mockImplementation(({ onContinue }: { onContinue: (ids: string[]) => void }) => (
-      <div data-testid="agent-selection-step">
-        <button data-testid="continue-with-agents" onClick={() => onContinue(["claude", "gemini"])}>
-          Continue
-        </button>
-      </div>
-    ));
-
+  it("shows agent setup wizard after welcome", async () => {
     const { getByTestId } = await act(async () => {
       return render(<OnboardingFlow {...defaultProps} />);
     });
@@ -437,76 +374,17 @@ describe("OnboardingFlow agent setup persistence", () => {
       expect(trackMock).toHaveBeenCalled();
     });
 
-    // Advance to agent selection
+    // Advance to agent setup
     await act(async () => {
       getByTestId("welcome-continue").click();
     });
 
     await vi.waitFor(() => {
-      expect(getByTestId("agent-selection-step")).toBeTruthy();
-    });
-
-    // Continue with specific agents
-    await act(async () => {
-      getByTestId("continue-with-agents").click();
-    });
-
-    // setStep should be called with the object payload containing agentSetupIds
-    await vi.waitFor(() => {
-      expect(onboardingMock.setStep).toHaveBeenCalledWith({
-        step: "agentSetup",
-        agentSetupIds: ["claude", "gemini"],
-      });
+      expect(getByTestId("agent-setup-wizard")).toBeTruthy();
     });
   });
 
-  it("persists empty agentSetupIds when skipping agent selection", async () => {
-    // Restore default mock for AgentSelectionStep (previous test may have overridden it)
-    const { AgentSelectionStep } = await import("@/components/Setup/AgentSelectionStep");
-    const mockSelection = AgentSelectionStep as unknown as ReturnType<typeof vi.fn>;
-    mockSelection.mockImplementation(
-      ({ onContinue, onSkip }: { onContinue: (ids: string[]) => void; onSkip: () => void }) => (
-        <div data-testid="agent-selection-step">
-          <button data-testid="continue" onClick={() => onContinue([])}>
-            Continue
-          </button>
-          <button data-testid="skip" onClick={() => onSkip()}>
-            Skip
-          </button>
-        </div>
-      )
-    );
-
-    const { getByTestId } = await act(async () => {
-      return render(<OnboardingFlow {...defaultProps} />);
-    });
-
-    await vi.waitFor(() => {
-      expect(trackMock).toHaveBeenCalled();
-    });
-
-    // Advance to agent selection
-    await act(async () => {
-      getByTestId("welcome-continue").click();
-    });
-
-    await vi.waitFor(() => {
-      expect(getByTestId("agent-selection-step")).toBeTruthy();
-    });
-
-    // Skip agent selection — should persist empty array and skip agentSetup step
-    await act(async () => {
-      getByTestId("skip").click();
-    });
-
-    // setStep should NOT be called with "agentSetup" since skip bypasses it
-    // It should complete the flow since agentSetup is the last step and it's skipped
-    await vi.waitFor(() => {
-      expect(onboardingMock.complete).toHaveBeenCalled();
-    });
-  });
-
-  it("resumes at agentSetup with persisted agent IDs after restart", async () => {
+  it("resumes at agentSetup when persisted step is agentSetup", async () => {
     onboardingMock.get.mockResolvedValue({
       ...defaultOnboardingState,
       currentStep: "agentSetup",
@@ -517,16 +395,15 @@ describe("OnboardingFlow agent setup persistence", () => {
       return render(<OnboardingFlow {...defaultProps} />);
     });
 
-    // Should resume at agentSetup wizard
     await vi.waitFor(() => {
       expect(getByTestId("agent-setup-wizard")).toBeTruthy();
     });
   });
 
-  it("falls back to agentSelection when resuming at agentSetup with empty IDs", async () => {
+  it("resumes at agentSetup when persisted step is legacy agentSelection", async () => {
     onboardingMock.get.mockResolvedValue({
       ...defaultOnboardingState,
-      currentStep: "agentSetup",
+      currentStep: "agentSelection",
       agentSetupIds: [],
     });
 
@@ -534,13 +411,13 @@ describe("OnboardingFlow agent setup persistence", () => {
       return render(<OnboardingFlow {...defaultProps} />);
     });
 
-    // Should fall back to agentSelection since no IDs were persisted
+    // Legacy "agentSelection" maps to "agentSetup" now
     await vi.waitFor(() => {
-      expect(getByTestId("agent-selection-step")).toBeTruthy();
+      expect(getByTestId("agent-setup-wizard")).toBeTruthy();
     });
   });
 
-  it("falls back to welcome step when resuming with legacy step name", async () => {
+  it("falls back to welcome step when resuming with unknown step name", async () => {
     onboardingMock.get.mockResolvedValue({
       ...defaultOnboardingState,
       currentStep: "themeSelection",
@@ -550,9 +427,36 @@ describe("OnboardingFlow agent setup persistence", () => {
       return render(<OnboardingFlow {...defaultProps} />);
     });
 
-    // Old "themeSelection" step not in new STEP_ORDER → falls back to STEP_ORDER[0] ("welcome")
     await vi.waitFor(() => {
       expect(getByTestId("welcome-step")).toBeTruthy();
+    });
+  });
+
+  it("calls onRefreshSettings when wizard closes", async () => {
+    const { getByTestId } = await act(async () => {
+      return render(<OnboardingFlow {...defaultProps} />);
+    });
+
+    await vi.waitFor(() => {
+      expect(trackMock).toHaveBeenCalled();
+    });
+
+    // Advance to agent setup
+    await act(async () => {
+      getByTestId("welcome-continue").click();
+    });
+
+    await vi.waitFor(() => {
+      expect(getByTestId("agent-setup-wizard")).toBeTruthy();
+    });
+
+    // Close wizard
+    await act(async () => {
+      getByTestId("close-wizard").click();
+    });
+
+    await vi.waitFor(() => {
+      expect(defaultProps.onRefreshSettings).toHaveBeenCalled();
     });
   });
 });
