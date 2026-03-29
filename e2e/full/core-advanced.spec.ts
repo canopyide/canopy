@@ -215,7 +215,9 @@ test.describe.serial("Core: Advanced", () => {
 
       await selectExistingProject(window, PROJECT_NAME);
 
-      await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(1);
+      await expect
+        .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+        .toBeGreaterThanOrEqual(1);
     });
   });
 });

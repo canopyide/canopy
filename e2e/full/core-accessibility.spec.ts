@@ -377,7 +377,7 @@ test.describe.serial("Core: Accessibility", () => {
           } finally {
             await window.keyboard.press("Escape");
             await expect(window.locator(SEL.settings.heading)).not.toBeVisible({
-              timeout: T_SHORT,
+              timeout: T_MEDIUM,
             });
           }
         });

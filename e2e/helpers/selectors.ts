@@ -173,8 +173,7 @@ export const SEL = {
     openFolder: 'button:has-text("Open Folder")',
   },
   firstRun: {
-    themeTitle: 'text="Choose your theme"',
-    telemetryDialog: 'role=dialog[name="Help improve Canopy"]',
+    welcomeTitle: 'role=dialog >> text="Welcome to Canopy"',
     agentTitle: 'text="Choose your AI agents"',
     agentSetupTitle: 'text="Agent Setup"',
   },

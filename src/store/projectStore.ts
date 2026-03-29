@@ -323,12 +323,11 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         console.log(
           `[ProjectSwitch] Saving ${terminalsToSave.length} panel(s) to per-project state`
         );
-        // Fire saves sequentially in the background — don't block the switch on their completion.
-        // Sequential chaining is required: both IPC handlers do a read-modify-write of the full
-        // ProjectState JSON, so running them concurrently would cause a last-writer-wins race.
-        // They only need to finish before the old project is re-opened.
-        // Risk: data loss if the app crashes between fire and persist — acceptable trade-off.
-        void projectClient
+        // Await terminal saves before the main process switch — the switch calls
+        // saveOutgoingProjectWorktreeState which does a read-modify-write of the
+        // same ProjectState JSON. If this save hasn't landed yet, the switch will
+        // clobber terminals with the old (empty) value.
+        await projectClient
           .setTerminals(oldProjectId, terminalsToSave)
           .then(() => projectClient.setTerminalSizes(oldProjectId, terminalSizes))
           .catch((saveError) => {

@@ -308,6 +308,8 @@ export async function hydrateAppState(
         const terminalSizes = await terminalSizesPromise;
         if (!checkCurrent()) return;
 
+        const activeWorktreeId = appState.activeWorktreeId ?? null;
+
         // Restore all panels in saved order (mix of PTY reconnects and non-PTY recreations)
         if (appState.terminals && appState.terminals.length > 0) {
           panelRestoreStartedAt = Date.now();
@@ -320,7 +322,6 @@ export async function hydrateAppState(
           // Collect panel restore tasks with priority for staggered spawning.
           // Priority 0 = active worktree panels (restore first for instant interactivity)
           // Priority 1 = all other panels (staggered in batches)
-          const activeWorktreeId = appState.activeWorktreeId ?? null;
 
           interface PanelRestoreTaskEntry {
             priority: number;
@@ -366,6 +367,10 @@ export async function hydrateAppState(
                     saved,
                     projectRoot || ""
                   );
+                  // Assign to active worktree if terminal has no worktreeId
+                  if (!args.worktreeId && activeWorktreeId) {
+                    args.worktreeId = activeWorktreeId;
+                  }
                   const location = args.location as "grid" | "dock";
 
                   logHydrationInfo(`[HYDRATION] Adding terminal from backend:`, {
@@ -492,6 +497,11 @@ export async function hydrateAppState(
                         reconnectTimedOut,
                         clipboardDirectory
                       );
+
+                      // Assign to active worktree if the saved terminal has no worktreeId
+                      if (!respawnArgs.worktreeId && activeWorktreeId) {
+                        respawnArgs.worktreeId = activeWorktreeId;
+                      }
 
                       logHydrationInfo(
                         `Respawning PTY panel: ${saved.id} (${respawnArgs.kind === "agent" ? "agent" : "terminal"})`
@@ -632,6 +642,11 @@ export async function hydrateAppState(
                 logHydrationInfo(`Reconnecting to orphaned terminal: ${terminal.id}`);
 
                 const orphanArgs = buildArgsForOrphanedTerminal(terminal, projectRoot || "");
+                // Assign orphaned terminals to the active worktree if they have none,
+                // so they appear in the grid filter (which matches on worktreeId).
+                if (!orphanArgs.worktreeId && activeWorktreeId) {
+                  orphanArgs.worktreeId = activeWorktreeId;
+                }
                 const restoredTerminalId = await addTerminal(orphanArgs);
 
                 if (terminal.activityTier) {

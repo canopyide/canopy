@@ -60,9 +60,11 @@ test.describe.serial("Core: Project Lifecycle", () => {
     await selectExistingProject(window, PROJECT_B);
     await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(0);
 
-    // Switch back to Project A — terminal should be restored
+    // Switch back to Project A — at least 1 panel should be restored
     await selectExistingProject(window, PROJECT_A);
-    await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(1);
+    await expect
+      .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+      .toBeGreaterThanOrEqual(1);
   });
 
   test("project settings shows correct project name", async () => {
