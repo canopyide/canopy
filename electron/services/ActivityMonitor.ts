@@ -24,6 +24,7 @@ import type { WaitingReason } from "../../shared/types/agent.js";
 
 export interface ProcessStateValidator {
   hasActiveChildren(): boolean;
+  getDescendantsCpuUsage(): number;
 }
 
 export interface PatternDetector {
@@ -97,6 +98,9 @@ export class ActivityMonitor {
   private readonly COMPLETION_HOLD_MS = 500;
   private readonly WORKING_INDICATOR_TTL_MS = 5000;
   private readonly MAX_WORKING_SILENCE_MS: number;
+  private readonly CPU_HIGH_THRESHOLD = 10;
+  private readonly CPU_LOW_THRESHOLD = 3;
+  private isCpuHigh = false;
   private workingHoldUntil = 0;
 
   // Subsystem instances
@@ -389,6 +393,7 @@ export class ActivityMonitor {
     this.bootDetector.reset();
     this.resizeSuppressUntil = 0;
     this.lastPatternResult = undefined;
+    this.isCpuHigh = false;
     this.workingHoldUntil = 0;
     this.lastDataTimestamp = 0;
     this.lastOutputActivityAt = 0;
@@ -501,6 +506,9 @@ export class ActivityMonitor {
         return; // Still booting, stay busy
       }
     }
+
+    // Update CPU hysteresis state once per polling cycle
+    this.updateCpuHighState();
 
     // Safety timeout: if no PTY output for MAX_WORKING_SILENCE_MS, force idle
     if (this.isWorkingSilenceTimeout(now)) {
@@ -641,6 +649,7 @@ export class ActivityMonitor {
       shouldPreferPrompt &&
       quietForMs >= this.PROMPT_FAST_PATH_MIN_QUIET_MS &&
       now >= this.workingHoldUntil &&
+      !this.isCpuHigh &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       this.state = "idle";
@@ -668,6 +677,7 @@ export class ActivityMonitor {
       !hasHighOutputActivity &&
       quietForMs >= LEXEME_STALL_MIN_QUIET_MS &&
       now >= this.workingHoldUntil &&
+      !this.isCpuHigh &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       const candidateLine =
@@ -694,6 +704,7 @@ export class ActivityMonitor {
       isQuietForIdle &&
       now >= this.workingHoldUntil &&
       !hasHighOutputActivity &&
+      !this.isCpuHigh &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       this.state = "idle";
@@ -879,6 +890,13 @@ export class ActivityMonitor {
       }
 
       // actuallyBusy === null (no validator) — fall through to pattern/TTL checks
+      // CPU high prevents idle transition even without a definitive hasActiveChildren answer
+      this.updateCpuHighState();
+      if (this.isCpuHigh) {
+        this.resetDebounceTimer();
+        return;
+      }
+
       if (this.lastPatternResult?.isWorking) {
         this.resetDebounceTimer();
         return;
@@ -909,6 +927,9 @@ export class ActivityMonitor {
     if (now - this.lastDataTimestamp < this.MAX_WORKING_SILENCE_MS) return false;
     // Non-polling terminals have no boot phase; polling terminals must exit boot first
     if (this.getVisibleLines && !this.bootDetector.hasExitedBootState) return false;
+    // High CPU prevents premature silence timeout — agent is silently processing
+    this.updateCpuHighState();
+    if (this.isCpuHigh) return false;
     return true;
   }
 
@@ -923,6 +944,34 @@ export class ActivityMonitor {
         console.warn("[ActivityMonitor] Process state validation failed:", error);
       }
       return true;
+    }
+  }
+
+  private getCpuUsageSafe(): number | null {
+    if (!this.processStateValidator) {
+      return null;
+    }
+    try {
+      return this.processStateValidator.getDescendantsCpuUsage();
+    } catch (error) {
+      if (process.env.CANOPY_VERBOSE) {
+        console.warn("[ActivityMonitor] CPU usage query failed:", error);
+      }
+      return null;
+    }
+  }
+
+  private updateCpuHighState(): void {
+    const cpu = this.getCpuUsageSafe();
+    if (cpu === null) return;
+    if (this.isCpuHigh) {
+      if (cpu < this.CPU_LOW_THRESHOLD) {
+        this.isCpuHigh = false;
+      }
+    } else {
+      if (cpu >= this.CPU_HIGH_THRESHOLD) {
+        this.isCpuHigh = true;
+      }
     }
   }
 }
