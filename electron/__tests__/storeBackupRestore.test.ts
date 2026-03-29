@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
+
+vi.mock("electron-store", () => {
+  const { default: ConfClass } = require("conf");
+  return { default: ConfClass };
+});
+
 import {
   resolveConfigPath,
   preflightValidateConfig,

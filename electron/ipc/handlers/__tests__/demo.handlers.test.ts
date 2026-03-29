@@ -8,7 +8,7 @@ const ipcMainMock = vi.hoisted(() => ({
   removeListener: vi.fn(),
 }));
 
-vi.mock("electron", () => ({ ipcMain: ipcMainMock }));
+vi.mock("electron", () => ({ ipcMain: ipcMainMock, BrowserWindow: { getAllWindows: () => [] } }));
 
 vi.mock("crypto", () => ({
   randomBytes: vi.fn(() => ({ toString: () => "test-request-id" })),
@@ -55,7 +55,9 @@ import type { BrowserWindow } from "electron";
 function makeDeps(isDemoMode: boolean): HandlerDependencies {
   return {
     mainWindow: {
+      isDestroyed: () => false,
       webContents: {
+        isDestroyed: () => false,
         send: vi.fn(),
         capturePage: vi.fn().mockResolvedValue({
           toPNG: () => Buffer.from([0x89, 0x50, 0x4e, 0x47]),
