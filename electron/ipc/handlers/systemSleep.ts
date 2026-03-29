@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { CHANNELS } from "../channels.js";
+import { broadcastToRenderer } from "../utils.js";
 import {
   getSystemSleepService,
   type SystemSleepMetrics,
@@ -35,18 +36,11 @@ export function registerSystemSleepHandlers(deps: HandlerDependencies): () => vo
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_SLEEP_RESET));
 
   const unsubscribeSuspend = systemSleepService.onSuspend(() => {
-    const { mainWindow } = deps;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(CHANNELS.SYSTEM_SLEEP_ON_SUSPEND);
-    }
+    broadcastToRenderer(CHANNELS.SYSTEM_SLEEP_ON_SUSPEND);
   });
 
-  // Subscribe to wake events and forward to renderer
   const unsubscribeWake = systemSleepService.onWake((sleepDurationMs) => {
-    const { mainWindow } = deps;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(CHANNELS.SYSTEM_SLEEP_ON_WAKE, sleepDurationMs);
-    }
+    broadcastToRenderer(CHANNELS.SYSTEM_SLEEP_ON_WAKE, sleepDurationMs);
   });
 
   return () => {

@@ -143,19 +143,38 @@ export function isVerboseLogging(): boolean {
   return verboseLogging;
 }
 
-let mainWindow: BrowserWindow | null = null;
-
 const LOG_THROTTLE_MS = 16;
 let lastLogTime = 0;
 let pendingLogs: LogEntry[] = [];
 let throttleTimeout: NodeJS.Timeout | null = null;
 
-export function setLoggerWindow(window: BrowserWindow | null): void {
-  mainWindow = window;
+/** @deprecated No-op. Logger now broadcasts to all windows via broadcastToRenderer. */
+export function setLoggerWindow(_window: BrowserWindow | null): void {
+  // No-op — kept for backward compatibility with existing call sites.
+}
+
+function getBroadcast(): typeof import("../ipc/utils.js").broadcastToRenderer | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const utils = require("../ipc/utils.js") as typeof import("../ipc/utils.js");
+    return utils.broadcastToRenderer;
+  } catch {
+    return null;
+  }
+}
+
+function hasAnyWindow(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BrowserWindow: BW } = require("electron") as typeof import("electron");
+    return BW.getAllWindows().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function sendLogToRenderer(entry: LogEntry): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+  if (!hasAnyWindow()) {
     return;
   }
 
@@ -175,7 +194,7 @@ function flushLogs(): void {
     throttleTimeout = null;
   }
 
-  if (pendingLogs.length === 0 || !mainWindow || mainWindow.isDestroyed()) {
+  if (pendingLogs.length === 0 || !hasAnyWindow()) {
     pendingLogs = [];
     return;
   }
@@ -183,14 +202,14 @@ function flushLogs(): void {
   const MAX_LOGS_PER_FLUSH = 60;
   const logsToSend = pendingLogs.slice(0, MAX_LOGS_PER_FLUSH);
 
-  const webContents = mainWindow.webContents;
-  if (webContents.isDestroyed()) {
+  const broadcast = getBroadcast();
+  if (!broadcast) {
     pendingLogs = [];
     return;
   }
 
   try {
-    webContents.send(CHANNELS.LOGS_BATCH, logsToSend);
+    broadcast(CHANNELS.LOGS_BATCH, logsToSend);
   } catch {
     pendingLogs = [];
     return;
