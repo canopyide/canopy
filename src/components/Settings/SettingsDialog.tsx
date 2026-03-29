@@ -35,6 +35,7 @@ import {
   Plug,
   Search,
   ChevronRight,
+  ChevronDown,
   KeyRound,
   Shield,
   FileCode,
@@ -923,41 +924,30 @@ export function SettingsDialog({
       className="settings-shell min-h-[500px] max-h-[800px]"
     >
       <div className="flex h-full overflow-hidden">
-        <div className="settings-sidebar w-48 border-r border-canopy-border p-3 flex flex-col shrink-0">
-          <h2 className="text-sm font-semibold text-canopy-text mb-2 px-2">Settings</h2>
-
-          {hasProject && (
-            <div className="flex gap-1 mb-2 px-1">
-              <button
-                type="button"
-                onClick={() => handleScopeSwitch("global")}
-                className={cn(
-                  "flex-1 text-xs py-1 px-2 rounded-[var(--radius-md)] font-medium transition-colors",
-                  activeScope === "global"
-                    ? "bg-canopy-accent/15 text-canopy-accent"
-                    : "text-text-secondary hover:text-canopy-text hover:bg-overlay-subtle"
-                )}
-              >
-                Global
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScopeSwitch("project")}
-                className={cn(
-                  "flex-1 text-xs py-1 px-2 rounded-[var(--radius-md)] font-medium transition-colors",
-                  activeScope === "project"
-                    ? "bg-canopy-accent/15 text-canopy-accent"
-                    : "text-text-secondary hover:text-canopy-text hover:bg-overlay-subtle"
-                )}
-              >
-                Project
-              </button>
-            </div>
-          )}
+        <div className="settings-sidebar w-52 border-r border-canopy-border p-3 flex flex-col shrink-0">
+          <div className="flex items-center justify-between mb-3 pl-2">
+            <h2 className="text-sm font-semibold text-canopy-text">Settings</h2>
+            {hasProject && (
+              <div className="relative flex items-center">
+                <select
+                  value={activeScope}
+                  onChange={(e) => handleScopeSwitch(e.target.value as SettingsScope)}
+                  className="appearance-none text-xs py-1 pl-2 pr-6 rounded-[var(--radius-md)] bg-transparent border border-canopy-border text-text-secondary hover:text-canopy-text hover:border-canopy-text/30 focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/20 outline-none cursor-pointer transition-colors"
+                >
+                  <option value="global">Global</option>
+                  <option value="project">Project</option>
+                </select>
+                <ChevronDown
+                  size={12}
+                  className="pointer-events-none absolute right-1.5 text-text-secondary"
+                />
+              </div>
+            )}
+          </div>
 
           <div
             className={cn(
-              "flex items-center gap-1.5 px-2 py-1.5 mb-2 rounded-[var(--radius-md)]",
+              "flex items-center gap-1.5 px-2 py-1.5 mb-3 rounded-[var(--radius-md)]",
               "settings-search border border-canopy-border",
               "focus-within:border-canopy-accent focus-within:ring-1 focus-within:ring-canopy-accent/20"
             )}
