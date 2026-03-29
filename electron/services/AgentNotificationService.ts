@@ -197,7 +197,7 @@ class AgentNotificationService {
 
       // Fire the all-clear
       const settings = projectStore.getEffectiveNotificationSettings();
-      if (settings.soundEnabled) {
+      if (settings.enabled !== false && settings.soundEnabled) {
         soundService.play("all-clear");
       }
       events.emit("agent:all-clear", { timestamp: Date.now() });
