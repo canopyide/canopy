@@ -17,13 +17,42 @@ function DownloadProgress({ percent }: { percent: number }) {
   );
 }
 
-export function useUpdateListener(): void {
+export function useUpdateListener(suppressToasts = false): void {
   const toastIdRef = useRef<string | null>(null);
+  const suppressRef = useRef(suppressToasts);
+  const pendingUpdateRef = useRef<{ version: string } | null>(null);
+
+  // Keep ref in sync
+  useEffect(() => {
+    suppressRef.current = suppressToasts;
+  }, [suppressToasts]);
+
+  // Surface pending update when suppression lifts
+  useEffect(() => {
+    if (suppressToasts) return;
+    if (!pendingUpdateRef.current) return;
+
+    const { version } = pendingUpdateRef.current;
+    pendingUpdateRef.current = null;
+    const id = notify({
+      type: "info",
+      title: "Update Available",
+      message: `Version ${version} is downloading...`,
+      inboxMessage: `Version ${version} is downloading`,
+      priority: "high",
+      duration: 0,
+    });
+    toastIdRef.current = id || null;
+  }, [suppressToasts]);
 
   useEffect(() => {
     if (!window.electron?.update) return;
 
     const cleanupAvailable = window.electron.update.onUpdateAvailable((info) => {
+      if (suppressRef.current) {
+        pendingUpdateRef.current = { version: info.version };
+        return;
+      }
       const id = notify({
         type: "info",
         title: "Update Available",
