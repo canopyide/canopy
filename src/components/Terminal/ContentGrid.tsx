@@ -111,7 +111,11 @@ function EmptyState({
   };
 
   const handleOpenProjectSettings = () => {
-    window.dispatchEvent(new CustomEvent("canopy:open-project-settings"));
+    window.dispatchEvent(
+      new CustomEvent("canopy:open-settings-tab", {
+        detail: { tab: "project:general" },
+      })
+    );
   };
 
   const handleRunRecipe = async (recipeId: string) => {
