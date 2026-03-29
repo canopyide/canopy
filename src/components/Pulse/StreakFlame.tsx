@@ -93,6 +93,9 @@ function buildFlamePath(
 
 const FRAME_INTERVAL = 1000 / 14;
 const LS_KEY = "streak-flame-last-played";
+const REDUCED_MOTION =
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 interface StreakFlameProps extends Omit<SVGProps<SVGSVGElement>, "ref"> {
   streakDays: number;
@@ -120,10 +123,7 @@ export function StreakFlame({
   useEffect(() => {
     if (!milestone) return;
 
-    const reducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-    if (reducedMotion) return;
+    if (REDUCED_MOTION) return;
 
     const today = new Date().toISOString().slice(0, 10);
     try {
@@ -142,11 +142,12 @@ export function StreakFlame({
     let rafId = 0;
     let lastFrame = 0;
     let startTime = 0;
-    let paused = false;
+    let isOffscreen = false;
+    let isHidden = false;
 
     const update = (now: number) => {
       if (!startTime) startTime = now;
-      if (paused) {
+      if (isOffscreen || isHidden) {
         rafId = requestAnimationFrame(update);
         return;
       }
@@ -215,13 +216,13 @@ export function StreakFlame({
     const svg = svgRef.current;
     if (svg && "IntersectionObserver" in window) {
       observer = new IntersectionObserver(([entry]) => {
-        paused = !entry.isIntersecting;
+        isOffscreen = !entry.isIntersecting;
       });
       observer.observe(svg);
     }
 
     const onVisibility = () => {
-      paused = document.hidden;
+      isHidden = document.hidden;
     };
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -236,11 +237,7 @@ export function StreakFlame({
   const gradId = `${id}-grad`;
 
   if (!milestone || !animating) {
-    const isReducedMotionMilestone =
-      milestone &&
-      !animating &&
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const isReducedMotionMilestone = milestone && !animating && REDUCED_MOTION;
 
     return (
       <Flame
@@ -273,7 +270,7 @@ export function StreakFlame({
       <g
         style={{
           willChange: "transform",
-          transformBox: "fill-box" as const,
+          transformBox: "fill-box",
           transformOrigin: "center bottom",
         }}
       >
