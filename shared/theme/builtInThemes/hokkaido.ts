@@ -95,7 +95,7 @@ export const theme: BuiltInThemeSource = {
     "category-slate": "oklch(0.53 0.025 248)",
     "category-teal": "oklch(0.57 0.09 186)",
     "category-violet": "oklch(0.55 0.11 292)",
-    "focus-ring": "rgba(88,108,214,0.19)",
+    "focus-ring": "rgba(88,108,214,0.26)",
     "github-closed": "#D4323E",
     "github-draft": "#929BA5",
     "github-merged": "#895CDA",
