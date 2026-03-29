@@ -385,10 +385,12 @@ export class ProjectSettingsManager {
   }
 
   deleteAllEnvForProject(projectId: string): void {
+    this.settingsCache.invalidate(projectId);
     projectEnvSecureStorage.deleteAllForProject(projectId);
   }
 
   migrateEnvForProject(oldId: string, newId: string): void {
+    this.settingsCache.invalidate(oldId);
     projectEnvSecureStorage.migrateAllForProject(oldId, newId);
   }
 }
