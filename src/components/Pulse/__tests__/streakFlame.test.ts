@@ -107,9 +107,10 @@ describe("StreakFlame component structure", () => {
     expect(content).toContain("observer?.disconnect()");
   });
 
-  it("respects prefers-reduced-motion", async () => {
+  it("respects prefers-reduced-motion via REDUCED_MOTION constant", async () => {
     content ??= await readFile(COMPONENT_PATH, "utf-8");
     expect(content).toContain("prefers-reduced-motion: reduce");
+    expect(content).toContain("REDUCED_MOTION");
   });
 
   it("uses streak-flame-glow class for reduced motion", async () => {
@@ -120,5 +121,12 @@ describe("StreakFlame component structure", () => {
   it("throttles rAF to ~14fps", async () => {
     content ??= await readFile(COMPONENT_PATH, "utf-8");
     expect(content).toContain("1000 / 14");
+  });
+
+  it("uses separate pause signals for visibility and intersection", async () => {
+    content ??= await readFile(COMPONENT_PATH, "utf-8");
+    expect(content).toContain("isOffscreen");
+    expect(content).toContain("isHidden");
+    expect(content).toContain("isOffscreen || isHidden");
   });
 });
