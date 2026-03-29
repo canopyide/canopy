@@ -104,6 +104,22 @@ class SVFilter {
   }
 }
 
+/** DC blocker — removes DC offset introduced by asymmetric waveshaping.
+ *  High-pass at ~14Hz (inaudible), keeps waveform centered at zero. */
+class DCBlocker {
+  constructor(r = 0.995) {
+    this.r = r;
+    this.x1 = 0;
+    this.y1 = 0;
+  }
+  process(x) {
+    const y = x - this.x1 + this.r * this.y1;
+    this.x1 = x;
+    this.y1 = y;
+    return y;
+  }
+}
+
 /** One-pole low-pass filter for gentle HF rolloff. */
 class OnePole {
   constructor(freq) {
@@ -249,6 +265,15 @@ class WoodModal {
       })
       .filter(Boolean);
 
+    // Split-fundamental beating: a real wooden bar is never perfectly
+    // uniform — its fundamental splits into two very close modes that
+    // phase against each other, creating a slow organic volume pulse
+    // in the decay tail.  ~7 cents sharp at 440Hz ≈ 1.8Hz beat rate.
+    const shadowFreq = frequency * 1.004;
+    if (shadowFreq < SAMPLE_RATE * 0.45) {
+      this.modes.push(new ModalResonator(shadowFreq, modeQs[0] * resonance * 0.9, 0.25));
+    }
+
     // Strike deformation: a brief, sharp resonator slightly above the
     // fundamental that decays very fast.  Simulates the momentary pitch
     // spike when wood is struck hard — the material deforms under impact
@@ -300,6 +325,13 @@ function generateExcitation(numSamples, opts = {}) {
     duration = 0.006, // total excitation window
   } = opts;
 
+  // Strike zone micro-variance: a real mallet never hits the exact same
+  // spot twice.  ±5% jitter on the noise band and thump frequency adds
+  // organic texture to the static WAV without affecting pitch stability.
+  const jitter = () => 0.95 + Math.random() * 0.1;
+  const jitteredBandHz = noiseBandHz * jitter();
+  const jitteredThumpStart = thumpStartHz * jitter();
+
   const excSamples = Math.ceil(SAMPLE_RATE * duration);
   const out = new Float32Array(numSamples); // zero-padded to full note length
   const bn = new BrownNoise(); // brown noise: darker, more organic friction
@@ -310,10 +342,10 @@ function generateExcitation(numSamples, opts = {}) {
     const env = expDecay(t, duration, 8);
 
     // Noise component: mallet surface texture (brown = wood grain character)
-    const noise = filt.bandpass(bn.next(), noiseBandHz, noiseQ) * noiseAmt;
+    const noise = filt.bandpass(bn.next(), jitteredBandHz, noiseQ) * noiseAmt;
 
     // Thump component: mallet mass (exponential freq sweep down)
-    const thumpFreq = thumpStartHz * Math.pow(thumpEndHz / thumpStartHz, t / duration);
+    const thumpFreq = jitteredThumpStart * Math.pow(thumpEndHz / jitteredThumpStart, t / duration);
     const thump = Math.sin(TWO_PI * thumpFreq * t) * thumpAmt;
 
     out[i] = (noise + thump) * env;
@@ -518,22 +550,44 @@ function sequence(notes, opts = {}) {
 // ---------------------------------------------------------------------------
 
 function postProcess(samples, opts = {}) {
-  const { reverbWet = 0.08, lpFreq = 4000, targetPeak = 0.7, chassisMix = 0.025 } = opts;
+  const {
+    reverbWet = 0.08,
+    lpFreq = 4000,
+    targetPeak = 0.7,
+    chassisMix = 0.025,
+    // Dynamic material absorption: the whole wood acts as a lowpass that
+    // closes over time as kinetic energy dissipates.  Bright attack → warm tail.
+    absorptionStartHz = 6000,
+    absorptionEndHz = 800,
+    absorptionRate = 5, // exponential sweep speed
+  } = opts;
 
   const reverb = new Freeverb(reverbWet, 0.4);
   const lp = new OnePole(lpFreq);
-
-  // Sympathetic chassis resonance: a shared, very quiet A4 resonator
-  // that every sound excites.  Even error and waiting carry a whisper
-  // of the brand root — this ties the entire sound family together
-  // acoustically, like keys on the same wooden instrument body.
+  const dc = new DCBlocker(); // removes DC from asymmetric waveshaper
   const chassis = chassisMix > 0 ? new ModalResonator(JI.A4, 80, chassisMix) : null;
 
-  // Apply chassis resonance, reverb, then lowpass
+  // Dynamic absorption filter — one-pole LPF with time-varying cutoff
+  let absorptionZ = 0;
+  const duration = samples.length / SAMPLE_RATE;
+
   for (let i = 0; i < samples.length; i++) {
     let s = samples[i];
+    const t = i / SAMPLE_RATE;
+
+    // Chassis resonance
     if (chassis) s += chassis.process(s);
-    samples[i] = lp.process(reverb.process(s));
+
+    // Dynamic absorption: cutoff sweeps from bright to dark exponentially
+    const cutoff =
+      absorptionEndHz +
+      (absorptionStartHz - absorptionEndHz) * expDecay(t, duration, absorptionRate);
+    const fc = cutoff / SAMPLE_RATE;
+    const absorptionA = Math.exp(-TWO_PI * fc);
+    absorptionZ = s * (1 - absorptionA) + absorptionZ * absorptionA;
+
+    // DC blocker after absorption, before reverb
+    samples[i] = lp.process(reverb.process(dc.process(absorptionZ)));
   }
 
   // Normalize to target peak
@@ -549,12 +603,14 @@ function postProcess(samples, opts = {}) {
     }
   }
 
-  // Fade out last 20ms to avoid any click at the end
+  // Fade out last 20ms (quadratic curve for smooth taper)
   const fadeSamples = Math.min(Math.floor(SAMPLE_RATE * 0.02), samples.length);
   for (let i = 0; i < fadeSamples; i++) {
     const idx = samples.length - fadeSamples + i;
-    samples[idx] *= i / fadeSamples;
+    const g = 1 - i / (fadeSamples - 1 || 1);
+    samples[idx] *= g * g; // quadratic fade to zero
   }
+  samples[samples.length - 1] = 0; // guarantee clean termination
 
   return samples;
 }
@@ -606,6 +662,14 @@ function writeWav(samples, filePath) {
 //   4. Micro-feedback — short, sparse; 1-2 notes max
 //   5. Material-per-meaning — wood resonance/hardness varies by semantic
 //   6. Brand anchor — A4 → E5 (perfect fifth) woven through all sounds
+//
+// Perceptual loudness hierarchy (targetPeak is NOT perceived loudness,
+// but shaping it per-role creates the right feel):
+//   chime    0.70  — reference level, friendly default
+//   complete 0.62  — softer, settled, "exhale"
+//   waiting  0.75  — more forward, "look at me"
+//   error    0.75  — cuts through briefly
+//   ping     0.68  — sharp but not dominant
 // ---------------------------------------------------------------------------
 
 // chime.wav — Lydian ascending pair A4→Ds5
@@ -641,7 +705,7 @@ const chime = postProcess(
     ],
     { noteGap: 0.015, tailPad: 0.12 }
   ),
-  { reverbWet: 0.02 }
+  { reverbWet: 0.02, targetPeak: 0.7 }
 );
 
 // complete.wav — descending resolution E5→A4
@@ -679,12 +743,15 @@ const complete = postProcess(
     ],
     { noteGap: 0.025, tailPad: 0.14 }
   ),
-  { reverbWet: 0.02 }
+  { reverbWet: 0.02, targetPeak: 0.62 }
 );
 
 // waiting.wav — rising unresolved pair A4→B4
-// Harder wood (higher resonance + brighter modes) with more FM excitation
-// on the B4 — the digital component lingers longer, adding urgency.
+// A quiet "inhale" tap on A4 followed by a deliberate hesitation gap,
+// then a firmer, insistent knock on the unresolved B4.  The velocity
+// contrast (soft→loud) creates an "upstroke" that demands attention.
+// FM decays faster (14 vs 10) to keep the tail woody, not glassy —
+// urgency comes from physical mallet force, not lingering shimmer.
 const waiting = postProcess(
   sequence(
     [
@@ -692,9 +759,10 @@ const waiting = postProcess(
         freq: JI.A4,
         duration: 0.08,
         opts: {
+          amplitude: 0.4, // quiet grace-note "inhale"
           resonance: 0.85,
-          fmAmt: 0.5,
-          fmIndex: 1.3,
+          fmAmt: 0.4,
+          fmIndex: 1.0,
           malletAmt: 0.5,
         },
       },
@@ -702,19 +770,20 @@ const waiting = postProcess(
         freq: JI.B4,
         duration: 0.18,
         opts: {
-          amplitude: 0.55,
+          amplitude: 0.6, // louder, insistent follow-up
           resonance: 0.95,
-          fmAmt: 0.6, // more digital = more urgent
+          fmAmt: 0.55,
           fmIndex: 1.6,
-          fmDecayRate: 10, // FM lingers longer on the tension note
-          malletAmt: 0.4,
-          noiseBandHz: 1300, // brighter strike
+          fmDecayRate: 14, // faster decay keeps it woody, not glassy
+          malletAmt: 0.65, // harder physical strike
+          thumpAmt: 0.45, // more mallet mass
+          noiseBandHz: 1400, // brighter contact
         },
       },
     ],
-    { noteGap: 0.02, tailPad: 0.1 }
+    { noteGap: 0.045, tailPad: 0.1 } // wider gap: deliberate hesitation
   ),
-  { reverbWet: 0.02 }
+  { reverbWet: 0.02, targetPeak: 0.75 }
 );
 
 // error.wav — single Cs5 with dense, dark wood character.
@@ -736,7 +805,7 @@ const error = postProcess(
     pitchBendHz: 35,
     pitchBendMs: 20,
   }),
-  { reverbWet: 0.01 }
+  { reverbWet: 0.01, targetPeak: 0.75 }
 );
 
 // ping.wav — single kalimba pluck on E5.
@@ -754,7 +823,7 @@ const ping = postProcess(
     detuneMix: 0.08,
     excDuration: 0.004, // very short contact = clean pluck
   }),
-  { reverbWet: 0.02 }
+  { reverbWet: 0.02, targetPeak: 0.68 }
 );
 
 // ---------------------------------------------------------------------------
