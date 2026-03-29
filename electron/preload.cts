@@ -263,6 +263,8 @@ const CHANNELS = {
   SYSTEM_SET_AGENT_UPDATE_SETTINGS: "system:set-agent-update-settings",
   SYSTEM_START_AGENT_UPDATE: "system:start-agent-update",
   SYSTEM_HEALTH_CHECK: "system:health-check",
+  SYSTEM_HEALTH_CHECK_SPECS: "system:health-check-specs",
+  SYSTEM_CHECK_TOOL: "system:check-tool",
   SYSTEM_DOWNLOAD_DIAGNOSTICS: "system:download-diagnostics",
   SYSTEM_GET_APP_METRICS: "system:get-app-metrics",
   SYSTEM_GET_HARDWARE_INFO: "system:get-hardware-info",
@@ -1060,6 +1062,20 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.SYSTEM_START_AGENT_UPDATE, payload),
 
     healthCheck: (agentIds?: string[]) => _unwrappingInvoke(CHANNELS.SYSTEM_HEALTH_CHECK, agentIds),
+
+    getHealthCheckSpecs: (agentIds?: string[]) =>
+      _unwrappingInvoke(CHANNELS.SYSTEM_HEALTH_CHECK_SPECS, agentIds),
+
+    checkTool: (spec: {
+      tool: string;
+      label: string;
+      command?: string;
+      versionArgs: string[];
+      severity: string;
+      minVersion?: string;
+      installUrl?: string;
+      installBlocks?: Record<string, unknown>;
+    }) => _unwrappingInvoke(CHANNELS.SYSTEM_CHECK_TOOL, spec),
 
     downloadDiagnostics: () => _unwrappingInvoke(CHANNELS.SYSTEM_DOWNLOAD_DIAGNOSTICS),
 
