@@ -92,6 +92,8 @@ describe("AgentNotificationService – all-clear", () => {
   });
 
   it("fires all-clear when 2 agents go working then both complete", () => {
+    const emitSpy = vi.spyOn(events, "emit");
+
     // Two agents start working
     mockTerminals([
       { id: "term-1", agentState: "working" },
@@ -125,6 +127,11 @@ describe("AgentNotificationService – all-clear", () => {
     // After debounce
     vi.advanceTimersByTime(500);
     expect(soundServiceMock.play).toHaveBeenCalledWith("all-clear");
+    expect(emitSpy).toHaveBeenCalledWith("agent:all-clear", {
+      timestamp: expect.any(Number),
+    });
+
+    emitSpy.mockRestore();
   });
 
   it("does not fire for single-agent completions", () => {
@@ -288,6 +295,50 @@ describe("AgentNotificationService – all-clear", () => {
       { id: "term-1", agentState: "working" },
       { id: "term-2", agentState: "completed" },
     ]);
+
+    vi.advanceTimersByTime(600);
+    expect(soundServiceMock.play).not.toHaveBeenCalledWith("all-clear");
+  });
+
+  it("fires for running and directing agent states", () => {
+    mockTerminals([
+      { id: "term-1", agentState: "running" },
+      { id: "term-2", agentState: "directing" },
+    ]);
+    emitStateChange("running", "idle", "term-1");
+    emitStateChange("directing", "idle", "term-2");
+
+    mockTerminals([
+      { id: "term-1", agentState: "completed" },
+      { id: "term-2", agentState: "completed" },
+    ]);
+    emitStateChange("completed", "running", "term-1");
+    emitStateChange("completed", "directing", "term-2");
+
+    vi.advanceTimersByTime(600);
+    expect(soundServiceMock.play).toHaveBeenCalledWith("all-clear");
+  });
+
+  it("does not play sound when master enabled toggle is false", () => {
+    projectStoreMock.getEffectiveNotificationSettings.mockReturnValue({
+      ...DEFAULT_SETTINGS,
+      enabled: false,
+      soundEnabled: true,
+    });
+
+    mockTerminals([
+      { id: "term-1", agentState: "working" },
+      { id: "term-2", agentState: "working" },
+    ]);
+    emitStateChange("working", "idle", "term-1");
+    emitStateChange("working", "idle", "term-2");
+
+    mockTerminals([
+      { id: "term-1", agentState: "completed" },
+      { id: "term-2", agentState: "completed" },
+    ]);
+    emitStateChange("completed", "working", "term-1");
+    emitStateChange("completed", "working", "term-2");
 
     vi.advanceTimersByTime(600);
     expect(soundServiceMock.play).not.toHaveBeenCalledWith("all-clear");
