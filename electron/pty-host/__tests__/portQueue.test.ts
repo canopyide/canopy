@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PortQueueManager, type PortQueueDeps } from "../portQueue.js";
+import type { PtyPauseCoordinator } from "../PtyPauseCoordinator.js";
 
 // Mirror the real constants from pty/types.ts
 const IPC_MAX_QUEUE_BYTES = 8 * 1024 * 1024;
@@ -13,10 +14,10 @@ function createMockDeps(): PortQueueDeps {
     get isPaused() {
       return false;
     },
-  };
+  } as unknown as PtyPauseCoordinator;
   return {
     getTerminal: vi.fn(() => ({ ptyProcess: { pause: vi.fn(), resume: vi.fn() } })),
-    getPauseCoordinator: vi.fn(() => mockCoordinator as any),
+    getPauseCoordinator: vi.fn(() => mockCoordinator),
     sendEvent: vi.fn(),
     metricsEnabled: vi.fn(() => true),
     emitTerminalStatus: vi.fn(),
@@ -199,7 +200,7 @@ describe("PortQueueManager", () => {
 
   it("applyBackpressure returns false when coordinator is missing", () => {
     const deps = createMockDeps();
-    (deps.getPauseCoordinator as any).mockReturnValue(undefined);
+    vi.mocked(deps.getPauseCoordinator).mockReturnValue(undefined);
     const mgr = new PortQueueManager(deps);
 
     const highWatermark = (IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100;
