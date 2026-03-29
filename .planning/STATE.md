@@ -10,4 +10,4 @@ None.
 
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
-| 1 | Fix integrated browser localStorage/sessionStorage not persisting across navigations (#4564) | 2026-03-29 | 9188cd29 | Pending | [1-fix-integrated-browser-localstorage-sess](./quick/1-fix-integrated-browser-localstorage-sess/) |
+| 1 | Fix integrated browser localStorage/sessionStorage not persisting across navigations (#4564) | 2026-03-29 | 95337f05 | Verified | [1-fix-integrated-browser-localstorage-sess](./quick/1-fix-integrated-browser-localstorage-sess/) |
