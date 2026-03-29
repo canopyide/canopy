@@ -326,23 +326,55 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
     isEnabled: (ctx) => !!ctx.focusedTerminalId,
-    run: async (_args, ctx) => {
+    run: async (args: unknown, ctx) => {
+      const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
       const state = useTerminalStore.getState();
-      const targetId = ctx.focusedTerminalId ?? state.focusedId;
+      const targetId = terminalId ?? ctx.focusedTerminalId ?? state.focusedId;
       if (!targetId) return;
 
       if (state.watchedPanels.has(targetId)) {
         state.unwatchPanel(targetId);
       } else {
         const terminal = state.terminals.find((t) => t.id === targetId);
-        // Fire immediately if agent is already in a terminal attention state
         if (terminal?.agentState === "completed" || terminal?.agentState === "waiting") {
           const { fireWatchNotification } = await import("@/lib/watchNotification");
           fireWatchNotification(targetId, terminal.title ?? targetId, terminal.agentState);
         } else {
           state.watchPanel(targetId);
         }
+      }
+    },
+  }));
+
+  actions.set("terminal.deleteNote", () => ({
+    id: "terminal.deleteNote",
+    title: "Delete Note",
+    description: "Delete the note file and remove the panel",
+    category: "terminal",
+    kind: "command",
+    danger: "confirm",
+    scope: "renderer",
+    argsSchema: z.object({
+      terminalId: z.string(),
+      notePath: z.string(),
+      noteTitle: z.string().optional(),
+    }),
+    run: async (args: unknown) => {
+      const { terminalId, notePath, noteTitle } = args as {
+        terminalId: string;
+        notePath: string;
+        noteTitle?: string;
+      };
+      const { actionService } = await import("@/services/ActionService");
+      const result = await actionService.dispatch(
+        "notes.delete",
+        { notePath, noteTitle },
+        { source: "context-menu" }
+      );
+      if (result.ok) {
+        useTerminalStore.getState().removeTerminal(terminalId);
       }
     },
   }));
