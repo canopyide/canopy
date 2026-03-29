@@ -179,6 +179,7 @@ export interface StoreSchema {
         openedProject: boolean;
         launchedAgent: boolean;
         createdWorktree: boolean;
+        subscribedNewsletter: boolean;
       };
     };
   };
@@ -296,6 +297,7 @@ const storeOptions = {
           openedProject: false,
           launchedAgent: false,
           createdWorktree: false,
+          subscribedNewsletter: false,
         },
       },
     },

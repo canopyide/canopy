@@ -17,7 +17,12 @@ const defaultOnboardingState: OnboardingState = {
   checklist: {
     dismissed: false,
     celebrationShown: false,
-    items: { openedProject: false, launchedAgent: false, createdWorktree: false },
+    items: {
+      openedProject: false,
+      launchedAgent: false,
+      createdWorktree: false,
+      subscribedNewsletter: false,
+    },
   },
 };
 
