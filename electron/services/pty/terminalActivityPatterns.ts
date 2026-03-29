@@ -158,6 +158,7 @@ export function createProcessStateValidator(
 
       return significantChildren.length > 0;
     },
+    getDescendantsCpuUsage: () => processTreeCache.getDescendantsCpuUsage(ptyPid),
   };
 }
 
