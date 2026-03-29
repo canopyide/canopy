@@ -268,6 +268,9 @@ const CHANNELS = {
   SYSTEM_DOWNLOAD_DIAGNOSTICS: "system:download-diagnostics",
   SYSTEM_GET_APP_METRICS: "system:get-app-metrics",
   SYSTEM_GET_HARDWARE_INFO: "system:get-hardware-info",
+  DIAGNOSTICS_GET_PROCESS_METRICS: "diagnostics:get-process-metrics",
+  DIAGNOSTICS_GET_HEAP_STATS: "diagnostics:get-heap-stats",
+  DIAGNOSTICS_GET_INFO: "diagnostics:get-info",
   SYSTEM_WAKE: "system:wake",
 
   // PR detection channels
@@ -1082,6 +1085,12 @@ const api: ElectronAPI = {
     getAppMetrics: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_APP_METRICS),
 
     getHardwareInfo: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_HARDWARE_INFO),
+
+    getProcessMetrics: () => _unwrappingInvoke(CHANNELS.DIAGNOSTICS_GET_PROCESS_METRICS),
+
+    getHeapStats: () => _unwrappingInvoke(CHANNELS.DIAGNOSTICS_GET_HEAP_STATS),
+
+    getDiagnosticsInfo: () => _unwrappingInvoke(CHANNELS.DIAGNOSTICS_GET_INFO),
 
     onWake: (callback: (data: { sleepDuration: number; timestamp: number }) => void) => {
       const handler = (
