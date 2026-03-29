@@ -555,6 +555,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -577,6 +578,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -602,6 +604,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(false),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1402,6 +1405,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1477,6 +1481,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1533,6 +1538,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1560,6 +1566,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(false),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1598,6 +1605,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(false),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1617,6 +1625,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(false),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1640,6 +1649,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -1662,6 +1672,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(false),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
       };
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         processStateValidator,
@@ -2875,7 +2886,7 @@ describe("ActivityMonitor", () => {
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         maxWorkingSilenceMs: 5000,
         idleDebounceMs: 2000,
-        processStateValidator: { hasActiveChildren: () => true },
+        processStateValidator: { hasActiveChildren: () => true, getDescendantsCpuUsage: () => 0 },
       });
 
       // Make busy via input
@@ -2953,7 +2964,7 @@ describe("ActivityMonitor", () => {
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         maxWorkingSilenceMs: 5000,
         idleDebounceMs: 2000,
-        processStateValidator: { hasActiveChildren: () => true },
+        processStateValidator: { hasActiveChildren: () => true, getDescendantsCpuUsage: () => 0 },
       });
 
       // Make busy via input
@@ -3144,6 +3155,311 @@ describe("ActivityMonitor", () => {
       expect(idleCall).toBeDefined();
 
       monitor.dispose();
+    });
+  });
+
+  describe("CPU-based idle prevention", () => {
+    it("should block isQuietForIdle when CPU is high", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(15),
+      };
+      const monitor = new ActivityMonitor("cpu-1", 100, onStateChange, {
+        getVisibleLines: () => ["working..."],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        idleDebounceMs: 500,
+        initialState: "busy",
+        processStateValidator,
+      });
+
+      monitor.onData("some output");
+      monitor.startPolling();
+      onStateChange.mockClear();
+
+      // Advance well past idle debounce — CPU high should prevent idle
+      vi.advanceTimersByTime(2000);
+
+      const idleCalls = onStateChange.mock.calls.filter((c: unknown[]) => c[2] === "idle");
+      expect(idleCalls).toHaveLength(0);
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+    });
+
+    it("should block prompt fast-path when CPU is high", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(20),
+      };
+      const monitor = new ActivityMonitor("cpu-2", 100, onStateChange, {
+        getVisibleLines: () => ["$ "],
+        getCursorLine: () => "$ ",
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        promptFastPathMinQuietMs: 1000,
+        initialState: "busy",
+        promptPatterns: [/^\$\s/],
+        processStateValidator,
+      });
+
+      monitor.onData("$ ");
+      monitor.startPolling();
+      onStateChange.mockClear();
+
+      // Advance past prompt fast-path quiet time
+      vi.advanceTimersByTime(4000);
+
+      const idleCalls = onStateChange.mock.calls.filter((c: unknown[]) => c[2] === "idle");
+      expect(idleCalls).toHaveLength(0);
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+    });
+
+    it("should block lexeme fallback when CPU is high", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(25),
+      };
+      const monitor = new ActivityMonitor("cpu-3", 100, onStateChange, {
+        getVisibleLines: () => ["Enter password:"],
+        getCursorLine: () => "Enter password:",
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        initialState: "busy",
+        promptPatterns: [],
+        promptHintPatterns: [],
+        processStateValidator,
+      });
+
+      monitor.onData("Enter password:");
+      monitor.startPolling();
+      onStateChange.mockClear();
+
+      vi.advanceTimersByTime(5000);
+
+      const idleCalls = onStateChange.mock.calls.filter((c: unknown[]) => c[2] === "idle");
+      expect(idleCalls).toHaveLength(0);
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+    });
+
+    it("should block silence timeout when CPU is high", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(50),
+      };
+      const monitor = new ActivityMonitor("cpu-4", 100, onStateChange, {
+        getVisibleLines: () => [""],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        maxWorkingSilenceMs: 5000,
+        idleDebounceMs: 2000,
+        initialState: "busy",
+        processStateValidator,
+      });
+
+      monitor.onData("initial");
+      monitor.startPolling();
+      onStateChange.mockClear();
+
+      // Advance past silence timeout — CPU should block it
+      vi.advanceTimersByTime(10000);
+
+      const idleCalls = onStateChange.mock.calls.filter((c: unknown[]) => c[2] === "idle");
+      expect(idleCalls).toHaveLength(0);
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+    });
+
+    it("should NOT block completion-pattern transitions regardless of CPU", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(50),
+      };
+      const monitor = new ActivityMonitor("cpu-5", 100, onStateChange, {
+        getVisibleLines: () => ["Task completed successfully"],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        initialState: "busy",
+        completionPatterns: [/Task completed successfully/],
+        completionConfidence: 0.9,
+        processStateValidator,
+      });
+
+      monitor.onData("Task completed successfully");
+      monitor.startPolling();
+
+      vi.advanceTimersByTime(200);
+
+      const completedCalls = onStateChange.mock.calls.filter(
+        (c: unknown[]) => c[2] === "completed"
+      );
+      expect(completedCalls.length).toBeGreaterThan(0);
+
+      monitor.dispose();
+    });
+
+    it("should use hysteresis — require drop to CPU_LOW_THRESHOLD to exit CPU high state", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(15),
+      };
+      const monitor = new ActivityMonitor("cpu-6", 100, onStateChange, {
+        getVisibleLines: () => [""],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        idleDebounceMs: 200,
+        initialState: "busy",
+        processStateValidator,
+      });
+
+      monitor.onData("output");
+      monitor.startPolling();
+      onStateChange.mockClear();
+
+      // CPU at 15% — enters high state, blocks idle
+      vi.advanceTimersByTime(500);
+      expect(monitor.getState()).toBe("busy");
+
+      // CPU drops to 8% — still above LOW_THRESHOLD (3%), stays in high state
+      processStateValidator.getDescendantsCpuUsage.mockReturnValue(8);
+      vi.advanceTimersByTime(500);
+      expect(monitor.getState()).toBe("busy");
+
+      // CPU drops to 2% — below LOW_THRESHOLD, exits high state, idle transition allowed
+      processStateValidator.getDescendantsCpuUsage.mockReturnValue(2);
+      vi.advanceTimersByTime(500);
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should gracefully handle missing validator — idle transitions work as before", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("cpu-7", 100, onStateChange, {
+        getVisibleLines: () => [""],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        idleDebounceMs: 200,
+        initialState: "busy",
+      });
+
+      monitor.onData("output");
+      monitor.startPolling();
+      onStateChange.mockClear();
+
+      // Advance past WORKING_HOLD_MS (1500ms) + idleDebounceMs (200ms)
+      vi.advanceTimersByTime(2000);
+
+      const idleCalls = onStateChange.mock.calls.filter((c: unknown[]) => c[2] === "idle");
+      expect(idleCalls.length).toBeGreaterThan(0);
+
+      monitor.dispose();
+    });
+
+    it("should gracefully handle throwing getDescendantsCpuUsage", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockImplementation(() => {
+          throw new Error("Process not found");
+        }),
+      };
+      const monitor = new ActivityMonitor("cpu-8", 100, onStateChange, {
+        getVisibleLines: () => [""],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        idleDebounceMs: 200,
+        initialState: "busy",
+        processStateValidator,
+      });
+
+      monitor.onData("output");
+      monitor.startPolling();
+      onStateChange.mockClear();
+
+      // Advance past WORKING_HOLD_MS (1500ms) + idleDebounceMs (200ms)
+      // Should not crash — CPU check returns null, isCpuHigh stays false
+      vi.advanceTimersByTime(2000);
+
+      // Should still idle normally since CPU check is effectively disabled
+      const idleCalls = onStateChange.mock.calls.filter((c: unknown[]) => c[2] === "idle");
+      expect(idleCalls.length).toBeGreaterThan(0);
+
+      monitor.dispose();
+    });
+
+    it("should block debounce idle when CPU is high (non-polling terminals)", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(null as unknown as boolean),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(20),
+      };
+      const monitor = new ActivityMonitor("cpu-9", 100, onStateChange, {
+        idleDebounceMs: 1000,
+        processStateValidator,
+      });
+
+      // Become busy via input
+      monitor.onInput("\r");
+      expect(monitor.getState()).toBe("busy");
+      onStateChange.mockClear();
+
+      // Send data to reset debounce
+      monitor.onData("some output");
+
+      // Debounce fires — actuallyBusy is null, CPU check should block idle
+      vi.advanceTimersByTime(1000);
+      expect(monitor.getState()).toBe("busy");
+
+      // CPU drops below threshold — next debounce should idle
+      processStateValidator.getDescendantsCpuUsage.mockReturnValue(1);
+      vi.advanceTimersByTime(1000);
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should reset isCpuHigh on dispose", () => {
+      const onStateChange = vi.fn();
+      const processStateValidator = {
+        hasActiveChildren: vi.fn().mockReturnValue(true),
+        getDescendantsCpuUsage: vi.fn().mockReturnValue(50),
+      };
+      const monitor = new ActivityMonitor("cpu-10", 100, onStateChange, {
+        getVisibleLines: () => [""],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 0,
+        idleDebounceMs: 200,
+        initialState: "busy",
+        processStateValidator,
+      });
+
+      monitor.onData("output");
+      monitor.startPolling();
+
+      // Let CPU high state activate
+      vi.advanceTimersByTime(200);
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+
+      // After dispose, no further state changes should occur
+      vi.advanceTimersByTime(5000);
+      const postDisposeCalls = onStateChange.mock.calls.filter(
+        (c: unknown[], idx: number) => idx > onStateChange.mock.calls.length - 1
+      );
+      expect(postDisposeCalls).toHaveLength(0);
     });
   });
 });
