@@ -2,16 +2,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type WebContentsCreatedListener = (event: unknown, contents: MockWebContents) => void;
 
+interface MockSession {
+  webRequest: {
+    onHeadersReceived: ReturnType<typeof vi.fn>;
+  };
+}
+
 interface MockWebContents {
   getType: () => string;
   setWindowOpenHandler: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn>;
   id: number;
+  session: MockSession;
 }
 
 const webContentsCreatedListeners: WebContentsCreatedListener[] = [];
 
 const mockFromWebContents = vi.hoisted(() => vi.fn<() => unknown>(() => null));
+
+// Stable singleton for the browser partition session — used for identity comparison
+const mockBrowserSession: MockSession = {
+  webRequest: {
+    onHeadersReceived: vi.fn(),
+  },
+};
 
 vi.mock("electron", () => ({
   app: {
@@ -31,11 +45,16 @@ vi.mock("electron", () => ({
     fetch: vi.fn(),
   },
   session: {
-    fromPartition: vi.fn(() => ({
-      webRequest: {
-        onHeadersReceived: vi.fn(),
-      },
-    })),
+    fromPartition: vi.fn((partition: string) => {
+      if (partition === "persist:browser") {
+        return mockBrowserSession;
+      }
+      return {
+        webRequest: {
+          onHeadersReceived: vi.fn(),
+        },
+      };
+    }),
   },
 }));
 
@@ -75,10 +94,17 @@ vi.mock("../../ipc/channels.js", () => ({
 
 import { setupWebviewCSP } from "../protocols.js";
 import { getWebviewDialogService } from "../../services/WebviewDialogService.js";
+import { session as electronSession } from "electron";
+import { isDevPreviewPartition as isDevPreviewPartitionMock } from "../../utils/webviewCsp.js";
 
 const mockedGetWebviewDialogService = vi.mocked(getWebviewDialogService);
 
-function createMockWebContents(type: "webview" | "window" | "browserView"): MockWebContents {
+function createMockWebContents(
+  type: "webview" | "window" | "browserView",
+  ses: MockSession = {
+    webRequest: { onHeadersReceived: vi.fn() },
+  }
+): MockWebContents {
   const eventHandlers = new Map<string, ((...args: unknown[]) => void)[]>();
   return {
     getType: () => type,
@@ -89,11 +115,22 @@ function createMockWebContents(type: "webview" | "window" | "browserView"): Mock
       eventHandlers.set(event, handlers);
     }),
     id: Math.floor(Math.random() * 1000),
+    session: ses,
     // expose for testing
     _eventHandlers: eventHandlers,
   } as unknown as MockWebContents & {
     _eventHandlers: Map<string, ((...args: unknown[]) => void)[]>;
   };
+}
+
+function createBrowserWebview(): MockWebContents {
+  return createMockWebContents("webview", mockBrowserSession);
+}
+
+function createDevPreviewWebview(): MockWebContents {
+  return createMockWebContents("webview", {
+    webRequest: { onHeadersReceived: vi.fn() },
+  });
 }
 
 function getEventHandlers(
@@ -109,6 +146,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     webContentsCreatedListeners.length = 0;
+    mockBrowserSession.webRequest.onHeadersReceived.mockReset();
   });
 
   function simulateWebContentsCreated(contents: MockWebContents) {
@@ -119,7 +157,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
 
   describe("will-navigate handler", () => {
     it("is registered on webview guest contents", () => {
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handlers = getEventHandlers(contents, "will-navigate");
@@ -127,7 +165,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
     });
 
     it("allows navigation to http://localhost:3000/dashboard", () => {
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-navigate")[0];
@@ -138,7 +176,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
     });
 
     it("allows navigation to http://127.0.0.1:8080/", () => {
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-navigate")[0];
@@ -148,8 +186,8 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       expect(event.preventDefault).not.toHaveBeenCalled();
     });
 
-    it("blocks navigation to https://example.com", () => {
-      const contents = createMockWebContents("webview");
+    it("blocks cross-origin navigation in dev-preview partition", () => {
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-navigate")[0];
@@ -160,7 +198,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
     });
 
     it("allows https://localhost:3000", () => {
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-navigate")[0];
@@ -171,7 +209,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
     });
 
     it("blocks navigation to file:///etc/passwd", () => {
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-navigate")[0];
@@ -187,7 +225,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       ["about:blank", "about:blank"],
       ["", "empty string"],
     ])("blocks %s (%s)", (url) => {
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-navigate")[0];
@@ -199,7 +237,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
 
     it("logs blocked navigations", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-navigate")[0];
@@ -212,11 +250,49 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       );
       warnSpy.mockRestore();
     });
+
+    it("allows cross-origin navigation in browser partition", () => {
+      const contents = createBrowserWebview();
+      simulateWebContentsCreated(contents);
+
+      const handler = getEventHandlers(contents, "will-navigate")[0];
+      const event = { preventDefault: vi.fn() };
+      handler(event, "https://accounts.google.com/oauth");
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("allows localhost navigation in browser partition", () => {
+      const contents = createBrowserWebview();
+      simulateWebContentsCreated(contents);
+
+      const handler = getEventHandlers(contents, "will-navigate")[0];
+      const event = { preventDefault: vi.fn() };
+      handler(event, "http://localhost:3000/callback");
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["javascript:alert(1)", "javascript: scheme"],
+      ["data:text/html,<h1>XSS</h1>", "data: scheme"],
+      ["about:blank", "about:blank"],
+      ["", "empty string"],
+    ])("blocks dangerous protocol %s (%s) in browser partition", (url) => {
+      const contents = createBrowserWebview();
+      simulateWebContentsCreated(contents);
+
+      const handler = getEventHandlers(contents, "will-navigate")[0];
+      const event = { preventDefault: vi.fn() };
+      handler(event, url);
+
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("will-redirect handler", () => {
     it("allows localhost redirects", () => {
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-redirect")[0];
@@ -226,8 +302,8 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       expect(event.preventDefault).not.toHaveBeenCalled();
     });
 
-    it("blocks non-localhost redirects", () => {
-      const contents = createMockWebContents("webview");
+    it("blocks non-localhost redirects in dev-preview partition", () => {
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-redirect")[0];
@@ -239,7 +315,7 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
 
     it("logs blocked redirects", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const contents = createMockWebContents("webview");
+      const contents = createDevPreviewWebview();
       simulateWebContentsCreated(contents);
 
       const handler = getEventHandlers(contents, "will-redirect")[0];
@@ -253,6 +329,17 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
         )
       );
       warnSpy.mockRestore();
+    });
+
+    it("allows cross-origin redirect in browser partition", () => {
+      const contents = createBrowserWebview();
+      simulateWebContentsCreated(contents);
+
+      const handler = getEventHandlers(contents, "will-redirect")[0];
+      const event = { preventDefault: vi.fn() };
+      handler(event, "https://auth.provider.com/callback");
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
     });
   });
 
@@ -481,6 +568,40 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
 
       const handlers = getEventHandlers(contents, "will-redirect");
       expect(handlers.length).toBe(0);
+    });
+  });
+
+  describe("CSP partition scoping", () => {
+    it("does not apply CSP to persist:browser session", () => {
+      setupWebviewCSP();
+      expect(mockBrowserSession.webRequest.onHeadersReceived).not.toHaveBeenCalled();
+    });
+
+    it("applies CSP to dev-preview partitions via will-attach-webview", () => {
+      vi.mocked(isDevPreviewPartitionMock).mockReturnValue(true);
+
+      const devPreviewSession = {
+        webRequest: { onHeadersReceived: vi.fn() },
+      };
+      vi.mocked(electronSession.fromPartition).mockImplementation((p: string) => {
+        if (p === "persist:browser") return mockBrowserSession as never;
+        return devPreviewSession as never;
+      });
+
+      const embedder = createMockWebContents("window");
+      setupWebviewCSP();
+      const listener = webContentsCreatedListeners[webContentsCreatedListeners.length - 1];
+      listener({}, embedder);
+
+      const willAttachHandlers = getEventHandlers(embedder, "will-attach-webview");
+      expect(willAttachHandlers.length).toBe(1);
+
+      const event = {};
+      const webPreferences = {};
+      const params = { partition: "persist:dev-preview-abc123" };
+      willAttachHandlers[0](event, webPreferences, params);
+
+      expect(devPreviewSession.webRequest.onHeadersReceived).toHaveBeenCalledTimes(1);
     });
   });
 });
