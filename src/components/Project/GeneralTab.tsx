@@ -260,7 +260,7 @@ export function GeneralTab({
                   aria-label="Change project emoji"
                   className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-xl)] shadow-inner shrink-0 bg-tint/5 hover:bg-tint/10 transition-colors border border-transparent hover:border-canopy-border cursor-pointer group"
                   style={{
-                    background: getProjectGradient(currentProject.color),
+                    background: getProjectGradient(color),
                   }}
                 >
                   <span className="text-3xl select-none filter drop-shadow-sm group-hover:scale-110 transition-transform">
