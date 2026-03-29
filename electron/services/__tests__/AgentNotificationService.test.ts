@@ -868,6 +868,7 @@ describe("AgentNotificationService", () => {
       events.emit("agent:spawned", {
         terminalId: "term-1",
         agentId: "claude",
+        type: "agent",
         worktreeId: "wt-1",
         timestamp: Date.now(),
       });
@@ -881,6 +882,7 @@ describe("AgentNotificationService", () => {
       events.emit("agent:spawned", {
         terminalId: "term-1",
         agentId: "claude",
+        type: "agent",
         worktreeId: "wt-1",
         timestamp: Date.now(),
       });
