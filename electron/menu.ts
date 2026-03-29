@@ -68,9 +68,7 @@ export function createApplicationMenu(
     return items;
   };
 
-  const buildPluginMenuItems = (
-    location: string
-  ): Electron.MenuItemConstructorOptions[] => {
+  const buildPluginMenuItems = (location: string): Electron.MenuItemConstructorOptions[] => {
     const items: Electron.MenuItemConstructorOptions[] = [];
     for (const { item } of getPluginMenuItems()) {
       if (item.location !== location) continue;
@@ -118,10 +116,7 @@ export function createApplicationMenu(
           click: () => sendAction("open-settings"),
         },
         ...(buildPluginMenuItems("file").length > 0
-          ? [
-              { type: "separator" as const },
-              ...buildPluginMenuItems("file"),
-            ]
+          ? [{ type: "separator" as const }, ...buildPluginMenuItems("file")]
           : []),
         { type: "separator" },
         {
@@ -186,10 +181,7 @@ export function createApplicationMenu(
           },
         },
         ...(buildPluginMenuItems("view").length > 0
-          ? [
-              { type: "separator" as const },
-              ...buildPluginMenuItems("view"),
-            ]
+          ? [{ type: "separator" as const }, ...buildPluginMenuItems("view")]
           : []),
       ],
     },
@@ -214,10 +206,7 @@ export function createApplicationMenu(
             ]
           : [{ type: "separator" as const }]),
         ...(buildPluginMenuItems("terminal").length > 0
-          ? [
-              ...buildPluginMenuItems("terminal"),
-              { type: "separator" as const },
-            ]
+          ? [...buildPluginMenuItems("terminal"), { type: "separator" as const }]
           : []),
         {
           label: "Quick Switcher...",
@@ -294,10 +283,7 @@ export function createApplicationMenu(
             ]
           : []),
         ...(buildPluginMenuItems("help").length > 0
-          ? [
-              { type: "separator" as const },
-              ...buildPluginMenuItems("help"),
-            ]
+          ? [{ type: "separator" as const }, ...buildPluginMenuItems("help")]
           : []),
       ],
     },

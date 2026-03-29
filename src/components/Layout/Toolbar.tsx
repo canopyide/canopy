@@ -1166,7 +1166,10 @@ export function Toolbar({
       ));
   };
 
-  const renderLeftButtons = (buttonIds: AnyToolbarButtonId[], visibleSet: Set<AnyToolbarButtonId>) => {
+  const renderLeftButtons = (
+    buttonIds: AnyToolbarButtonId[],
+    visibleSet: Set<AnyToolbarButtonId>
+  ) => {
     const available = buttonIds.filter((id) => buttonRegistry[id]?.isAvailable);
     const visible = available.filter((id) => visibleSet.has(id));
     const elements: React.ReactNode[] = [];
@@ -1213,7 +1216,10 @@ export function Toolbar({
   };
 
   const pluginOverflowMeta = useMemo(() => {
-    const meta: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {};
+    const meta: Record<
+      string,
+      { label: string; icon: React.ComponentType<{ className?: string }> }
+    > = {};
     for (const id of pluginButtonIds) {
       const config = pluginConfigs.get(id);
       if (config) {
