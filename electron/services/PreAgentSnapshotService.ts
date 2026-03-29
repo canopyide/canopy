@@ -51,7 +51,6 @@ class PreAgentSnapshotService {
         type: "warning",
         message:
           "Could not create pre-agent file snapshot. Agent will continue without rollback capability.",
-        timestamp: Date.now(),
       });
     });
   }
