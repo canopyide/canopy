@@ -235,6 +235,7 @@ describe("SoundService", () => {
   });
 
   it("drops new sound when all 3 voice slots are taken by higher priority", () => {
+    // Fill all 3 slots with high-priority sounds
     soundService.play("error"); // priority 1
     vi.advanceTimersByTime(200);
     soundService.play("error"); // priority 1 (debounce expired)
