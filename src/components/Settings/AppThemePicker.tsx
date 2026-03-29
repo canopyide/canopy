@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, Monitor, Shuffle } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { BUILT_IN_APP_SCHEMES } from "@/config/appColorSchemes";
 import { useAppThemeStore } from "@/store/appThemeStore";
@@ -597,24 +596,6 @@ export function AppThemePicker() {
             </div>
           )}
         </div>
-
-        {allSchemes.length > 1 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Pick random theme"
-                  onClick={handleShuffle}
-                  className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-canopy-border text-canopy-text/50 transition-colors hover:border-canopy-text/30 hover:text-canopy-text"
-                >
-                  <Shuffle className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Random theme</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
       </div>
 
       <div className="flex items-center gap-3">
@@ -630,6 +611,16 @@ export function AppThemePicker() {
         >
           Import app theme...
         </button>
+        {allSchemes.length > 1 && (
+          <button
+            type="button"
+            onClick={handleShuffle}
+            className="ml-auto flex items-center gap-1.5 text-xs text-canopy-accent hover:text-canopy-accent/80 transition-colors"
+          >
+            <Shuffle className="h-3 w-3" />
+            Random theme
+          </button>
+        )}
       </div>
     </div>
   );
