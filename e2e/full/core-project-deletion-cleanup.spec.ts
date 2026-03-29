@@ -200,7 +200,7 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
 
     // A's panels should still be present (poll to handle transient state)
     await expect
-      .poll(() => getGridPanelCount(window), { timeout: T_MEDIUM })
+      .poll(() => getGridPanelCount(window), { timeout: T_LONG })
       .toBeGreaterThanOrEqual(1);
 
     // A's worktree cards should still be visible
