@@ -3,7 +3,7 @@ import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
 import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
 import { useWebviewEviction } from "@/hooks/useWebviewEviction";
 import { useWebviewDialog } from "@/hooks/useWebviewDialog";
-import { AlertTriangle, ExternalLink, X } from "lucide-react";
+import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { useTerminalStore } from "@/store";
 import type { BrowserHistory } from "@shared/types/browser";
@@ -114,8 +114,6 @@ export function BrowserPane({
   // Track if webview has been mounted and is ready
   const [isWebviewReady, setIsWebviewReady] = useState(false);
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [blockedNav, setBlockedNav] = useState<{ url: string } | null>(null);
-  const blockedNavTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const hasBeenVisible = useHasBeenVisible(id, location);
 
@@ -215,27 +213,6 @@ export function BrowserPane({
     };
   }, [webviewElement, isWebviewReady, id, addStructuredMessage, markStale]);
 
-  // Subscribe to blocked cross-origin navigation events
-  useEffect(() => {
-    const cleanup = window.electron.webview.onNavigationBlocked((payload) => {
-      if (payload.panelId !== id) return;
-      if (blockedNavTimerRef.current) {
-        clearTimeout(blockedNavTimerRef.current);
-      }
-      blockedNavTimerRef.current = setTimeout(() => {
-        setBlockedNav({ url: payload.url });
-        blockedNavTimerRef.current = null;
-      }, 150);
-    });
-    return () => {
-      cleanup();
-      if (blockedNavTimerRef.current) {
-        clearTimeout(blockedNavTimerRef.current);
-        blockedNavTimerRef.current = null;
-      }
-    };
-  }, [id]);
-
   // Set up webview event listeners - reattach whenever webview element changes
   useEffect(() => {
     const webview = webviewElement;
@@ -295,10 +272,6 @@ export function BrowserPane({
       // Suppress about:blank navigations triggered by eviction
       if (newUrl === "about:blank" && evictingRef.current) return;
       setBlockedNav(null);
-      if (blockedNavTimerRef.current) {
-        clearTimeout(blockedNavTimerRef.current);
-        blockedNavTimerRef.current = null;
-      }
       // Only update history if this is a new URL (not our programmatic navigation)
       if (newUrl !== lastSetUrlRef.current) {
         setHistory((prev) => pushBrowserHistory(prev, newUrl));
@@ -318,10 +291,6 @@ export function BrowserPane({
     const handleDidNavigateInPage = (event: Electron.DidNavigateInPageEvent) => {
       if (!event.isMainFrame) return;
       setBlockedNav(null);
-      if (blockedNavTimerRef.current) {
-        clearTimeout(blockedNavTimerRef.current);
-        blockedNavTimerRef.current = null;
-      }
       const newUrl = event.url;
       if (newUrl !== lastSetUrlRef.current) {
         setHistory((prev) => pushBrowserHistory(prev, newUrl));
@@ -506,9 +475,6 @@ export function BrowserPane({
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
       }
-      if (blockedNavTimerRef.current) {
-        clearTimeout(blockedNavTimerRef.current);
-      }
     };
   }, []);
 
@@ -667,16 +633,6 @@ export function BrowserPane({
     if (!hasValidUrl) return;
     void actionService.dispatch("browser.openExternal", { terminalId: id }, { source: "user" });
   }, [hasValidUrl, id]);
-
-  const handleOpenBlockedExternal = useCallback(() => {
-    if (!blockedNav) return;
-    void actionService.dispatch(
-      "browser.openExternal",
-      { terminalId: id, url: blockedNav.url },
-      { source: "user" }
-    );
-    setBlockedNav(null);
-  }, [blockedNav, id]);
 
   const displayTitle = useMemo(() => {
     if (title && title !== "Browser") return title;
@@ -849,38 +805,6 @@ export function BrowserPane({
                 </div>
               )}
               {findInPage.isOpen && <FindBar find={findInPage} />}
-              {blockedNav && (
-                <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 py-2 surface-overlay border-b border-border-subtle text-xs animate-in slide-in-from-top-1 duration-150">
-                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-canopy-text/50" />
-                  <span className="flex-1 truncate text-canopy-text/70">
-                    Navigation blocked:{" "}
-                    <span className="font-mono">
-                      {(() => {
-                        try {
-                          return new URL(blockedNav.url).hostname;
-                        } catch {
-                          return blockedNav.url;
-                        }
-                      })()}
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleOpenBlockedExternal}
-                    className="shrink-0 px-2 py-0.5 rounded bg-canopy-accent/15 text-canopy-accent hover:bg-canopy-accent/25 transition-colors text-xs font-medium"
-                  >
-                    Open in External Browser
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBlockedNav(null)}
-                    className="shrink-0 p-0.5 rounded hover:bg-overlay-soft transition-colors text-canopy-text/40 hover:text-canopy-text/70"
-                    aria-label="Dismiss"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )}
               <webview
                 ref={setWebviewNode}
                 src={currentUrl}

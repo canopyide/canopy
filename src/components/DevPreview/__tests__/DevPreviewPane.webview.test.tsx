@@ -259,6 +259,12 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       window: {
         onDestroyHiddenWebviews: vi.fn(() => vi.fn()),
       },
+      webview: {
+        registerPanel: vi.fn(() => Promise.resolve()),
+        onDialogRequest: vi.fn(() => vi.fn()),
+        onFindShortcut: vi.fn(() => vi.fn()),
+        onNavigationBlocked: vi.fn(() => vi.fn()),
+      },
     };
   });
 

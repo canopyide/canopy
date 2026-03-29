@@ -107,6 +107,10 @@ export function DevPreviewPane({
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [blockedNav, setBlockedNav] = useState<{
+    url: string;
+    canOpenExternal: boolean;
+  } | null>(null);
   const lastSetUrlRef = useRef<string>("");
   const [isWebviewReady, setIsWebviewReady] = useState(false);
   const [consoleTerminalId, setConsoleTerminalId] = useState<string | null>(terminalId);
@@ -566,6 +570,23 @@ export function DevPreviewPane({
     isFocused
   );
 
+  // Listen for blocked navigation events from main process
+  useEffect(() => {
+    const cleanup = window.electron.webview.onNavigationBlocked((data) => {
+      if (data.panelId === id) {
+        setBlockedNav({ url: data.url, canOpenExternal: data.canOpenExternal });
+      }
+    });
+    return cleanup;
+  }, [id]);
+
+  // Auto-dismiss blocked navigation notification after 10 seconds
+  useEffect(() => {
+    if (!blockedNav) return;
+    const timer = setTimeout(() => setBlockedNav(null), 10_000);
+    return () => clearTimeout(timer);
+  }, [blockedNav]);
+
   return (
     <ContentPanel
       id={id}
@@ -702,6 +723,33 @@ export function DevPreviewPane({
             </div>
           ) : (
             <>
+              {blockedNav && (
+                <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-canopy-text/80">
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-status-warning" />
+                  <span className="truncate flex-1">
+                    Navigation to external site blocked: {blockedNav.url}
+                  </span>
+                  {blockedNav.canOpenExternal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void window.electron.system.openExternal(blockedNav.url);
+                        setBlockedNav(null);
+                      }}
+                      className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-canopy-text/90 transition-colors"
+                    >
+                      Open in Browser
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setBlockedNav(null)}
+                    className="shrink-0 text-canopy-text/40 hover:text-canopy-text/70 transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
               {findInPage.isOpen && <FindBar find={findInPage} />}
               <webview
