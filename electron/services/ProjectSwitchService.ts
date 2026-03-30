@@ -157,17 +157,8 @@ export class ProjectSwitchService {
   }
 
   private async cleanupWorktreeService(): Promise<void> {
-    if (!this.deps.worktreeService?.onProjectSwitch || this.windowId === null) {
-      return;
-    }
-
-    try {
-      await Promise.resolve().then(() =>
-        this.deps.worktreeService!.onProjectSwitch(this.windowId!)
-      );
-    } catch (error) {
-      console.error("[ProjectSwitch] WorktreeService cleanup failed:", error);
-    }
+    // No-op: blue-green swap in WorkspaceClient.loadProject() handles
+    // the old host release atomically after the new host is ready.
   }
 
   private async cleanupSupportingServices(
@@ -214,7 +205,7 @@ export class ProjectSwitchService {
       console.log("[ProjectSwitch] Worktrees loaded successfully");
       return undefined;
     } catch (err) {
-      console.error("Failed to load worktrees for project:", err);
+      console.error("[ProjectSwitch] Failed to load worktrees for project:", err);
       return err instanceof Error ? err.message : "Failed to load worktrees";
     }
   }

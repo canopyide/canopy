@@ -166,6 +166,8 @@ describe("ProjectSwitchService", () => {
     );
     expect(ptyClient.onProjectSwitch).toHaveBeenCalledWith(MOCK_WINDOW_ID, "project-new");
     expect(worktreeService.loadProject).toHaveBeenCalledWith("/tmp/new", MOCK_WINDOW_ID);
+    // onProjectSwitch is no longer called — blue-green swap in loadProject handles release
+    expect(worktreeService.onProjectSwitch).not.toHaveBeenCalled();
     expect(eventBuffer.onProjectSwitch).toHaveBeenCalled();
     expect(sendToRendererMock).toHaveBeenCalledWith(
       CHANNELS.PROJECT_ON_SWITCH,
@@ -198,9 +200,7 @@ describe("ProjectSwitchService", () => {
         },
       },
       worktreeService: {
-        onProjectSwitch: () => {
-          throw new Error("workspace sync throw");
-        },
+        onProjectSwitch: vi.fn(() => undefined),
         loadProject: async () => undefined,
       },
       eventBuffer: {

@@ -60,6 +60,9 @@ function sendEvent(event: WorkspaceHostEvent): void {
   }
 }
 
+// Process-level shutdown controller — aborted on dispose/SIGTERM to kill in-flight git operations
+const shutdownController = new AbortController();
+
 // Create singleton instance
 const workspaceService = new WorkspaceService(sendEvent);
 
@@ -191,6 +194,7 @@ port.on("message", async (rawMsg: any) => {
         break;
 
       case "dispose":
+        shutdownController.abort();
         workspaceService.dispose();
         break;
 
@@ -369,10 +373,11 @@ port.on("message", async (rawMsg: any) => {
   }
 });
 
-// Handle process exit
-process.on("exit", () => {
+// Graceful shutdown on SIGTERM (macOS/Linux; Windows uses TerminateProcess so this won't fire)
+process.on("SIGTERM", () => {
+  console.log("[WorkspaceHost] SIGTERM received, shutting down");
+  shutdownController.abort();
   workspaceService.dispose();
-  console.log("[WorkspaceHost] Disposed");
 });
 
 // Signal ready

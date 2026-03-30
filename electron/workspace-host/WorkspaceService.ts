@@ -72,6 +72,7 @@ export class WorkspaceService {
   private lifecycleService = new WorktreeLifecycleService();
   private listService = new WorktreeListService();
   private prService: PRIntegrationService;
+  private _shutdownController = new AbortController();
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {
     this.prService = new PRIntegrationService(pullRequestService, events, {
@@ -171,7 +172,7 @@ export class WorkspaceService {
     try {
       this.projectRootPath = projectRootPath;
       this.projectScopeId = projectScopeId;
-      this.git = createHardenedGit(projectRootPath);
+      this.git = createHardenedGit(projectRootPath, this._shutdownController.signal);
       this.listService.setGit(this.git, projectRootPath);
 
       const rawWorktrees = await this.listService.list();
@@ -1135,6 +1136,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   }
 
   dispose(): void {
+    this._shutdownController.abort();
     this.prService.cleanup();
     for (const monitor of this.monitors.values()) {
       monitor.stop();
