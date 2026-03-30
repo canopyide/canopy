@@ -2033,19 +2033,16 @@ describe("hydrateAppState", () => {
     };
 
     it("skips appClient.hydrate() when prefetched result is provided", async () => {
-      const prefetched: import("@shared/types/ipc/app").HydrateResult = {
-        appState: {
-          terminals: [],
-          sidebarWidth: 350,
-        },
-        terminalConfig: terminalConfig as any,
-        project: fullProject as any,
-        agentSettings: agentSettings as any,
+      const prefetched = {
+        appState: { terminals: [], sidebarWidth: 350 },
+        terminalConfig,
+        project: fullProject,
+        agentSettings,
         gpuWebGLHardware: true,
         gpuHardwareAccelerationDisabled: false,
         safeMode: false,
         settingsRecovery: null,
-      };
+      } as unknown as import("@shared/types/ipc/app").HydrateResult;
 
       await hydrateAppState(
         {
