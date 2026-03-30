@@ -1055,7 +1055,12 @@ function ProjectPaletteInner({
             const selected = results[selectedIndex];
             if (e.altKey && onSelectBackground) {
               onSelectBackground(selected);
-            } else if (e.metaKey && onSelectNewWindow) {
+            } else if (
+              (e.metaKey || e.ctrlKey) &&
+              onSelectNewWindow &&
+              !selected.isActive &&
+              !selected.isMissing
+            ) {
               onSelectNewWindow(selected);
             } else {
               onSelect(selected);
