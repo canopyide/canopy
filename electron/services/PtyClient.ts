@@ -798,6 +798,16 @@ export class PtyClient extends EventEmitter {
       if (process.env.CANOPY_VERBOSE) {
         console.log(`[PtyClient] MessagePort forwarded to Pty Host for window ${windowId}`);
       }
+      // Re-send project context for this window (handles page reload case where
+      // disconnectWindow in the host clears windowProjectMap on port-replace)
+      const ctx = this.windowProjectContexts.get(windowId);
+      if (ctx) {
+        if (ctx.mode === "switch" && ctx.projectId !== null) {
+          this.send({ type: "project-switch", windowId, projectId: ctx.projectId });
+        } else {
+          this.send({ type: "set-active-project", windowId, projectId: ctx.projectId });
+        }
+      }
     } catch (error) {
       console.error("[PtyClient] Failed to forward MessagePort to Pty Host:", error);
       this.pendingMessagePorts.set(windowId, port);

@@ -147,8 +147,8 @@ const ipcQueueManager = new IpcQueueManager({
   emitReliabilityMetric: (payload) => backpressureManager.emitReliabilityMetric(payload),
 });
 
-// PortQueueManager deps factory — creates per-window instances
-function createPortQueueManager(): PortQueueManager {
+// PortQueueManager deps factory — creates per-window instances with unique pause tokens
+function createPortQueueManager(windowId: number): PortQueueManager {
   return new PortQueueManager({
     getTerminal: (id) => ptyManager.getTerminal(id),
     getPauseCoordinator,
@@ -156,7 +156,25 @@ function createPortQueueManager(): PortQueueManager {
     metricsEnabled,
     emitTerminalStatus: (...args) => backpressureManager.emitTerminalStatus(...args),
     emitReliabilityMetric: (payload) => backpressureManager.emitReliabilityMetric(payload),
+    pauseToken: `port-queue-${windowId}`,
   });
+}
+
+/** Recompute activity tiers for all terminals based on union of connected windows' projects */
+function recomputeActivityTiers(): void {
+  const activeProjects = new Set<string>();
+  for (const projectId of windowProjectMap.values()) {
+    if (projectId !== null) activeProjects.add(projectId);
+  }
+
+  for (const terminal of ptyManager.getAll()) {
+    const isActiveInAnyWindow =
+      activeProjects.size === 0 ||
+      (terminal.projectId !== undefined && activeProjects.has(terminal.projectId));
+    const tier = isActiveInAnyWindow ? "active" : "background";
+    backpressureManager.setActivityTier(terminal.id, tier);
+    ptyManager.setActivityMonitorTier(terminal.id, tier === "active" ? 50 : 500);
+  }
 }
 
 /** Disconnect a window's renderer port and clean up its resources */
@@ -169,6 +187,8 @@ function disconnectWindow(windowId: number, reason: string): void {
   } catch {
     // ignore
   }
+  // Release port-queue pause holds before disposing
+  conn.portQueueManager.resumeAll();
   conn.portQueueManager.dispose();
   try {
     conn.port.close();
@@ -178,6 +198,7 @@ function disconnectWindow(windowId: number, reason: string): void {
 
   rendererConnections.delete(windowId);
   windowProjectMap.delete(windowId);
+  recomputeActivityTiers();
   console.log(`[PtyHost] Window ${windowId} disconnected (${reason})`);
 }
 
@@ -682,7 +703,7 @@ port.on("message", async (rawMsg: any) => {
             disconnectWindow(windowId, "port-replace");
           }
 
-          const perWindowQueueManager = createPortQueueManager();
+          const perWindowQueueManager = createPortQueueManager(windowId);
           receivedPort.start();
           console.log(
             `[PtyHost] MessagePort received from Main for window ${windowId}, starting listener...`
@@ -788,26 +809,13 @@ port.on("message", async (rawMsg: any) => {
 
       case "set-active-project": {
         windowProjectMap.set(msg.windowId, msg.projectId);
+        recomputeActivityTiers();
         break;
       }
 
       case "project-switch": {
         windowProjectMap.set(msg.windowId, msg.projectId);
-
-        // Recompute per-terminal activity tiers based on union of all windows' projects
-        const activeProjects = new Set<string>();
-        for (const projectId of windowProjectMap.values()) {
-          if (projectId !== null) activeProjects.add(projectId);
-        }
-
-        for (const terminal of ptyManager.getAll()) {
-          const isActiveInAnyWindow =
-            activeProjects.size === 0 ||
-            (terminal.projectId !== undefined && activeProjects.has(terminal.projectId));
-          const tier = isActiveInAnyWindow ? "active" : "background";
-          backpressureManager.setActivityTier(terminal.id, tier);
-          ptyManager.setActivityMonitorTier(terminal.id, tier === "active" ? 50 : 500);
-        }
+        recomputeActivityTiers();
         break;
       }
 
