@@ -1301,12 +1301,14 @@ export function SettingsDialog({
                               (e) => e.id === hiddenSettingBanner.settingId
                             );
                             if (parent) {
-                              setHiddenSettingBanner(null);
-                              handleResultClick({
-                                tab: parent.tab,
-                                subtab: parent.subtab,
-                                sectionId: parent.id,
-                              });
+                              handleResultClick(
+                                {
+                                  tab: parent.tab,
+                                  subtab: parent.subtab,
+                                  sectionId: parent.id,
+                                },
+                                parent.requiresEnabled
+                              );
                             }
                           }}
                         >
