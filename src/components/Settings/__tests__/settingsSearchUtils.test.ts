@@ -683,4 +683,13 @@ describe("requiresEnabled metadata", () => {
     const results = filterSettings(SETTINGS_SEARCH_INDEX, "MCP port");
     expect(results.some((r) => r.id === "mcp-server-port")).toBe(true);
   });
+
+  it("two-level dependency chain is fully connected", () => {
+    const openaiKey = byId("voice-openai-key");
+    expect(openaiKey?.requiresEnabled?.settingId).toBe("voice-ai-correction-enable");
+    const aiCorrection = byId("voice-ai-correction-enable");
+    expect(aiCorrection?.requiresEnabled?.settingId).toBe("voice-enable");
+    const voiceEnable = byId("voice-enable");
+    expect(voiceEnable?.requiresEnabled).toBeUndefined();
+  });
 });
