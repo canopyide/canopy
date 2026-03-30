@@ -1,5 +1,5 @@
 ---
-name: theme-creator
+name: canopy-theme-creator
 description: Guide for creating or modifying Canopy themes. Use when working on theme palettes, semantic tokens, component extensions, or built-in theme definitions.
 ---
 
