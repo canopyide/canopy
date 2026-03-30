@@ -2022,4 +2022,67 @@ describe("hydrateAppState", () => {
       expect(notifyMock.mock.calls[0][0].message).not.toContain("preserved at");
     });
   });
+
+  describe("prefetchedHydrateResult", () => {
+    const fullProject = {
+      id: "project-1",
+      path: "/project",
+      name: "project-1",
+      emoji: "🌳",
+      lastOpened: Date.now(),
+    };
+
+    it("skips appClient.hydrate() when prefetched result is provided", async () => {
+      const prefetched = {
+        appState: { terminals: [], sidebarWidth: 350 },
+        terminalConfig,
+        project: fullProject,
+        agentSettings,
+        gpuWebGLHardware: true,
+        gpuHardwareAccelerationDisabled: false,
+        safeMode: false,
+        settingsRecovery: null,
+      } as unknown as import("@shared/types/ipc/app").HydrateResult;
+
+      await hydrateAppState(
+        {
+          addTerminal: vi.fn().mockResolvedValue("terminal-id"),
+          setActiveWorktree: vi.fn(),
+          loadRecipes: vi.fn().mockResolvedValue(undefined),
+          openDiagnosticsDock: vi.fn(),
+        },
+        "switch-1",
+        () => true,
+        prefetched
+      );
+
+      expect(appClientMock.hydrate).not.toHaveBeenCalled();
+    });
+
+    it("calls appClient.hydrate() when no prefetched result is provided", async () => {
+      appClientMock.hydrate.mockResolvedValue({
+        appState: { terminals: [], sidebarWidth: 350 },
+        terminalConfig,
+        project,
+        agentSettings,
+        gpuWebGLHardware: true,
+        gpuHardwareAccelerationDisabled: false,
+        safeMode: false,
+        settingsRecovery: null,
+      });
+
+      await hydrateAppState(
+        {
+          addTerminal: vi.fn().mockResolvedValue("terminal-id"),
+          setActiveWorktree: vi.fn(),
+          loadRecipes: vi.fn().mockResolvedValue(undefined),
+          openDiagnosticsDock: vi.fn(),
+        },
+        "switch-1",
+        () => true
+      );
+
+      expect(appClientMock.hydrate).toHaveBeenCalledTimes(1);
+    });
+  });
 });
