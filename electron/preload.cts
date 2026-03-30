@@ -715,6 +715,9 @@ const CHANNELS = {
   PLUGIN_MENU_ITEMS: "plugin:menu-items",
 
   RESOURCE_PROFILE_CHANGED: "resource:profile-changed",
+
+  APP_RELOAD_CONFIG: "app:reload-config",
+  APP_CONFIG_RELOADED: "app:config-reloaded",
 } as const;
 
 const api: ElectronAPI = {
