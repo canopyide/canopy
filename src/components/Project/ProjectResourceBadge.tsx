@@ -54,15 +54,15 @@ function formatUptime(seconds: number): string {
 }
 
 const STATE_DOT_CLASSES: Record<MemoryState, string> = {
-  normal: "bg-status-success/60",
-  elevated: "bg-status-warning/60",
-  critical: "bg-status-error/60",
+  normal: "bg-canopy-text/25",
+  elevated: "bg-canopy-text/25",
+  critical: "bg-canopy-text/25",
 };
 
 const STATE_TEXT_CLASSES: Record<MemoryState, string> = {
   normal: "text-canopy-text/30",
-  elevated: "text-status-warning/80",
-  critical: "text-status-error/80",
+  elevated: "text-canopy-text/30",
+  critical: "text-canopy-text/30",
 };
 
 const TREND_ARROWS: Record<TrendDirection, string> = {
