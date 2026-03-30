@@ -20,10 +20,10 @@ function createMockDeps(): PortQueueDeps {
 }
 
 function createMockPort() {
-  const listeners = new Map<string, Function[]>();
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   return {
     postMessage: vi.fn(),
-    on: vi.fn((event: string, cb: Function) => {
+    on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event)!.push(cb);
     }),
@@ -92,7 +92,7 @@ describe("Multi-port pty-host infrastructure", () => {
 
     it("replacing port for same windowId cleans up old", () => {
       const ports = new Map<number, ReturnType<typeof createMockPort>>();
-      const handlers = new Map<number, Function>();
+      const handlers = new Map<number, (...args: unknown[]) => void>();
 
       const oldPort = createMockPort();
       const newPort = createMockPort();
