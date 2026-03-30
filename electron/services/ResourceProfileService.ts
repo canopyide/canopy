@@ -24,7 +24,6 @@ export interface ResourceProfileDeps {
   getPtyClient: () => PtyClient | null;
   getWorkspaceClient: () => WorkspaceClient | null;
   getHibernationService: () => HibernationService | null;
-  getWorktreeCount: () => number;
 }
 
 export class ResourceProfileService {
@@ -34,8 +33,13 @@ export class ResourceProfileService {
   private interval: NodeJS.Timeout | null = null;
   private tickCount = 0;
   private disposed = false;
+  private cachedWorktreeCount = 0;
 
   constructor(private deps: ResourceProfileDeps) {}
+
+  setWorktreeCount(count: number): void {
+    this.cachedWorktreeCount = count;
+  }
 
   getProfile(): ResourceProfile {
     return this.currentProfile;
@@ -46,10 +50,25 @@ export class ResourceProfileService {
 
     logInfo("resource-profile-service-started", { profile: this.currentProfile });
 
+    this.refreshWorktreeCount();
     this.interval = setInterval(() => {
+      this.refreshWorktreeCount();
       this.evaluate();
     }, EVAL_INTERVAL_MS);
     this.interval.unref();
+  }
+
+  private refreshWorktreeCount(): void {
+    const workspaceClient = this.deps.getWorkspaceClient();
+    if (!workspaceClient) return;
+    workspaceClient
+      .getAllStatesAsync()
+      .then((states) => {
+        this.cachedWorktreeCount = states.length;
+      })
+      .catch(() => {
+        // non-critical — use last known count
+      });
   }
 
   stop(): void {
@@ -114,7 +133,7 @@ export class ResourceProfileService {
     }
 
     // Worktree count signal
-    const worktreeCount = this.deps.getWorktreeCount();
+    const worktreeCount = this.cachedWorktreeCount;
     if (worktreeCount >= WORKTREE_COUNT_HIGH) {
       pressureScore += 1;
     }
@@ -130,6 +149,8 @@ export class ResourceProfileService {
   }
 
   private applyProfile(profile: ResourceProfile): void {
+    if (this.disposed) return;
+
     const previous = this.currentProfile;
     this.currentProfile = profile;
     this.candidateProfile = null;
@@ -138,8 +159,6 @@ export class ResourceProfileService {
     const config = RESOURCE_PROFILE_CONFIGS[profile];
 
     logInfo("resource-profile-changed", { from: previous, to: profile });
-
-    if (this.disposed) return;
 
     // Update workspace-host polling intervals
     const workspaceClient = this.deps.getWorkspaceClient();
