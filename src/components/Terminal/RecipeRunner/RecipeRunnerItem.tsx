@@ -1,4 +1,3 @@
-import React from "react";
 import { Play, Pin, Copy, Pencil, Trash2 } from "lucide-react";
 import {
   ContextMenu,
