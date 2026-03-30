@@ -155,7 +155,9 @@ function BulkCommandPaletteInner() {
   const queueRef = useRef<PQueue | null>(null);
 
   const availableVars = useMemo(() => getAvailableVariables(), []);
-  const historyEntries = useCommandHistoryStore((s) => s.getProjectHistory(BULK_HISTORY_KEY));
+  const historyEntries = useCommandHistoryStore(
+    useShallow((s) => s.getProjectHistory(BULK_HISTORY_KEY))
+  );
 
   const projectRecipes = useRecipeStore(
     useShallow((s) => s.recipes.filter((r) => r.worktreeId === undefined))

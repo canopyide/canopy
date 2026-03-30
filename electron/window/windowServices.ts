@@ -76,7 +76,7 @@ import {
 import { startAppMetricsMonitor } from "../services/ProcessMemoryMonitor.js";
 import { startDiskSpaceMonitor, getCurrentDiskSpaceStatus } from "../services/DiskSpaceMonitor.js";
 import { SCROLLBACK_BACKGROUND } from "../../shared/config/scrollback.js";
-import { logInfo, setLoggerWindow } from "../utils/logger.js";
+import { logInfo } from "../utils/logger.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
 import { isSmokeTest, isDemoMode, smokeTestStart, exposeGc } from "../setup/environment.js";
 import { extractCliPath, getPendingCliPath, setPendingCliPath } from "../lifecycle/appLifecycle.js";
@@ -825,7 +825,5 @@ export async function setupWindowServices(
     agentNotificationService.dispose();
     preAgentSnapshotService.dispose();
     autoUpdaterService.dispose();
-
-    setLoggerWindow(null);
   });
 }
