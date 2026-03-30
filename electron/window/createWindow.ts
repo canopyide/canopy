@@ -4,7 +4,7 @@ import { createWindowWithState } from "../windowState.js";
 import { store } from "../store.js";
 import { resolveAppTheme, normalizeAppColorScheme } from "../../shared/theme/index.js";
 import type { AppColorScheme } from "../../shared/theme/index.js";
-import { setLoggerWindow } from "../utils/logger.js";
+
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
 import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
 import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
@@ -267,8 +267,6 @@ export function setupBrowserWindow(
 
     wc.setIgnoreMenuShortcuts(isCloseShortcut);
   });
-
-  setLoggerWindow(win);
 
   // Crash loop detection and renderer recovery
   const rendererCrashTimestamps: number[] = [];

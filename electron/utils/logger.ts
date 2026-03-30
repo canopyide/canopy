@@ -9,7 +9,6 @@ import {
   unlinkSync,
 } from "fs";
 import { join } from "path";
-import type { BrowserWindow } from "electron";
 import { logBuffer, type LogEntry } from "../services/LogBuffer.js";
 import { CHANNELS } from "../ipc/channels.js";
 
@@ -148,37 +147,28 @@ let lastLogTime = 0;
 let pendingLogs: LogEntry[] = [];
 let throttleTimeout: NodeJS.Timeout | null = null;
 
-/** @deprecated No-op. Logger now broadcasts to all windows via broadcastToRenderer. */
-export function setLoggerWindow(_window: BrowserWindow | null): void {
-  // No-op — kept for backward compatibility with existing call sites.
+type BroadcastFn = (channel: string, ...args: unknown[]) => void;
+type HasWindowFn = () => boolean;
+
+let registeredBroadcast: BroadcastFn | null = null;
+let registeredHasWindow: HasWindowFn | null = null;
+
+/**
+ * Register renderer broadcast functions. Called by the main process only —
+ * utility processes (pty-host, workspace-host) never call this, so they
+ * never pull in BrowserWindow or ipc/utils via the bundler.
+ */
+export function registerLoggerTransport(broadcast: BroadcastFn, hasWindow: HasWindowFn): void {
+  registeredBroadcast = broadcast;
+  registeredHasWindow = hasWindow;
 }
 
-let cachedBroadcast: typeof import("../ipc/utils.js").broadcastToRenderer | null | undefined;
-let cachedBW: typeof import("electron").BrowserWindow | null | undefined;
-
-function getBroadcast(): typeof import("../ipc/utils.js").broadcastToRenderer | null {
-  if (cachedBroadcast !== undefined) return cachedBroadcast;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const utils = require("../ipc/utils.js") as typeof import("../ipc/utils.js");
-    cachedBroadcast = utils.broadcastToRenderer;
-  } catch {
-    cachedBroadcast = null;
-  }
-  return cachedBroadcast;
+function getBroadcast(): BroadcastFn | null {
+  return registeredBroadcast;
 }
 
 function hasAnyWindow(): boolean {
-  if (cachedBW === undefined) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      cachedBW = (require("electron") as typeof import("electron")).BrowserWindow;
-    } catch {
-      cachedBW = null;
-    }
-  }
-  if (!cachedBW) return false;
-  return cachedBW.getAllWindows().length > 0;
+  return registeredHasWindow ? registeredHasWindow() : false;
 }
 
 function sendLogToRenderer(entry: LogEntry): void {

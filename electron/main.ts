@@ -1,7 +1,7 @@
 // Environment setup must run first (GC exposure, userData, flags, sandbox)
 import "./setup/environment.js";
 
-import { app, crashReporter, protocol } from "electron";
+import { app, BrowserWindow, crashReporter, protocol } from "electron";
 import { registerGlobalErrorHandlers } from "./setup/globalErrorHandlers.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -40,7 +40,8 @@ import {
 import { setupPowerMonitor } from "./window/powerMonitor.js";
 import { isSmokeTest } from "./setup/environment.js";
 import { store } from "./store.js";
-import { pruneOldLogs, initializeLogger } from "./utils/logger.js";
+import { pruneOldLogs, initializeLogger, registerLoggerTransport } from "./utils/logger.js";
+import { broadcastToRenderer } from "./ipc/utils.js";
 import { registerCommands } from "./services/commands/index.js";
 import { initializeTelemetry } from "./services/TelemetryService.js";
 import { initializeCrashRecoveryService } from "./services/CrashRecoveryService.js";
@@ -107,6 +108,9 @@ if (!gotTheLock) {
   }
 
   initializeLogger(app.getPath("userData"));
+
+  registerLoggerTransport(broadcastToRenderer, () => BrowserWindow.getAllWindows().length > 0);
+
   registerCommands();
 
   void initializeTelemetry();
