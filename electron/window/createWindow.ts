@@ -77,6 +77,7 @@ function registerWindowIpcHandlers(): void {
 
 export interface SetupBrowserWindowOptions {
   onRecreateWindow?: () => Promise<void>;
+  projectPath?: string | null;
 }
 
 export interface CreateWindowResult {
@@ -90,7 +91,7 @@ export function setupBrowserWindow(
   dirname: string,
   options: SetupBrowserWindowOptions = {}
 ): CreateWindowResult {
-  const { onRecreateWindow } = options;
+  const { onRecreateWindow, projectPath } = options;
   let smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   let _smokeRendererUnresponsive = false;
 
@@ -141,36 +142,39 @@ export function setupBrowserWindow(
   const windowBg = scheme.tokens["surface-canvas"];
 
   console.log("[MAIN] Creating window...");
-  const win = createWindowWithState({
-    show: false,
-    minWidth: 800,
-    minHeight: 600,
-    webPreferences: {
-      preload: path.join(dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      webviewTag: true,
-      navigateOnDragDrop: false,
-      v8CacheOptions: "code",
-    },
-    ...(process.platform === "darwin"
-      ? {
-          titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: { x: 12, y: 18 },
-        }
-      : process.platform === "win32"
+  const win = createWindowWithState(
+    {
+      show: false,
+      minWidth: 800,
+      minHeight: 600,
+      webPreferences: {
+        preload: path.join(dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webviewTag: true,
+        navigateOnDragDrop: false,
+        v8CacheOptions: "code",
+      },
+      ...(process.platform === "darwin"
         ? {
-            titleBarStyle: "hidden" as const,
-            titleBarOverlay: {
-              color: windowBg,
-              symbolColor: "#a1a1aa",
-              height: 36,
-            },
+            titleBarStyle: "hiddenInset" as const,
+            trafficLightPosition: { x: 12, y: 18 },
           }
-        : {}),
-    backgroundColor: windowBg,
-  });
+        : process.platform === "win32"
+          ? {
+              titleBarStyle: "hidden" as const,
+              titleBarOverlay: {
+                color: windowBg,
+                symbolColor: "#a1a1aa",
+                height: 36,
+              },
+            }
+          : {}),
+      backgroundColor: windowBg,
+    },
+    projectPath ?? undefined
+  );
   markPerformance(PERF_MARKS.MAIN_WINDOW_CREATED);
 
   // Defer showing the window until first paint to prevent background flash

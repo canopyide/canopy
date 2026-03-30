@@ -129,43 +129,33 @@ if (!gotTheLock) {
   const windowRegistry = new WindowRegistry();
   setWindowRegistry(windowRegistry);
 
-  async function createWindow(): Promise<void> {
-    const currentWindow = windowRegistry.getPrimary()?.browserWindow ?? null;
-    if (currentWindow && !currentWindow.isDestroyed()) {
-      console.log("[MAIN] Main window already exists, focusing");
-      if (currentWindow.isMinimized()) currentWindow.restore();
-      currentWindow.focus();
-      return;
-    }
+  setupPermissionLockdown();
 
-    setupPermissionLockdown();
-
+  async function createWindow(initialProjectPath?: string | null): Promise<void> {
     const { win, loadRenderer, smokeTestTimer, smokeRendererUnresponsive } = setupBrowserWindow(
       __dirname,
-      { onRecreateWindow: createWindow }
+      { onRecreateWindow: () => createWindow(), projectPath: initialProjectPath }
     );
     setMainWindow(win);
-    windowRegistry.register(win);
+    windowRegistry.register(win, { projectPath: initialProjectPath ?? undefined });
 
     await setupWindowServices(win, {
       loadRenderer,
       smokeTestTimer,
       smokeRendererUnresponsive,
       windowRegistry,
+      initialProjectPath: initialProjectPath ?? undefined,
     });
 
     setupPowerMonitor({
       getPtyClient,
       getWorkspaceClient: getWorkspaceClientRef,
     });
-
-    win.on("closed", () => {
-      setMainWindow(null);
-    });
   }
 
   registerAppLifecycleHandlers({
-    onCreateWindow: createWindow,
+    onCreateWindow: () => createWindow(),
+    onCreateWindowForPath: (cliPath) => createWindow(cliPath),
     getMainWindow,
     getCliAvailabilityService: getCliAvailabilityServiceRef,
     windowRegistry,

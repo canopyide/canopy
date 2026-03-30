@@ -265,6 +265,7 @@ export interface SetupWindowServicesOptions {
   smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   smokeRendererUnresponsive: () => boolean;
   windowRegistry?: WindowRegistry;
+  initialProjectPath?: string;
 }
 
 export async function setupWindowServices(
@@ -631,13 +632,15 @@ export async function setupWindowServices(
     initializeTaskOrchestrator(ptyClient!, agentRouter);
     console.log("[MAIN] TaskOrchestrator initialized");
 
-    const pendingCliPath = extractCliPath(process.argv) ?? getPendingCliPath();
-    if (pendingCliPath) {
-      console.log("[MAIN] CLI path pending, skipping default terminal spawn");
+    const skipDefaultSpawn =
+      opts.initialProjectPath || extractCliPath(process.argv) || getPendingCliPath();
+    if (skipDefaultSpawn) {
+      console.log("[MAIN] CLI path or initial project path set, skipping default terminal spawn");
     } else {
-      console.log("[MAIN] Spawning default terminal...");
+      const terminalId = `${DEFAULT_TERMINAL_ID}-${win.id}`;
+      console.log("[MAIN] Spawning default terminal:", terminalId);
       try {
-        ptyClient!.spawn(DEFAULT_TERMINAL_ID, {
+        ptyClient!.spawn(terminalId, {
           cwd: os.homedir(),
           cols: 80,
           rows: 30,
@@ -651,22 +654,23 @@ export async function setupWindowServices(
     console.warn("[MAIN] PTY service unavailable - skipping terminal setup");
   }
 
-  // Load worktrees
+  // Load worktrees — prefer initialProjectPath for windows opened with a specific path
   const currentProject = projectStore.getCurrentProject();
-  if (currentProject && workspaceClient && workspaceReady) {
-    console.log("[MAIN] Loading worktrees for current project:", currentProject.name);
+  const projectPathForWorktrees = opts.initialProjectPath ?? currentProject?.path;
+  if (projectPathForWorktrees && workspaceClient && workspaceReady) {
+    console.log("[MAIN] Loading worktrees for project path:", projectPathForWorktrees);
     try {
-      await workspaceClient.loadProject(currentProject.path, win.id);
-      console.log("[MAIN] Worktrees loaded for current project");
+      await workspaceClient.loadProject(projectPathForWorktrees, win.id);
+      console.log("[MAIN] Worktrees loaded");
     } catch (error) {
-      console.error("[MAIN] Failed to load worktrees for current project:", error);
+      console.error("[MAIN] Failed to load worktrees:", error);
     }
-  } else if (currentProject && !workspaceReady) {
+  } else if (projectPathForWorktrees && !workspaceReady) {
     console.warn("[MAIN] Workspace service unavailable - skipping worktree loading");
   }
 
-  // Task queue & workflow
-  if (currentProject) {
+  // Task queue & workflow (only initialize once for the first window)
+  if (currentProject && !opts.initialProjectPath) {
     console.log("[MAIN] Initializing task queue for current project:", currentProject.name);
     try {
       await taskQueueService.initialize(currentProject.id);
@@ -781,14 +785,21 @@ export async function setupWindowServices(
     });
   }
 
-  // CLI path handling
-  const firstLaunchCliPath = extractCliPath(process.argv);
-  const cliPath = firstLaunchCliPath ?? getPendingCliPath();
-  if (cliPath) {
-    setPendingCliPath(null);
-    console.log("[MAIN] Opening CLI path from launch args:", cliPath);
-    handleDirectoryOpen(cliPath, win, cliAvailabilityService ?? undefined).catch((err) =>
-      console.error("[MAIN] Failed to open CLI path:", err)
+  // CLI path handling — skip if this window was opened with an explicit initialProjectPath
+  if (!opts.initialProjectPath) {
+    const firstLaunchCliPath = extractCliPath(process.argv);
+    const cliPath = firstLaunchCliPath ?? getPendingCliPath();
+    if (cliPath) {
+      setPendingCliPath(null);
+      console.log("[MAIN] Opening CLI path from launch args:", cliPath);
+      handleDirectoryOpen(cliPath, win, cliAvailabilityService ?? undefined).catch((err) =>
+        console.error("[MAIN] Failed to open CLI path:", err)
+      );
+    }
+  } else {
+    console.log("[MAIN] Window opened with initial project path:", opts.initialProjectPath);
+    handleDirectoryOpen(opts.initialProjectPath, win, cliAvailabilityService ?? undefined).catch(
+      (err) => console.error("[MAIN] Failed to open initial project path:", err)
     );
   }
 
