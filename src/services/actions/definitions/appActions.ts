@@ -63,7 +63,10 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
 
   // Subscribe to config reloaded events from main process.
   // Fires after both action-triggered and menu-triggered reloads.
-  if (typeof window.electron?.app?.onConfigReloaded === "function") {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.electron?.app?.onConfigReloaded === "function"
+  ) {
     window.electron.app.onConfigReloaded(async () => {
       try {
         await refreshRendererConfig();
