@@ -49,6 +49,7 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): ResourceProfileDe
   };
   const mockWorkspaceClient = {
     updateMonitorConfig: vi.fn(),
+    getAllStatesAsync: vi.fn().mockResolvedValue([]),
   };
   const mockHibernationService = {
     setMemoryPressureThresholdMs: vi.fn(),
@@ -58,7 +59,6 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): ResourceProfileDe
     getPtyClient: () => mockPtyClient as any,
     getWorkspaceClient: () => mockWorkspaceClient as any,
     getHibernationService: () => mockHibernationService as any,
-    getWorktreeCount: () => 2,
     ...overrides,
   };
 }
@@ -268,8 +268,9 @@ describe("ResourceProfileService", () => {
   });
 
   it("high worktree count contributes to pressure", () => {
-    const deps = createDeps({ getWorktreeCount: () => 10 });
+    const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    service.setWorktreeCount(10);
     service.start();
 
     // Battery (2) + worktrees (1) = 3 => efficiency

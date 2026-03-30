@@ -874,13 +874,6 @@ export async function setupWindowServices(
       getPtyClient: () => ptyClient,
       getWorkspaceClient: () => workspaceClient,
       getHibernationService: () => getHibernationService(),
-      getWorktreeCount: () => {
-        try {
-          return projectStore.getAllProjects().length;
-        } catch {
-          return 0;
-        }
-      },
     });
     resourceProfileService.start();
   }

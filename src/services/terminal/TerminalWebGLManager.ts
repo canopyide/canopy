@@ -21,7 +21,7 @@ export class TerminalWebGLManager {
   }
 
   static setMaxContexts(n: number): void {
-    TerminalWebGLManager._maxContexts = n;
+    TerminalWebGLManager._maxContexts = Math.max(1, n);
   }
 
   private pool = new Map<string, WebGLEntry>();
