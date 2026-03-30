@@ -132,4 +132,19 @@ describe("createHardenedGit", () => {
     }
     expect(options.config).toHaveLength(expectedKeys.length);
   });
+
+  it("passes abort signal when provided", () => {
+    const controller = new AbortController();
+    createHardenedGit("/test/repo", controller.signal);
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.abort).toBe(controller.signal);
+  });
+
+  it("does not include abort option when no signal provided", () => {
+    createHardenedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options).not.toHaveProperty("abort");
+  });
 });

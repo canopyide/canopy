@@ -14,6 +14,7 @@ const { mockHosts, MockWorkspaceHostProcess } = vi.hoisted(() => {
     private readyResolve: (() => void) | null = null;
     private readyPromise: Promise<void>;
     private responseHandlers = new Map<string, (result: any) => void>();
+    private responseRejects = new Map<string, (error: Error) => void>();
 
     constructor(projectPath: string) {
       super();
@@ -39,8 +40,9 @@ const { mockHosts, MockWorkspaceHostProcess } = vi.hoisted(() => {
     send = vi.fn(() => true);
 
     sendWithResponse = vi.fn(<T>(request: { requestId: string; type: string }): Promise<T> => {
-      return new Promise<T>((resolve) => {
+      return new Promise<T>((resolve, reject) => {
         this.responseHandlers.set(request.requestId, resolve);
+        this.responseRejects.set(request.requestId, reject);
       });
     });
 
@@ -64,6 +66,15 @@ const { mockHosts, MockWorkspaceHostProcess } = vi.hoisted(() => {
       if (handler) {
         this.responseHandlers.delete(requestId);
         handler(result);
+      }
+    }
+
+    rejectRequest(requestId: string, error: Error): void {
+      const handler = this.responseRejects.get(requestId);
+      if (handler) {
+        this.responseRejects.delete(requestId);
+        this.responseHandlers.delete(requestId);
+        handler(error);
       }
     }
 
@@ -245,29 +256,130 @@ describe("WorkspaceClient multi-process manager", () => {
     });
   });
 
-  describe("onProjectSwitch / releaseWindow", () => {
-    it("releases window refcount on project switch", async () => {
+  describe("onProjectSwitch", () => {
+    it("is a no-op — does not release window or change routing", async () => {
       const load = client.loadProject("/project-a", 1);
       await readyAndResolveLoad(0);
       await load;
 
       await client.onProjectSwitch(1);
 
-      const result = await client.getAllStatesAsync(1);
-      expect(result).toEqual([]);
+      // Window should still be routed to project-a
+      const statesPromise = client.getAllStatesAsync(1);
+      await tick();
+      const req = h(0).getLastRequest()!;
+      expect(req.type).toBe("get-all-states");
+      h(0).resolveRequest(req.requestId, { states: [{ id: "wt-1" }] });
+      const result = await statesPromise;
+      expect(result).toHaveLength(1);
     });
+  });
 
-    it("does not dispose host immediately when other windows still reference it", async () => {
+  describe("blue-green swap", () => {
+    it("does not release old host until new host is ready", async () => {
+      // Load project A on window 1
       const load1 = client.loadProject("/project-a", 1);
       await readyAndResolveLoad(0);
       await load1;
 
-      const load2 = client.loadProject("/project-a", 2);
+      // Start switching to project B — do NOT resolve yet
+      const load2 = client.loadProject("/project-b", 1);
+      expect(mockHosts).toHaveLength(2);
+
+      // During init, old host should NOT be disposed
+      expect(h(0).dispose).not.toHaveBeenCalled();
+
+      // Window should still be mapped to project A during the swap
+      const statesPromise = client.getAllStatesAsync(1);
+      await tick();
+      const req = h(0).getLastRequest()!;
+      expect(req.type).toBe("get-all-states");
+      h(0).resolveRequest(req.requestId, { states: [{ id: "wt-a" }] });
+      const result = await statesPromise;
+      expect(result).toHaveLength(1);
+
+      // Now complete the new host init
+      await readyAndResolveLoad(1);
       await load2;
 
-      await client.onProjectSwitch(1);
+      // After swap, window should now route to project B
+      const statesPromise2 = client.getAllStatesAsync(1);
+      await tick();
+      const req2 = h(1).getLastRequest()!;
+      expect(req2.type).toBe("get-all-states");
+      h(1).resolveRequest(req2.requestId, { states: [{ id: "wt-b" }] });
+      const result2 = await statesPromise2;
+      expect(result2).toHaveLength(1);
+      expect(result2[0].id).toBe("wt-b");
+    });
 
+    it("preserves old project when new host init fails", async () => {
+      // Load project A on window 1
+      const load1 = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load1;
+
+      // Start switching to project B
+      const load2 = client.loadProject("/project-b", 1);
+      expect(mockHosts).toHaveLength(2);
+
+      // Simulate ready, then reject the load-project request
+      h(1).simulateReady();
+      await tick();
+      const req = h(1).getLastRequest()!;
+      expect(req.type).toBe("load-project");
+      h(1).rejectRequest(req.requestId, new Error("Load failed"));
+
+      await expect(load2).rejects.toThrow("Load failed");
+
+      // Window should still route to project A (blue-green: old host preserved)
+      const statesPromise = client.getAllStatesAsync(1);
+      await tick();
+      const statesReq = h(0).getLastRequest()!;
+      expect(statesReq.type).toBe("get-all-states");
+      h(0).resolveRequest(statesReq.requestId, { states: [{ id: "wt-a" }] });
+      const result = await statesPromise;
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("wt-a");
+
+      // Old host should NOT be disposed
       expect(h(0).dispose).not.toHaveBeenCalled();
+    });
+
+    it("handles rapid A→B→C switching — B is discarded", async () => {
+      // Load project A
+      const load1 = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load1;
+
+      // Start switch to B (don't resolve yet)
+      const load2 = client.loadProject("/project-b", 1);
+      expect(mockHosts).toHaveLength(2);
+
+      // Start switch to C before B finishes
+      const load3 = client.loadProject("/project-c", 1);
+      expect(mockHosts).toHaveLength(3);
+
+      // Resolve C first (it wins because it has the latest generation)
+      await readyAndResolveLoad(2);
+      await load3;
+
+      // Now resolve B (stale — should be discarded)
+      await readyAndResolveLoad(1);
+      await load2;
+
+      // B's host should be disposed (stale generation)
+      expect(h(1).dispose).toHaveBeenCalled();
+
+      // Window should route to project C
+      const statesPromise = client.getAllStatesAsync(1);
+      await tick();
+      const req = h(2).getLastRequest()!;
+      expect(req.type).toBe("get-all-states");
+      h(2).resolveRequest(req.requestId, { states: [{ id: "wt-c" }] });
+      const result = await statesPromise;
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("wt-c");
     });
   });
 

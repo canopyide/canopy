@@ -885,7 +885,7 @@ export class WorktreeMonitor {
     }
 
     try {
-      const git = createHardenedGit(this.path);
+      const git = createHardenedGit(this.path, this._pollAbortController.signal);
       const output = await git.raw(["rev-list", "--left-right", "--count", "HEAD...@{u}"]);
       const [aheadStr, behindStr] = output.trim().split(/\s+/);
       return {
@@ -912,7 +912,7 @@ export class WorktreeMonitor {
     }
 
     try {
-      const git = createHardenedGit(this.path);
+      const git = createHardenedGit(this.path, this._pollAbortController.signal);
       const log = await git.log({ maxCount: 1 });
       const lastCommitMsg = log.latest?.message;
 
