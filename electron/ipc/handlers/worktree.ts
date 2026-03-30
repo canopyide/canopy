@@ -128,6 +128,15 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     if (!deps.worktreeService) {
       throw new Error("Workspace client not initialized");
     }
+    if (!payload.rootPath || typeof payload.rootPath !== "string") {
+      throw new Error("rootPath is required");
+    }
+    if (!payload.prNumber || typeof payload.prNumber !== "number" || payload.prNumber <= 0) {
+      throw new Error("prNumber must be a positive number");
+    }
+    if (!payload.headRefName || typeof payload.headRefName !== "string") {
+      throw new Error("headRefName is required");
+    }
     return await deps.worktreeService.fetchPRBranch(
       payload.rootPath,
       payload.prNumber,

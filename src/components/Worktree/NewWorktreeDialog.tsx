@@ -283,7 +283,7 @@ export function NewWorktreeDialog({
 
     worktreeClient
       .listBranches(rootPath)
-      .then((branchList) => {
+      .then(async (branchList) => {
         if (!isCurrent) return;
 
         setBranches(branchList);
