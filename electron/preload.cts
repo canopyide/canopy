@@ -1084,6 +1084,12 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.SYSTEM_WAKE, handler);
       return () => ipcRenderer.removeListener(CHANNELS.SYSTEM_WAKE, handler);
     },
+
+    onResourceProfileChanged: (callback: (payload: any) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);
+      ipcRenderer.on(CHANNELS.RESOURCE_PROFILE_CHANGED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.RESOURCE_PROFILE_CHANGED, handler);
+    },
   },
 
   // App State API
