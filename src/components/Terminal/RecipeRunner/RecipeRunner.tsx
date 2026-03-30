@@ -1,10 +1,7 @@
-import { useCallback } from "react";
 import { useRecipeRunner } from "./useRecipeRunner";
 import { RecipeRunnerGrid } from "./RecipeRunnerGrid";
 import { RecipeRunnerList } from "./RecipeRunnerList";
 import { RecipeRunnerEmpty } from "./RecipeRunnerEmpty";
-import { RecipeRunnerSuggestions } from "./RecipeRunnerSuggestions";
-import type { RunCommand } from "@/types";
 
 interface RecipeRunnerProps {
   activeWorktreeId: string | null | undefined;
@@ -14,35 +11,8 @@ interface RecipeRunnerProps {
 export function RecipeRunner({ activeWorktreeId, defaultCwd }: RecipeRunnerProps) {
   const runner = useRecipeRunner({ activeWorktreeId, defaultCwd });
 
-  const handleCreateFromTemplate = useCallback(
-    (runCommand: RunCommand) => {
-      window.dispatchEvent(
-        new CustomEvent("canopy:open-recipe-editor", {
-          detail: {
-            worktreeId: activeWorktreeId,
-            initialTerminals: [
-              {
-                type: "terminal" as const,
-                title: runCommand.name,
-                command: runCommand.command,
-                env: {},
-              },
-            ],
-          },
-        })
-      );
-    },
-    [activeWorktreeId]
-  );
-
   if (runner.recipes.length === 0) {
-    return (
-      <RecipeRunnerEmpty
-        suggestions={runner.suggestions}
-        onCreateFromTemplate={handleCreateFromTemplate}
-        onCreate={runner.handleCreate}
-      />
-    );
+    return <RecipeRunnerEmpty onCreate={runner.handleCreate} />;
   }
 
   const flatRecipes = runner.getFlatRecipes();
@@ -81,12 +51,6 @@ export function RecipeRunner({ activeWorktreeId, defaultCwd }: RecipeRunnerProps
           onDelete={runner.handleDelete}
           onCreate={runner.handleCreate}
           onKeyDown={runner.handleKeyDown}
-        />
-      )}
-      {runner.recipes.length > 0 && (
-        <RecipeRunnerSuggestions
-          suggestions={runner.suggestions}
-          onCreateFromTemplate={handleCreateFromTemplate}
         />
       )}
     </div>
