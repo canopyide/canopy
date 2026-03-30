@@ -26,7 +26,7 @@ const webContentsMock = vi.hoisted(() => ({
 
 const browserWindowMock = vi.hoisted(() => ({
   getAllWindows: () => [mainWindowMock],
-  fromWebContents: vi.fn(() => null),
+  fromWebContents: vi.fn((): unknown => null),
 }));
 
 vi.mock("electron", () => ({
