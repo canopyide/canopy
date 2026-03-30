@@ -76,6 +76,9 @@ import type { WindowContext, WindowRegistry } from "./WindowRegistry.js";
 
 const DEFAULT_TERMINAL_ID = "default";
 
+// Guard: process.argv CLI path should only be consumed by the first window
+let processArgvCliHandled = false;
+
 // ── Global service refs (shared across all windows) ──
 let ptyClient: PtyClient | null = null;
 let workspaceClient: WorkspaceClient | null = null;
@@ -632,8 +635,8 @@ export async function setupWindowServices(
     initializeTaskOrchestrator(ptyClient!, agentRouter);
     console.log("[MAIN] TaskOrchestrator initialized");
 
-    const skipDefaultSpawn =
-      opts.initialProjectPath || extractCliPath(process.argv) || getPendingCliPath();
+    const processArgvCli = !processArgvCliHandled ? extractCliPath(process.argv) : null;
+    const skipDefaultSpawn = opts.initialProjectPath || processArgvCli || getPendingCliPath();
     if (skipDefaultSpawn) {
       console.log("[MAIN] CLI path or initial project path set, skipping default terminal spawn");
     } else {
@@ -787,7 +790,8 @@ export async function setupWindowServices(
 
   // CLI path handling — skip if this window was opened with an explicit initialProjectPath
   if (!opts.initialProjectPath) {
-    const firstLaunchCliPath = extractCliPath(process.argv);
+    const firstLaunchCliPath = !processArgvCliHandled ? extractCliPath(process.argv) : null;
+    if (firstLaunchCliPath) processArgvCliHandled = true;
     const cliPath = firstLaunchCliPath ?? getPendingCliPath();
     if (cliPath) {
       setPendingCliPath(null);

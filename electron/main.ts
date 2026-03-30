@@ -131,10 +131,12 @@ if (!gotTheLock) {
 
   setupPermissionLockdown();
 
+  let powerMonitorInitialized = false;
+
   async function createWindow(initialProjectPath?: string | null): Promise<void> {
     const { win, loadRenderer, smokeTestTimer, smokeRendererUnresponsive } = setupBrowserWindow(
       __dirname,
-      { onRecreateWindow: () => createWindow(), projectPath: initialProjectPath }
+      { onRecreateWindow: () => createWindow(initialProjectPath), projectPath: initialProjectPath }
     );
     setMainWindow(win);
     windowRegistry.register(win, { projectPath: initialProjectPath ?? undefined });
@@ -147,10 +149,13 @@ if (!gotTheLock) {
       initialProjectPath: initialProjectPath ?? undefined,
     });
 
-    setupPowerMonitor({
-      getPtyClient,
-      getWorkspaceClient: getWorkspaceClientRef,
-    });
+    if (!powerMonitorInitialized) {
+      powerMonitorInitialized = true;
+      setupPowerMonitor({
+        getPtyClient,
+        getWorkspaceClient: getWorkspaceClientRef,
+      });
+    }
   }
 
   registerAppLifecycleHandlers({
