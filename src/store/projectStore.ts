@@ -160,6 +160,8 @@ function collectOutgoingTerminalState(): Required<ProjectSwitchOutgoingState> {
 
   const terminalSizes: Record<string, { cols: number; rows: number }> = {};
   for (const terminal of currentTerminals) {
+    if (terminal.location === "trash" || terminal.location === "background") continue;
+    if (isSmokeTestTerminalId(terminal.id)) continue;
     const instance = terminalInstanceService.get(terminal.id);
     if (instance) {
       terminalSizes[terminal.id] = {
