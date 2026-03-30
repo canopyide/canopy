@@ -63,9 +63,16 @@ function createRegistryMock(windows: ReturnType<typeof createWindowMock>[]) {
 }
 
 describe("NotificationService", () => {
+  const originalPlatform = process.platform;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
   });
 
   afterEach(() => {
