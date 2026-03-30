@@ -917,7 +917,6 @@ export async function setupWindowServices(
     disposeAgentRouter();
     disposePowerSaveBlockerService();
     disposeAgentAvailabilityStore();
-    projectSwitchService = null;
 
     if (ptyClient) ptyClient.dispose();
     ptyClient = null;
