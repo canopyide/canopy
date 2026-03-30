@@ -319,7 +319,6 @@ describe("ProjectSwitchService", () => {
 
     const payload = sendToRendererMock.mock.calls[0][1];
     expect(payload.hydrateResult).toBeDefined();
-    expect(payload.hydrateResult.safeMode).toBe(false);
     expect(payload.hydrateResult.settingsRecovery).toBeNull();
     expect(buildSwitchHydrateResultMock).toHaveBeenCalledWith("project-new");
   });

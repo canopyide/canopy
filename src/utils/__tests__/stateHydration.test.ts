@@ -2048,7 +2048,7 @@ describe("hydrateAppState", () => {
         },
         "switch-1",
         () => true,
-        prefetched as any
+        prefetched as import("@shared/types/ipc/app").HydrateResult
       );
 
       expect(appClientMock.hydrate).not.toHaveBeenCalled();

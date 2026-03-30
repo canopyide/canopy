@@ -4,6 +4,7 @@ import { projectStore } from "./ProjectStore.js";
 import { TerminalSnapshotSchema, filterValidTerminalEntries } from "../schemas/ipc.js";
 import { isWebGLHardwareAccelerated } from "../utils/gpuDetection.js";
 import { isGpuDisabledByFlag } from "./GpuCrashMonitorService.js";
+import { getCrashLoopGuard } from "./CrashLoopGuardService.js";
 import type { HydrateResult } from "../../shared/types/ipc/app.js";
 
 /**
@@ -68,6 +69,13 @@ export async function buildSwitchHydrateResult(projectId: string): Promise<Hydra
   // For switch payloads we just return empty terminals — the renderer's
   // hydrateAppState will discover running terminals via getForProject().
 
+  // Respect safe mode during project switch — if the app started in safe mode,
+  // terminals should remain suppressed to prevent crash loops.
+  const inSafeMode = getCrashLoopGuard().isSafeMode();
+  if (inSafeMode) {
+    terminalsToUse = [];
+  }
+
   const appState = {
     ...globalAppState,
     terminals: terminalsToUse,
@@ -86,7 +94,7 @@ export async function buildSwitchHydrateResult(projectId: string): Promise<Hydra
     agentSettings: store.get("agentSettings"),
     gpuWebGLHardware,
     gpuHardwareAccelerationDisabled: isGpuDisabledByFlag(app.getPath("userData")),
-    safeMode: false,
+    safeMode: inSafeMode,
     settingsRecovery: null,
   };
 }
