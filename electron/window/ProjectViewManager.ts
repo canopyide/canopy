@@ -306,7 +306,7 @@ export class ProjectViewManager {
     this.activeProjectId = entry.projectId;
   }
 
-  private createView(projectId: string): WebContentsView {
+  private createView(_projectId: string): WebContentsView {
     const ses = session.fromPartition("persist:canopy-app");
 
     // Register app:// and canopy-file:// protocol handlers on this session.

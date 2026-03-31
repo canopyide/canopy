@@ -117,7 +117,7 @@ export function setupBrowserWindow(
   dirname: string,
   options: SetupBrowserWindowOptions = {}
 ): CreateWindowResult {
-  const { onRecreateWindow, onCreateWindow, projectPath, initialProjectId } = options;
+  const { onRecreateWindow, onCreateWindow, projectPath } = options;
   let smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   let _smokeRendererUnresponsive = false;
 
