@@ -14,6 +14,7 @@ import {
   registerProjectView,
   unregisterProjectView,
 } from "./webContentsRegistry.js";
+import { registerProtocolsForSession, getDistPath } from "../setup/protocols.js";
 import { getDevServerUrl } from "../../shared/config/devServer.js";
 import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
 import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
@@ -63,13 +64,15 @@ export class ProjectViewManager {
     this.onViewEvicted = opts.onViewEvicted;
     this.windowRegistry = opts.windowRegistry;
 
-    // Single resize handler that always updates the active view's bounds
+    // Single resize handler that always updates the active view's bounds.
+    // Before registerInitialView() is called, falls back to the first child view
+    // (the initial appView attached in createWindow.ts).
     this.resizeHandler = () => {
       if (win.isDestroyed()) return;
-      const activeView = this.getActiveView();
-      if (activeView) {
+      const view = this.getActiveView() ?? win.contentView.children[0];
+      if (view) {
         const { width, height } = win.getContentBounds();
-        activeView.setBounds({ x: 0, y: 0, width, height });
+        (view as WebContentsView).setBounds({ x: 0, y: 0, width, height });
       }
     };
     win.on("resize", this.resizeHandler);
@@ -281,10 +284,19 @@ export class ProjectViewManager {
   }
 
   private createView(projectId: string): WebContentsView {
+    const ses = session.fromPartition(`persist:project-${projectId}`);
+
+    // Register app:// and canopy-file:// protocol handlers on this session.
+    // protocol.handle() only covers the default session — custom partitions need explicit setup.
+    const distPath = getDistPath();
+    if (distPath) {
+      registerProtocolsForSession(ses, distPath);
+    }
+
     return new WebContentsView({
       webPreferences: {
         preload: path.join(this.dirname, "preload.cjs"),
-        session: session.fromPartition(`persist:project-${projectId}`),
+        session: ses,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,

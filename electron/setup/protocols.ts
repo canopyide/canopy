@@ -14,8 +14,15 @@ import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
 import { getWebviewDialogService } from "../services/WebviewDialogService.js";
 import { CHANNELS } from "../ipc/channels.js";
 
-export function registerAppProtocol(distPath: string): void {
-  protocol.handle("app", async (request) => {
+// Track which sessions have had protocols registered to avoid double-registration
+const registeredSessions = new WeakSet<Electron.Session>();
+let cachedDistPath: string | null = null;
+
+/**
+ * Create the app:// protocol handler function for a given distPath.
+ */
+function createAppProtocolHandler(distPath: string) {
+  return async (request: GlobalRequest) => {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", {
         status: 405,
@@ -61,11 +68,14 @@ export function registerAppProtocol(distPath: string): void {
         headers: { "Content-Type": "text/plain" },
       });
     }
-  });
+  };
 }
 
-export function registerCanopyFileProtocol(): void {
-  protocol.handle("canopy-file", async (request) => {
+/**
+ * Create the canopy-file:// protocol handler function.
+ */
+function createCanopyFileProtocolHandler() {
+  return async (request: GlobalRequest) => {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", { status: 405 });
     }
@@ -114,7 +124,36 @@ export function registerCanopyFileProtocol(): void {
       console.error("[MAIN] canopy-file protocol error:", err);
       return new Response("Internal Server Error", { status: 500 });
     }
-  });
+  };
+}
+
+/**
+ * Register app:// and canopy-file:// protocol handlers on a specific session.
+ * Safe to call multiple times — skips sessions that are already configured.
+ * Used for per-project session partitions that don't inherit the default session's handlers.
+ */
+export function registerProtocolsForSession(ses: Electron.Session, distPath: string): void {
+  if (registeredSessions.has(ses)) return;
+  registeredSessions.add(ses);
+
+  ses.protocol.handle("app", createAppProtocolHandler(distPath));
+  ses.protocol.handle("canopy-file", createCanopyFileProtocolHandler());
+}
+
+export function registerAppProtocol(distPath: string): void {
+  cachedDistPath = distPath;
+  protocol.handle("app", createAppProtocolHandler(distPath));
+}
+
+export function registerCanopyFileProtocol(): void {
+  protocol.handle("canopy-file", createCanopyFileProtocolHandler());
+}
+
+/**
+ * Get the cached distPath for use when registering protocols on dynamic sessions.
+ */
+export function getDistPath(): string | null {
+  return cachedDistPath;
 }
 
 export function setupWebviewCSP(): void {
