@@ -19,7 +19,7 @@ export class ProjectStateManager {
 
   private cloneProjectState(state: ProjectState | null): ProjectState | null {
     if (!state) return null;
-    return JSON.parse(JSON.stringify(state)) as ProjectState;
+    return structuredClone(state);
   }
 
   private getCachedProjectState(projectId: string): ProjectState | null | undefined {
