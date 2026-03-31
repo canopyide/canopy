@@ -1217,7 +1217,6 @@ function App() {
   useDiskSpaceWarnings();
   useUnloadCleanup();
   useResourceProfile();
-  useEffect(() => removeStartupSkeleton(), []);
 
   useEffect(() => {
     window.__CANOPY_E2E_ERROR_STORE__ = () =>
@@ -1349,6 +1348,9 @@ function App() {
 
   // App lifecycle hooks
   const { isStateLoaded } = useAppHydration(crashResolved);
+  useEffect(() => {
+    if (isStateLoaded) removeStartupSkeleton();
+  }, [isStateLoaded]);
   useEffect(() => {
     useNotificationSettingsStore.getState().hydrate();
   }, []);

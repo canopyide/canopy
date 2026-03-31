@@ -7,6 +7,40 @@
     <meta http-equiv="Content-Security-Policy" content="" />
     <title>Canopy</title>
     <style>
+      /* ── Skeleton shimmer animation (GPU-accelerated via translateX) ── */
+      @keyframes skeleton-shimmer {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+
+      @keyframes skeleton-logo-shimmer {
+        0% {
+          opacity: 0.15;
+        }
+        50% {
+          opacity: 0.3;
+        }
+        100% {
+          opacity: 0.15;
+        }
+      }
+
+      @keyframes skeleton-safety-fade {
+        0%,
+        99% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          pointer-events: none;
+        }
+      }
+
+      /* ── Base skeleton container ── */
       #startup-skeleton {
         position: fixed;
         inset: 0;
@@ -14,28 +48,164 @@
         display: flex;
         flex-direction: column;
         background: var(--theme-surface-canvas, #19191a);
+        animation: skeleton-safety-fade 15s forwards;
+        transition: opacity 250ms ease-out;
       }
+      #startup-skeleton.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* ── Toolbar ── */
       .skeleton-toolbar {
         height: 48px;
         flex-shrink: 0;
         background: var(--theme-surface-sidebar, #131312);
         border-bottom: 1px solid var(--theme-border-default, #282828);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        -webkit-app-region: drag;
       }
+      .skeleton-toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+      }
+      .skeleton-toolbar-center {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+      }
+      .skeleton-toolbar-right {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        flex: 1;
+      }
+
+      /* ── Skeleton placeholder shapes ── */
+      .skel-shape {
+        position: relative;
+        overflow: hidden;
+        border-radius: 4px;
+        background: color-mix(
+          in oklch,
+          var(--theme-surface-sidebar, #131312),
+          var(--theme-text-primary, #e0e0e0) 5%
+        );
+      }
+      .skel-shape::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          color-mix(
+              in oklch,
+              var(--theme-surface-sidebar, #131312),
+              var(--theme-text-primary, #e0e0e0) 8%
+            )
+            50%,
+          transparent 100%
+        );
+        animation: skeleton-shimmer 1.5s linear infinite;
+      }
+      .skel-circle {
+        border-radius: 50%;
+      }
+      .skel-pill {
+        border-radius: 9999px;
+      }
+
+      /* ── Body layout ── */
       .skeleton-body {
         flex: 1;
         display: flex;
         min-height: 0;
       }
+
+      /* ── Sidebar ── */
       .skeleton-sidebar {
         width: 350px;
         flex-shrink: 0;
         background: var(--theme-surface-sidebar, #131312);
         border-right: 1px solid var(--theme-border-default, #282828);
+        padding: 12px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
       }
+      .skeleton-sidebar-header {
+        padding: 4px 16px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* ── Worktree card skeleton ── */
+      .skel-card {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--theme-border-default, #282828);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .skel-card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .skel-card-details {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding-left: 4px;
+      }
+      .skel-card-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* ── Main content area ── */
       .skeleton-main {
         flex: 1;
         background: var(--theme-surface-canvas, #19191a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
+
+      /* ── Canopy logo in main area ── */
+      .skeleton-logo-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      .skeleton-logo {
+        color: var(--theme-text-primary, #e0e0e0);
+        opacity: 0.15;
+        animation: skeleton-logo-shimmer 2.5s ease-in-out infinite;
+      }
+      .skeleton-logo-text {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        color: var(--theme-text-primary, #e0e0e0);
+        opacity: 0;
+        animation: skeleton-logo-shimmer 2.5s ease-in-out infinite;
+        animation-delay: 0.3s;
+      }
+
+      /* ── Light mode overrides ── */
       @media (prefers-color-scheme: light) {
         #startup-skeleton {
           background: var(--theme-surface-canvas, #f6f4ef);
@@ -51,29 +221,177 @@
         .skeleton-main {
           background: var(--theme-surface-canvas, #f6f4ef);
         }
-      }
-      @keyframes skeleton-safety-fade {
-        0%,
-        99% {
-          opacity: 1;
+        .skel-shape {
+          background: color-mix(
+            in oklch,
+            var(--theme-surface-sidebar, #ebe7de),
+            var(--theme-text-primary, #1a1a1a) 5%
+          );
         }
-        100% {
-          opacity: 0;
-          pointer-events: none;
+        .skel-shape::after {
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            color-mix(
+                in oklch,
+                var(--theme-surface-sidebar, #ebe7de),
+                var(--theme-text-primary, #1a1a1a) 8%
+              )
+              50%,
+            transparent 100%
+          );
+        }
+        .skel-card {
+          border-bottom-color: var(--theme-border-default, #d8d2c6);
         }
       }
-      #startup-skeleton {
-        animation: skeleton-safety-fade 10s forwards;
+
+      /* ── Reduced motion ── */
+      @media (prefers-reduced-motion: reduce) {
+        .skel-shape::after {
+          animation: none;
+        }
+        .skeleton-logo {
+          animation: none;
+          opacity: 0.12;
+        }
+        .skeleton-logo-text {
+          animation: none;
+          opacity: 0.12;
+        }
       }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <div id="startup-skeleton">
-      <div class="skeleton-toolbar"></div>
+    <div id="startup-skeleton" aria-live="polite" aria-busy="true">
+      <span
+        class="sr-only"
+        style="
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+          border: 0;
+        "
+        >Loading project…</span
+      >
+
+      <!-- Toolbar -->
+      <div class="skeleton-toolbar">
+        <div class="skeleton-toolbar-left">
+          <div class="skel-shape" style="width: 28px; height: 28px; border-radius: 6px"></div>
+          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+        </div>
+        <div class="skeleton-toolbar-center">
+          <div class="skel-shape skel-pill" style="width: 160px; height: 28px"></div>
+        </div>
+        <div class="skeleton-toolbar-right">
+          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+        </div>
+      </div>
+
+      <!-- Body -->
       <div class="skeleton-body">
-        <div class="skeleton-sidebar"></div>
-        <div class="skeleton-main"></div>
+        <!-- Sidebar with worktree card skeletons -->
+        <div class="skeleton-sidebar" aria-hidden="true">
+          <!-- Sidebar header -->
+          <div class="skeleton-sidebar-header">
+            <div class="skel-shape skel-pill" style="width: 100%; height: 32px"></div>
+          </div>
+
+          <!-- Card 1 (active) -->
+          <div class="skel-card">
+            <div class="skel-card-header">
+              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
+              <div class="skel-shape skel-pill" style="width: 65%; height: 14px"></div>
+            </div>
+            <div class="skel-card-details">
+              <div class="skel-shape" style="width: 80%; height: 10px"></div>
+              <div class="skel-card-row">
+                <div class="skel-shape" style="width: 45%; height: 10px"></div>
+                <div class="skel-shape skel-pill" style="width: 40px; height: 16px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="skel-card">
+            <div class="skel-card-header">
+              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
+              <div class="skel-shape skel-pill" style="width: 50%; height: 14px"></div>
+            </div>
+            <div class="skel-card-details">
+              <div class="skel-shape" style="width: 70%; height: 10px"></div>
+              <div class="skel-card-row">
+                <div class="skel-shape" style="width: 35%; height: 10px"></div>
+                <div class="skel-shape skel-pill" style="width: 32px; height: 16px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="skel-card">
+            <div class="skel-card-header">
+              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
+              <div class="skel-shape skel-pill" style="width: 55%; height: 14px"></div>
+            </div>
+            <div class="skel-card-details">
+              <div class="skel-shape" style="width: 60%; height: 10px"></div>
+              <div class="skel-card-row">
+                <div class="skel-shape" style="width: 40%; height: 10px"></div>
+                <div class="skel-shape skel-pill" style="width: 36px; height: 16px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="skel-card">
+            <div class="skel-card-header">
+              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
+              <div class="skel-shape skel-pill" style="width: 45%; height: 14px"></div>
+            </div>
+            <div class="skel-card-details">
+              <div class="skel-shape" style="width: 75%; height: 10px"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main content area with Canopy logo -->
+        <div class="skeleton-main" aria-hidden="true">
+          <div class="skeleton-logo-container">
+            <svg
+              class="skeleton-logo"
+              viewBox="0 0 1005.94 765.22"
+              width="64"
+              height="64"
+              fill="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M1005.9368 411.1135L1005.9368 522.5455C1005.9368 525.8955 1003.2218 528.6105 999.8718 528.6105L917.4758 528.6105C914.1268 528.6105 911.4118 525.8955 911.4118 522.5455L911.4118 410.9295C911.4118 352.5275 880.2578 298.5645 829.6798 269.3525L584.6908 127.9065C534.1018 98.7165 471.7948 98.7165 421.2058 127.9065L176.2498 269.3525C125.6608 298.5645 94.5178 352.5275 94.5178 410.9295L94.5178 511.6505C94.5178 512.0175 94.5178 512.3765 94.4898 523.8025C94.4808 527.1465 91.7678 529.8585 88.4248 529.8585L6.0678 529.8585C2.7188 529.8585 0.0028 527.1435 0.0028 523.7935L0.0028 411.1355C0.0028 318.8445 49.2358 233.5755 129.1438 187.4145L373.8178 46.1525C453.7378 0.0025 552.2128 0.0025 632.1438 46.1525L876.7738 187.3815C956.7048 233.5325 1005.9368 318.8125 1005.9368 411.1135"
+              />
+              <path
+                d="M544.1786 765.2201L461.7956 765.2201C458.4466 765.2201 455.7306 762.5051 455.7306 759.1551L455.7306 214.1571C455.7306 212.8141 456.1586 211.4951 456.9986 210.4461C468.7626 195.7541 485.8556 188.3821 502.9736 188.3821C520.0666 188.3821 537.1856 195.7551 548.9516 210.4761C549.7896 211.5241 550.2166 212.8411 550.2166 214.1831L550.2436 759.1551C550.2436 762.5041 547.5286 765.2201 544.1786 765.2201"
+              />
+              <path
+                d="M361.1587 522.4437L361.1587 676.7327C361.1587 680.0817 358.4437 682.7977 355.0937 682.7977L272.7107 682.7977C269.3617 682.7977 266.6457 680.0817 266.6457 676.7327L266.6457 522.5827C266.6457 489.1367 248.7647 458.2307 219.7897 441.4807L183.2937 420.3927C182.0697 419.6857 181.1047 418.5817 180.6397 417.2457C180.6377 417.2387 180.6347 417.2317 180.6327 417.2247C177.9277 410.2437 176.6587 403.0957 176.6587 396.1417C176.6587 368.1387 196.9157 342.4997 226.5607 337.8907C227.9467 337.6747 229.3667 337.9207 230.5827 338.6197L267.1977 359.6887C325.3407 393.2717 361.1587 455.3047 361.1587 522.4437"
+              />
+              <path
+                d="M829.2509 396.1419C829.2509 403.1239 827.9819 410.2709 825.2769 417.2519C825.2549 417.3119 825.2329 417.3719 825.2099 417.4319C824.7239 418.7199 823.7829 419.7849 822.5899 420.4719L786.1479 441.4809C757.1729 458.2309 739.2919 489.1369 739.2919 522.5829L739.2919 677.4509C739.2919 680.7999 736.5769 683.5159 733.2269 683.5159L650.8439 683.5159C647.4949 683.5159 644.7789 680.7999 644.7789 677.4509L644.7789 522.4439C644.7789 455.3049 680.5979 393.2719 738.7949 359.6889L775.3259 338.6239C776.5429 337.9219 777.9649 337.6749 779.3529 337.8909C808.9949 342.5019 829.2509 368.1399 829.2509 396.1419"
+              />
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
