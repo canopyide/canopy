@@ -1159,7 +1159,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     const barContent = (
       <div
-        className="group cursor-text px-3 pb-2.5 pt-2.5"
+        className="group cursor-text px-3.5 pb-2.5 pt-2.5"
         style={{ backgroundColor: inputBarColors.background, ...shellVars }}
       >
         <div className="flex items-end gap-2">
@@ -1217,7 +1217,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               type="button"
               onClick={openPicker}
               disabled={disabled}
-              className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-canopy-accent/50 hover:text-canopy-accent/75 transition-colors cursor-pointer focus-visible:outline-none"
+              className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-canopy-accent/65 hover:text-canopy-accent/85 transition-colors cursor-pointer focus-visible:outline-none"
               aria-label="Open command picker"
             >
               ❯
@@ -1237,7 +1237,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 <button
                   type="button"
                   onClick={handlePopStash}
-                  className="flex items-center justify-center h-5 w-5 rounded-sm text-canopy-accent/40 hover:text-canopy-accent/65 hover:bg-tint/[0.06] transition-colors cursor-pointer"
+                  className="flex items-center justify-center h-5 w-5 rounded-sm text-canopy-accent/55 hover:text-canopy-accent/80 hover:bg-tint/[0.06] transition-colors cursor-pointer"
                   aria-label="Restore stashed input"
                   title="Restore stashed input (⌘⇧X)"
                 >
