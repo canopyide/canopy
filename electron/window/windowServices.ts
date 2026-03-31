@@ -1,9 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
 import os from "os";
-import { randomBytes } from "crypto";
 import type { HandlerDependencies } from "../ipc/types.js";
 import { registerIpcHandlers, sendToRenderer } from "../ipc/handlers.js";
 import { getAppWebContents } from "./webContentsRegistry.js";
+import { distributePortsToView } from "./portDistribution.js";
 import { registerErrorHandlers, flushPendingErrors } from "../ipc/errorHandlers.js";
 import { PtyClient, disposePtyClient } from "../services/PtyClient.js";
 import {
@@ -151,38 +151,8 @@ export function setStopDiskSpaceMonitor(v: (() => void) | null): void {
 }
 
 function createAndDistributePorts(win: BrowserWindow, ctx: WindowContext): void {
-  if (ctx.services.activeRendererPort) {
-    try {
-      ctx.services.activeRendererPort.close();
-    } catch {
-      /* ignore */
-    }
-  }
-  if (ctx.services.activePtyHostPort) {
-    try {
-      ctx.services.activePtyHostPort.close();
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const { port1, port2 } = new MessageChannelMain();
-  const handshakeToken = randomBytes(32).toString("hex");
-
-  ctx.services.activeRendererPort = port1;
-  ctx.services.activePtyHostPort = port2;
-
-  if (ptyClient) {
-    ptyClient.connectMessagePort(ctx.windowId, port2);
-  }
-
-  if (win && !win.isDestroyed()) {
-    const wc = getAppWebContents(win);
-    if (!wc.isDestroyed()) {
-      wc.postMessage("terminal-port-token", { token: handshakeToken });
-      wc.postMessage("terminal-port", { token: handshakeToken }, [port1]);
-    }
-  }
+  const wc = getAppWebContents(win);
+  distributePortsToView(win, ctx, wc, ptyClient);
 }
 
 async function initializeDeferredServices(
@@ -439,13 +409,13 @@ export async function setupWindowServices(
     });
     ptyClient.setPortRefreshCallback(() => {
       console.log("[MAIN] Pty Host restarted, refreshing ports...");
-      // Refresh ports for ALL registered windows
+      // Refresh ports for ALL registered windows — target the active view
       if (windowRegistry) {
         for (const wCtx of windowRegistry.all()) {
           if (!wCtx.browserWindow.isDestroyed()) {
-            createAndDistributePorts(wCtx.browserWindow, wCtx);
             const wc = getAppWebContents(wCtx.browserWindow);
             if (!wc.isDestroyed()) {
+              distributePortsToView(wCtx.browserWindow, wCtx, wc, ptyClient);
               try {
                 wc.send(CHANNELS.TERMINAL_BACKEND_READY);
               } catch {

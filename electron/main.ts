@@ -24,6 +24,7 @@ import {
 import { WindowRegistry } from "./window/WindowRegistry.js";
 import { ProjectViewManager } from "./window/ProjectViewManager.js";
 import { setupBrowserWindow } from "./window/createWindow.js";
+import { distributePortsToView } from "./window/portDistribution.js";
 import {
   setupWindowServices,
   getPtyClient,
@@ -161,6 +162,17 @@ if (!gotTheLock) {
       windowRegistry,
       onViewEvicted: (wcId) => {
         getWorkspaceClientRef()?.removeDirectPort(wcId);
+      },
+      onViewReady: (wc) => {
+        // Re-distribute PTY MessagePort on every view load/reload.
+        // This ensures terminals work after view creation, crash recovery, or DevTools refresh.
+        if (win.isDestroyed() || wc.isDestroyed()) return;
+        const wCtx = windowRegistry.getByWindowId(win.id);
+        if (wCtx) {
+          distributePortsToView(win, wCtx, wc, getPtyClient());
+        }
+        // Refresh workspace direct port (preload context is reset on reload)
+        getWorkspaceClientRef()?.attachDirectPort(win.id, wc);
       },
     });
     setProjectViewManager(pvm);

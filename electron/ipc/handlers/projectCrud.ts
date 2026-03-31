@@ -1,5 +1,6 @@
 import { ipcMain, dialog } from "electron";
 import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
+import { distributePortsToView } from "../../window/portDistribution.js";
 import path from "path";
 import { CHANNELS } from "../channels.js";
 import { projectStore } from "../../services/ProjectStore.js";
@@ -205,12 +206,24 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         }
       }
 
-      // Notify PTY host of the active project
-      if (deps.ptyClient) {
+      // Notify PTY host of the active project and distribute a fresh
+      // MessagePort to the new/reactivated view so terminal data flows.
+      {
         const senderWindow = getWindowForWebContents(_event.sender);
         const windowId = senderWindow?.id ?? deps.mainWindow?.id;
         if (windowId !== undefined) {
-          deps.ptyClient.onProjectSwitch(windowId, projectId);
+          if (deps.ptyClient) {
+            deps.ptyClient.onProjectSwitch(windowId, projectId);
+          }
+
+          // Distribute PTY MessagePort to the switched-to view
+          const win = senderWindow ?? deps.mainWindow;
+          if (win && deps.windowRegistry && !view.webContents.isDestroyed()) {
+            const ctx = deps.windowRegistry.getByWindowId(win.id);
+            if (ctx) {
+              distributePortsToView(win, ctx, view.webContents, deps.ptyClient ?? null);
+            }
+          }
         }
       }
 
@@ -446,11 +459,22 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         }
       }
 
-      if (deps.ptyClient) {
+      // Notify PTY host of the active project and distribute a fresh MessagePort
+      {
         const senderWindow = getWindowForWebContents(event.sender);
         const windowId = senderWindow?.id ?? deps.mainWindow?.id;
         if (windowId !== undefined) {
-          deps.ptyClient.onProjectSwitch(windowId, projectId);
+          if (deps.ptyClient) {
+            deps.ptyClient.onProjectSwitch(windowId, projectId);
+          }
+
+          const win = senderWindow ?? deps.mainWindow;
+          if (win && deps.windowRegistry && !view.webContents.isDestroyed()) {
+            const ctx = deps.windowRegistry.getByWindowId(win.id);
+            if (ctx) {
+              distributePortsToView(win, ctx, view.webContents, deps.ptyClient ?? null);
+            }
+          }
         }
       }
 

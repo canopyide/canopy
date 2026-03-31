@@ -43,6 +43,8 @@ export interface ProjectViewManagerOptions {
   windowRegistry?: import("./WindowRegistry.js").WindowRegistry;
   /** Called when a view is evicted (destroyed) with its webContents.id, for port cleanup */
   onViewEvicted?: (webContentsId: number) => void;
+  /** Called on every did-finish-load for any managed view (initial load and reloads) */
+  onViewReady?: (webContents: Electron.WebContents) => void;
 }
 
 export class ProjectViewManager {
@@ -53,6 +55,7 @@ export class ProjectViewManager {
   private dirname: string;
   private onRecreateWindow?: () => Promise<void>;
   private onViewEvicted?: (webContentsId: number) => void;
+  private onViewReady?: (webContents: Electron.WebContents) => void;
   private windowRegistry?: import("./WindowRegistry.js").WindowRegistry;
   private switchChain: Promise<void> = Promise.resolve();
   private resizeHandler: (() => void) | null = null;
@@ -62,6 +65,7 @@ export class ProjectViewManager {
     this.dirname = opts.dirname;
     this.onRecreateWindow = opts.onRecreateWindow;
     this.onViewEvicted = opts.onViewEvicted;
+    this.onViewReady = opts.onViewReady;
     this.windowRegistry = opts.windowRegistry;
 
     // Single resize handler that always updates the active view's bounds.
@@ -400,6 +404,17 @@ export class ProjectViewManager {
         ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
         !input.alt;
       wc.setIgnoreMenuShortcuts(isCloseShortcut);
+    });
+
+    // Fire onViewReady on load/reload, but ONLY for the active view.
+    // A cached view reloading (e.g. after crash recovery) must not steal
+    // the PTY MessagePort from the currently visible view.
+    wc.on("did-finish-load", () => {
+      if (wc.isDestroyed()) return;
+      const projectId = this.webContentsToProject.get(wc.id);
+      if (projectId && projectId === this.activeProjectId) {
+        this.onViewReady?.(wc);
+      }
     });
 
     wc.on("render-process-gone", (_event, details) => {
