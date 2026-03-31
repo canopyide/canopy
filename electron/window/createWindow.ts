@@ -117,7 +117,7 @@ export function setupBrowserWindow(
   dirname: string,
   options: SetupBrowserWindowOptions = {}
 ): CreateWindowResult {
-  const { onRecreateWindow, onCreateWindow, projectPath, initialProjectId } = options;
+  const { onRecreateWindow, onCreateWindow, projectPath } = options;
   let smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   let _smokeRendererUnresponsive = false;
 
@@ -201,21 +201,15 @@ export function setupBrowserWindow(
   registerWebContents(win.webContents, win);
 
   // ── Create WebContentsView for the React app ──
-  // When initialProjectId is available (returning user), use a per-project session partition
-  // for crash isolation, V8 code cache, and storage scoping. Falls back to default session
-  // on first launch (no project yet).
-  const viewSession = initialProjectId
-    ? session.fromPartition(`persist:project-${initialProjectId}`)
-    : undefined;
-  if (viewSession) {
-    const dist = getDistPath();
-    if (dist) registerProtocolsForSession(viewSession, dist);
-  }
+  // All project views share a single session partition for V8 code cache reuse.
+  const viewSession = session.fromPartition("persist:canopy-app");
+  const dist = getDistPath();
+  if (dist) registerProtocolsForSession(viewSession, dist);
 
   const appView = new WebContentsView({
     webPreferences: {
       preload: path.join(dirname, "preload.cjs"),
-      ...(viewSession ? { session: viewSession } : {}),
+      session: viewSession,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
