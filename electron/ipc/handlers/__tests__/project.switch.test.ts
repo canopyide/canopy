@@ -142,9 +142,9 @@ describe("project:switch multi-window PVM routing", () => {
 
     registerProjectCrudHandlers(deps);
 
-    const handleMap = new Map<string, Function>();
+    const handleMap = new Map<string, (...args: unknown[]) => unknown>();
     for (const call of (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls) {
-      handleMap.set(call[0] as string, call[1] as Function);
+      handleMap.set(call[0] as string, call[1] as (...args: unknown[]) => unknown);
     }
 
     const handler = handleMap.get(CHANNELS.PROJECT_SWITCH);
@@ -187,9 +187,9 @@ describe("project:switch multi-window PVM routing", () => {
 
     registerProjectCrudHandlers(deps);
 
-    const handleMap = new Map<string, Function>();
+    const handleMap = new Map<string, (...args: unknown[]) => unknown>();
     for (const call of (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls) {
-      handleMap.set(call[0] as string, call[1] as Function);
+      handleMap.set(call[0] as string, call[1] as (...args: unknown[]) => unknown);
     }
 
     const handler = handleMap.get(CHANNELS.PROJECT_SWITCH);
@@ -228,9 +228,9 @@ describe("project:switch multi-window PVM routing", () => {
 
     registerProjectCrudHandlers(deps);
 
-    const handleMap = new Map<string, Function>();
+    const handleMap = new Map<string, (...args: unknown[]) => unknown>();
     for (const call of (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls) {
-      handleMap.set(call[0] as string, call[1] as Function);
+      handleMap.set(call[0] as string, call[1] as (...args: unknown[]) => unknown);
     }
 
     const handler = handleMap.get(CHANNELS.PROJECT_GET_CURRENT);
@@ -281,9 +281,9 @@ describe("project:switch multi-window PVM routing", () => {
 
     registerProjectCrudHandlers(deps);
 
-    const handleMap = new Map<string, Function>();
+    const handleMap = new Map<string, (...args: unknown[]) => unknown>();
     for (const call of (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls) {
-      handleMap.set(call[0] as string, call[1] as Function);
+      handleMap.set(call[0] as string, call[1] as (...args: unknown[]) => unknown);
     }
 
     const handler = handleMap.get(CHANNELS.PROJECT_REOPEN);
