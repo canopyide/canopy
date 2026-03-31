@@ -270,6 +270,62 @@ describe("GPU memory flags", () => {
   });
 });
 
+describe("Chromium feature flags", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    process.argv = ["electron", "main.js"];
+    delete process.env.XDG_SESSION_TYPE;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    process.argv = originalArgv;
+    delete process.env.XDG_SESSION_TYPE;
+  });
+
+  it("always includes PartitionAllocMemoryReclaimer in enable-features", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
+    fsMock.existsSync.mockReturnValue(false);
+
+    await import("../environment.js");
+
+    const { app } = await import("electron");
+    const calls = vi.mocked(app.commandLine.appendSwitch).mock.calls;
+    const enableCall = calls.find(([key]) => key === "enable-features");
+    expect(enableCall).toBeDefined();
+    expect(enableCall![1]).toBe("PartitionAllocMemoryReclaimer");
+  });
+
+  it("merges WaylandWindowDecorations with PartitionAllocMemoryReclaimer on Linux Wayland", async () => {
+    Object.defineProperty(process, "platform", { value: "linux", writable: true });
+    process.env.XDG_SESSION_TYPE = "wayland";
+    fsMock.existsSync.mockReturnValue(false);
+
+    await import("../environment.js");
+
+    const { app } = await import("electron");
+    const calls = vi.mocked(app.commandLine.appendSwitch).mock.calls;
+    const enableCalls = calls.filter(([key]) => key === "enable-features");
+    expect(enableCalls).toHaveLength(1);
+    expect(enableCalls[0][1]).toBe("PartitionAllocMemoryReclaimer,WaylandWindowDecorations");
+  });
+
+  it("does not include WaylandWindowDecorations on Linux non-Wayland", async () => {
+    Object.defineProperty(process, "platform", { value: "linux", writable: true });
+    fsMock.existsSync.mockReturnValue(false);
+
+    await import("../environment.js");
+
+    const { app } = await import("electron");
+    const calls = vi.mocked(app.commandLine.appendSwitch).mock.calls;
+    const enableCall = calls.find(([key]) => key === "enable-features");
+    expect(enableCall![1]).toBe("PartitionAllocMemoryReclaimer");
+    const imeCalls = calls.filter(([key]) => key === "enable-wayland-ime");
+    expect(imeCalls).toHaveLength(0);
+  });
+});
+
 describe("reset-data", () => {
   beforeEach(() => {
     vi.resetModules();

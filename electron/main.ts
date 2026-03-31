@@ -82,19 +82,21 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-// V8 tuning for renderer processes: heap limits and GC exposure
+// V8 tuning for renderer processes: heap limits, GC exposure, and bytecode flushing
 app.commandLine.appendSwitch(
   "js-flags",
-  "--max-old-space-size=768 --max-semi-space-size=64 --expose-gc"
+  "--max-old-space-size=768 --max-semi-space-size=64 --expose-gc --flush-bytecode-on-context-dispose"
 );
 
 // Keep the renderer process at full priority and prevent AudioContext suspension
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
-if (process.platform === "darwin") {
-  app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
-}
+// Disable unused Chromium features: BackForwardCache wastes memory (no browser navigation),
+// CalculateNativeWinOcclusion causes unnecessary power usage on macOS
+const disabledFeatures = ["BackForwardCache"];
+if (process.platform === "darwin") disabledFeatures.push("CalculateNativeWinOcclusion");
+app.commandLine.appendSwitch("disable-features", disabledFeatures.join(","));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
