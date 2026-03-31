@@ -20,7 +20,6 @@ import {
 import {
   forceReinitializeWorktreeDataStore,
   setWorktreeLoadError,
-  useWorktreeDataStore,
 } from "@/store/worktreeDataStore";
 
 interface ProjectSwitchedEventDetail {
@@ -28,6 +27,7 @@ interface ProjectSwitchedEventDetail {
   projectId: string;
   worktreeLoadError?: string;
   hydrateResult?: import("@shared/types/ipc/app").HydrateResult;
+  worktreeScopeId?: string;
 }
 
 export function useProjectSwitchRehydration() {
@@ -67,6 +67,7 @@ export function useProjectSwitchRehydration() {
       const projectId = customEvent.detail?.projectId;
       const worktreeLoadError = customEvent.detail?.worktreeLoadError;
       const prefetchedHydrateResult = customEvent.detail?.hydrateResult;
+      const worktreeScopeId = customEvent.detail?.worktreeScopeId;
 
       if (!switchId || !projectId) {
         console.error(
@@ -78,10 +79,10 @@ export function useProjectSwitchRehydration() {
       if (worktreeLoadError) {
         setWorktreeLoadError(projectId, worktreeLoadError);
       } else {
-        const storeState = useWorktreeDataStore.getState();
-        if (!(storeState.projectId === projectId && storeState.isInitialized)) {
-          forceReinitializeWorktreeDataStore(projectId);
-        }
+        // Always call forceReinitialize — it clears the isSwitching lock set by
+        // prePopulateWorktreeSnapshot(), reattaches IPC listeners with the current
+        // scopeId, and fetches fresh worktree data from the backend.
+        forceReinitializeWorktreeDataStore(projectId, worktreeScopeId);
       }
 
       currentSwitchIdRef.current = switchId;
@@ -158,13 +159,19 @@ export function useProjectSwitchRehydration() {
     window.addEventListener("project-switched", handleProjectSwitch);
 
     const cleanup = projectClient.onSwitch((payload) => {
-      const { project, switchId, worktreeLoadError, hydrateResult } = payload;
+      const { project, switchId, worktreeLoadError, hydrateResult, worktreeScopeId } = payload;
       console.log(
         `[useProjectSwitchRehydration] Received PROJECT_ON_SWITCH from main process (project: ${project.name}, switchId: ${switchId}, hasHydrateResult: ${Boolean(hydrateResult)}), re-hydrating...`
       );
       window.dispatchEvent(
         new CustomEvent<ProjectSwitchedEventDetail>("project-switched", {
-          detail: { switchId, projectId: project.id, worktreeLoadError, hydrateResult },
+          detail: {
+            switchId,
+            projectId: project.id,
+            worktreeLoadError,
+            hydrateResult,
+            worktreeScopeId,
+          },
         })
       );
     });

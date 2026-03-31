@@ -777,8 +777,14 @@ const api: ElectronAPI = {
     getAllIssueAssociations: (): Promise<Record<string, IssueAssociation>> =>
       _unwrappingInvoke(CHANNELS.WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS),
 
-    onUpdate: (callback: (state: WorktreeState) => void) =>
-      _typedOn(CHANNELS.WORKTREE_UPDATE, callback),
+    onUpdate: (callback: (state: WorktreeState, scopeId: string) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: { worktree: WorktreeState; scopeId: string }
+      ) => callback(payload.worktree, payload.scopeId);
+      ipcRenderer.on(CHANNELS.WORKTREE_UPDATE, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.WORKTREE_UPDATE, handler);
+    },
 
     onRemove: (callback: (data: { worktreeId: string }) => void) =>
       _typedOn(CHANNELS.WORKTREE_REMOVE, callback),

@@ -413,10 +413,112 @@ describe("WorkspaceClient multi-process manager", () => {
           name: "wt",
           branch: "main",
         },
+        projectScopeId: "scope-a",
       });
 
       expect(mockWindow1.webContents.send).toHaveBeenCalled();
       expect(mockWindow2.webContents.send).not.toHaveBeenCalled();
+    });
+
+    it("includes scopeId in worktree-update payload sent to renderer", async () => {
+      const mockWindow = {
+        id: 1,
+        isDestroyed: vi.fn(() => false),
+        webContents: { isDestroyed: vi.fn(() => false), send: vi.fn() },
+      };
+      vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([mockWindow] as any);
+
+      const load = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      const scopeId = await load;
+
+      h(0).emit("host-event", {
+        type: "worktree-update",
+        worktree: { id: "wt-1", path: "/a/wt", name: "wt", branch: "main" },
+        projectScopeId: "scope-a",
+      });
+
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith("worktree:update", {
+        worktree: expect.objectContaining({ id: "wt-1" }),
+        scopeId,
+      });
+    });
+  });
+
+  describe("early windowId detachment during project switch", () => {
+    it("prevents old host events from reaching renderer during new host init", async () => {
+      const mockWindow = {
+        id: 1,
+        isDestroyed: vi.fn(() => false),
+        webContents: { isDestroyed: vi.fn(() => false), send: vi.fn() },
+      };
+      vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([mockWindow] as any);
+
+      // Load project A
+      const load1 = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load1;
+
+      // Start switching to project B (don't resolve yet)
+      const load2 = client.loadProject("/project-b", 1);
+      expect(mockHosts).toHaveLength(2);
+
+      // Old host (A) emits a worktree-update during B's init — should NOT reach renderer
+      mockWindow.webContents.send.mockClear();
+      h(0).emit("host-event", {
+        type: "worktree-update",
+        worktree: { id: "wt-a", path: "/a/wt", name: "wt-a", branch: "main" },
+        projectScopeId: "scope-a",
+      });
+
+      expect(mockWindow.webContents.send).not.toHaveBeenCalled();
+
+      // Complete B's init
+      await readyAndResolveLoad(1);
+      await load2;
+    });
+
+    it("restores old host event routing when new host init fails", async () => {
+      const mockWindow = {
+        id: 1,
+        isDestroyed: vi.fn(() => false),
+        webContents: { isDestroyed: vi.fn(() => false), send: vi.fn() },
+      };
+      vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([mockWindow] as any);
+
+      // Load project A
+      const load1 = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load1;
+
+      // Start switching to project B
+      const load2 = client.loadProject("/project-b", 1);
+
+      // Fail B's init
+      h(1).simulateReady();
+      await tick();
+      const req = h(1).getLastRequest()!;
+      h(1).rejectRequest(req.requestId, new Error("Init failed"));
+      await expect(load2).rejects.toThrow("Init failed");
+
+      // Old host (A) events should work again after rollback
+      mockWindow.webContents.send.mockClear();
+      h(0).emit("host-event", {
+        type: "worktree-update",
+        worktree: { id: "wt-a", path: "/a/wt", name: "wt-a", branch: "main" },
+        projectScopeId: "scope-a",
+      });
+
+      expect(mockWindow.webContents.send).toHaveBeenCalled();
+    });
+
+    it("returns scopeId from loadProject", async () => {
+      const load = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      const scopeId = await load;
+
+      expect(typeof scopeId).toBe("string");
+      expect(scopeId.length).toBeGreaterThan(0);
     });
   });
 

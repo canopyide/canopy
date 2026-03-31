@@ -22,6 +22,8 @@ export interface ProjectSwitchPayload {
   worktreeLoadError?: string;
   /** Pre-built hydration data to skip the redundant APP_HYDRATE IPC round-trip */
   hydrateResult?: HydrateResult;
+  /** Scope ID of the workspace host entry for the new project */
+  worktreeScopeId?: string;
 }
 
 /** Result from project:close operation */
