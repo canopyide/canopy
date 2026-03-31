@@ -27,6 +27,7 @@ import { sendToRenderer } from "../ipc/handlers.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { notifyError } from "../ipc/errorHandlers.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
+import { injectSkeletonCss } from "./skeletonCss.js";
 import { markPerformance } from "../utils/performance.js";
 import { registerProtocolsForSession, getDistPath } from "../setup/protocols.js";
 import { isSmokeTest } from "../setup/environment.js";
@@ -300,6 +301,9 @@ export function setupBrowserWindow(
   const loadRenderer = (reason: string, projectId?: string): void => {
     if (!win || win.isDestroyed() || rendererLoadRequested) return;
     rendererLoadRequested = true;
+
+    injectSkeletonCss(appWebContents);
+
     const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     console.log(`[MAIN] Loading renderer (${reason})...`);
     if (process.env.NODE_ENV === "development") {

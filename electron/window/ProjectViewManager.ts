@@ -21,6 +21,7 @@ import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { notifyError } from "../ipc/errorHandlers.js";
+import { injectSkeletonCss } from "./skeletonCss.js";
 
 const MAX_CACHED_VIEWS = 2;
 const CRASH_LOOP_WINDOW_MS = 60_000;
@@ -327,6 +328,8 @@ export class ProjectViewManager {
         clearTimeout(timeout);
         reject(new Error(`View load failed: ${errorDescription} (${errorCode})`));
       });
+
+      injectSkeletonCss(wc);
 
       const encodedId = encodeURIComponent(projectId);
       if (process.env.NODE_ENV === "development") {
