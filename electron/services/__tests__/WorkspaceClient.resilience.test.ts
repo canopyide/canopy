@@ -108,6 +108,7 @@ vi.mock("../events.js", () => ({
   },
 }));
 
+import path from "path";
 import { WorkspaceClient } from "../WorkspaceClient.js";
 import { BrowserWindow } from "electron";
 
@@ -152,13 +153,13 @@ describe("WorkspaceClient multi-process manager", () => {
       const loadPromise = client.loadProject("/project-a", 1);
 
       expect(mockHosts).toHaveLength(1);
-      expect(h(0).projectPath).toBe("/project-a");
+      expect(h(0).projectPath).toBe(path.resolve("/project-a"));
 
       h(0).simulateReady();
       await tick();
       const req = h(0).getLastRequest()!;
       expect(req.type).toBe("load-project");
-      expect(req.rootPath).toBe("/project-a");
+      expect(req.rootPath).toBe(path.resolve("/project-a"));
       h(0).resolveRequest(req.requestId);
 
       await loadPromise;
@@ -181,7 +182,7 @@ describe("WorkspaceClient multi-process manager", () => {
 
       const load2 = client.loadProject("/project-b", 2);
       expect(mockHosts).toHaveLength(2);
-      expect(h(1).projectPath).toBe("/project-b");
+      expect(h(1).projectPath).toBe(path.resolve("/project-b"));
 
       await readyAndResolveLoad(1);
       await load2;
@@ -652,7 +653,7 @@ describe("WorkspaceClient multi-process manager", () => {
       const reloadReq = h(0)
         .getAllRequests()
         .filter((r: any) => r.type === "load-project")[1];
-      expect(reloadReq.rootPath).toBe("/project-a");
+      expect(reloadReq.rootPath).toBe(path.resolve("/project-a"));
     });
   });
 

@@ -174,6 +174,7 @@ describe("appTheme handlers", () => {
     const mockWindow = {
       isDestroyed: () => false,
       setBackgroundColor: vi.fn(),
+      setTitleBarOverlay: vi.fn(),
     };
     storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
     nativeThemeMock.shouldUseDarkColors = false;
@@ -194,6 +195,7 @@ describe("appTheme handlers", () => {
     const mockWindow = {
       isDestroyed: () => false,
       setBackgroundColor: vi.fn(),
+      setTitleBarOverlay: vi.fn(),
     };
     storeState.data.appTheme = {
       colorSchemeId: "daintree",
@@ -219,6 +221,7 @@ describe("appTheme handlers", () => {
     const mockWindow = {
       isDestroyed: () => false,
       setBackgroundColor: vi.fn(),
+      setTitleBarOverlay: vi.fn(),
     };
     storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
 
@@ -239,6 +242,7 @@ describe("appTheme handlers", () => {
     const mockWindow = {
       isDestroyed: () => false,
       setBackgroundColor: vi.fn(),
+      setTitleBarOverlay: vi.fn(),
     };
     storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
 
@@ -258,6 +262,7 @@ describe("appTheme handlers", () => {
     const mockWindow = {
       isDestroyed: () => false,
       setBackgroundColor: vi.fn(),
+      setTitleBarOverlay: vi.fn(),
     };
     storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
     nativeThemeMock.shouldUseDarkColors = true;
@@ -275,6 +280,7 @@ describe("appTheme handlers", () => {
     const mockWindow = {
       isDestroyed: () => true,
       setBackgroundColor: vi.fn(),
+      setTitleBarOverlay: vi.fn(),
     };
     storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
 
@@ -292,6 +298,7 @@ describe("appTheme handlers", () => {
     const mockWindow = {
       isDestroyed: () => false,
       setBackgroundColor: vi.fn(),
+      setTitleBarOverlay: vi.fn(),
     };
     storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
     nativeThemeMock.shouldUseDarkColors = false;

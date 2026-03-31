@@ -33,7 +33,7 @@ describe("agentSessionHistory", () => {
 
   it("returns correct path when userData is provided", () => {
     const p = getSessionHistoryPath("/tmp/test");
-    expect(p).toBe("/tmp/test/agent-session-history.json");
+    expect(p).toBe(path.join("/tmp/test", "agent-session-history.json"));
   });
 
   it("returns empty array when no history file exists", async () => {

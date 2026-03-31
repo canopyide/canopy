@@ -140,7 +140,7 @@ describe("CliInstallService", () => {
 
   describe("AppImage mode (Linux)", () => {
     const APPIMAGE_PATH = "/home/test/Canopy-x86_64.AppImage";
-    const WRAPPER_DIR = "/home/test/.local/share/canopy";
+    const WRAPPER_DIR = path.join("/home/test", ".local", "share", "canopy");
     const WRAPPER_PATH = path.join(WRAPPER_DIR, "canopy-cli.sh");
 
     beforeEach(() => {
@@ -194,7 +194,7 @@ describe("CliInstallService", () => {
 
     it("respects XDG_DATA_HOME override", async () => {
       process.env.XDG_DATA_HOME = "/custom/data";
-      const customWrapperDir = "/custom/data/canopy";
+      const customWrapperDir = path.join("/custom/data", "canopy");
       const customWrapperPath = path.join(customWrapperDir, "canopy-cli.sh");
 
       fsMock.existsSync.mockImplementation(
