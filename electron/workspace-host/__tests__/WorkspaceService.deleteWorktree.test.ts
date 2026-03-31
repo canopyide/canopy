@@ -152,7 +152,6 @@ describe("WorkspaceService.deleteWorktree", () => {
     WorktreeMonitorClass = WorktreeMonitorModule.WorktreeMonitor;
 
     service["projectRootPath"] = "/test/root";
-    service["projectScopeId"] = "test-scope";
     service["git"] = mockSimpleGit as any;
   });
 
@@ -174,7 +173,6 @@ describe("WorkspaceService.deleteWorktree", () => {
       { onUpdate: vi.fn() },
       "main"
     );
-    monitor.setProjectScopeId("test-scope");
     service["monitors"].set(wt.id, monitor);
     return monitor;
   }

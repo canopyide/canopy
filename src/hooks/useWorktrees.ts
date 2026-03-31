@@ -13,8 +13,6 @@ export interface UseWorktreesReturn {
   setActive: (id: string) => void;
 }
 
-const emptyMap = new Map<string, WorktreeState>();
-
 export function useWorktrees(): UseWorktreesReturn {
   const worktreeMap = useWorktreeDataStore((state) => state.worktrees);
   const isLoading = useWorktreeDataStore((state) => state.isLoading);
@@ -22,9 +20,6 @@ export function useWorktrees(): UseWorktreesReturn {
   const isInitialized = useWorktreeDataStore((state) => state.isInitialized);
   const initialize = useWorktreeDataStore((state) => state.initialize);
   const storeRefresh = useWorktreeDataStore((state) => state.refresh);
-
-  // In multi-view mode each project has its own renderer, so project mismatch cannot occur.
-  const projectMismatch = false;
 
   useEffect(() => {
     if (!isInitialized) {
@@ -40,10 +35,8 @@ export function useWorktrees(): UseWorktreesReturn {
     worktreeClient.setActive(id).catch(() => {});
   }, []);
 
-  const effectiveMap = projectMismatch ? emptyMap : worktreeMap;
-
   const worktrees = useMemo(() => {
-    return Array.from(effectiveMap.values()).sort((a, b) => {
+    return Array.from(worktreeMap.values()).sort((a, b) => {
       // Use isMainWorktree flag for consistent sorting
       if (a.isMainWorktree && !b.isMainWorktree) return -1;
       if (!a.isMainWorktree && b.isMainWorktree) return 1;
@@ -57,13 +50,13 @@ export function useWorktrees(): UseWorktreesReturn {
 
       return a.name.localeCompare(b.name);
     });
-  }, [effectiveMap]);
+  }, [worktreeMap]);
 
   return {
     worktrees,
-    worktreeMap: effectiveMap,
+    worktreeMap,
     activeId: worktrees.length > 0 ? worktrees[0].id : null,
-    isLoading: isLoading || projectMismatch,
+    isLoading,
     error,
     refresh,
     setActive,

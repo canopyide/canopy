@@ -129,20 +129,7 @@ port.on("message", async (rawMsg: any) => {
 
     switch (request.type) {
       case "load-project":
-        if (!request.projectScopeId || typeof request.projectScopeId !== "string") {
-          sendEvent({
-            type: "load-project-result",
-            requestId: request.requestId,
-            success: false,
-            error: "Invalid projectScopeId: must be a non-empty string",
-          });
-          break;
-        }
-        await workspaceService.loadProject(
-          request.requestId,
-          request.rootPath,
-          request.projectScopeId
-        );
+        await workspaceService.loadProject(request.requestId, request.rootPath);
         break;
 
       case "sync":

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeState } from "@shared/types";
 import type { useWorktreeDataStore as UseWorktreeDataStoreType } from "../worktreeDataStore";
 
-let onUpdateCallback: ((state: WorktreeState, scopeId: string) => void) | null = null;
+let onUpdateCallback: ((state: WorktreeState) => void) | null = null;
 
 const getAllMock = vi.fn();
 const refreshMock = vi.fn();
@@ -12,7 +12,7 @@ vi.mock("@/clients", () => ({
     getAll: getAllMock,
     refresh: refreshMock,
     getAllIssueAssociations: vi.fn().mockResolvedValue({}),
-    onUpdate: vi.fn((callback: (state: WorktreeState, scopeId: string) => void) => {
+    onUpdate: vi.fn((callback: (state: WorktreeState) => void) => {
       onUpdateCallback = callback;
       return () => {
         onUpdateCallback = null;
@@ -125,16 +125,13 @@ describe("worktreeDataStore.refresh", () => {
       expect(onUpdateCallback).toBeTypeOf("function");
     });
 
-    onUpdateCallback?.(
-      {
-        ...feature,
-        prNumber: 42,
-        prUrl: "https://example.com/pr/42",
-        prState: "open",
-        prTitle: "WIP PR",
-      },
-      "test-scope"
-    );
+    onUpdateCallback?.({
+      ...feature,
+      prNumber: 42,
+      prUrl: "https://example.com/pr/42",
+      prState: "open",
+      prTitle: "WIP PR",
+    });
 
     // Refresh returns a partial snapshot (missing PR metadata) plus a newly created worktree.
     const created = createMockWorktree("feature-new");

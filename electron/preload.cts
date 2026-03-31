@@ -149,7 +149,6 @@ ipcRenderer.on("workspace-port", (event: Electron.IpcRendererEvent) => {
       case "worktree-update":
         ipcRenderer.emit(CHANNELS.WORKTREE_UPDATE, fakeEvent, {
           worktree: data.worktree,
-          scopeId: data.projectScopeId,
         });
         break;
       case "worktree-removed":
@@ -850,11 +849,9 @@ const api: ElectronAPI = {
     getAllIssueAssociations: (): Promise<Record<string, IssueAssociation>> =>
       _unwrappingInvoke(CHANNELS.WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS),
 
-    onUpdate: (callback: (state: WorktreeState, scopeId: string) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        payload: { worktree: WorktreeState; scopeId: string }
-      ) => callback(payload.worktree, payload.scopeId);
+    onUpdate: (callback: (state: WorktreeState) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { worktree: WorktreeState }) =>
+        callback(payload.worktree);
       ipcRenderer.on(CHANNELS.WORKTREE_UPDATE, handler);
       return () => ipcRenderer.removeListener(CHANNELS.WORKTREE_UPDATE, handler);
     },

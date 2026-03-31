@@ -1758,7 +1758,7 @@ export interface IpcInvokeMap {
  */
 export interface IpcEventMap {
   // Worktree events
-  "worktree:update": { worktree: WorktreeState; scopeId: string };
+  "worktree:update": { worktree: WorktreeState };
   "worktree:remove": { worktreeId: string };
   "worktree:activated": { worktreeId: string };
 

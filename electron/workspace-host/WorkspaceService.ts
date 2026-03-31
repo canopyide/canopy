@@ -68,7 +68,6 @@ export class WorkspaceService {
   private git: SimpleGit | null = null;
   private pollingEnabled: boolean = true;
   private projectRootPath: string | null = null;
-  private projectScopeId: string | null = null;
   private lifecycleService = new WorktreeLifecycleService();
   private listService = new WorktreeListService();
   private prService: PRIntegrationService;
@@ -91,19 +90,16 @@ export class WorkspaceService {
           this.emitUpdate(monitor);
         }
 
-        if (this.projectScopeId) {
-          this.sendEvent({
-            type: "pr-detected",
-            worktreeId,
-            prNumber: data.prNumber,
-            prUrl: data.prUrl,
-            prState: data.prState,
-            prTitle: data.prTitle,
-            issueNumber: data.issueNumber,
-            issueTitle: data.issueTitle,
-            projectScopeId: this.projectScopeId,
-          });
-        }
+        this.sendEvent({
+          type: "pr-detected",
+          worktreeId,
+          prNumber: data.prNumber,
+          prUrl: data.prUrl,
+          prState: data.prState,
+          prTitle: data.prTitle,
+          issueNumber: data.issueNumber,
+          issueTitle: data.issueTitle,
+        });
       },
       onPRCleared: (worktreeId) => {
         const monitor = this.monitors.get(worktreeId);
@@ -114,13 +110,10 @@ export class WorkspaceService {
           this.emitUpdate(monitor);
         }
 
-        if (this.projectScopeId) {
-          this.sendEvent({
-            type: "pr-cleared",
-            worktreeId,
-            projectScopeId: this.projectScopeId,
-          });
-        }
+        this.sendEvent({
+          type: "pr-cleared",
+          worktreeId,
+        });
       },
       onIssueDetected: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
@@ -131,15 +124,12 @@ export class WorkspaceService {
           this.emitUpdate(monitor);
         }
 
-        if (this.projectScopeId) {
-          this.sendEvent({
-            type: "issue-detected",
-            worktreeId,
-            issueNumber: data.issueNumber,
-            issueTitle: data.issueTitle,
-            projectScopeId: this.projectScopeId,
-          });
-        }
+        this.sendEvent({
+          type: "issue-detected",
+          worktreeId,
+          issueNumber: data.issueNumber,
+          issueTitle: data.issueTitle,
+        });
       },
       onIssueNotFound: (worktreeId, issueNumber) => {
         const monitor = this.monitors.get(worktreeId);
@@ -152,26 +142,18 @@ export class WorkspaceService {
           this.emitUpdate(monitor);
         }
 
-        if (this.projectScopeId) {
-          this.sendEvent({
-            type: "issue-not-found",
-            worktreeId,
-            issueNumber,
-            projectScopeId: this.projectScopeId,
-          });
-        }
+        this.sendEvent({
+          type: "issue-not-found",
+          worktreeId,
+          issueNumber,
+        });
       },
     });
   }
 
-  async loadProject(
-    requestId: string,
-    projectRootPath: string,
-    projectScopeId: string
-  ): Promise<void> {
+  async loadProject(requestId: string, projectRootPath: string): Promise<void> {
     try {
       this.projectRootPath = projectRootPath;
-      this.projectScopeId = projectScopeId;
       this.git = createHardenedGit(projectRootPath, this._shutdownController.signal);
       this.listService.setGit(this.git, projectRootPath);
 
@@ -251,14 +233,11 @@ export class WorkspaceService {
         this.monitors.delete(id);
         clearGitDirCache(monitor.path);
         invalidateGitStatusCache(monitor.path);
-        if (this.projectScopeId) {
-          this.sendEvent({
-            type: "worktree-removed",
-            worktreeId: id,
-            projectScopeId: this.projectScopeId,
-          });
-          events.emit("sys:worktree:remove", { worktreeId: id, timestamp: Date.now() });
-        }
+        this.sendEvent({
+          type: "worktree-removed",
+          worktreeId: id,
+        });
+        events.emit("sys:worktree:remove", { worktreeId: id, timestamp: Date.now() });
       }
     }
 
@@ -274,7 +253,6 @@ export class WorkspaceService {
         existingMonitor.name = wt.name;
         existingMonitor.isCurrent = isActive;
         existingMonitor.isMainWorktree = wt.isMainWorktree ?? false;
-        existingMonitor.setProjectScopeId(this.projectScopeId);
 
         const interval = isActive ? this.pollIntervalActive : this.pollIntervalBackground;
         existingMonitor.updateConfig({
@@ -354,7 +332,6 @@ export class WorkspaceService {
         );
 
         monitor.setIssueNumber(issueNumber ?? undefined);
-        monitor.setProjectScopeId(this.projectScopeId);
         monitor.setCreatedAt(createdAt);
 
         this.monitors.set(wt.id, monitor);
@@ -391,27 +368,19 @@ export class WorkspaceService {
   }
 
   private handleMonitorUpdate(monitor: WorktreeMonitor, _snapshot: WorktreeSnapshot): void {
-    if (!this.projectScopeId) {
-      return;
-    }
     const snapshot = monitor.getSnapshot();
     this.sendEvent({
       type: "worktree-update",
       worktree: snapshot,
-      projectScopeId: this.projectScopeId,
     });
     events.emit("sys:worktree:update", snapshot as any);
   }
 
   private emitUpdate(monitor: WorktreeMonitor): void {
-    if (!this.projectScopeId) {
-      return;
-    }
     const snapshot = monitor.getSnapshot();
     this.sendEvent({
       type: "worktree-update",
       worktree: snapshot,
-      projectScopeId: this.projectScopeId,
     });
     events.emit("sys:worktree:update", snapshot as any);
   }
@@ -448,15 +417,8 @@ export class WorkspaceService {
       this.listService.invalidateCache(cacheKey);
     }
 
-    if (this.projectScopeId) {
-      if (monitor.projectScopeId !== this.projectScopeId) {
-        console.warn(
-          `[WorkspaceHost] Scope ID mismatch on removal: monitor=${monitor.projectScopeId}, service=${this.projectScopeId}`
-        );
-      }
-      this.sendEvent({ type: "worktree-removed", worktreeId, projectScopeId: this.projectScopeId });
-      events.emit("sys:worktree:remove", { worktreeId, timestamp: Date.now() });
-    }
+    this.sendEvent({ type: "worktree-removed", worktreeId });
+    events.emit("sys:worktree:remove", { worktreeId, timestamp: Date.now() });
 
     console.log(
       `[WorkspaceHost] Worktree deleted externally, removed monitor: ${monitor.name} (${worktreeId})`
@@ -841,13 +803,10 @@ export class WorkspaceService {
       monitor.stop();
       this.monitors.delete(worktreeId);
 
-      if (this.projectScopeId && monitor.projectScopeId === this.projectScopeId) {
-        this.sendEvent({
-          type: "worktree-removed",
-          worktreeId,
-          projectScopeId: this.projectScopeId,
-        });
-      }
+      this.sendEvent({
+        type: "worktree-removed",
+        worktreeId,
+      });
 
       if (branchToDelete && this.git) {
         try {
@@ -1134,8 +1093,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   }
 
   async onProjectSwitch(requestId: string): Promise<void> {
-    this.projectScopeId = null;
-
     this.prService.cleanup();
 
     for (const monitor of this.monitors.values()) {

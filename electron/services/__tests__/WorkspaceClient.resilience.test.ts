@@ -405,30 +405,27 @@ describe("WorkspaceClient multi-process manager", () => {
           name: "wt",
           branch: "main",
         },
-        projectScopeId: "scope-a",
       });
 
       expect(wc1.send).toHaveBeenCalled();
       expect(wc2.send).not.toHaveBeenCalled();
     });
 
-    it("includes scopeId in worktree-update payload sent to renderer", async () => {
+    it("includes worktree in worktree-update payload sent to renderer", async () => {
       const wc = createMockWebContents();
 
       const load = client.loadProject("/project-a", 1);
       await readyAndResolveLoad(0);
-      const scopeId = await load;
+      await load;
       client.attachDirectPort(1, wc as any);
 
       h(0).emit("host-event", {
         type: "worktree-update",
         worktree: { id: "wt-1", path: "/a/wt", name: "wt", branch: "main" },
-        projectScopeId: "scope-a",
       });
 
       expect(wc.send).toHaveBeenCalledWith("worktree:update", {
         worktree: expect.objectContaining({ id: "wt-1" }),
-        scopeId,
       });
     });
   });
@@ -454,7 +451,6 @@ describe("WorkspaceClient multi-process manager", () => {
       h(0).emit("host-event", {
         type: "worktree-update",
         worktree: { id: "wt-a", path: "/a/wt", name: "wt-a", branch: "main" },
-        projectScopeId: "scope-a",
       });
 
       expect(wcA.send).toHaveBeenCalled();
@@ -474,7 +470,6 @@ describe("WorkspaceClient multi-process manager", () => {
       h(0).emit("host-event", {
         type: "worktree-update",
         worktree: { id: "wt-a2", path: "/a/wt2", name: "wt-a2", branch: "dev" },
-        projectScopeId: "scope-a",
       });
 
       // Project A's events should NOT reach project B's view
@@ -505,7 +500,6 @@ describe("WorkspaceClient multi-process manager", () => {
       h(0).emit("host-event", {
         type: "worktree-update",
         worktree: { id: "wt-a", path: "/a/wt", name: "wt-a", branch: "main" },
-        projectScopeId: "scope-a",
       });
 
       expect(wcA.send).toHaveBeenCalled();
@@ -540,7 +534,6 @@ describe("WorkspaceClient multi-process manager", () => {
       h(1).emit("host-event", {
         type: "worktree-update",
         worktree: { id: "wt-b", path: "/b/wt", name: "wt-b", branch: "main" },
-        projectScopeId: "scope-b",
       });
 
       expect(wcA.send).not.toHaveBeenCalled();
@@ -552,20 +545,16 @@ describe("WorkspaceClient multi-process manager", () => {
       h(0).emit("host-event", {
         type: "worktree-update",
         worktree: { id: "wt-a", path: "/a/wt", name: "wt-a", branch: "main" },
-        projectScopeId: "scope-a",
       });
 
       expect(wcA.send).toHaveBeenCalled();
       expect(wcB.send).toHaveBeenCalledTimes(1); // only the earlier B event
     });
 
-    it("returns scopeId from loadProject", async () => {
+    it("loadProject resolves without error", async () => {
       const load = client.loadProject("/project-a", 1);
       await readyAndResolveLoad(0);
-      const scopeId = await load;
-
-      expect(typeof scopeId).toBe("string");
-      expect(scopeId.length).toBeGreaterThan(0);
+      await expect(load).resolves.toBeUndefined();
     });
   });
 

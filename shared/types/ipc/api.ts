@@ -195,7 +195,7 @@ export interface ElectronAPI {
     detachIssue(worktreeId: string): Promise<void>;
     getIssueAssociation(worktreeId: string): Promise<IssueAssociation | null>;
     getAllIssueAssociations(): Promise<Record<string, IssueAssociation>>;
-    onUpdate(callback: (state: WorktreeState, scopeId: string) => void): () => void;
+    onUpdate(callback: (state: WorktreeState) => void): () => void;
     onRemove(callback: (data: { worktreeId: string }) => void): () => void;
     onActivated(callback: (data: { worktreeId: string }) => void): () => void;
   };
@@ -381,7 +381,6 @@ export interface ElectronAPI {
         switchId: string;
         worktreeLoadError?: string;
         hydrateResult?: import("./app.js").HydrateResult;
-        worktreeScopeId?: string;
       }) => void
     ): () => void;
     getSettings(projectId: string): Promise<ProjectSettings>;
