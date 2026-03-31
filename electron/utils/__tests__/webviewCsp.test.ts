@@ -49,6 +49,15 @@ describe("webviewCsp", () => {
       expect(classifyPartition("persist:dev-preview-foo-bar-baz")).toBe("dev-preview");
     });
 
+    it("identifies shared canopy-app partition as project", () => {
+      expect(classifyPartition("persist:canopy-app")).toBe("project");
+    });
+
+    it("identifies legacy per-project partitions as project", () => {
+      expect(classifyPartition("persist:project-abc123")).toBe("project");
+      expect(classifyPartition("persist:project-some-uuid")).toBe("project");
+    });
+
     it("rejects malformed dev-preview partitions as unknown", () => {
       expect(classifyPartition("persist:dev-previewevil")).toBe("unknown");
     });
