@@ -24,6 +24,11 @@ type WorktreeDataStore = WorktreeDataState & WorktreeDataActions;
 let cleanupListeners: (() => void) | null = null;
 let initPromise: Promise<void> | null = null;
 
+// Scope guard: once we see the first scopeId from the workspace host,
+// we lock to it and reject updates from any other scope. This prevents
+// cross-project worktree contamination when multiple views coexist.
+let acceptedScopeId: string | null = null;
+
 function worktreeChangesEqual(
   a: WorktreeState["worktreeChanges"],
   b: WorktreeState["worktreeChanges"]
@@ -153,7 +158,15 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
   initialize: () => {
     if (!cleanupListeners) {
-      const unsubUpdate = worktreeClient.onUpdate((state) => {
+      const unsubUpdate = worktreeClient.onUpdate((state, scopeId) => {
+        // Lock to the first scopeId we see and reject updates from other scopes.
+        // This prevents cross-project contamination if routing goes wrong.
+        if (acceptedScopeId === null) {
+          acceptedScopeId = scopeId;
+        } else if (scopeId && scopeId !== acceptedScopeId) {
+          return;
+        }
+
         set((prev) => {
           const existing = prev.worktrees.get(state.id);
 
@@ -329,6 +342,11 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
         const states = await worktreeClient.getAll();
 
+        // Reset scope lock — getAll is always server-side scoped to the correct
+        // project. The next onUpdate will re-lock to the current scope, handling
+        // workspace host restarts that generate a new scopeId.
+        acceptedScopeId = null;
+
         const issueMap = new Map<string, IssueAssociation>();
         try {
           const allAssociations = await worktreeClient.getAllIssueAssociations();
@@ -366,6 +384,8 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
       await worktreeClient.refresh();
 
       const states = await worktreeClient.getAll();
+      // Reset scope lock on full refresh (same rationale as initialize)
+      acceptedScopeId = null;
 
       set((prev) => {
         const map = mergeFetchedWorktrees(states, prev.worktrees);
