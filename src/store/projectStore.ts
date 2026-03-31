@@ -395,9 +395,9 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
           // Update with the authoritative project data from the main process
           set({ currentProject: project, isLoading: false });
 
-          // Now that backend has switched, fetch fresh worktree data
-          console.log("[ProjectSwitch] Reinitializing worktree data store...");
-          forceReinitializeWorktreeDataStore(projectId);
+          // Worktree data store reinitialization is handled by
+          // useProjectSwitchRehydration's PROJECT_ON_SWITCH handler, which
+          // receives the worktreeScopeId for scope-based event filtering.
 
           // Refresh project list in the background
           void get().loadProjects();

@@ -195,7 +195,7 @@ export interface ElectronAPI {
     detachIssue(worktreeId: string): Promise<void>;
     getIssueAssociation(worktreeId: string): Promise<IssueAssociation | null>;
     getAllIssueAssociations(): Promise<Record<string, IssueAssociation>>;
-    onUpdate(callback: (state: WorktreeState) => void): () => void;
+    onUpdate(callback: (state: WorktreeState, scopeId: string) => void): () => void;
     onRemove(callback: (data: { worktreeId: string }) => void): () => void;
     onActivated(callback: (data: { worktreeId: string }) => void): () => void;
   };

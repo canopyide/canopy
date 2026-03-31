@@ -413,4 +413,118 @@ describe("worktreeDataStore snapshot contamination detection", () => {
     expect(state.worktrees.has("project-a-main")).toBe(true);
     expect(state.isLoading).toBe(false);
   });
+
+  it("rejects snapshot with multiple main worktrees (contamination indicator)", () => {
+    const worktrees = new Map([
+      [
+        "wt-main-a",
+        createMockWorktree("wt-main-a", {
+          isMainWorktree: true,
+          path: "/repos/project-a",
+        }),
+      ],
+      [
+        "wt-main-b",
+        createMockWorktree("wt-main-b", {
+          isMainWorktree: true,
+          path: "/repos/project-b",
+        }),
+      ],
+    ]);
+
+    useWorktreeDataStore.setState({
+      worktrees,
+      projectId: "project-a",
+      isLoading: false,
+      isInitialized: true,
+    });
+
+    snapshotProjectWorktrees("project-a", "/repos/project-a");
+
+    prePopulateWorktreeSnapshot("project-a", "/repos/project-a");
+    const state = useWorktreeDataStore.getState();
+    expect(state.worktrees.size).toBe(0);
+    expect(state.isLoading).toBe(true);
+  });
+});
+
+const { worktreeClient } = await import("@/clients");
+
+describe("worktreeDataStore scope-based event filtering", () => {
+  let capturedOnUpdate: ((state: WorktreeState, scopeId: string) => void) | null = null;
+
+  beforeEach(() => {
+    getAllMock.mockReset();
+    refreshMock.mockReset();
+    capturedOnUpdate = null;
+    vi.mocked(worktreeClient.onUpdate).mockImplementation((cb: any) => {
+      capturedOnUpdate = cb;
+      return () => {
+        capturedOnUpdate = null;
+      };
+    });
+    cleanupWorktreeDataStore();
+    resetSnapshotCacheForTests();
+    useWorktreeDataStore.setState({
+      worktrees: new Map(),
+      projectId: null,
+      isLoading: true,
+      error: null,
+      isInitialized: false,
+    });
+  });
+
+  it("discards onUpdate events with mismatched scopeId", async () => {
+    const projectBWorktrees = [createMockWorktree("project-b-main", { isMainWorktree: true })];
+    getAllMock.mockResolvedValueOnce(projectBWorktrees);
+
+    forceReinitializeWorktreeDataStore("project-b", "scope-b");
+
+    await vi.waitFor(() => {
+      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
+    });
+
+    expect(capturedOnUpdate).not.toBeNull();
+
+    // Simulate stale event from old scope
+    capturedOnUpdate!(createMockWorktree("stale-wt", { path: "/stale" }), "scope-a-old");
+
+    const state = useWorktreeDataStore.getState();
+    expect(state.worktrees.has("stale-wt")).toBe(false);
+    expect(state.worktrees.has("project-b-main")).toBe(true);
+  });
+
+  it("accepts onUpdate events with matching scopeId", async () => {
+    const projectBWorktrees = [createMockWorktree("project-b-main", { isMainWorktree: true })];
+    getAllMock.mockResolvedValueOnce(projectBWorktrees);
+
+    forceReinitializeWorktreeDataStore("project-b", "scope-b");
+
+    await vi.waitFor(() => {
+      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
+    });
+
+    // Simulate valid event from current scope
+    capturedOnUpdate!(createMockWorktree("new-wt", { path: "/new" }), "scope-b");
+
+    const state = useWorktreeDataStore.getState();
+    expect(state.worktrees.has("new-wt")).toBe(true);
+  });
+
+  it("accepts events when no scopeId is set (backwards compatibility)", async () => {
+    const projectBWorktrees = [createMockWorktree("project-b-main", { isMainWorktree: true })];
+    getAllMock.mockResolvedValueOnce(projectBWorktrees);
+
+    // No scopeId passed — targetScopeId stays null
+    forceReinitializeWorktreeDataStore("project-b");
+
+    await vi.waitFor(() => {
+      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
+    });
+
+    capturedOnUpdate!(createMockWorktree("any-wt", { path: "/any" }), "any-scope");
+
+    const state = useWorktreeDataStore.getState();
+    expect(state.worktrees.has("any-wt")).toBe(true);
+  });
 });

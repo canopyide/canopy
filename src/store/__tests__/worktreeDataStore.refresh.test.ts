@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeState } from "@shared/types";
 
-let onUpdateCallback: ((state: WorktreeState) => void) | null = null;
+let onUpdateCallback: ((state: WorktreeState, scopeId: string) => void) | null = null;
 
 const getAllMock = vi.fn();
 const refreshMock = vi.fn();
@@ -11,7 +11,7 @@ vi.mock("@/clients", () => ({
     getAll: getAllMock,
     refresh: refreshMock,
     getAllIssueAssociations: vi.fn().mockResolvedValue({}),
-    onUpdate: vi.fn((callback: (state: WorktreeState) => void) => {
+    onUpdate: vi.fn((callback: (state: WorktreeState, scopeId: string) => void) => {
       onUpdateCallback = callback;
       return () => {
         onUpdateCallback = null;

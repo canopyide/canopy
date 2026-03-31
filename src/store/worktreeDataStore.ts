@@ -27,6 +27,7 @@ let cleanupListeners: (() => void) | null = null;
 let initPromise: Promise<void> | null = null;
 let storeGeneration = 0;
 let targetProjectId: string | null = null;
+let targetScopeId: string | null = null;
 // True during the window between cleanupWorktreeDataStore() and forceReinitializeWorktreeDataStore().
 // During this window the main process has not yet completed its project switch, so any IPC
 // fetch (refresh) would return data from the outgoing project.  Block refresh() until the
@@ -51,10 +52,16 @@ function evictOldestSnapshot(): void {
 }
 
 function isSnapshotValidForProject(snapshot: ProjectSnapshot, projectPath: string): boolean {
-  let foundMain = false;
+  let mainCount = 0;
   for (const wt of snapshot.worktrees.values()) {
     if (wt.isMainWorktree) {
-      foundMain = true;
+      mainCount++;
+      if (mainCount > 1) {
+        console.warn("[WorktreeDataStore] Contaminated snapshot: multiple main worktrees", {
+          expectedProjectPath: projectPath,
+        });
+        return false;
+      }
       if (path.normalize(wt.path) !== path.normalize(projectPath)) {
         console.warn("[WorktreeDataStore] Contaminated snapshot detected", {
           mainWorktreePath: wt.path,
@@ -62,10 +69,9 @@ function isSnapshotValidForProject(snapshot: ProjectSnapshot, projectPath: strin
         });
         return false;
       }
-      break;
     }
   }
-  if (!foundMain && snapshot.worktrees.size > 0) {
+  if (mainCount === 0 && snapshot.worktrees.size > 0) {
     console.warn("[WorktreeDataStore] Snapshot has no main worktree, treating as invalid", {
       expectedProjectPath: projectPath,
     });
@@ -220,12 +226,20 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
     // are never silently dropped after a cleanup+remount.
     if (!cleanupListeners) {
       const listenerGeneration = storeGeneration;
-      const unsubUpdate = worktreeClient.onUpdate((state) => {
+      const unsubUpdate = worktreeClient.onUpdate((state, scopeId) => {
         if (storeGeneration !== listenerGeneration) {
           console.warn(
             "[WorktreeDataStore] Discarding stale onUpdate event - project switched since listener was registered",
             { stateId: state.id }
           );
+          return;
+        }
+        if (targetScopeId !== null && scopeId !== targetScopeId) {
+          console.warn("[WorktreeDataStore] Discarding onUpdate event from stale scope", {
+            scopeId,
+            targetScopeId,
+            stateId: state.id,
+          });
           return;
         }
         set((prev) => {
@@ -563,6 +577,7 @@ export function snapshotProjectWorktrees(projectId: string, projectPath?: string
 export function cleanupWorktreeDataStore() {
   storeGeneration++;
   targetProjectId = null;
+  targetScopeId = null;
   if (cleanupListeners) {
     cleanupListeners();
     cleanupListeners = null;
@@ -588,6 +603,7 @@ export function prePopulateWorktreeSnapshot(projectId: string, projectPath?: str
   // Call forceReinitializeWorktreeDataStore() once the backend is ready to fetch fresh data.
   storeGeneration++;
   targetProjectId = projectId;
+  targetScopeId = null;
   // Lock out refresh() until the main process completes its switch.
   // Between here and forceReinitializeWorktreeDataStore(), targetProjectId is set to the
   // incoming project but the IPC layer is still serving the outgoing project's data.
@@ -629,6 +645,7 @@ export function prePopulateWorktreeSnapshot(projectId: string, projectPath?: str
 export function setWorktreeLoadError(projectId: string, error: string) {
   storeGeneration++;
   targetProjectId = projectId;
+  targetScopeId = null;
   isSwitching = false;
   cleanupListeners?.();
   cleanupListeners = null;
@@ -643,13 +660,14 @@ export function setWorktreeLoadError(projectId: string, error: string) {
   });
 }
 
-export function forceReinitializeWorktreeDataStore(projectId?: string) {
+export function forceReinitializeWorktreeDataStore(projectId?: string, scopeId?: string) {
   // Called after backend project switch is complete to load fresh worktrees.
   // If prePopulateWorktreeSnapshot() was called first, the store already has
   // cached data visible in the sidebar — this just triggers a background refresh.
   const currentWorktrees = useWorktreeDataStore.getState().worktrees;
   storeGeneration++;
   targetProjectId = projectId ?? null;
+  targetScopeId = scopeId ?? null;
   // Main process switch is confirmed complete — allow refresh() to proceed.
   isSwitching = false;
   cleanupListeners?.();
