@@ -1,7 +1,7 @@
 # Canopy
 
 **Overview:** Electron-based IDE for orchestrating AI coding agents (Claude, Gemini, Codex). Features integrated terminals, worktree dashboard, panel management, and context injection.
-**Stack:** Electron 40, React 19, Vite 6, TypeScript, Tailwind CSS v4, Zustand, node-pty, simple-git, @xterm/xterm 6.0, @xterm/addon-fit 0.11.
+**Stack:** Electron 41, React 19, Vite 8, TypeScript, Tailwind CSS v4, Zustand 5, node-pty, simple-git, @xterm/xterm 6.0, @xterm/addon-fit 0.11.
 
 ## Critical Rules
 
@@ -12,7 +12,7 @@
 - **Human-Review Label:** The `human-review` label marks issues that cannot be solved autonomously—they require a developer checking logs, observing runtime behavior, or making subjective UX judgments. Adding this label makes an issue 10-20x more expensive (human time vs agent time), so use it sparingly. Only apply when the issue genuinely requires human observation or iterative debugging that an agent cannot perform. Most issues should NOT have this label. When working issues, skip any labeled `human-review`.
 - **GitHub Access:** Public repo `canopyide/canopy` (https://github.com/canopyide/canopy). Always use the `gh` CLI for all GitHub operations (issues, PRs, checks, releases, API calls). Do NOT use HTTP fetches or web scraping to access GitHub URLs—they will fail due to authentication. Examples: `gh issue list`, `gh pr view 123`, `gh api repos/canopyide/canopy/issues`.
 - **Branching:** Gitflow model. **All PRs must target `develop`—NEVER `main`.** Only release merges go to `main`.
-- **Research Versions:** When researching issues (e.g., via Ask Google MCP), always specify the actual versions we use: **Electron 40**, **@xterm/xterm 6.0**, **@xterm/addon-fit 0.11**, **React 19**. There are significant breaking changes between Electron 33 and 40 (e.g., `console-message` event signature changed in v35, `WebRequestFilter` empty `urls` array no longer matches all, macOS 11 dropped in v38, utility processes crash on unhandled rejections in v37). Similarly, xterm 6.0 removed the canvas renderer addon, removed `windowsMode`/`fastScrollModifier` options, replaced the viewport/scrollbar with VS Code's implementation, and migrated the event system. Do NOT assume older documentation is still accurate—always research for the exact versions.
+- **Research Versions:** When researching issues (e.g., via Ask Google MCP), always specify the actual versions we use: **Electron 41**, **@xterm/xterm 6.0**, **@xterm/addon-fit 0.11**, **React 19**. There are significant breaking changes between Electron 33 and 41 (e.g., `console-message` event signature changed in v35, `WebRequestFilter` empty `urls` array no longer matches all, macOS 11 dropped in v38, utility processes crash on unhandled rejections in v37). Similarly, xterm 6.0 removed the canvas renderer addon, removed `windowsMode`/`fastScrollModifier` options, replaced the viewport/scrollbar with VS Code's implementation, and migrated the event system. Do NOT assume older documentation is still accurate—always research for the exact versions.
 
 ## Development
 
@@ -29,8 +29,8 @@ npm run rebuild      # Rebuild native modules
 
 - **PRs / pushes:** Typecheck, lint, format, and unit tests on **Ubuntu only** (no E2E). `ci-ok` gate job is the sole required status check.
 - **Nightly (2 AM UTC):** Full cross-platform CI on all 3 OSes: check + test + build + smoke + E2E full + E2E online + E2E nightly. Auto-creates GitHub issue on failure (`nightly-failure` label).
-- **Releases:** E2E core (13 stable tests) and E2E online gate the release publish on macOS + Linux. Windows E2E is nightly-only.
-- **E2E tiers:** `e2e/core/` (13 stable, essential tests — gates releases), `e2e/full/` (59 comprehensive tests — nightly), `e2e/online/` (agent integration — gates releases), `e2e/nightly/` (memory leak detection).
+- **Releases:** E2E core and E2E online gate the release publish on macOS + Linux. Windows E2E is nightly-only.
+- **E2E tiers:** `e2e/core/` (13 tests — gates releases), `e2e/full/` (59 tests — nightly), `e2e/online/` (2 agent integration tests — gates releases), `e2e/nightly/` (memory leak detection).
 - **Single-file E2E:** `gh workflow run "E2E Core Tests" --ref develop -f platform=linux -f test_file=e2e/core/core-foo.spec.ts` — use this when fixing a specific flaky test instead of re-running the full suite.
 - **Local E2E before push:** When adding a new E2E test or modifying a feature that has an existing E2E test, run that specific test locally and confirm it passes before pushing. Use `npx playwright test e2e/core/core-foo.spec.ts` to run a single test file.
 
@@ -42,38 +42,29 @@ npm run rebuild      # Rebuild native modules
 
 ### Actions System
 
-The **Actions System** is the central orchestration layer for all UI operations. It provides a unified, typed API for menus, keybindings, context menus, and future agent automation.
+Central orchestration layer for all UI operations. Provides a unified, typed API for menus, keybindings, context menus, and agent automation.
 
-**Core Components:**
-
-- `ActionService` (`src/services/ActionService.ts`) - Registry and dispatcher singleton
-- Action definitions (`src/services/actions/definitions/`) - 20 domain-specific action files
-- Shared types (`shared/types/actions.ts`) - `ActionId`, `ActionDefinition`, `ActionManifestEntry`
-
-**Key Concepts:**
-
-- `dispatch(actionId, args?, options?)` - Execute any action by ID
-- `list()` / `get(id)` - Introspect available actions (MCP-compatible manifest)
-- `ActionSource` - Tracks origin: "user" | "keybinding" | "menu" | "agent" | "context-menu"
-- `ActionDanger` - Safety levels: "safe" | "confirm" | "restricted"
-- Actions emit events to the main process event bus for observability
-
-**Action Categories:** terminal, agent, panel, worktree, worktreeSession, project, github, git, navigation, app, preferences, browser, system, logs, recipes, notes, workflow, devServer, file, introspection
+- `ActionService` (`src/services/ActionService.ts`) — Registry and dispatcher singleton
+- 28 definition files in `src/services/actions/definitions/` (one per domain)
+- Types in `shared/types/actions.ts` — `ActionId`, `ActionDefinition`, `ActionManifestEntry`
+- `dispatch(actionId, args?, options?)` — Execute any action by ID
+- `list()` / `get(id)` — Introspect available actions (MCP-compatible manifest)
+- `ActionSource`: "user" | "keybinding" | "menu" | "agent" | "context-menu"
+- `ActionDanger`: "safe" | "confirm" | "restricted"
+- **Categories:** agent, app, artifacts, browser, copyTree, devServer, diagnostics, errors, files, git, github, help, introspection, logs, navigation, notes, panel, portal, preferences, project, recipes, settings, system, terminal, ui, voice, worktree
 
 ### Panel Architecture
 
-Panels are the visual units in the panel grid and dock. The system uses discriminated union types for type safety:
+Discriminated union types for type safety:
 
-- `PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData | DevPreviewPanelData`
+- `PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData | DevPreviewPanelData` (`shared/types/panel.ts`)
 - Built-in panel kinds: `"terminal"` | `"agent"` | `"browser"` | `"notes"` | `"dev-preview"`
-- `panelKindHasPty(kind)` - Check if panel requires PTY process
-- Panel Kind Registry (`shared/config/panelKindRegistry.ts`) - Extensible for custom panels
+- `panelKindHasPty(kind)` — Check if panel requires PTY process
+- Panel Kind Registry (`shared/config/panelKindRegistry.ts`)
 
 ### IPC Bridge (`window.electron`)
 
-Access native features via namespaced API in Renderer. Returns Promises or Cleanups.
-
-36 namespaces including: `worktree`, `terminal`, `files`, `copyTree`, `system`, `app`, `menu`, `logs`, `errors`, `events`, `project`, `github`, `notes`, `devPreview`, `git`, `portal`, `hibernation`, `keybinding`, `worktreeConfig`, `window`, `notification`, `update`, `gemini`, `commands`, `appAgent`, `agentCapabilities`, `clipboard`, and more.
+Access native features via namespaced API in Renderer. 56 namespaces exposed via `contextBridge` in `electron/preload.cts`. Returns Promises or Cleanups. Key namespaces: `worktree`, `terminal`, `files`, `system`, `app`, `project`, `github`, `git`, `portal`, `commands`, `appAgent`, `agentCapabilities`, `mcpServer`, `plugin`.
 
 ## Key Features & Implementation
 
@@ -83,119 +74,57 @@ Access native features via namespaced API in Renderer. Returns Promises or Clean
 - **Context:** `CopyTreeService` generates context for agents, injects into terminals.
 - **Actions:** `ActionService` dispatches all UI operations with validation and observability.
 
-### Assistant Debugging
-
-The Canopy Assistant logs all requests and responses for debugging. Logs are development-only and cleared on app startup.
-
-**Log Location:** `~/Library/Application Support/canopy-app/logs/assistant.log` (macOS)
-
-**Format:** JSON Lines (one JSON object per line)
-
-**Entry Types:**
-
-- `request` — Messages, tools, context, model config sent to the AI
-- `stream` — Individual events: `text-delta`, `tool-call`, `tool-result`, `error`
-- `complete` — Request finished with finishReason and durationMs
-- `error` — Request failed with error message
-- `cancelled` — Request was cancelled by user
-
-**Debugging Tool Calls:**
-
-```bash
-# View all tool calls and results
-grep -E '"event":"(tool-call|tool-result)"' ~/Library/Application\ Support/canopy-app/logs/assistant.log
-
-# View full request/response cycle
-grep '"type":"request"\|"type":"complete"' ~/Library/Application\ Support/canopy-app/logs/assistant.log
-```
-
-**Key Files:**
-
-- `electron/utils/assistantLogger.ts` — Logging infrastructure
-- `electron/services/AssistantService.ts` — Request handling and stream processing
-- `electron/services/assistant/actionTools.ts` — Action-to-tool conversion and allowlist
-
 ## Directory Map
 
 ```text
 electron/
 ├── main.ts                  # Entry point
-├── preload.cts              # IPC bridge (contextBridge)
+├── bootstrap.ts             # App bootstrap
+├── preload.cts              # IPC bridge (contextBridge, 56 namespaces)
 ├── menu.ts                  # Application menu
 ├── store.ts                 # Main process store
 ├── windowState.ts           # Window state persistence
 ├── pty-host.ts              # PTY process host entry
-├── pty-host/                # PTY host internals
+├── pty-host/                # PTY host internals (backpressure, FdMonitor, ResourceGovernor)
 ├── workspace-host.ts        # Worktree monitoring host entry
-├── workspace-host/          # WorkspaceService, WorktreeMonitor
+├── workspace-host/          # WorkspaceService, WorktreeMonitor, PRIntegrationService
 ├── ipc/
 │   ├── channels.ts          # Channel constants
 │   ├── handlers.ts          # IPC request handler registry
 │   ├── errorHandlers.ts     # IPC error handling
-│   └── handlers/            # Domain-specific handlers (clipboard, commands, copyTree,
-│                            #   devPreview, git-write, github, keybinding, notifications,
-│                            #   project, slashCommands, systemSleep, terminalConfig, worktree)
-├── services/                # ~60 backend services (PtyManager, AgentStateMachine,
-│                            #   CopyTreeService, GitService, GitHubService, WorkflowEngine,
-│                            #   PortalManager, HibernationService, etc.)
-├── schemas/                 # Zod schemas (agent, external, ipc)
+│   └── handlers/            # 51 domain-specific handlers
+├── lifecycle/               # App lifecycle management
+├── setup/                   # App setup/initialization
+├── window/                  # Window management
+├── services/                # ~86 backend services
+├── schemas/                 # Zod schemas
 ├── types/                   # Main process types
-├── utils/                   # Utilities (git, cache, logger, soundPlayer, webviewCsp, etc.)
-└── workflows/               # Workflow definitions
+├── utils/                   # Utilities
+└── resources/               # Static resources
 
 shared/
 ├── types/
 │   ├── actions.ts           # ActionId union, ActionDefinition
-│   ├── domain.ts            # Panel, Worktree, Agent types
+│   ├── panel.ts             # PanelInstance, PanelKind types
 │   ├── keymap.ts            # KeyAction union, keybinding types
-│   ├── ipc/                 # IPC type definitions (~20 domain files)
-│   └── ...                  # github, events, config, terminal, workflow, etc.
-├── config/
-│   ├── panelKindRegistry.ts # Panel kind configuration
-│   ├── agentRegistry.ts     # Agent configuration
-│   ├── devServer.ts         # Dev server configuration
-│   └── scrollback.ts        # Scrollback settings
+│   ├── ipc/                 # IPC type definitions (27 files)
+│   └── ...                  # 34 type files total
+├── config/                  # panelKindRegistry, agentRegistry, scrollback, devServer, trash, etc.
 ├── theme/                   # Theme system (entityColors, terminal, themes)
 ├── perf/                    # Performance marks
-└── utils/                   # Shared utilities (shellEscape, pathPattern, svgSanitizer, etc.)
+└── utils/                   # Shared utilities
 
 src/
 ├── services/
 │   ├── ActionService.ts     # Action registry & dispatcher
-│   ├── actions/
-│   │   ├── actionDefinitions.ts  # Registration entry point
-│   │   ├── actionTypes.ts        # Callback interfaces
-│   │   └── definitions/          # 21 action definition files
+│   ├── actions/definitions/ # 28 action definition files
 │   ├── terminal/            # Terminal instance service
 │   └── project/             # Project services
-├── components/
-│   ├── Terminal/            # Xterm.js grid & controls
-│   ├── Worktree/            # Dashboard cards, ReviewHub, WorktreeCard
-│   ├── Panel/               # Panel header & controls
-│   ├── PanelPalette/        # Panel spawn palette
-│   ├── Layout/              # AppLayout, Sidebar, Toolbar
-│   ├── Settings/            # Configuration UI
-│   ├── Browser/             # Embedded browser
-│   ├── GitHub/              # GitHub integration UI
-│   ├── DevPreview/          # Dev server preview
-│   ├── Notes/               # Notes panel
-│   ├── Commands/            # Command palette
-│   ├── ContextInjection/    # Context injection UI
-│   ├── Portal/             # Portal panel
-│   ├── Pulse/               # Activity pulse
-│   ├── QuickSwitcher/       # Quick panel switcher
-│   ├── Onboarding/          # First-run onboarding
-│   ├── Notifications/       # Notification UI
-│   ├── ActionPalette/       # Action palette
-│   ├── TerminalPalette/     # Terminal palette
-│   ├── TerminalRecipe/      # Terminal recipes
-│   ├── FileViewer/          # File viewer
-│   ├── ui/                  # Shared UI primitives
-│   └── icons/               # Icon components
-├── store/
-│   ├── terminalStore.ts     # Panel state management
-│   ├── slices/              # Store slices (registry, focus, MRU, bulk actions, command queue)
-│   └── persistence/         # State persistence
+├── components/              # 37 component directories (Terminal, Worktree, Panel, Layout,
+│                            #   Settings, Browser, GitHub, DevPreview, Notes, Commands,
+│                            #   Portal, Pulse, QuickSwitcher, Onboarding, Notifications, etc.)
+├── store/                   # 57 Zustand stores + slices (terminalStore, projectStore,
+│                            #   layoutConfigStore, notificationStore, etc.)
 ├── hooks/                   # React hooks (useActionRegistry, useMenuActions, useKeybinding, etc.)
 ├── controllers/             # UI controllers
 ├── clients/                 # IPC client wrappers
@@ -211,7 +140,7 @@ src/
 
 ### Custom Icons
 
-Custom Canopy-specific icons live in `src/components/icons/custom/`. These are Lucide-style SVG components (24x24 viewBox, 2px stroke, round caps/joins, `currentColor`) that accept `SVGProps`. Brand/agent icons are in `src/components/icons/brands/`. All icons are barrel-exported from `src/components/icons/index.ts`. Design specs are in `~/Desktop/canopy-icons/`.
+Custom Canopy-specific icons live in `src/components/icons/custom/`. Lucide-style SVG components (24x24 viewBox, 2px stroke, round caps/joins, `currentColor`). Brand/agent icons in `src/components/icons/brands/`. Barrel-exported from `src/components/icons/index.ts`.
 
 ## Common Tasks
 
@@ -232,6 +161,9 @@ Custom Canopy-specific icons live in `src/components/icons/custom/`. These are L
 
 - `docs/development.md` — Architecture, IPC patterns, debugging
 - `docs/themes/theme-system.md` — Theme pipeline, core model, component overrides, runtime
-- `docs/themes/theme-tokens.md` — Complete semantic token reference (142 tokens)
+- `docs/themes/theme-tokens.md` — Complete semantic token reference
 - `docs/e2e-testing.md` — Playwright E2E testing setup and patterns
 - `docs/feature-curation.md` — Feature evaluation criteria
+- `docs/release.md` — Release process
+- `docs/sound-design.md` — Sound design guidelines
+- `docs/architecture/` — Action system and terminal lifecycle docs
