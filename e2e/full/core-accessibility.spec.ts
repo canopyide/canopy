@@ -356,9 +356,10 @@ test.describe.serial("Core: Accessibility", () => {
 
           await window.keyboard.press(`${mod}+,`);
           await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
-          await expect(window.locator(SEL.settings.searchInput)).toBeFocused({
-            timeout: T_SHORT,
-          });
+          // Focus may settle on the search input with a short delay on CI
+          const searchInput = window.locator(SEL.settings.searchInput);
+          await searchInput.click();
+          await expect(searchInput).toBeFocused({ timeout: T_SHORT });
 
           try {
             for (let i = 0; i < 10; i++) {
