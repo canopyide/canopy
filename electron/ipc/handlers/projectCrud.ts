@@ -374,6 +374,9 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         };
       } else {
         projectStore.updateProjectStatus(projectId, "background");
+        if (deps.worktreeService) {
+          deps.worktreeService.pauseProject(project.path);
+        }
 
         console.log(
           `[IPC] project:close: Backgrounded project with ${ptyStats.terminalCount} running terminals`
@@ -450,6 +453,11 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       await projectStore.setCurrentProject(projectId);
       projectStore.updateProjectStatus(projectId, "active");
 
+      // Resume workspace host before loading project
+      if (deps.worktreeService) {
+        deps.worktreeService.resumeProject(project.path);
+      }
+
       // Always call loadProject — see comment in handleProjectSwitch above.
       if (deps.worktreeService) {
         const senderWindow = getWindowForWebContents(event.sender);
@@ -494,6 +502,9 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     }
 
     // Fallback: legacy single-view path
+    if (deps.worktreeService) {
+      deps.worktreeService.resumeProject(project.path);
+    }
     return await projectSwitchService.reopenProject(projectId);
   };
   ipcMain.handle(CHANNELS.PROJECT_REOPEN, handleProjectReopen);

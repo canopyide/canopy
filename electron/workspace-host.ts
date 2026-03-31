@@ -239,6 +239,14 @@ port.on("message", async (rawMsg: any) => {
         workspaceService.setPollingEnabled(request.enabled);
         break;
 
+      case "background":
+        workspaceService.pause();
+        break;
+
+      case "foreground":
+        workspaceService.resume();
+        break;
+
       case "health-check":
         sendEvent({ type: "pong" });
         break;
