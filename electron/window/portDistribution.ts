@@ -10,7 +10,7 @@
 import { BrowserWindow, MessageChannelMain } from "electron";
 import { randomBytes } from "crypto";
 import type { WindowContext } from "./WindowRegistry.js";
-import type PtyClient from "../services/PtyClient.js";
+import type { PtyClient } from "../services/PtyClient.js";
 
 /**
  * Create a MessagePort pair and send it to a specific WebContents.

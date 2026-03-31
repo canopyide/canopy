@@ -119,7 +119,6 @@ vi.mock("../events.js", () => ({
 
 import path from "path";
 import { WorkspaceClient } from "../WorkspaceClient.js";
-import { BrowserWindow } from "electron";
 
 type MockHost = InstanceType<typeof MockWorkspaceHostProcess>;
 
