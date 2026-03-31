@@ -230,7 +230,7 @@ export function setupPermissionLockdown(): void {
     PORTAL_SESSION_PERMISSIONS
   );
 
-  // Catch all dynamically created sessions (e.g., persist:dev-preview-*)
+  // Catch all dynamically created sessions (e.g., persist:dev-preview-*, persist:project-*)
   // Guard against duplicate listeners when createWindow is called multiple times (macOS dock)
   if (!permissionLockdownInitialized) {
     permissionLockdownInitialized = true;
@@ -240,6 +240,9 @@ export function setupPermissionLockdown(): void {
       const type = classifyPartition(partition);
       if (type === "dev-preview" || type === "browser") {
         lockdownUntrustedPermissions(ses, partition);
+      } else if (type === "project") {
+        // Project views are trusted app renderers — same permissions as default session
+        lockdownTrustedPermissions(ses, partition, TRUSTED_SESSION_PERMISSIONS);
       }
     });
   }

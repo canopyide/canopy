@@ -6,12 +6,13 @@
  * host pattern that caused cross-project contamination.
  */
 
-import { BrowserWindow } from "electron";
+import { MessageChannelMain, type WebContents } from "electron";
 import { EventEmitter } from "events";
 import path from "path";
 import crypto from "crypto";
 import { events } from "./events.js";
 import { CHANNELS } from "../ipc/channels.js";
+
 import { WorkspaceHostProcess } from "./WorkspaceHostProcess.js";
 import type {
   WorkspaceClientConfig,
@@ -47,6 +48,8 @@ interface ProcessEntry {
   scopeId: string;
   windowIds: Set<number>;
   projectPath: string;
+  /** WebContents with direct MessagePort connections to this host */
+  directPortViews: Map<number, WebContents>;
 }
 
 export class WorkspaceClient extends EventEmitter {
@@ -55,9 +58,6 @@ export class WorkspaceClient extends EventEmitter {
 
   private entries = new Map<string, ProcessEntry>();
   private windowToProject = new Map<number, string>();
-
-  // Per-window generation counter for blue-green swap race protection
-  private windowGenerations = new Map<number, number>();
 
   // Reverse map: worktree path → project path (populated from worktree-update events)
   private worktreePathToProject = new Map<string, string>();
@@ -69,12 +69,6 @@ export class WorkspaceClient extends EventEmitter {
   constructor(config: WorkspaceClientConfig = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
-  }
-
-  private bumpGeneration(windowId: number): number {
-    const gen = (this.windowGenerations.get(windowId) ?? 0) + 1;
-    this.windowGenerations.set(windowId, gen);
-    return gen;
   }
 
   async waitForReady(): Promise<void> {
@@ -98,20 +92,19 @@ export class WorkspaceClient extends EventEmitter {
   }
 
   private sendToEntryWindows(entry: ProcessEntry, channel: string, ...args: unknown[]): void {
-    if (entry.windowIds.size === 0) return;
-    const windows = BrowserWindow.getAllWindows();
-    for (const win of windows) {
-      if (
-        win &&
-        !win.isDestroyed() &&
-        entry.windowIds.has(win.id) &&
-        !win.webContents.isDestroyed()
-      ) {
-        try {
-          win.webContents.send(channel, ...args);
-        } catch {
-          // Silently ignore send failures during window initialization/disposal.
-        }
+    // Target this project's specific webContents via directPortViews rather
+    // than using getAppWebContents(win), which returns the *active* view for
+    // a window.  In multi-view mode the active view may belong to a different
+    // project, causing cross-project worktree contamination.
+    for (const [wcId, wc] of entry.directPortViews) {
+      if (wc.isDestroyed()) {
+        entry.directPortViews.delete(wcId);
+        continue;
+      }
+      try {
+        wc.send(channel, ...args);
+      } catch {
+        // Silently ignore send failures during window initialization/disposal.
       }
     }
   }
@@ -136,6 +129,10 @@ export class WorkspaceClient extends EventEmitter {
 
   private routeHostEvent(entry: ProcessEntry, event: WorkspaceHostEvent): void {
     if (this.isDisposed) return;
+
+    // IPC relay targets each entry's directPortViews — the same webContents
+    // that hold the direct MessagePort.  Views receive events twice (port +
+    // IPC); stores handle dedup via equality checks.
 
     switch (event.type) {
       case "worktree-update": {
@@ -248,6 +245,15 @@ export class WorkspaceClient extends EventEmitter {
       rootPath: entry.projectPath,
       projectScopeId: entry.scopeId,
     });
+
+    // Re-establish direct renderer ports after host restart
+    for (const [wcId, wc] of entry.directPortViews) {
+      if (wc.isDestroyed()) {
+        entry.directPortViews.delete(wcId);
+        continue;
+      }
+      this.createDirectPortForEntry(entry, wc);
+    }
   }
 
   private releaseWindow(windowId: number): void {
@@ -260,6 +266,13 @@ export class WorkspaceClient extends EventEmitter {
 
     entry.windowIds.delete(windowId);
     entry.refCount--;
+
+    // Clean up any direct port views for this window's webContents
+    for (const [wcId, wc] of entry.directPortViews) {
+      if (wc.isDestroyed()) {
+        entry.directPortViews.delete(wcId);
+      }
+    }
 
     if (entry.refCount <= 0) {
       entry.cleanupTimeout = setTimeout(() => {
@@ -280,9 +293,6 @@ export class WorkspaceClient extends EventEmitter {
     const oldProjectPath = this.windowToProject.get(windowId);
     const isSwitching = oldProjectPath !== undefined && oldProjectPath !== normalizedPath;
 
-    // Bump generation to invalidate any in-flight swap for this window
-    const myGeneration = isSwitching ? this.bumpGeneration(windowId) : undefined;
-
     const existingEntry = this.entries.get(normalizedPath);
     if (existingEntry) {
       // Check if this entry has a failed initPromise (poisoned by prior crash)
@@ -291,7 +301,6 @@ export class WorkspaceClient extends EventEmitter {
         () => true
       );
       if (isInitFailed) {
-        // Clean up poisoned entry and fall through to create a fresh one
         existingEntry.host.dispose();
         this.entries.delete(normalizedPath);
       } else {
@@ -306,7 +315,6 @@ export class WorkspaceClient extends EventEmitter {
         }
         this.windowToProject.set(windowId, normalizedPath);
 
-        // Blue-green: release old project AFTER attaching to the new one
         if (isSwitching) {
           this.releaseOldProject(windowId, oldProjectPath);
         }
@@ -337,59 +345,25 @@ export class WorkspaceClient extends EventEmitter {
       scopeId,
       windowIds: new Set([windowId]),
       projectPath: normalizedPath,
+      directPortViews: new Map(),
     };
 
     this.entries.set(normalizedPath, newEntry);
     this.wireHostEvents(newEntry);
 
-    // Early detachment: stop old host events reaching this window while new host initializes.
-    // This closes the timing window where in-flight polling from the old host could send
-    // worktree-update events to this window via sendToEntryWindows() during initPromise.
-    // refCount and cleanup scheduling stay intact — handled atomically in releaseOldProject().
-    if (isSwitching && oldProjectPath) {
-      const oldEntry = this.entries.get(oldProjectPath);
-      if (oldEntry) {
-        oldEntry.windowIds.delete(windowId);
-      }
-    }
-
-    // Do NOT update windowToProject yet — the old project stays mapped until init succeeds
-
     try {
       await initPromise;
     } catch (error) {
-      // Restore window to old entry on failure so old host can still serve events
-      if (isSwitching && oldProjectPath) {
-        const oldEntry = this.entries.get(oldProjectPath);
-        if (oldEntry && !oldEntry.windowIds.has(windowId)) {
-          oldEntry.windowIds.add(windowId);
-        }
-      }
-      // Clean up failed entry so subsequent loadProject calls create a fresh host
+      // Clean up failed entry so subsequent calls create a fresh host
       if (this.entries.get(normalizedPath) === newEntry) {
         this.entries.delete(normalizedPath);
         newEntry.windowIds.delete(windowId);
         newEntry.refCount--;
         newEntry.host.dispose();
       }
-      // Window stays mapped to the old project (blue-green: old host preserved on failure)
       throw error;
     }
 
-    // Stale generation check: if a newer switch started while we were waiting, dispose and bail
-    if (myGeneration !== undefined && this.windowGenerations.get(windowId) !== myGeneration) {
-      if (newEntry.windowIds.has(windowId)) {
-        newEntry.windowIds.delete(windowId);
-        newEntry.refCount--;
-      }
-      if (newEntry.refCount <= 0 && this.entries.get(normalizedPath) === newEntry) {
-        newEntry.host.dispose();
-        this.entries.delete(normalizedPath);
-      }
-      return scopeId;
-    }
-
-    // Check if client was disposed while waiting
     if (this.isDisposed) {
       if (newEntry.refCount <= 0 && this.entries.get(normalizedPath) === newEntry) {
         newEntry.host.dispose();
@@ -398,7 +372,6 @@ export class WorkspaceClient extends EventEmitter {
       return scopeId;
     }
 
-    // Atomic swap: update window mapping, then release old project
     this.windowToProject.set(windowId, normalizedPath);
 
     if (isSwitching) {
@@ -424,6 +397,47 @@ export class WorkspaceClient extends EventEmitter {
         oldEntry.host.dispose();
         this.entries.delete(oldProjectPath);
       }, CLEANUP_GRACE_MS);
+    }
+  }
+
+  /**
+   * Create a direct MessagePort channel between a workspace host and a renderer view.
+   * Spontaneous events (worktree updates, PR/issue events) bypass the main-process relay.
+   */
+  attachDirectPort(windowId: number, webContents: WebContents): void {
+    const entry = this.resolveEntryForWindow(windowId);
+    if (!entry) {
+      console.warn("[WorkspaceClient] No entry for window, cannot attach direct port");
+      return;
+    }
+    this.createDirectPortForEntry(entry, webContents);
+  }
+
+  private createDirectPortForEntry(entry: ProcessEntry, webContents: WebContents): void {
+    if (webContents.isDestroyed()) return;
+
+    const { port1, port2 } = new MessageChannelMain();
+
+    // port1 → workspace host UtilityProcess
+    const attached = entry.host.attachRendererPort(port1);
+    if (!attached) {
+      port1.close();
+      port2.close();
+      return;
+    }
+
+    // port2 → renderer view
+    webContents.postMessage("workspace-port", null, [port2]);
+    entry.directPortViews.set(webContents.id, webContents);
+  }
+
+  /**
+   * Remove a direct port mapping when a view is evicted/destroyed.
+   * Called by ProjectViewManager.onViewEvicted callback.
+   */
+  removeDirectPort(webContentsId: number): void {
+    for (const entry of this.entries.values()) {
+      entry.directPortViews.delete(webContentsId);
     }
   }
 
@@ -528,15 +542,9 @@ export class WorkspaceClient extends EventEmitter {
           this.sendToEntryWindows(entry, CHANNELS.WORKTREE_ACTIVATED, { worktreeId });
         }
       } else {
-        const windows = BrowserWindow.getAllWindows();
-        for (const win of windows) {
-          if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
-            try {
-              win.webContents.send(CHANNELS.WORKTREE_ACTIVATED, { worktreeId });
-            } catch {
-              // ignore
-            }
-          }
+        // Broadcast to all entries' views (no windowId → fan out)
+        for (const entry of this.entries.values()) {
+          this.sendToEntryWindows(entry, CHANNELS.WORKTREE_ACTIVATED, { worktreeId });
         }
       }
     }
@@ -626,13 +634,8 @@ export class WorkspaceClient extends EventEmitter {
     }
   }
 
-  async onProjectSwitch(_windowId: number): Promise<void> {
-    // No-op: blue-green swap in loadProject() handles release atomically
-  }
-
   unregisterWindow(windowId: number): void {
     this.releaseWindow(windowId);
-    this.windowGenerations.delete(windowId);
   }
 
   async listBranches(rootPath: string): Promise<BranchInfo[]> {
@@ -904,7 +907,6 @@ export class WorkspaceClient extends EventEmitter {
     }
     this.entries.clear();
     this.windowToProject.clear();
-    this.windowGenerations.clear();
     this.worktreePathToProject.clear();
     this.copyTreeProgressCallbacks.clear();
     this.activeCopyTreeOperations.clear();

@@ -1,11 +1,12 @@
-import { BrowserWindow, ipcMain, dialog } from "electron";
+import { ipcMain, dialog } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
+import { distributePortsToView } from "../../window/portDistribution.js";
 import path from "path";
 import { CHANNELS } from "../channels.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { runCommandDetector } from "../../services/RunCommandDetector.js";
 import { ProjectSwitchService } from "../../services/ProjectSwitchService.js";
 import { broadcastToRenderer, sendToRenderer } from "../utils.js";
-import { randomUUID } from "crypto";
 import type { HandlerDependencies } from "../types.js";
 import type { Project, ProjectSettings } from "../../types/index.js";
 import type {
@@ -40,10 +41,21 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_ALL));
 
   const handleProjectGetCurrent = async (event: Electron.IpcMainInvokeEvent) => {
+    // Multi-view: resolve the project from the sender's view
+    const pvm = deps.projectViewManager;
+    if (pvm) {
+      const viewProjectId = pvm.getProjectIdForWebContents(event.sender.id);
+      if (viewProjectId) {
+        const project = projectStore.getProjectById(viewProjectId);
+        if (project) return project;
+      }
+    }
+
+    // Fallback: global current project
     const currentProject = projectStore.getCurrentProject();
 
     if (currentProject && deps.worktreeService) {
-      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      const senderWindow = getWindowForWebContents(event.sender);
       const windowId = senderWindow?.id ?? deps.mainWindow?.id;
       try {
         if (windowId !== undefined) {
@@ -132,10 +144,13 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       throw new Error("Invalid project ID");
     }
 
+    const project = projectStore.getProjectById(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
     // Pre-apply the renderer's outgoing terminal state to the current project's
-    // persisted state BEFORE the switch runs. This ensures saveOutgoingProjectWorktreeState
-    // (which does a read-modify-write) reads the already-updated cache and doesn't
-    // clobber the terminal data.
+    // persisted state BEFORE the switch runs.
     const previousProjectId = projectStore.getCurrentProjectId();
     if (outgoingState && previousProjectId) {
       const validTerminals = sanitizeTerminals(
@@ -154,6 +169,68 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       });
     }
 
+    const pvm = deps.projectViewManager;
+    if (pvm) {
+      // Multi-view path: swap WebContentsViews instead of resetting stores
+      const { view, isNew } = await pvm.switchTo(projectId, project.path);
+
+      // Update the main process global state
+      await projectStore.setCurrentProject(projectId);
+
+      // Always call loadProject so the WorkspaceClient's windowToProject
+      // mapping points to the correct project.  Without this, reactivating a
+      // cached view leaves the mapping pointing at the *previous* project,
+      // causing sendToEntryWindows to route the old project's IPC events to
+      // the newly-active view (cross-project worktree contamination).
+      if (deps.worktreeService) {
+        const senderWindow = getWindowForWebContents(_event.sender);
+        const windowId = senderWindow?.id ?? deps.mainWindow?.id;
+        if (windowId !== undefined) {
+          try {
+            await deps.worktreeService.loadProject(project.path, windowId);
+
+            // Always attach a direct MessagePort.  For new views this is the
+            // first port; for cached views it re-establishes the relay after a
+            // potential host recreation (CLEANUP_GRACE_MS expiry).
+            if (!view.webContents.isDestroyed()) {
+              deps.worktreeService.attachDirectPort(windowId, view.webContents);
+            }
+          } catch (err) {
+            console.error("[ProjectSwitch] Failed to load worktrees:", err);
+          }
+        }
+
+        // Register the new view's webContents in WindowRegistry
+        if (isNew && deps.windowRegistry && senderWindow) {
+          deps.windowRegistry.registerAppViewWebContents(senderWindow.id, view.webContents.id);
+        }
+      }
+
+      // Notify PTY host of the active project and distribute a fresh
+      // MessagePort to the new/reactivated view so terminal data flows.
+      {
+        const senderWindow = getWindowForWebContents(_event.sender);
+        const windowId = senderWindow?.id ?? deps.mainWindow?.id;
+        if (windowId !== undefined) {
+          if (deps.ptyClient) {
+            deps.ptyClient.onProjectSwitch(windowId, projectId);
+          }
+
+          // Distribute PTY MessagePort to the switched-to view
+          const win = senderWindow ?? deps.mainWindow;
+          if (win && deps.windowRegistry && !view.webContents.isDestroyed()) {
+            const ctx = deps.windowRegistry.getByWindowId(win.id);
+            if (ctx) {
+              distributePortsToView(win, ctx, view.webContents, deps.ptyClient ?? null);
+            }
+          }
+        }
+      }
+
+      return project;
+    }
+
+    // Fallback: legacy single-view switch path
     return await projectSwitchService.switchProject(projectId);
   };
   ipcMain.handle(CHANNELS.PROJECT_SWITCH, handleProjectSwitch);
@@ -323,37 +400,21 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     }
 
     console.log(`[IPC] project:reopen: ${projectId}`);
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
 
     const project = projectStore.getProjectById(projectId);
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    // "already active" fast path — skip pre-apply (no project switch happening)
-    if (project.status === "active") {
-      console.log(
-        `[IPC] project:reopen: Project ${projectId} already active, emitting switch event`
-      );
-      const switchId = randomUUID();
-      const switchPayload = { project, switchId };
-      if (senderWindow && !senderWindow.isDestroyed()) {
-        sendToRenderer(senderWindow, CHANNELS.PROJECT_ON_SWITCH, switchPayload);
-      } else {
-        broadcastToRenderer(CHANNELS.PROJECT_ON_SWITCH, switchPayload);
-      }
-      return project;
-    }
-
-    if (project.status !== "background") {
+    if (project.status !== "background" && project.status !== "active") {
       throw new Error(
-        `Cannot reopen project ${projectId} unless status is "background" (current: ${project.status ?? "unset"})`
+        `Cannot reopen project ${projectId} unless status is "background" or "active" (current: ${project.status ?? "unset"})`
       );
     }
 
-    // Pre-apply outgoing terminal state (same logic as handleProjectSwitch)
+    // Pre-apply outgoing terminal state
     const previousProjectId = projectStore.getCurrentProjectId();
-    if (outgoingState && previousProjectId) {
+    if (outgoingState && previousProjectId && previousProjectId !== projectId) {
       const validTerminals = sanitizeTerminals(
         outgoingState.terminals ?? [],
         `project:reopen/pre-apply(${previousProjectId})`
@@ -370,6 +431,57 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       });
     }
 
+    const pvm = deps.projectViewManager;
+    if (pvm) {
+      // Multi-view path: swap views
+      const { view, isNew } = await pvm.switchTo(projectId, project.path);
+      await projectStore.setCurrentProject(projectId);
+      projectStore.updateProjectStatus(projectId, "active");
+
+      // Always call loadProject — see comment in handleProjectSwitch above.
+      if (deps.worktreeService) {
+        const senderWindow = getWindowForWebContents(event.sender);
+        const windowId = senderWindow?.id ?? deps.mainWindow?.id;
+        if (windowId !== undefined) {
+          try {
+            await deps.worktreeService.loadProject(project.path, windowId);
+
+            if (!view.webContents.isDestroyed()) {
+              deps.worktreeService.attachDirectPort(windowId, view.webContents);
+            }
+          } catch (err) {
+            console.error("[ProjectReopen] Failed to load worktrees:", err);
+          }
+        }
+
+        if (isNew && deps.windowRegistry && senderWindow) {
+          deps.windowRegistry.registerAppViewWebContents(senderWindow.id, view.webContents.id);
+        }
+      }
+
+      // Notify PTY host of the active project and distribute a fresh MessagePort
+      {
+        const senderWindow = getWindowForWebContents(event.sender);
+        const windowId = senderWindow?.id ?? deps.mainWindow?.id;
+        if (windowId !== undefined) {
+          if (deps.ptyClient) {
+            deps.ptyClient.onProjectSwitch(windowId, projectId);
+          }
+
+          const win = senderWindow ?? deps.mainWindow;
+          if (win && deps.windowRegistry && !view.webContents.isDestroyed()) {
+            const ctx = deps.windowRegistry.getByWindowId(win.id);
+            if (ctx) {
+              distributePortsToView(win, ctx, view.webContents, deps.ptyClient ?? null);
+            }
+          }
+        }
+      }
+
+      return project;
+    }
+
+    // Fallback: legacy single-view path
     return await projectSwitchService.reopenProject(projectId);
   };
   ipcMain.handle(CHANNELS.PROJECT_REOPEN, handleProjectReopen);
@@ -562,7 +674,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       throw new Error("Invalid options object");
     }
 
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
 
     const {
       directoryPath,
@@ -777,7 +889,7 @@ Thumbs.db
       throw new Error("Invalid options object");
     }
 
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
 
     const { url, parentPath, folderName } = options;
 

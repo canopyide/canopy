@@ -15,9 +15,16 @@ import {
 } from "./setup/protocols.js";
 import { registerAppLifecycleHandlers } from "./lifecycle/appLifecycle.js";
 import { registerShutdownHandler } from "./lifecycle/shutdown.js";
-import { setMainWindow, getMainWindow, setWindowRegistry } from "./window/windowRef.js";
+import {
+  setMainWindow,
+  getMainWindow,
+  setWindowRegistry,
+  setProjectViewManager,
+} from "./window/windowRef.js";
 import { WindowRegistry } from "./window/WindowRegistry.js";
+import { ProjectViewManager } from "./window/ProjectViewManager.js";
 import { setupBrowserWindow } from "./window/createWindow.js";
+import { distributePortsToView } from "./window/portDistribution.js";
 import {
   setupWindowServices,
   getPtyClient,
@@ -49,6 +56,7 @@ import { initializeGpuCrashMonitor } from "./services/GpuCrashMonitorService.js"
 import { initializeTrashedPidCleanup } from "./services/TrashedPidTracker.js";
 import { initializeCrashLoopGuard, getCrashLoopGuard } from "./services/CrashLoopGuardService.js";
 import { initializeDatabaseMaintenance } from "./services/DatabaseMaintenanceService.js";
+import { readLastActiveProjectIdSync } from "./services/persistence/readLastProjectId.js";
 
 // CRITICAL: Run IPC sender validation before any handlers are registered
 enforceIpcSenderValidation();
@@ -129,19 +137,51 @@ if (!gotTheLock) {
   const windowRegistry = new WindowRegistry();
   setWindowRegistry(windowRegistry);
 
+  // Read last-active projectId synchronously from SQLite BEFORE creating any window.
+  // This allows the initial WebContentsView to use the correct session partition,
+  // giving crash isolation and V8 code cache benefits from the first render.
+  const lastActiveProjectId = readLastActiveProjectIdSync();
+
   let powerMonitorInitialized = false;
 
   async function createWindow(initialProjectPath?: string | null): Promise<void> {
-    const { win, loadRenderer, smokeTestTimer, smokeRendererUnresponsive } = setupBrowserWindow(
-      __dirname,
-      {
+    const { win, appView, loadRenderer, smokeTestTimer, smokeRendererUnresponsive } =
+      setupBrowserWindow(__dirname, {
         onRecreateWindow: () => createWindow(initialProjectPath),
         onCreateWindow: (projectPath?: string) => createWindow(projectPath),
         projectPath: initialProjectPath,
-      }
-    );
+        initialProjectId: lastActiveProjectId ?? undefined,
+      });
     setMainWindow(win);
-    windowRegistry.register(win, { projectPath: initialProjectPath ?? undefined });
+    const ctx = windowRegistry.register(win, { projectPath: initialProjectPath ?? undefined });
+    windowRegistry.registerAppViewWebContents(ctx.windowId, appView.webContents.id);
+
+    const pvm = new ProjectViewManager(win, {
+      dirname: __dirname,
+      onRecreateWindow: () => createWindow(initialProjectPath),
+      windowRegistry,
+      onViewEvicted: (wcId) => {
+        getWorkspaceClientRef()?.removeDirectPort(wcId);
+      },
+      onViewReady: (wc) => {
+        // Re-distribute PTY MessagePort on every view load/reload.
+        // This ensures terminals work after view creation, crash recovery, or DevTools refresh.
+        if (win.isDestroyed() || wc.isDestroyed()) return;
+        const wCtx = windowRegistry.getByWindowId(win.id);
+        if (wCtx) {
+          distributePortsToView(win, wCtx, wc, getPtyClient());
+        }
+        // Refresh workspace direct port (preload context is reset on reload)
+        getWorkspaceClientRef()?.attachDirectPort(win.id, wc);
+      },
+    });
+    setProjectViewManager(pvm);
+
+    // Clean up ProjectViewManager when window closes
+    win.once("closed", () => {
+      pvm.dispose();
+      setProjectViewManager(null);
+    });
 
     await setupWindowServices(win, {
       loadRenderer,
@@ -149,6 +189,9 @@ if (!gotTheLock) {
       smokeRendererUnresponsive,
       windowRegistry,
       initialProjectPath: initialProjectPath ?? undefined,
+      initialProjectId: lastActiveProjectId ?? undefined,
+      projectViewManager: pvm,
+      initialAppView: appView,
     });
 
     if (!powerMonitorInitialized) {

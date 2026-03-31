@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
 import os from "os";
-import { randomBytes } from "crypto";
 import type { HandlerDependencies } from "../ipc/types.js";
 import { registerIpcHandlers, sendToRenderer } from "../ipc/handlers.js";
+import { getAppWebContents } from "./webContentsRegistry.js";
+import { distributePortsToView } from "./portDistribution.js";
 import { registerErrorHandlers, flushPendingErrors } from "../ipc/errorHandlers.js";
 import { PtyClient, disposePtyClient } from "../services/PtyClient.js";
 import {
@@ -150,35 +151,8 @@ export function setStopDiskSpaceMonitor(v: (() => void) | null): void {
 }
 
 function createAndDistributePorts(win: BrowserWindow, ctx: WindowContext): void {
-  if (ctx.services.activeRendererPort) {
-    try {
-      ctx.services.activeRendererPort.close();
-    } catch {
-      /* ignore */
-    }
-  }
-  if (ctx.services.activePtyHostPort) {
-    try {
-      ctx.services.activePtyHostPort.close();
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const { port1, port2 } = new MessageChannelMain();
-  const handshakeToken = randomBytes(32).toString("hex");
-
-  ctx.services.activeRendererPort = port1;
-  ctx.services.activePtyHostPort = port2;
-
-  if (ptyClient) {
-    ptyClient.connectMessagePort(ctx.windowId, port2);
-  }
-
-  if (win && !win.isDestroyed()) {
-    win.webContents.postMessage("terminal-port-token", { token: handshakeToken });
-    win.webContents.postMessage("terminal-port", { token: handshakeToken }, [port1]);
-  }
+  const wc = getAppWebContents(win);
+  distributePortsToView(win, ctx, wc, ptyClient);
 }
 
 async function initializeDeferredServices(
@@ -264,11 +238,15 @@ async function initializeDeferredServices(
 }
 
 export interface SetupWindowServicesOptions {
-  loadRenderer: (reason: string) => void;
+  loadRenderer: (reason: string, projectId?: string) => void;
   smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   smokeRendererUnresponsive: () => boolean;
   windowRegistry?: WindowRegistry;
   initialProjectPath?: string;
+  /** Last-active projectId read before window creation for session partition assignment */
+  initialProjectId?: string;
+  projectViewManager?: import("./ProjectViewManager.js").ProjectViewManager;
+  initialAppView?: import("electron").WebContentsView;
 }
 
 export async function setupWindowServices(
@@ -378,16 +356,19 @@ export async function setupWindowServices(
       if (windowRegistry) {
         for (const wCtx of windowRegistry.all()) {
           const w = wCtx.browserWindow;
-          if (!w.isDestroyed() && !w.webContents.isDestroyed()) {
-            try {
-              w.webContents.send(CHANNELS.TERMINAL_BACKEND_CRASHED, {
-                crashType: details.crashType,
-                code: details.code,
-                signal: details.signal,
-                timestamp: details.timestamp,
-              });
-            } catch {
-              // Silently ignore send failures during window disposal.
+          if (!w.isDestroyed()) {
+            const wc = getAppWebContents(w);
+            if (!wc.isDestroyed()) {
+              try {
+                wc.send(CHANNELS.TERMINAL_BACKEND_CRASHED, {
+                  crashType: details.crashType,
+                  code: details.code,
+                  signal: details.signal,
+                  timestamp: details.timestamp,
+                });
+              } catch {
+                // Silently ignore send failures during window disposal.
+              }
             }
           }
         }
@@ -428,15 +409,18 @@ export async function setupWindowServices(
     });
     ptyClient.setPortRefreshCallback(() => {
       console.log("[MAIN] Pty Host restarted, refreshing ports...");
-      // Refresh ports for ALL registered windows
+      // Refresh ports for ALL registered windows — target the active view
       if (windowRegistry) {
         for (const wCtx of windowRegistry.all()) {
           if (!wCtx.browserWindow.isDestroyed()) {
-            createAndDistributePorts(wCtx.browserWindow, wCtx);
-            try {
-              wCtx.browserWindow.webContents.send(CHANNELS.TERMINAL_BACKEND_READY);
-            } catch {
-              // Silently ignore send failures during window disposal.
+            const wc = getAppWebContents(wCtx.browserWindow);
+            if (!wc.isDestroyed()) {
+              distributePortsToView(wCtx.browserWindow, wCtx, wc, ptyClient);
+              try {
+                wc.send(CHANNELS.TERMINAL_BACKEND_READY);
+              } catch {
+                // Silently ignore send failures during window disposal.
+              }
             }
           }
         }
@@ -550,18 +534,11 @@ export async function setupWindowServices(
   const { armRestoreQuota } = await import("../ipc/utils.js");
   armRestoreQuota(50, 120_000);
 
-  opts.loadRenderer("after-services-ready");
-
-  // Error handlers also use ipcMain.handle — register once
-  if (!cleanupErrorHandlers) {
-    cleanupErrorHandlers = registerErrorHandlers(workspaceClient, ptyClient);
-  }
-
-  console.log("[MAIN] All critical services ready");
-
-  // Handle reloads (per-window)
-  win.webContents.on("did-finish-load", () => {
-    const currentUrl = win.webContents.getURL();
+  // Handle reloads (per-window) — listen on the app view's webContents.
+  // MUST be attached BEFORE loadRenderer() to avoid missing the first did-finish-load.
+  const appWc = getAppWebContents(win);
+  appWc.on("did-finish-load", () => {
+    const currentUrl = appWc.getURL();
     if (currentUrl.includes("recovery.html")) {
       console.log("[MAIN] Recovery page loaded, skipping normal renderer bootstrap");
       return;
@@ -570,12 +547,25 @@ export async function setupWindowServices(
     if (isSmokeTest) console.error("[SMOKE] CHECK: Renderer did-finish-load — OK");
     markPerformance(PERF_MARKS.RENDERER_READY);
     createAndDistributePorts(win, ctx);
+    // Refresh workspace direct port on reload (preload context is reset)
+    if (workspaceClient) {
+      workspaceClient.attachDirectPort(win.id, appWc);
+    }
     flushPendingErrors();
     const diskStatus = getCurrentDiskSpaceStatus();
     if (diskStatus.status !== "normal") {
       sendToRenderer(win, CHANNELS.WINDOW_DISK_SPACE_STATUS, diskStatus);
     }
   });
+
+  opts.loadRenderer("after-services-ready", opts.initialProjectId);
+
+  // Error handlers also use ipcMain.handle — register once
+  if (!cleanupErrorHandlers) {
+    cleanupErrorHandlers = registerErrorHandlers(workspaceClient, ptyClient);
+  }
+
+  console.log("[MAIN] All critical services ready");
 
   // Wait for remaining services
   console.log("[MAIN] Waiting for remaining services to initialize...");
@@ -657,14 +647,35 @@ export async function setupWindowServices(
     console.warn("[MAIN] PTY service unavailable - skipping terminal setup");
   }
 
-  // Load worktrees — prefer initialProjectPath for windows opened with a specific path
+  // Register the initial view with ProjectViewManager once we know the project
   const currentProject = projectStore.getCurrentProject();
+  if (opts.projectViewManager && opts.initialAppView && currentProject) {
+    opts.projectViewManager.registerInitialView(
+      opts.initialAppView,
+      currentProject.id,
+      currentProject.path
+    );
+  }
+
+  // Add ProjectViewManager to handler deps for IPC handlers
+  if (opts.projectViewManager) {
+    handlerDeps.projectViewManager = opts.projectViewManager;
+  }
+
+  // Load worktrees — prefer initialProjectPath for windows opened with a specific path
   const projectPathForWorktrees = opts.initialProjectPath ?? currentProject?.path;
   if (projectPathForWorktrees && workspaceClient && workspaceReady) {
     console.log("[MAIN] Loading worktrees for project path:", projectPathForWorktrees);
     try {
       await workspaceClient.loadProject(projectPathForWorktrees, win.id);
       console.log("[MAIN] Worktrees loaded");
+
+      // Attach direct MessagePort for workspace events (bypasses main-process relay)
+      const directPortTarget = opts.initialAppView?.webContents ?? getAppWebContents(win);
+      if (directPortTarget && !directPortTarget.isDestroyed()) {
+        workspaceClient.attachDirectPort(win.id, directPortTarget);
+        console.log("[MAIN] Workspace direct port attached");
+      }
     } catch (error) {
       console.error("[MAIN] Failed to load worktrees:", error);
     }

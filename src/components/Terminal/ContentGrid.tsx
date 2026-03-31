@@ -392,7 +392,7 @@ export function ContentGrid({
         .map(([id]) => id)
     );
   }, [gridAgentSettings]);
-  const isProjectSwitching = useProjectStore((state) => state.isSwitching);
+  const isProjectSwitching = false;
   const { projectIconSvg } = useProjectBranding(currentProject?.id);
   const { worktreeMap } = useWorktrees();
   const activeWorktree = activeWorktreeId ? worktreeMap.get(activeWorktreeId) : null;

@@ -4,9 +4,10 @@ import { CHANNELS } from "./ipc/channels.js";
 import { getEffectiveRegistry } from "../shared/config/agentRegistry.js";
 import type { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import * as CliInstallService from "./services/CliInstallService.js";
-import { getWindowRegistry } from "./window/windowRef.js";
+import { getWindowRegistry, getProjectViewManager } from "./window/windowRef.js";
 import { autoUpdaterService } from "./services/AutoUpdaterService.js";
 import { getPluginMenuItems } from "./services/pluginMenuRegistry.js";
+import { getAppWebContents } from "./window/webContentsRegistry.js";
 
 app.setAboutPanelOptions({
   applicationName: "Canopy",
@@ -39,11 +40,14 @@ export function createApplicationMenu(
   };
 
   const sendAction = (action: string, target: BrowserWindow | null) => {
-    if (target && !target.isDestroyed() && !target.webContents.isDestroyed()) {
-      try {
-        target.webContents.send(CHANNELS.MENU_ACTION, action);
-      } catch {
-        // Silently ignore send failures during window disposal.
+    if (target && !target.isDestroyed()) {
+      const wc = getAppWebContents(target);
+      if (!wc.isDestroyed()) {
+        try {
+          wc.send(CHANNELS.MENU_ACTION, action);
+        } catch {
+          // Silently ignore send failures during window disposal.
+        }
       }
     }
   };
@@ -164,7 +168,7 @@ export function createApplicationMenu(
           click: (_item, browserWindow) => {
             const win = getTargetBrowserWindow(browserWindow);
             if (!win) return;
-            win.webContents.reload();
+            getAppWebContents(win).reload();
           },
         },
         {
@@ -172,7 +176,7 @@ export function createApplicationMenu(
           click: (_item, browserWindow) => {
             const win = getTargetBrowserWindow(browserWindow);
             if (!win) return;
-            win.webContents.reloadIgnoringCache();
+            getAppWebContents(win).reloadIgnoringCache();
           },
         },
         ...(app.isPackaged ? [] : [{ role: "toggleDevTools" as const }]),
@@ -242,23 +246,29 @@ export function createApplicationMenu(
             try {
               const status = await CliInstallService.install();
               const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
-              if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
-                win.webContents.send(CHANNELS.NOTIFICATION_SHOW_TOAST, {
-                  type: "success",
-                  title: "CLI Installed",
-                  message: `The \`canopy\` command is now available at ${status.path}`,
-                });
+              if (win && !win.isDestroyed()) {
+                const wc = getAppWebContents(win);
+                if (!wc.isDestroyed()) {
+                  wc.send(CHANNELS.NOTIFICATION_SHOW_TOAST, {
+                    type: "success",
+                    title: "CLI Installed",
+                    message: `The \`canopy\` command is now available at ${status.path}`,
+                  });
+                }
               }
               createApplicationMenu(mainWindow, cliAvailabilityService);
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
-              if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
-                win.webContents.send(CHANNELS.NOTIFICATION_SHOW_TOAST, {
-                  type: "error",
-                  title: "CLI Installation Failed",
-                  message,
-                });
+              if (win && !win.isDestroyed()) {
+                const wc = getAppWebContents(win);
+                if (!wc.isDestroyed()) {
+                  wc.send(CHANNELS.NOTIFICATION_SHOW_TOAST, {
+                    type: "error",
+                    title: "CLI Installation Failed",
+                    message,
+                  });
+                }
               }
             }
           },
@@ -380,16 +390,24 @@ export async function handleDirectoryOpen(
   if (targetWindow.isDestroyed()) return;
 
   try {
-    const registry = getWindowRegistry();
-    const wCtx = registry?.getByWindowId(targetWindow.id);
-    const switchService = wCtx?.services.projectSwitchService;
-    if (!switchService) {
-      console.error("[menu] ProjectSwitchService not available yet, cannot switch project");
-      return;
-    }
-
     const project = await projectStore.addProject(directoryPath);
-    await switchService.switchProject(project.id);
+
+    // Use ProjectViewManager for multi-view switching when available
+    const pvm = getProjectViewManager();
+    if (pvm) {
+      await pvm.switchTo(project.id, project.path);
+      await projectStore.setCurrentProject(project.id);
+    } else {
+      // Fallback: legacy single-view switch
+      const registry = getWindowRegistry();
+      const wCtx = registry?.getByWindowId(targetWindow.id);
+      const switchService = wCtx?.services.projectSwitchService;
+      if (!switchService) {
+        console.error("[menu] ProjectSwitchService not available yet, cannot switch project");
+        return;
+      }
+      await switchService.switchProject(project.id);
+    }
 
     createApplicationMenu(targetWindow, cliAvailabilityService);
   } catch (error) {

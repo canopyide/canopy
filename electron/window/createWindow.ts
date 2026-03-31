@@ -1,4 +1,17 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from "electron";
+import {
+  app,
+  BrowserWindow,
+  WebContentsView,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  session,
+} from "electron";
+import {
+  getWindowForWebContents,
+  registerWebContents,
+  registerAppView,
+} from "./webContentsRegistry.js";
 import path from "path";
 import { createWindowWithState } from "../windowState.js";
 import { store } from "../store.js";
@@ -14,7 +27,9 @@ import { sendToRenderer } from "../ipc/handlers.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { notifyError } from "../ipc/errorHandlers.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
+import { injectSkeletonCss } from "./skeletonCss.js";
 import { markPerformance } from "../utils/performance.js";
+import { registerProtocolsForSession, getDistPath } from "../setup/protocols.js";
 import { isSmokeTest } from "../setup/environment.js";
 import { SMOKE_BOOT_TIMEOUT_MS } from "../services/smokeTest.js";
 
@@ -36,7 +51,7 @@ function registerWindowIpcHandlers(onCreateWindow?: (projectPath?: string) => Pr
   }
 
   ipcMain.handle(CHANNELS.WINDOW_TOGGLE_FULLSCREEN, (event) => {
-    const bw = BrowserWindow.fromWebContents(event.sender);
+    const bw = getWindowForWebContents(event.sender);
     if (bw && !bw.isDestroyed()) {
       const isSimpleFullScreen = bw.isSimpleFullScreen();
       bw.setSimpleFullScreen(!isSimpleFullScreen);
@@ -76,7 +91,7 @@ function registerWindowIpcHandlers(onCreateWindow?: (projectPath?: string) => Pr
   });
 
   ipcMain.handle(CHANNELS.WINDOW_CLOSE, (event) => {
-    const bw = BrowserWindow.fromWebContents(event.sender);
+    const bw = getWindowForWebContents(event.sender);
     bw?.close();
   });
 }
@@ -85,11 +100,15 @@ export interface SetupBrowserWindowOptions {
   onRecreateWindow?: () => Promise<void>;
   onCreateWindow?: (projectPath?: string) => Promise<void>;
   projectPath?: string | null;
+  /** Last-active projectId read synchronously from DB before window creation.
+   *  Used to assign the correct session partition to the initial view. */
+  initialProjectId?: string;
 }
 
 export interface CreateWindowResult {
   win: BrowserWindow;
-  loadRenderer: (reason: string) => void;
+  appView: WebContentsView;
+  loadRenderer: (reason: string, projectId?: string) => void;
   smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   smokeRendererUnresponsive: () => boolean;
 }
@@ -98,7 +117,7 @@ export function setupBrowserWindow(
   dirname: string,
   options: SetupBrowserWindowOptions = {}
 ): CreateWindowResult {
-  const { onRecreateWindow, onCreateWindow, projectPath } = options;
+  const { onRecreateWindow, onCreateWindow, projectPath, initialProjectId } = options;
   let smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   let _smokeRendererUnresponsive = false;
 
@@ -148,21 +167,15 @@ export function setupBrowserWindow(
   const scheme = resolveAppTheme(colorSchemeId, customSchemes);
   const windowBg = scheme.tokens["surface-canvas"];
 
+  // ── Create BrowserWindow as a thin host ──
+  // The BrowserWindow itself does NOT load the app — it's a shell.
+  // The React app lives in a WebContentsView attached to win.contentView.
   console.log("[MAIN] Creating window...");
   const win = createWindowWithState(
     {
       show: false,
       minWidth: 800,
       minHeight: 600,
-      webPreferences: {
-        preload: path.join(dirname, "preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webviewTag: true,
-        navigateOnDragDrop: false,
-        v8CacheOptions: "code",
-      },
       ...(process.platform === "darwin"
         ? {
             titleBarStyle: "hiddenInset" as const,
@@ -184,6 +197,49 @@ export function setupBrowserWindow(
   );
   markPerformance(PERF_MARKS.MAIN_WINDOW_CREATED);
 
+  // Register the window's own webContents for getWindowForWebContents() fallback
+  registerWebContents(win.webContents, win);
+
+  // ── Create WebContentsView for the React app ──
+  // When initialProjectId is available (returning user), use a per-project session partition
+  // for crash isolation, V8 code cache, and storage scoping. Falls back to default session
+  // on first launch (no project yet).
+  const viewSession = initialProjectId
+    ? session.fromPartition(`persist:project-${initialProjectId}`)
+    : undefined;
+  if (viewSession) {
+    const dist = getDistPath();
+    if (dist) registerProtocolsForSession(viewSession, dist);
+  }
+
+  const appView = new WebContentsView({
+    webPreferences: {
+      preload: path.join(dirname, "preload.cjs"),
+      ...(viewSession ? { session: viewSession } : {}),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: true,
+      navigateOnDragDrop: false,
+      v8CacheOptions: "code",
+    },
+  });
+
+  // Register the app view so IPC helpers route to the correct webContents
+  registerAppView(win, appView);
+
+  // Attach the view to the window and size it to fill the content area.
+  // Ongoing resize handling is delegated to ProjectViewManager (which tracks the active view).
+  // We only need to set the initial bounds here.
+  win.contentView.addChildView(appView);
+  if (!win.isDestroyed()) {
+    const { width, height } = win.getContentBounds();
+    appView.setBounds({ x: 0, y: 0, width, height });
+  }
+
+  // The app view's webContents is the "renderer" for all purposes
+  const appWebContents = appView.webContents;
+
   // Defer showing the window until first paint to prevent background flash
   let isShown = false;
   const showWindow = () => {
@@ -192,7 +248,7 @@ export function setupBrowserWindow(
     clearTimeout(showTimeout);
     win.show();
   };
-  win.once("ready-to-show", showWindow);
+  appWebContents.once("did-finish-load", showWindow);
   const showTimeout = setTimeout(showWindow, 2500);
   win.once("closed", () => clearTimeout(showTimeout));
 
@@ -224,7 +280,7 @@ export function setupBrowserWindow(
           if (dialogId !== unresponsiveDialogId) return;
           unresponsiveDialogOpen = false;
           if (response === 1 && !win.isDestroyed()) {
-            win.webContents.reload();
+            appWebContents.reload();
           }
         })
         .catch(() => {
@@ -242,22 +298,26 @@ export function setupBrowserWindow(
   }
 
   let rendererLoadRequested = false;
-  const loadRenderer = (reason: string): void => {
+  const loadRenderer = (reason: string, projectId?: string): void => {
     if (!win || win.isDestroyed() || rendererLoadRequested) return;
     rendererLoadRequested = true;
+
+    injectSkeletonCss(appWebContents);
+
+    const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     console.log(`[MAIN] Loading renderer (${reason})...`);
     if (process.env.NODE_ENV === "development") {
       const devServerUrl = getDevServerUrl();
-      console.log(`[MAIN] Loading Vite dev server at ${devServerUrl}`);
-      win.loadURL(devServerUrl);
+      console.log(`[MAIN] Loading Vite dev server at ${devServerUrl}${qs}`);
+      appWebContents.loadURL(`${devServerUrl}${qs}`);
     } else {
       console.log("[MAIN] Loading production build via app:// protocol");
-      win.loadURL("app://canopy/index.html");
+      appWebContents.loadURL(`app://canopy/index.html${qs}`);
     }
   };
 
-  // Window open handler
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  // Window open handler — on the app view's webContents
+  appWebContents.setWindowOpenHandler(({ url }) => {
     if (url && canOpenExternalUrl(url)) {
       void openExternalUrl(url).catch((error) => {
         console.error("[MAIN] Failed to open external URL:", error);
@@ -269,33 +329,32 @@ export function setupBrowserWindow(
   });
 
   // Block same-window navigations to untrusted origins
-  const webContents = win.webContents;
-  webContents.on("will-navigate", (event, navigationUrl) => {
+  appWebContents.on("will-navigate", (event, navigationUrl) => {
     if (!isTrustedRendererUrl(navigationUrl)) {
       console.error(
         "[MAIN] Blocked navigation to untrusted URL:",
         navigationUrl,
         "from:",
-        webContents.getURL()
+        appWebContents.getURL()
       );
       event.preventDefault();
     }
   });
 
-  webContents.on("will-redirect", (event, redirectUrl) => {
+  appWebContents.on("will-redirect", (event, redirectUrl) => {
     if (!isTrustedRendererUrl(redirectUrl)) {
       console.error(
         "[MAIN] Blocked redirect to untrusted URL:",
         redirectUrl,
         "from:",
-        webContents.getURL()
+        appWebContents.getURL()
       );
       event.preventDefault();
     }
   });
 
-  // Harden webview security
-  win.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+  // Harden webview security — on the app view's webContents
+  appWebContents.on("will-attach-webview", (event, webPreferences, params) => {
     const allowedPartitions = ["persist:browser", "persist:dev-preview"];
     const isAllowedLocalhostUrl = isLocalhostUrl(params.src);
     const isValidPartition =
@@ -318,9 +377,8 @@ export function setupBrowserWindow(
     webPreferences.disableBlinkFeatures = "Auxclick";
   });
 
-  // Prevent Cmd+W / Ctrl+W from closing the window
-  const wc = win.webContents;
-  wc.on("before-input-event", (_event, input) => {
+  // Prevent Cmd+W / Ctrl+W from closing the window — listen on app view's webContents
+  appWebContents.on("before-input-event", (_event, input) => {
     const isMac = process.platform === "darwin";
     const isCloseShortcut =
       input.type === "keyDown" &&
@@ -328,13 +386,13 @@ export function setupBrowserWindow(
       ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
       !input.alt;
 
-    wc.setIgnoreMenuShortcuts(isCloseShortcut);
+    appWebContents.setIgnoreMenuShortcuts(isCloseShortcut);
   });
 
   // Crash loop detection and renderer recovery
   const rendererCrashTimestamps: number[] = [];
 
-  win.webContents.on("render-process-gone", (_event, details) => {
+  appWebContents.on("render-process-gone", (_event, details) => {
     if (details.reason === "clean-exit") return;
     console.error("[MAIN] Renderer process gone:", details.reason, details.exitCode);
     getCrashRecoveryService().recordCrash(
@@ -359,7 +417,7 @@ export function setupBrowserWindow(
       setImmediate(() => {
         if (win.isDestroyed()) return;
         const recoveryUrl = getRecoveryUrl(details.reason, details.exitCode);
-        win.webContents.loadURL(recoveryUrl);
+        appWebContents.loadURL(recoveryUrl);
       });
     } else if (isOom && onRecreateWindow) {
       const now2 = Date.now();
@@ -376,7 +434,7 @@ export function setupBrowserWindow(
         setImmediate(() => {
           if (win.isDestroyed()) return;
           const recoveryUrl = getRecoveryUrl(details.reason, details.exitCode);
-          win.webContents.loadURL(recoveryUrl);
+          appWebContents.loadURL(recoveryUrl);
         });
       } else {
         console.warn("[MAIN] OOM crash detected, destroying and recreating window");
@@ -400,7 +458,7 @@ export function setupBrowserWindow(
       });
       setImmediate(() => {
         if (win.isDestroyed()) return;
-        win.webContents.reload();
+        appWebContents.reload();
       });
     }
   });
@@ -445,6 +503,11 @@ export function setupBrowserWindow(
       clearTimeout(reclaimTimer);
       reclaimTimer = null;
     }
+    // Explicitly close the app view's webContents — Electron does NOT auto-destroy
+    // WebContentsView renderers when the host window closes.
+    if (!appWebContents.isDestroyed()) {
+      appWebContents.close();
+    }
   });
 
   registerWindowIpcHandlers(onCreateWindow);
@@ -460,6 +523,7 @@ export function setupBrowserWindow(
 
   return {
     win,
+    appView,
     loadRenderer,
     smokeTestTimer,
     smokeRendererUnresponsive: () => _smokeRendererUnresponsive,

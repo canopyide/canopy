@@ -52,8 +52,6 @@ export function AppLayout({
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const currentProject = useProjectStore((state) => state.currentProject);
-  const isProjectSwitching = useProjectStore((state) => state.isSwitching);
-  const switchingToProjectName = useProjectStore((state) => state.switchingToProjectName);
   const layout = useLayoutState();
 
   useEffect(() => {
@@ -114,7 +112,7 @@ export function AppLayout({
   useEffect(() => {
     // Gate persistence until hydration completes and project switching ends
     // to avoid overwriting restored focus mode during initial load or project switches
-    if (!isHydrated || isProjectSwitching) {
+    if (!isHydrated) {
       return;
     }
 
@@ -143,13 +141,7 @@ export function AppLayout({
 
     const timer = setTimeout(persistFocusMode, 100);
     return () => clearTimeout(timer);
-  }, [
-    layout.isFocusMode,
-    layout.savedPanelState,
-    currentProject?.id,
-    isHydrated,
-    isProjectSwitching,
-  ]);
+  }, [layout.isFocusMode, layout.savedPanelState, currentProject?.id, isHydrated]);
 
   const handleToggleFocusMode = useCallback(async () => {
     if (layout.isFocusMode) {
@@ -351,10 +343,7 @@ export function AppLayout({
         </ErrorBoundary>
       </div>
 
-      <ProjectSwitchOverlay
-        isSwitching={isProjectSwitching}
-        projectName={switchingToProjectName ?? undefined}
-      />
+      <ProjectSwitchOverlay isSwitching={false} projectName={undefined} />
       <ChordIndicator />
 
       <AllClearOverlay />
