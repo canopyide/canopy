@@ -79,6 +79,7 @@ export class PortalManager {
         continue;
       }
 
+      // Fire-and-forget: eviction is synchronous caller path, flush is best-effort
       void this.destroyView(tabId);
 
       this.sendToApp(CHANNELS.PORTAL_TAB_EVICTED, { tabId });
@@ -386,10 +387,10 @@ export class PortalManager {
     const destroyed: string[] = [];
     for (const tabId of [...this.viewMap.keys()]) {
       if (tabId === skipId) continue;
-      void this.destroyView(tabId);
       destroyed.push(tabId);
     }
     if (destroyed.length > 0) {
+      await Promise.allSettled(destroyed.map((tabId) => this.destroyView(tabId)));
       console.log(
         `[PortalManager] Destroyed ${destroyed.length} hidden tab(s) for memory pressure`
       );
@@ -400,6 +401,7 @@ export class PortalManager {
   destroy(): void {
     const tabIds = [...this.viewMap.keys()];
     for (const tabId of tabIds) {
+      // Fire-and-forget: window teardown is best-effort; Electron flushes sessions on shutdown
       void this.destroyView(tabId);
     }
     this.activeView = null;

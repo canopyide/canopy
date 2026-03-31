@@ -724,6 +724,127 @@ describe("PortalManager LRU eviction", () => {
   });
 });
 
+describe("PortalManager destroyHiddenTabs()", () => {
+  let PortalManagerClass: typeof import("../PortalManager.js").PortalManager;
+  let mockWindow: InstanceType<typeof import("electron").BrowserWindow>;
+
+  beforeEach(async () => {
+    createdWebContents.length = 0;
+    vi.resetModules();
+
+    const electron = await import("electron");
+    mockWindow = new electron.BrowserWindow() as InstanceType<typeof electron.BrowserWindow>;
+
+    const module = await import("../PortalManager.js");
+    PortalManagerClass = module.PortalManager;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("awaits flushStorageData before closing hidden tabs", async () => {
+    const manager = new PortalManagerClass(mockWindow);
+    manager.createTab("tab-1", "http://localhost:3000");
+    manager.createTab("tab-2", "http://localhost:3001");
+    manager.showTab("tab-2", { x: 0, y: 0, width: 800, height: 600 });
+
+    const wc = createdWebContents[0]; // tab-1's webContents
+    let flushResolved = false;
+    let closeCalledBeforeFlush = false;
+
+    const { promise, resolve } = Promise.withResolvers<void>();
+    wc.session.flushStorageData.mockReturnValue(promise);
+    wc.close.mockImplementation(() => {
+      if (!flushResolved) closeCalledBeforeFlush = true;
+    });
+
+    const destroyPromise = manager.destroyHiddenTabs();
+
+    // Flush hasn't resolved yet — close should not have been called
+    await Promise.resolve(); // let microtasks run
+    expect(wc.close).not.toHaveBeenCalled();
+
+    flushResolved = true;
+    resolve();
+    await destroyPromise;
+
+    expect(closeCalledBeforeFlush).toBe(false);
+    expect(wc.close).toHaveBeenCalled();
+  });
+
+  it("returns destroyed tab IDs and preserves active tab", async () => {
+    const manager = new PortalManagerClass(mockWindow);
+    manager.createTab("tab-a", "http://localhost:3000");
+    manager.createTab("tab-b", "http://localhost:3001");
+    manager.createTab("tab-c", "http://localhost:3002");
+    manager.showTab("tab-b", { x: 0, y: 0, width: 800, height: 600 });
+
+    const result = await manager.destroyHiddenTabs();
+
+    expect(result.sort()).toEqual(["tab-a", "tab-c"]);
+    expect(manager.hasTab("tab-b")).toBe(true);
+    expect(manager.hasTab("tab-a")).toBe(false);
+    expect(manager.hasTab("tab-c")).toBe(false);
+  });
+
+  it("preserves lastShownTabId when activeTabId is null", async () => {
+    const manager = new PortalManagerClass(mockWindow);
+    manager.createTab("tab-1", "http://localhost:3000");
+    manager.createTab("tab-2", "http://localhost:3001");
+    manager.showTab("tab-1", { x: 0, y: 0, width: 800, height: 600 });
+    manager.hideAll(); // clears activeTabId, but lastShownTabId = tab-1
+
+    const result = await manager.destroyHiddenTabs();
+
+    expect(result).toEqual(["tab-2"]);
+    expect(manager.hasTab("tab-1")).toBe(true);
+    expect(manager.hasTab("tab-2")).toBe(false);
+  });
+
+  it("one flush failure does not block other tabs from closing", async () => {
+    const manager = new PortalManagerClass(mockWindow);
+    manager.createTab("tab-1", "http://localhost:3000");
+    manager.createTab("tab-2", "http://localhost:3001");
+    manager.createTab("tab-3", "http://localhost:3002");
+    manager.showTab("tab-3", { x: 0, y: 0, width: 800, height: 600 });
+
+    // Make tab-1's flush reject
+    createdWebContents[0].session.flushStorageData.mockRejectedValue(new Error("disk full"));
+
+    const result = await manager.destroyHiddenTabs();
+
+    expect(result.sort()).toEqual(["tab-1", "tab-2"]);
+    // Both tabs should still be closed despite tab-1's flush failure
+    expect(createdWebContents[0].close).toHaveBeenCalled();
+    expect(createdWebContents[1].close).toHaveBeenCalled();
+  });
+
+  it("returns empty array when all tabs are active/skipped", async () => {
+    const manager = new PortalManagerClass(mockWindow);
+    manager.createTab("tab-only", "http://localhost:3000");
+    manager.showTab("tab-only", { x: 0, y: 0, width: 800, height: 600 });
+
+    const result = await manager.destroyHiddenTabs();
+
+    expect(result).toEqual([]);
+    expect(manager.hasTab("tab-only")).toBe(true);
+  });
+
+  it("is idempotent — second call returns empty array", async () => {
+    const manager = new PortalManagerClass(mockWindow);
+    manager.createTab("tab-1", "http://localhost:3000");
+    manager.createTab("tab-2", "http://localhost:3001");
+    manager.showTab("tab-2", { x: 0, y: 0, width: 800, height: 600 });
+
+    const first = await manager.destroyHiddenTabs();
+    expect(first).toEqual(["tab-1"]);
+
+    const second = await manager.destroyHiddenTabs();
+    expect(second).toEqual([]);
+  });
+});
+
 describe("PortalManager URL validation", () => {
   let PortalManagerClass: typeof import("../PortalManager.js").PortalManager;
   let mockWindow: InstanceType<typeof import("electron").BrowserWindow>;
