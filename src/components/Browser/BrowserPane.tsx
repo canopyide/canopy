@@ -802,7 +802,7 @@ export function BrowserPane({
               )}
               {findInPage.isOpen && <FindBar find={findInPage} />}
               {blockedNav && (
-                <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 py-2 bg-surface-overlay border-b border-border-subtle text-xs animate-in slide-in-from-top-1 duration-150">
+                <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 py-2 surface-overlay border-b border-border-subtle text-xs animate-in slide-in-from-top-1 duration-150">
                   <ExternalLink className="h-3.5 w-3.5 shrink-0 text-canopy-text/50" />
                   <span className="flex-1 truncate text-canopy-text/70">
                     Navigation blocked:{" "}
