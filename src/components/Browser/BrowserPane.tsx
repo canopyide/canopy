@@ -806,7 +806,15 @@ export function BrowserPane({
                   <ExternalLink className="h-3.5 w-3.5 shrink-0 text-canopy-text/50" />
                   <span className="flex-1 truncate text-canopy-text/70">
                     Navigation blocked:{" "}
-                    <span className="font-mono">{new URL(blockedNav.url).hostname}</span>
+                    <span className="font-mono">
+                      {(() => {
+                        try {
+                          return new URL(blockedNav.url).hostname;
+                        } catch {
+                          return blockedNav.url;
+                        }
+                      })()}
+                    </span>
                   </span>
                   <button
                     type="button"
