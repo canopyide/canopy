@@ -694,6 +694,22 @@ export class WorkspaceClient extends EventEmitter {
     }
   }
 
+  pauseProject(projectPath: string): void {
+    const normalized = this.normalizeProjectPath(projectPath);
+    const entry = this.entries.get(normalized);
+    if (entry) {
+      entry.host.send({ type: "background" });
+    }
+  }
+
+  resumeProject(projectPath: string): void {
+    const normalized = this.normalizeProjectPath(projectPath);
+    const entry = this.entries.get(normalized);
+    if (entry) {
+      entry.host.send({ type: "foreground" });
+    }
+  }
+
   updateMonitorConfig(config: MonitorConfig): void {
     for (const entry of this.entries.values()) {
       const requestId = entry.host.generateRequestId();

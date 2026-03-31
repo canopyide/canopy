@@ -1,3 +1,4 @@
+import os from "os";
 import PQueue from "p-queue";
 import { mkdir, writeFile, stat } from "fs/promises";
 import { join as pathJoin, dirname, resolve as pathResolve, isAbsolute } from "path";
@@ -1038,6 +1039,29 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         monitor.resumePolling();
       }
     }
+  }
+
+  pause(): void {
+    this.setPollingEnabled(false);
+    pullRequestService.stop();
+    try {
+      os.setPriority(process.pid, os.constants.priority.PRIORITY_LOW);
+    } catch {
+      // Sandboxed environments may deny setpriority — non-fatal
+    }
+    if (typeof global.gc === "function") {
+      global.gc();
+    }
+  }
+
+  resume(): void {
+    try {
+      os.setPriority(process.pid, os.constants.priority.PRIORITY_NORMAL);
+    } catch {
+      // Sandboxed environments may deny setpriority — non-fatal
+    }
+    this.setPollingEnabled(true);
+    pullRequestService.start();
   }
 
   getPRStatus(requestId: string): void {

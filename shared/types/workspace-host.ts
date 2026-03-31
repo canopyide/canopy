@@ -174,6 +174,9 @@ export type WorkspaceHostRequest =
     }
   // Polling control
   | { type: "set-polling-enabled"; enabled: boolean }
+  // Background/foreground lifecycle
+  | { type: "background" }
+  | { type: "foreground" }
   // Health check
   | { type: "health-check" }
   // Lifecycle
