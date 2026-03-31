@@ -321,7 +321,6 @@ beforeEach(() => {
 
   useWorktreeDataStore.setState({
     worktrees: new Map(),
-    projectId: null,
     isLoading: false,
     error: null,
     isInitialized: false,

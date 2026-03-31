@@ -4,6 +4,7 @@ import {
   getAppWebContents,
   getAllAppWebContents,
 } from "../window/webContentsRegistry.js";
+import { getProjectViewManager } from "../window/windowRef.js";
 import type { IpcInvokeMap, IpcEventMap } from "../types/index.js";
 import type { IpcContext } from "./types.js";
 import { performance } from "node:perf_hooks";
@@ -272,7 +273,8 @@ export function typedHandleWithContext<K extends keyof IpcInvokeMap>(
   ipcMain.handle(channel as string, async (event, ...args) => {
     const webContentsId = event.sender.id;
     const senderWindow = getWindowForWebContents(event.sender);
-    const ctx: IpcContext = { event, webContentsId, senderWindow };
+    const projectId = getProjectViewManager()?.getProjectIdForWebContents(webContentsId) ?? null;
+    const ctx: IpcContext = { event, webContentsId, senderWindow, projectId };
 
     if (!captureEnabled) {
       return await handler(ctx, ...(args as IpcInvokeMap[K]["args"]));

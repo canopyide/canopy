@@ -12,7 +12,6 @@ import type {
 } from "@/types";
 import { keybindingService } from "@/services/KeybindingService";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { isTerminalWarmInProjectSwitchCache } from "@/services/projectSwitchRendererCache";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 import { logDebug, logInfo, logWarn, logError } from "@/utils/logger";
@@ -414,20 +413,12 @@ export async function hydrateAppState(
                     }
                   }
 
-                  const shouldSkipSnapshotRestore =
-                    Boolean(_switchId) &&
-                    Boolean(currentProjectId) &&
-                    isTerminalWarmInProjectSwitchCache(currentProjectId, backendTerminal.id) &&
-                    Boolean(terminalInstanceService.get(backendTerminal.id));
-
-                  if (!shouldSkipSnapshotRestore) {
-                    restoreTasks.push({
-                      terminalId: restoredTerminalId,
-                      label: saved.id,
-                      worktreeId: backendTerminal.worktreeId,
-                      location,
-                    });
-                  }
+                  restoreTasks.push({
+                    terminalId: restoredTerminalId,
+                    label: saved.id,
+                    worktreeId: backendTerminal.worktreeId,
+                    location,
+                  });
 
                   backendTerminalMap.delete(saved.id);
                 } else {
@@ -479,20 +470,12 @@ export async function hydrateAppState(
                         }
                       }
 
-                      const shouldSkipSnapshotRestore =
-                        Boolean(_switchId) &&
-                        Boolean(currentProjectId) &&
-                        isTerminalWarmInProjectSwitchCache(currentProjectId, restoredTerminalId) &&
-                        Boolean(terminalInstanceService.get(restoredTerminalId));
-
-                      if (!shouldSkipSnapshotRestore) {
-                        restoreTasks.push({
-                          terminalId: restoredTerminalId,
-                          label: saved.id,
-                          worktreeId: reconnectedTerminal.worktreeId ?? saved.worktreeId,
-                          location,
-                        });
-                      }
+                      restoreTasks.push({
+                        terminalId: restoredTerminalId,
+                        label: saved.id,
+                        worktreeId: reconnectedTerminal.worktreeId ?? saved.worktreeId,
+                        location,
+                      });
                     } else {
                       const respawnArgs = buildArgsForRespawn(
                         saved,
@@ -678,20 +661,12 @@ export async function hydrateAppState(
                   }
                 }
 
-                const shouldSkipSnapshotRestore =
-                  Boolean(_switchId) &&
-                  Boolean(currentProjectId) &&
-                  isTerminalWarmInProjectSwitchCache(currentProjectId, terminal.id) &&
-                  Boolean(terminalInstanceService.get(terminal.id));
-
-                if (!shouldSkipSnapshotRestore) {
-                  restoreTasks.push({
-                    terminalId: restoredTerminalId,
-                    label: terminal.id,
-                    worktreeId: terminal.worktreeId,
-                    location: "grid",
-                  });
-                }
+                restoreTasks.push({
+                  terminalId: restoredTerminalId,
+                  label: terminal.id,
+                  worktreeId: terminal.worktreeId,
+                  location: "grid",
+                });
               } catch (error) {
                 logWarn(`Failed to reconnect to orphaned terminal ${terminal.id}`, { error });
               }

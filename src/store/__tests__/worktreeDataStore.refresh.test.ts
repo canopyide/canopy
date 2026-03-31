@@ -54,8 +54,7 @@ vi.mock("../notificationStore", () => ({
   },
 }));
 
-const { useWorktreeDataStore, cleanupWorktreeDataStore, forceReinitializeWorktreeDataStore } =
-  await import("../worktreeDataStore");
+const { useWorktreeDataStore } = await import("../worktreeDataStore");
 
 function createMockWorktree(id: string, overrides: Partial<WorktreeState> = {}): WorktreeState {
   return {
@@ -76,10 +75,8 @@ describe("worktreeDataStore.refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     onUpdateCallback = null;
-    cleanupWorktreeDataStore();
     useWorktreeDataStore.setState({
       worktrees: new Map(),
-      projectId: null,
       isLoading: true,
       error: null,
       isInitialized: false,
@@ -277,40 +274,5 @@ describe("worktreeDataStore.refresh", () => {
     const mapAfter = useWorktreeDataStore.getState().worktrees;
     expect(mapAfter).not.toBe(mapBefore);
     expect(mapAfter.size).toBe(1);
-  });
-
-  it("rejects stale onUpdate events arriving after a project switch (listenerGeneration guard)", async () => {
-    const main = createMockWorktree("main", { isMainWorktree: true, branch: "main" });
-    const foreignWorktree = createMockWorktree("foreign-wt");
-
-    getAllMock.mockResolvedValueOnce([main]);
-    refreshMock.mockResolvedValue(undefined);
-
-    useWorktreeDataStore.getState().initialize();
-    await vi.waitFor(() => {
-      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
-      expect(onUpdateCallback).toBeTypeOf("function");
-    });
-
-    // Capture the old listener before the project switch.
-    const oldOnUpdateCallback = onUpdateCallback;
-
-    // Switch to a new project — generation changes, old listeners torn down, new ones set up.
-    getAllMock.mockResolvedValueOnce([
-      createMockWorktree("new-project-main", { isMainWorktree: true }),
-    ]);
-    forceReinitializeWorktreeDataStore("new-project");
-
-    await vi.waitFor(() => {
-      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
-    });
-
-    // Fire the OLD onUpdate callback (simulates a delayed IPC push from the outgoing project).
-    // The generation guard must reject it — it must NOT insert foreignWorktree into the store.
-    oldOnUpdateCallback?.(foreignWorktree, "old-scope");
-
-    const state = useWorktreeDataStore.getState();
-    expect(state.worktrees.has("foreign-wt")).toBe(false);
-    expect(state.worktrees.has("new-project-main")).toBe(true);
   });
 });

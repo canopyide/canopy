@@ -396,10 +396,6 @@ class VoiceRecordingService {
         const activeTarget = useVoiceRecordingStore.getState().activeTarget;
         if (!activeTarget) return;
 
-        // Don't stop recording during a project switch — terminals are
-        // temporarily cleared and will be rehydrated in the new project.
-        if (useProjectStore.getState().isSwitching) return;
-
         // If the recording target belongs to a different project than the
         // one currently loaded, the panel's absence is expected.
         const currentProjectId = useProjectStore.getState().currentProject?.id;

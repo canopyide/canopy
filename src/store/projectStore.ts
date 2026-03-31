@@ -1,40 +1,18 @@
 import { create, type StateCreator } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
-import type { Project, ProjectCloseResult, TerminalSnapshot } from "@shared/types";
+import type { Project, ProjectCloseResult } from "@shared/types";
 import { projectClient } from "@/clients";
-import { resetAllStoresForProjectSwitch } from "./resetStores";
-import {
-  forceReinitializeWorktreeDataStore,
-  prePopulateWorktreeSnapshot,
-  snapshotProjectWorktrees,
-} from "./worktreeDataStore";
-import { flushTerminalPersistence } from "./slices";
-import { terminalPersistence, terminalToSnapshot } from "./persistence/terminalPersistence";
 import { notify } from "@/lib/notify";
-import { useTerminalStore } from "./terminalStore";
-import { useWorktreeSelectionStore } from "./worktreeStore";
-import {
-  useProjectSettingsStore,
-  snapshotProjectSettings,
-  prePopulateProjectSettings,
-} from "./projectSettingsStore";
 import { logErrorWithContext } from "@/utils/errorContext";
 import { useUrlHistoryStore } from "./urlHistoryStore";
 import { useProjectGroupsStore } from "./projectGroupsStore";
-import {
-  prepareProjectSwitchRendererCache,
-  cancelPreparedProjectSwitchRendererCache,
-} from "@/services/projectSwitchRendererCache";
-import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 import { createSafeJSONStorage } from "./persistence/safeStorage";
-import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { terminalPersistence } from "./persistence/terminalPersistence";
 
 interface ProjectState {
   projects: Project[];
   currentProject: Project | null;
   isLoading: boolean;
-  isSwitching: boolean;
-  switchingToProjectName: string | null;
   error: string | null;
   gitInitDialogOpen: boolean;
   gitInitDirectoryPath: string | null;
@@ -61,7 +39,6 @@ interface ProjectState {
   reopenProject: (projectId: string) => Promise<void>;
   checkMissingProjects: () => Promise<void>;
   locateProject: (projectId: string) => Promise<void>;
-  finishProjectSwitch: () => void;
   openGitInitDialog: (directoryPath: string) => void;
   closeGitInitDialog: () => void;
   handleGitInitSuccess: () => Promise<void>;
@@ -108,97 +85,10 @@ function getProjectOpenErrorMessage(error: unknown): string {
   return message || "Failed to open project.";
 }
 
-// Monotonically incrementing counter to ignore stale background switch callbacks.
-// Captured before each projectClient.switch/reopen call; checked in .then/.catch.
-let switchEpoch = 0;
-
-// Safety timeout: auto-clears isSwitching if the main process never responds.
-// Uses its own epoch to avoid entangling with the IPC staleness guard above.
-export const SWITCH_SAFETY_TIMEOUT_MS = 30_000;
-let switchSafetyTimer: ReturnType<typeof setTimeout> | null = null;
-let switchSafetyEpoch = 0;
-
-function armSwitchSafetyTimeout(get: () => ProjectState): void {
-  if (switchSafetyTimer != null) {
-    clearTimeout(switchSafetyTimer);
-  }
-  const capturedEpoch = ++switchSafetyEpoch;
-  switchSafetyTimer = setTimeout(() => {
-    switchSafetyTimer = null;
-    if (capturedEpoch !== switchSafetyEpoch) return;
-    if (!get().isSwitching) return;
-    notify({
-      type: "warning",
-      title: "Project switch timed out",
-      message: "The project switch took too long. You may need to try again.",
-      duration: 6000,
-    });
-    get().finishProjectSwitch();
-  }, SWITCH_SAFETY_TIMEOUT_MS);
-}
-
-function clearSwitchSafetyTimeout(): void {
-  if (switchSafetyTimer != null) {
-    clearTimeout(switchSafetyTimer);
-    switchSafetyTimer = null;
-  }
-}
-
-import type { ProjectSwitchOutgoingState } from "@shared/types/ipc/project";
-
-/**
- * Collect the current terminal snapshots and sizes for the outgoing project.
- * Used by both switchProject and reopenProject to pass atomically with the IPC call.
- */
-function collectOutgoingTerminalState(): Required<ProjectSwitchOutgoingState> {
-  const currentTerminals = useTerminalStore.getState().terminals;
-  const terminals: TerminalSnapshot[] = currentTerminals
-    .filter(
-      (t) => t.location !== "trash" && t.location !== "background" && !isSmokeTestTerminalId(t.id)
-    )
-    .map(terminalToSnapshot);
-
-  const terminalSizes: Record<string, { cols: number; rows: number }> = {};
-  for (const terminal of currentTerminals) {
-    if (terminal.location === "trash" || terminal.location === "background") continue;
-    if (isSmokeTestTerminalId(terminal.id)) continue;
-    const instance = terminalInstanceService.get(terminal.id);
-    if (instance) {
-      terminalSizes[terminal.id] = {
-        cols: instance.latestCols,
-        rows: instance.latestRows,
-      };
-    }
-  }
-
-  return { terminals, terminalSizes };
-}
-
-function evictRendererTerminalInstances(terminalIds: string[]): void {
-  if (terminalIds.length === 0) {
-    return;
-  }
-
-  try {
-    for (const terminalId of terminalIds) {
-      terminalInstanceService.destroy(terminalId);
-    }
-  } catch (error) {
-    logErrorWithContext(error, {
-      operation: "evict_project_switch_terminal_instances",
-      component: "projectStore",
-      errorType: "process",
-      details: { terminalCount: terminalIds.length },
-    });
-  }
-}
-
 const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   projects: [],
   currentProject: null,
   isLoading: false,
-  isSwitching: false,
-  switchingToProjectName: null,
   gitInitDialogOpen: false,
   gitInitDirectoryPath: null,
   onboardingWizardOpen: false,
@@ -298,153 +188,17 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   },
 
   switchProject: async (projectId) => {
-    const currentProjectId = get().currentProject?.id ?? null;
-    if (currentProjectId === projectId) {
-      return;
-    }
+    if (get().currentProject?.id === projectId) return;
 
-    const targetProject = get().projects.find((p) => p.id === projectId);
-    const currentProject = get().currentProject;
-    const oldProjectId = currentProject?.id ?? null;
-    let preserveTerminalIds = new Set<string>();
-    let outgoingState: Required<ProjectSwitchOutgoingState> | undefined;
-
-    set({
-      isLoading: true,
-      isSwitching: true,
-      switchingToProjectName: targetProject?.name ?? null,
-      error: null,
-    });
-    armSwitchSafetyTimeout(get);
-    try {
-      // Save current project's panel state BEFORE switching
-      if (oldProjectId) {
-        // Flush persistence in the background, but don't block switch latency.
-        // We persist from in-memory store state below.
-        flushTerminalPersistence();
-        void terminalPersistence.whenIdle().catch((error) => {
-          logErrorWithContext(error, {
-            operation: "wait_terminal_persistence_before_switch",
-            component: "projectStore",
-            errorType: "filesystem",
-            details: { oldProjectId },
-          });
-        });
-
-        // Collect outgoing terminal state to pass with the switch IPC call.
-        // This is sent atomically with the switch payload so the main process
-        // can pre-apply it before saveOutgoingProjectWorktreeState runs,
-        // eliminating the race condition and removing two IPC round-trips.
-        outgoingState = collectOutgoingTerminalState();
-
-        console.log(
-          `[ProjectSwitch] Collected ${outgoingState.terminals.length} panel(s) for atomic switch`
-        );
-
-        const preparedCache = prepareProjectSwitchRendererCache({
-          outgoingProjectId: oldProjectId,
-          targetProjectId: projectId,
-          outgoingActiveWorktreeId: useWorktreeSelectionStore.getState().activeWorktreeId ?? null,
-          outgoingTerminals: outgoingState.terminals.map((terminal) => ({
-            id: terminal.id,
-            worktreeId: terminal.worktreeId,
-          })),
-        });
-
-        preserveTerminalIds = preparedCache.preserveTerminalIds;
-        evictRendererTerminalInstances(preparedCache.evictTerminalIds);
-      }
-
-      // Snapshot outgoing project state before clearing stores so we can
-      // pre-populate on switch-back (stale-while-revalidate).
-      if (oldProjectId) {
-        snapshotProjectWorktrees(oldProjectId, currentProject?.path);
-        snapshotProjectSettings(oldProjectId);
-      }
-
-      console.log("[ProjectSwitch] Resetting renderer stores...");
-      await resetAllStoresForProjectSwitch({
-        preserveTerminalIds,
-        outgoingProjectId: oldProjectId,
-        skipTerminalStateReset: true,
-      });
-
-      // Pre-populate stores from cached snapshots for an instant UI.
-      console.log("[ProjectSwitch] Pre-populating snapshots...");
-      prePopulateWorktreeSnapshot(projectId, targetProject?.path);
-      prePopulateProjectSettings(projectId);
-
-      // Set currentProject optimistically from the already-loaded project list.
-      // The main process switch will confirm this (or error/rollback).
-      if (targetProject) {
-        set({ currentProject: targetProject, isLoading: false });
-      }
-
-      // Load fresh project settings in the background (will update cache when done)
-      console.log("[ProjectSwitch] Loading project settings (background)...");
-      void useProjectSettingsStore.getState().loadSettings(projectId);
-
-      // Fire the main process switch in the background — don't block the UI.
-      // When it completes, fetch fresh worktree data from the now-loaded workspace.
-      console.log("[ProjectSwitch] Switching project in main process (background)...");
-      const capturedEpoch = ++switchEpoch;
-      projectClient
-        .switch(projectId, outgoingState)
-        .then((project) => {
-          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
-          // Update with the authoritative project data from the main process
-          set({ currentProject: project, isLoading: false });
-
-          // Worktree data store reinitialization is handled by
-          // useProjectSwitchRehydration's PROJECT_ON_SWITCH handler, which
-          // receives the worktreeScopeId for scope-based event filtering.
-
-          // Refresh project list in the background
-          void get().loadProjects();
-        })
-        .catch((error) => {
-          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
-          cancelPreparedProjectSwitchRendererCache(oldProjectId);
-          logErrorWithContext(error, {
-            operation: "switch_project",
-            component: "projectStore",
-            details: { projectId, targetProjectName: targetProject?.name },
-          });
-          const message = getProjectOpenErrorMessage(error);
-          notify({
-            type: "error",
-            title: "Failed to switch project",
-            message,
-            duration: 6000,
-          });
-          clearSwitchSafetyTimeout();
-          set({
-            error: message,
-            currentProject: currentProject,
-            isLoading: false,
-            isSwitching: false,
-            switchingToProjectName: null,
-          });
-          // Restore cached state for the outgoing project so the UI isn't blank.
-          if (oldProjectId) {
-            prePopulateWorktreeSnapshot(oldProjectId, currentProject?.path);
-            prePopulateProjectSettings(oldProjectId);
-          }
-          forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
-        });
-
-      // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event
-      // which is handled in useProjectSwitchRehydration. We don't dispatch
-      // project-switched here to avoid duplicate hydration.
-    } catch (error) {
-      // This catch handles errors from the synchronous setup phase
-      // (store resets, snapshot, terminal persistence, etc.)
-      clearSwitchSafetyTimeout();
-      cancelPreparedProjectSwitchRendererCache(oldProjectId);
+    set({ isLoading: true, error: null });
+    // Fire-and-forget: the main process swaps WebContentsViews, so this
+    // renderer gets detached. Don't write the response into stores — the
+    // new view handles its own state independently.
+    projectClient.switch(projectId).catch((error) => {
       logErrorWithContext(error, {
-        operation: "switch_project_setup",
+        operation: "switch_project",
         component: "projectStore",
-        details: { projectId, targetProjectName: targetProject?.name },
+        details: { projectId },
       });
       const message = getProjectOpenErrorMessage(error);
       notify({
@@ -453,13 +207,8 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         message,
         duration: 6000,
       });
-      set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
-      if (oldProjectId) {
-        prePopulateWorktreeSnapshot(oldProjectId, currentProject?.path);
-        prePopulateProjectSettings(oldProjectId);
-      }
-      forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
-    }
+      set({ error: message, isLoading: false });
+    });
   },
 
   updateProject: async (id, updates) => {
@@ -562,8 +311,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       throw new Error("Project is not currently active");
     }
 
-    let ipcSucceeded = false;
-
     try {
       const result = await projectClient.close(projectId, { killTerminals: true });
 
@@ -571,26 +318,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         throw new Error(result.error || "Failed to close project");
       }
 
-      ipcSucceeded = true;
-
-      // Re-validate: if the active project changed during the async IPC call, bail out
-      // to avoid resetting state for the wrong project.
-      if (get().currentProject?.id !== projectId) {
-        console.warn(
-          `[ProjectStore] Active project changed during close of ${projectId}, skipping state reset`
-        );
-        await get().loadProjects();
-        return result;
-      }
-
       console.log(
         `[ProjectStore] Closed active project ${projectId}, transitioning to no-project state`
       );
 
-      await resetAllStoresForProjectSwitch({
-        preserveTerminalIds: new Set(),
-        outgoingProjectId: projectId,
-      });
       set({ currentProject: null });
       await get().loadProjects();
 
@@ -602,9 +333,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         details: { projectId },
       });
 
-      // If IPC succeeded but the renderer reset threw, ensure we still clear the stale active
-      // project so the app doesn't stay in a half-closed state.
-      if (ipcSucceeded && get().currentProject?.id === projectId) {
+      if (get().currentProject?.id === projectId) {
         set({ currentProject: null });
         void get().loadProjects();
       }
@@ -614,135 +343,12 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   },
 
   reopenProject: async (projectId) => {
-    const targetProject = get().projects.find((p) => p.id === projectId);
-    const currentProject = get().currentProject;
-    const oldProjectId = currentProject?.id ?? null;
-    let preserveTerminalIds = new Set<string>();
-    let outgoingState: Required<ProjectSwitchOutgoingState> | undefined;
-
-    set({
-      isLoading: true,
-      isSwitching: true,
-      switchingToProjectName: targetProject?.name ?? null,
-      error: null,
-    });
-    armSwitchSafetyTimeout(get);
-    try {
-      // Save current project's panel state BEFORE switching (same as switchProject)
-      if (oldProjectId) {
-        // Flush persistence in the background, but don't block switch latency.
-        // We persist from in-memory store state below.
-        flushTerminalPersistence();
-        void terminalPersistence.whenIdle().catch((error) => {
-          logErrorWithContext(error, {
-            operation: "wait_terminal_persistence_before_reopen",
-            component: "projectStore",
-            errorType: "filesystem",
-            details: { oldProjectId },
-          });
-        });
-
-        // Collect outgoing terminal state to pass with the reopen IPC call (same as switchProject)
-        outgoingState = collectOutgoingTerminalState();
-
-        console.log(
-          `[ProjectStore] Collected ${outgoingState.terminals.length} panel(s) for atomic reopen`
-        );
-
-        const preparedCache = prepareProjectSwitchRendererCache({
-          outgoingProjectId: oldProjectId,
-          targetProjectId: projectId,
-          outgoingActiveWorktreeId: useWorktreeSelectionStore.getState().activeWorktreeId ?? null,
-          outgoingTerminals: outgoingState.terminals.map((terminal) => ({
-            id: terminal.id,
-            worktreeId: terminal.worktreeId,
-          })),
-        });
-
-        preserveTerminalIds = preparedCache.preserveTerminalIds;
-        evictRendererTerminalInstances(preparedCache.evictTerminalIds);
-      }
-
-      // Snapshot outgoing project state before clearing stores
-      if (oldProjectId) {
-        snapshotProjectWorktrees(oldProjectId, currentProject?.path);
-        snapshotProjectSettings(oldProjectId);
-      }
-
-      console.log("[ProjectStore] Resetting renderer stores...");
-      await resetAllStoresForProjectSwitch({
-        preserveTerminalIds,
-        outgoingProjectId: oldProjectId,
-        skipTerminalStateReset: true,
-      });
-
-      // Pre-populate stores from cached snapshots for an instant UI.
-      console.log("[ProjectStore] Pre-populating snapshots...");
-      prePopulateWorktreeSnapshot(projectId, targetProject?.path);
-      prePopulateProjectSettings(projectId);
-
-      // Set currentProject optimistically
-      if (targetProject) {
-        set({ currentProject: targetProject, isLoading: false });
-      }
-
-      // Load fresh project settings in the background (will update cache when done)
-      console.log("[ProjectStore] Loading project settings (background)...");
-      void useProjectSettingsStore.getState().loadSettings(projectId);
-
-      // Fire the main process reopen in the background
-      console.log("[ProjectStore] Reopening project in main process (background)...");
-      const capturedEpoch = ++switchEpoch;
-      projectClient
-        .reopen(projectId, outgoingState)
-        .then((project) => {
-          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
-          set({ currentProject: project, isLoading: false });
-
-          // Worktree data store reinitialization is handled by
-          // useProjectSwitchRehydration's PROJECT_ON_SWITCH handler, which
-          // receives the worktreeScopeId for scope-based event filtering.
-
-          void get().loadProjects();
-        })
-        .catch((error) => {
-          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
-          clearSwitchSafetyTimeout();
-          cancelPreparedProjectSwitchRendererCache(oldProjectId);
-          logErrorWithContext(error, {
-            operation: "reopen_project",
-            component: "projectStore",
-            details: { projectId, targetProjectName: targetProject?.name },
-          });
-          const message = getProjectOpenErrorMessage(error);
-          notify({
-            type: "error",
-            title: "Failed to reopen project",
-            message,
-            duration: 6000,
-          });
-          set({
-            error: message,
-            currentProject: currentProject,
-            isLoading: false,
-            isSwitching: false,
-            switchingToProjectName: null,
-          });
-          if (oldProjectId) {
-            prePopulateWorktreeSnapshot(oldProjectId, currentProject?.path);
-            prePopulateProjectSettings(oldProjectId);
-          }
-          forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
-        });
-
-      // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event
-    } catch (error) {
-      clearSwitchSafetyTimeout();
-      cancelPreparedProjectSwitchRendererCache(oldProjectId);
+    set({ isLoading: true, error: null });
+    projectClient.reopen(projectId).catch((error) => {
       logErrorWithContext(error, {
-        operation: "reopen_project_setup",
+        operation: "reopen_project",
         component: "projectStore",
-        details: { projectId, targetProjectName: targetProject?.name },
+        details: { projectId },
       });
       const message = getProjectOpenErrorMessage(error);
       notify({
@@ -751,14 +357,8 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         message,
         duration: 6000,
       });
-      set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
-      if (oldProjectId) {
-        prePopulateWorktreeSnapshot(oldProjectId, currentProject?.path);
-        prePopulateProjectSettings(oldProjectId);
-      }
-      forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
-      throw error;
-    }
+      set({ error: message, isLoading: false });
+    });
   },
 
   checkMissingProjects: async () => {
@@ -788,11 +388,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         details: { projectId },
       });
     }
-  },
-
-  finishProjectSwitch: () => {
-    clearSwitchSafetyTimeout();
-    set({ isSwitching: false, switchingToProjectName: null });
   },
 
   openGitInitDialog: (directoryPath: string) => {
@@ -857,7 +452,6 @@ export const useProjectStore = create<ProjectState>()(
         storage: createSafeJSONStorage(),
         partialize: (state) => ({
           projects: state.projects,
-          currentProject: state.currentProject,
         }),
       }
     )

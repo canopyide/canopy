@@ -95,7 +95,7 @@ export interface SetupBrowserWindowOptions {
 export interface CreateWindowResult {
   win: BrowserWindow;
   appView: WebContentsView;
-  loadRenderer: (reason: string) => void;
+  loadRenderer: (reason: string, projectId?: string) => void;
   smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   smokeRendererUnresponsive: () => boolean;
 }
@@ -279,17 +279,18 @@ export function setupBrowserWindow(
   }
 
   let rendererLoadRequested = false;
-  const loadRenderer = (reason: string): void => {
+  const loadRenderer = (reason: string, projectId?: string): void => {
     if (!win || win.isDestroyed() || rendererLoadRequested) return;
     rendererLoadRequested = true;
+    const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     console.log(`[MAIN] Loading renderer (${reason})...`);
     if (process.env.NODE_ENV === "development") {
       const devServerUrl = getDevServerUrl();
-      console.log(`[MAIN] Loading Vite dev server at ${devServerUrl}`);
-      appWebContents.loadURL(devServerUrl);
+      console.log(`[MAIN] Loading Vite dev server at ${devServerUrl}${qs}`);
+      appWebContents.loadURL(`${devServerUrl}${qs}`);
     } else {
       console.log("[MAIN] Loading production build via app:// protocol");
-      appWebContents.loadURL("app://canopy/index.html");
+      appWebContents.loadURL(`app://canopy/index.html${qs}`);
     }
   };
 

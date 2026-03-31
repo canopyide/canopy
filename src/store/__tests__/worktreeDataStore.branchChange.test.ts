@@ -55,7 +55,7 @@ vi.mock("../notificationStore", () => ({
   },
 }));
 
-const { useWorktreeDataStore, cleanupWorktreeDataStore } = await import("../worktreeDataStore");
+const { useWorktreeDataStore } = await import("../worktreeDataStore");
 
 function createMockWorktree(id: string, overrides: Partial<WorktreeState> = {}): WorktreeState {
   return {
@@ -79,10 +79,8 @@ describe("worktreeDataStore branch-change clearing", () => {
     refreshMock.mockResolvedValue(undefined);
     getAllIssueAssociationsMock.mockResolvedValue({});
     onUpdateCallback = null;
-    cleanupWorktreeDataStore();
     useWorktreeDataStore.setState({
       worktrees: new Map(),
-      projectId: null,
       isLoading: true,
       error: null,
       isInitialized: false,

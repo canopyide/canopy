@@ -268,11 +268,13 @@ async function initializeDeferredServices(
 }
 
 export interface SetupWindowServicesOptions {
-  loadRenderer: (reason: string) => void;
+  loadRenderer: (reason: string, projectId?: string) => void;
   smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   smokeRendererUnresponsive: () => boolean;
   windowRegistry?: WindowRegistry;
   initialProjectPath?: string;
+  projectViewManager?: import("./ProjectViewManager.js").ProjectViewManager;
+  initialAppView?: import("electron").WebContentsView;
 }
 
 export async function setupWindowServices(
@@ -669,8 +671,22 @@ export async function setupWindowServices(
     console.warn("[MAIN] PTY service unavailable - skipping terminal setup");
   }
 
-  // Load worktrees — prefer initialProjectPath for windows opened with a specific path
+  // Register the initial view with ProjectViewManager once we know the project
   const currentProject = projectStore.getCurrentProject();
+  if (opts.projectViewManager && opts.initialAppView && currentProject) {
+    opts.projectViewManager.registerInitialView(
+      opts.initialAppView,
+      currentProject.id,
+      currentProject.path
+    );
+  }
+
+  // Add ProjectViewManager to handler deps for IPC handlers
+  if (opts.projectViewManager) {
+    handlerDeps.projectViewManager = opts.projectViewManager;
+  }
+
+  // Load worktrees — prefer initialProjectPath for windows opened with a specific path
   const projectPathForWorktrees = opts.initialProjectPath ?? currentProject?.path;
   if (projectPathForWorktrees && workspaceClient && workspaceReady) {
     console.log("[MAIN] Loading worktrees for project path:", projectPathForWorktrees);

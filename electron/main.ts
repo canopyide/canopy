@@ -15,8 +15,14 @@ import {
 } from "./setup/protocols.js";
 import { registerAppLifecycleHandlers } from "./lifecycle/appLifecycle.js";
 import { registerShutdownHandler } from "./lifecycle/shutdown.js";
-import { setMainWindow, getMainWindow, setWindowRegistry } from "./window/windowRef.js";
+import {
+  setMainWindow,
+  getMainWindow,
+  setWindowRegistry,
+  setProjectViewManager,
+} from "./window/windowRef.js";
 import { WindowRegistry } from "./window/WindowRegistry.js";
+import { ProjectViewManager } from "./window/ProjectViewManager.js";
 import { setupBrowserWindow } from "./window/createWindow.js";
 import {
   setupWindowServices,
@@ -142,12 +148,27 @@ if (!gotTheLock) {
     const ctx = windowRegistry.register(win, { projectPath: initialProjectPath ?? undefined });
     windowRegistry.registerAppViewWebContents(ctx.windowId, appView.webContents.id);
 
+    const pvm = new ProjectViewManager(win, {
+      dirname: __dirname,
+      onRecreateWindow: () => createWindow(initialProjectPath),
+      windowRegistry,
+    });
+    setProjectViewManager(pvm);
+
+    // Clean up ProjectViewManager when window closes
+    win.once("closed", () => {
+      pvm.dispose();
+      setProjectViewManager(null);
+    });
+
     await setupWindowServices(win, {
       loadRenderer,
       smokeTestTimer,
       smokeRendererUnresponsive,
       windowRegistry,
       initialProjectPath: initialProjectPath ?? undefined,
+      projectViewManager: pvm,
+      initialAppView: appView,
     });
 
     if (!powerMonitorInitialized) {

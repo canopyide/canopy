@@ -9,11 +9,13 @@ import type { AgentVersionService } from "../services/AgentVersionService.js";
 import type { AgentUpdateHandler } from "../services/AgentUpdateHandler.js";
 import type { ProjectSwitchService } from "../services/ProjectSwitchService.js";
 import type { WindowRegistry } from "../window/WindowRegistry.js";
+import type { ProjectViewManager } from "../window/ProjectViewManager.js";
 
 export interface IpcContext {
   event: Electron.IpcMainInvokeEvent;
   webContentsId: number;
   senderWindow: BrowserWindow | null;
+  projectId: string | null;
 }
 
 export interface HandlerDependencies {
@@ -29,4 +31,5 @@ export interface HandlerDependencies {
   projectSwitchService?: ProjectSwitchService;
   isDemoMode?: boolean;
   windowRegistry?: WindowRegistry;
+  projectViewManager?: ProjectViewManager;
 }

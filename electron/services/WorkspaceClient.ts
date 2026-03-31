@@ -57,9 +57,6 @@ export class WorkspaceClient extends EventEmitter {
   private entries = new Map<string, ProcessEntry>();
   private windowToProject = new Map<number, string>();
 
-  // Per-window generation counter for blue-green swap race protection
-  private windowGenerations = new Map<number, number>();
-
   // Reverse map: worktree path → project path (populated from worktree-update events)
   private worktreePathToProject = new Map<string, string>();
 
@@ -70,12 +67,6 @@ export class WorkspaceClient extends EventEmitter {
   constructor(config: WorkspaceClientConfig = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
-  }
-
-  private bumpGeneration(windowId: number): number {
-    const gen = (this.windowGenerations.get(windowId) ?? 0) + 1;
-    this.windowGenerations.set(windowId, gen);
-    return gen;
   }
 
   async waitForReady(): Promise<void> {
@@ -279,9 +270,6 @@ export class WorkspaceClient extends EventEmitter {
     const oldProjectPath = this.windowToProject.get(windowId);
     const isSwitching = oldProjectPath !== undefined && oldProjectPath !== normalizedPath;
 
-    // Bump generation to invalidate any in-flight swap for this window
-    const myGeneration = isSwitching ? this.bumpGeneration(windowId) : undefined;
-
     const existingEntry = this.entries.get(normalizedPath);
     if (existingEntry) {
       // Check if this entry has a failed initPromise (poisoned by prior crash)
@@ -290,7 +278,6 @@ export class WorkspaceClient extends EventEmitter {
         () => true
       );
       if (isInitFailed) {
-        // Clean up poisoned entry and fall through to create a fresh one
         existingEntry.host.dispose();
         this.entries.delete(normalizedPath);
       } else {
@@ -305,7 +292,6 @@ export class WorkspaceClient extends EventEmitter {
         }
         this.windowToProject.set(windowId, normalizedPath);
 
-        // Blue-green: release old project AFTER attaching to the new one
         if (isSwitching) {
           this.releaseOldProject(windowId, oldProjectPath);
         }
@@ -341,54 +327,19 @@ export class WorkspaceClient extends EventEmitter {
     this.entries.set(normalizedPath, newEntry);
     this.wireHostEvents(newEntry);
 
-    // Early detachment: stop old host events reaching this window while new host initializes.
-    // This closes the timing window where in-flight polling from the old host could send
-    // worktree-update events to this window via sendToEntryWindows() during initPromise.
-    // refCount and cleanup scheduling stay intact — handled atomically in releaseOldProject().
-    if (isSwitching && oldProjectPath) {
-      const oldEntry = this.entries.get(oldProjectPath);
-      if (oldEntry) {
-        oldEntry.windowIds.delete(windowId);
-      }
-    }
-
-    // Do NOT update windowToProject yet — the old project stays mapped until init succeeds
-
     try {
       await initPromise;
     } catch (error) {
-      // Restore window to old entry on failure so old host can still serve events
-      if (isSwitching && oldProjectPath) {
-        const oldEntry = this.entries.get(oldProjectPath);
-        if (oldEntry && !oldEntry.windowIds.has(windowId)) {
-          oldEntry.windowIds.add(windowId);
-        }
-      }
-      // Clean up failed entry so subsequent loadProject calls create a fresh host
+      // Clean up failed entry so subsequent calls create a fresh host
       if (this.entries.get(normalizedPath) === newEntry) {
         this.entries.delete(normalizedPath);
         newEntry.windowIds.delete(windowId);
         newEntry.refCount--;
         newEntry.host.dispose();
       }
-      // Window stays mapped to the old project (blue-green: old host preserved on failure)
       throw error;
     }
 
-    // Stale generation check: if a newer switch started while we were waiting, dispose and bail
-    if (myGeneration !== undefined && this.windowGenerations.get(windowId) !== myGeneration) {
-      if (newEntry.windowIds.has(windowId)) {
-        newEntry.windowIds.delete(windowId);
-        newEntry.refCount--;
-      }
-      if (newEntry.refCount <= 0 && this.entries.get(normalizedPath) === newEntry) {
-        newEntry.host.dispose();
-        this.entries.delete(normalizedPath);
-      }
-      return scopeId;
-    }
-
-    // Check if client was disposed while waiting
     if (this.isDisposed) {
       if (newEntry.refCount <= 0 && this.entries.get(normalizedPath) === newEntry) {
         newEntry.host.dispose();
@@ -397,7 +348,6 @@ export class WorkspaceClient extends EventEmitter {
       return scopeId;
     }
 
-    // Atomic swap: update window mapping, then release old project
     this.windowToProject.set(windowId, normalizedPath);
 
     if (isSwitching) {
@@ -628,13 +578,8 @@ export class WorkspaceClient extends EventEmitter {
     }
   }
 
-  async onProjectSwitch(_windowId: number): Promise<void> {
-    // No-op: blue-green swap in loadProject() handles release atomically
-  }
-
   unregisterWindow(windowId: number): void {
     this.releaseWindow(windowId);
-    this.windowGenerations.delete(windowId);
   }
 
   async listBranches(rootPath: string): Promise<BranchInfo[]> {
@@ -906,7 +851,6 @@ export class WorkspaceClient extends EventEmitter {
     }
     this.entries.clear();
     this.windowToProject.clear();
-    this.windowGenerations.clear();
     this.worktreePathToProject.clear();
     this.copyTreeProgressCallbacks.clear();
     this.activeCopyTreeOperations.clear();

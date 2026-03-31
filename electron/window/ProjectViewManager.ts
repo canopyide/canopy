@@ -1,0 +1,472 @@
+/**
+ * ProjectViewManager — Per-project WebContentsView manager.
+ *
+ * Each project gets its own WebContentsView with an independent V8 context.
+ * Switching projects swaps the visible view (<16ms for cached views).
+ */
+
+import { BrowserWindow, WebContentsView } from "electron";
+import path from "path";
+import {
+  registerWebContents,
+  registerAppView,
+  unregisterWebContents,
+} from "./webContentsRegistry.js";
+import { getDevServerUrl } from "../../shared/config/devServer.js";
+import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
+import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
+import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
+import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
+import { notifyError } from "../ipc/errorHandlers.js";
+import { CHANNELS } from "../ipc/channels.js";
+import { sendToRenderer } from "../ipc/handlers.js";
+
+const MAX_CACHED_VIEWS = 3;
+const CRASH_LOOP_WINDOW_MS = 60_000;
+const CRASH_LOOP_THRESHOLD = 3;
+
+type ViewState = "loading" | "active" | "cached";
+
+interface ViewEntry {
+  view: WebContentsView;
+  projectId: string;
+  projectPath: string;
+  lastUsed: number;
+  state: ViewState;
+  crashTimestamps: number[];
+}
+
+export interface ProjectViewManagerOptions {
+  dirname: string;
+  onRecreateWindow?: () => Promise<void>;
+  windowRegistry?: import("./WindowRegistry.js").WindowRegistry;
+}
+
+export class ProjectViewManager {
+  private views = new Map<string, ViewEntry>();
+  private webContentsToProject = new Map<number, string>();
+  private activeProjectId: string | null = null;
+  private win: BrowserWindow;
+  private dirname: string;
+  private onRecreateWindow?: () => Promise<void>;
+  private windowRegistry?: import("./WindowRegistry.js").WindowRegistry;
+  private switchChain: Promise<void> = Promise.resolve();
+  private resizeHandler: (() => void) | null = null;
+
+  constructor(win: BrowserWindow, opts: ProjectViewManagerOptions) {
+    this.win = win;
+    this.dirname = opts.dirname;
+    this.onRecreateWindow = opts.onRecreateWindow;
+    this.windowRegistry = opts.windowRegistry;
+
+    // Single resize handler that always updates the active view's bounds
+    this.resizeHandler = () => {
+      if (win.isDestroyed()) return;
+      const activeView = this.getActiveView();
+      if (activeView) {
+        const { width, height } = win.getContentBounds();
+        activeView.setBounds({ x: 0, y: 0, width, height });
+      }
+    };
+    win.on("resize", this.resizeHandler);
+    win.on("maximize", this.resizeHandler);
+    win.on("unmaximize", this.resizeHandler);
+    win.on("enter-full-screen", this.resizeHandler);
+    win.on("leave-full-screen", this.resizeHandler);
+  }
+
+  /**
+   * Register the initial view created by setupBrowserWindow.
+   */
+  registerInitialView(view: WebContentsView, projectId: string, projectPath: string): void {
+    const entry: ViewEntry = {
+      view,
+      projectId,
+      projectPath,
+      lastUsed: Date.now(),
+      state: "active",
+      crashTimestamps: [],
+    };
+    this.views.set(projectId, entry);
+    this.webContentsToProject.set(view.webContents.id, projectId);
+    this.activeProjectId = projectId;
+  }
+
+  /**
+   * Switch to a project's view. Creates a new view if none exists.
+   * Serialized: rapid switches queue and only the last one's result matters.
+   */
+  async switchTo(
+    projectId: string,
+    projectPath: string
+  ): Promise<{ view: WebContentsView; isNew: boolean }> {
+    const task = this.switchChain.then(() => this.performSwitch(projectId, projectPath));
+    this.switchChain = task.then(
+      () => undefined,
+      () => undefined
+    );
+    return task;
+  }
+
+  private async performSwitch(
+    projectId: string,
+    projectPath: string
+  ): Promise<{ view: WebContentsView; isNew: boolean }> {
+    if (this.win.isDestroyed()) {
+      throw new Error("Cannot switch view — window is destroyed");
+    }
+
+    // Already active — no-op
+    if (this.activeProjectId === projectId) {
+      const existing = this.views.get(projectId);
+      if (existing) {
+        return { view: existing.view, isNew: false };
+      }
+    }
+
+    // Detach current active view (keep in cache)
+    this.deactivateCurrentView();
+
+    // Try to activate cached view
+    const cached = this.views.get(projectId);
+    if (cached && !cached.view.webContents.isDestroyed()) {
+      this.activateView(cached);
+      return { view: cached.view, isNew: false };
+    }
+
+    // Cold start — create new view
+    if (cached) {
+      this.cleanupEntry(projectId);
+    }
+
+    const view = this.createView();
+    const entry: ViewEntry = {
+      view,
+      projectId,
+      projectPath,
+      lastUsed: Date.now(),
+      state: "loading",
+      crashTimestamps: [],
+    };
+    this.views.set(projectId, entry);
+    this.webContentsToProject.set(view.webContents.id, projectId);
+
+    // Set up security handlers and attach to window
+    this.setupViewHandlers(view);
+    registerWebContents(view.webContents, this.win);
+    registerAppView(this.win, view);
+
+    // Register in WindowRegistry for IPC routing
+    if (this.windowRegistry) {
+      this.windowRegistry.registerAppViewWebContents(this.win.id, view.webContents.id);
+    }
+
+    this.win.contentView.addChildView(view);
+    this.updateViewBounds(view);
+    this.activeProjectId = projectId;
+    entry.state = "active";
+
+    // Load the renderer with projectId context
+    await this.loadView(view, projectId);
+    entry.state = "active";
+
+    // Evict LRU views if over limit
+    this.evictStaleViews();
+
+    return { view, isNew: true };
+  }
+
+  getActiveProjectId(): string | null {
+    return this.activeProjectId;
+  }
+
+  getActiveView(): WebContentsView | null {
+    if (!this.activeProjectId) return null;
+    return this.views.get(this.activeProjectId)?.view ?? null;
+  }
+
+  getProjectIdForWebContents(webContentsId: number): string | null {
+    return this.webContentsToProject.get(webContentsId) ?? null;
+  }
+
+  getAllViews(): ViewEntry[] {
+    return Array.from(this.views.values());
+  }
+
+  getAllWebContentsIds(): number[] {
+    return Array.from(this.webContentsToProject.keys());
+  }
+
+  destroyView(projectId: string): void {
+    const entry = this.views.get(projectId);
+    if (!entry) return;
+
+    if (this.activeProjectId === projectId) {
+      this.activeProjectId = null;
+    }
+
+    this.cleanupEntry(projectId);
+  }
+
+  dispose(): void {
+    // Remove window-level listeners
+    if (this.resizeHandler) {
+      this.win.removeListener("resize", this.resizeHandler);
+      this.win.removeListener("maximize", this.resizeHandler);
+      this.win.removeListener("unmaximize", this.resizeHandler);
+      this.win.removeListener("enter-full-screen", this.resizeHandler);
+      this.win.removeListener("leave-full-screen", this.resizeHandler);
+      this.resizeHandler = null;
+    }
+
+    for (const projectId of Array.from(this.views.keys())) {
+      this.cleanupEntry(projectId);
+    }
+    this.views.clear();
+    this.webContentsToProject.clear();
+    this.activeProjectId = null;
+  }
+
+  // ── Private ──
+
+  private deactivateCurrentView(): void {
+    if (!this.activeProjectId) return;
+    const current = this.views.get(this.activeProjectId);
+    if (!current || this.win.isDestroyed()) return;
+
+    try {
+      this.win.contentView.removeChildView(current.view);
+    } catch {
+      // View may not be attached
+    }
+    current.state = "cached";
+    current.lastUsed = Date.now();
+  }
+
+  private activateView(entry: ViewEntry): void {
+    registerAppView(this.win, entry.view);
+
+    this.win.contentView.addChildView(entry.view);
+    this.updateViewBounds(entry.view);
+    entry.state = "active";
+    entry.lastUsed = Date.now();
+    this.activeProjectId = entry.projectId;
+  }
+
+  private createView(): WebContentsView {
+    return new WebContentsView({
+      webPreferences: {
+        preload: path.join(this.dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webviewTag: true,
+        navigateOnDragDrop: false,
+        v8CacheOptions: "code",
+      },
+    });
+  }
+
+  private loadView(view: WebContentsView, projectId: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const wc = view.webContents;
+      const timeout = setTimeout(() => {
+        resolve();
+      }, 5000);
+
+      wc.once("did-finish-load", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
+      wc.once("did-fail-load", (_event, errorCode, errorDescription) => {
+        clearTimeout(timeout);
+        reject(new Error(`View load failed: ${errorDescription} (${errorCode})`));
+      });
+
+      const encodedId = encodeURIComponent(projectId);
+      if (process.env.NODE_ENV === "development") {
+        const devServerUrl = getDevServerUrl();
+        wc.loadURL(`${devServerUrl}?projectId=${encodedId}`);
+      } else {
+        wc.loadURL(`app://canopy/index.html?projectId=${encodedId}`);
+      }
+    });
+  }
+
+  private updateViewBounds(view: WebContentsView): void {
+    if (this.win.isDestroyed()) return;
+    const { width, height } = this.win.getContentBounds();
+    view.setBounds({ x: 0, y: 0, width, height });
+  }
+
+  private setupViewHandlers(view: WebContentsView): void {
+    const wc = view.webContents;
+    const win = this.win;
+
+    wc.setWindowOpenHandler(({ url }) => {
+      if (url && canOpenExternalUrl(url)) {
+        void openExternalUrl(url).catch((error) => {
+          console.error("[ProjectViewManager] Failed to open external URL:", error);
+        });
+      } else {
+        console.warn(`[ProjectViewManager] Blocked window.open for unsupported URL: ${url}`);
+      }
+      return { action: "deny" };
+    });
+
+    wc.on("will-navigate", (event, navigationUrl) => {
+      if (!isTrustedRendererUrl(navigationUrl)) {
+        console.error("[ProjectViewManager] Blocked navigation to untrusted URL:", navigationUrl);
+        event.preventDefault();
+      }
+    });
+
+    wc.on("will-redirect", (event, redirectUrl) => {
+      if (!isTrustedRendererUrl(redirectUrl)) {
+        console.error("[ProjectViewManager] Blocked redirect to untrusted URL:", redirectUrl);
+        event.preventDefault();
+      }
+    });
+
+    wc.on("will-attach-webview", (event, webPreferences, params) => {
+      const allowedPartitions = ["persist:browser", "persist:dev-preview"];
+      const isAllowedLocalhostUrl = isLocalhostUrl(params.src);
+      const isValidPartition =
+        allowedPartitions.includes(params.partition || "") ||
+        (params.partition?.startsWith("persist:dev-preview-") ?? false);
+
+      if (!isAllowedLocalhostUrl || !isValidPartition) {
+        console.warn(
+          `[ProjectViewManager] Blocked webview: url=${params.src}, partition=${params.partition}`
+        );
+        event.preventDefault();
+        return;
+      }
+
+      delete webPreferences.preload;
+      webPreferences.nodeIntegration = false;
+      webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true;
+      webPreferences.navigateOnDragDrop = false;
+      webPreferences.disableBlinkFeatures = "Auxclick";
+    });
+
+    wc.on("before-input-event", (_event, input) => {
+      const isMac = process.platform === "darwin";
+      const isCloseShortcut =
+        input.type === "keyDown" &&
+        input.key.toLowerCase() === "w" &&
+        ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
+        !input.alt;
+      wc.setIgnoreMenuShortcuts(isCloseShortcut);
+    });
+
+    wc.on("render-process-gone", (_event, details) => {
+      if (details.reason === "clean-exit") return;
+
+      const projectId = this.webContentsToProject.get(wc.id);
+      console.error(
+        `[ProjectViewManager] View renderer gone (project: ${projectId}):`,
+        details.reason,
+        details.exitCode
+      );
+      getCrashRecoveryService().recordCrash(
+        new Error(`View renderer gone: ${details.reason} (exit code ${details.exitCode})`)
+      );
+
+      if (win.isDestroyed()) return;
+
+      const entry = projectId ? this.views.get(projectId) : null;
+      const crashTimestamps = entry?.crashTimestamps ?? [];
+      const now = Date.now();
+      while (crashTimestamps.length > 0 && now - crashTimestamps[0] > CRASH_LOOP_WINDOW_MS) {
+        crashTimestamps.shift();
+      }
+      crashTimestamps.push(now);
+
+      if (crashTimestamps.length >= CRASH_LOOP_THRESHOLD) {
+        console.error("[ProjectViewManager] Crash loop detected, loading recovery page");
+        setImmediate(() => {
+          if (wc.isDestroyed()) return;
+          const params = new URLSearchParams({
+            reason: details.reason,
+            exitCode: String(details.exitCode),
+          });
+          if (process.env.NODE_ENV === "development") {
+            wc.loadURL(`${getDevServerUrl()}/recovery.html?${params}`);
+          } else {
+            wc.loadURL(`app://canopy/recovery.html?${params}`);
+          }
+        });
+      } else if (details.reason === "oom" && this.onRecreateWindow) {
+        console.warn("[ProjectViewManager] OOM crash, destroying and recreating window");
+        notifyError(new Error("A project view ran out of memory and the window was recreated."), {
+          source: "renderer-crash",
+        });
+        setImmediate(() => {
+          if (!win.isDestroyed()) win.destroy();
+          this.onRecreateWindow!().catch((err) => {
+            console.error("[ProjectViewManager] Failed to recreate window after OOM:", err);
+          });
+        });
+      } else {
+        console.log("[ProjectViewManager] Renderer crash, auto-reloading view");
+        notifyError(new Error("A project view crashed and was automatically reloaded."), {
+          source: "renderer-crash",
+        });
+        setImmediate(() => {
+          if (!wc.isDestroyed()) wc.reload();
+        });
+      }
+    });
+
+    // Fullscreen events are handled by the window-level resize handler
+    // and the sendToRenderer in createWindow.ts — no per-view listeners needed.
+  }
+
+  private cleanupEntry(projectId: string): void {
+    const entry = this.views.get(projectId);
+    if (!entry) return;
+
+    // Remove from window if attached
+    if (!this.win.isDestroyed()) {
+      try {
+        this.win.contentView.removeChildView(entry.view);
+      } catch {
+        // May not be attached
+      }
+    }
+
+    // Unregister from WindowRegistry
+    const wcId = entry.view.webContents.id;
+    if (this.windowRegistry) {
+      this.windowRegistry.unregisterAppViewWebContents(this.win.id, wcId);
+    }
+
+    this.webContentsToProject.delete(wcId);
+
+    // Close webContents — only unregister from webContentsRegistry, NOT unregisterAppView
+    // (which would remove the active view's registration)
+    if (!entry.view.webContents.isDestroyed()) {
+      unregisterWebContents(entry.view.webContents);
+      entry.view.webContents.close();
+    }
+
+    this.views.delete(projectId);
+  }
+
+  private evictStaleViews(): void {
+    if (this.views.size <= MAX_CACHED_VIEWS) return;
+
+    const evictable = Array.from(this.views.entries())
+      .filter(([id]) => id !== this.activeProjectId)
+      .sort(([, a], [, b]) => a.lastUsed - b.lastUsed);
+
+    while (this.views.size > MAX_CACHED_VIEWS && evictable.length > 0) {
+      const [projectId] = evictable.shift()!;
+      console.log(`[ProjectViewManager] Evicting cached view for project: ${projectId}`);
+      this.cleanupEntry(projectId);
+    }
+  }
+}

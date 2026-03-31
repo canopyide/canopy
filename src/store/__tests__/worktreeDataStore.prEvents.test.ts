@@ -75,7 +75,7 @@ vi.mock("../notificationStore", () => ({
   },
 }));
 
-const { useWorktreeDataStore, cleanupWorktreeDataStore } = await import("../worktreeDataStore");
+const { useWorktreeDataStore } = await import("../worktreeDataStore");
 const { worktreeClient } = await import("@/clients");
 
 async function waitForInitialized() {
@@ -111,7 +111,6 @@ function createMockWorktree(id: string, prNumber?: number): WorktreeState {
 
 describe("worktreeDataStore PR events", () => {
   beforeEach(() => {
-    cleanupWorktreeDataStore();
     useWorktreeDataStore.setState({ isInitialized: false });
     mockOnPRDetectedCallback = null;
     mockOnPRClearedCallback = null;
@@ -204,25 +203,6 @@ describe("worktreeDataStore PR events", () => {
     });
 
     expect(store.getState().worktrees).toEqual(initialWorktrees);
-  });
-
-  it("unsubscribes from PR events on cleanup", async () => {
-    const store = useWorktreeDataStore;
-
-    store.getState().initialize();
-    await waitForInitialized();
-
-    expect(mockOnPRDetectedCallback).toBeTruthy();
-    expect(mockOnPRClearedCallback).toBeTruthy();
-    expect(mockOnIssueDetectedCallback).toBeTruthy();
-    expect(mockOnIssueNotFoundCallback).toBeTruthy();
-
-    cleanupWorktreeDataStore();
-
-    expect(mockOnPRDetectedCallback).toBeNull();
-    expect(mockOnPRClearedCallback).toBeNull();
-    expect(mockOnIssueDetectedCallback).toBeNull();
-    expect(mockOnIssueNotFoundCallback).toBeNull();
   });
 
   it("handles merged PR state", async () => {
