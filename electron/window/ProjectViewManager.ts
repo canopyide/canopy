@@ -24,6 +24,7 @@ import { notifyError } from "../ipc/errorHandlers.js";
 import { injectSkeletonCss } from "./skeletonCss.js";
 
 const MAX_CACHED_VIEWS = 2;
+const GC_DELAY_MS = 100;
 const CRASH_LOOP_WINDOW_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
 
@@ -264,6 +265,23 @@ export class ProjectViewManager {
     // Throttle background view to reduce CPU and allow Chromium to reclaim memory
     if (!current.view.webContents.isDestroyed()) {
       current.view.webContents.setBackgroundThrottling(true);
+
+      // Trigger V8 GC after a short delay to reclaim orphaned heap from
+      // unmounted React components, stale closures, and detached DOM.
+      // The delay lets React's unmount microtasks flush before collection.
+      const capturedProjectId = current.projectId;
+      const { view, webContents } = { view: current.view, webContents: current.view.webContents };
+      setTimeout(() => {
+        const liveEntry = this.views.get(capturedProjectId);
+        if (
+          liveEntry &&
+          liveEntry.view === view &&
+          liveEntry.state === "cached" &&
+          !webContents.isDestroyed()
+        ) {
+          webContents.executeJavaScript("window.gc && window.gc()").catch(() => {});
+        }
+      }, GC_DELAY_MS);
     }
   }
 
