@@ -1,4 +1,5 @@
-import { BrowserWindow, ipcMain, clipboard } from "electron";
+import { ipcMain, clipboard } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import crypto from "crypto";
 import path from "path";
 import { pathToFileURL } from "url";
@@ -155,7 +156,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
   ): Promise<CopyTreeResult> => {
     checkRateLimit(CHANNELS.COPYTREE_GENERATE, 5, 10_000);
     const traceId = crypto.randomUUID();
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
     const requestedWorktreeId = getStringField(payload, "worktreeId") ?? "unknown";
     console.log(`[${traceId}] CopyTree generate started for worktree ${requestedWorktreeId}`);
 
@@ -214,7 +215,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
   ): Promise<CopyTreeResult> => {
     checkRateLimit(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE, 5, 10_000);
     const traceId = crypto.randomUUID();
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
     const requestedWorktreeId = getStringField(payload, "worktreeId") ?? "unknown";
     console.log(
       `[${traceId}] CopyTree generate-and-copy-file started for worktree ${requestedWorktreeId}`
@@ -345,7 +346,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
   ): Promise<CopyTreeResult> => {
     checkRateLimit(CHANNELS.COPYTREE_INJECT, 5, 10_000);
     const traceId = crypto.randomUUID();
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
     const requestedTerminalId = getStringField(payload, "terminalId") ?? "unknown";
     const requestedWorktreeId = getStringField(payload, "worktreeId") ?? "unknown";
     console.log(
@@ -573,7 +574,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    const senderWindowTestConfig = BrowserWindow.fromWebContents(event.sender);
+    const senderWindowTestConfig = getWindowForWebContents(event.sender);
     const states = await deps.worktreeService.getAllStatesAsync(senderWindowTestConfig?.id);
     const worktree = states.find((wt) => wt.id === validated.worktreeId);
 

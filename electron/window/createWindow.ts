@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from "electron";
+import { getWindowForWebContents, registerWebContents } from "./webContentsRegistry.js";
 import path from "path";
 import { createWindowWithState } from "../windowState.js";
 import { store } from "../store.js";
@@ -36,7 +37,7 @@ function registerWindowIpcHandlers(onCreateWindow?: (projectPath?: string) => Pr
   }
 
   ipcMain.handle(CHANNELS.WINDOW_TOGGLE_FULLSCREEN, (event) => {
-    const bw = BrowserWindow.fromWebContents(event.sender);
+    const bw = getWindowForWebContents(event.sender);
     if (bw && !bw.isDestroyed()) {
       const isSimpleFullScreen = bw.isSimpleFullScreen();
       bw.setSimpleFullScreen(!isSimpleFullScreen);
@@ -76,7 +77,7 @@ function registerWindowIpcHandlers(onCreateWindow?: (projectPath?: string) => Pr
   });
 
   ipcMain.handle(CHANNELS.WINDOW_CLOSE, (event) => {
-    const bw = BrowserWindow.fromWebContents(event.sender);
+    const bw = getWindowForWebContents(event.sender);
     bw?.close();
   });
 }
@@ -183,6 +184,10 @@ export function setupBrowserWindow(
     projectPath ?? undefined
   );
   markPerformance(PERF_MARKS.MAIN_WINDOW_CREATED);
+
+  // Register the window's own webContents so getWindowForWebContents() works
+  // for both direct BrowserWindow webContents and future WebContentsView webContents.
+  registerWebContents(win.webContents, win);
 
   // Defer showing the window until first paint to prevent background flash
   let isShown = false;

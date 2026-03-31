@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron";
+import { getWindowForWebContents } from "../window/webContentsRegistry.js";
 import type { IpcInvokeMap, IpcEventMap } from "../types/index.js";
 import type { IpcContext } from "./types.js";
 import { performance } from "node:perf_hooks";
@@ -259,7 +260,7 @@ export function typedHandleWithContext<K extends keyof IpcInvokeMap>(
 
   ipcMain.handle(channel as string, async (event, ...args) => {
     const webContentsId = event.sender.id;
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
     const ctx: IpcContext = { event, webContentsId, senderWindow };
 
     if (!captureEnabled) {

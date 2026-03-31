@@ -1,4 +1,5 @@
-import { BrowserWindow, ipcMain, dialog } from "electron";
+import { ipcMain, dialog } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import path from "path";
 import { CHANNELS } from "../channels.js";
 import { projectStore } from "../../services/ProjectStore.js";
@@ -43,7 +44,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     const currentProject = projectStore.getCurrentProject();
 
     if (currentProject && deps.worktreeService) {
-      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      const senderWindow = getWindowForWebContents(event.sender);
       const windowId = senderWindow?.id ?? deps.mainWindow?.id;
       try {
         if (windowId !== undefined) {
@@ -323,7 +324,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     }
 
     console.log(`[IPC] project:reopen: ${projectId}`);
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
 
     const project = projectStore.getProjectById(projectId);
     if (!project) {
@@ -562,7 +563,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       throw new Error("Invalid options object");
     }
 
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
 
     const {
       directoryPath,
@@ -777,7 +778,7 @@ Thumbs.db
       throw new Error("Invalid options object");
     }
 
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
 
     const { url, parentPath, folderName } = options;
 

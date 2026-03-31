@@ -1,4 +1,5 @@
-import { ipcMain, dialog, BrowserWindow } from "electron";
+import { ipcMain, dialog } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import fs from "fs/promises";
 import { CHANNELS } from "../channels.js";
 import { projectStore } from "../../services/ProjectStore.js";
@@ -120,7 +121,7 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
     if (!payload || typeof payload.name !== "string" || typeof payload.json !== "string") {
       throw new Error("Invalid payload");
     }
-    const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const win = getWindowForWebContents(event.sender) ?? undefined;
     const defaultFilename = safeRecipeFilename(payload.name);
     const dialogOptions: Electron.SaveDialogOptions = {
       title: "Export Recipe",
@@ -140,7 +141,7 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
   const handleRecipeImportFile = async (
     event: Electron.IpcMainInvokeEvent
   ): Promise<string | null> => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const win = getWindowForWebContents(event.sender) ?? undefined;
     const dialogOptions: Electron.OpenDialogOptions = {
       title: "Import Recipe",
       filters: [{ name: "Recipe Files", extensions: ["json"] }],

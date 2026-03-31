@@ -1,4 +1,5 @@
 import { ipcMain, dialog, BrowserWindow, nativeTheme } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { promises as fs } from "node:fs";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
@@ -107,7 +108,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE));
 
   const handleAppThemeImport = async (event: Electron.IpcMainInvokeEvent) => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
+    const win = getWindowForWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
     const dialogOptions = {
       title: "Import App Theme",
       filters: [
@@ -144,7 +145,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
         .trim()
         .slice(0, 200) || "theme";
 
-    const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
+    const win = getWindowForWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
     const dialogOptions = {
       title: "Export App Theme",
       defaultPath: `${safeName}.json`,

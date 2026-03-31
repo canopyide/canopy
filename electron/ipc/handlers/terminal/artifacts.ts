@@ -2,7 +2,8 @@
  * Artifact handlers - save to file, apply patch.
  */
 
-import { ipcMain, dialog, BrowserWindow } from "electron";
+import { ipcMain, dialog } from "electron";
+import { getWindowForWebContents } from "../../../window/webContentsRegistry.js";
 import os from "os";
 import path from "path";
 import { CHANNELS } from "../../channels.js";
@@ -127,7 +128,7 @@ export function registerArtifactHandlers(deps: HandlerDependencies): () => void 
         }
 
         if (deps.worktreeService) {
-          const senderWindowPatch = BrowserWindow.fromWebContents(event.sender);
+          const senderWindowPatch = getWindowForWebContents(event.sender);
           const states = await deps.worktreeService.getAllStatesAsync(senderWindowPatch?.id);
           const isValidWorktree = states.some(
             (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd

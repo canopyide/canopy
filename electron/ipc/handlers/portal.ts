@@ -1,4 +1,5 @@
-import { BrowserWindow, Menu, ipcMain } from "electron";
+import { Menu, ipcMain } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
@@ -166,7 +167,7 @@ export function registerPortalHandlers(deps: HandlerDependencies): () => void {
       )
       .map((l) => ({ title: l.title.trim(), url: l.url.trim() }));
 
-    const win = BrowserWindow.fromWebContents(event.sender);
+    const win = getWindowForWebContents(event.sender);
     if (!win || win.isDestroyed()) return;
 
     const sendAction = (action: PortalNewTabMenuAction) => {

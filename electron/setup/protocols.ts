@@ -1,4 +1,5 @@
-import { app, protocol, net, session, BrowserWindow } from "electron";
+import { app, protocol, net, session } from "electron";
+import { getWindowForWebContents } from "../window/webContentsRegistry.js";
 import path from "path";
 import { pathToFileURL } from "url";
 import { resolveAppUrlToDistPath, getMimeType, buildHeaders } from "../utils/appProtocol.js";
@@ -210,7 +211,7 @@ export function setupWebviewCSP(): void {
             return;
           }
 
-          const parentWindow = BrowserWindow.fromWebContents(contents.hostWebContents ?? contents);
+          const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
           if (parentWindow && !parentWindow.isDestroyed()) {
             parentWindow.webContents.send("webview:dialog-request", {
               dialogId,
@@ -248,9 +249,7 @@ export function setupWebviewCSP(): void {
         if (shortcut !== "close") {
           event.preventDefault();
         }
-        const findParentWindow = BrowserWindow.fromWebContents(
-          contents.hostWebContents ?? contents
-        );
+        const findParentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
         if (findParentWindow && !findParentWindow.isDestroyed()) {
           findParentWindow.webContents.send(CHANNELS.WEBVIEW_FIND_SHORTCUT, { panelId, shortcut });
         }

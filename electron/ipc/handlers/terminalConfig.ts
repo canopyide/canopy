@@ -1,4 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { parseColorSchemeFile } from "../../utils/colorSchemeImporter.js";
@@ -233,7 +234,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_MEMORY_LEAK_AUTO_RESTART));
 
   const handleTerminalConfigImportColorScheme = async (event: Electron.IpcMainInvokeEvent) => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
+    const win = getWindowForWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
     const dialogOptions = {
       title: "Import Color Scheme",
       filters: [

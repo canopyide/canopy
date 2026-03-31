@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain, webContents } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { CHANNELS } from "../channels.js";
 import { getWebviewDialogService } from "../../services/WebviewDialogService.js";
 import { broadcastToRenderer, sendToRenderer } from "../utils.js";
@@ -267,7 +268,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
 
     if (session.ownerWindow === null) {
       const hostWc = wc.hostWebContents;
-      session.ownerWindow = hostWc ? BrowserWindow.fromWebContents(hostWc) : null;
+      session.ownerWindow = hostWc ? getWindowForWebContents(hostWc) : null;
     }
 
     if (!session.objectIdsByPane.has(paneId)) {

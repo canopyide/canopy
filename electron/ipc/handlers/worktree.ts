@@ -1,4 +1,5 @@
-import { ipcMain, BrowserWindow } from "electron";
+import { ipcMain } from "electron";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import path from "path";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
@@ -33,7 +34,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     if (!deps.worktreeService) {
       return [];
     }
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
     return await deps.worktreeService.getAllStatesAsync(senderWindow?.id);
   };
   ipcMain.handle(CHANNELS.WORKTREE_GET_ALL, handleWorktreeGetAll);
@@ -73,7 +74,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     if (!deps.worktreeService) {
       return;
     }
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
     const windowId = senderWindow?.id;
     await deps.worktreeService.setActiveWorktree(payload.worktreeId, windowId, { silent: true });
   };
@@ -237,7 +238,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     if (payload.deleteBranch !== undefined && typeof payload.deleteBranch !== "boolean") {
       throw new Error("Invalid deleteBranch parameter");
     }
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const senderWindow = getWindowForWebContents(event.sender);
     const states = await deps.worktreeService.getAllStatesAsync(senderWindow?.id);
     const worktree = states.find((wt) => wt.id === payload.worktreeId);
     await deps.worktreeService.deleteWorktree(
@@ -386,7 +387,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       throw new Error(`Worktree not found: ${worktreeId}`);
     }
 
-    const senderWindowPulse = BrowserWindow.fromWebContents(event.sender);
+    const senderWindowPulse = getWindowForWebContents(event.sender);
     const states = await deps.worktreeService.getAllStatesAsync(senderWindowPulse?.id);
     const mainWorktree = states.find((wt) => wt.isMainWorktree);
     const mainBranch = mainWorktree?.branch ?? "main";
@@ -466,7 +467,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     const rootPath = project.path;
 
     // Get all states to find the main worktree and determine base branch
-    const senderWindowCreate = BrowserWindow.fromWebContents(event.sender);
+    const senderWindowCreate = getWindowForWebContents(event.sender);
     const states = await deps.worktreeService.getAllStatesAsync(senderWindowCreate?.id);
     const mainWorktree = states.find((wt) => wt.isMainWorktree);
 
@@ -714,7 +715,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     const errors: string[] = [];
 
     // Fetch all worktree states once for efficient main-worktree checking
-    const senderWindowCleanup = BrowserWindow.fromWebContents(event.sender);
+    const senderWindowCleanup = getWindowForWebContents(event.sender);
     let allStates: Awaited<ReturnType<typeof deps.worktreeService.getAllStatesAsync>> = [];
     try {
       allStates = await deps.worktreeService.getAllStatesAsync(senderWindowCleanup?.id);
