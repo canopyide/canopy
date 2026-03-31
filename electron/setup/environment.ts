@@ -65,15 +65,20 @@ if (shouldResetData) {
   }
 }
 
+// Chromium feature flags: memory reclamation + platform-specific features
+const enabledFeatures = ["PartitionAllocMemoryReclaimer"];
+
 // Enable native Wayland support on Linux (Electron < 38)
 // Electron 38+ auto-detects via XDG_SESSION_TYPE; this flag is ignored.
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("ozone-platform-hint", "auto");
   if (process.env.XDG_SESSION_TYPE === "wayland") {
-    app.commandLine.appendSwitch("enable-features", "WaylandWindowDecorations");
+    enabledFeatures.push("WaylandWindowDecorations");
     app.commandLine.appendSwitch("enable-wayland-ime");
   }
 }
+
+app.commandLine.appendSwitch("enable-features", enabledFeatures.join(","));
 
 // Cap GPU tile memory budget and disable MSAA to reduce VRAM usage
 app.commandLine.appendSwitch("force-gpu-mem-available-mb", "512");
