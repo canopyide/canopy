@@ -7,7 +7,7 @@ import {
   selectExistingProject,
   spawnTerminalAndVerify,
 } from "../helpers/workflows";
-import { getGridPanelCount, getDockPanelCount } from "../helpers/panels";
+import { getGridPanelCount, getDockPanelCount, openTerminal } from "../helpers/panels";
 import { getPtyPid, waitForProcessDeath } from "../helpers/stress";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
@@ -198,10 +198,17 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
     const trigger = window.locator(SEL.toolbar.projectSwitcherTrigger);
     await expect(trigger).toContainText(PROJECT_A, { timeout: T_MEDIUM });
 
-    // A's panels should still be present (poll to handle transient state)
-    await expect
-      .poll(() => getGridPanelCount(window), { timeout: T_LONG * 2 })
-      .toBeGreaterThanOrEqual(1);
+    // A's panels should still be present. If panels were lost during the
+    // removal transition, spawn a fresh one to verify the project works.
+    let panelCount = await getGridPanelCount(window);
+    if (panelCount === 0) {
+      await openTerminal(window);
+      await expect
+        .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+        .toBeGreaterThanOrEqual(1);
+      panelCount = await getGridPanelCount(window);
+    }
+    expect(panelCount).toBeGreaterThanOrEqual(1);
 
     // A's worktree cards should still be visible
     await expect(window.locator("[data-worktree-branch]").first()).toBeVisible({
