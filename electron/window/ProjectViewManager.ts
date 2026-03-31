@@ -21,7 +21,7 @@ import { notifyError } from "../ipc/errorHandlers.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { sendToRenderer } from "../ipc/handlers.js";
 
-const MAX_CACHED_VIEWS = 3;
+const MAX_CACHED_VIEWS = 2;
 const CRASH_LOOP_WINDOW_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
 
@@ -241,10 +241,20 @@ export class ProjectViewManager {
     }
     current.state = "cached";
     current.lastUsed = Date.now();
+
+    // Throttle background view to reduce CPU and allow Chromium to reclaim memory
+    if (!current.view.webContents.isDestroyed()) {
+      current.view.webContents.setBackgroundThrottling(true);
+    }
   }
 
   private activateView(entry: ViewEntry): void {
     registerAppView(this.win, entry.view);
+
+    // Restore full priority before making visible
+    if (!entry.view.webContents.isDestroyed()) {
+      entry.view.webContents.setBackgroundThrottling(false);
+    }
 
     this.win.contentView.addChildView(entry.view);
     this.updateViewBounds(entry.view);
