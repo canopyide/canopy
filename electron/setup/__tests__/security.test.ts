@@ -303,6 +303,19 @@ describe("setupPermissionLockdown", () => {
       expect(testPermissionRequest(handler, "clipboard-read")).toBe(false);
     });
 
+    it("does not double-lock canopy-app partition via session-created (eagerly locked)", () => {
+      setupPermissionLockdown();
+      const dynamicCanopySession = createMockSession();
+      Object.defineProperty(dynamicCanopySession, "partition", {
+        value: "persist:canopy-app",
+      });
+
+      sessionCreatedListeners[0](dynamicCanopySession);
+
+      expect(dynamicCanopySession.setPermissionRequestHandler).not.toHaveBeenCalled();
+      expect(dynamicCanopySession.setPermissionCheckHandler).not.toHaveBeenCalled();
+    });
+
     it("handles sessions with missing partition property", () => {
       setupPermissionLockdown();
       const noPartitionSession = createMockSession();
