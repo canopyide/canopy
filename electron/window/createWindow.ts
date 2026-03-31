@@ -1,4 +1,12 @@
-import { app, BrowserWindow, WebContentsView, dialog, ipcMain, nativeTheme } from "electron";
+import {
+  app,
+  BrowserWindow,
+  WebContentsView,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  session,
+} from "electron";
 import {
   getWindowForWebContents,
   registerWebContents,
@@ -20,6 +28,7 @@ import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { notifyError } from "../ipc/errorHandlers.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
 import { markPerformance } from "../utils/performance.js";
+import { registerProtocolsForSession, getDistPath } from "../setup/protocols.js";
 import { isSmokeTest } from "../setup/environment.js";
 import { SMOKE_BOOT_TIMEOUT_MS } from "../services/smokeTest.js";
 
@@ -90,6 +99,9 @@ export interface SetupBrowserWindowOptions {
   onRecreateWindow?: () => Promise<void>;
   onCreateWindow?: (projectPath?: string) => Promise<void>;
   projectPath?: string | null;
+  /** Last-active projectId read synchronously from DB before window creation.
+   *  Used to assign the correct session partition to the initial view. */
+  initialProjectId?: string;
 }
 
 export interface CreateWindowResult {
@@ -104,7 +116,7 @@ export function setupBrowserWindow(
   dirname: string,
   options: SetupBrowserWindowOptions = {}
 ): CreateWindowResult {
-  const { onRecreateWindow, onCreateWindow, projectPath } = options;
+  const { onRecreateWindow, onCreateWindow, projectPath, initialProjectId } = options;
   let smokeTestTimer: ReturnType<typeof setTimeout> | undefined;
   let _smokeRendererUnresponsive = false;
 
@@ -188,9 +200,21 @@ export function setupBrowserWindow(
   registerWebContents(win.webContents, win);
 
   // ── Create WebContentsView for the React app ──
+  // When initialProjectId is available (returning user), use a per-project session partition
+  // for crash isolation, V8 code cache, and storage scoping. Falls back to default session
+  // on first launch (no project yet).
+  const viewSession = initialProjectId
+    ? session.fromPartition(`persist:project-${initialProjectId}`)
+    : undefined;
+  if (viewSession) {
+    const dist = getDistPath();
+    if (dist) registerProtocolsForSession(viewSession, dist);
+  }
+
   const appView = new WebContentsView({
     webPreferences: {
       preload: path.join(dirname, "preload.cjs"),
+      ...(viewSession ? { session: viewSession } : {}),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

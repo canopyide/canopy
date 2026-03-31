@@ -273,6 +273,8 @@ export interface SetupWindowServicesOptions {
   smokeRendererUnresponsive: () => boolean;
   windowRegistry?: WindowRegistry;
   initialProjectPath?: string;
+  /** Last-active projectId read before window creation for session partition assignment */
+  initialProjectId?: string;
   projectViewManager?: import("./ProjectViewManager.js").ProjectViewManager;
   initialAppView?: import("electron").WebContentsView;
 }
@@ -586,7 +588,7 @@ export async function setupWindowServices(
     }
   });
 
-  opts.loadRenderer("after-services-ready");
+  opts.loadRenderer("after-services-ready", opts.initialProjectId);
 
   // Error handlers also use ipcMain.handle — register once
   if (!cleanupErrorHandlers) {

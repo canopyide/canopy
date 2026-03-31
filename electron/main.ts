@@ -55,6 +55,7 @@ import { initializeGpuCrashMonitor } from "./services/GpuCrashMonitorService.js"
 import { initializeTrashedPidCleanup } from "./services/TrashedPidTracker.js";
 import { initializeCrashLoopGuard, getCrashLoopGuard } from "./services/CrashLoopGuardService.js";
 import { initializeDatabaseMaintenance } from "./services/DatabaseMaintenanceService.js";
+import { readLastActiveProjectIdSync } from "./services/persistence/readLastProjectId.js";
 
 // CRITICAL: Run IPC sender validation before any handlers are registered
 enforceIpcSenderValidation();
@@ -135,6 +136,11 @@ if (!gotTheLock) {
   const windowRegistry = new WindowRegistry();
   setWindowRegistry(windowRegistry);
 
+  // Read last-active projectId synchronously from SQLite BEFORE creating any window.
+  // This allows the initial WebContentsView to use the correct session partition,
+  // giving crash isolation and V8 code cache benefits from the first render.
+  const lastActiveProjectId = readLastActiveProjectIdSync();
+
   let powerMonitorInitialized = false;
 
   async function createWindow(initialProjectPath?: string | null): Promise<void> {
@@ -143,6 +149,7 @@ if (!gotTheLock) {
         onRecreateWindow: () => createWindow(initialProjectPath),
         onCreateWindow: (projectPath?: string) => createWindow(projectPath),
         projectPath: initialProjectPath,
+        initialProjectId: lastActiveProjectId ?? undefined,
       });
     setMainWindow(win);
     const ctx = windowRegistry.register(win, { projectPath: initialProjectPath ?? undefined });
@@ -170,6 +177,7 @@ if (!gotTheLock) {
       smokeRendererUnresponsive,
       windowRegistry,
       initialProjectPath: initialProjectPath ?? undefined,
+      initialProjectId: lastActiveProjectId ?? undefined,
       projectViewManager: pvm,
       initialAppView: appView,
     });
