@@ -65,7 +65,7 @@ export const worktreeClient = {
     return window.electron.worktree.delete(worktreeId, force, deleteBranch);
   },
 
-  onUpdate: (callback: (state: WorktreeState, scopeId: string) => void): (() => void) => {
+  onUpdate: (callback: (state: WorktreeState) => void): (() => void) => {
     return window.electron.worktree.onUpdate(callback);
   },
 

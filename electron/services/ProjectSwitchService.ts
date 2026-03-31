@@ -94,7 +94,6 @@ export class ProjectSwitchService {
         ),
       ]);
       const worktreeLoadError = loadResult?.error;
-      const worktreeScopeId = loadResult?.scopeId;
 
       const switchId = randomUUID();
 
@@ -117,7 +116,6 @@ export class ProjectSwitchService {
         switchId,
         ...(worktreeLoadError ? { worktreeLoadError } : {}),
         ...(hydrateResult ? { hydrateResult } : {}),
-        ...(worktreeScopeId ? { worktreeScopeId } : {}),
       });
 
       console.log("[ProjectSwitch] Project switch complete, switchId:", switchId);
@@ -214,18 +212,16 @@ export class ProjectSwitchService {
     });
   }
 
-  private async loadNewProject(
-    project: Project
-  ): Promise<{ error?: string; scopeId?: string } | undefined> {
+  private async loadNewProject(project: Project): Promise<{ error?: string } | undefined> {
     if (!this.deps.worktreeService || this.windowId === null) {
       return undefined;
     }
 
     try {
       console.log("[ProjectSwitch] Loading worktrees for new project...");
-      const scopeId = await this.deps.worktreeService.loadProject(project.path, this.windowId);
+      await this.deps.worktreeService.loadProject(project.path, this.windowId);
       console.log("[ProjectSwitch] Worktrees loaded successfully");
-      return { scopeId };
+      return {};
     } catch (err) {
       console.error("[ProjectSwitch] Failed to load worktrees for project:", err);
       return { error: err instanceof Error ? err.message : "Failed to load worktrees" };

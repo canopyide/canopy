@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeState } from "@shared/types";
 import type { useWorktreeDataStore as UseWorktreeDataStoreType } from "../worktreeDataStore";
 
-let onUpdateCallback: ((state: WorktreeState, scopeId: string) => void) | null = null;
+let onUpdateCallback: ((state: WorktreeState) => void) | null = null;
 
 const getAllMock = vi.fn();
 const refreshMock = vi.fn();
@@ -13,7 +13,7 @@ vi.mock("@/clients", () => ({
     getAll: getAllMock,
     refresh: refreshMock,
     getAllIssueAssociations: getAllIssueAssociationsMock,
-    onUpdate: vi.fn((callback: (state: WorktreeState, scopeId: string) => void) => {
+    onUpdate: vi.fn((callback: (state: WorktreeState) => void) => {
       onUpdateCallback = callback;
       return () => {
         onUpdateCallback = null;
@@ -116,19 +116,16 @@ describe("worktreeDataStore branch-change clearing", () => {
 
       expect(useWorktreeDataStore.getState().worktrees.get("wt-main")?.issueNumber).toBe(2383);
 
-      onUpdateCallback!(
-        {
-          ...feature,
-          branch: "develop",
-          issueNumber: undefined,
-          issueTitle: undefined,
-          prNumber: undefined,
-          prUrl: undefined,
-          prState: undefined,
-          prTitle: undefined,
-        },
-        "test-scope"
-      );
+      onUpdateCallback!({
+        ...feature,
+        branch: "develop",
+        issueNumber: undefined,
+        issueTitle: undefined,
+        prNumber: undefined,
+        prUrl: undefined,
+        prState: undefined,
+        prTitle: undefined,
+      });
 
       const updated = useWorktreeDataStore.getState().worktrees.get("wt-main");
       expect(updated?.branch).toBe("develop");
@@ -158,18 +155,15 @@ describe("worktreeDataStore branch-change clearing", () => {
         expect(onUpdateCallback).toBeTypeOf("function");
       });
 
-      onUpdateCallback!(
-        {
-          ...feature,
-          issueNumber: undefined,
-          issueTitle: undefined,
-          prNumber: undefined,
-          prUrl: undefined,
-          prState: undefined,
-          prTitle: undefined,
-        },
-        "test-scope"
-      );
+      onUpdateCallback!({
+        ...feature,
+        issueNumber: undefined,
+        issueTitle: undefined,
+        prNumber: undefined,
+        prUrl: undefined,
+        prState: undefined,
+        prTitle: undefined,
+      });
 
       const updated = useWorktreeDataStore.getState().worktrees.get("wt-feat");
       expect(updated?.issueNumber).toBe(100);
@@ -198,19 +192,16 @@ describe("worktreeDataStore branch-change clearing", () => {
         expect(onUpdateCallback).toBeTypeOf("function");
       });
 
-      onUpdateCallback!(
-        {
-          ...feature,
-          branch: undefined,
-          issueNumber: undefined,
-          issueTitle: undefined,
-          prNumber: undefined,
-          prUrl: undefined,
-          prState: undefined,
-          prTitle: undefined,
-        },
-        "test-scope"
-      );
+      onUpdateCallback!({
+        ...feature,
+        branch: undefined,
+        issueNumber: undefined,
+        issueTitle: undefined,
+        prNumber: undefined,
+        prUrl: undefined,
+        prState: undefined,
+        prTitle: undefined,
+      });
 
       const updated = useWorktreeDataStore.getState().worktrees.get("wt-detach");
       expect(updated?.branch).toBeUndefined();
@@ -240,19 +231,16 @@ describe("worktreeDataStore branch-change clearing", () => {
         expect(onUpdateCallback).toBeTypeOf("function");
       });
 
-      onUpdateCallback!(
-        {
-          ...feature,
-          branch: "feature/issue-999-other-feature",
-          issueNumber: undefined,
-          issueTitle: undefined,
-          prNumber: undefined,
-          prUrl: undefined,
-          prState: undefined,
-          prTitle: undefined,
-        },
-        "test-scope"
-      );
+      onUpdateCallback!({
+        ...feature,
+        branch: "feature/issue-999-other-feature",
+        issueNumber: undefined,
+        issueTitle: undefined,
+        prNumber: undefined,
+        prUrl: undefined,
+        prState: undefined,
+        prTitle: undefined,
+      });
 
       const updated = useWorktreeDataStore.getState().worktrees.get("wt-switch");
       expect(updated?.branch).toBe("feature/issue-999-other-feature");

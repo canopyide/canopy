@@ -122,7 +122,7 @@ export interface MonitorConfig {
  */
 export type WorkspaceHostRequest =
   // Project lifecycle
-  | { type: "load-project"; requestId: string; rootPath: string; projectScopeId: string }
+  | { type: "load-project"; requestId: string; rootPath: string }
   | {
       type: "sync";
       requestId: string;
@@ -257,9 +257,8 @@ export type WorkspaceHostEvent =
   // Git operation responses
   | { type: "get-file-diff-result"; requestId: string; diff: string; error?: string }
   // Spontaneous updates (no requestId - these are pushed events)
-  // Project scope filtering: events include projectScopeId to prevent cross-project pollution
-  | { type: "worktree-update"; worktree: WorktreeSnapshot; projectScopeId: string }
-  | { type: "worktree-removed"; worktreeId: string; projectScopeId: string }
+  | { type: "worktree-update"; worktree: WorktreeSnapshot }
+  | { type: "worktree-removed"; worktreeId: string }
   // PR events
   | {
       type: "pr-detected";
@@ -270,22 +269,19 @@ export type WorkspaceHostEvent =
       prTitle?: string;
       issueNumber?: number;
       issueTitle?: string;
-      projectScopeId: string;
     }
-  | { type: "pr-cleared"; worktreeId: string; projectScopeId: string }
+  | { type: "pr-cleared"; worktreeId: string }
   // Issue events
   | {
       type: "issue-detected";
       worktreeId: string;
       issueNumber: number;
       issueTitle: string;
-      projectScopeId: string;
     }
   | {
       type: "issue-not-found";
       worktreeId: string;
       issueNumber: number;
-      projectScopeId: string;
     }
   // CopyTree events
   | { type: "copytree:progress"; operationId: string; progress: CopyTreeProgress }

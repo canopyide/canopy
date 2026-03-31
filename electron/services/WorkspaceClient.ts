@@ -46,7 +46,6 @@ interface ProcessEntry {
   refCount: number;
   initPromise: Promise<void>;
   cleanupTimeout: NodeJS.Timeout | null;
-  scopeId: string;
   windowIds: Set<number>;
   projectPath: string;
   /** WebContents with direct MessagePort connections to this host */
@@ -147,7 +146,6 @@ export class WorkspaceClient extends EventEmitter {
         }
         this.sendToEntryWindows(entry, CHANNELS.WORKTREE_UPDATE, {
           worktree,
-          scopeId: entry.scopeId,
         });
         events.emit("sys:worktree:update", {
           id: worktree.id,
@@ -244,7 +242,6 @@ export class WorkspaceClient extends EventEmitter {
       type: "load-project",
       requestId,
       rootPath: entry.projectPath,
-      projectScopeId: entry.scopeId,
     });
 
     // Re-establish direct renderer ports after host restart
@@ -322,7 +319,7 @@ export class WorkspaceClient extends EventEmitter {
 
   // ── Public API ──
 
-  async loadProject(rootPath: string, windowId: number, _scopeId?: string): Promise<string> {
+  async loadProject(rootPath: string, windowId: number): Promise<void> {
     if (this.isDisposed) {
       throw new Error("WorkspaceClient disposed");
     }
@@ -359,12 +356,11 @@ export class WorkspaceClient extends EventEmitter {
         if (isSwitching) {
           this.releaseOldProject(windowId, oldProjectPath);
         }
-        return existingEntry.scopeId;
+        return;
       }
     }
 
     // Create new per-project host
-    const scopeId = crypto.randomUUID();
     const host = new WorkspaceHostProcess(normalizedPath, this.config);
 
     const initPromise = (async () => {
@@ -374,7 +370,6 @@ export class WorkspaceClient extends EventEmitter {
         type: "load-project",
         requestId,
         rootPath: normalizedPath,
-        projectScopeId: scopeId,
       });
     })();
 
@@ -383,7 +378,6 @@ export class WorkspaceClient extends EventEmitter {
       refCount: 1,
       initPromise,
       cleanupTimeout: null,
-      scopeId,
       windowIds: new Set([windowId]),
       projectPath: normalizedPath,
       directPortViews: new Map(),
@@ -410,7 +404,7 @@ export class WorkspaceClient extends EventEmitter {
         newEntry.host.dispose();
         this.entries.delete(normalizedPath);
       }
-      return scopeId;
+      return;
     }
 
     this.windowToProject.set(windowId, normalizedPath);
@@ -418,8 +412,6 @@ export class WorkspaceClient extends EventEmitter {
     if (isSwitching) {
       this.releaseOldProject(windowId, oldProjectPath);
     }
-
-    return scopeId;
   }
 
   private releaseOldProject(windowId: number, oldProjectPath: string): void {

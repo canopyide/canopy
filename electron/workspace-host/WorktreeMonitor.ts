@@ -103,7 +103,6 @@ export class WorktreeMonitor {
   // Extra state
   private _createdAt: number | undefined;
   private _lifecycleStatus: WorktreeLifecycleStatus | undefined;
-  private _projectScopeId: string | null = null;
 
   // Poll queue concurrency
   private _pendingPollPromise: Promise<void> | null = null;
@@ -192,10 +191,6 @@ export class WorktreeMonitor {
     return this._createdAt;
   }
 
-  get projectScopeId(): string | null {
-    return this._projectScopeId;
-  }
-
   get lifecycleStatus(): WorktreeLifecycleStatus | undefined {
     return this._lifecycleStatus;
   }
@@ -235,10 +230,6 @@ export class WorktreeMonitor {
     this.prUrl = undefined;
     this.prState = undefined;
     this.prTitle = undefined;
-  }
-
-  setProjectScopeId(id: string | null): void {
-    this._projectScopeId = id;
   }
 
   setCreatedAt(ms: number | undefined): void {

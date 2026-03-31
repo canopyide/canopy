@@ -169,11 +169,10 @@ describe("WorktreeMonitor", () => {
     monitor.stop();
   });
 
-  it("includes createdAt, lifecycleStatus, projectScopeId in snapshot", () => {
+  it("includes createdAt and lifecycleStatus in snapshot", () => {
     const callbacks = makeCallbacks();
     const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
     monitor.setCreatedAt(1234567890);
-    monitor.setProjectScopeId("scope-1");
     monitor.setLifecycleStatus({
       phase: "setup",
       state: "running",
