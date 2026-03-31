@@ -257,25 +257,6 @@ describe("WorkspaceClient multi-process manager", () => {
     });
   });
 
-  describe("onProjectSwitch", () => {
-    it("is a no-op — does not release window or change routing", async () => {
-      const load = client.loadProject("/project-a", 1);
-      await readyAndResolveLoad(0);
-      await load;
-
-      await client.onProjectSwitch(1);
-
-      // Window should still be routed to project-a
-      const statesPromise = client.getAllStatesAsync(1);
-      await tick();
-      const req = h(0).getLastRequest()!;
-      expect(req.type).toBe("get-all-states");
-      h(0).resolveRequest(req.requestId, { states: [{ id: "wt-1" }] });
-      const result = await statesPromise;
-      expect(result).toHaveLength(1);
-    });
-  });
-
   describe("blue-green swap", () => {
     it("does not release old host until new host is ready", async () => {
       // Load project A on window 1

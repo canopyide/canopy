@@ -693,6 +693,13 @@ export async function setupWindowServices(
     try {
       await workspaceClient.loadProject(projectPathForWorktrees, win.id);
       console.log("[MAIN] Worktrees loaded");
+
+      // Attach direct MessagePort for workspace events (bypasses main-process relay)
+      const directPortTarget = opts.initialAppView?.webContents ?? getAppWebContents(win);
+      if (directPortTarget && !directPortTarget.isDestroyed()) {
+        workspaceClient.attachDirectPort(win.id, directPortTarget);
+        console.log("[MAIN] Workspace direct port attached");
+      }
     } catch (error) {
       console.error("[MAIN] Failed to load worktrees:", error);
     }

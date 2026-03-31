@@ -6,7 +6,7 @@
  * host pattern that caused cross-project contamination.
  */
 
-import { BrowserWindow } from "electron";
+import { BrowserWindow, MessageChannelMain, type WebContents } from "electron";
 import { EventEmitter } from "events";
 import path from "path";
 import crypto from "crypto";
@@ -48,6 +48,8 @@ interface ProcessEntry {
   scopeId: string;
   windowIds: Set<number>;
   projectPath: string;
+  /** WebContents with direct MessagePort connections to this host */
+  directPortViews: Map<number, WebContents>;
 }
 
 export class WorkspaceClient extends EventEmitter {
@@ -127,6 +129,10 @@ export class WorkspaceClient extends EventEmitter {
   private routeHostEvent(entry: ProcessEntry, event: WorkspaceHostEvent): void {
     if (this.isDisposed) return;
 
+    // Events delivered via direct MessagePort skip the IPC relay to renderers.
+    // Main-process event emissions (events.emit) are still processed.
+    const hasDirectPorts = entry.directPortViews.size > 0;
+
     switch (event.type) {
       case "worktree-update": {
         const worktree = event.worktree;
@@ -137,10 +143,12 @@ export class WorkspaceClient extends EventEmitter {
             entry.projectPath
           );
         }
-        this.sendToEntryWindows(entry, CHANNELS.WORKTREE_UPDATE, {
-          worktree,
-          scopeId: entry.scopeId,
-        });
+        if (!hasDirectPorts) {
+          this.sendToEntryWindows(entry, CHANNELS.WORKTREE_UPDATE, {
+            worktree,
+            scopeId: entry.scopeId,
+          });
+        }
         events.emit("sys:worktree:update", {
           id: worktree.id,
           path: worktree.path,
@@ -169,9 +177,11 @@ export class WorkspaceClient extends EventEmitter {
       }
 
       case "worktree-removed":
-        this.sendToEntryWindows(entry, CHANNELS.WORKTREE_REMOVE, {
-          worktreeId: event.worktreeId,
-        });
+        if (!hasDirectPorts) {
+          this.sendToEntryWindows(entry, CHANNELS.WORKTREE_REMOVE, {
+            worktreeId: event.worktreeId,
+          });
+        }
         break;
 
       case "pr-detected": {
@@ -186,14 +196,18 @@ export class WorkspaceClient extends EventEmitter {
           timestamp: Date.now(),
         };
         events.emit("sys:pr:detected", prPayload);
-        this.sendToEntryWindows(entry, CHANNELS.PR_DETECTED, prPayload);
+        if (!hasDirectPorts) {
+          this.sendToEntryWindows(entry, CHANNELS.PR_DETECTED, prPayload);
+        }
         break;
       }
 
       case "pr-cleared": {
         const clearPayload = { worktreeId: event.worktreeId, timestamp: Date.now() };
         events.emit("sys:pr:cleared", clearPayload);
-        this.sendToEntryWindows(entry, CHANNELS.PR_CLEARED, clearPayload);
+        if (!hasDirectPorts) {
+          this.sendToEntryWindows(entry, CHANNELS.PR_CLEARED, clearPayload);
+        }
         break;
       }
 
@@ -204,7 +218,9 @@ export class WorkspaceClient extends EventEmitter {
           issueTitle: event.issueTitle,
         };
         events.emit("sys:issue:detected", { ...issuePayload, timestamp: Date.now() });
-        this.sendToEntryWindows(entry, CHANNELS.ISSUE_DETECTED, issuePayload);
+        if (!hasDirectPorts) {
+          this.sendToEntryWindows(entry, CHANNELS.ISSUE_DETECTED, issuePayload);
+        }
         break;
       }
 
@@ -215,7 +231,9 @@ export class WorkspaceClient extends EventEmitter {
           timestamp: Date.now(),
         };
         events.emit("sys:issue:not-found", notFoundPayload);
-        this.sendToEntryWindows(entry, CHANNELS.ISSUE_NOT_FOUND, notFoundPayload);
+        if (!hasDirectPorts) {
+          this.sendToEntryWindows(entry, CHANNELS.ISSUE_NOT_FOUND, notFoundPayload);
+        }
         break;
       }
 
@@ -238,6 +256,15 @@ export class WorkspaceClient extends EventEmitter {
       rootPath: entry.projectPath,
       projectScopeId: entry.scopeId,
     });
+
+    // Re-establish direct renderer ports after host restart
+    for (const [wcId, wc] of entry.directPortViews) {
+      if (wc.isDestroyed()) {
+        entry.directPortViews.delete(wcId);
+        continue;
+      }
+      this.createDirectPortForEntry(entry, wc);
+    }
   }
 
   private releaseWindow(windowId: number): void {
@@ -250,6 +277,13 @@ export class WorkspaceClient extends EventEmitter {
 
     entry.windowIds.delete(windowId);
     entry.refCount--;
+
+    // Clean up any direct port views for this window's webContents
+    for (const [wcId, wc] of entry.directPortViews) {
+      if (wc.isDestroyed()) {
+        entry.directPortViews.delete(wcId);
+      }
+    }
 
     if (entry.refCount <= 0) {
       entry.cleanupTimeout = setTimeout(() => {
@@ -322,6 +356,7 @@ export class WorkspaceClient extends EventEmitter {
       scopeId,
       windowIds: new Set([windowId]),
       projectPath: normalizedPath,
+      directPortViews: new Map(),
     };
 
     this.entries.set(normalizedPath, newEntry);
@@ -374,6 +409,37 @@ export class WorkspaceClient extends EventEmitter {
         this.entries.delete(oldProjectPath);
       }, CLEANUP_GRACE_MS);
     }
+  }
+
+  /**
+   * Create a direct MessagePort channel between a workspace host and a renderer view.
+   * Spontaneous events (worktree updates, PR/issue events) bypass the main-process relay.
+   */
+  attachDirectPort(windowId: number, webContents: WebContents): void {
+    const entry = this.resolveEntryForWindow(windowId);
+    if (!entry) {
+      console.warn("[WorkspaceClient] No entry for window, cannot attach direct port");
+      return;
+    }
+    this.createDirectPortForEntry(entry, webContents);
+  }
+
+  private createDirectPortForEntry(entry: ProcessEntry, webContents: WebContents): void {
+    if (webContents.isDestroyed()) return;
+
+    const { port1, port2 } = new MessageChannelMain();
+
+    // port1 → workspace host UtilityProcess
+    const attached = entry.host.attachRendererPort(port1);
+    if (!attached) {
+      port1.close();
+      port2.close();
+      return;
+    }
+
+    // port2 → renderer view
+    webContents.postMessage("workspace-port", null, [port2]);
+    entry.directPortViews.set(webContents.id, webContents);
   }
 
   async sync(

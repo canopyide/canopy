@@ -19,6 +19,30 @@ if (process.env.CANOPY_USER_DATA) {
 
 const port = process.parentPort as unknown as MessagePort;
 
+// Direct MessagePort connections to renderer views (bypasses main-process relay)
+const rendererPorts: MessagePort[] = [];
+
+// Event types delivered directly to renderers via MessagePort
+const DIRECT_RENDERER_EVENTS = new Set([
+  "worktree-update",
+  "worktree-removed",
+  "pr-detected",
+  "pr-cleared",
+  "issue-detected",
+  "issue-not-found",
+]);
+
+function sendToRendererPorts(event: WorkspaceHostEvent): void {
+  for (let i = rendererPorts.length - 1; i >= 0; i--) {
+    try {
+      rendererPorts[i].postMessage(event);
+    } catch {
+      // Port closed (view evicted or destroyed)
+      rendererPorts.splice(i, 1);
+    }
+  }
+}
+
 // Global error handlers to prevent silent crashes
 process.on("uncaughtException", (err) => {
   console.error("[WorkspaceHost] Uncaught Exception:", err);
@@ -33,7 +57,7 @@ process.on("unhandledRejection", (reason) => {
   });
 });
 
-// Helper to send events to Main process
+// Helper to send events to Main process (and directly to renderers for spontaneous events)
 function sendEvent(event: WorkspaceHostEvent): void {
   try {
     port.postMessage(event);
@@ -58,6 +82,11 @@ function sendEvent(event: WorkspaceHostEvent): void {
       });
     }
   }
+
+  // Direct delivery to renderer(s) via MessagePort (bypasses main-process relay)
+  if (rendererPorts.length > 0 && DIRECT_RENDERER_EVENTS.has((event as { type: string }).type)) {
+    sendToRendererPorts(event);
+  }
 }
 
 // Process-level shutdown controller — aborted on dispose/SIGTERM to kill in-flight git operations
@@ -69,6 +98,20 @@ const workspaceService = new WorkspaceService(sendEvent);
 // Handle requests from Main
 port.on("message", async (rawMsg: any) => {
   const msg = rawMsg?.data ? rawMsg.data : rawMsg;
+
+  // Handle MessagePort transfers (direct renderer connection)
+  const transferredPorts = rawMsg?.ports || [];
+  if (msg?.type === "attach-renderer-port" && transferredPorts.length > 0) {
+    const newPort = transferredPorts[0] as MessagePort;
+    newPort.start();
+    rendererPorts.push(newPort);
+    newPort.on("close", () => {
+      const idx = rendererPorts.indexOf(newPort);
+      if (idx >= 0) rendererPorts.splice(idx, 1);
+    });
+    console.log(`[WorkspaceHost] Renderer port attached (${rendererPorts.length} active)`);
+    return;
+  }
 
   try {
     const request = msg as WorkspaceHostRequest;

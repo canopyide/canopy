@@ -195,6 +195,8 @@ export type WorkspaceHostRequest =
     }
   // Resource profile config update
   | { type: "update-monitor-config"; requestId: string; config: MonitorConfig }
+  // Direct renderer port attachment (port transferred via postMessage transfer list)
+  | { type: "attach-renderer-port" }
   // GitHub token propagation
   | { type: "update-github-token"; token: string | null }
   // File tree operations

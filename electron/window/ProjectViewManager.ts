@@ -18,8 +18,6 @@ import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { notifyError } from "../ipc/errorHandlers.js";
-import { CHANNELS } from "../ipc/channels.js";
-import { sendToRenderer } from "../ipc/handlers.js";
 
 const MAX_CACHED_VIEWS = 2;
 const CRASH_LOOP_WINDOW_MS = 60_000;

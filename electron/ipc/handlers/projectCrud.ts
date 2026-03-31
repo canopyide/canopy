@@ -183,6 +183,11 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         if (windowId !== undefined) {
           try {
             await deps.worktreeService.loadProject(project.path, windowId);
+
+            // Attach direct MessagePort for workspace events
+            if (!view.webContents.isDestroyed()) {
+              deps.worktreeService.attachDirectPort(windowId, view.webContents);
+            }
           } catch (err) {
             console.error("[ProjectSwitch] Failed to load worktrees for new view:", err);
           }
@@ -420,6 +425,11 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         if (windowId !== undefined) {
           try {
             await deps.worktreeService.loadProject(project.path, windowId);
+
+            // Attach direct MessagePort for workspace events
+            if (!view.webContents.isDestroyed()) {
+              deps.worktreeService.attachDirectPort(windowId, view.webContents);
+            }
           } catch (err) {
             console.error("[ProjectReopen] Failed to load worktrees for new view:", err);
           }
