@@ -188,8 +188,10 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
           try {
             await deps.worktreeService.loadProject(project.path, windowId);
 
-            // Attach direct MessagePort for new views (cached views already have one)
-            if (isNew && !view.webContents.isDestroyed()) {
+            // Always attach a direct MessagePort.  For new views this is the
+            // first port; for cached views it re-establishes the relay after a
+            // potential host recreation (CLEANUP_GRACE_MS expiry).
+            if (!view.webContents.isDestroyed()) {
               deps.worktreeService.attachDirectPort(windowId, view.webContents);
             }
           } catch (err) {
@@ -431,7 +433,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
           try {
             await deps.worktreeService.loadProject(project.path, windowId);
 
-            if (isNew && !view.webContents.isDestroyed()) {
+            if (!view.webContents.isDestroyed()) {
               deps.worktreeService.attachDirectPort(windowId, view.webContents);
             }
           } catch (err) {

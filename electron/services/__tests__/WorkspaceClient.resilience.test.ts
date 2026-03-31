@@ -512,6 +512,54 @@ describe("WorkspaceClient multi-process manager", () => {
       expect(wcA.send).toHaveBeenCalled();
     });
 
+    it("A→B→A cached reactivation: B events do not reach A view", async () => {
+      const wcA = createMockWebContents();
+      const wcB = createMockWebContents();
+
+      // Load project A in window 1
+      const load1 = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load1;
+      client.attachDirectPort(1, wcA as any);
+
+      // Switch window 1 to project B
+      const load2 = client.loadProject("/project-b", 1);
+      await readyAndResolveLoad(1);
+      await load2;
+      client.attachDirectPort(1, wcB as any);
+
+      // Switch window 1 back to project A (cached reactivation)
+      // loadProject finds the existing entryA, re-attaches window 1
+      await client.loadProject("/project-a", 1);
+      // Re-attach direct port for A (simulates what projectCrud does)
+      client.attachDirectPort(1, wcA as any);
+
+      wcA.send.mockClear();
+      wcB.send.mockClear();
+
+      // Project B emits an event — should NOT reach A's view
+      h(1).emit("host-event", {
+        type: "worktree-update",
+        worktree: { id: "wt-b", path: "/b/wt", name: "wt-b", branch: "main" },
+        projectScopeId: "scope-b",
+      });
+
+      expect(wcA.send).not.toHaveBeenCalled();
+      // B's view should still get its own events via directPortViews
+      expect(wcB.send).toHaveBeenCalled();
+
+      // Project A emits an event — should reach A's view
+      wcA.send.mockClear();
+      h(0).emit("host-event", {
+        type: "worktree-update",
+        worktree: { id: "wt-a", path: "/a/wt", name: "wt-a", branch: "main" },
+        projectScopeId: "scope-a",
+      });
+
+      expect(wcA.send).toHaveBeenCalled();
+      expect(wcB.send).toHaveBeenCalledTimes(1); // only the earlier B event
+    });
+
     it("returns scopeId from loadProject", async () => {
       const load = client.loadProject("/project-a", 1);
       await readyAndResolveLoad(0);

@@ -6,13 +6,13 @@
  * host pattern that caused cross-project contamination.
  */
 
-import { BrowserWindow, MessageChannelMain, type WebContents } from "electron";
+import { MessageChannelMain, type WebContents } from "electron";
 import { EventEmitter } from "events";
 import path from "path";
 import crypto from "crypto";
 import { events } from "./events.js";
 import { CHANNELS } from "../ipc/channels.js";
-import { getAppWebContents } from "../window/webContentsRegistry.js";
+
 import { WorkspaceHostProcess } from "./WorkspaceHostProcess.js";
 import type {
   WorkspaceClientConfig,
@@ -130,8 +130,9 @@ export class WorkspaceClient extends EventEmitter {
   private routeHostEvent(entry: ProcessEntry, event: WorkspaceHostEvent): void {
     if (this.isDisposed) return;
 
-    // IPC relay always runs for reliability. Views with direct MessagePorts
-    // receive events twice; stores handle dedup via equality checks.
+    // IPC relay targets each entry's directPortViews — the same webContents
+    // that hold the direct MessagePort.  Views receive events twice (port +
+    // IPC); stores handle dedup via equality checks.
 
     switch (event.type) {
       case "worktree-update": {
@@ -541,18 +542,9 @@ export class WorkspaceClient extends EventEmitter {
           this.sendToEntryWindows(entry, CHANNELS.WORKTREE_ACTIVATED, { worktreeId });
         }
       } else {
-        const windows = BrowserWindow.getAllWindows();
-        for (const win of windows) {
-          if (win && !win.isDestroyed()) {
-            const wc = getAppWebContents(win);
-            if (!wc.isDestroyed()) {
-              try {
-                wc.send(CHANNELS.WORKTREE_ACTIVATED, { worktreeId });
-              } catch {
-                // ignore
-              }
-            }
-          }
+        // Broadcast to all entries' views (no windowId → fan out)
+        for (const entry of this.entries.values()) {
+          this.sendToEntryWindows(entry, CHANNELS.WORKTREE_ACTIVATED, { worktreeId });
         }
       }
     }
