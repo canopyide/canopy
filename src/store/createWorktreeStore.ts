@@ -1,5 +1,6 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { WorktreeSnapshot } from "@shared/types";
+import { useTerminalStore } from "./terminalStore";
 
 let _currentViewStore: WorktreeViewStoreApi | null = null;
 
@@ -89,6 +90,35 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
       set({ error });
     },
   }));
+}
+
+export function cleanupOrphanedTerminals(): void {
+  if (!_currentViewStore) return;
+
+  const state = _currentViewStore.getState();
+  if (!state.isInitialized || state.worktrees.size === 0) return;
+
+  const worktreeMap = state.worktrees;
+  const worktreeIds = new Set<string>();
+  for (const [id, wt] of worktreeMap) {
+    worktreeIds.add(id);
+    if (wt.worktreeId) {
+      worktreeIds.add(wt.worktreeId);
+    }
+  }
+
+  const terminalStore = useTerminalStore.getState();
+  const orphanedTerminals = terminalStore.terminals.filter((t) => {
+    const worktreeId = typeof t.worktreeId === "string" ? t.worktreeId.trim() : "";
+    return worktreeId && !worktreeIds.has(worktreeId);
+  });
+
+  if (orphanedTerminals.length > 0) {
+    console.log(
+      `[WorktreeStore] Removing ${orphanedTerminals.length} orphaned terminal(s) from deleted worktrees`
+    );
+    orphanedTerminals.forEach((terminal) => terminalStore.removeTerminal(terminal.id));
+  }
 }
 
 function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {

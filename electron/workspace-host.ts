@@ -30,10 +30,7 @@ if (process.env.CANOPY_USER_DATA) {
 
 const port = process.parentPort as unknown as MessagePort;
 
-// Direct MessagePort connections to renderer views (bypasses main-process relay)
-const rendererPorts: MessagePort[] = [];
-
-// New worktree-specific ports with request/response correlation (Phase 1)
+// Worktree-specific ports with request/response correlation (Phase 1)
 const worktreePorts: MessagePort[] = [];
 
 // Event types delivered directly to renderers via MessagePort
@@ -45,17 +42,6 @@ const DIRECT_RENDERER_EVENTS = new Set([
   "issue-detected",
   "issue-not-found",
 ]);
-
-function sendToRendererPorts(event: WorkspaceHostEvent): void {
-  for (let i = rendererPorts.length - 1; i >= 0; i--) {
-    try {
-      rendererPorts[i].postMessage(event);
-    } catch {
-      // Port closed (view evicted or destroyed)
-      rendererPorts.splice(i, 1);
-    }
-  }
-}
 
 function sendToWorktreePorts(event: WorkspaceHostEvent): void {
   for (let i = worktreePorts.length - 1; i >= 0; i--) {
@@ -218,9 +204,6 @@ function sendEvent(event: WorkspaceHostEvent): void {
 
   // Direct delivery to renderer(s) via MessagePort (bypasses main-process relay)
   if (DIRECT_RENDERER_EVENTS.has((event as { type: string }).type)) {
-    if (rendererPorts.length > 0) {
-      sendToRendererPorts(event);
-    }
     if (worktreePorts.length > 0) {
       sendToWorktreePorts(event);
     }
@@ -237,21 +220,15 @@ const workspaceService = new WorkspaceService(sendEvent);
 port.on("message", async (rawMsg: any) => {
   const msg = rawMsg?.data ? rawMsg.data : rawMsg;
 
-  // Handle MessagePort transfers (direct renderer connection)
+  // Handle MessagePort transfers (worktree-specific port with request/response correlation)
   const transferredPorts = rawMsg?.ports || [];
+  // Legacy renderer ports are no longer used — worktreePorts replaced them.
+  // Accept and close the port silently to avoid "Unknown message type" warnings.
   if (msg?.type === "attach-renderer-port" && transferredPorts.length > 0) {
-    const newPort = transferredPorts[0] as MessagePort;
-    newPort.start();
-    rendererPorts.push(newPort);
-    newPort.on("close", () => {
-      const idx = rendererPorts.indexOf(newPort);
-      if (idx >= 0) rendererPorts.splice(idx, 1);
-    });
-    console.log(`[WorkspaceHost] Renderer port attached (${rendererPorts.length} active)`);
+    transferredPorts[0].close();
     return;
   }
 
-  // New worktree-specific port with request/response correlation (Phase 1)
   if (msg?.type === "attach-worktree-port" && transferredPorts.length > 0) {
     attachWorktreePort(transferredPorts[0] as MessagePort);
     return;

@@ -10,9 +10,7 @@ export type { AddTerminalOptions as AddPanelOptions } from "./terminalStore";
 
 export { useWorktreeSelectionStore } from "./worktreeStore";
 
-export { useWorktreeDataStore } from "./worktreeDataStore";
-
-export { getCurrentViewStore } from "./createWorktreeStore";
+export { getCurrentViewStore, cleanupOrphanedTerminals } from "./createWorktreeStore";
 export type { WorktreeViewStoreApi } from "./createWorktreeStore";
 
 export { useLogsStore, filterLogs } from "./logsStore";
