@@ -10,7 +10,7 @@ import {
   isDevPreviewPartition,
 } from "../utils/webviewCsp.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
-import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
+import { isLocalhostUrl, isSafeNavigationUrl } from "../../shared/utils/urlUtils.js";
 import { getWebviewDialogService } from "../services/WebviewDialogService.js";
 import { CHANNELS } from "../ipc/channels.js";
 
@@ -184,6 +184,9 @@ export function setupWebviewCSP(): void {
   // Configure static partitions (browser only - portal excluded)
   applyCSP("persist:browser");
 
+  // Singleton for the browser partition session — used for identity comparison in navigation handlers.
+  const browserSession = session.fromPartition("persist:browser");
+
   // Monitor for dynamic dev-preview partitions
   app.on("web-contents-created", (_event, contents) => {
     contents.on("will-attach-webview", (_event, _webPreferences, params) => {
@@ -209,9 +212,18 @@ export function setupWebviewCSP(): void {
       // Block webview guest navigations to non-localhost URLs (closes TOCTOU gap
       // where will-attach-webview validates src at attachment but the guest can
       // navigate away afterwards).
+      // Browser partition allows cross-origin http/https for OAuth/OIDC flows.
+      // Dev-preview and other partitions remain restricted to localhost only.
       contents.on("will-navigate", (event, navigationUrl) => {
-        if (!isLocalhostUrl(navigationUrl)) {
-          console.warn(`[MAIN] Blocked webview navigation to non-localhost URL: ${navigationUrl}`);
+        const isBrowserPanel = contents.session === browserSession;
+
+        const blocked = isBrowserPanel
+          ? !isSafeNavigationUrl(navigationUrl)
+          : !isLocalhostUrl(navigationUrl);
+
+        if (blocked) {
+          const label = isBrowserPanel ? "unsafe" : "non-localhost";
+          console.warn(`[MAIN] Blocked webview navigation to ${label} URL: ${navigationUrl}`);
           event.preventDefault();
 
           const panelId = getWebviewDialogService().getPanelId(contents.id);
@@ -221,6 +233,7 @@ export function setupWebviewCSP(): void {
               getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
                 panelId,
                 url: navigationUrl,
+                canOpenExternal: canOpenExternalUrl(navigationUrl),
               });
             }
           }
@@ -228,8 +241,15 @@ export function setupWebviewCSP(): void {
       });
 
       contents.on("will-redirect", (event, redirectUrl) => {
-        if (!isLocalhostUrl(redirectUrl)) {
-          console.warn(`[MAIN] Blocked webview redirect to non-localhost URL: ${redirectUrl}`);
+        const isBrowserPanel = contents.session === browserSession;
+
+        const blocked = isBrowserPanel
+          ? !isSafeNavigationUrl(redirectUrl)
+          : !isLocalhostUrl(redirectUrl);
+
+        if (blocked) {
+          const label = isBrowserPanel ? "unsafe" : "non-localhost";
+          console.warn(`[MAIN] Blocked webview redirect to ${label} URL: ${redirectUrl}`);
           event.preventDefault();
 
           const panelId = getWebviewDialogService().getPanelId(contents.id);
@@ -239,6 +259,7 @@ export function setupWebviewCSP(): void {
               getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
                 panelId,
                 url: redirectUrl,
+                canOpenExternal: canOpenExternalUrl(redirectUrl),
               });
             }
           }

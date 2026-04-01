@@ -781,7 +781,9 @@ export interface ElectronAPI {
       callback: (payload: { panelId: string; shortcut: "find" | "next" | "prev" | "close" }) => void
     ): () => void;
     /** Subscribe to blocked cross-origin navigation events from webview guests */
-    onNavigationBlocked(callback: (payload: { panelId: string; url: string }) => void): () => void;
+    onNavigationBlocked(
+      callback: (payload: { panelId: string; url: string; canOpenExternal: boolean }) => void
+    ): () => void;
     /** Start CDP console capture for a webview panel */
     startConsoleCapture(webContentsId: number, paneId: string): Promise<void>;
     /** Stop CDP console capture for a webview panel */
