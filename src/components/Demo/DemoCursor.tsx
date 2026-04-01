@@ -56,6 +56,9 @@ function getTypingDelay(char: string, prevChar: string, baseMean: number): numbe
   } else if (prevChar === " ") {
     mean = baseMean * 2.2;
     stdev = baseMean * 0.6;
+  } else if (/[a-zA-Z]/.test(char) && /[a-zA-Z]/.test(prevChar)) {
+    mean = baseMean * 0.7;
+    stdev = baseMean * 0.12;
   }
   return gaussianRandom(mean, stdev);
 }
@@ -372,7 +375,7 @@ export function DemoCursor() {
             return;
           }
 
-          const cps = payload.cps ?? 12;
+          const cps = Math.max(1, payload.cps ?? 12);
           const baseMean = 1000 / cps;
 
           const cmView = EditorView.findFromDOM(target);
