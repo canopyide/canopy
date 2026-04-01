@@ -38,9 +38,9 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
   test("terminal layout, window size, and sidebar state survive restart", async () => {
     // Session 1: configure layout, resize window, toggle focus mode, close
     ctx = await launchApp({ userDataDir });
-    const { window: w1, app: app1 } = ctx;
+    let { window: w1, app: app1 } = ctx;
 
-    await openAndOnboardProject(app1, w1, fixtureDir, "Persist Layout");
+    w1 = await openAndOnboardProject(app1, w1, fixtureDir, "Persist Layout");
 
     // Open two terminals explicitly
     await openTerminal(w1);

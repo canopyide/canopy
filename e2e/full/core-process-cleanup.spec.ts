@@ -36,7 +36,7 @@ test.describe("Core: Process Cleanup", () => {
 
     try {
       const ctx = await launchApp({ userDataDir });
-      await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Process Cleanup");
+      ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Process Cleanup");
 
       // Open terminal and wait for shell readiness
       await openTerminal(ctx.window);
@@ -109,7 +109,7 @@ test.describe("Core: Process Cleanup", () => {
     try {
       // === First session: launch, spawn HUP-resistant process, seed trashed-pids, SIGKILL ===
       const ctx = await launchApp({ userDataDir });
-      await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Unclean Exit");
+      ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Unclean Exit");
 
       await openTerminal(ctx.window);
       const panel = getFirstGridPanel(ctx.window);
@@ -189,7 +189,12 @@ test.describe.serial("Core: Process Cleanup on Shutdown", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "process-cleanup" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Process Cleanup Test");
+    ctx.window = await openAndOnboardProject(
+      ctx.app,
+      ctx.window,
+      fixtureDir,
+      "Process Cleanup Test"
+    );
   });
 
   test.afterAll(async () => {

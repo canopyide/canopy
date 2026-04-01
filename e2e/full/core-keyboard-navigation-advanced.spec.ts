@@ -17,7 +17,7 @@ test.describe.serial("Core: Keyboard Terminal Navigation", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
     const fixtureDir = createFixtureRepo({ name: "kbd-nav-terminal" });
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Kbd Nav Terminal");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Kbd Nav Terminal");
 
     // Wait for worktree detection to complete
     await ctx.window
@@ -166,7 +166,7 @@ test.describe.serial("Core: Keyboard Worktree Navigation", () => {
     });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Kbd Nav Worktree");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Kbd Nav Worktree");
 
     // Wait for both worktree cards to appear
     const cards = ctx.window.locator("[data-worktree-branch]");

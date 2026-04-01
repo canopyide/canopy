@@ -35,7 +35,7 @@ test.describe.serial("Core: Terminal Layout Operations", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "layout-operations" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Layout Ops Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Layout Ops Test");
   });
 
   test.afterAll(async () => {

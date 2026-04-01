@@ -32,7 +32,7 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "ipc-cleanup" });
     ctx = await launchApp({ env: { CANOPY_E2E_FAULT_MODE: "1" } });
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "IPC Cleanup");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "IPC Cleanup");
   });
 
   test.afterAll(async () => {

@@ -83,7 +83,7 @@ server.listen(0, '127.0.0.1', () => {
     chmodSync(path.join(binDir, "next"), 0o755);
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureRepoPath, PROJECT_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureRepoPath, PROJECT_NAME);
   });
 
   test.afterAll(async () => {

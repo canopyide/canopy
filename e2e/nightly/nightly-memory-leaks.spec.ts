@@ -45,7 +45,7 @@ test.describe.serial("Nightly: Memory Leak Detection", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "memory-leaks" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Memory Leak Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Memory Leak Test");
   });
 
   test.afterAll(async () => {

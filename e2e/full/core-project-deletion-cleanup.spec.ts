@@ -39,7 +39,7 @@ test.describe.serial("Deletion Cleanup: Active project close clears UI", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "active-close" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, PROJECT_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, PROJECT_NAME);
 
     const panel1 = await spawnTerminalAndVerify(ctx.window);
     const panel2 = await spawnTerminalAndVerify(ctx.window);
@@ -135,7 +135,7 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
     fixtureB = createFixtureRepo({ name: "bg-remove" });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureA, PROJECT_A);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureA, PROJECT_A);
 
     // Spawn a terminal in A so it has panels when we switch back
     await spawnTerminalAndVerify(ctx.window);
@@ -264,7 +264,7 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
   test("removed project stays gone after app restart", async () => {
     // Session 1: Launch, onboard both projects, remove B
     ctx = await launchApp({ userDataDir });
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureA, PROJECT_A);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureA, PROJECT_A);
     await addAndSwitchToProject(ctx.app, ctx.window, fixtureB, PROJECT_B);
 
     // Switch to A so B is background

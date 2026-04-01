@@ -12,7 +12,7 @@ test.describe.serial("Core: Settings Pages Load", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
     const fixtureDir = createFixtureRepo({ name: "settings-load" });
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Settings Load Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Settings Load Test");
   });
 
   test.afterAll(async () => {

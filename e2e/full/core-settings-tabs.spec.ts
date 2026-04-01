@@ -12,7 +12,7 @@ test.describe.serial("Core: Settings Tabs Coverage", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
     const fixtureDir = createFixtureRepo({ name: "settings-tabs" });
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Settings Tabs Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Settings Tabs Test");
   });
 
   test.afterAll(async () => {

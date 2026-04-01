@@ -20,7 +20,7 @@ test.describe.serial("Core: Worktree Lifecycle", () => {
     const fixture = createFixtureRepo({ name: "worktree-lifecycle" });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixture, "Worktree Lifecycle");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Worktree Lifecycle");
   });
 
   test.afterAll(async () => {

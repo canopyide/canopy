@@ -19,7 +19,12 @@ test.describe.serial("Core: Keyboard Shortcuts", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
     const fixtureDir = createFixtureRepo({ name: "keyboard-shortcuts" });
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Keyboard Shortcuts Test");
+    ctx.window = await openAndOnboardProject(
+      ctx.app,
+      ctx.window,
+      fixtureDir,
+      "Keyboard Shortcuts Test"
+    );
   });
 
   test.afterAll(async () => {

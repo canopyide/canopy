@@ -22,7 +22,7 @@ test.describe.serial("Core: Panel Drag & Drop", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "drag-drop" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Drag Drop Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Drag Drop Test");
   });
 
   test.afterAll(async () => {

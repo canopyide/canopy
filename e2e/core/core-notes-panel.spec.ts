@@ -39,7 +39,7 @@ test.describe.serial("Core: Notes Panel", () => {
   test.beforeAll(async () => {
     const fixture = createFixtureRepo({ name: "notes-panel-test" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixture, "Notes Panel Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Notes Panel Test");
   });
 
   test.afterAll(async () => {

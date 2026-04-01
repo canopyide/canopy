@@ -21,7 +21,7 @@ test.describe.serial("Core: Project Management Advanced", () => {
     const secondaryRepo = createFixtureRepo({ name: "secondary-remove" });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, primaryRepo, PRIMARY_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, primaryRepo, PRIMARY_NAME);
 
     // Add secondary project
     await addAndSwitchToProject(ctx.app, ctx.window, secondaryRepo, SECONDARY_NAME);

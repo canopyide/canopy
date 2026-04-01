@@ -46,7 +46,7 @@ test.describe.serial("Core: v0.3.0 Features", () => {
       withUncommittedChanges: true,
     });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "v0.3.0 Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "v0.3.0 Test");
   });
 
   test.afterAll(async () => {

@@ -266,7 +266,7 @@ test.describe.serial("Core: IPC Error Propagation", () => {
     // AC 3: Terminal spawn ENOENT renders SpawnErrorBanner
     // We need a project open to spawn terminals
     const repo = createFixtureRepo({ name: "spawn-error-test" });
-    await openAndOnboardProject(ctx.app, ctx.window, repo, "SpawnErrorTest");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repo, "SpawnErrorTest");
 
     // Click open terminal to create a terminal panel
     await openTerminal(ctx.window);

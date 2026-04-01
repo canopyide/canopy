@@ -18,7 +18,7 @@ test.describe.serial("Core: Output Flood Memory Bounds", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "output-flood" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Output Flood Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Output Flood Test");
   });
 
   test.afterAll(async () => {

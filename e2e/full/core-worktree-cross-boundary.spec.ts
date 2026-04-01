@@ -30,7 +30,7 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
     });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixture, "Cross Boundary");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Cross Boundary");
   });
 
   test.afterAll(async () => {
@@ -227,7 +227,7 @@ test.describe.serial("Core: Worktree Selection Persists Across Project Switch", 
     );
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixture.repoA, "Project A");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.repoA, "Project A");
   });
 
   test.afterAll(async () => {
@@ -298,7 +298,7 @@ test.describe.serial("Core: Worktree Creation Resilience", () => {
     const fixture = createFixtureRepo({ name: "creation-resilience" });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixture, "Creation Resilience");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Creation Resilience");
   });
 
   test.afterAll(async () => {
