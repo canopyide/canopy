@@ -11,13 +11,13 @@ interface ScrollbackPolicy {
 export const PERFORMANCE_MODE_SCROLLBACK = 100;
 
 const AGENT_SCROLLBACK_POLICY: ScrollbackPolicy = {
-  multiplier: 1.0,
+  multiplier: 2.5,
   maxLines: 5000,
   minLines: 500,
 };
 
 const SCROLLBACK_POLICIES: Record<string, ScrollbackPolicy> = {
-  terminal: { multiplier: 0.2, maxLines: 2000, minLines: 200 },
+  terminal: { multiplier: 0.5, maxLines: 2000, minLines: 200 },
   ...Object.fromEntries(BUILT_IN_AGENT_IDS.map((id) => [id, AGENT_SCROLLBACK_POLICY])),
 };
 

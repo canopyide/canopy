@@ -49,8 +49,8 @@ test.describe.serial("Core: Output Flood Memory Bounds", () => {
   test("scrollback buffer is trimmed after flood", async () => {
     const bufferLength = await getTerminalBufferLength(panel);
     expect(bufferLength).toBeGreaterThan(0);
-    // Terminal type scrollback: floor(1000 * 0.2) = 200, plus ~24 viewport rows
-    expect(bufferLength).toBeLessThanOrEqual(300);
+    // Terminal type scrollback: floor(1000 * 0.5) = 500, plus ~24 viewport rows
+    expect(bufferLength).toBeLessThanOrEqual(600);
   });
 
   test("terminal remains interactive after flood", async () => {
