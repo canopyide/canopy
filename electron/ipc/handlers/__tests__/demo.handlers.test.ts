@@ -356,7 +356,7 @@ describe("registerDemoHandlers", () => {
       mockProc.emit("close", 0);
       await promise;
 
-      const lastCall = (spawnMock as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+      const lastCall = (spawnMock as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
       const args = lastCall[1] as string[];
       expect(args).toContain("yuv444p");
       expect(args).toContain("1");
