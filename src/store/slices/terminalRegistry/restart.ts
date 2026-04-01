@@ -39,24 +39,24 @@ function scheduleHistoryInjection(id: string, history: string, worktreePath: str
   ].join("\n");
 
   let injected = false;
+  let unsub: () => void = () => {};
 
   const inject = () => {
     if (injected) return;
     injected = true;
+    unsub();
     terminalClient.submit(id, prompt).catch((err) => {
       console.warn("[TerminalStore] Failed to inject history prompt:", err);
     });
   };
 
   const timeout = setTimeout(() => {
-    unsub();
     inject();
   }, INJECTION_TIMEOUT_MS);
 
-  const unsub = terminalInstanceService.addAgentStateListener(id, (state: AgentState) => {
+  unsub = terminalInstanceService.addAgentStateListener(id, (state: AgentState) => {
     if (state === "idle" || state === "waiting") {
       clearTimeout(timeout);
-      unsub();
       inject();
     }
   });
@@ -532,7 +532,8 @@ export const createRestartActions = (
               await get().restartTerminal(id);
 
               // After restart, inject captured history as a first prompt for agent terminals
-              if (isAgent && capturedHistory.length > 0) {
+              const restarted = get().terminals.find((t) => t.id === id);
+              if (isAgent && capturedHistory.trim().length > 0 && !restarted?.restartError) {
                 scheduleHistoryInjection(id, capturedHistory, newCwd);
               }
             } catch (err) {
