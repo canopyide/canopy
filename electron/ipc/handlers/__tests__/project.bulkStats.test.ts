@@ -248,20 +248,18 @@ describe("handleProjectGetBulkStats", () => {
 
   it("counts terminals with agentId as agents even without kind=agent", async () => {
     const ptyClient = makePtyClient({
-      getAllTerminalsAsync: vi
-        .fn()
-        .mockResolvedValue([
-          {
-            id: "t1",
-            projectId: "proj-a",
-            kind: "terminal",
-            agentId: "claude",
-            agentState: "working",
-            hasPty: true,
-            cwd: "/tmp",
-            spawnedAt: 1,
-          },
-        ]),
+      getAllTerminalsAsync: vi.fn().mockResolvedValue([
+        {
+          id: "t1",
+          projectId: "proj-a",
+          kind: "terminal",
+          agentId: "claude",
+          agentState: "working",
+          hasPty: true,
+          cwd: "/tmp",
+          spawnedAt: 1,
+        },
+      ]),
     });
     registerProjectCrudHandlers(makeDeps(ptyClient));
     const handler = getBulkStatsHandler();
@@ -370,19 +368,17 @@ describe("handleProjectGetBulkStats", () => {
               processIds: [100],
             })
       ),
-      getAllTerminalsAsync: vi
-        .fn()
-        .mockResolvedValue([
-          {
-            id: "t1",
-            projectId: "proj-ok",
-            kind: "agent",
-            agentState: "working",
-            hasPty: true,
-            cwd: "/tmp",
-            spawnedAt: 1,
-          },
-        ]),
+      getAllTerminalsAsync: vi.fn().mockResolvedValue([
+        {
+          id: "t1",
+          projectId: "proj-ok",
+          kind: "agent",
+          agentState: "working",
+          hasPty: true,
+          cwd: "/tmp",
+          spawnedAt: 1,
+        },
+      ]),
     });
     registerProjectCrudHandlers(makeDeps(ptyClient));
     const handler = getBulkStatsHandler();
@@ -402,7 +398,7 @@ describe("handleProjectGetBulkStats", () => {
 
     const result = (await handler(fakeEvent, ["proj-a"])) as Record<
       string,
-      { activeAgentCount: number; waitingAgentCount: number }
+      { activeAgentCount: number; waitingAgentCount: number; terminalCount: number }
     >;
 
     expect(result["proj-a"].activeAgentCount).toBe(0);
