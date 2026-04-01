@@ -41,15 +41,12 @@ async function run(): Promise<void> {
     extraArgs: ["--demo-mode"],
   });
 
-  let framesDir: string | null = null;
-
   try {
     const stage = await Stage.create(window);
     console.log(`Stage ready. Running ${config.scenes.length} scene(s)...`);
 
     const capture = await stage.startCapture({ fps });
-    framesDir = capture.outputDir;
-    console.log(`Capturing at ${fps} fps → ${framesDir}`);
+    console.log(`Capturing at ${fps} fps → ${capture.outputDir}`);
 
     for (let i = 0; i < config.scenes.length; i++) {
       console.log(`  Scene ${i + 1}/${config.scenes.length}...`);

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- page.evaluate() runs in browser context where window.electron is untyped */
 import type { Page } from "@playwright/test";
 import type {
   DemoEncodePayload,
@@ -23,7 +24,6 @@ export class Stage {
   static async create(page: Page): Promise<Stage> {
     await page.waitForFunction(
       () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = window as any;
         return typeof w.electron !== "undefined" && typeof w.electron.demo !== "undefined";
       },
