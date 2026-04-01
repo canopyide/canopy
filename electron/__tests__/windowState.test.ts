@@ -23,6 +23,7 @@ const winInstance = {
   isDestroyed: vi.fn(() => false),
   maximize: vi.fn(),
   center: vi.fn(),
+  setSize: vi.fn(),
   on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
     eventHandlers.set(event, handler);
   }),
@@ -131,6 +132,68 @@ describe("createWindowWithState", () => {
       createWindowWithState({ show: false }, "/home/user/new-project");
 
       expect(winInstance.maximize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("recovery", () => {
+    it("clamps oversized window and calls setSize before center when off-screen", () => {
+      // Simulate a window saved on a 2560×1440 external monitor, now on 1920×1080
+      const oversizedBounds = { x: 0, y: 0, width: 2560, height: 1440, isMaximized: false };
+      storeMock.get.mockImplementation((key: string) => {
+        if (key === "windowStates") return { "/home/user/project": oversizedBounds };
+        return {};
+      });
+
+      // getBounds returns the oversized dimensions (window created with saved state)
+      winInstance.getBounds.mockReturnValue({ x: 0, y: 0, width: 2560, height: 1440 });
+
+      // workArea is 1920×1080 — window is fully visible but oversized
+      // visibleArea = min(2560,1920)*min(1440,1080) = 1920*1080 = 2073600
+      // totalArea = 2560*1440 = 3686400
+      // 2073600 < 3686400*0.5 = 1843200? No — so we need the window to be OFF-screen
+      // Let's place it at coordinates that put it mostly off-screen
+      winInstance.getBounds.mockReturnValue({ x: 1800, y: 900, width: 2560, height: 1440 });
+
+      createWindowWithState({ show: false }, "/home/user/project");
+
+      expect(winInstance.setSize).toHaveBeenCalledWith(1920, 1080);
+      expect(winInstance.center).toHaveBeenCalled();
+
+      // Verify setSize was called before center
+      const setSizeOrder = winInstance.setSize.mock.invocationCallOrder[0];
+      const centerOrder = winInstance.center.mock.invocationCallOrder[0];
+      expect(setSizeOrder).toBeLessThan(centerOrder);
+    });
+
+    it("does not call setSize when window is fully visible on current display", () => {
+      const normalBounds = { x: 100, y: 100, width: 1200, height: 800, isMaximized: false };
+      storeMock.get.mockImplementation((key: string) => {
+        if (key === "windowStates") return { "/home/user/project": normalBounds };
+        return {};
+      });
+
+      winInstance.getBounds.mockReturnValue({ x: 100, y: 100, width: 1200, height: 800 });
+
+      createWindowWithState({ show: false }, "/home/user/project");
+
+      expect(winInstance.setSize).not.toHaveBeenCalled();
+      expect(winInstance.center).not.toHaveBeenCalled();
+    });
+
+    it("clamps MRU-cascaded oversized bounds via clampToDisplay", () => {
+      // MRU has oversized dimensions from external monitor
+      const oversizedMru = { x: 100, y: 100, width: 2560, height: 1440, isMaximized: false };
+      storeMock.get.mockImplementation((key: string) => {
+        if (key === "windowStates") return { "/home/user/other": oversizedMru };
+        return {};
+      });
+
+      createWindowWithState({ show: false }, "/home/user/new-project");
+
+      // clampToDisplay should have clamped width/height to workArea (1920×1080)
+      const opts = constructorCalls[0] as Record<string, number>;
+      expect(opts.width).toBeLessThanOrEqual(1920);
+      expect(opts.height).toBeLessThanOrEqual(1080);
     });
   });
 
