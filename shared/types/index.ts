@@ -355,12 +355,13 @@ export type {
 export type { MenuItemOption, ShowContextMenuPayload } from "./menu.js";
 
 // Slash command discovery
-export type { SlashCommand, SlashCommandListRequest, SlashCommandScope } from "./slashCommands.js";
-export {
-  CLAUDE_BUILTIN_SLASH_COMMANDS,
-  GEMINI_BUILTIN_SLASH_COMMANDS,
-  CODEX_BUILTIN_SLASH_COMMANDS,
+export type {
+  SlashCommand,
+  SlashCommandListRequest,
+  SlashCommandScope,
+  BuiltinSlashCommandEntry,
 } from "./slashCommands.js";
+export { BUILTIN_SLASH_COMMANDS, getBuiltinSlashCommands } from "./slashCommands.js";
 
 // Action system types - unified action dispatch and introspection
 export type {

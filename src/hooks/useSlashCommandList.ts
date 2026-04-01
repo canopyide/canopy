@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { slashCommandsClient } from "@/clients";
 
-import {
-  CLAUDE_BUILTIN_SLASH_COMMANDS,
-  CODEX_BUILTIN_SLASH_COMMANDS,
-  GEMINI_BUILTIN_SLASH_COMMANDS,
-  type LegacyAgentType,
-  type SlashCommand,
-} from "@shared/types";
+import { getBuiltinSlashCommands, type LegacyAgentType, type SlashCommand } from "@shared/types";
 
 export interface UseSlashCommandListArgs {
   agentId?: LegacyAgentType;
@@ -22,12 +16,10 @@ export function useSlashCommandList({ agentId, projectPath }: UseSlashCommandLis
   const requestIdRef = useRef(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  const initial = useMemo((): SlashCommand[] => {
-    if (agentId === "claude") return CLAUDE_BUILTIN_SLASH_COMMANDS;
-    if (agentId === "gemini") return GEMINI_BUILTIN_SLASH_COMMANDS;
-    if (agentId === "codex") return CODEX_BUILTIN_SLASH_COMMANDS;
-    return [];
-  }, [agentId]);
+  const initial = useMemo(
+    (): SlashCommand[] => (agentId ? getBuiltinSlashCommands(agentId) : []),
+    [agentId]
+  );
 
   const [agentCommands, setAgentCommands] = useState<SlashCommand[]>(initial);
 
@@ -50,10 +42,7 @@ export function useSlashCommandList({ agentId, projectPath }: UseSlashCommandLis
       })
       .catch(() => {
         if (requestIdRef.current !== requestId) return;
-        if (agentId === "claude") setAgentCommands(CLAUDE_BUILTIN_SLASH_COMMANDS);
-        else if (agentId === "gemini") setAgentCommands(GEMINI_BUILTIN_SLASH_COMMANDS);
-        else if (agentId === "codex") setAgentCommands(CODEX_BUILTIN_SLASH_COMMANDS);
-        else setAgentCommands([]);
+        setAgentCommands(agentId ? getBuiltinSlashCommands(agentId) : []);
       })
       .finally(() => {
         if (requestIdRef.current !== requestId) return;
