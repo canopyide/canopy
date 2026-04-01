@@ -20,7 +20,8 @@ describe("NotesPaneSkeleton", () => {
   it("uses animate-pulse-delayed on placeholder shapes", () => {
     const { container } = render(<NotesPaneSkeleton />);
     const pulsing = container.querySelectorAll(".animate-pulse-delayed");
-    expect(pulsing.length).toBeGreaterThan(0);
+    // icon + title + menu button + close button = 4
+    expect(pulsing.length).toBe(4);
   });
 
   it("does not animate the content area", () => {
@@ -30,11 +31,10 @@ describe("NotesPaneSkeleton", () => {
     expect(contentArea!.className).not.toContain("animate-pulse");
   });
 
-  it("renders mode toggle placeholders", () => {
+  it("marks decorative header as aria-hidden", () => {
     const { container } = render(<NotesPaneSkeleton />);
-    // 3 mode toggle buttons in the header actions area
-    const toggleGroup = container.querySelector(".overflow-hidden");
-    expect(toggleGroup).toBeTruthy();
-    expect(toggleGroup!.children.length).toBe(3);
+    const header = container.querySelector(".border-divider");
+    expect(header).toBeTruthy();
+    expect(header!.getAttribute("aria-hidden")).toBe("true");
   });
 });

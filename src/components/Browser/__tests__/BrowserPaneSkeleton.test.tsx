@@ -24,10 +24,11 @@ describe("BrowserPaneSkeleton", () => {
     expect(screen.getByText("Loading dev preview panel")).toBeTruthy();
   });
 
-  it("uses animate-pulse-delayed on placeholder shapes", () => {
+  it("uses animate-pulse-delayed on all placeholder shapes", () => {
     const { container } = render(<BrowserPaneSkeleton />);
     const pulsing = container.querySelectorAll(".animate-pulse-delayed");
-    expect(pulsing.length).toBeGreaterThan(0);
+    // header: icon + title + menu + close = 4, toolbar: 3 nav + url bar + 2 action = 6, total = 10
+    expect(pulsing.length).toBe(10);
   });
 
   it("does not animate the content area", () => {
@@ -35,5 +36,12 @@ describe("BrowserPaneSkeleton", () => {
     const contentArea = container.querySelector(".bg-canopy-bg");
     expect(contentArea).toBeTruthy();
     expect(contentArea!.className).not.toContain("animate-pulse");
+  });
+
+  it("marks decorative rows as aria-hidden", () => {
+    const { container } = render(<BrowserPaneSkeleton />);
+    const hiddenRows = container.querySelectorAll("[aria-hidden='true']");
+    // header row + toolbar row = 2
+    expect(hiddenRows.length).toBe(2);
   });
 });
