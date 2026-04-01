@@ -942,7 +942,8 @@ export class WorkspaceService {
       }
 
       const normalizedPath = normalize(filePath);
-      if (normalizedPath.includes("..") || normalizedPath.startsWith(sep)) {
+      const pathSegments = normalizedPath.split(/[\\/]+/).filter(Boolean);
+      if (pathSegments.includes("..") || normalizedPath.startsWith(sep)) {
         throw new Error("Path traversal detected");
       }
 
