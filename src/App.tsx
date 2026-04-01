@@ -1733,14 +1733,6 @@ function App() {
         onRemoveConfirmClose={() => projectSwitcherPalette.setRemoveConfirmProject(null)}
         onConfirmRemove={projectSwitcherPalette.confirmRemoveProject}
         isRemovingProject={projectSwitcherPalette.isRemovingProject}
-        groups={projectSwitcherPalette.groups}
-        onCreateGroup={projectSwitcherPalette.createGroup}
-        onAssignProjectToGroup={projectSwitcherPalette.assignProjectToGroup}
-        onRemoveProjectFromGroup={projectSwitcherPalette.removeProjectFromGroup}
-        onRenameGroup={projectSwitcherPalette.renameGroup}
-        onDeleteGroup={projectSwitcherPalette.deleteGroup}
-        onMoveGroupUp={projectSwitcherPalette.moveGroupUp}
-        onMoveGroupDown={projectSwitcherPalette.moveGroupDown}
         onHoverProject={projectSwitcherPalette.prefetchProject}
         onSelectNewWindow={(project) => {
           projectSwitcherPalette.close();
