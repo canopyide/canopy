@@ -67,6 +67,12 @@ describe("scoreProjectQuery", () => {
     const score = scoreProjectQuery("fb", "app", "C:\\foo\\bar");
     expect(score).toBeGreaterThan(0);
   });
+
+  it("does not drop matches due to negative field scores (long gap clamping)", () => {
+    const longName = "a" + "x".repeat(50) + "b" + "x".repeat(50) + "c";
+    const score = scoreProjectQuery("abc", longName, "/repos/abc");
+    expect(score).toBeGreaterThan(0);
+  });
 });
 
 describe("rankProjectMatches", () => {
@@ -99,6 +105,13 @@ describe("rankProjectMatches", () => {
     ];
     const results = rankProjectMatches("alpha", tieProjects);
     expect(results[0].id).toBe("b"); // higher lastOpened wins
+  });
+
+  it("trims whitespace from query before matching", () => {
+    const results = rankProjectMatches("  canopy  ", projects);
+    const resultsClean = rankProjectMatches("canopy", projects);
+    expect(results).toHaveLength(resultsClean.length);
+    expect(results.map((r) => r.id)).toEqual(resultsClean.map((r) => r.id));
   });
 
   it("returns all matching projects, not just top N", () => {

@@ -64,7 +64,7 @@ function scoreField(query: string, field: string): number {
     return 0;
   }
 
-  return score;
+  return Math.max(0, score);
 }
 
 export function scoreProjectQuery(query: string, name: string, path: string): number {
@@ -82,12 +82,13 @@ export function rankProjectMatches(
   query: string,
   projects: SearchableProject[]
 ): SearchableProject[] {
-  if (!query.trim()) return [];
+  const trimmed = query.trim();
+  if (!trimmed) return [];
 
   const scored = projects
     .map((project) => ({
       project,
-      score: scoreProjectQuery(query, project.name, project.path),
+      score: scoreProjectQuery(trimmed, project.name, project.path),
     }))
     .filter((entry) => entry.score > 0);
 
