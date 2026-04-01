@@ -84,4 +84,25 @@ describe("temporal bucketing", () => {
     const prevSunday = new Date(2026, 2, 29, 23, 59).getTime();
     expect(getTemporalBucket(prevSunday, todayStart, weekStart)).toBe("older");
   });
+
+  it("classifies exact boundary timestamps correctly (>= not >)", () => {
+    const now = new Date(2026, 3, 2, 10, 0); // Thu Apr 2 2026
+    const { todayStart, weekStart } = computeBoundaries(now);
+
+    // Exact todayStart boundary → today
+    expect(getTemporalBucket(todayStart, todayStart, weekStart)).toBe("today");
+    // One ms before todayStart → this-week
+    expect(getTemporalBucket(todayStart - 1, todayStart, weekStart)).toBe("this-week");
+
+    // Exact weekStart boundary → this-week
+    expect(getTemporalBucket(weekStart, todayStart, weekStart)).toBe("this-week");
+    // One ms before weekStart → older
+    expect(getTemporalBucket(weekStart - 1, todayStart, weekStart)).toBe("older");
+  });
+
+  it("classifies zero lastOpened as 'older'", () => {
+    const now = new Date(2026, 3, 1, 14, 30);
+    const { todayStart, weekStart } = computeBoundaries(now);
+    expect(getTemporalBucket(0, todayStart, weekStart)).toBe("older");
+  });
 });
