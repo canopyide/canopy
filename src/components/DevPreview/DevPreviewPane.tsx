@@ -107,7 +107,10 @@ export function DevPreviewPane({
   });
 
   const [isLoading, setIsLoading] = useState(false);
-  const [blockedNav, setBlockedNav] = useState<{ url: string } | null>(null);
+  const [blockedNav, setBlockedNav] = useState<{
+    url: string;
+    canOpenExternal: boolean;
+  } | null>(null);
   const blockedNavTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSetUrlRef = useRef<string>("");
   const [isWebviewReady, setIsWebviewReady] = useState(false);
@@ -402,6 +405,7 @@ export function DevPreviewPane({
       const navigatedUrl = e.url;
       // Suppress about:blank navigations triggered by eviction
       if (navigatedUrl === "about:blank" && evictingRef.current) return;
+      setBlockedNav(null);
       // A confirmed new main-frame navigation means we're past any previous failure;
       // reset the retry budget so stale exhaustion doesn't block future attempts.
       failLoadRetryCountRef.current = 0;
@@ -417,6 +421,7 @@ export function DevPreviewPane({
 
     const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
       if (!e.isMainFrame) return;
+      setBlockedNav(null);
       const navigatedUrl = e.url;
       if (navigatedUrl !== lastSetUrlRef.current) {
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
@@ -576,7 +581,7 @@ export function DevPreviewPane({
         clearTimeout(blockedNavTimerRef.current);
       }
       blockedNavTimerRef.current = setTimeout(() => {
-        setBlockedNav({ url: data.url });
+        setBlockedNav({ url: data.url, canOpenExternal: data.canOpenExternal });
         blockedNavTimerRef.current = null;
       }, 150);
     });

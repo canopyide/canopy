@@ -350,7 +350,11 @@ describe("BrowserPane webview lifecycle regression", () => {
   });
 
   describe("blocked navigation banner", () => {
-    function getNavigationBlockedCallback(): (payload: { panelId: string; url: string }) => void {
+    function getNavigationBlockedCallback(): (payload: {
+      panelId: string;
+      url: string;
+      canOpenExternal: boolean;
+    }) => void {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mock = (window as any).electron.webview.onNavigationBlocked;
       const lastCall = mock.mock.calls[mock.mock.calls.length - 1];
@@ -362,7 +366,11 @@ describe("BrowserPane webview lifecycle regression", () => {
       const callback = getNavigationBlockedCallback();
 
       act(() => {
-        callback({ panelId: "browser-panel-1", url: "https://oauth.example.com/authorize" });
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://oauth.example.com/authorize",
+          canOpenExternal: true,
+        });
         vi.advanceTimersByTime(150);
       });
 
@@ -375,7 +383,7 @@ describe("BrowserPane webview lifecycle regression", () => {
       const callback = getNavigationBlockedCallback();
 
       act(() => {
-        callback({ panelId: "other-panel", url: "https://evil.com" });
+        callback({ panelId: "other-panel", url: "https://evil.com", canOpenExternal: true });
         vi.advanceTimersByTime(150);
       });
 
@@ -387,9 +395,21 @@ describe("BrowserPane webview lifecycle regression", () => {
       const callback = getNavigationBlockedCallback();
 
       act(() => {
-        callback({ panelId: "browser-panel-1", url: "https://first.com/step1" });
-        callback({ panelId: "browser-panel-1", url: "https://second.com/step2" });
-        callback({ panelId: "browser-panel-1", url: "https://final.com/done" });
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://first.com/step1",
+          canOpenExternal: true,
+        });
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://second.com/step2",
+          canOpenExternal: true,
+        });
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://final.com/done",
+          canOpenExternal: true,
+        });
         vi.advanceTimersByTime(150);
       });
 
@@ -403,7 +423,11 @@ describe("BrowserPane webview lifecycle regression", () => {
       const callback = getNavigationBlockedCallback();
 
       act(() => {
-        callback({ panelId: "browser-panel-1", url: "https://example.com" });
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://example.com",
+          canOpenExternal: true,
+        });
         vi.advanceTimersByTime(150);
       });
 
@@ -422,7 +446,11 @@ describe("BrowserPane webview lifecycle regression", () => {
       const callback = getNavigationBlockedCallback();
 
       act(() => {
-        callback({ panelId: "browser-panel-1", url: "https://oauth.provider.com/auth" });
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://oauth.provider.com/auth",
+          canOpenExternal: true,
+        });
         vi.advanceTimersByTime(150);
       });
 
@@ -448,7 +476,11 @@ describe("BrowserPane webview lifecycle regression", () => {
       const callback = getNavigationBlockedCallback();
 
       act(() => {
-        callback({ panelId: "browser-panel-1", url: "https://blocked.com" });
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://blocked.com",
+          canOpenExternal: true,
+        });
         vi.advanceTimersByTime(150);
       });
 

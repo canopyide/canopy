@@ -217,28 +217,24 @@ export function setupWebviewCSP(): void {
       contents.on("will-navigate", (event, navigationUrl) => {
         const isBrowserPanel = contents.session === browserSession;
 
-        if (isBrowserPanel) {
-          if (!isSafeNavigationUrl(navigationUrl)) {
-            console.warn(`[MAIN] Blocked webview navigation to unsafe URL: ${navigationUrl}`);
-            event.preventDefault();
-          }
-        } else {
-          if (!isLocalhostUrl(navigationUrl)) {
-            console.warn(
-              `[MAIN] Blocked webview navigation to non-localhost URL: ${navigationUrl}`
-            );
-            event.preventDefault();
+        const blocked = isBrowserPanel
+          ? !isSafeNavigationUrl(navigationUrl)
+          : !isLocalhostUrl(navigationUrl);
 
-            const panelId = getWebviewDialogService().getPanelId(contents.id);
-            if (panelId) {
-              const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
-              if (parentWindow && !parentWindow.isDestroyed()) {
-                getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
-                  panelId,
-                  url: navigationUrl,
-                  canOpenExternal: canOpenExternalUrl(navigationUrl),
-                });
-              }
+        if (blocked) {
+          const label = isBrowserPanel ? "unsafe" : "non-localhost";
+          console.warn(`[MAIN] Blocked webview navigation to ${label} URL: ${navigationUrl}`);
+          event.preventDefault();
+
+          const panelId = getWebviewDialogService().getPanelId(contents.id);
+          if (panelId) {
+            const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
+            if (parentWindow && !parentWindow.isDestroyed()) {
+              getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
+                panelId,
+                url: navigationUrl,
+                canOpenExternal: canOpenExternalUrl(navigationUrl),
+              });
             }
           }
         }
@@ -247,26 +243,24 @@ export function setupWebviewCSP(): void {
       contents.on("will-redirect", (event, redirectUrl) => {
         const isBrowserPanel = contents.session === browserSession;
 
-        if (isBrowserPanel) {
-          if (!isSafeNavigationUrl(redirectUrl)) {
-            console.warn(`[MAIN] Blocked webview redirect to unsafe URL: ${redirectUrl}`);
-            event.preventDefault();
-          }
-        } else {
-          if (!isLocalhostUrl(redirectUrl)) {
-            console.warn(`[MAIN] Blocked webview redirect to non-localhost URL: ${redirectUrl}`);
-            event.preventDefault();
+        const blocked = isBrowserPanel
+          ? !isSafeNavigationUrl(redirectUrl)
+          : !isLocalhostUrl(redirectUrl);
 
-            const panelId = getWebviewDialogService().getPanelId(contents.id);
-            if (panelId) {
-              const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
-              if (parentWindow && !parentWindow.isDestroyed()) {
-                getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
-                  panelId,
-                  url: redirectUrl,
-                  canOpenExternal: canOpenExternalUrl(redirectUrl),
-                });
-              }
+        if (blocked) {
+          const label = isBrowserPanel ? "unsafe" : "non-localhost";
+          console.warn(`[MAIN] Blocked webview redirect to ${label} URL: ${redirectUrl}`);
+          event.preventDefault();
+
+          const panelId = getWebviewDialogService().getPanelId(contents.id);
+          if (panelId) {
+            const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
+            if (parentWindow && !parentWindow.isDestroyed()) {
+              getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, {
+                panelId,
+                url: redirectUrl,
+                canOpenExternal: canOpenExternalUrl(redirectUrl),
+              });
             }
           }
         }

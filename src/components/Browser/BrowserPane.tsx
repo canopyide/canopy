@@ -105,7 +105,10 @@ export function BrowserPane({
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [blockedNav, setBlockedNav] = useState<{ url: string } | null>(null);
+  const [blockedNav, setBlockedNav] = useState<{
+    url: string;
+    canOpenExternal: boolean;
+  } | null>(null);
   const blockedNavTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Track the last URL we set on the webview to detect in-webview navigation
   const lastSetUrlRef = useRef<string>(history.present);
@@ -162,7 +165,7 @@ export function BrowserPane({
         clearTimeout(blockedNavTimerRef.current);
       }
       blockedNavTimerRef.current = setTimeout(() => {
-        setBlockedNav({ url: data.url });
+        setBlockedNav({ url: data.url, canOpenExternal: data.canOpenExternal });
         blockedNavTimerRef.current = null;
       }, 150);
     });
@@ -795,20 +798,22 @@ export function BrowserPane({
                     }
                   })()}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void actionService.dispatch(
-                      "browser.openExternal",
-                      { terminalId: id, url: blockedNav.url },
-                      { source: "user" }
-                    );
-                    setBlockedNav(null);
-                  }}
-                  className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-canopy-text/90 transition-colors"
-                >
-                  Open in External Browser
-                </button>
+                {blockedNav.canOpenExternal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void actionService.dispatch(
+                        "browser.openExternal",
+                        { terminalId: id, url: blockedNav.url },
+                        { source: "user" }
+                      );
+                      setBlockedNav(null);
+                    }}
+                    className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-canopy-text/90 transition-colors"
+                  >
+                    Open in External Browser
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setBlockedNav(null)}
