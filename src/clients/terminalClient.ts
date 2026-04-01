@@ -184,6 +184,11 @@ export const terminalClient = {
     return window.electron.terminal.kill(id);
   },
 
+  gracefulKill: (id: string): Promise<string | null> => {
+    earlyDataBuffer.delete(id);
+    return window.electron.terminal.gracefulKill(id);
+  },
+
   trash: (id: string): Promise<void> => {
     earlyDataBuffer.delete(id);
     return window.electron.terminal.trash(id);

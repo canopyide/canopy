@@ -185,6 +185,7 @@ export type BuiltInActionId =
   | "terminal.trash"
   | "terminal.kill"
   | "terminal.moveToWorktree"
+  | "terminal.moveToNewWorktree"
   | "terminal.convertType"
   | "terminal.watch"
   | "terminal.viewInfo"

@@ -1198,7 +1198,10 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             isOpen={createDialog.isOpen}
             onClose={closeCreateDialog}
             rootPath={rootPath}
-            onWorktreeCreated={refresh}
+            onWorktreeCreated={(worktreeId) => {
+              refresh();
+              createDialog.onCreated?.(worktreeId);
+            }}
             initialIssue={createDialog.initialIssue}
             initialPR={createDialog.initialPR}
             initialRecipeId={createDialog.initialRecipeId}

@@ -43,7 +43,7 @@ import { formatShortcutForTooltip, createTooltipWithShortcut } from "@/lib/platf
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
-import { MoveToDockIcon, MoveToGridIcon, WatchAlertIcon } from "@/components/icons";
+import { MoveToDockIcon, MoveToGridIcon, WatchAlertIcon, WorktreeIcon } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import {
   useBackgroundPanelStats,
@@ -820,8 +820,23 @@ function PanelHeaderComponent({
                   </DropdownMenuItem>
                 )}
 
+                {agentId && (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      void actionService.dispatch(
+                        "terminal.moveToNewWorktree",
+                        { terminalId: id },
+                        { source: "menu" }
+                      )
+                    }
+                  >
+                    <WorktreeIcon className="w-3 h-3 mr-2" aria-hidden="true" />
+                    Move to New Worktree…
+                  </DropdownMenuItem>
+                )}
+
                 {/* Management group */}
-                {canRestart && onRestart && <DropdownMenuSeparator />}
+                {((canRestart && onRestart) || agentId) && <DropdownMenuSeparator />}
                 {location === "dock" && onRestore && (
                   <DropdownMenuItem onSelect={() => onRestore()}>
                     <MoveToGridIcon className="w-3 h-3 mr-2" aria-hidden="true" />

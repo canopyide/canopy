@@ -118,6 +118,24 @@ export function registerTerminalSpawnActions(
     },
   }));
 
+  actions.set("terminal.moveToNewWorktree", () => ({
+    id: "terminal.moveToNewWorktree",
+    title: "Move to New Worktree…",
+    description: "Create a new worktree and transfer the agent session there",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
+    run: async (args: unknown) => {
+      const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
+      const state = useTerminalStore.getState();
+      const targetId = terminalId ?? state.focusedId;
+      if (!targetId) return;
+      state.moveToNewWorktreeAndTransfer(targetId);
+    },
+  }));
+
   actions.set("terminal.convertType", () => ({
     id: "terminal.convertType",
     title: "Convert Terminal Type",

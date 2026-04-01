@@ -181,6 +181,7 @@ export interface TerminalRegistrySlice {
   clearTerminalError: (id: string) => void;
   updateTerminalCwd: (id: string, cwd: string) => void;
   moveTerminalToWorktree: (id: string, worktreeId: string) => void;
+  moveToNewWorktreeAndTransfer: (id: string) => void;
   updateFlowStatus: (id: string, status: TerminalFlowStatus, timestamp: number) => void;
   setRuntimeStatus: (id: string, status: TerminalRuntimeStatus) => void;
   setInputLocked: (id: string, locked: boolean) => void;
