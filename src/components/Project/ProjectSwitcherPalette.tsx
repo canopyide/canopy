@@ -476,14 +476,13 @@ function ProjectListContent({
     return map;
   }, [results]);
 
-  const renderItem = (project: SearchableProject, index: number) => {
-    const itemSelected = index === selectedIndex;
+  const renderItem = (project: SearchableProject) => {
+    const index = resultIndexMap.get(project.id) ?? 0;
     return (
       <div key={project.id} role="presentation">
         <ProjectListItem
           project={project}
-          index={index}
-          selectedIndex={selectedIndex}
+          isSelected={index === selectedIndex}
           onSelect={onSelect}
           onStopProject={onStopProject}
           onCloseProject={onCloseProject}
