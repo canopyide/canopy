@@ -29,7 +29,7 @@ test.describe.serial("Core: Dev Preview", () => {
 
     fixtureRepoPath = createFixtureRepo({ name: "dev-preview-test" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureRepoPath, PROJECT_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureRepoPath, PROJECT_NAME);
   });
 
   test.afterAll(async () => {

@@ -24,7 +24,7 @@ test.describe.serial("Core: Project Lifecycle", () => {
     repoBPath = createFixtureRepo({ name: "lifecycle-b" });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
   });
 
   test.afterAll(async () => {

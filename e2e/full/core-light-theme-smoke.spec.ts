@@ -22,7 +22,7 @@ test.describe.serial("Core: Light Theme Smoke", () => {
     });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixture, PROJECT_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, PROJECT_NAME);
 
     await expect(ctx.window.locator(SEL.toolbar.projectSwitcherTrigger)).toBeVisible();
     await expect(ctx.window.getByLabel("Command input")).toBeVisible();

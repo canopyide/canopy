@@ -60,7 +60,7 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
 
     ctx = await launchApp();
 
-    await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
 
     // Add Project B
     await mockOpenDialog(ctx.app, repoB);

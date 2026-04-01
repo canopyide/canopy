@@ -19,7 +19,7 @@ test.describe.serial("Core: Terminal Recipes", () => {
   test.describe.serial("Recipe Editor", () => {
     test.beforeAll(async () => {
       const fixtureDir = createFixtureRepo({ name: "terminal-recipes" });
-      await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Recipes Test");
+      ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Recipes Test");
       await ctx.window.waitForTimeout(T_SETTLE);
     });
 

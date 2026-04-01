@@ -198,6 +198,14 @@ export function setupBrowserWindow(
   // Register the window's own webContents for getWindowForWebContents() fallback
   registerWebContents(win.webContents, win);
 
+  // E2E: load a sentinel page into the BrowserWindow shell so Playwright's
+  // electron.launch() receives a CDP 'page' target and resolves.
+  // Without this, the BW stays at about:blank (no Target.targetCreated event)
+  // and electron.launch() times out after the WebContentsView migration.
+  if (process.env.CANOPY_E2E_MODE) {
+    win.loadURL("data:text/html,<!doctype html><html><body></body></html>");
+  }
+
   // ── Create WebContentsView for the React app ──
   // All project views share a single session partition for V8 code cache reuse.
   const viewSession = session.fromPartition("persist:canopy-app");

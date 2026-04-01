@@ -29,7 +29,7 @@ test.describe.serial("Core: Review Hub Workflow", () => {
       withUncommittedChanges: true,
     });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Review Hub Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Review Hub Test");
   });
 
   test.afterAll(async () => {

@@ -39,7 +39,7 @@ test.describe.serial("Core: Advanced", () => {
     switchRepo = createFixtureRepo({ name: "switch-project" });
 
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, mainFixture, PROJECT_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, mainFixture, PROJECT_NAME);
   });
 
   test.afterAll(async () => {

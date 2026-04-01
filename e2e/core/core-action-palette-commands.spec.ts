@@ -16,7 +16,7 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "palettes-test", withMultipleFiles: true });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Palette Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Palette Test");
   });
 
   test.afterAll(async () => {

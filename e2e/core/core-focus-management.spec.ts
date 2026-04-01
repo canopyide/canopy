@@ -19,7 +19,12 @@ test.describe.serial("Core: Focus Management", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
     const fixtureDir = createFixtureRepo({ name: "focus-management" });
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Focus Management Test");
+    ctx.window = await openAndOnboardProject(
+      ctx.app,
+      ctx.window,
+      fixtureDir,
+      "Focus Management Test"
+    );
   });
 
   test.afterAll(async () => {

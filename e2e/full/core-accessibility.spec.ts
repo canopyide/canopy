@@ -68,7 +68,12 @@ test.describe.serial("Core: Accessibility", () => {
     test.describe.serial("With Project", () => {
       test.beforeAll(async () => {
         const fixtureDir = createFixtureRepo({ name: "accessibility" });
-        await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Accessibility Test");
+        ctx.window = await openAndOnboardProject(
+          ctx.app,
+          ctx.window,
+          fixtureDir,
+          "Accessibility Test"
+        );
       });
 
       test("worktree dashboard passes WCAG 2.0 AA audit", async () => {

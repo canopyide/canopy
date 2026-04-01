@@ -72,7 +72,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     ctx = await launchApp({ env: { CANOPY_E2E_FAULT_MODE: "1" } });
 
     // Open and onboard Project A
-    await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A_NAME);
 
     // Add Project B via project switcher
     await mockOpenDialog(ctx.app, repoB);

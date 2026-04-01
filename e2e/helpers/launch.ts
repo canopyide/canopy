@@ -35,6 +35,23 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function pollForAppWindow(app: ElectronApplication, timeoutMs: number): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    let best: Page | null = null;
+    for (const w of app.windows()) {
+      const url = w.url();
+      if (url.startsWith("app://canopy/") || url.includes("localhost")) {
+        best = w;
+      }
+    }
+    if (best) return best;
+    await wait(200);
+  }
+  const urls = app.windows().map((w) => w.url());
+  throw new Error(`App WebContentsView page not found. Available pages: ${urls.join(", ")}`);
+}
+
 export async function launchApp(options: LaunchOptions = {}): Promise<AppContext> {
   // Windows CI can hang during Playwright's electron.launch handshake even when
   // the app process is already running. Keep attempts high, but fail fast.
@@ -84,6 +101,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
         ...process.env,
         ...options.env,
         NODE_ENV: "production",
+        CANOPY_E2E_MODE: "1",
         CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS: options.env?.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS ?? "1",
         CANOPY_DISABLE_WEBGL: "1",
         ...(isWindowsCI
@@ -104,7 +122,9 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
 
       app.on("close", () => console.log("[e2e] Electron app closed"));
 
-      const window = await app.firstWindow();
+      // After WebContentsView migration, firstWindow() returns the BW sentinel page.
+      // Poll for the real app page loaded in the WebContentsView.
+      const window = await pollForAppWindow(app, launchTimeout);
       window.on("crash", () => console.error("[e2e] Renderer crashed"));
       window.on("console", (msg) => {
         if (msg.type() === "error") console.error("[e2e:console]", msg.text());
@@ -159,6 +179,33 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
   }
 
   throw lastError instanceof Error ? lastError : new Error("Failed to launch Electron app");
+}
+
+/**
+ * Re-acquire the active app window after a project switch.
+ * The ProjectViewManager creates new WebContentsViews, so the Playwright
+ * page reference from launchApp() becomes stale. This returns the latest
+ * app page (preferring one with a projectId query param).
+ */
+export async function getActiveAppWindow(
+  app: ElectronApplication,
+  timeoutMs = 10_000
+): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    let best: Page | null = null;
+    for (const w of app.windows()) {
+      const url = w.url();
+      if (url.startsWith("app://canopy/") || url.includes("localhost")) {
+        // Prefer the view with a projectId (the active project view)
+        if (url.includes("projectId=")) return w;
+        best = w;
+      }
+    }
+    if (best) return best;
+    await wait(200);
+  }
+  throw new Error("No active app window found");
 }
 
 export async function closeApp(app: ElectronApplication): Promise<void> {

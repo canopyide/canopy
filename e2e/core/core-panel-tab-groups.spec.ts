@@ -15,7 +15,7 @@ test.describe.serial("Core: Panel Tab Groups", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "tab-groups", withMultipleFiles: true });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Tab Groups Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Tab Groups Test");
   });
 
   test.afterAll(async () => {

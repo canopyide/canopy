@@ -103,7 +103,12 @@ test.describe.serial("Core: Shell & Settings", () => {
   test.describe.serial("Keyboard Shortcuts", () => {
     test.beforeAll(async () => {
       const fixtureDir = createFixtureRepo({ name: "shell-settings" });
-      await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Shell Settings Test");
+      ctx.window = await openAndOnboardProject(
+        ctx.app,
+        ctx.window,
+        fixtureDir,
+        "Shell Settings Test"
+      );
     });
 
     test("Cmd+Alt+T opens a new terminal", async () => {

@@ -13,7 +13,7 @@ test.describe.serial("Core: Terminal Scrollback Integrity Under Load", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "terminal-scrollback" });
     ctx = await launchApp();
-    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Scrollback Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Scrollback Test");
   });
 
   test.afterAll(async () => {
