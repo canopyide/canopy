@@ -213,6 +213,7 @@ export interface ElectronAPI {
     submit(id: string, text: string): Promise<void>;
     resize(id: string, cols: number, rows: number): void;
     kill(id: string): Promise<void>;
+    gracefulKill(id: string): Promise<string | null>;
     trash(id: string): Promise<void>;
     restore(id: string): Promise<boolean>;
     setActivityTier(id: string, tier: PtyHostActivityTier): void;

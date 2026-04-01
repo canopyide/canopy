@@ -424,6 +424,20 @@ export function TerminalContextMenu({
           </ContextMenuSubContent>
         </ContextMenuSub>
       )}
+      {terminal.agentId && (
+        <ContextMenuItem
+          onSelect={() =>
+            void actionService.dispatch(
+              "terminal.moveToNewWorktree",
+              { terminalId },
+              { source: "context-menu" }
+            )
+          }
+        >
+          <WorktreeIcon className={ICON_CLASS} />
+          Move to New Worktree…
+        </ContextMenuItem>
+      )}
       <ContextMenuItem
         onSelect={() => handleAction(currentLocation === "grid" ? "move-to-dock" : "move-to-grid")}
       >

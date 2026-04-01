@@ -245,6 +245,18 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
   ipcMain.handle(CHANNELS.TERMINAL_KILL, handleTerminalKill);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_KILL));
 
+  const handleTerminalGracefulKill = async (
+    _event: Electron.IpcMainInvokeEvent,
+    id: string
+  ): Promise<string | null> => {
+    if (typeof id !== "string") {
+      throw new Error("Invalid terminal ID: must be a string");
+    }
+    return ptyClient.gracefulKill(id);
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_GRACEFUL_KILL, handleTerminalGracefulKill);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GRACEFUL_KILL));
+
   const handleTerminalTrash = async (_event: Electron.IpcMainInvokeEvent, id: string) => {
     try {
       if (typeof id !== "string") {

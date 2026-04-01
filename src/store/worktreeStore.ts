@@ -12,6 +12,7 @@ interface CreateDialogState {
   initialIssue: GitHubIssue | null;
   initialPR: GitHubPR | null;
   initialRecipeId: string | null;
+  onCreated?: (worktreeId: string) => void;
 }
 
 interface QuickCreateState {
@@ -57,7 +58,7 @@ interface WorktreeSelectionState {
   setTerminalsExpanded: (id: string, expanded: boolean) => void;
   openCreateDialog: (
     initialIssue?: GitHubIssue | null,
-    options?: { initialRecipeId?: string | null }
+    options?: { initialRecipeId?: string | null; onCreated?: (worktreeId: string) => void }
   ) => void;
   openCreateDialogForPR: (pr: GitHubPR) => void;
   closeCreateDialog: () => void;
@@ -230,7 +231,13 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
   pendingWorktreeId: null,
   expandedWorktrees: new Set<string>(),
   expandedTerminals: new Set<string>(),
-  createDialog: { isOpen: false, initialIssue: null, initialPR: null, initialRecipeId: null },
+  createDialog: {
+    isOpen: false,
+    initialIssue: null,
+    initialPR: null,
+    initialRecipeId: null,
+    onCreated: undefined,
+  },
   bulkCreateDialog: { isOpen: false, mode: "issue", selectedIssues: [], selectedPRs: [] },
   quickCreate: { isOpen: false, issue: null, pr: null },
   crossDiffDialog: { isOpen: false, initialWorktreeId: null },
@@ -418,6 +425,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
         initialIssue,
         initialPR: null,
         initialRecipeId: options?.initialRecipeId ?? null,
+        onCreated: options?.onCreated,
       },
     });
   },
@@ -427,13 +435,25 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       window.dispatchEvent(new Event("canopy:toggle-focus-mode"));
     }
     set({
-      createDialog: { isOpen: true, initialIssue: null, initialPR: pr, initialRecipeId: null },
+      createDialog: {
+        isOpen: true,
+        initialIssue: null,
+        initialPR: pr,
+        initialRecipeId: null,
+        onCreated: undefined,
+      },
     });
   },
 
   closeCreateDialog: () =>
     set({
-      createDialog: { isOpen: false, initialIssue: null, initialPR: null, initialRecipeId: null },
+      createDialog: {
+        isOpen: false,
+        initialIssue: null,
+        initialPR: null,
+        initialRecipeId: null,
+        onCreated: undefined,
+      },
     }),
 
   openBulkCreateDialog: (selectedIssues) => {
@@ -495,7 +515,13 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       pendingWorktreeId: null,
       expandedWorktrees: new Set<string>(),
       expandedTerminals: new Set<string>(),
-      createDialog: { isOpen: false, initialIssue: null, initialPR: null, initialRecipeId: null },
+      createDialog: {
+        isOpen: false,
+        initialIssue: null,
+        initialPR: null,
+        initialRecipeId: null,
+        onCreated: undefined,
+      },
       bulkCreateDialog: { isOpen: false, mode: "issue", selectedIssues: [], selectedPRs: [] },
       quickCreate: { isOpen: false, issue: null, pr: null },
       crossDiffDialog: { isOpen: false, initialWorktreeId: null },
