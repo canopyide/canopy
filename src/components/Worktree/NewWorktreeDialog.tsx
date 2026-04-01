@@ -84,7 +84,7 @@ interface NewWorktreeDialogProps {
   isOpen: boolean;
   onClose: () => void;
   rootPath: string;
-  onWorktreeCreated?: () => void;
+  onWorktreeCreated?: (worktreeId: string) => void;
   initialIssue?: GitHubIssue | null;
   initialPR?: GitHubPR | null;
   initialRecipeId?: string | null;
@@ -515,7 +515,7 @@ export function NewWorktreeDialog({
             }
           }
 
-          onWorktreeCreated?.();
+          onWorktreeCreated?.(worktreeId);
           onClose();
 
           setSelectedExistingBranch(null);
@@ -670,7 +670,7 @@ export function NewWorktreeDialog({
           }
         }
 
-        onWorktreeCreated?.();
+        onWorktreeCreated?.(worktreeId);
         onClose();
 
         setBranchInput("");

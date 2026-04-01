@@ -434,6 +434,7 @@ const CHANNELS = {
   TERMINAL_GET_INFO: "terminal:get-info",
   TERMINAL_ACKNOWLEDGE_DATA: "terminal:acknowledge-data",
   TERMINAL_FORCE_RESUME: "terminal:force-resume",
+  TERMINAL_GRACEFUL_KILL: "terminal:graceful-kill",
   TERMINAL_STATUS: "terminal:status",
   TERMINAL_BACKEND_CRASHED: "terminal:backend-crashed",
   TERMINAL_BACKEND_READY: "terminal:backend-ready",
@@ -1050,6 +1051,7 @@ const api: ElectronAPI = {
       ipcRenderer.send(CHANNELS.TERMINAL_RESIZE, { id, cols, rows }),
 
     kill: (id: string) => _unwrappingInvoke(CHANNELS.TERMINAL_KILL, id),
+    gracefulKill: (id: string) => _unwrappingInvoke(CHANNELS.TERMINAL_GRACEFUL_KILL, id),
 
     // Tuple payload [id, data] requires per-terminal filtering
     // Accepts both string and Uint8Array/Buffer (binary optimization for reduced GC pressure)
