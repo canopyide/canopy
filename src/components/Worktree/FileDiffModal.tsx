@@ -40,7 +40,8 @@ export function FileDiffModal({
       const diffResult = result.result as string;
       setDiff(diffResult || "NO_CHANGES");
     } catch {
-      // Fall through — FileViewerModal shows file in View mode
+      if (requestRef.current !== requestId) return;
+      setDiff("NO_CHANGES");
     }
   }, [worktreePath, filePath, status]);
 
