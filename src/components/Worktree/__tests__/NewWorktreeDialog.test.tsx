@@ -282,14 +282,8 @@ describe("NewWorktreeDialog — existing branch mode", () => {
         state: "OPEN",
         url: "https://github.com/test/repo/pull/42",
         author: { login: "user", avatarUrl: "" },
-        baseRefName: "main",
         isDraft: false,
-        mergeable: "MERGEABLE",
-        labels: [],
-        reviewDecision: null,
-        checksStatus: null,
         updatedAt: new Date().toISOString(),
-        bodyText: "",
       },
     });
     await advanceTimersGradually(500);
