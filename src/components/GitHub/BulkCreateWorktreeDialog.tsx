@@ -881,7 +881,10 @@ export function BulkCreateWorktreeDialog({
       }
       if (failedIssueNumbers.size === 0) return;
 
-      const toRetry = planned.filter((p) => !p.skipped && failedIssueNumbers.has(p.item.number));
+      const toRetry = planned.filter(
+        (p) => progress.items.has(p.item.number) && failedIssueNumbers.has(p.item.number)
+      );
+      if (toRetry.length === 0) return;
 
       // Reset terminal tracking for retried items so verification doesn't use stale data
       for (const issueNumber of failedIssueNumbers) {
@@ -1175,7 +1178,7 @@ export function BulkCreateWorktreeDialog({
             {/* Per-item status list */}
             <div className="max-h-[300px] overflow-y-auto rounded-[var(--radius-md)] border border-canopy-border divide-y divide-canopy-border">
               {planned
-                .filter((p) => !p.skipped)
+                .filter((p) => progress.items.has(p.item.number))
                 .map((item) => {
                   const itemStatus = progress.items.get(item.item.number);
                   const stageLabel = getStageLabel(itemStatus);
