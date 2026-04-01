@@ -22,7 +22,7 @@ const fsMock = vi.hoisted(() => ({
 vi.mock("fs/promises", () => fsMock);
 
 vi.mock("fs", () => ({
-  readdirSync: vi.fn(() => ["frame_0001.png", "frame_0002.png", "frame_0003.png"]),
+  readdirSync: vi.fn(() => ["frame-000001.png", "frame-000002.png", "frame-000003.png"]),
   mkdirSync: vi.fn(),
 }));
 
@@ -196,7 +196,7 @@ describe("registerDemoHandlers", () => {
           outputPath: "/tmp/out.mp4",
           preset: "youtube-4k",
         })
-      ).rejects.toThrow("No PNG frames matching frame_NNNN.png found");
+      ).rejects.toThrow("No PNG frames matching frame-NNNNNN.png found");
     });
 
     it("rejects on spawn error event", async () => {
@@ -303,7 +303,7 @@ describe("registerDemoHandlers", () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining(["-c:v", "libx264"]),
+        expect.arrayContaining(["-i", "/tmp/frames/frame-%06d.png", "-c:v", "libx264"]),
         expect.any(Object)
       );
     });
