@@ -1,6 +1,21 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { WorktreeSnapshot } from "@shared/types";
 
+let _currentViewStore: WorktreeViewStoreApi | null = null;
+
+export function setCurrentViewStore(store: WorktreeViewStoreApi): void {
+  _currentViewStore = store;
+}
+
+export function getCurrentViewStore(): WorktreeViewStoreApi {
+  if (!_currentViewStore) {
+    throw new Error(
+      "WorktreeViewStore not initialized — called before WorktreeStoreProvider mount"
+    );
+  }
+  return _currentViewStore;
+}
+
 export interface WorktreeViewState {
   worktrees: Map<string, WorktreeSnapshot>;
   version: number;

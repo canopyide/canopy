@@ -12,6 +12,9 @@ export { useWorktreeSelectionStore } from "./worktreeStore";
 
 export { useWorktreeDataStore } from "./worktreeDataStore";
 
+export { getCurrentViewStore } from "./createWorktreeStore";
+export type { WorktreeViewStoreApi } from "./createWorktreeStore";
+
 export { useLogsStore, filterLogs } from "./logsStore";
 
 export { useErrorStore } from "./errorStore";

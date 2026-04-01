@@ -1,6 +1,13 @@
 import { createContext, useEffect, useRef, type ReactNode } from "react";
-import { createWorktreeStore, type WorktreeViewStoreApi } from "@/store/createWorktreeStore";
+import {
+  createWorktreeStore,
+  setCurrentViewStore,
+  type WorktreeViewStoreApi,
+} from "@/store/createWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { useTerminalStore } from "@/store/terminalStore";
+import { usePulseStore } from "@/store/pulseStore";
 
 export const WorktreeStoreContext = createContext<WorktreeViewStoreApi | null>(null);
 
@@ -43,12 +50,22 @@ interface IssueNotFoundEvent {
   issueNumber: number;
 }
 
+interface WorktreeActivatedEvent {
+  type: "worktree-activated";
+  worktreeId: string;
+}
+
 export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
   const storeRef = useRef<WorktreeViewStoreApi>(null);
   if (!storeRef.current) {
     storeRef.current = createWorktreeStore();
   }
   const store = storeRef.current;
+
+  // Register module-level store reference for non-React code (action definitions, services)
+  useEffect(() => {
+    setCurrentViewStore(store);
+  }, [store]);
 
   useEffect(() => {
     const { worktreePort } = window.electron;
@@ -75,13 +92,63 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
       worktreePort.onEvent("worktree-update", (data) => {
         const event = data as WorktreeUpdateEvent;
         store.getState().applyUpdate(event.worktree, store.getState().nextVersion());
+
+        // Side effect: sync pending worktree selection
+        const selectionStore = useWorktreeSelectionStore.getState();
+        if (selectionStore.pendingWorktreeId === event.worktree.id) {
+          selectionStore.applyPendingWorktreeSelection(event.worktree.id);
+        }
       })
     );
 
     cleanups.push(
       worktreePort.onEvent("worktree-removed", (data) => {
         const event = data as WorktreeRemovedEvent;
+        const { worktrees } = store.getState();
+        const worktree = worktrees.get(event.worktreeId);
+
+        // Block removal of main worktree
+        if (worktree?.isMainWorktree) {
+          console.warn("[WorktreeStore] Attempted to remove main worktree - blocked", {
+            worktreeId: event.worktreeId,
+            branch: worktree.branch,
+          });
+          return;
+        }
+
         store.getState().applyRemove(event.worktreeId, store.getState().nextVersion());
+
+        // Side effect: invalidate pulse cache
+        usePulseStore.getState().invalidate(event.worktreeId);
+
+        // Side effect: clear active selection if removed
+        const selectionStore = useWorktreeSelectionStore.getState();
+        if (selectionStore.activeWorktreeId === event.worktreeId) {
+          selectionStore.setActiveWorktree(null);
+        }
+
+        // Side effect: kill associated terminals
+        const terminalStore = useTerminalStore.getState();
+        const terminalsToKill = terminalStore.terminals.filter(
+          (t) => (t.worktreeId ?? undefined) === event.worktreeId
+        );
+        if (terminalsToKill.length > 0) {
+          terminalsToKill.forEach((terminal) => {
+            terminalStore.removeTerminal(terminal.id);
+          });
+        }
+      })
+    );
+
+    cleanups.push(
+      worktreePort.onEvent("worktree-activated", (data) => {
+        const event = data as WorktreeActivatedEvent;
+        const selectionStore = useWorktreeSelectionStore.getState();
+        selectionStore.setPendingWorktree(event.worktreeId);
+        selectionStore.selectWorktree(event.worktreeId);
+        if (store.getState().worktrees.has(event.worktreeId)) {
+          selectionStore.applyPendingWorktreeSelection(event.worktreeId);
+        }
       })
     );
 
