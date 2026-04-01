@@ -1,4 +1,4 @@
-/* eslint-env browser */
+/* global document */
 // Populate heatmap grid cells (60×7 = 420 cells)
 (function () {
   var g = document.getElementById("skel-heatmap");
