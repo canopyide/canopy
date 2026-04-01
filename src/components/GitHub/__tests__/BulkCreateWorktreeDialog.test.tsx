@@ -1005,6 +1005,66 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(screen.queryByTestId("bulk-create-done-button")).toBeNull();
   });
 
+  it("keeps completed items visible after worktreeMap updates during execution", async () => {
+    const resolvers: Array<(value: string) => void> = [];
+    mockWorktreeCreate.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+
+    const { rerender } = render(<BulkCreateWorktreeDialog {...defaultProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    // Advance to let the first two items start (concurrency = 2)
+    await advanceTimersGradually(400);
+
+    // Resolve the first item
+    await act(async () => {
+      resolvers[0]?.("wt-1");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Simulate worktreeMap updating with the newly created worktree (issue #1)
+    mockWorktreeDataMap.set("wt-1", {
+      worktreeId: "wt-1",
+      branch: "feature/issue-1",
+      path: "/worktrees/feature/issue-1",
+      isMainWorktree: false,
+      issueNumber: 1,
+    });
+
+    // Trigger re-render to simulate Zustand subscription update
+    await act(async () => {
+      rerender(<BulkCreateWorktreeDialog {...defaultProps} />);
+    });
+
+    // Issue #1 must still be visible in the progress list despite worktreeMap update
+    expect(screen.getByText("Issue 1")).toBeTruthy();
+    expect(screen.getByText("#1")).toBeTruthy();
+
+    // Resolve remaining items and verify final state
+    await advanceTimersGradually(400);
+    await act(async () => {
+      resolvers[1]?.("wt-2");
+      resolvers[2]?.("wt-3");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await advanceTimersGradually(1000);
+
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+    // All three items should be visible
+    expect(screen.getByText("Issue 1")).toBeTruthy();
+    expect(screen.getByText("Issue 2")).toBeTruthy();
+    expect(screen.getByText("Issue 3")).toBeTruthy();
+
+    mockWorktreeDataMap.delete("wt-1");
+  });
+
   it("does not flash empty state when Done is clicked", async () => {
     const onComplete = vi.fn();
     const onClose = vi.fn();
