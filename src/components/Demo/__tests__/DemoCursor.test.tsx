@@ -35,8 +35,9 @@ function createMockAnimation() {
     play: vi.fn(),
   };
 }
-const animateSpy = vi.fn(() => createMockAnimation() as unknown as Animation);
-Element.prototype.animate = animateSpy;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const animateSpy = vi.fn((() => createMockAnimation()) as any) as ReturnType<typeof vi.fn>;
+Element.prototype.animate = animateSpy as unknown as typeof Element.prototype.animate;
 
 import { DemoCursor } from "../DemoCursor";
 

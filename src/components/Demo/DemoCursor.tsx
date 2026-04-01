@@ -275,7 +275,12 @@ export function DemoCursor() {
           const targetX = rect.left + rect.width / 2 + (payload.offsetX ?? 0);
           const targetY = rect.top + rect.height / 2 + (payload.offsetY ?? 0);
 
-          await animateCursor(targetX, targetY, payload.durationMs, Math.min(rect.width, rect.height));
+          await animateCursor(
+            targetX,
+            targetY,
+            payload.durationMs,
+            Math.min(rect.width, rect.height)
+          );
           sendDone(payload.requestId);
         } catch (err) {
           sendDone(payload.requestId, String(err));
