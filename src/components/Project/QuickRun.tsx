@@ -100,6 +100,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [focusedSuggestionIndex, setFocusedSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isRunningRef = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(`${HISTORY_KEY_PREFIX}${projectId}`);
@@ -281,28 +282,31 @@ export function QuickRun({ projectId }: QuickRunProps) {
 
     if (!cwd) return;
 
-    // Apply stored preferences for saved items, fall back to global state
-    const useDock =
-      item.type === "saved" && item.preferredLocation !== undefined
-        ? item.preferredLocation === "dock"
-        : runAsDocked;
-    const useAutoRestart =
-      item.type === "saved" && item.preferredAutoRestart !== undefined
-        ? item.preferredAutoRestart
-        : autoRestart;
-
-    // Update visible toggles to reflect the preferences being used
-    if (item.type === "saved") {
-      if (item.preferredLocation !== undefined) setRunAsDocked(useDock);
-      if (item.preferredAutoRestart !== undefined) setAutoRestart(useAutoRestart);
-    }
-
-    saveHistory(cmd);
-    setShowSuggestions(false);
-    setInput("");
-    setFocusedSuggestionIndex(-1);
+    if (isRunningRef.current) return;
+    isRunningRef.current = true;
 
     try {
+      // Apply stored preferences for saved items, fall back to global state
+      const useDock =
+        item.type === "saved" && item.preferredLocation !== undefined
+          ? item.preferredLocation === "dock"
+          : runAsDocked;
+      const useAutoRestart =
+        item.type === "saved" && item.preferredAutoRestart !== undefined
+          ? item.preferredAutoRestart
+          : autoRestart;
+
+      // Update visible toggles to reflect the preferences being used
+      if (item.type === "saved") {
+        if (item.preferredLocation !== undefined) setRunAsDocked(useDock);
+        if (item.preferredAutoRestart !== undefined) setAutoRestart(useAutoRestart);
+      }
+
+      saveHistory(cmd);
+      setShowSuggestions(false);
+      setInput("");
+      setFocusedSuggestionIndex(-1);
+
       const terminalType = detectTerminalTypeFromCommand(cmd);
       await addTerminal({
         type: terminalType,
@@ -316,6 +320,8 @@ export function QuickRun({ projectId }: QuickRunProps) {
       });
     } catch (error) {
       console.error("Failed to spawn terminal:", error);
+    } finally {
+      isRunningRef.current = false;
     }
   };
 
@@ -352,6 +358,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
     <div className="flex min-h-0 shrink-0 flex-col border-t border-border-divider bg-surface-sidebar/95 text-xs">
       {/* Header */}
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
           "flex w-full items-center justify-between px-4 py-2 font-sans",
@@ -425,6 +432,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
+                          type="button"
                           onClick={handleToggleAutoRestart}
                           className={cn(
                             "p-1.5 rounded-[var(--radius-sm)] transition-all",
@@ -449,6 +457,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
+                          type="button"
                           onClick={() => setRunAsDocked(!runAsDocked)}
                           className={cn(
                             "p-1.5 rounded-[var(--radius-sm)] transition-all",
@@ -483,6 +492,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                       <TooltipTrigger asChild>
                         <span className="inline-flex">
                           <button
+                            type="button"
                             onClick={() => handleRun(input)}
                             disabled={!input.trim()}
                             className={cn(
@@ -515,6 +525,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                     <div className="overflow-y-auto flex-1">
                       {suggestions.map((item, index) => (
                         <button
+                          type="button"
                           key={`${item.value}-${index}`}
                           role="option"
                           aria-selected={index === focusedSuggestionIndex}
