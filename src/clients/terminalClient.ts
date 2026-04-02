@@ -26,22 +26,24 @@ function installPortDataHandler(port: MessagePort): void {
   port.addEventListener("message", (event: MessageEvent) => {
     const msg = event.data as PtyHostToRendererMessage;
     if (msg?.type === "data" && typeof msg.id === "string") {
-      // Send ack immediately on receipt — before dispatching to callbacks or buffering.
-      // This ensures the PTY host queue drains even for early-buffered data,
-      // preventing the high watermark from triggering before callbacks register.
       const byteCount = msg.bytes ?? 0;
-      try {
-        port.postMessage({ type: "ack", id: msg.id, bytes: byteCount });
-      } catch {
-        // Port closed — ack lost, safety timeout will resume PTY
-      }
 
       const cbs = dataCallbacks.get(msg.id);
       if (cbs) {
+        // Live-callback path: defer ACK until xterm write callback fires.
+        // acknowledgePortData() will be called from TerminalInstanceService.writeToTerminal().
         for (const cb of cbs) {
           cb(msg.data);
         }
       } else {
+        // Early-buffer path: no xterm write will happen yet, ACK immediately
+        // to keep the PTY host queue draining during startup.
+        try {
+          port.postMessage({ type: "ack", id: msg.id, bytes: byteCount });
+        } catch {
+          // Port closed — ack lost, safety timeout will resume PTY
+        }
+
         let buf = earlyDataBuffer.get(msg.id);
         if (!buf) {
           buf = [];
@@ -268,10 +270,23 @@ export const terminalClient = {
   },
 
   /**
-   * Acknowledge processed data bytes to the backend (Flow Control).
+   * Acknowledge processed data bytes to the backend (Flow Control — IPC path).
    */
   acknowledgeData: (id: string, length: number): void => {
     window.electron.terminal.acknowledgeData(id, length);
+  },
+
+  /**
+   * Acknowledge processed data bytes via the MessagePort (Flow Control — port path).
+   * Called from TerminalInstanceService.writeToTerminal() after xterm consumes the chunk.
+   */
+  acknowledgePortData: (id: string, bytes: number): void => {
+    if (!messagePort) return;
+    try {
+      messagePort.postMessage({ type: "ack", id, bytes });
+    } catch {
+      // Port closed — ack lost, safety timeout will resume PTY
+    }
   },
 
   /**
