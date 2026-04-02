@@ -17,6 +17,7 @@ export type ToolbarButtonId =
   | "cursor"
   | "terminal"
   | "browser"
+  | "dev-server"
   | "voice-recording"
   | "github-stats"
   | "notes"
@@ -63,6 +64,7 @@ export const TOOLBAR_BUTTON_PRIORITIES: Record<ToolbarButtonId, ToolbarButtonPri
   cursor: 2,
   terminal: 3,
   browser: 3,
+  "dev-server": 3,
   "panel-palette": 4,
   settings: 5,
   "notification-center": 5,

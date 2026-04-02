@@ -19,6 +19,7 @@ import {
   GripVertical,
   SquareTerminal,
   Globe,
+  Monitor,
   AlertTriangle,
   Leaf,
   Settings,
@@ -82,6 +83,11 @@ const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
     label: "Browser",
     icon: <Globe className="h-4 w-4" />,
     description: "Open browser panel",
+  },
+  "dev-server": {
+    label: "Dev Preview",
+    icon: <Monitor className="h-4 w-4" />,
+    description: "Open dev preview panel",
   },
   "panel-palette": {
     label: "Panel Palette",

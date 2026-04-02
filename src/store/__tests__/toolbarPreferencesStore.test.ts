@@ -241,8 +241,8 @@ describe("toolbarPreferencesStore", () => {
       );
 
       const store = await loadStore();
-      // v0→v1: removes dev-server
-      expect(store.getState().layout.leftButtons).not.toContain("dev-server");
+      // v0→v1: removes legacy dev-server, then merge re-adds it from defaults
+      expect(store.getState().layout.leftButtons).toContain("dev-server");
       // v1→v2: adds hiddenButtons
       expect(store.getState().layout.hiddenButtons).toEqual([]);
     });
