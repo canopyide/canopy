@@ -982,6 +982,22 @@ class TerminalInstanceService {
         if (this.instances.get(id) !== managed) return;
         if (managed.attachRevealToken !== revealToken) return;
         managed.isAttaching = false;
+
+        // Post-attach renderer recovery: reconcile the renderer policy now that
+        // isAttaching is cleared. During attach, setVisible(id, true) sets
+        // isVisible but early-returns before applying the renderer policy or
+        // scheduling a refresh (guarded by isAttaching). Without this
+        // reconciliation, terminals prewarmed at BACKGROUND tier never get
+        // upgraded to VISIBLE/FOCUSED, causing frozen display in switched-to
+        // projects where applyWorktreeTerminalPolicy already ran before the
+        // terminal was created.
+        if (managed.isVisible && managed.getRefreshTier) {
+          const currentTier = managed.getRefreshTier();
+          if (managed.lastAppliedTier === undefined || currentTier !== managed.lastAppliedTier) {
+            this.rendererPolicy.applyRendererPolicy(id, currentTier);
+          }
+        }
+
         if (!managed.terminal.element) {
           managed.hostElement.style.opacity = "";
           return;

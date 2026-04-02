@@ -191,16 +191,19 @@ export const terminalClient = {
 
   kill: (id: string): Promise<void> => {
     earlyDataBuffer.delete(id);
+    pendingPortAckBytes.delete(id);
     return window.electron.terminal.kill(id);
   },
 
   gracefulKill: (id: string): Promise<string | null> => {
     earlyDataBuffer.delete(id);
+    pendingPortAckBytes.delete(id);
     return window.electron.terminal.gracefulKill(id);
   },
 
   trash: (id: string): Promise<void> => {
     earlyDataBuffer.delete(id);
+    pendingPortAckBytes.delete(id);
     return window.electron.terminal.trash(id);
   },
 
@@ -297,6 +300,10 @@ export const terminalClient = {
     const queue = pendingPortAckBytes.get(id);
     if (!queue || queue.length === 0) return;
     const bytes = queue.shift()!;
+    // Clean up empty queue to prevent unbounded map growth
+    if (queue.length === 0) {
+      pendingPortAckBytes.delete(id);
+    }
     try {
       messagePort.postMessage({ type: "ack", id, bytes });
     } catch {
