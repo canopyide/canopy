@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { AlertTriangle, RefreshCw, Settings } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -38,7 +38,10 @@ import { actionService } from "@/services/ActionService";
 import { InputTracker } from "@/services/clearCommandDetection";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { terminalClient } from "@/clients";
-import { HybridInputBar, type HybridInputBarHandle } from "./HybridInputBar";
+import type { HybridInputBarHandle } from "./HybridInputBar";
+const LazyHybridInputBar = lazy(() =>
+  import("./HybridInputBar").then((m) => ({ default: m.HybridInputBar }))
+);
 import { getTerminalFocusTarget, shouldSuppressUnfocusedClick } from "./terminalFocus";
 import { registerPanelFocusHandler } from "./terminalFocusRegistry";
 
@@ -855,30 +858,32 @@ function TerminalPaneComponent({
         </div>
 
         {showHybridInputBar && (
-          <HybridInputBar
-            ref={inputBarRef}
-            terminalId={id}
-            disabled={isBackendDisconnected || isBackendRecovering || isInputLocked}
-            cwd={cwd}
-            agentId={effectiveAgentId}
-            agentHasLifecycleEvent={stateChangeTrigger !== undefined}
-            agentState={agentState}
-            restartKey={restartKey}
-            onActivate={handleClick}
-            onSend={({ trackerData, text }) => {
-              if (!isInputLocked) {
-                terminalInstanceService.notifyUserInput(id);
-                terminalClient.submit(id, text);
-                handleInput(trackerData);
-              }
-            }}
-            onSendKey={(key) => {
-              if (!isInputLocked) {
-                terminalInstanceService.notifyUserInput(id);
-                terminalClient.sendKey(id, key);
-              }
-            }}
-          />
+          <Suspense fallback={null}>
+            <LazyHybridInputBar
+              ref={inputBarRef}
+              terminalId={id}
+              disabled={isBackendDisconnected || isBackendRecovering || isInputLocked}
+              cwd={cwd}
+              agentId={effectiveAgentId}
+              agentHasLifecycleEvent={stateChangeTrigger !== undefined}
+              agentState={agentState}
+              restartKey={restartKey}
+              onActivate={handleClick}
+              onSend={({ trackerData, text }) => {
+                if (!isInputLocked) {
+                  terminalInstanceService.notifyUserInput(id);
+                  terminalClient.submit(id, text);
+                  handleInput(trackerData);
+                }
+              }}
+              onSendKey={(key) => {
+                if (!isInputLocked) {
+                  terminalInstanceService.notifyUserInput(id);
+                  terminalClient.sendKey(id, key);
+                }
+              }}
+            />
+          </Suspense>
         )}
       </div>
 
