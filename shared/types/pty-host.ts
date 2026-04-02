@@ -96,7 +96,8 @@ export type PtyHostRequest =
   | { type: "trim-state"; targetLines: number }
   | { type: "set-resource-monitoring"; enabled: boolean }
   | { type: "set-session-persist-suppressed"; suppressed: boolean }
-  | { type: "set-resource-profile"; profile: ResourceProfile };
+  | { type: "set-resource-profile"; profile: ResourceProfile }
+  | { type: "set-process-tree-poll-interval"; ms: number };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.

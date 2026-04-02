@@ -941,6 +941,10 @@ export class PtyClient extends EventEmitter {
     this.send({ type: "set-resource-profile", profile });
   }
 
+  setProcessTreePollInterval(ms: number): void {
+    this.send({ type: "set-process-tree-poll-interval", ms });
+  }
+
   /**
    * Enable/disable IPC data mirroring for a terminal.
    * When enabled, PTY data is always sent via IPC in addition to SharedArrayBuffer,

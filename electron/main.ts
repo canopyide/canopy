@@ -46,7 +46,12 @@ import {
   getStopDiskSpaceMonitor,
   setStopDiskSpaceMonitor,
 } from "./window/windowServices.js";
-import { setupPowerMonitor } from "./window/powerMonitor.js";
+import {
+  setupPowerMonitor,
+  setupWindowFocusThrottle,
+  registerWindowForFocusThrottle,
+} from "./window/powerMonitor.js";
+import { getProjectStatsService } from "./ipc/handlers/projectCrud.js";
 import { isSmokeTest } from "./setup/environment.js";
 import { store } from "./store.js";
 import { pruneOldLogs, initializeLogger, registerLoggerTransport } from "./utils/logger.js";
@@ -223,7 +228,14 @@ if (!gotTheLock) {
         getPtyClient,
         getWorkspaceClient: getWorkspaceClientRef,
       });
+      setupWindowFocusThrottle({
+        getPtyClient,
+        getWorkspaceClient: getWorkspaceClientRef,
+        getProjectStatsService,
+      });
     }
+
+    registerWindowForFocusThrottle(win);
   }
 
   registerAppLifecycleHandlers({

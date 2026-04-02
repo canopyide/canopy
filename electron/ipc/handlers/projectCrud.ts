@@ -28,6 +28,12 @@ import type {
 import { createHardenedGit, HARDENED_GIT_CONFIG } from "../../utils/hardenedGit.js";
 import { simpleGit } from "simple-git";
 
+let projectStatsServiceInstance: ProjectStatsService | null = null;
+
+export function getProjectStatsService(): ProjectStatsService | null {
+  return projectStatsServiceInstance;
+}
+
 export function registerProjectCrudHandlers(deps: HandlerDependencies): () => void {
   const mainWindow = deps.windowRegistry?.getPrimary()?.browserWindow ?? deps.mainWindow;
   const handlers: Array<() => void> = [];
@@ -35,8 +41,12 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
   const projectSwitchService = deps.projectSwitchService ?? new ProjectSwitchService(deps);
 
   const projectStatsService = new ProjectStatsService(deps.ptyClient);
+  projectStatsServiceInstance = projectStatsService;
   projectStatsService.start();
-  handlers.push(() => projectStatsService.stop());
+  handlers.push(() => {
+    projectStatsService.stop();
+    projectStatsServiceInstance = null;
+  });
 
   const handleProjectGetAll = async () => {
     return projectStore.getAllProjects();
