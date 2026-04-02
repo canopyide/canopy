@@ -22,6 +22,7 @@ import {
 import { Spinner } from "@/components/ui/Spinner";
 import { CopyTreeIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { shortcutHintStore } from "@/store/shortcutHintStore";
 import { isMac, isLinux, createTooltipWithShortcut } from "@/lib/platform";
 import { AgentButton } from "./AgentButton";
 import { AgentSetupButton } from "./AgentSetupButton";
@@ -221,6 +222,7 @@ export function Toolbar({
       if (resultMessage) {
         setTreeCopied(true);
         setCopyFeedback(resultMessage);
+        shortcutHintStore.getState().hide();
 
         if (treeCopyTimeoutRef.current) {
           clearTimeout(treeCopyTimeoutRef.current);
