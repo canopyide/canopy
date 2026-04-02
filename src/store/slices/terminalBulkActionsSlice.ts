@@ -140,7 +140,10 @@ export const createTerminalBulkActionsSlice = (
       const currentFocusedTerminal = currentFocusId
         ? terminals.find((t) => t.id === currentFocusId)
         : null;
-      const hasGridFocus = currentFocusedTerminal?.location === "grid";
+      const hasGridFocus =
+        currentFocusedTerminal != null &&
+        (currentFocusedTerminal.location === "grid" ||
+          currentFocusedTerminal.location === undefined);
 
       terminalsToMove.forEach((t) => moveTerminalToGrid(t.id));
 
@@ -235,7 +238,10 @@ export const createTerminalBulkActionsSlice = (
       const currentFocusedTerminal = currentFocusId
         ? terminals.find((t) => t.id === currentFocusId)
         : null;
-      const hasGridFocus = currentFocusedTerminal?.location === "grid";
+      const hasGridFocus =
+        currentFocusedTerminal != null &&
+        (currentFocusedTerminal.location === "grid" ||
+          currentFocusedTerminal.location === undefined);
 
       terminalsToMove.forEach((t) => moveTerminalToGrid(t.id));
 
@@ -267,7 +273,7 @@ export const createTerminalBulkActionsSlice = (
 
     getGridCount: () => {
       const terminals = getTerminals();
-      return terminals.filter((t) => t.location === "grid").length;
+      return terminals.filter((t) => t.location === "grid" || t.location === undefined).length;
     },
 
     getDockedCount: () => {
