@@ -287,7 +287,7 @@ export class PtyClient extends EventEmitter {
     });
 
     const electronDir = path.basename(__dirname) === "chunks" ? path.dirname(__dirname) : __dirname;
-    const hostPath = path.join(electronDir, "pty-host.js");
+    const hostPath = path.join(electronDir, "pty-host-bootstrap.js");
 
     console.log(`[PtyClient] Starting Pty Host from: ${hostPath}`);
 

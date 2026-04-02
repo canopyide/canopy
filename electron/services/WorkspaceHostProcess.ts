@@ -267,7 +267,7 @@ export class WorkspaceHostProcess extends EventEmitter {
     });
 
     const electronDir = path.basename(__dirname) === "chunks" ? path.dirname(__dirname) : __dirname;
-    const hostPath = path.join(electronDir, "workspace-host.js");
+    const hostPath = path.join(electronDir, "workspace-host-bootstrap.js");
 
     try {
       this.child = utilityProcess.fork(hostPath, [], {
