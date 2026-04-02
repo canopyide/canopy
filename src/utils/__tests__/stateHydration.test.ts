@@ -992,7 +992,7 @@ describe("hydrateAppState", () => {
     await pendingRecipes;
   });
 
-  it("waits for recipe loading during initial hydration", async () => {
+  it("does not block initial hydration on recipe loading", async () => {
     let resolveRecipes!: () => void;
     const pendingRecipes = new Promise<void>((resolve) => {
       resolveRecipes = resolve;
@@ -1008,22 +1008,20 @@ describe("hydrateAppState", () => {
       agentSettings,
     });
 
-    let hydrationComplete = false;
-    const hydratePromise = hydrateAppState({
-      addTerminal: vi.fn().mockResolvedValue("terminal-id"),
-      setActiveWorktree: vi.fn(),
-      loadRecipes: vi.fn().mockReturnValue(pendingRecipes),
-      openDiagnosticsDock: vi.fn(),
-    }).then(() => {
-      hydrationComplete = true;
-    });
+    const hydratePromise = hydrateAppState(
+      {
+        addTerminal: vi.fn().mockResolvedValue("terminal-id"),
+        setActiveWorktree: vi.fn(),
+        loadRecipes: vi.fn().mockReturnValue(pendingRecipes),
+        openDiagnosticsDock: vi.fn(),
+      },
+      undefined,
+      () => true
+    );
 
-    await Promise.resolve();
-    expect(hydrationComplete).toBe(false);
-
+    await expect(hydratePromise).resolves.toBeUndefined();
     resolveRecipes();
-    await hydratePromise;
-    expect(hydrationComplete).toBe(true);
+    await pendingRecipes;
   });
 
   it("loads and hydrates persisted tab groups after terminal restore", async () => {
