@@ -865,6 +865,9 @@ describe("AgentNotificationService", () => {
     it("plays agent-spawned sound when uiFeedbackSoundEnabled is true", () => {
       mockStore({ uiFeedbackSoundEnabled: true });
 
+      // Advance past boot grace period so the sound is not suppressed
+      vi.advanceTimersByTime(10_000);
+
       events.emit("agent:spawned", {
         terminalId: "term-1",
         agentId: "claude",
@@ -879,6 +882,23 @@ describe("AgentNotificationService", () => {
     it("does not play agent-spawned sound when uiFeedbackSoundEnabled is false", () => {
       mockStore({ uiFeedbackSoundEnabled: false });
 
+      vi.advanceTimersByTime(10_000);
+
+      events.emit("agent:spawned", {
+        terminalId: "term-1",
+        agentId: "claude",
+        type: "claude",
+        worktreeId: "wt-1",
+        timestamp: Date.now(),
+      });
+
+      expect(soundServiceMock.play).not.toHaveBeenCalled();
+    });
+
+    it("suppresses agent-spawned sound during boot grace period", () => {
+      mockStore({ uiFeedbackSoundEnabled: true });
+
+      // Emit immediately after initialization (within boot grace)
       events.emit("agent:spawned", {
         terminalId: "term-1",
         agentId: "claude",

@@ -14,6 +14,20 @@ const WORKING_PULSE_MAX_INTERVAL_MS = 10_000;
 const ALL_CLEAR_DEBOUNCE_MS = 500;
 const ACTIVE_AGENT_STATES = new Set(["working", "running", "directing"]);
 
+/**
+ * Grace period after spawn during which waiting sounds are suppressed.
+ * Agents that initialize and immediately enter waiting (without doing real work)
+ * should not trigger notification sounds.
+ */
+const SPAWN_GRACE_PERIOD_MS = 5_000;
+
+/**
+ * Grace period after service initialization during which all agent sounds are
+ * suppressed. On app startup, restored terminals re-emit spawn and state events
+ * which would otherwise produce unwanted notification sounds.
+ */
+const BOOT_GRACE_PERIOD_MS = 8_000;
+
 interface PendingNotification {
   title: string;
   body: string;
@@ -50,23 +64,50 @@ class AgentNotificationService {
   private completionBurstTimer: NodeJS.Timeout | null = null;
   private completionBurstSoundFile: string | undefined;
   private waitingTerminalIds = new Set<string>();
+  /** Tracks when each agent spawned to suppress sounds during the grace period */
+  private agentSpawnTimestamps = new Map<string, number>();
+  /** Timestamp when the service was initialized — sounds are suppressed during boot */
+  private initializedAt = 0;
 
   syncWatchedPanels(panelIds: string[]): void {
     this.watchedTerminals = new Set(panelIds);
   }
 
   initialize(): void {
+    this.initializedAt = Date.now();
+
     const unsubStateChanged = events.on("agent:state-changed", (payload) => {
       this.handleStateChanged(payload);
     });
 
-    const unsubSpawned = events.on("agent:spawned", () => {
-      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+    const unsubSpawned = events.on("agent:spawned", (payload) => {
+      const agentKey = payload.agentId ?? payload.terminalId;
+      if (agentKey) {
+        this.agentSpawnTimestamps.set(agentKey, Date.now());
+      }
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled && !this.isWithinBootGrace()) {
         soundService.play("agent-spawned");
       }
     });
 
     this.unsubscribers.push(unsubStateChanged, unsubSpawned);
+  }
+
+  private isWithinBootGrace(): boolean {
+    return Date.now() - this.initializedAt < BOOT_GRACE_PERIOD_MS;
+  }
+
+  private isWithinSpawnGrace(agentId?: string, terminalId?: string): boolean {
+    const key = agentId ?? terminalId;
+    if (!key) return false;
+    const spawnTime = this.agentSpawnTimestamps.get(key);
+    if (spawnTime === undefined) return false;
+    const elapsed = Date.now() - spawnTime;
+    if (elapsed >= SPAWN_GRACE_PERIOD_MS) {
+      this.agentSpawnTimestamps.delete(key);
+      return false;
+    }
+    return true;
   }
 
   private handleStateChanged(payload: {
@@ -80,6 +121,13 @@ class AgentNotificationService {
   }): void {
     const { state, previousState, worktreeId, terminalId, agentId, waitingReason } = payload;
     const settings = projectStore.getEffectiveNotificationSettings();
+
+    // Clear spawn grace tracking once the agent starts doing real work
+    // (waiting→working means the user gave input, so future waiting sounds are legitimate)
+    if (state === "working" && previousState === "waiting") {
+      const key = agentId ?? terminalId;
+      if (key) this.agentSpawnTimestamps.delete(key);
+    }
 
     // All-clear tracking runs regardless of notification settings
     this.checkAllClear(state, previousState);
@@ -119,7 +167,9 @@ class AgentNotificationService {
     if (settings.enabled === false) return;
 
     // Schedule waiting escalation for docked agents (independent of watched status)
-    if (state === "waiting" && terminalId) {
+    // Suppress during spawn grace period — agents that initialize directly into waiting
+    // should not trigger escalation sounds.
+    if (state === "waiting" && terminalId && !this.isWithinSpawnGrace(agentId, terminalId)) {
       this.scheduleWaitingEscalation(terminalId, worktreeId, agentId);
     }
 
@@ -142,7 +192,11 @@ class AgentNotificationService {
 
     if (state === "completed" && settings.completedEnabled) {
       this.scheduleCompletionNotification(key, worktreeId, terminalId, agentId);
-    } else if (state === "waiting" && settings.waitingEnabled) {
+    } else if (
+      state === "waiting" &&
+      settings.waitingEnabled &&
+      !this.isWithinSpawnGrace(agentId, terminalId)
+    ) {
       this.waitingBurstBuffer.push({
         worktreeId,
         terminalId,
@@ -565,6 +619,7 @@ class AgentNotificationService {
     this.completionBurstSoundFile = undefined;
 
     this.waitingTerminalIds.clear();
+    this.agentSpawnTimestamps.clear();
     this.notificationQueue = [];
     this.hasEverGoneWorking = false;
     this.peakConcurrentWorking = 0;
