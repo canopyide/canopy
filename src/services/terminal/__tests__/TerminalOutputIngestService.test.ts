@@ -27,8 +27,9 @@ class MockWorker {
   }
 }
 
-// HIGH_WATERMARK = 128 * 1024 = 131072 bytes
-// LOW_WATERMARK  =  32 * 1024 =  32768 bytes
+// HIGH_WATERMARK          = 128 * 1024 = 131072 bytes
+// LOW_WATERMARK           =  32 * 1024 =  32768 bytes
+// COALESCE_BATCH_CAP      = 256 * 1024 = 262144 bytes
 // chunkByteSize for strings = data.length
 
 describe("TerminalOutputIngestService", () => {
@@ -141,6 +142,141 @@ describe("TerminalOutputIngestService", () => {
     service.notifyWriteComplete("term-1", 140_000);
     expect(writeToTerminal).toHaveBeenCalledTimes(2);
     expect(writeToTerminal).toHaveBeenCalledWith("term-1", "abc");
+  });
+
+  it("caps coalesced batch at 256 KB and drains remainder on next acknowledgment", () => {
+    const writeToTerminal = vi.fn();
+    const service = new TerminalOutputIngestService(writeToTerminal);
+
+    // Exceed watermark to start buffering
+    const largeData = "x".repeat(140_000);
+    service.bufferData("term-1", largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Queue 3 chunks of 150 KB each = 450 KB total, exceeds 256 KB cap
+    const chunk150k = "a".repeat(150_000);
+    service.bufferData("term-1", chunk150k);
+    service.bufferData("term-1", chunk150k);
+    service.bufferData("term-1", chunk150k);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Acknowledge first write to trigger drain
+    service.notifyWriteComplete("term-1", 140_000);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+
+    // First capped batch should be 2 chunks (300,000 > 256 KB cap, but do-while takes first
+    // chunk unconditionally, second chunk fits: 150,000 + 150,000 = 300,000 > cap, so only
+    // first chunk is taken = 150,000 bytes)
+    const secondCall = writeToTerminal.mock.calls[1][1] as string;
+    expect(secondCall.length).toBe(150_000);
+
+    // Acknowledge to drain the next batch
+    service.notifyWriteComplete("term-1", 150_000);
+    expect(writeToTerminal).toHaveBeenCalledTimes(3);
+    // Second batch: two remaining 150k chunks = 300k > cap, so takes only one
+    const thirdCall = writeToTerminal.mock.calls[2][1] as string;
+    expect(thirdCall.length).toBe(150_000);
+
+    // Acknowledge to drain the last chunk
+    service.notifyWriteComplete("term-1", 150_000);
+    expect(writeToTerminal).toHaveBeenCalledTimes(4);
+    const fourthCall = writeToTerminal.mock.calls[3][1] as string;
+    expect(fourthCall.length).toBe(150_000);
+  });
+
+  it("passes through a single oversized chunk without stalling", () => {
+    const writeToTerminal = vi.fn();
+    const service = new TerminalOutputIngestService(writeToTerminal);
+
+    // Exceed watermark to start buffering
+    const largeData = "x".repeat(140_000);
+    service.bufferData("term-1", largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Queue a single chunk > 256 KB
+    const oversized = "z".repeat(400_000);
+    service.bufferData("term-1", oversized);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Acknowledge to drain — single chunk should pass through via the length===1 fast path
+    service.notifyWriteComplete("term-1", 140_000);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", oversized);
+  });
+
+  it("uses fast path when total queued bytes exactly equal the cap", () => {
+    const writeToTerminal = vi.fn();
+    const service = new TerminalOutputIngestService(writeToTerminal);
+
+    // Exceed watermark to start buffering
+    const largeData = "x".repeat(140_000);
+    service.bufferData("term-1", largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Queue chunks totaling exactly 262144 bytes (COALESCE_BATCH_CAP_BYTES)
+    const chunkA = "a".repeat(131_072);
+    const chunkB = "b".repeat(131_072);
+    service.bufferData("term-1", chunkA);
+    service.bufferData("term-1", chunkB);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Acknowledge to drain — should coalesce all into one write (fast path)
+    service.notifyWriteComplete("term-1", 140_000);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    const batch = writeToTerminal.mock.calls[1][1] as string;
+    expect(batch.length).toBe(262_144);
+  });
+
+  it("caps coalesced batch correctly with many small chunks", () => {
+    const writeToTerminal = vi.fn();
+    const service = new TerminalOutputIngestService(writeToTerminal);
+
+    // Exceed watermark to start buffering
+    const largeData = "x".repeat(140_000);
+    service.bufferData("term-1", largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Queue 500 chunks of 1024 bytes each = 512 KB total (> 256 KB cap)
+    for (let i = 0; i < 500; i++) {
+      service.bufferData("term-1", "a".repeat(1024));
+    }
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Acknowledge to trigger drain — first batch should be capped
+    service.notifyWriteComplete("term-1", 140_000);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    const firstBatch = writeToTerminal.mock.calls[1][1] as string;
+    // do-while takes chunks until adding next would exceed 256 KB
+    // 256 chunks × 1024 = 262144 = exactly cap, so 257th would push over
+    expect(firstBatch.length).toBe(256 * 1024);
+
+    // Acknowledge to drain remainder (244 chunks × 1024 = 249856 < cap → fast path)
+    service.notifyWriteComplete("term-1", firstBatch.length);
+    expect(writeToTerminal).toHaveBeenCalledTimes(3);
+    const secondBatch = writeToTerminal.mock.calls[2][1] as string;
+    expect(secondBatch.length).toBe(244 * 1024);
+  });
+
+  it("forceDrain bypasses cap and writes all buffered data", () => {
+    const writeToTerminal = vi.fn();
+    const service = new TerminalOutputIngestService(writeToTerminal);
+
+    // Exceed watermark to start buffering
+    const largeData = "x".repeat(140_000);
+    service.bufferData("term-1", largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Queue 400 KB across multiple chunks (exceeds 256 KB cap)
+    const chunk200k = "b".repeat(200_000);
+    service.bufferData("term-1", chunk200k);
+    service.bufferData("term-1", chunk200k);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // forceDrain (via flushForTerminal) should write ALL data in one call
+    service.flushForTerminal("term-1");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    const flushed = writeToTerminal.mock.calls[1][1] as string;
+    expect(flushed.length).toBe(400_000);
   });
 
   it("defers drain via setTimeout for ink erase-line sequences", () => {
