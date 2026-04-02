@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   enabled: true,
   completedEnabled: false,
   waitingEnabled: false,
-  soundEnabled: false,
+  soundEnabled: true,
   completedSoundFile: "complete.wav",
   waitingSoundFile: "waiting.wav",
   escalationSoundFile: "ping.wav",
@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   waitingEscalationDelayMs: 180_000,
   workingPulseEnabled: false,
   workingPulseSoundFile: "pulse.wav",
-  uiFeedbackSoundEnabled: false,
+  uiFeedbackSoundEnabled: true,
 };
 
 type LoadState = "loading" | "ready" | "error";
