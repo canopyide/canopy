@@ -250,11 +250,11 @@
 
       /* ── Worktree card skeleton ── */
       .skel-card {
-        padding: 12px 16px; /* py-3 px-4 matches actual */
+        padding: 12px 16px;
         border-bottom: 1px solid var(--theme-border-default, #282828);
         display: flex;
         flex-direction: column;
-        gap: 4px; /* mt-1 between title and metadata rows */
+        gap: 8px;
       }
 
       /* ── Main content area ── */
@@ -708,26 +708,38 @@
             <div class="skel-search-input"></div>
           </div>
 
-          <!-- Worktree cards (ghost hints matching actual py-3 px-4 card anatomy) -->
+          <!-- Worktree cards (~120px each, title + metadata + details hint) -->
           <div class="skel-card">
-            <div class="skel-shape" style="width: 40%; height: 13px; border-radius: 3px"></div>
-            <div class="skel-shape" style="width: 30%; height: 11px; border-radius: 3px"></div>
+            <div class="skel-shape" style="width: 35%; height: 13px; border-radius: 3px"></div>
+            <div class="skel-shape" style="width: 50%; height: 11px; border-radius: 3px"></div>
+            <div
+              class="skel-shape"
+              style="width: 90%; height: 32px; border-radius: 6px; margin-top: 4px"
+            ></div>
           </div>
           <div class="skel-card">
-            <div class="skel-shape" style="width: 65%; height: 13px; border-radius: 3px"></div>
-            <div class="skel-shape" style="width: 45%; height: 11px; border-radius: 3px"></div>
+            <div class="skel-shape" style="width: 60%; height: 13px; border-radius: 3px"></div>
+            <div class="skel-shape" style="width: 40%; height: 11px; border-radius: 3px"></div>
+            <div
+              class="skel-shape"
+              style="width: 90%; height: 32px; border-radius: 6px; margin-top: 4px"
+            ></div>
           </div>
           <div class="skel-card">
             <div class="skel-shape" style="width: 50%; height: 13px; border-radius: 3px"></div>
-            <div class="skel-shape" style="width: 35%; height: 11px; border-radius: 3px"></div>
-          </div>
-          <div class="skel-card">
-            <div class="skel-shape" style="width: 55%; height: 13px; border-radius: 3px"></div>
-            <div class="skel-shape" style="width: 40%; height: 11px; border-radius: 3px"></div>
+            <div class="skel-shape" style="width: 45%; height: 11px; border-radius: 3px"></div>
+            <div
+              class="skel-shape"
+              style="width: 90%; height: 32px; border-radius: 6px; margin-top: 4px"
+            ></div>
           </div>
           <div class="skel-card">
             <div class="skel-shape" style="width: 45%; height: 13px; border-radius: 3px"></div>
-            <div class="skel-shape" style="width: 28%; height: 11px; border-radius: 3px"></div>
+            <div class="skel-shape" style="width: 55%; height: 11px; border-radius: 3px"></div>
+            <div
+              class="skel-shape"
+              style="width: 90%; height: 32px; border-radius: 6px; margin-top: 4px"
+            ></div>
           </div>
         </div>
 
