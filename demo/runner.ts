@@ -3,7 +3,7 @@ import path from "node:path";
 import { launchApp, closeApp } from "../e2e/helpers/launch.js";
 import { Stage } from "./stage.js";
 import type { ScenarioConfig } from "./stage.js";
-import type { DemoEncodePayload } from "../shared/types/ipc/demo.js";
+import type { DemoEncodePreset } from "../shared/types/ipc/demo.js";
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -32,7 +32,7 @@ async function run(): Promise<void> {
   const config = mod.default;
 
   const outputPath = values.output ?? config.outputFile;
-  const preset = (values.preset ?? config.preset) as DemoEncodePayload["preset"];
+  const preset = (values.preset ?? config.preset) as DemoEncodePreset;
   const parsedFps = values.fps ? parseInt(values.fps, 10) : (config.fps ?? 30);
   const fps = Number.isFinite(parsedFps) && parsedFps > 0 ? parsedFps : 30;
 
@@ -41,12 +41,14 @@ async function run(): Promise<void> {
     extraArgs: ["--demo-mode"],
   });
 
+  let stage: Stage | undefined;
   try {
-    const stage = await Stage.create(window);
+    stage = await Stage.create(window);
     console.log(`Stage ready. Running ${config.scenes.length} scene(s)...`);
 
-    const capture = await stage.startCapture({ fps });
-    console.log(`Capturing at ${fps} fps → ${capture.outputDir}`);
+    const resolvedOutput = path.resolve(outputPath);
+    const capture = await stage.startCapture({ fps, outputPath: resolvedOutput, preset });
+    console.log(`Capturing at ${fps} fps → ${capture.outputPath}`);
 
     for (let i = 0; i < config.scenes.length; i++) {
       console.log(`  Scene ${i + 1}/${config.scenes.length}...`);
@@ -57,25 +59,16 @@ async function run(): Promise<void> {
     console.log(`Captured ${stopResult.frameCount} frames.`);
 
     if (stopResult.frameCount === 0) {
-      console.error("No frames captured — skipping encode.");
+      console.error("No frames captured.");
       process.exitCode = 1;
       return;
     }
 
-    const resolvedOutput = path.resolve(outputPath);
-    console.log(`Encoding → ${resolvedOutput} (preset: ${preset})...`);
-    const result = await stage.encode({
-      framesDir: stopResult.outputDir,
-      outputPath: resolvedOutput,
-      preset,
-      fps,
-    });
-    console.log(`Done in ${(result.durationMs / 1000).toFixed(1)}s → ${result.outputPath}`);
+    console.log(`Done → ${stopResult.outputPath}`);
   } catch (err) {
     console.error("Scene failed:", err);
-    // Stop capture to free timer if still running
     try {
-      await Stage.create(window).then((s) => s.stopCapture());
+      await stage?.stopCapture();
     } catch {
       // Already stopped or app crashed
     }

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- page.evaluate() runs in browser context where window.electron is untyped */
 import type { Page } from "@playwright/test";
 import type {
+  DemoAnnotateResult,
   DemoEncodePayload,
   DemoEncodeResult,
   DemoStartCapturePayload,
@@ -98,5 +99,66 @@ export class Stage {
 
   async encode(payload: DemoEncodePayload): Promise<DemoEncodeResult> {
     return this.page.evaluate((p) => (window as any).electron.demo.encode(p), payload);
+  }
+
+  async scroll(selector: string): Promise<void> {
+    await this.page.evaluate((sel) => (window as any).electron.demo.scroll(sel), selector);
+  }
+
+  async drag(fromSelector: string, toSelector: string, durationMs?: number): Promise<void> {
+    await this.page.evaluate(
+      ([from, to, dur]) => (window as any).electron.demo.drag(from, to, dur),
+      [fromSelector, toSelector, durationMs] as const
+    );
+  }
+
+  async pressKey(
+    key: string,
+    code?: string,
+    modifiers?: Array<"mod" | "ctrl" | "shift" | "alt" | "meta">,
+    selector?: string
+  ): Promise<void> {
+    await this.page.evaluate(
+      ([k, c, mods, sel]) => (window as any).electron.demo.pressKey(k, c, mods, sel),
+      [key, code, modifiers, selector] as const
+    );
+  }
+
+  async spotlight(selector: string, padding?: number): Promise<void> {
+    await this.page.evaluate(([sel, pad]) => (window as any).electron.demo.spotlight(sel, pad), [
+      selector,
+      padding,
+    ] as const);
+  }
+
+  async dismissSpotlight(): Promise<void> {
+    await this.page.evaluate(() => (window as any).electron.demo.dismissSpotlight());
+  }
+
+  async annotate(
+    selector: string,
+    text: string,
+    position?: "top" | "bottom" | "left" | "right",
+    id?: string
+  ): Promise<DemoAnnotateResult> {
+    return this.page.evaluate(
+      ([sel, txt, pos, annotationId]) =>
+        (window as any).electron.demo.annotate(sel, txt, pos, annotationId),
+      [selector, text, position, id] as const
+    );
+  }
+
+  async dismissAnnotation(id?: string): Promise<void> {
+    await this.page.evaluate(
+      (annotationId) => (window as any).electron.demo.dismissAnnotation(annotationId),
+      id
+    );
+  }
+
+  async waitForIdle(settleMs?: number, timeoutMs?: number): Promise<void> {
+    await this.page.evaluate(
+      ([settle, timeout]) => (window as any).electron.demo.waitForIdle(settle, timeout),
+      [settleMs, timeoutMs] as const
+    );
   }
 }
