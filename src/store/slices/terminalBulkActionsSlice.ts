@@ -142,7 +142,8 @@ export const createTerminalBulkActionsSlice = (
         : null;
       const hasGridFocus =
         currentFocusedTerminal != null &&
-        (currentFocusedTerminal.location === "grid" || currentFocusedTerminal.location === undefined);
+        (currentFocusedTerminal.location === "grid" ||
+          currentFocusedTerminal.location === undefined);
 
       terminalsToMove.forEach((t) => moveTerminalToGrid(t.id));
 
@@ -239,7 +240,8 @@ export const createTerminalBulkActionsSlice = (
         : null;
       const hasGridFocus =
         currentFocusedTerminal != null &&
-        (currentFocusedTerminal.location === "grid" || currentFocusedTerminal.location === undefined);
+        (currentFocusedTerminal.location === "grid" ||
+          currentFocusedTerminal.location === undefined);
 
       terminalsToMove.forEach((t) => moveTerminalToGrid(t.id));
 
