@@ -1446,6 +1446,13 @@ port.on("message", async (rawMsg: any) => {
         break;
       }
 
+      case "set-process-tree-poll-interval": {
+        if (typeof msg.ms === "number" && msg.ms > 0) {
+          processTreeCache.setPollInterval(msg.ms);
+        }
+        break;
+      }
+
       case "dispose":
         cleanup();
         break;

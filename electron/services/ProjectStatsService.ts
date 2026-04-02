@@ -5,7 +5,7 @@ import { projectStore } from "./ProjectStore.js";
 import type { PtyClient } from "./PtyClient.js";
 import type { ProjectStatusMap } from "../../shared/types/ipc/project.js";
 
-const POLL_INTERVAL_MS = 5_000;
+const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEBOUNCE_MS = 200;
 
 export class ProjectStatsService {
@@ -14,6 +14,7 @@ export class ProjectStatsService {
   private unsubscribeAgentState: (() => void) | null = null;
   private started = false;
   private lastBroadcast: ProjectStatusMap = {};
+  private pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
 
   constructor(private ptyClient: PtyClient | undefined | null) {}
 
@@ -25,11 +26,26 @@ export class ProjectStatsService {
 
     this.intervalId = setInterval(() => {
       void this.computeAndBroadcast();
-    }, POLL_INTERVAL_MS);
+    }, this.pollIntervalMs);
 
     this.unsubscribeAgentState = events.on("agent:state-changed", () => {
       this.debouncedCompute();
     });
+  }
+
+  updatePollInterval(ms: number): void {
+    if (this.pollIntervalMs === ms) return;
+    this.pollIntervalMs = ms;
+    if (this.started && this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = setInterval(() => {
+        void this.computeAndBroadcast();
+      }, this.pollIntervalMs);
+    }
+  }
+
+  refresh(): void {
+    void this.computeAndBroadcast();
   }
 
   stop(): void {
