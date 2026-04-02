@@ -13,7 +13,7 @@ Create polished demo videos of Canopy by writing scenario scripts and recording 
 2. **Create a scene file** — Add `demo/scenes/<name>.ts`. Export a default `ScenarioConfig` object.
 3. **Write scenes** — Each scene is an async function receiving a `Stage` instance. Compose primitives to script the interaction.
 4. **Configure output** — Set `outputFile`, `preset`, and `fps` in your `ScenarioConfig`.
-5. **Test interactively** — Run `npm run demo` to launch Electron in demo mode and verify your scenario visually.
+5. **Test interactively** — Run `npm run demo` to launch Electron in demo mode for manual visual inspection of the app state before recording.
 6. **Record** — Run `npm run demo:record -- --scenario <name>` to capture a video. Override defaults with `--output <path>`, `--preset <preset>`, `--fps <n>`.
 
 ## Key Files
