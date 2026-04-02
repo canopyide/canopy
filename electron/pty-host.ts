@@ -228,6 +228,8 @@ function toStringForIpc(data: string | Uint8Array): string {
   return typeof data === "string" ? data : textDecoder.decode(data);
 }
 
+const dataLogCounters = new Map<string, number>();
+
 // Wire up PtyManager events
 ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // Terminal output always updates headless state; visual streaming can be suspended under backpressure.
@@ -248,6 +250,22 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // (IPC events in the main process), so these must always use the IPC fallback path.
   let visualWritten = isSuspended;
 
+  // Log first 3 data events per terminal to trace routing decisions
+  const dataLogCount = (dataLogCounters.get(id) ?? 0) + 1;
+  dataLogCounters.set(id, dataLogCount);
+  const shouldLogData = dataLogCount <= 3;
+
+  if (shouldLogData) {
+    const byteLen = typeof data === "string" ? data.length : data.byteLength;
+    console.log(
+      `[PtyHost.data] #${dataLogCount} for ${id}: ${byteLen} bytes, ` +
+        `tier=${activityTier}, suspended=${isSuspended}, ` +
+        `termProject=${terminalInfo?.projectId ?? "unknown"}, ` +
+        `rendererConns=${rendererConnections.size}, ` +
+        `windowProjects=${JSON.stringify(Object.fromEntries(windowProjectMap))}`
+    );
+  }
+
   if (
     !isSuspended &&
     !isBackgrounded &&
@@ -259,7 +277,18 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
 
     for (const [windowId, conn] of rendererConnections) {
       const windowProject = windowProjectMap.get(windowId) ?? null;
-      if (windowProject !== null && terminalInfo?.projectId !== windowProject) continue;
+      const termProject = terminalInfo?.projectId ?? null;
+      const filtered = windowProject !== null && termProject !== windowProject;
+
+      if (shouldLogData) {
+        console.log(
+          `[PtyHost.data] Route check for ${id} → window ${windowId}: ` +
+            `windowProject=${windowProject}, termProject=${termProject}, ` +
+            `filtered=${filtered}, atCapacity=${conn.portQueueManager.isAtCapacity(id, byteCount)}`
+        );
+      }
+
+      if (filtered) continue;
 
       if (!conn.portQueueManager.isAtCapacity(id, byteCount)) {
         try {
@@ -273,6 +302,14 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
       }
     }
     // If at capacity on all ports, fall through to SAB or IPC fallback
+  }
+
+  // Log when data falls through all visual paths
+  if (!visualWritten && shouldLogData && !isBackgrounded && !isSuspended) {
+    console.log(
+      `[PtyHost.data] FALLTHROUGH for ${id}: no visual path delivered data. ` +
+        `rendererConns=${rendererConnections.size}`
+    );
   }
 
   // PRIORITY 2: SHARED ARRAY BUFFER (Zero-Copy Fallback)
@@ -689,6 +726,11 @@ port.on("message", async (rawMsg: any) => {
     switch (msg.type) {
       case "connect-port": {
         // Receive MessagePort for direct Renderer ↔ Pty Host communication (per-window)
+        console.log(
+          `[PtyHost] connect-port: windowId=${msg.windowId}, ` +
+            `currentProject=${windowProjectMap.get(msg.windowId) ?? "unset"}, ` +
+            `existingConn=${rendererConnections.has(msg.windowId)}`
+        );
         const windowId: number | undefined = msg.windowId;
         if (typeof windowId !== "number") {
           console.warn("[PtyHost] connect-port missing windowId, ignoring");
@@ -822,13 +864,23 @@ port.on("message", async (rawMsg: any) => {
       }
 
       case "set-active-project": {
+        const prevProject = windowProjectMap.get(msg.windowId);
         windowProjectMap.set(msg.windowId, msg.projectId);
+        console.log(
+          `[PtyHost] set-active-project: window=${msg.windowId}, ` +
+            `prev=${prevProject ?? "unset"}, new=${msg.projectId}`
+        );
         recomputeActivityTiers();
         break;
       }
 
       case "project-switch": {
+        const prevProject2 = windowProjectMap.get(msg.windowId);
         windowProjectMap.set(msg.windowId, msg.projectId);
+        console.log(
+          `[PtyHost] project-switch: window=${msg.windowId}, ` +
+            `prev=${prevProject2 ?? "unset"}, new=${msg.projectId}`
+        );
         recomputeActivityTiers();
         break;
       }

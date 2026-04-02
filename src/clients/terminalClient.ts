@@ -260,11 +260,13 @@ export const terminalClient = {
         `messagePortConnected=${messagePortConnected}, cbCount=${cbs.size}`
     );
 
-    // IPC fallback: skip dispatch when MessagePort is delivering data
+    // IPC fallback: always dispatch IPC data. The pty-host ensures each data chunk is sent
+    // through exactly ONE visual path (MessagePort, SAB, or IPC) via a `visualWritten` flag,
+    // so there is no double-delivery risk. Previously this path was suppressed when
+    // messagePortConnected was true, but that caused data loss when the pty-host's per-window
+    // project filter routed data through IPC instead of MessagePort (e.g., during project
+    // switch when windowProjectMap hasn't updated yet).
     const ipcCleanup = window.electron.terminal.onData(id, (data: string | Uint8Array) => {
-      if (messagePortConnected) return;
-      const bytes = typeof data === "string" ? data.length : data.byteLength;
-      console.log(`[TerminalClient.ipc] IPC data for ${id}: ${bytes} bytes`);
       callback(data);
     });
 

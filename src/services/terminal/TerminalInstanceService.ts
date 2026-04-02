@@ -428,6 +428,15 @@ class TerminalInstanceService {
           : TerminalRefreshTier.VISIBLE;
         this.rendererPolicy.applyRendererPolicy(id, tier);
 
+        // Force DOM reflow to trigger xterm.js's IntersectionObserver (see attach() comment).
+        const termEl = managed.terminal.element;
+        if (termEl) {
+          const origDisplay = termEl.style.display;
+          termEl.style.display = "none";
+          void termEl.offsetHeight;
+          termEl.style.display = origDisplay;
+        }
+
         requestAnimationFrame(() => {
           const current = this.instances.get(id);
           if (current && current.isVisible) {
@@ -1033,6 +1042,21 @@ class TerminalInstanceService {
         if (!managed.terminal.element) {
           managed.hostElement.style.opacity = "";
           return;
+        }
+
+        // Force DOM reflow to trigger xterm.js's internal IntersectionObserver.
+        // xterm.js pauses rendering (_isPaused=true) when its container is not intersecting.
+        // In Electron's WebContentsView architecture, switching views doesn't reliably fire
+        // the observer, so terminals stay paused and drop all render frames despite receiving
+        // data. Toggling display + reading offsetHeight forces a synchronous reflow that
+        // makes the observer re-evaluate, unpausing the renderer.
+        const termEl = managed.terminal.element;
+        if (termEl) {
+          const origDisplay = termEl.style.display;
+          termEl.style.display = "none";
+          void termEl.offsetHeight;
+          termEl.style.display = origDisplay;
+          console.log(`[TIS.attach] Forced IntersectionObserver reflow for ${id}`);
         }
 
         const reveal = () => {
