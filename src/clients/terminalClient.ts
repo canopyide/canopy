@@ -23,11 +23,24 @@ const earlyDataBuffer = new Map<string, Array<string | Uint8Array>>();
 const pendingPortAckBytes = new Map<string, number[]>();
 const MAX_EARLY_BUFFER_CHUNKS = 500;
 
+const portDataLogCounters = new Map<string, number>();
+
 function installPortDataHandler(port: MessagePort): void {
   port.addEventListener("message", (event: MessageEvent) => {
     const msg = event.data as PtyHostToRendererMessage;
     if (msg?.type === "data" && typeof msg.id === "string") {
       const byteCount = msg.bytes ?? 0;
+
+      // Log first few data arrivals per terminal
+      const count = (portDataLogCounters.get(msg.id) ?? 0) + 1;
+      portDataLogCounters.set(msg.id, count);
+      if (count <= 5) {
+        const hasCbs = dataCallbacks.has(msg.id);
+        console.log(
+          `[TerminalClient.port] Data #${count} for ${msg.id}: ${byteCount} bytes, ` +
+            `hasCallbacks=${hasCbs}, cbCount=${dataCallbacks.get(msg.id)?.size ?? 0}`
+        );
+      }
 
       const cbs = dataCallbacks.get(msg.id);
       if (cbs) {
@@ -47,6 +60,10 @@ function installPortDataHandler(port: MessagePort): void {
       } else {
         // Early-buffer path: no xterm write will happen yet, ACK immediately
         // to keep the PTY host queue draining during startup.
+        console.log(
+          `[TerminalClient.port] Early-buffering data for ${msg.id}: ${byteCount} bytes ` +
+            `(buffer size: ${(earlyDataBuffer.get(msg.id)?.length ?? 0) + 1})`
+        );
         try {
           port.postMessage({ type: "ack", id: msg.id, bytes: byteCount });
         } catch {
@@ -67,15 +84,21 @@ function installPortDataHandler(port: MessagePort): void {
 }
 
 function activatePort(port: MessagePort): void {
+  const hadPrevious = !!messagePort;
   if (messagePort) messagePort.close();
   messagePort = port;
   messagePortConnected = true;
+  console.log(
+    `[TerminalClient] activatePort: hadPrevious=${hadPrevious}, messagePortConnected=true`
+  );
   installPortDataHandler(port);
   port.addEventListener("close", () => {
     if (messagePort === port) {
       messagePort = null;
       messagePortConnected = false;
-      logDebug("[TerminalClient] MessagePort closed, falling back to IPC");
+      console.log("[TerminalClient] MessagePort closed, falling back to IPC");
+    } else {
+      console.log("[TerminalClient] Stale MessagePort closed (already replaced)");
     }
   });
   port.start();
@@ -223,15 +246,25 @@ export const terminalClient = {
     // Flush any data that arrived before callbacks were registered
     const buffered = earlyDataBuffer.get(id);
     if (buffered) {
+      console.log(
+        `[TerminalClient.onData] Flushing ${buffered.length} early-buffered chunks for ${id}`
+      );
       earlyDataBuffer.delete(id);
       for (const data of buffered) {
         callback(data);
       }
     }
 
+    console.log(
+      `[TerminalClient.onData] Registered callback for ${id}: ` +
+        `messagePortConnected=${messagePortConnected}, cbCount=${cbs.size}`
+    );
+
     // IPC fallback: skip dispatch when MessagePort is delivering data
     const ipcCleanup = window.electron.terminal.onData(id, (data: string | Uint8Array) => {
       if (messagePortConnected) return;
+      const bytes = typeof data === "string" ? data.length : data.byteLength;
+      console.log(`[TerminalClient.ipc] IPC data for ${id}: ${bytes} bytes`);
       callback(data);
     });
 
@@ -274,6 +307,7 @@ export const terminalClient = {
   },
 
   setActivityTier: (id: string, tier: "active" | "background"): void => {
+    console.log(`[TerminalClient] setActivityTier(${id}, ${tier})`);
     window.electron.terminal.setActivityTier(id, tier);
   },
 

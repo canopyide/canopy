@@ -1,11 +1,7 @@
-import { terminalClient } from "@/clients";
-import type {
-  WorkerInboundMessage,
-  WorkerOutboundMessage,
-} from "@shared/types/terminal-output-worker-messages";
+import type { WorkerInboundMessage } from "@shared/types/terminal-output-worker-messages";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
-import { logDebug, logWarn, logError } from "@/utils/logger";
+import { logDebug } from "@/utils/logger";
 
 const RENDERER_HIGH_WATERMARK_BYTES = 128 * 1024;
 const RENDERER_LOW_WATERMARK_BYTES = 32 * 1024;
@@ -38,59 +34,18 @@ export class TerminalOutputIngestService {
   }
 
   private async initializeImpl(): Promise<void> {
-    try {
-      const { visualBuffers, signalBuffer } = await terminalClient.getSharedBuffers();
-      if (visualBuffers.length > 0 && signalBuffer) {
-        this.sabAvailable = true;
-        this.worker = new Worker(
-          new URL("../../workers/terminalOutput.worker.ts", import.meta.url),
-          { type: "module" }
-        );
-
-        this.worker.onmessage = (event: MessageEvent<WorkerOutboundMessage>) => {
-          const message = event.data;
-          if (message.type === "OUTPUT_BATCH") {
-            for (const batch of message.batches) {
-              this.markTerminalDataReceived(batch.id, batch.data);
-              this.enqueueChunk(batch.id, batch.data);
-            }
-          }
-        };
-
-        this.worker.onerror = (error) => {
-          logError("[TerminalOutputIngestService] Worker error", error);
-          this.pollingActive = false;
-          this.sabAvailable = false;
-          this.worker?.terminate();
-          this.worker = null;
-          this.initializePromise = null;
-        };
-
-        const initMessage: WorkerInboundMessage = {
-          type: "INIT_BUFFER",
-          buffers: visualBuffers,
-          signalBuffer,
-        };
-        this.worker.postMessage(initMessage);
-        this.pollingActive = true;
-        logDebug("[TerminalOutputIngestService] Worker-based SAB ingestion enabled", {
-          shardCount: visualBuffers.length,
-        });
-      } else {
-        logDebug("[TerminalOutputIngestService] SharedArrayBuffer unavailable, using IPC");
-        this.sabAvailable = false;
-        this.pollingActive = false;
-        this.worker = null;
-        this.initializePromise = null;
-      }
-    } catch (error) {
-      logWarn("[TerminalOutputIngestService] Failed to initialize SharedArrayBuffer", { error });
-      this.sabAvailable = false;
-      this.pollingActive = false;
-      this.worker?.terminate();
-      this.worker = null;
-      this.initializePromise = null;
-    }
+    // SAB worker is intentionally disabled. SharedArrayBuffer ring buffers use a single shared
+    // read pointer (single-consumer design), but per-project WebContentsViews each create their
+    // own worker polling the same buffers. This causes a race where one view's worker consumes
+    // data meant for another view, silently dropping terminal output.
+    //
+    // MessagePort is now the primary data path (like VS Code). It routes data per-window with
+    // project filtering, ensuring each view receives only its own terminals' output.
+    // Data flows: pty-host → MessagePort → terminalClient.onData → bufferData → writeToTerminal.
+    logDebug("[TerminalOutputIngestService] Using MessagePort data path (SAB worker disabled)");
+    this.sabAvailable = false;
+    this.pollingActive = false;
+    this.worker = null;
   }
 
   public isEnabled(): boolean {

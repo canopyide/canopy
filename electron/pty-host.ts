@@ -238,13 +238,47 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // Analysis buffer writes still occur for agent state detection
   const activityTier = backpressureManager.getActivityTier(id);
   const isBackgrounded = activityTier === "background";
-  // PRIORITY 1: VISUAL RENDERER (Zero-Latency Path)
-  // Write to SharedArrayBuffer immediately before doing ANY processing.
-  // This ensures terminal output reaches xterm.js with minimal latency.
-  // Skip visual writes if suspended, but continue to analysis buffer for agent state detection.
+  // PRIORITY 1: MESSAGEPORT (Per-Window Routed Path)
+  // Send data directly to renderer windows via MessagePort with per-window project filtering.
+  // MessagePort is primary because SharedArrayBuffer ring buffers use a single shared read pointer
+  // (single-consumer design). With per-project WebContentsViews, multiple SAB workers race on the
+  // same read pointer, causing data meant for one view to be consumed by another view's worker
+  // and silently dropped. MessagePort avoids this by routing data to the correct project view.
+  // Skip MessagePort for smoke test terminals — the smoke test monitors data via PtyClient
+  // (IPC events in the main process), so these must always use the IPC fallback path.
   let visualWritten = isSuspended;
 
-  if (!isSuspended && !isBackgrounded && visualBuffers.length > 0) {
+  if (
+    !isSuspended &&
+    !isBackgrounded &&
+    rendererConnections.size > 0 &&
+    !isSmokeTestTerminalId(id)
+  ) {
+    const dataString = toStringForIpc(data);
+    const byteCount = Buffer.byteLength(dataString, "utf8");
+
+    for (const [windowId, conn] of rendererConnections) {
+      const windowProject = windowProjectMap.get(windowId) ?? null;
+      if (windowProject !== null && terminalInfo?.projectId !== windowProject) continue;
+
+      if (!conn.portQueueManager.isAtCapacity(id, byteCount)) {
+        try {
+          conn.port.postMessage({ type: "data", id, data: dataString, bytes: byteCount });
+          conn.portQueueManager.addBytes(id, byteCount);
+          conn.portQueueManager.applyBackpressure(id, conn.portQueueManager.getUtilization(id));
+          visualWritten = true;
+        } catch {
+          disconnectWindow(windowId, "postMessage-error");
+        }
+      }
+    }
+    // If at capacity on all ports, fall through to SAB or IPC fallback
+  }
+
+  // PRIORITY 2: SHARED ARRAY BUFFER (Zero-Copy Fallback)
+  // Used when no MessagePort renderer connections are available (e.g., during startup before
+  // port handshake completes). SAB is single-consumer — safe only when one view is reading.
+  if (!visualWritten && !isSuspended && !isBackgrounded && visualBuffers.length > 0) {
     const shardIndex = selectShard(id, visualBuffers.length);
     const shard = visualBuffers[shardIndex];
 
@@ -356,37 +390,6 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
         Atomics.notify(visualSignalView, 0, 1);
       }
     }
-  }
-
-  // Direct MessagePort output: send data directly to renderer windows, bypassing main process
-  // Skip MessagePort for smoke test terminals — the smoke test monitors data via PtyClient
-  // (IPC events in the main process), so these must always use the IPC fallback path.
-  if (
-    !visualWritten &&
-    !isBackgrounded &&
-    !isSuspended &&
-    rendererConnections.size > 0 &&
-    !isSmokeTestTerminalId(id)
-  ) {
-    const dataString = toStringForIpc(data);
-    const byteCount = Buffer.byteLength(dataString, "utf8");
-
-    for (const [windowId, conn] of rendererConnections) {
-      const windowProject = windowProjectMap.get(windowId) ?? null;
-      if (windowProject !== null && terminalInfo?.projectId !== windowProject) continue;
-
-      if (!conn.portQueueManager.isAtCapacity(id, byteCount)) {
-        try {
-          conn.port.postMessage({ type: "data", id, data: dataString, bytes: byteCount });
-          conn.portQueueManager.addBytes(id, byteCount);
-          conn.portQueueManager.applyBackpressure(id, conn.portQueueManager.getUtilization(id));
-          visualWritten = true;
-        } catch {
-          disconnectWindow(windowId, "postMessage-error");
-        }
-      }
-    }
-    // If at capacity on all ports, fall through to IPC fallback
   }
 
   // IPC Data Mirror: Always send data via IPC for terminals that need main-process

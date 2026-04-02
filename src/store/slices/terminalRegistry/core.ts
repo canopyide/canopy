@@ -303,7 +303,12 @@ export const createCorePanelActions = (
         ? "dock"
         : requestedLocation;
     const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
-    const isInActiveWorktree = (options.worktreeId ?? null) === (activeWorktreeId ?? null);
+    // When activeWorktreeId is null (worktree store not yet hydrated — common during
+    // project switch), treat the terminal as being in the active worktree to avoid
+    // incorrectly backgrounding it. applyWorktreeTerminalPolicy will reconcile
+    // tiers once the worktree is set.
+    const isInActiveWorktree =
+      activeWorktreeId === null || (options.worktreeId ?? null) === (activeWorktreeId ?? null);
     const shouldBackground = location === "dock" || (location === "grid" && !isInActiveWorktree);
     const runtimeStatus: TerminalRuntimeStatus = shouldBackground ? "background" : "running";
 
@@ -393,10 +398,14 @@ export const createCorePanelActions = (
         // Prewarm ALL terminal types to ensure managed instance exists.
         // This is critical for terminals in inactive worktrees - they need a managed
         // instance for proper BACKGROUND→VISIBLE tier transitions when worktree activates.
+        const currentActiveWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+        // When activeWorktreeId is null (hydration in progress), don't treat the
+        // terminal as offscreen — it would be prewarmed in the offscreen container
+        // at -20000px and backgrounded, suppressing data flow from the pty-host.
         const offscreenOrInactive =
           location === "dock" ||
-          (options.worktreeId ?? null) !==
-            (useWorktreeSelectionStore.getState().activeWorktreeId ?? null);
+          (currentActiveWorktreeId !== null &&
+            (options.worktreeId ?? null) !== (currentActiveWorktreeId ?? null));
 
         console.log(
           `[addTerminal] Prewarming ${id}: kind=${kind}, location=${location}, ` +
