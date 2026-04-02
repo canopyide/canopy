@@ -131,7 +131,7 @@ describe("terminalClient MessagePort data routing", () => {
     });
   });
 
-  it("suppresses IPC data when MessagePort is connected", () => {
+  it("delivers IPC data even when MessagePort is connected (pty-host ensures single path via visualWritten)", () => {
     acquirePort();
     const received: string[] = [];
 
@@ -144,8 +144,11 @@ describe("terminalClient MessagePort data routing", () => {
     expect(handler).toBeDefined();
     handler!.cb("ipc-data");
 
-    // IPC data should be suppressed
-    expect(received).toEqual([]);
+    // IPC data is delivered because pty-host ensures each chunk is sent through exactly
+    // ONE visual path (MessagePort, SAB, or IPC) via a visualWritten flag, preventing double delivery.
+    // Previously IPC was suppressed here, but that caused data loss during project switch when
+    // the pty-host routed through IPC instead of MessagePort due to windowProjectMap latency.
+    expect(received).toEqual(["ipc-data"]);
   });
 
   it("delivers IPC data when no MessagePort is connected", () => {

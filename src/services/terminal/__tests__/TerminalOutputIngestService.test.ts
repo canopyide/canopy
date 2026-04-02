@@ -44,14 +44,7 @@ describe("TerminalOutputIngestService", () => {
     } as Window & typeof globalThis;
   });
 
-  it("retries initialization after shared-buffer bootstrap failure", async () => {
-    const buffer = new SharedArrayBuffer(8);
-    const signalBuffer = new SharedArrayBuffer(4);
-    getSharedBuffersMock.mockRejectedValueOnce(new Error("sab unavailable")).mockResolvedValueOnce({
-      visualBuffers: [buffer],
-      signalBuffer,
-    });
-
+  it("does not enable SAB polling (intentionally disabled due to multi-view race)", async () => {
     const service = new TerminalOutputIngestService(() => {});
 
     await service.initialize();
@@ -59,39 +52,31 @@ describe("TerminalOutputIngestService", () => {
     expect(service.isPolling()).toBe(false);
 
     await service.initialize();
-    expect(getSharedBuffersMock).toHaveBeenCalledTimes(2);
-    expect(service.isEnabled()).toBe(true);
-    expect(service.isPolling()).toBe(true);
-    expect(MockWorker.instances).toHaveLength(1);
+    expect(service.isEnabled()).toBe(false);
+    expect(service.isPolling()).toBe(false);
   });
 
-  it("can initialize again after stopPolling tears down worker", async () => {
-    vi.useFakeTimers();
-    const buffer = new SharedArrayBuffer(8);
-    const signalBuffer = new SharedArrayBuffer(4);
-    getSharedBuffersMock.mockResolvedValue({
-      visualBuffers: [buffer],
-      signalBuffer,
-    });
+  it("stopPolling clears buffered data without affecting reinitialization", async () => {
+    const writeToTerminal = vi.fn();
+    const service = new TerminalOutputIngestService(writeToTerminal);
 
-    const service = new TerminalOutputIngestService(() => {});
+    // Buffer some data
+    const largeData = "x".repeat(140_000);
+    service.bufferData("term-1", largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
-    await service.initialize();
-    expect(service.isEnabled()).toBe(true);
-    expect(service.isPolling()).toBe(true);
-    expect(MockWorker.instances).toHaveLength(1);
+    service.bufferData("term-1", "buffered");
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
+    // stopPolling flushes buffered data
     service.stopPolling();
-    vi.advanceTimersByTime(60);
-    expect(MockWorker.instances[0]?.terminate).toHaveBeenCalled();
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "buffered");
 
+    // Can reinitialize
     await service.initialize();
-    expect(getSharedBuffersMock).toHaveBeenCalledTimes(2);
-    expect(MockWorker.instances).toHaveLength(2);
-    expect(service.isEnabled()).toBe(true);
-    expect(service.isPolling()).toBe(true);
-
-    vi.useRealTimers();
+    expect(service.isEnabled()).toBe(false);
+    expect(service.isPolling()).toBe(false);
   });
 
   it("writes immediately when idle and under watermark", () => {
@@ -385,30 +370,30 @@ describe("TerminalOutputIngestService", () => {
     expect(writeToTerminal).toHaveBeenCalledWith("term-2", "hello-2");
   });
 
-  it("routes worker SAB batches through watermark logic", async () => {
-    const buffer = new SharedArrayBuffer(8);
-    const signalBuffer = new SharedArrayBuffer(4);
-    getSharedBuffersMock.mockResolvedValueOnce({
-      visualBuffers: [buffer],
-      signalBuffer,
-    });
-
+  it("respects watermark bounds during rapid sequential data delivery", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
-    await service.initialize();
-    expect(service.isPolling()).toBe(true);
-
-    const worker = MockWorker.instances[0]!;
-    worker.onmessage!({
-      data: {
-        type: "OUTPUT_BATCH",
-        batches: [{ id: "term-1", data: "worker-data" }],
-      },
-    } as MessageEvent);
-
+    // Simulate rapid data delivery across two terminals
+    const largeData = "x".repeat(140_000);
+    service.bufferData("term-1", largeData);
     expect(writeToTerminal).toHaveBeenCalledTimes(1);
-    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "worker-data");
+
+    // Rapid data on term-1 while above watermark
+    service.bufferData("term-1", "batch-1");
+    service.bufferData("term-1", "batch-2");
+    service.bufferData("term-1", "batch-3");
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+    // Rapid data on term-2 (separate queue, should write immediately)
+    service.bufferData("term-2", "immediate");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-2", "immediate");
+
+    // Acknowledge to drain term-1's batch
+    service.notifyWriteComplete("term-1", 140_000);
+    expect(writeToTerminal).toHaveBeenCalledTimes(3);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "batch-1batch-2batch-3");
   });
 
   it("notifyWriteComplete is a no-op for unknown terminals", () => {
