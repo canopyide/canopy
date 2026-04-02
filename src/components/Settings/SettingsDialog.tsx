@@ -32,7 +32,6 @@ import {
   Settings2,
   LifeBuoy,
   Bell,
-  Plug,
   Search,
   ChevronRight,
   ChevronDown,
@@ -41,10 +40,14 @@ import {
   FileCode,
   GitBranch,
   Command,
-  CookingPot,
   AlertTriangle,
 } from "lucide-react";
-import { WorktreeIcon, CanopyAgentIcon } from "@/components/icons";
+import {
+  WorktreeIcon,
+  CanopyAgentIcon,
+  TerminalRecipeIcon,
+  McpServerIcon,
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import { appClient } from "@/clients";
@@ -594,14 +597,14 @@ export function SettingsDialog({
     integrations: <Blocks className="w-5 h-5 text-text-secondary" />,
     voice: <Mic className="w-5 h-5 text-text-secondary" />,
 
-    mcp: <Plug className="w-5 h-5 text-text-secondary" />,
+    mcp: <McpServerIcon className="w-5 h-5 text-text-secondary" />,
     environment: <KeyRound className="w-5 h-5 text-text-secondary" />,
     privacy: <Shield className="w-5 h-5 text-text-secondary" />,
     troubleshooting: <LifeBuoy className="w-5 h-5 text-text-secondary" />,
     "project:general": <SettingsIcon className="w-5 h-5 text-text-secondary" />,
     "project:context": <FileCode className="w-5 h-5 text-text-secondary" />,
     "project:automation": <GitBranch className="w-5 h-5 text-text-secondary" />,
-    "project:recipes": <CookingPot className="w-5 h-5 text-text-secondary" />,
+    "project:recipes": <TerminalRecipeIcon className="w-5 h-5 text-text-secondary" />,
     "project:commands": <Command className="w-5 h-5 text-text-secondary" />,
     "project:notifications": <Bell className="w-5 h-5 text-text-secondary" />,
     "project:github": <Github className="w-5 h-5 text-text-secondary" />,
@@ -833,7 +836,7 @@ export function SettingsDialog({
                   />
                   <NavItem
                     tab="mcp"
-                    icon={<Plug className="w-4 h-4" />}
+                    icon={<McpServerIcon className="w-4 h-4" />}
                     label="MCP Server"
                     activeTab={activeTab}
                     isSearching={isSearching}
@@ -885,7 +888,7 @@ export function SettingsDialog({
                 />
                 <NavItem
                   tab="project:recipes"
-                  icon={<CookingPot className="w-4 h-4" />}
+                  icon={<TerminalRecipeIcon className="w-4 h-4" />}
                   label="Recipes"
                   activeTab={activeTab}
                   isSearching={isSearching}

@@ -12,7 +12,8 @@ import React, {
   useTransition,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw, Radio } from "lucide-react";
+import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw } from "lucide-react";
+import { BroadcastTerminalIcon } from "@/components/icons";
 import { ScrollIndicator } from "./components/Worktree/ScrollIndicator";
 import {
   isElectronAvailable,
@@ -1041,7 +1042,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                     className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
                     aria-label="Bulk Operations"
                   >
-                    <Radio className="w-3.5 h-3.5" />
+                    <BroadcastTerminalIcon className="w-3.5 h-3.5" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">

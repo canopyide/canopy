@@ -23,7 +23,6 @@ import {
   ExternalLink,
   X,
   AlertTriangle,
-  Leaf,
   ChevronDown,
   PenLine,
   Eye,
@@ -31,6 +30,7 @@ import {
   Tag,
 } from "lucide-react";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { NotesPanelIcon } from "@/components/icons";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -578,7 +578,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                   </>
                 ) : (
                   <div className="flex-1 flex flex-col items-center justify-center text-canopy-text/30">
-                    <Leaf size={32} className="mb-3" />
+                    <NotesPanelIcon width={32} height={32} className="mb-3" />
                     <p className="text-sm">Select a note to view</p>
                     <p className="text-xs mt-2">
                       or press{" "}

@@ -13,14 +13,13 @@ import {
   Check,
   ChevronsUpDown,
   Globe,
-  Leaf,
   Bell,
   LayoutGrid,
   Ellipsis,
   GitBranch,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
-import { CopyTreeIcon } from "@/components/icons";
+import { CopyTreeIcon, NotesPanelIcon, McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { shortcutHintStore } from "@/store/shortcutHintStore";
 import { isMac, isLinux, createTooltipWithShortcut } from "@/lib/platform";
@@ -44,7 +43,6 @@ import { usePreferencesStore, useToolbarPreferencesStore, useVoiceRecordingStore
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import type { ToolbarButtonId, AnyToolbarButtonId } from "@/../../shared/types/toolbar";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
-import { Puzzle } from "lucide-react";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import type { CliAvailability, AgentSettings } from "@shared/types";
@@ -80,7 +78,7 @@ const OVERFLOW_MENU_META: Partial<
   "panel-palette": { label: "Panel Palette", icon: LayoutGrid },
   "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
   "notification-center": { label: "Notifications", icon: Bell },
-  notes: { label: "Notes", icon: Leaf },
+  notes: { label: "Notes", icon: NotesPanelIcon },
   "copy-tree": { label: "Copy Context", icon: CopyTreeIcon },
   settings: { label: "Settings", icon: SlidersHorizontal },
   problems: { label: "Problems", icon: AlertCircle },
@@ -479,7 +477,7 @@ export function Toolbar({
                   className={toolbarIconButtonClass}
                   aria-label="Open notes palette"
                 >
-                  <Leaf />
+                  <NotesPanelIcon />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -580,7 +578,7 @@ export function Toolbar({
                         className={toolbarIconButtonClass}
                         aria-label={config?.label ?? pluginId}
                       >
-                        <Puzzle />
+                        <McpServerIcon />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">{config?.label ?? pluginId}</TooltipContent>
@@ -743,7 +741,7 @@ export function Toolbar({
     for (const id of pluginButtonIds) {
       const config = pluginConfigs.get(id);
       if (config) {
-        meta[id] = { label: config.label, icon: Puzzle };
+        meta[id] = { label: config.label, icon: McpServerIcon };
       }
     }
     return meta;

@@ -20,7 +20,6 @@ import {
   SquareTerminal,
   Globe,
   AlertTriangle,
-  Leaf,
   Settings,
   AlertCircle,
   Bell,
@@ -36,11 +35,12 @@ import {
   OpenCodeIcon,
   CanopyAgentIcon,
   CopyTreeIcon,
+  NotesPanelIcon,
 } from "@/components/icons";
 import { useToolbarPreferencesStore } from "@/store";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
-import { Puzzle } from "lucide-react";
+import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
@@ -105,7 +105,7 @@ const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
   },
   notes: {
     label: "Notes",
-    icon: <Leaf className="h-4 w-4" />,
+    icon: <NotesPanelIcon className="h-4 w-4" />,
     description: "Open notes palette",
   },
   "copy-tree": {
@@ -212,7 +212,7 @@ export function ToolbarSettingsTab() {
       if (config) {
         pluginMeta[id] = {
           label: config.label,
-          icon: <Puzzle className="h-4 w-4" />,
+          icon: <McpServerIcon className="h-4 w-4" />,
           description: `Plugin button (${config.pluginId})`,
         };
       }

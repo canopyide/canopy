@@ -1,16 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import {
-  Plug,
-  Copy,
-  Check,
-  AlertCircle,
-  Key,
-  Hash,
-  Shield,
-  Eye,
-  EyeOff,
-  RefreshCw,
-} from "lucide-react";
+import { Copy, Check, AlertCircle, Key, Hash, Shield, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
@@ -127,7 +117,7 @@ export function McpServerSettingsTab() {
   return (
     <div className="space-y-6">
       <SettingsSwitchCard
-        icon={Plug}
+        icon={McpServerIcon}
         title="MCP Server"
         subtitle="Start a local Model Context Protocol server so AI agents can discover and invoke Canopy actions directly."
         isEnabled={status.enabled}
@@ -140,7 +130,7 @@ export function McpServerSettingsTab() {
         <>
           {/* Connection Status */}
           <SettingsSection
-            icon={Plug}
+            icon={McpServerIcon}
             title="Connection"
             description="The server binds to 127.0.0.1 (loopback only) — it is never accessible from outside this machine."
           >
@@ -295,7 +285,7 @@ export function McpServerSettingsTab() {
 
       {/* Auto-Discovery — always visible */}
       <SettingsSection
-        icon={Plug}
+        icon={McpServerIcon}
         title="Auto-Discovery"
         description={
           status.enabled

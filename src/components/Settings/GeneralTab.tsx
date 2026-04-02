@@ -5,7 +5,6 @@ import {
   Moon,
   CheckCircle,
   AlertCircle,
-  Activity,
   Wrench,
   LayoutGrid,
   PanelBottom,
@@ -15,7 +14,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CanopyIcon } from "@/components/icons";
+import { CanopyIcon, ProjectPulseIcon } from "@/components/icons";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
 import { SettingsSubtabBar } from "./SettingsSubtabBar";
@@ -573,13 +572,13 @@ export function GeneralTab({
 
       {effectiveSubtab === "display" && (
         <SettingsSection
-          icon={Activity}
+          icon={ProjectPulseIcon}
           title="Display"
           description="Control which interface elements are visible."
           id="general-project-pulse"
         >
           <SettingsSwitchCard
-            icon={Activity}
+            icon={ProjectPulseIcon}
             title="Project Pulse"
             subtitle="Show activity heatmap on the empty panel grid"
             isEnabled={showProjectPulse}
