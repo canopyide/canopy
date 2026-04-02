@@ -123,9 +123,16 @@ export function BackgroundContainer({ compact = false }: BackgroundContainerProp
     groupRestoreId: string,
     groupMetadata: TrashedTerminalGroupMetadata
   ) => {
+    const worktreeId = groupMetadata.worktreeId?.trim();
+    if (worktreeId && worktreeId !== activeWorktreeId) {
+      selectWorktree(worktreeId);
+    }
     restoreBackgroundGroup(groupRestoreId);
     const activeId = groupMetadata.activeTabId;
     if (activeId) {
+      if (worktreeId) {
+        trackTerminalFocus(worktreeId, activeId);
+      }
       activateTerminal(activeId);
       pingTerminal(activeId);
     }
@@ -284,7 +291,7 @@ function BackgroundGroupItem({
           aria-label="Group panels"
           className="pl-6 pr-2 pb-1.5 space-y-0.5"
         >
-          {terminals
+          {[...terminals]
             .sort((a, b) => {
               const aIndex = groupMetadata.panelIds.indexOf(a.id);
               const bIndex = groupMetadata.panelIds.indexOf(b.id);

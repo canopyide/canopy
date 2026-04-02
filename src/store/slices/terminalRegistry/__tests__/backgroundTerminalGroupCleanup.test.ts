@@ -437,9 +437,9 @@ describe("round-trip: backgroundPanelGroup → restoreBackgroundGroup", () => {
 
     useTerminalStore.setState({
       terminals: [
-        makeTerminal("t1", "dock"),
-        makeTerminal("t2", "dock"),
-        makeTerminal("t3", "dock"),
+        { ...makeTerminal("t1", "dock"), worktreeId: "wt-1" },
+        { ...makeTerminal("t2", "dock"), worktreeId: "wt-1" },
+        { ...makeTerminal("t3", "dock"), worktreeId: "wt-1" },
       ],
       tabGroups: new Map([["group-1", group]]),
     });
@@ -465,10 +465,13 @@ describe("round-trip: backgroundPanelGroup → restoreBackgroundGroup", () => {
     expect(restoredGroup.panelIds).toEqual(["t1", "t2", "t3"]);
     expect(restoredGroup.activeTabId).toBe("t2");
     expect(restoredGroup.location).toBe("dock");
+    expect(restoredGroup.worktreeId).toBe("wt-1");
 
-    // All panels restored to dock
+    // All panels restored to dock with correct worktreeId
     for (const id of ["t1", "t2", "t3"]) {
-      expect(state.terminals.find((t) => t.id === id)!.location).toBe("dock");
+      const t = state.terminals.find((t) => t.id === id)!;
+      expect(t.location).toBe("dock");
+      expect(t.worktreeId).toBe("wt-1");
     }
   });
 });
