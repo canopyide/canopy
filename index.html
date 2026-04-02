@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="" />
     <title>Canopy</title>
     <style>
-      /* ── Skeleton shimmer animation (GPU-accelerated via translateX) ── */
+      /* ── Skeleton shimmer (GPU-accelerated via translateX) ── */
       @keyframes skeleton-shimmer {
         0% {
           transform: translateX(-100%);
@@ -17,15 +17,15 @@
         }
       }
 
-      @keyframes skeleton-logo-shimmer {
+      @keyframes skeleton-logo-pulse {
         0% {
-          opacity: 0.15;
+          opacity: 0.08;
         }
         50% {
-          opacity: 0.3;
+          opacity: 0.15;
         }
         100% {
-          opacity: 0.15;
+          opacity: 0.08;
         }
       }
 
@@ -40,6 +40,16 @@
         }
       }
 
+      /* ── Progressive reveal entrance ── */
+      @keyframes skeleton-reveal {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
       /* ── Base skeleton container ── */
       #startup-skeleton {
         position: fixed;
@@ -48,12 +58,33 @@
         display: flex;
         flex-direction: column;
         background: var(--theme-surface-canvas, #19191a);
-        animation: skeleton-safety-fade 15s forwards;
+        animation: skeleton-safety-fade 10s forwards;
         transition: opacity 250ms ease-out;
       }
       #startup-skeleton.fade-out {
         opacity: 0;
         pointer-events: none;
+      }
+
+      /* ── Progressive reveal delays ── */
+      .skel-reveal {
+        opacity: 0;
+        animation: skeleton-reveal 400ms ease-out forwards;
+      }
+      .skel-reveal-d1 {
+        animation-delay: 0ms;
+      }
+      .skel-reveal-d2 {
+        animation-delay: 80ms;
+      }
+      .skel-reveal-d3 {
+        animation-delay: 160ms;
+      }
+      .skel-reveal-d4 {
+        animation-delay: 240ms;
+      }
+      .skel-reveal-d5 {
+        animation-delay: 320ms;
       }
 
       /* ── Toolbar ── */
@@ -62,32 +93,30 @@
         flex-shrink: 0;
         background: var(--theme-surface-sidebar, #131312);
         border-bottom: 1px solid var(--theme-border-default, #282828);
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: center;
-        padding: 0 16px;
+        padding: 4px 16px 0;
         -webkit-app-region: drag;
       }
       .skeleton-toolbar-left {
         display: flex;
         align-items: center;
-        gap: 8px;
-        flex: 1;
+        gap: 6px;
       }
       .skeleton-toolbar-center {
         display: flex;
         align-items: center;
         justify-content: center;
-        flex: 1;
       }
       .skeleton-toolbar-right {
         display: flex;
         align-items: center;
         justify-content: flex-end;
         gap: 6px;
-        flex: 1;
       }
 
-      /* ── Skeleton placeholder shapes ── */
+      /* ── Skeleton placeholder shapes (3-tier opacity hierarchy) ── */
       .skel-shape {
         position: relative;
         overflow: hidden;
@@ -95,7 +124,7 @@
         background: color-mix(
           in oklch,
           var(--theme-surface-sidebar, #131312),
-          var(--theme-text-primary, #e0e0e0) 5%
+          var(--theme-text-primary, #e0e0e0) 8%
         );
       }
       .skel-shape::after {
@@ -103,13 +132,14 @@
         position: absolute;
         inset: 0;
         transform: translateX(-100%);
+        will-change: transform;
         background: linear-gradient(
           90deg,
           transparent 0%,
           color-mix(
               in oklch,
               var(--theme-surface-sidebar, #131312),
-              var(--theme-text-primary, #e0e0e0) 8%
+              var(--theme-text-primary, #e0e0e0) 13%
             )
             50%,
           transparent 100%
@@ -121,6 +151,26 @@
       }
       .skel-pill {
         border-radius: 9999px;
+      }
+
+      /* ── Toolbar divider ── */
+      .skel-divider {
+        width: 1px;
+        height: 20px;
+        margin: 0 4px;
+        flex-shrink: 0;
+        background: color-mix(
+          in oklch,
+          var(--theme-surface-sidebar, #131312),
+          var(--theme-text-primary, #e0e0e0) 10%
+        );
+      }
+
+      /* ── Toolbar button group ── */
+      .skel-btn-group {
+        display: flex;
+        align-items: center;
+        gap: 2px;
       }
 
       /* ── Body layout ── */
@@ -142,10 +192,40 @@
         gap: 0;
       }
       .skeleton-sidebar-header {
-        padding: 4px 16px 12px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+        padding: 8px 12px;
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--theme-border-default, #282828);
+      }
+      .skel-search-input {
+        position: relative;
+        overflow: hidden;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid var(--theme-border-default, #282828);
+        background: color-mix(
+          in oklch,
+          var(--theme-surface-sidebar, #131312),
+          var(--theme-text-primary, #e0e0e0) 5%
+        );
+      }
+      .skel-search-input::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        will-change: transform;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          color-mix(
+              in oklch,
+              var(--theme-surface-sidebar, #131312),
+              var(--theme-text-primary, #e0e0e0) 10%
+            )
+            50%,
+          transparent 100%
+        );
+        animation: skeleton-shimmer 1.5s linear infinite;
       }
 
       /* ── Worktree card skeleton ── */
@@ -154,23 +234,6 @@
         border-bottom: 1px solid var(--theme-border-default, #282828);
         display: flex;
         flex-direction: column;
-        gap: 10px;
-      }
-      .skel-card-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .skel-card-details {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        padding-left: 4px;
-      }
-      .skel-card-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
       }
 
       /* ── Main content area ── */
@@ -201,65 +264,35 @@
       }
       .skeleton-logo {
         color: var(--theme-text-primary, #e0e0e0);
-        opacity: 0.15;
-        animation: skeleton-logo-shimmer 2.5s ease-in-out infinite;
+        opacity: 0.08;
+        animation: skeleton-logo-pulse 2.5s ease-in-out infinite;
         margin-bottom: 16px;
       }
       .skeleton-title {
         position: relative;
         overflow: hidden;
-        width: 120px;
-        height: 24px;
+        width: 140px;
+        height: 28px;
         border-radius: 6px;
         background: color-mix(
           in oklch,
           var(--theme-surface-canvas, #19191a),
-          var(--theme-text-primary, #e0e0e0) 6%
+          var(--theme-text-primary, #e0e0e0) 8%
         );
-        margin-bottom: 10px;
       }
       .skeleton-title::after {
         content: "";
         position: absolute;
         inset: 0;
         transform: translateX(-100%);
+        will-change: transform;
         background: linear-gradient(
           90deg,
           transparent 0%,
           color-mix(
               in oklch,
               var(--theme-surface-canvas, #19191a),
-              var(--theme-text-primary, #e0e0e0) 10%
-            )
-            50%,
-          transparent 100%
-        );
-        animation: skeleton-shimmer 1.5s linear infinite;
-      }
-      .skeleton-tagline {
-        position: relative;
-        overflow: hidden;
-        width: 200px;
-        height: 14px;
-        border-radius: 4px;
-        background: color-mix(
-          in oklch,
-          var(--theme-surface-canvas, #19191a),
-          var(--theme-text-primary, #e0e0e0) 4%
-        );
-      }
-      .skeleton-tagline::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        transform: translateX(-100%);
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          color-mix(
-              in oklch,
-              var(--theme-surface-canvas, #19191a),
-              var(--theme-text-primary, #e0e0e0) 7%
+              var(--theme-text-primary, #e0e0e0) 13%
             )
             50%,
           transparent 100%
@@ -273,18 +306,18 @@
         width: 100%;
         max-width: 512px;
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         gap: 8px;
       }
       .skel-recipe {
         position: relative;
         overflow: hidden;
         border-radius: var(--radius-md, 8px);
-        border: 1px solid var(--theme-border-default, #282828);
+        border: 1px solid color-mix(in oklch, var(--theme-border-default, #282828), transparent 40%);
         background: color-mix(
           in oklch,
           var(--theme-surface-canvas, #19191a),
-          var(--theme-text-primary, #e0e0e0) 3%
+          var(--theme-text-primary, #e0e0e0) 5%
         );
         padding: 12px;
         display: flex;
@@ -296,13 +329,14 @@
         position: absolute;
         inset: 0;
         transform: translateX(-100%);
+        will-change: transform;
         background: linear-gradient(
           90deg,
           transparent 0%,
           color-mix(
               in oklch,
               var(--theme-surface-canvas, #19191a),
-              var(--theme-text-primary, #e0e0e0) 5%
+              var(--theme-text-primary, #e0e0e0) 8%
             )
             50%,
           transparent 100%
@@ -322,7 +356,7 @@
         background: color-mix(
           in oklch,
           var(--theme-surface-canvas, #19191a),
-          var(--theme-text-primary, #e0e0e0) 8%
+          var(--theme-text-primary, #e0e0e0) 10%
         );
       }
       .skel-recipe-name {
@@ -331,8 +365,18 @@
         background: color-mix(
           in oklch,
           var(--theme-surface-canvas, #19191a),
-          var(--theme-text-primary, #e0e0e0) 6%
+          var(--theme-text-primary, #e0e0e0) 8%
         );
+      }
+      .skel-recipe-create {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px 12px;
+        margin-top: 4px;
+        border-radius: var(--radius-md, 8px);
       }
 
       /* ── Pulse card skeleton ── */
@@ -349,6 +393,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 16px;
       }
       .skeleton-pulse-header-left {
         display: flex;
@@ -361,19 +406,20 @@
         flex-direction: column;
         gap: 16px;
       }
-      /* Heatmap grid skeleton */
+      /* Heatmap skeleton */
       .skeleton-heatmap {
-        display: grid;
-        grid-template-columns: repeat(60, 10px);
-        grid-template-rows: repeat(7, 10px);
+        display: flex;
         gap: 3px;
       }
       .skel-heat-cell {
+        width: 10px;
+        height: 10px;
+        flex-shrink: 0;
         border-radius: 2px;
         background: color-mix(
           in oklch,
           var(--theme-surface-canvas, #19191a),
-          var(--theme-text-primary, #e0e0e0) 4%
+          var(--theme-text-primary, #e0e0e0) 6%
         );
       }
       /* Stats row skeleton */
@@ -381,6 +427,14 @@
         display: flex;
         align-items: center;
         gap: 16px;
+      }
+      /* ── Tip section skeleton ── */
+      .skeleton-tip {
+        margin-top: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
       }
 
       /* ── Light mode overrides ── */
@@ -403,10 +457,37 @@
           background: color-mix(
             in oklch,
             var(--theme-surface-sidebar, #ebe7de),
-            var(--theme-text-primary, #1a1a1a) 5%
+            var(--theme-text-primary, #1a1a1a) 6%
           );
         }
         .skel-shape::after {
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            color-mix(
+                in oklch,
+                var(--theme-surface-sidebar, #ebe7de),
+                var(--theme-text-primary, #1a1a1a) 10%
+              )
+              50%,
+            transparent 100%
+          );
+        }
+        .skeleton-sidebar-header {
+          border-bottom-color: var(--theme-border-default, #d8d2c6);
+        }
+        .skel-card {
+          border-bottom-color: var(--theme-border-default, #d8d2c6);
+        }
+        .skel-search-input {
+          border-color: var(--theme-border-default, #d8d2c6);
+          background: color-mix(
+            in oklch,
+            var(--theme-surface-sidebar, #ebe7de),
+            var(--theme-text-primary, #1a1a1a) 4%
+          );
+        }
+        .skel-search-input::after {
           background: linear-gradient(
             90deg,
             transparent 0%,
@@ -419,8 +500,12 @@
             transparent 100%
           );
         }
-        .skel-card {
-          border-bottom-color: var(--theme-border-default, #d8d2c6);
+        .skel-divider {
+          background: color-mix(
+            in oklch,
+            var(--theme-surface-sidebar, #ebe7de),
+            var(--theme-text-primary, #1a1a1a) 10%
+          );
         }
         .skeleton-title {
           background: color-mix(
@@ -442,31 +527,11 @@
             transparent 100%
           );
         }
-        .skeleton-tagline {
-          background: color-mix(
-            in oklch,
-            var(--theme-surface-canvas, #f6f4ef),
-            var(--theme-text-primary, #1a1a1a) 4%
-          );
-        }
-        .skeleton-tagline::after {
-          background: linear-gradient(
-            90deg,
-            transparent 0%,
-            color-mix(
-                in oklch,
-                var(--theme-surface-canvas, #f6f4ef),
-                var(--theme-text-primary, #1a1a1a) 7%
-              )
-              50%,
-            transparent 100%
-          );
-        }
         .skel-recipe {
           background: color-mix(
             in oklch,
             var(--theme-surface-canvas, #f6f4ef),
-            var(--theme-text-primary, #1a1a1a) 3%
+            var(--theme-text-primary, #1a1a1a) 4%
           );
           border-color: var(--theme-border-default, #d8d2c6);
         }
@@ -477,7 +542,7 @@
             color-mix(
                 in oklch,
                 var(--theme-surface-canvas, #f6f4ef),
-                var(--theme-text-primary, #1a1a1a) 5%
+                var(--theme-text-primary, #1a1a1a) 6%
               )
               50%,
             transparent 100%
@@ -497,39 +562,53 @@
             var(--theme-text-primary, #1a1a1a) 6%
           );
         }
+        .skeleton-logo {
+          color: var(--theme-text-primary, #1a1a1a);
+        }
         .skeleton-pulse {
           border-color: var(--theme-border-default, #d8d2c6);
         }
         .skeleton-pulse-header {
           border-bottom-color: var(--theme-border-default, #d8d2c6);
         }
+        .skeleton-pulse-stats {
+          border-top-color: var(--theme-border-default, #d8d2c6);
+        }
         .skel-heat-cell {
           background: color-mix(
             in oklch,
             var(--theme-surface-canvas, #f6f4ef),
-            var(--theme-text-primary, #1a1a1a) 4%
+            var(--theme-text-primary, #1a1a1a) 5%
           );
         }
       }
 
       /* ── Reduced motion ── */
       @media (prefers-reduced-motion: reduce) {
+        #startup-skeleton {
+          animation: none;
+        }
         .skel-shape::after,
         .skel-recipe::after,
-        .skeleton-title::after,
-        .skeleton-tagline::after {
+        .skel-search-input::after,
+        .skeleton-title::after {
           animation: none;
+          display: none;
         }
         .skeleton-logo {
           animation: none;
-          opacity: 0.12;
+          opacity: 0.08;
+        }
+        .skel-reveal {
+          animation: none;
+          opacity: 1;
         }
       }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <div id="startup-skeleton" aria-live="polite" aria-busy="true">
+    <div id="startup-skeleton" aria-live="polite" aria-busy="true" role="status">
       <span
         class="sr-only"
         style="
@@ -546,96 +625,77 @@
         >Loading project…</span
       >
 
-      <!-- Toolbar -->
-      <div class="skeleton-toolbar">
+      <!-- Toolbar (reveals first) -->
+      <div class="skeleton-toolbar skel-reveal skel-reveal-d1">
         <div class="skeleton-toolbar-left">
-          <div class="skel-shape" style="width: 28px; height: 28px; border-radius: 6px"></div>
-          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
-          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
-          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+          <!-- macOS traffic light spacer -->
+          <div style="width: 64px; flex-shrink: 0"></div>
+          <!-- Sidebar toggle -->
+          <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+          <div class="skel-divider"></div>
+          <!-- Agent icons -->
+          <div class="skel-btn-group" style="gap: 8px">
+            <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+            <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+            <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+          </div>
+          <div class="skel-divider"></div>
+          <!-- Tool icons -->
+          <div class="skel-btn-group" style="gap: 8px">
+            <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+            <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+          </div>
         </div>
         <div class="skeleton-toolbar-center">
-          <div class="skel-shape skel-pill" style="width: 160px; height: 28px"></div>
+          <div class="skel-shape" style="width: 180px; height: 36px; border-radius: 8px"></div>
         </div>
         <div class="skeleton-toolbar-right">
-          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
-          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
-          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
-          <div class="skel-shape skel-circle" style="width: 28px; height: 28px"></div>
+          <div class="skel-btn-group" style="gap: 8px">
+            <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+            <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
+          </div>
+          <div class="skel-divider"></div>
+          <div class="skel-shape skel-circle" style="width: 20px; height: 20px"></div>
         </div>
       </div>
 
       <!-- Body -->
       <div class="skeleton-body">
-        <!-- Sidebar with worktree card skeletons -->
-        <div class="skeleton-sidebar" aria-hidden="true">
-          <!-- Sidebar header -->
+        <!-- Sidebar (reveals second) -->
+        <div class="skeleton-sidebar skel-reveal skel-reveal-d2" aria-hidden="true">
           <div class="skeleton-sidebar-header">
-            <div class="skel-shape skel-pill" style="width: 100%; height: 32px"></div>
+            <div class="skel-search-input"></div>
           </div>
 
-          <!-- Card 1 (active) -->
+          <!-- Worktree cards (ghost hints) -->
           <div class="skel-card">
-            <div class="skel-card-header">
-              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
-              <div class="skel-shape skel-pill" style="width: 65%; height: 14px"></div>
-            </div>
-            <div class="skel-card-details">
-              <div class="skel-shape" style="width: 80%; height: 10px"></div>
-              <div class="skel-card-row">
-                <div class="skel-shape" style="width: 45%; height: 10px"></div>
-                <div class="skel-shape skel-pill" style="width: 40px; height: 16px"></div>
-              </div>
-            </div>
+            <div class="skel-shape" style="width: 55%; height: 11px; border-radius: 3px"></div>
+            <div
+              class="skel-shape"
+              style="width: 35%; height: 9px; border-radius: 3px; margin-top: 6px"
+            ></div>
           </div>
-
-          <!-- Card 2 -->
           <div class="skel-card">
-            <div class="skel-card-header">
-              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
-              <div class="skel-shape skel-pill" style="width: 50%; height: 14px"></div>
-            </div>
-            <div class="skel-card-details">
-              <div class="skel-shape" style="width: 70%; height: 10px"></div>
-              <div class="skel-card-row">
-                <div class="skel-shape" style="width: 35%; height: 10px"></div>
-                <div class="skel-shape skel-pill" style="width: 32px; height: 16px"></div>
-              </div>
-            </div>
+            <div class="skel-shape" style="width: 70%; height: 11px; border-radius: 3px"></div>
+            <div
+              class="skel-shape"
+              style="width: 45%; height: 9px; border-radius: 3px; margin-top: 6px"
+            ></div>
           </div>
-
-          <!-- Card 3 -->
           <div class="skel-card">
-            <div class="skel-card-header">
-              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
-              <div class="skel-shape skel-pill" style="width: 55%; height: 14px"></div>
-            </div>
-            <div class="skel-card-details">
-              <div class="skel-shape" style="width: 60%; height: 10px"></div>
-              <div class="skel-card-row">
-                <div class="skel-shape" style="width: 40%; height: 10px"></div>
-                <div class="skel-shape skel-pill" style="width: 36px; height: 16px"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 4 -->
-          <div class="skel-card">
-            <div class="skel-card-header">
-              <div class="skel-shape" style="width: 14px; height: 14px; border-radius: 3px"></div>
-              <div class="skel-shape skel-pill" style="width: 45%; height: 14px"></div>
-            </div>
-            <div class="skel-card-details">
-              <div class="skel-shape" style="width: 75%; height: 10px"></div>
-            </div>
+            <div class="skel-shape" style="width: 48%; height: 11px; border-radius: 3px"></div>
+            <div
+              class="skel-shape"
+              style="width: 30%; height: 9px; border-radius: 3px; margin-top: 6px"
+            ></div>
           </div>
         </div>
 
-        <!-- Main content area mimicking empty grid state -->
+        <!-- Main content area (reveals third) -->
         <div class="skeleton-main" aria-hidden="true">
           <div class="skeleton-main-inner">
-            <!-- Logo + title section -->
-            <div class="skeleton-logo-section">
+            <!-- Logo + title (reveals third) -->
+            <div class="skeleton-logo-section skel-reveal skel-reveal-d3">
               <svg
                 class="skeleton-logo"
                 viewBox="0 0 177.31 132.85"
@@ -658,61 +718,113 @@
                 />
               </svg>
               <div class="skeleton-title"></div>
-              <div class="skeleton-tagline"></div>
             </div>
 
-            <!-- Recipes skeleton (3-column grid) -->
-            <div class="skeleton-recipes">
+            <!-- Recipes (reveals fourth) -->
+            <div class="skeleton-recipes skel-reveal skel-reveal-d4">
               <div class="skel-recipe">
                 <div class="skel-recipe-row">
                   <div class="skel-recipe-icon"></div>
-                  <div class="skel-recipe-name" style="width: 75%"></div>
+                  <div class="skel-recipe-name" style="width: 50%"></div>
                 </div>
               </div>
               <div class="skel-recipe">
                 <div class="skel-recipe-row">
                   <div class="skel-recipe-icon"></div>
-                  <div class="skel-recipe-name" style="width: 60%"></div>
+                  <div class="skel-recipe-name" style="width: 70%"></div>
                 </div>
               </div>
-              <div class="skel-recipe">
-                <div class="skel-recipe-row">
-                  <div class="skel-recipe-icon"></div>
-                  <div class="skel-recipe-name" style="width: 85%"></div>
-                </div>
+              <!-- Create new recipe hint -->
+              <div class="skel-recipe-create">
+                <div
+                  class="skel-shape"
+                  style="width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0"
+                ></div>
+                <div
+                  class="skel-shape"
+                  style="width: 110px; height: 12px; border-radius: 3px"
+                ></div>
               </div>
             </div>
 
-            <!-- Project Pulse skeleton -->
-            <div class="skeleton-pulse">
+            <!-- Project Pulse (reveals fifth) -->
+            <div class="skeleton-pulse skel-reveal skel-reveal-d5">
               <div class="skeleton-pulse-header">
                 <div class="skeleton-pulse-header-left">
-                  <div class="skel-shape skel-circle" style="width: 16px; height: 16px"></div>
-                  <div class="skel-shape" style="width: 80px; height: 12px"></div>
+                  <div class="skel-shape skel-circle" style="width: 14px; height: 14px"></div>
+                  <div class="skel-shape" style="width: 88px; height: 13px"></div>
                 </div>
-                <div style="display: flex; gap: 6px">
-                  <div class="skel-shape skel-pill" style="width: 36px; height: 20px"></div>
-                  <div class="skel-shape skel-pill" style="width: 36px; height: 20px"></div>
-                  <div class="skel-shape skel-pill" style="width: 36px; height: 20px"></div>
+                <div style="display: flex; gap: 2px">
+                  <div class="skel-shape skel-pill" style="width: 32px; height: 22px"></div>
+                  <div class="skel-shape skel-pill" style="width: 36px; height: 22px"></div>
+                  <div class="skel-shape skel-pill" style="width: 36px; height: 22px"></div>
                 </div>
               </div>
               <div class="skeleton-pulse-body">
-                <!-- Heatmap grid -->
+                <!-- Heatmap row -->
                 <div class="skeleton-heatmap" id="skel-heatmap"></div>
+                <!-- Summary text -->
+                <div
+                  class="skel-shape"
+                  style="width: 160px; height: 12px; border-radius: 3px"
+                ></div>
+                <!-- Health signal chips -->
+                <div
+                  class="skeleton-pulse-stats"
+                  style="
+                    border-top: 1px solid var(--theme-border-default, #282828);
+                    padding-top: 12px;
+                  "
+                >
+                  <div class="skel-shape skel-pill" style="width: 72px; height: 22px"></div>
+                  <div class="skel-shape skel-pill" style="width: 48px; height: 22px"></div>
+                  <div class="skel-shape skel-pill" style="width: 48px; height: 22px"></div>
+                  <div class="skel-shape skel-pill" style="width: 88px; height: 22px"></div>
+                  <div class="skel-shape skel-pill" style="width: 96px; height: 22px"></div>
+                </div>
                 <!-- Stats row -->
-                <div class="skeleton-pulse-stats">
-                  <div class="skel-shape" style="width: 64px; height: 10px"></div>
-                  <div class="skel-shape" style="width: 56px; height: 10px"></div>
-                  <div class="skel-shape" style="width: 48px; height: 10px"></div>
-                  <div class="skel-shape" style="width: 40px; height: 10px"></div>
+                <div
+                  class="skeleton-pulse-stats"
+                  style="
+                    border-top: 1px solid var(--theme-border-default, #282828);
+                    padding-top: 12px;
+                  "
+                >
+                  <div
+                    class="skel-shape"
+                    style="width: 60px; height: 12px; border-radius: 3px"
+                  ></div>
+                  <div
+                    class="skel-shape"
+                    style="width: 52px; height: 12px; border-radius: 3px"
+                  ></div>
+                  <div
+                    class="skel-shape"
+                    style="width: 64px; height: 12px; border-radius: 3px"
+                  ></div>
                 </div>
               </div>
+            </div>
+
+            <!-- Tip section (reveals with pulse) -->
+            <div class="skeleton-tip skel-reveal skel-reveal-d5">
+              <div class="skel-shape" style="width: 200px; height: 12px; border-radius: 3px"></div>
+              <div class="skel-shape" style="width: 110px; height: 12px; border-radius: 3px"></div>
             </div>
           </div>
         </div>
       </div>
     </div>
     <script src="/skeleton-heatmap.js"></script>
+    <script>
+      // Safety: clean up aria state if skeleton fades via CSS timeout
+      setTimeout(function () {
+        var s = document.getElementById("startup-skeleton");
+        if (s && !s.classList.contains("fade-out")) {
+          s.setAttribute("aria-busy", "false");
+        }
+      }, 10000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
