@@ -1819,6 +1819,7 @@ export interface IpcEventMap {
 
   // Event inspector events
   "event-inspector:event": EventRecord;
+  "event-inspector:event-batch": EventRecord[];
 
   // Project events
   "project:on-switch": ProjectSwitchPayload;

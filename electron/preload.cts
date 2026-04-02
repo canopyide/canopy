@@ -1467,6 +1467,9 @@ const api: ElectronAPI = {
 
     onEvent: (callback: (event: EventRecord) => void) =>
       _typedOn(CHANNELS.EVENT_INSPECTOR_EVENT, callback),
+
+    onEventBatch: (callback: (events: EventRecord[]) => void) =>
+      _typedOn(CHANNELS.EVENT_INSPECTOR_EVENT_BATCH, callback),
   },
 
   events: {
