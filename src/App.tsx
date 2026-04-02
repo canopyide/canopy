@@ -445,6 +445,11 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     }))
   );
 
+  const [hasOpenedNewWorktree, setHasOpenedNewWorktree] = useState(false);
+  useEffect(() => {
+    if (createDialog.isOpen) setHasOpenedNewWorktree(true);
+  }, [createDialog.isOpen]);
+
   // Filter/sort state - destructured for stable memoization
   const {
     query,
@@ -1358,10 +1363,6 @@ function App() {
   useEffect(() => {
     if (isSettingsOpen) setHasOpenedSettings(true);
   }, [isSettingsOpen]);
-  const [hasOpenedNewWorktree, setHasOpenedNewWorktree] = useState(false);
-  useEffect(() => {
-    if (createDialog.isOpen) setHasOpenedNewWorktree(true);
-  }, [createDialog.isOpen]);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const isNotesPaletteOpen = usePaletteStore((state) => state.activePaletteId === "notes");
   const {
