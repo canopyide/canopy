@@ -1,37 +1,25 @@
-let _isMac: boolean | undefined;
-
 export function isMac(): boolean {
-  if (_isMac === undefined) {
-    _isMac =
-      typeof navigator !== "undefined" &&
-      !!navigator.platform &&
-      navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-  }
-  return _isMac;
+  return (
+    typeof navigator !== "undefined" &&
+    !!navigator.platform &&
+    navigator.platform.toUpperCase().indexOf("MAC") >= 0
+  );
 }
-
-let _isWindows: boolean | undefined;
 
 export function isWindows(): boolean {
-  if (_isWindows === undefined) {
-    _isWindows =
-      typeof navigator !== "undefined" &&
-      !!navigator.platform &&
-      navigator.platform.toUpperCase().includes("WIN");
-  }
-  return _isWindows;
+  return (
+    typeof navigator !== "undefined" &&
+    !!navigator.platform &&
+    navigator.platform.toUpperCase().includes("WIN")
+  );
 }
 
-let _isLinux: boolean | undefined;
-
 export function isLinux(): boolean {
-  if (_isLinux === undefined) {
-    _isLinux =
-      typeof navigator !== "undefined" &&
-      !!navigator.userAgent &&
-      navigator.userAgent.includes("Linux");
-  }
-  return _isLinux;
+  return (
+    typeof navigator !== "undefined" &&
+    !!navigator.userAgent &&
+    navigator.userAgent.includes("Linux")
+  );
 }
 
 /**
