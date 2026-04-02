@@ -374,10 +374,10 @@ describe("TerminalFocusSlice - dock focus sync invariant", () => {
     }) as TerminalInstance;
 
   let terminals: TerminalInstance[];
-  let getTerminals: any;
+  let getTerminals: ReturnType<typeof vi.fn<() => TerminalInstance[]>>;
   let state: TerminalFocusSlice;
-  let setState: any;
-  let getState: any;
+  let setState: ReturnType<typeof vi.fn>;
+  let getState: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
