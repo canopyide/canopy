@@ -373,6 +373,7 @@ export interface ElectronAPI {
     subscribe(): void;
     unsubscribe(): void;
     onEvent(callback: (event: EventRecord) => void): () => void;
+    onEventBatch(callback: (events: EventRecord[]) => void): () => void;
   };
   events: {
     emit(eventType: string, payload: unknown): Promise<void>;
