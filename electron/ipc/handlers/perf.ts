@@ -8,10 +8,7 @@ import {
 import type { RendererPerfFlushPayload } from "../../../shared/perf/marks.js";
 
 export function registerPerfHandlers(): () => void {
-  const handleFlush = (
-    _event: Electron.IpcMainEvent,
-    payload: RendererPerfFlushPayload
-  ): void => {
+  const handleFlush = (_event: Electron.IpcMainEvent, payload: RendererPerfFlushPayload): void => {
     if (!isPerformanceCaptureEnabled()) return;
     if (!payload || !Array.isArray(payload.marks)) return;
 
@@ -20,11 +17,7 @@ export function registerPerfHandlers(): () => void {
     for (const record of marks) {
       if (typeof record.elapsedMs !== "number") continue;
 
-      const rebasedMs = rebaseRendererElapsedMs(
-        rendererTimeOrigin,
-        rendererT0,
-        record.elapsedMs
-      );
+      const rebasedMs = rebaseRendererElapsedMs(rendererTimeOrigin, rendererT0, record.elapsedMs);
 
       appendPayload({
         mark: record.mark,

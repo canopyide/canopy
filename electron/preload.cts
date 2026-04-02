@@ -2640,7 +2640,12 @@ const api: ElectronAPI = {
 
   perf: {
     flushMarks: (payload: {
-      marks: Array<{ mark: string; timestamp: string; elapsedMs: number; meta?: Record<string, unknown> }>;
+      marks: Array<{
+        mark: string;
+        timestamp: string;
+        elapsedMs: number;
+        meta?: Record<string, unknown>;
+      }>;
       rendererTimeOrigin: number;
       rendererT0: number;
     }) => ipcRenderer.send(CHANNELS.PERF_FLUSH_RENDERER_MARKS, payload),

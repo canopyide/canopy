@@ -21,7 +21,12 @@ vi.mock("node:fs", () => ({
 }));
 
 import { logWarn } from "../logger.js";
-import { startEventLoopLagMonitor, rebaseRendererElapsedMs, APP_BOOT_T0, mainTimeOrigin } from "../performance.js";
+import {
+  startEventLoopLagMonitor,
+  rebaseRendererElapsedMs,
+  APP_BOOT_T0,
+  mainTimeOrigin,
+} from "../performance.js";
 
 describe("startEventLoopLagMonitor", () => {
   let stopFn: (() => void) | null = null;

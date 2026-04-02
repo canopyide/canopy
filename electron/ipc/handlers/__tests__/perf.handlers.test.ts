@@ -31,10 +31,7 @@ describe("registerPerfHandlers", () => {
   it("registers a listener on PERF_FLUSH_RENDERER_MARKS", () => {
     const cleanup = registerPerfHandlers();
     expect(ipcMainMock.on).toHaveBeenCalledTimes(1);
-    expect(ipcMainMock.on).toHaveBeenCalledWith(
-      "perf:flush-renderer-marks",
-      expect.any(Function)
-    );
+    expect(ipcMainMock.on).toHaveBeenCalledWith("perf:flush-renderer-marks", expect.any(Function));
     cleanup();
     expect(ipcMainMock.removeListener).toHaveBeenCalledTimes(1);
   });
