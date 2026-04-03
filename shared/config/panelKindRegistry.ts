@@ -31,6 +31,8 @@ export interface PanelKindConfig {
   extensionId?: string;
   /** Keyboard shortcut (optional) */
   shortcut?: string;
+  /** Search aliases for fuzzy matching in the panel palette */
+  searchAliases?: string[];
 }
 
 /**
@@ -71,6 +73,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     canConvert: false,
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
+    searchAliases: ["web", "chrome", "internet", "www"],
   },
   notes: {
     id: "notes",
@@ -82,6 +85,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     canConvert: false,
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
+    searchAliases: ["md", "markdown", "text", "memo"],
   },
   "dev-preview": {
     id: "dev-preview",
@@ -94,6 +98,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     usesTerminalUi: false, // Uses custom browser-based UI, not xterm.js
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
+    searchAliases: ["localhost", "server", "preview", "port"],
   },
 };
 

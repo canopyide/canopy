@@ -3,9 +3,11 @@ import { cn } from "@/lib/utils";
 import { AppPaletteDialog, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { PaletteOverflowNotice } from "@/components/ui/PaletteOverflowNotice";
 import type { PanelKindOption } from "@/hooks/usePanelPalette";
+import type { FuseResultMatch } from "@/hooks/useSearchablePalette";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { useTerminalStore } from "@/store/terminalStore";
 import { usePanelLimitStore } from "@/store/panelLimitStore";
+import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 
 interface PanelPaletteProps {
   isOpen: boolean;
@@ -13,12 +15,37 @@ interface PanelPaletteProps {
   results: PanelKindOption[];
   totalResults?: number;
   selectedIndex: number;
+  matchesById: Map<string, readonly FuseResultMatch[]>;
   onQueryChange: (q: string) => void;
   onSelectPrevious: () => void;
   onSelectNext: () => void;
   onSelect: (kind: PanelKindOption) => void;
   onConfirm: () => void;
   onClose: () => void;
+}
+
+function HighlightText({
+  text,
+  indices,
+}: {
+  text: string;
+  indices: readonly [number, number][] | undefined;
+}) {
+  if (!indices?.length) return <>{text}</>;
+  const sorted = [...indices].sort((a, b) => a[0] - b[0]);
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  sorted.forEach(([start, end], i) => {
+    if (start > lastIndex) parts.push(text.substring(lastIndex, start));
+    parts.push(
+      <mark key={i} className="bg-canopy-accent/25 text-inherit rounded-sm">
+        {text.substring(start, end + 1)}
+      </mark>
+    );
+    lastIndex = end + 1;
+  });
+  if (lastIndex < text.length) parts.push(text.substring(lastIndex));
+  return <>{parts}</>;
 }
 
 const SECTION_LABELS: Record<"agent" | "tool" | "resume", string> = {
@@ -33,6 +60,7 @@ export function PanelPalette({
   results,
   totalResults,
   selectedIndex,
+  matchesById,
   onQueryChange,
   onSelectPrevious,
   onSelectNext,
@@ -97,6 +125,8 @@ export function PanelPalette({
     return count;
   });
   const hardLimit = usePanelLimitStore((state) => state.hardLimit);
+  const keyHint = useKeybindingDisplay("panel.palette");
+  const showCounter = hardLimit > 0 && panelCount / hardLimit >= 0.75;
 
   const isSearching = query.trim().length > 0;
 
@@ -127,7 +157,17 @@ export function PanelPalette({
           <PanelKindIcon iconId={kind.iconId} color={kind.color} size={16} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-canopy-text">{kind.name}</div>
+          <div className="text-sm font-medium text-canopy-text">
+            {(() => {
+              const kindMatches = matchesById.get(kind.id);
+              const nameMatch = kindMatches?.find((m) => m.key === "name");
+              return nameMatch ? (
+                <HighlightText text={kind.name} indices={nameMatch.indices} />
+              ) : (
+                kind.name
+              );
+            })()}
+          </div>
           {kind.description && (
             <div className="text-xs text-canopy-text/50 truncate">{kind.description}</div>
           )}
@@ -165,15 +205,18 @@ export function PanelPalette({
     };
 
     renderSection("agent", agents);
-    renderSection("resume", resumeSessions);
     renderSection("tool", tools);
+    renderSection("resume", resumeSessions);
 
     return elements;
   };
 
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel="Panel palette">
-      <AppPaletteDialog.Header label={`New Panel (${panelCount} / ${hardLimit})`} keyHint="⌘⇧P">
+      <AppPaletteDialog.Header
+        label={showCounter ? `New Panel (${panelCount} / ${hardLimit})` : "New Panel"}
+        keyHint={keyHint || undefined}
+      >
         <AppPaletteDialog.Input
           inputRef={inputRef}
           value={query}

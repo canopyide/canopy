@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { IFuseOptions } from "fuse.js";
 import { getPanelKindIds, getPanelKindConfig } from "@shared/config/panelKindRegistry";
 import { hasPanelComponent } from "@/registry/panelComponentRegistry";
 import { getEffectiveAgentIds, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
@@ -7,6 +8,7 @@ import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useSearchablePalette, type UseSearchablePaletteReturn } from "./useSearchablePalette";
 import { keybindingService } from "@/services/KeybindingService";
+import { formatTimeAgo } from "@/utils/timeAgo";
 import type { KeyAction } from "@shared/types/keymap";
 import type { AgentSessionRecord } from "@shared/types/ipc/agentSessionHistory";
 
@@ -16,6 +18,7 @@ export interface PanelKindOption {
   iconId: string;
   color: string;
   description?: string;
+  searchAliases?: string[];
   category: "agent" | "tool" | "resume";
   installed?: boolean;
   resumeSession?: AgentSessionRecord;
@@ -34,14 +37,25 @@ const AGENT_LAUNCH_ACTIONS: Record<string, KeyAction> = Object.fromEntries(
   BUILT_IN_AGENT_IDS.map((id) => [id, `agent.${id}` as KeyAction])
 );
 
-function filterPanelKinds(items: PanelKindOption[], query: string): PanelKindOption[] {
-  if (!query.trim()) return items;
-  const lowerQuery = query.toLowerCase();
-  return items.filter(
-    (opt) =>
-      opt.name.toLowerCase().includes(lowerQuery) ||
-      (opt.description && opt.description.toLowerCase().includes(lowerQuery))
-  );
+const PANEL_FUSE_OPTIONS: IFuseOptions<PanelKindOption> = {
+  keys: [
+    { name: "name", weight: 2 },
+    { name: "searchAliases", weight: 1.5 },
+    { name: "description", weight: 1 },
+  ],
+  threshold: 0.4,
+  includeScore: true,
+};
+
+function prettifyModelId(modelId: string): string {
+  let name = modelId;
+  const slashIdx = name.lastIndexOf("/");
+  if (slashIdx >= 0) name = name.slice(slashIdx + 1);
+  name = name
+    .replace(/^claude-/, "")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return name;
 }
 
 export const MORE_AGENTS_PANEL_ID = "more-agents";
@@ -85,6 +99,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
           iconId: config.iconId,
           color: config.color,
           description: config.shortcut,
+          searchAliases: config.searchAliases,
           category: "tool" as const,
         };
       });
@@ -129,14 +144,15 @@ export function usePanelPalette(): UsePanelPaletteReturn {
 
     const resumeOptions: PanelKindOption[] = resumeSessions.slice(0, 5).map((session) => {
       const agentConfig = getEffectiveAgentConfig(session.agentId);
-      const date = new Date(session.savedAt);
-      const timeStr = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+      const timeAgo = formatTimeAgo(session.savedAt);
+      const modelPart = session.agentModelId ? prettifyModelId(session.agentModelId) : null;
+      const description = modelPart ? `${modelPart} · ${timeAgo}` : timeAgo;
       return {
         id: `resume:${session.sessionId}`,
         name: `Resume ${agentConfig?.name ?? session.agentId}`,
         iconId: agentConfig?.iconId ?? "terminal",
         color: agentConfig?.color ?? "var(--color-canopy-text)",
-        description: `${session.sessionId.slice(0, 8)}… · ${timeStr}`,
+        description,
         category: "resume" as const,
         resumeSession: session,
       };
@@ -152,8 +168,8 @@ export function usePanelPalette(): UsePanelPaletteReturn {
         description: "Set up additional AI agents",
         category: "agent" as const,
       },
-      ...resumeOptions,
       ...toolDedup.values(),
+      ...resumeOptions,
     ];
   }, [
     userRegistry,
@@ -164,10 +180,11 @@ export function usePanelPalette(): UsePanelPaletteReturn {
     isAvailabilityInitialized,
   ]);
 
-  const { results, selectedIndex, close, isOpen, ...paletteRest } =
+  const { results, selectedIndex, close, isOpen, matchesById, ...paletteRest } =
     useSearchablePalette<PanelKindOption>({
       items: availableKinds,
-      filterFn: filterPanelKinds,
+      fuseOptions: PANEL_FUSE_OPTIONS,
+      includeMatches: true,
       maxResults: 20,
       paletteId: "panel",
     });
@@ -224,6 +241,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
     selectedIndex,
     close,
     isOpen,
+    matchesById,
     ...paletteRest,
     handleSelect,
     confirmSelection,

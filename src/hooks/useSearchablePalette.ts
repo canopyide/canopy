@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useEffect, useDeferredValue } from "react";
-import Fuse, { type IFuseOptions } from "fuse.js";
+import Fuse, { type IFuseOptions, type FuseResultMatch } from "fuse.js";
 import { usePaletteStore, type PaletteId } from "@/store/paletteStore";
+
+export type { FuseResultMatch };
 
 export interface UseSearchablePaletteOptions<T> {
   items: T[];
@@ -13,6 +15,10 @@ export interface UseSearchablePaletteOptions<T> {
   resetOnResultsChange?: boolean;
   /** Palette ID for mutual exclusion. When set, isOpen is derived from the palette store. */
   paletteId?: PaletteId;
+  /** When true, populates matchesById with Fuse match ranges (requires fuseOptions). */
+  includeMatches?: boolean;
+  /** Extract a unique ID from an item for the matchesById map. Defaults to `(item as any).id`. */
+  getItemId?: (item: T) => string;
 }
 
 export interface UseSearchablePaletteReturn<T> {
@@ -22,6 +28,7 @@ export interface UseSearchablePaletteReturn<T> {
   totalResults: number;
   selectedIndex: number;
   isStale: boolean;
+  matchesById: Map<string, readonly FuseResultMatch[]>;
   open: () => void;
   close: () => void;
   toggle: () => void;
@@ -44,6 +51,8 @@ export function useSearchablePalette<T>(
     canNavigate,
     resetOnResultsChange = true,
     paletteId,
+    includeMatches = false,
+    getItemId = (item: T) => (item as Record<string, unknown>).id as string,
   } = options;
 
   const storeIsOpen = usePaletteStore(
@@ -56,13 +65,20 @@ export function useSearchablePalette<T>(
   const [selectedIndex, setSelectedIndex] = useState(0);
   const deferredQuery = useDeferredValue(query);
 
-  const fuse = useMemo(() => {
+  const effectiveFuseOptions = useMemo(() => {
     if (!fuseOptions) return null;
-    return new Fuse(items, fuseOptions);
-  }, [items, fuseOptions]);
+    if (includeMatches) return { ...fuseOptions, includeMatches: true };
+    return fuseOptions;
+  }, [fuseOptions, includeMatches]);
 
-  const { results, totalResults } = useMemo(() => {
+  const fuse = useMemo(() => {
+    if (!effectiveFuseOptions) return null;
+    return new Fuse(items, effectiveFuseOptions);
+  }, [items, effectiveFuseOptions]);
+
+  const { results, totalResults, matchesById } = useMemo(() => {
     let filtered: T[];
+    let matches = new Map<string, readonly FuseResultMatch[]>();
 
     if (filterFn) {
       filtered = filterFn(items, deferredQuery);
@@ -71,12 +87,23 @@ export function useSearchablePalette<T>(
     } else if (fuse) {
       const fuseResults = fuse.search(deferredQuery);
       filtered = fuseResults.map((r) => r.item);
+      if (includeMatches) {
+        for (const r of fuseResults) {
+          if (r.matches?.length) {
+            matches.set(getItemId(r.item), r.matches);
+          }
+        }
+      }
     } else {
       filtered = items;
     }
 
-    return { results: filtered.slice(0, maxResults), totalResults: filtered.length };
-  }, [deferredQuery, items, fuse, filterFn, maxResults]);
+    return {
+      results: filtered.slice(0, maxResults),
+      totalResults: filtered.length,
+      matchesById: matches,
+    };
+  }, [deferredQuery, items, fuse, filterFn, maxResults, includeMatches, getItemId]);
 
   const findNavigable = useCallback(
     (startIndex: number, direction: 1 | -1): number => {
@@ -164,6 +191,7 @@ export function useSearchablePalette<T>(
     totalResults,
     selectedIndex,
     isStale,
+    matchesById,
     open,
     close,
     toggle,

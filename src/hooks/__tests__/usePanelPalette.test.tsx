@@ -71,6 +71,18 @@ describe("usePanelPalette", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    // Ensure window.electron.agentSessionHistory is available for tests
+    if (!window.electron) {
+      (window as unknown as Record<string, unknown>).electron = {};
+    }
+    if (!(window.electron as Record<string, unknown>).agentSessionHistory) {
+      (window.electron as Record<string, unknown>).agentSessionHistory = {
+        list: vi.fn().mockResolvedValue([]),
+      };
+    } else {
+      vi.spyOn(window.electron!.agentSessionHistory!, "list").mockResolvedValue([]);
+    }
+
     getPanelKindIdsMock.mockReturnValue(["browser"]);
     getPanelKindConfigMock.mockImplementation((id: string) =>
       id === "browser"
@@ -130,6 +142,52 @@ describe("usePanelPalette", () => {
 
     const ids = result.current.results.map((item) => item.id);
     expect(ids).toEqual(["agent:claude", MORE_AGENTS_PANEL_ID, "browser"]);
+  });
+
+  it("places resume sessions after tools", async () => {
+    (window.electron!.agentSessionHistory!.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        sessionId: "abc12345-6789",
+        agentId: "claude",
+        worktreeId: null,
+        title: null,
+        projectId: null,
+        savedAt: Date.now() - 3600000,
+        agentModelId: "claude-opus-4-5",
+      },
+    ]);
+
+    const { result, rerender } = renderHook(() => usePanelPalette());
+    await vi.waitFor(() => {
+      rerender();
+      const ids = result.current.results.map((item) => item.id);
+      const browserIdx = ids.indexOf("browser");
+      const resumeIdx = ids.findIndex((id) => id.startsWith("resume:"));
+      expect(resumeIdx).toBeGreaterThan(browserIdx);
+    });
+  });
+
+  it("formats resume session description with model and time", async () => {
+    (window.electron!.agentSessionHistory!.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        sessionId: "abc12345-6789",
+        agentId: "claude",
+        worktreeId: null,
+        title: null,
+        projectId: null,
+        savedAt: Date.now() - 7200000,
+        agentModelId: "claude-opus-4-5",
+      },
+    ]);
+
+    const { result, rerender } = renderHook(() => usePanelPalette());
+    await vi.waitFor(() => {
+      rerender();
+      const resume = result.current.results.find((item) => item.id.startsWith("resume:"));
+      expect(resume).toBeDefined();
+      expect(resume!.description).toContain("Opus 4 5");
+      expect(resume!.description).toContain("ago");
+    });
   });
 
   it("still includes MORE_AGENTS when all agents are hidden", () => {
