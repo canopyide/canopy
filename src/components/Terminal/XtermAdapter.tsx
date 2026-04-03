@@ -536,7 +536,7 @@ function XtermAdapterComponent({
       }
       resizeObserver.disconnect();
     };
-  }, [handleResizeEntry]);
+  }, [handleResizeEntry, terminalId]);
 
   return (
     <div
