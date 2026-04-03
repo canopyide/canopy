@@ -222,7 +222,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       if (isGlobal) {
         await globalRecipesClient.addRecipe(newRecipe);
       } else {
-        await projectClient.writeInRepoRecipe(projectId, newRecipe);
+        await projectClient.updateInRepoRecipe(projectId, newRecipe);
       }
     } catch (error) {
       console.error("Failed to persist recipe:", error);
@@ -292,15 +292,19 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     });
 
     try {
-      if (isGlobal) {
-        await globalRecipesClient.updateRecipe(id, sanitizedUpdates);
-      } else if (isInRepo) {
-        const currentProjectId = get().currentProjectId;
-        if (!currentProjectId) throw new Error("No project selected");
-        await projectClient.writeInRepoRecipe(currentProjectId, updatedRecipe);
-        if (nameChanged) {
-          await projectClient.deleteInRepoRecipe(currentProjectId, recipe.name);
+      if (isInRepo) {
+        const metadataOnlyKeys = new Set(["lastUsedAt", "usageHistory"]);
+        const updateKeys = Object.keys(updates);
+        const isMetadataOnly = updateKeys.every((k) => metadataOnlyKeys.has(k));
+        if (!isMetadataOnly) {
+          const projectId = get().currentProjectId;
+          if (!projectId) throw new Error("No current project");
+          const previousName =
+            updates.name && updates.name !== recipe.name ? recipe.name : undefined;
+          await projectClient.updateInRepoRecipe(projectId, updatedRecipe, previousName);
         }
+      } else if (isGlobal) {
+        await globalRecipesClient.updateRecipe(id, sanitizedUpdates);
       } else {
         await projectClient.updateRecipe(recipe.projectId!, id, sanitizedUpdates);
       }
@@ -340,7 +344,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     });
 
     try {
-      if (isGlobal) {
+      if (isInRepo) {
+        const projectId = get().currentProjectId;
+        if (!projectId) throw new Error("No current project");
+        await projectClient.deleteInRepoRecipe(projectId, recipe.name);
+      } else if (isGlobal) {
         await globalRecipesClient.deleteRecipe(id);
       } else if (isInRepo) {
         const currentProjectId = get().currentProjectId;
@@ -639,7 +647,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       if (isGlobal) {
         await globalRecipesClient.addRecipe(importedRecipe);
       } else {
-        await projectClient.writeInRepoRecipe(projectId, importedRecipe);
+        await projectClient.updateInRepoRecipe(projectId, importedRecipe);
       }
     } catch (_error) {
       console.error("Failed to persist imported recipe:", _error);

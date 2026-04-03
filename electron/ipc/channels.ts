@@ -210,7 +210,7 @@ export const CHANNELS = {
   RECIPE_IMPORT_FILE: "recipe:import-file",
   PROJECT_GET_INREPO_RECIPES: "project:get-inrepo-recipes",
   PROJECT_SYNC_INREPO_RECIPES: "project:sync-inrepo-recipes",
-  PROJECT_WRITE_INREPO_RECIPE: "project:write-inrepo-recipe",
+  PROJECT_UPDATE_INREPO_RECIPE: "project:update-inrepo-recipe",
   PROJECT_DELETE_INREPO_RECIPE: "project:delete-inrepo-recipe",
 
   GLOBAL_GET_RECIPES: "global:get-recipes",

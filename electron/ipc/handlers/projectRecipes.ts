@@ -197,14 +197,14 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
   ipcMain.handle(CHANNELS.PROJECT_SYNC_INREPO_RECIPES, handleProjectSyncInRepoRecipes);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SYNC_INREPO_RECIPES));
 
-  const handleProjectWriteInRepoRecipe = async (
+  const handleProjectUpdateInRepoRecipe = async (
     _event: Electron.IpcMainInvokeEvent,
-    payload: { projectId: string; recipe: TerminalRecipe }
+    payload: { projectId: string; recipe: TerminalRecipe; previousName?: string }
   ): Promise<void> => {
     if (!payload || typeof payload !== "object") {
       throw new Error("Invalid payload");
     }
-    const { projectId, recipe } = payload;
+    const { projectId, recipe, previousName } = payload;
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
     }
@@ -216,9 +216,16 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
       throw new Error(`Project not found: ${projectId}`);
     }
     await projectStore.writeInRepoRecipe(project.path, recipe);
+    if (
+      previousName &&
+      typeof previousName === "string" &&
+      safeRecipeFilename(previousName) !== safeRecipeFilename(recipe.name)
+    ) {
+      await projectStore.deleteInRepoRecipe(project.path, previousName);
+    }
   };
-  ipcMain.handle(CHANNELS.PROJECT_WRITE_INREPO_RECIPE, handleProjectWriteInRepoRecipe);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_WRITE_INREPO_RECIPE));
+  ipcMain.handle(CHANNELS.PROJECT_UPDATE_INREPO_RECIPE, handleProjectUpdateInRepoRecipe);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_UPDATE_INREPO_RECIPE));
 
   const handleProjectDeleteInRepoRecipe = async (
     _event: Electron.IpcMainInvokeEvent,
