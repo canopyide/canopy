@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { escapeShellArg } from "@shared/utils/shellEscape";
 
 const appClientMock = {
   hydrate: vi.fn(),
