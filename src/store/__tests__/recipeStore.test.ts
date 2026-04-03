@@ -755,6 +755,36 @@ describe("recipeStore", () => {
       expect(state.inRepoRecipes[0]?.id).toMatch(/^inrepo-/);
     });
 
+    it("rename to same normalized name does not delete the file", async () => {
+      useRecipeStore.setState({
+        inRepoRecipes: [
+          {
+            id: "inrepo-cafe",
+            name: "Cafe",
+            terminals: [{ type: "terminal" as const }],
+            createdAt: 500,
+          },
+        ],
+        projectRecipes: [],
+        globalRecipes: [],
+        recipes: [
+          {
+            id: "inrepo-cafe",
+            name: "Cafe",
+            terminals: [{ type: "terminal" as const }],
+            createdAt: 500,
+          },
+        ],
+        currentProjectId: "project-1",
+      });
+
+      await useRecipeStore.getState().updateRecipe("inrepo-cafe", { name: "cafe" });
+
+      expect(writeInRepoRecipeMock).toHaveBeenCalledTimes(1);
+      expect(deleteInRepoRecipeMock).not.toHaveBeenCalled();
+      expect(useRecipeStore.getState().inRepoRecipes[0]?.name).toBe("cafe");
+    });
+
     it("in-repo recipe with projectId=undefined does NOT route to global on update", async () => {
       useRecipeStore.setState({
         inRepoRecipes: [

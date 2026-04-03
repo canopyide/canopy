@@ -261,7 +261,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       : updates;
 
     // For in-repo recipes with a name change, compute the new stable ID
-    const nameChanged = isInRepo && updates.name && updates.name !== recipe.name;
+    const nameChanged = isInRepo && updates.name && stableInRepoId(updates.name) !== id;
     const newId = nameChanged ? stableInRepoId(updates.name!) : id;
 
     const updatedRecipe = {
