@@ -1344,7 +1344,6 @@ function App() {
 
   const createFolderDialogOpen = useProjectStore((state) => state.createFolderDialogOpen);
   const closeCreateFolderDialog = useProjectStore((state) => state.closeCreateFolderDialog);
-  const openCreateFolderDialog = useProjectStore((state) => state.openCreateFolderDialog);
 
   const cloneRepoDialogOpen = useProjectStore((state) => state.cloneRepoDialogOpen);
   const closeCloneRepoDialog = useProjectStore((state) => state.closeCloneRepoDialog);
