@@ -220,6 +220,7 @@ export function ProjectSwitcher() {
         onSelect={projectSwitcher.selectProject}
         onClose={handleDropdownClose}
         onAddProject={projectSwitcher.addProject}
+        onCloneRepo={handleCloneRepo}
         onCreateFolder={handleCreateFolder}
         onStopProject={handleStopProject}
         onCloseProject={handleCloseProject}
