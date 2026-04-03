@@ -84,12 +84,13 @@ const IssueBadge = memo(function IssueBadge({
         <button
           type="button"
           onClick={() => {
-            onOpen?.();
+            if (isActive) onOpen?.();
           }}
           className={cn(
             "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0",
             isHeadline ? "text-[13px]" : "text-xs"
           )}
+          aria-disabled={!isActive || undefined}
           aria-label={
             issueTitle
               ? `Open issue #${issueNumber}: ${issueTitle}`
@@ -135,6 +136,7 @@ interface PRBadgeProps {
   isSubordinate: boolean;
   worktreePath: string;
   onOpen?: () => void;
+  isActive?: boolean;
 }
 
 const PRBadge = memo(function PRBadge({
@@ -143,6 +145,7 @@ const PRBadge = memo(function PRBadge({
   isSubordinate,
   worktreePath,
   onOpen,
+  isActive,
 }: PRBadgeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { data, loading, error, fetchTooltip, reset } = usePRTooltip(worktreePath, prNumber);
@@ -174,9 +177,10 @@ const PRBadge = memo(function PRBadge({
         <button
           type="button"
           onClick={() => {
-            onOpen?.();
+            if (isActive) onOpen?.();
           }}
           className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0"
+          aria-disabled={!isActive || undefined}
           aria-label={`Open ${prStateLabel} pull request #${prNumber} on GitHub`}
         >
           {isSubordinate && (
@@ -622,6 +626,7 @@ export function WorktreeHeader({
                 issueNumber={worktree.issueNumber}
                 worktreePath={worktree.path}
                 onOpen={badges.onOpenIssue}
+                isActive={isActive}
               />
             )}
             {worktree.prNumber && worktree.prState !== "closed" && (
@@ -631,6 +636,7 @@ export function WorktreeHeader({
                 isSubordinate={!!worktree.issueNumber}
                 worktreePath={worktree.path}
                 onOpen={badges.onOpenPR}
+                isActive={isActive}
               />
             )}
             {hasUpstreamDelta && (
@@ -679,9 +685,10 @@ export function WorktreeHeader({
               <button
                 type="button"
                 onClick={() => {
-                  badges.onOpenPlan?.();
+                  if (isActive) badges.onOpenPlan?.();
                 }}
                 className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors text-canopy-text/70 hover:text-canopy-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                aria-disabled={!isActive || undefined}
                 aria-label="View agent plan file"
               >
                 <FileText className="w-3 h-3 shrink-0 text-canopy-accent/70" aria-hidden="true" />
