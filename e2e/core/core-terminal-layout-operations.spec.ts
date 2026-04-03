@@ -8,10 +8,10 @@ import {
   getGridPanelIds,
   getDockPanelIds,
   getFirstGridPanel,
-  openTerminal,
 } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
+import { spawnTerminalAndVerify } from "../helpers/workflows";
 
 let ctx: AppContext;
 let fixtureDir: string;
@@ -47,11 +47,9 @@ test.describe.serial("Core: Terminal Layout Operations", () => {
   test.describe.serial("Grid Panel Reordering", () => {
     test("open 3 terminals for reorder tests", async () => {
       const { window } = ctx;
-      for (let i = 0; i < 3; i++) {
-        await openTerminal(window);
-        await window.waitForTimeout(T_SETTLE);
-      }
-      await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(3);
+      await spawnTerminalAndVerify(window);
+      await spawnTerminalAndVerify(window);
+      await spawnTerminalAndVerify(window);
     });
 
     test("move focused panel right changes order", async () => {
