@@ -94,6 +94,10 @@ describe("Windows Git PATH discovery", () => {
     delete process.env["ProgramFiles"];
     delete process.env["ProgramFiles(x86)"];
     delete process.env["ChocolateyInstall"];
+    delete process.env["VOLTA_HOME"];
+    delete process.env["PNPM_HOME"];
+    delete process.env["FNM_MULTISHELL_PATH"];
+    delete process.env["NVM_SYMLINK"];
   });
 
   afterEach(() => {
@@ -198,6 +202,117 @@ describe("Windows Git PATH discovery", () => {
     const candidates = getCandidatePaths();
     const hasLocalBin = candidates.some((p) => p.includes(".local"));
     expect(hasLocalBin).toBe(false);
+  });
+
+  it("includes npm global bin path", async () => {
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    expect(candidates).toContainEqual(
+      expect.stringContaining(path.join("AppData", "Roaming", "npm"))
+    );
+  });
+
+  it("includes Volta bin from VOLTA_HOME env var when set", async () => {
+    process.env["VOLTA_HOME"] = "D:\\Volta";
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    expect(candidates).toContainEqual(expect.stringContaining(path.join("D:\\Volta", "bin")));
+    // Should NOT contain the hardcoded fallback
+    const hasFallback = candidates.some((p) =>
+      p.includes(path.join("AppData", "Local", "Volta", "bin"))
+    );
+    expect(hasFallback).toBe(false);
+
+    delete process.env["VOLTA_HOME"];
+  });
+
+  it("includes Volta bin from hardcoded fallback when VOLTA_HOME not set", async () => {
+    delete process.env["VOLTA_HOME"];
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    expect(candidates).toContainEqual(
+      expect.stringContaining(path.join("AppData", "Local", "Volta", "bin"))
+    );
+  });
+
+  it("includes PNPM_HOME path when env var is set", async () => {
+    process.env["PNPM_HOME"] = "C:\\Users\\testuser\\AppData\\Local\\pnpm";
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    expect(candidates).toContainEqual(expect.stringContaining("AppData\\Local\\pnpm"));
+
+    delete process.env["PNPM_HOME"];
+  });
+
+  it("does not include pnpm path when PNPM_HOME is not set", async () => {
+    delete process.env["PNPM_HOME"];
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    const hasPnpm = candidates.some((p) => p.includes("pnpm"));
+    expect(hasPnpm).toBe(false);
+  });
+
+  it("includes FNM_MULTISHELL_PATH when env var is set", async () => {
+    process.env["FNM_MULTISHELL_PATH"] =
+      "C:\\Users\\testuser\\AppData\\Local\\fnm_multishells\\12345";
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    expect(candidates).toContainEqual(expect.stringContaining("fnm_multishells"));
+
+    delete process.env["FNM_MULTISHELL_PATH"];
+  });
+
+  it("does not include fnm path when FNM_MULTISHELL_PATH is not set", async () => {
+    delete process.env["FNM_MULTISHELL_PATH"];
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    const hasFnm = candidates.some((p) => p.includes("fnm"));
+    expect(hasFnm).toBe(false);
+  });
+
+  it("includes NVM_SYMLINK path when env var is set", async () => {
+    process.env["NVM_SYMLINK"] = "C:\\Program Files\\nodejs";
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    expect(candidates).toContainEqual(expect.stringContaining("C:\\Program Files\\nodejs"));
+
+    delete process.env["NVM_SYMLINK"];
+  });
+
+  it("does not include nvm-windows path when NVM_SYMLINK is not set", async () => {
+    delete process.env["NVM_SYMLINK"];
+    fsMock.existsSync.mockReturnValue(true);
+
+    await import("../environment.js");
+
+    const candidates = getCandidatePaths();
+    // "nodejs" only appears from NVM_SYMLINK, not from other paths
+    const hasNvm = candidates.some((p) => p === "C:\\Program Files\\nodejs");
+    expect(hasNvm).toBe(false);
   });
 
   it("falls back to defaults when env vars are empty strings", async () => {
