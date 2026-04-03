@@ -493,4 +493,73 @@ describe("BrowserPane webview lifecycle regression", () => {
       expect(container.textContent).not.toContain("blocked.com");
     });
   });
+
+  describe("stale URL detection on initial load", () => {
+    it("shows stale URL message on ERR_CONNECTION_REFUSED during initial restored load", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -102,
+          errorDescription: "ERR_CONNECTION_REFUSED",
+          isMainFrame: true,
+          validatedURL: "http://localhost:5173/",
+        });
+      });
+
+      expect(container.textContent).toContain("The saved URL is no longer reachable");
+      expect(container.textContent).toContain("server may have moved to a different port");
+    });
+
+    it("shows generic error on ERR_CONNECTION_REFUSED after user navigates", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      // Simulate successful first load
+      act(() => {
+        emitWebviewEvent(webview, "dom-ready");
+      });
+
+      // Then a subsequent connection refused
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -102,
+          errorDescription: "ERR_CONNECTION_REFUSED",
+          isMainFrame: true,
+          validatedURL: "http://localhost:5173/other",
+        });
+      });
+
+      expect(container.textContent).not.toContain("The saved URL is no longer reachable");
+      expect(container.textContent).toContain("ERR_CONNECTION_REFUSED");
+    });
+
+    it("shows generic error when user types a bad URL before first success", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      // User navigates before any dom-ready fires
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("canopy:browser-navigate", {
+            detail: { id: "browser-panel-1", url: "http://localhost:9999" },
+          })
+        );
+      });
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -102,
+          errorDescription: "ERR_CONNECTION_REFUSED",
+          isMainFrame: true,
+          validatedURL: "http://localhost:9999/",
+        });
+      });
+
+      // Should show generic error since the user actively navigated
+      expect(container.textContent).not.toContain("The saved URL is no longer reachable");
+      expect(container.textContent).toContain("ERR_CONNECTION_REFUSED");
+    });
+  });
 });

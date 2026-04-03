@@ -119,6 +119,7 @@ export function DevPreviewPane({
   const failLoadRetryRef = useRef<NodeJS.Timeout | null>(null);
   const failLoadRetryCountRef = useRef<number>(0);
   const isConsoleOpen = terminal?.devPreviewConsoleOpen ?? false;
+  const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
   const { saveSettings } = useProjectSettings();
   const allDetectedRunners = useProjectSettingsStore((state) => state.allDetectedRunners);
@@ -134,6 +135,19 @@ export function DevPreviewPane({
   const canGoBack = history.past.length > 0;
   const canGoForward = history.future.length > 0;
   const isUnconfigured = Boolean(currentProjectId) && !isSettingsLoading && !devCommand;
+
+  useEffect(() => {
+    if (!isUnconfigured) return;
+    setHistory(initializeBrowserHistory(undefined, ""));
+    setBrowserUrl(id, "");
+    lastSetUrlRef.current = "";
+    setWebviewLoadError(null);
+    if (failLoadRetryRef.current) {
+      clearTimeout(failLoadRetryRef.current);
+      failLoadRetryRef.current = null;
+    }
+    failLoadRetryCountRef.current = 0;
+  }, [isUnconfigured, id, setBrowserUrl]);
 
   const { isEvicted, evictingRef } = useWebviewEviction(id, location);
 
@@ -206,17 +220,19 @@ export function DevPreviewPane({
   }, [terminalId]);
 
   useEffect(() => {
+    if (isUnconfigured) return;
     if (url && shouldAdoptDetectedDevServerUrl(url, currentUrl)) {
       setHistory((prev) => pushBrowserHistory(prev, url));
       lastSetUrlRef.current = url;
     }
-  }, [url, currentUrl]);
+  }, [url, currentUrl, isUnconfigured]);
 
   useEffect(() => {
+    if (isUnconfigured) return;
     if (currentUrl) {
       setBrowserUrl(id, currentUrl);
     }
-  }, [id, currentUrl, setBrowserUrl]);
+  }, [id, currentUrl, setBrowserUrl, isUnconfigured]);
 
   useEffect(() => {
     setBrowserHistory(id, history);
@@ -278,6 +294,7 @@ export function DevPreviewPane({
     lastSetUrlRef.current = "";
     setIsLoading(false);
     setIsWebviewReady(false);
+    setWebviewLoadError(null);
     void restart();
   }, [id, restart, setBrowserUrl]);
 
@@ -350,6 +367,7 @@ export function DevPreviewPane({
 
     const handleDidFinishLoad = () => {
       setIsLoading(false);
+      setWebviewLoadError(null);
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
         loadTimeoutRef.current = null;
@@ -378,7 +396,11 @@ export function DevPreviewPane({
       ) {
         const MAX_RETRIES = 5;
         const retryCount = failLoadRetryCountRef.current;
-        if (retryCount < MAX_RETRIES) {
+        if (retryCount >= MAX_RETRIES) {
+          setWebviewLoadError(
+            "Unable to connect to dev server. The server may be on a different port."
+          );
+        } else if (retryCount < MAX_RETRIES) {
           failLoadRetryCountRef.current += 1;
           // Capture URL at fail-time so the retry loads the same page even if
           // the webview navigates elsewhere during the backoff window.
@@ -407,6 +429,7 @@ export function DevPreviewPane({
       // Suppress about:blank navigations triggered by eviction
       if (navigatedUrl === "about:blank" && evictingRef.current) return;
       setBlockedNav(null);
+      setWebviewLoadError(null);
       // A confirmed new main-frame navigation means we're past any previous failure;
       // reset the retry budget so stale exhaustion doesn't block future attempts.
       failLoadRetryCountRef.current = 0;
@@ -738,6 +761,26 @@ export function DevPreviewPane({
             </div>
           ) : (
             <>
+              {webviewLoadError && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-canopy-bg text-canopy-text p-6">
+                  <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
+                  <h3 className="text-sm font-medium text-canopy-text/70 mb-1">
+                    Dev Server Unreachable
+                  </h3>
+                  <p className="text-xs text-canopy-text/50 text-center mb-3 max-w-md">
+                    {webviewLoadError}
+                  </p>
+                  <Button
+                    onClick={handleHardRestart}
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 px-2.5 py-1.5 group text-canopy-accent/70 hover:text-canopy-accent"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    <span className="text-xs">Hard Restart</span>
+                  </Button>
+                </div>
+              )}
               {blockedNav && (
                 <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-canopy-text/80">
                   <ExternalLink className="h-3.5 w-3.5 shrink-0 text-status-warning" />

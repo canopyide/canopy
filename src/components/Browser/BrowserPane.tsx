@@ -115,6 +115,7 @@ export function BrowserPane({
   // Track if webview has been mounted and is ready
   const [isWebviewReady, setIsWebviewReady] = useState(false);
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialRestoredLoadRef = useRef(true);
 
   const hasBeenVisible = useHasBeenVisible(id, location);
 
@@ -234,6 +235,7 @@ export function BrowserPane({
     }
 
     const handleDomReady = () => {
+      isInitialRestoredLoadRef.current = false;
       setIsWebviewReady(true);
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
@@ -276,13 +278,25 @@ export function BrowserPane({
       // Ignore cancellations
       if (event.errorCode === -6) return;
       setIsLoading(false);
-      setLoadError(event.errorDescription || "Failed to load page. The site may be unavailable.");
+      const ERR_CONNECTION_REFUSED = -102;
+      if (
+        event.isMainFrame &&
+        event.errorCode === ERR_CONNECTION_REFUSED &&
+        isInitialRestoredLoadRef.current
+      ) {
+        setLoadError(
+          "The saved URL is no longer reachable. The server may have moved to a different port."
+        );
+      } else {
+        setLoadError(event.errorDescription || "Failed to load page. The site may be unavailable.");
+      }
     };
 
     const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
       const newUrl = event.url;
       // Suppress about:blank navigations triggered by eviction
       if (newUrl === "about:blank" && evictingRef.current) return;
+      isInitialRestoredLoadRef.current = false;
       setBlockedNav(null);
       // Only update history if this is a new URL (not our programmatic navigation)
       if (newUrl !== lastSetUrlRef.current) {
@@ -378,6 +392,7 @@ export function BrowserPane({
       const result = normalizeBrowserUrl(url);
       if (result.error || !result.url) return;
 
+      isInitialRestoredLoadRef.current = false;
       setBlockedNav(null);
       setHistory((prev) => pushBrowserHistory(prev, result.url!));
       setIsLoading(true);
