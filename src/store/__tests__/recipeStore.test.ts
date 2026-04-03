@@ -852,7 +852,11 @@ describe("recipeStore", () => {
       await useRecipeStore.getState().updateRecipe("inrepo-old-name", { name: "New Name" });
 
       expect(updateInRepoRecipeMock).toHaveBeenCalledTimes(1);
-      expect(deleteInRepoRecipeMock).toHaveBeenCalledWith("project-1", "Old Name");
+      expect(updateInRepoRecipeMock).toHaveBeenCalledWith(
+        "project-1",
+        expect.objectContaining({ id: "inrepo-new-name", name: "New Name" }),
+        "Old Name"
+      );
       const state = useRecipeStore.getState();
       expect(state.inRepoRecipes[0]?.id).toBe("inrepo-new-name");
     });
@@ -959,7 +963,8 @@ describe("recipeStore", () => {
 
       await useRecipeStore.getState().updateRecipe("inrepo-test", { lastUsedAt: 999 });
 
-      expect(updateInRepoRecipeMock).toHaveBeenCalledTimes(1);
+      // lastUsedAt is metadata-only, so no IPC write is performed
+      expect(updateInRepoRecipeMock).not.toHaveBeenCalled();
       expect(globalUpdateRecipeMock).not.toHaveBeenCalled();
     });
   });

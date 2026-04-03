@@ -350,10 +350,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
         await projectClient.deleteInRepoRecipe(projectId, recipe.name);
       } else if (isGlobal) {
         await globalRecipesClient.deleteRecipe(id);
-      } else if (isInRepo) {
-        const currentProjectId = get().currentProjectId;
-        if (!currentProjectId) throw new Error("No project selected");
-        await projectClient.deleteInRepoRecipe(currentProjectId, recipe.name);
       } else {
         await projectClient.deleteRecipe(recipe.projectId!, id);
       }
