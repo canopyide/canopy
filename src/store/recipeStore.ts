@@ -120,10 +120,10 @@ function mergeRecipes(
   projectRecipes: TerminalRecipe[],
   inRepoRecipes: TerminalRecipe[] = []
 ): TerminalRecipe[] {
-  // In-repo recipes that have a same-name local project recipe are shadowed
-  const projectNames = new Set(projectRecipes.map((r) => r.name));
-  const visibleInRepo = inRepoRecipes.filter((r) => !projectNames.has(r.name));
-  return [...globalRecipes, ...visibleInRepo, ...projectRecipes];
+  // Project-local recipes that share a name with an in-repo recipe are shadowed
+  const inRepoNames = new Set(inRepoRecipes.map((r) => r.name));
+  const visibleProject = projectRecipes.filter((r) => !inRepoNames.has(r.name));
+  return [...globalRecipes, ...visibleProject, ...inRepoRecipes];
 }
 
 const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({

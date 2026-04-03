@@ -538,7 +538,7 @@ describe("recipeStore", () => {
       expect(state.recipes[0]?.id).toBe("inrepo-test");
     });
 
-    it("project recipes shadow in-repo recipes with same name", async () => {
+    it("in-repo recipes shadow project-local recipes with same name", async () => {
       const inRepoRecipe = {
         id: "inrepo-1",
         name: "Shared Recipe",
@@ -560,7 +560,40 @@ describe("recipeStore", () => {
 
       const state = useRecipeStore.getState();
       expect(state.recipes).toHaveLength(1);
-      expect(state.recipes[0]?.id).toBe("project-1");
+      expect(state.recipes[0]?.id).toBe("inrepo-1");
+    });
+
+    it("in-repo recipes take precedence over both project-local and global recipes", async () => {
+      const globalRecipe = {
+        id: "global-1",
+        name: "Shared Recipe",
+        isGlobal: true as const,
+        terminals: [{ type: "terminal" as const }],
+        createdAt: 50,
+      };
+      const projectRecipe = {
+        id: "project-1",
+        name: "Shared Recipe",
+        projectId: "proj-1",
+        terminals: [{ type: "terminal" as const }],
+        createdAt: 100,
+      };
+      const inRepoRecipe = {
+        id: "inrepo-1",
+        name: "Shared Recipe",
+        terminals: [{ type: "terminal" as const }],
+        createdAt: 200,
+      };
+      globalGetRecipesMock.mockResolvedValueOnce([globalRecipe]);
+      getRecipesMock.mockResolvedValueOnce([projectRecipe]);
+      getInRepoRecipesMock.mockResolvedValueOnce([inRepoRecipe]);
+
+      await useRecipeStore.getState().loadRecipes("proj-1");
+
+      const state = useRecipeStore.getState();
+      // Global is not deduplicated (pre-existing behavior), so we get global + in-repo
+      expect(state.recipes).toHaveLength(2);
+      expect(state.recipes.map((r) => r.id)).toEqual(["global-1", "inrepo-1"]);
     });
 
     it("reset clears inRepoRecipes", () => {
