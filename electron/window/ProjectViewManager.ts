@@ -218,8 +218,6 @@ export class ProjectViewManager {
       throw loadError;
     }
 
-    entry.state = "active";
-
     // Explicit focus after load
     if (!view.webContents.isDestroyed()) {
       view.webContents.focus();
@@ -412,9 +410,9 @@ export class ProjectViewManager {
       const encodedId = encodeURIComponent(projectId);
       if (process.env.NODE_ENV === "development") {
         const devServerUrl = getDevServerUrl();
-        wc.loadURL(`${devServerUrl}?projectId=${encodedId}`);
+        wc.loadURL(`${devServerUrl}?projectId=${encodedId}`).catch(() => {});
       } else {
-        wc.loadURL(`app://canopy/index.html?projectId=${encodedId}`);
+        wc.loadURL(`app://canopy/index.html?projectId=${encodedId}`).catch(() => {});
       }
     });
   }
@@ -515,6 +513,10 @@ export class ProjectViewManager {
       if (win.isDestroyed()) return;
 
       const entry = projectId ? this.views.get(projectId) : null;
+
+      // If the view is still loading, loadView's one-shot handler will handle
+      // the failure and trigger rollback — skip crash recovery here.
+      if (entry?.state === "loading") return;
       const crashTimestamps = entry?.crashTimestamps ?? [];
       const now = Date.now();
       while (crashTimestamps.length > 0 && now - crashTimestamps[0] > CRASH_LOOP_WINDOW_MS) {
