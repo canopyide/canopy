@@ -210,10 +210,7 @@ export class ProjectViewManager {
         this.activeProjectId = previousProjectId;
       }
 
-      notifyError(loadError, {
-        source: "project-switch",
-        context: { fromProject: previousProjectId, toProject: projectId },
-      });
+      notifyError(loadError, { source: "project-switch" });
 
       throw loadError;
     }
