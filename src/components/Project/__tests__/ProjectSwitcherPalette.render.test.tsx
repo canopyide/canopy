@@ -280,6 +280,12 @@ describe("ProjectSwitcherPalette modal mode", () => {
   const multiProjects = [
     makeProject({ id: "active", name: "Active Project", isActive: true, lastOpened: now }),
     makeProject({
+      id: "bg",
+      name: "Background Project",
+      isBackground: true,
+      lastOpened: now - 1800000,
+    }),
+    makeProject({
       id: "pinned",
       name: "Pinned Project",
       isPinned: true,
@@ -293,16 +299,30 @@ describe("ProjectSwitcherPalette modal mode", () => {
     }),
   ];
 
+  it("shows only active/open projects in modal mode (no closed projects)", () => {
+    render(<ProjectSwitcherPalette {...modalProps} results={multiProjects} />);
+    expect(screen.getByText("Active Project")).toBeTruthy();
+    expect(screen.getByText("Background Project")).toBeTruthy();
+    expect(screen.queryByText("Pinned Project")).toBeNull();
+    expect(screen.queryByText("Recent Project")).toBeNull();
+    expect(screen.queryByText("Old Project")).toBeNull();
+  });
+
   it("renders a flat list with no temporal section labels in modal mode", () => {
     render(<ProjectSwitcherPalette {...modalProps} results={multiProjects} />);
     expect(screen.queryByText("Pinned")).toBeNull();
     expect(screen.queryByText("Today")).toBeNull();
     expect(screen.queryByText("This Week")).toBeNull();
     expect(screen.queryByText("Older")).toBeNull();
-    expect(screen.getByText("Active Project")).toBeTruthy();
-    expect(screen.getByText("Pinned Project")).toBeTruthy();
-    expect(screen.getByText("Recent Project")).toBeTruthy();
-    expect(screen.getByText("Old Project")).toBeTruthy();
+  });
+
+  it("shows 'No active projects' when no projects are active/open in modal mode", () => {
+    const closedProjects = [
+      makeProject({ id: "closed1", name: "Closed 1" }),
+      makeProject({ id: "closed2", name: "Closed 2" }),
+    ];
+    render(<ProjectSwitcherPalette {...modalProps} results={closedProjects} />);
+    expect(screen.getByText("No active projects")).toBeTruthy();
   });
 
   it("does not show management action buttons in modal mode", () => {
@@ -331,5 +351,14 @@ describe("ProjectSwitcherPalette modal mode", () => {
     const footer = screen.getByTestId("palette-footer");
     expect(footer.textContent).toContain("Remove");
     expect(footer.textContent).toContain("Right-click for more");
+  });
+
+  it("shows all projects in dropdown mode including closed ones", () => {
+    render(<ProjectSwitcherPalette {...dropdownProps} results={multiProjects} />);
+    expect(screen.getByText("Active Project")).toBeTruthy();
+    expect(screen.getByText("Background Project")).toBeTruthy();
+    expect(screen.getByText("Pinned Project")).toBeTruthy();
+    expect(screen.getByText("Recent Project")).toBeTruthy();
+    expect(screen.getByText("Old Project")).toBeTruthy();
   });
 });

@@ -343,6 +343,13 @@ function ProjectListContent({
     ].filter((s): s is TemporalSection => s !== null);
   }, [results, isSearching, mode]);
 
+  const displayResults = useMemo(() => {
+    if (mode === "modal" && !isSearching) {
+      return results.filter((p) => p.isActive || p.isBackground || p.processCount > 0);
+    }
+    return results;
+  }, [results, mode, isSearching]);
+
   const resultIndexMap = useMemo(() => {
     const map = new Map<string, number>();
     results.forEach((p, i) => map.set(p.id, i));
@@ -371,10 +378,16 @@ function ProjectListContent({
   return (
     <>
       <div ref={listRef} id="project-list" role="listbox" aria-label="Projects">
-        {results.length === 0 ? (
+        {displayResults.length === 0 ? (
           <div className="p-2">
             <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
-              {query.trim() ? <div>{`No projects match "${query}"`}</div> : "No projects available"}
+              {query.trim() ? (
+                <div>{`No projects match "${query}"`}</div>
+              ) : mode === "modal" ? (
+                "No active projects"
+              ) : (
+                "No projects available"
+              )}
             </div>
           </div>
         ) : sections ? (
@@ -404,23 +417,7 @@ function ProjectListContent({
             );
           })
         ) : (
-          <div className="p-2">
-            {results.map((project, index) => (
-              <div key={project.id} role="presentation">
-                <ProjectListItem
-                  project={project}
-                  isSelected={index === selectedIndex}
-                  onSelect={onSelect}
-                  onStopProject={onStopProject}
-                  onCloseProject={onCloseProject}
-                  onLocateProject={onLocateProject}
-                  onTogglePinProject={onTogglePinProject}
-                  onCopyPath={onCopyPath}
-                  onSelectNewWindow={onSelectNewWindow}
-                />
-              </div>
-            ))}
-          </div>
+          <div className="p-2">{displayResults.map((project) => renderItem(project))}</div>
         )}
       </div>
     </>
