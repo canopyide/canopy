@@ -612,8 +612,7 @@ export async function hydrateAppState(
 
         // Restore any orphaned backend terminals not in saved state (append at end).
         // When no panels were saved (brand-new project), skip the startup "default"
-        // terminal — its projectId may have been backfilled by TerminalRegistry's
-        // lastKnownProjectId fallback, incorrectly attributing it to the new project.
+        // terminal — it belongs to the previous project's bootstrap sequence, not this one.
         // In safe mode, skip orphan reconnection entirely to ensure a clean slate.
         const hasSavedPanels = appState.terminals && appState.terminals.length > 0;
         const orphanedTerminals = hydrateResult.safeMode

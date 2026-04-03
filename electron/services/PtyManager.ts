@@ -738,8 +738,6 @@ export class PtyManager extends EventEmitter {
       }
     }
 
-    this.registry.setLastKnownProjectId(newProjectId);
-
     logInfo(`Project switch complete: ${foregrounded} foregrounded, ${backgrounded} backgrounded`);
   }
 
