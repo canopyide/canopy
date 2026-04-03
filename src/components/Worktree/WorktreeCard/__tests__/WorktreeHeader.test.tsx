@@ -397,16 +397,30 @@ describe("WorktreeHeader plan file badge", () => {
     expect(screen.queryByRole("button", { name: /View agent plan file/ })).toBeNull();
   });
 
-  it("calls onOpenPlan when plan badge is clicked", async () => {
+  it("calls onOpenPlan when plan badge is clicked on active card", async () => {
     const onOpenPlan = vi.fn();
     renderHeader({
       worktree: { ...baseWorktree, hasPlanFile: true, planFilePath: "TASKS.md" },
       badges: { onOpenPlan },
+      isActive: true,
     });
 
     const planButton = screen.getByRole("button", { name: /View agent plan file/ });
     planButton.click();
     expect(onOpenPlan).toHaveBeenCalledOnce();
+  });
+
+  it("does not call onOpenPlan when plan badge is clicked on inactive card", async () => {
+    const onOpenPlan = vi.fn();
+    renderHeader({
+      worktree: { ...baseWorktree, hasPlanFile: true, planFilePath: "TASKS.md" },
+      badges: { onOpenPlan },
+      isActive: false,
+    });
+
+    const planButton = screen.getByRole("button", { name: /View agent plan file/ });
+    planButton.click();
+    expect(onOpenPlan).not.toHaveBeenCalled();
   });
 });
 
@@ -432,11 +446,26 @@ describe("WorktreeHeader click bubbling", () => {
     return { ...result, onParentClick };
   }
 
-  it("issue badge click bubbles to parent (card selection)", () => {
+  it("issue badge click on inactive card bubbles to parent but does NOT call onOpenIssue", () => {
     const onOpenIssue = vi.fn();
     const { onParentClick } = renderHeaderInWrapper({
       worktree: { ...baseWorktree, issueNumber: 42, issueTitle: "Test issue" },
       badges: { onOpenIssue },
+      isActive: false,
+    });
+
+    const issueButton = screen.getByRole("button", { name: /Open issue #42/ });
+    fireEvent.click(issueButton);
+    expect(onOpenIssue).not.toHaveBeenCalled();
+    expect(onParentClick).toHaveBeenCalledOnce();
+  });
+
+  it("issue badge click on active card calls onOpenIssue and bubbles to parent", () => {
+    const onOpenIssue = vi.fn();
+    const { onParentClick } = renderHeaderInWrapper({
+      worktree: { ...baseWorktree, issueNumber: 42, issueTitle: "Test issue" },
+      badges: { onOpenIssue },
+      isActive: true,
     });
 
     const issueButton = screen.getByRole("button", { name: /Open issue #42/ });
@@ -445,11 +474,26 @@ describe("WorktreeHeader click bubbling", () => {
     expect(onParentClick).toHaveBeenCalledOnce();
   });
 
-  it("PR badge click bubbles to parent (card selection)", () => {
+  it("PR badge click on inactive card bubbles to parent but does NOT call onOpenPR", () => {
     const onOpenPR = vi.fn();
     const { onParentClick } = renderHeaderInWrapper({
       worktree: { ...baseWorktree, prNumber: 101, prState: "open" },
       badges: { onOpenPR },
+      isActive: false,
+    });
+
+    const prButton = screen.getByRole("button", { name: /pull request #101/ });
+    fireEvent.click(prButton);
+    expect(onOpenPR).not.toHaveBeenCalled();
+    expect(onParentClick).toHaveBeenCalledOnce();
+  });
+
+  it("PR badge click on active card calls onOpenPR and bubbles to parent", () => {
+    const onOpenPR = vi.fn();
+    const { onParentClick } = renderHeaderInWrapper({
+      worktree: { ...baseWorktree, prNumber: 101, prState: "open" },
+      badges: { onOpenPR },
+      isActive: true,
     });
 
     const prButton = screen.getByRole("button", { name: /pull request #101/ });
@@ -458,17 +502,78 @@ describe("WorktreeHeader click bubbling", () => {
     expect(onParentClick).toHaveBeenCalledOnce();
   });
 
-  it("plan badge click bubbles to parent (card selection)", () => {
+  it("plan badge click on inactive card bubbles to parent but does NOT call onOpenPlan", () => {
     const onOpenPlan = vi.fn();
     const { onParentClick } = renderHeaderInWrapper({
       worktree: { ...baseWorktree, hasPlanFile: true, planFilePath: "TODO.md" },
       badges: { onOpenPlan },
+      isActive: false,
+    });
+
+    const planButton = screen.getByRole("button", { name: /View agent plan file/ });
+    fireEvent.click(planButton);
+    expect(onOpenPlan).not.toHaveBeenCalled();
+    expect(onParentClick).toHaveBeenCalledOnce();
+  });
+
+  it("plan badge click on active card calls onOpenPlan and bubbles to parent", () => {
+    const onOpenPlan = vi.fn();
+    const { onParentClick } = renderHeaderInWrapper({
+      worktree: { ...baseWorktree, hasPlanFile: true, planFilePath: "TODO.md" },
+      badges: { onOpenPlan },
+      isActive: true,
     });
 
     const planButton = screen.getByRole("button", { name: /View agent plan file/ });
     fireEvent.click(planButton);
     expect(onOpenPlan).toHaveBeenCalledOnce();
     expect(onParentClick).toHaveBeenCalledOnce();
+  });
+
+  it("inactive badges have aria-disabled attribute", () => {
+    renderHeaderInWrapper({
+      worktree: {
+        ...baseWorktree,
+        issueNumber: 42,
+        issueTitle: "Test issue",
+        prNumber: 101,
+        prState: "open",
+        hasPlanFile: true,
+        planFilePath: "TODO.md",
+      },
+      badges: { onOpenIssue: vi.fn(), onOpenPR: vi.fn(), onOpenPlan: vi.fn() },
+      isActive: false,
+    });
+
+    const issueButton = screen.getByRole("button", { name: /Open issue #42/ });
+    const prButton = screen.getByRole("button", { name: /pull request #101/ });
+    const planButton = screen.getByRole("button", { name: /View agent plan file/ });
+    expect(issueButton.getAttribute("aria-disabled")).toBe("true");
+    expect(prButton.getAttribute("aria-disabled")).toBe("true");
+    expect(planButton.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("active badges do not have aria-disabled attribute", () => {
+    renderHeaderInWrapper({
+      worktree: {
+        ...baseWorktree,
+        issueNumber: 42,
+        issueTitle: "Test issue",
+        prNumber: 101,
+        prState: "open",
+        hasPlanFile: true,
+        planFilePath: "TODO.md",
+      },
+      badges: { onOpenIssue: vi.fn(), onOpenPR: vi.fn(), onOpenPlan: vi.fn() },
+      isActive: true,
+    });
+
+    const issueButton = screen.getByRole("button", { name: /Open issue #42/ });
+    const prButton = screen.getByRole("button", { name: /pull request #101/ });
+    const planButton = screen.getByRole("button", { name: /View agent plan file/ });
+    expect(issueButton.getAttribute("aria-disabled")).toBeNull();
+    expect(prButton.getAttribute("aria-disabled")).toBeNull();
+    expect(planButton.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("more actions button click does NOT bubble to parent", () => {
