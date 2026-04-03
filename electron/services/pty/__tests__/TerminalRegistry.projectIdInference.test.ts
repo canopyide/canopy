@@ -23,7 +23,7 @@ function createMockTerminalProcess(options: {
     projectId: options.projectId,
     cwd: options.cwd,
     shell: "/bin/sh",
-    kind: options.kind ?? "terminal",
+    kind: options.kind,
     type: "terminal",
     spawnedAt: Date.now(),
     analysisEnabled: false,
@@ -221,6 +221,13 @@ describe("TerminalRegistry projectId inference", () => {
     registry.setLastKnownProjectId(projectB);
 
     expect(registry.getForProject(projectB)).toEqual(["t-dp"]);
+    expect(devPreviewTerminal.getInfo().projectId).toBe(projectB);
+
+    // After projectId is persisted, switching lastKnownProjectId should not move the terminal
+    const projectC = "project-ccc";
+    registry.setLastKnownProjectId(projectC);
+    expect(registry.getForProject(projectB)).toEqual(["t-dp"]);
+    expect(registry.getForProject(projectC)).toEqual([]);
 
     const stats = registry.getProjectStats(projectB);
     expect(stats.terminalCount).toBe(1);
