@@ -77,6 +77,8 @@ export function HelpAgentDockButton({ compact = false }: HelpAgentDockButtonProp
                     handleButtonClick();
                   }
                 }}
+                aria-haspopup="dialog"
+                aria-expanded={isOpen}
                 aria-label="Help Agent"
               >
                 <CanopyIcon className="w-3.5 h-3.5 text-canopy-text/50" />
