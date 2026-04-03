@@ -1751,23 +1751,6 @@ function App() {
         onSelectNext={projectSwitcherPalette.selectNext}
         onSelect={projectSwitcherPalette.selectProject}
         onClose={projectSwitcherPalette.close}
-        onAddProject={projectSwitcherPalette.addProject}
-        onCloneRepo={projectSwitcherPalette.cloneRepo}
-        onCreateFolder={() => {
-          projectSwitcherPalette.close();
-          openCreateFolderDialog();
-        }}
-        onStopProject={(projectId) => projectSwitcherPalette.stopProject(projectId)}
-        onCloseProject={(projectId) => projectSwitcherPalette.removeProject(projectId)}
-        onTogglePinProject={(projectId) => projectSwitcherPalette.togglePinProject(projectId)}
-        onOpenProjectSettings={() => {
-          projectSwitcherPalette.close();
-          void actionService.dispatch("project.settings.open", undefined, { source: "user" });
-        }}
-        removeConfirmProject={projectSwitcherPalette.removeConfirmProject}
-        onRemoveConfirmClose={() => projectSwitcherPalette.setRemoveConfirmProject(null)}
-        onConfirmRemove={projectSwitcherPalette.confirmRemoveProject}
-        isRemovingProject={projectSwitcherPalette.isRemovingProject}
         onSelectNewWindow={(project) => {
           projectSwitcherPalette.close();
           void actionService.dispatch(
