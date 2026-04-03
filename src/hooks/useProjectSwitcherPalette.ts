@@ -146,7 +146,8 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
       // This puts the most recently used other project at index 0 for quick toggle.
       const nonActive = sortedProjects.filter((p) => !p.isActive);
       const active = sortedProjects.filter((p) => p.isActive);
-      return [...nonActive, ...active].slice(0, MAX_RESULTS);
+      const ordered = [...nonActive.slice(0, MAX_RESULTS - active.length), ...active];
+      return ordered.slice(0, MAX_RESULTS);
     }
 
     return rankProjectMatches(query, sortedProjects).slice(0, MAX_RESULTS);
