@@ -32,6 +32,11 @@ export class PortBatcher {
 
     const terminalPending = this.pendingChunks.get(id)?.bytes ?? 0;
     if (this.deps.portQueueManager.isAtCapacity(id, terminalPending + byteCount)) {
+      // Flush any pending data for this terminal before rejecting to prevent
+      // split-channel delivery (buffered data on MessagePort + rejected data on SAB/IPC)
+      if (terminalPending > 0) {
+        this.flushTerminal(id);
+      }
       return false;
     }
 
@@ -94,6 +99,12 @@ export class PortBatcher {
 
     this.pendingChunks.delete(id);
     this.totalPendingBytes -= entry.bytes;
+
+    // If buffer is now empty, reset mode and cancel stale timers
+    if (this.pendingChunks.size === 0) {
+      this.cancelTimers();
+      this.mode = "idle";
+    }
 
     const data = entry.chunks.length === 1 ? entry.chunks[0] : entry.chunks.join("");
     try {

@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PortBatcher, type PortBatcherDeps } from "../portBatcher.js";
 import type { PortQueueManager } from "../portQueue.js";
-
-const PORT_BATCH_THRESHOLD_BYTES = 64 * 1024;
+import { PORT_BATCH_THRESHOLD_BYTES } from "../../services/pty/types.js";
 
 function createMockQueueManager() {
   return {
@@ -131,6 +130,29 @@ describe("PortBatcher", () => {
     expect(batcher.write("t1", "y".repeat(30), 30)).toBe(false);
   });
 
+  it("capacity rejection flushes pending data to prevent split-channel delivery", () => {
+    const qm = createMockQueueManager();
+    let callCount = 0;
+    (qm.isAtCapacity as ReturnType<typeof vi.fn>).mockImplementation(
+      (_id: string, bytes: number) => {
+        callCount++;
+        // First call (80 bytes): accept. Second call (80+30=110): reject.
+        return bytes > 100;
+      }
+    );
+    const deps = createDeps({ portQueueManager: qm });
+    const batcher = new PortBatcher(deps);
+
+    // Buffer 80 bytes for t1
+    expect(batcher.write("t1", "buffered", 80)).toBe(true);
+    expect(deps.postMessage).not.toHaveBeenCalled();
+
+    // Next write rejected — but pending data should be flushed first
+    expect(batcher.write("t1", "rejected", 30)).toBe(false);
+    expect(deps.postMessage).toHaveBeenCalledOnce();
+    expect(deps.postMessage).toHaveBeenCalledWith("t1", "buffered", 80);
+  });
+
   it("flushTerminal: flushes only the specified terminal", () => {
     const deps = createDeps();
     const batcher = new PortBatcher(deps);
@@ -147,6 +169,26 @@ describe("PortBatcher", () => {
     vi.runAllTimers();
     expect(deps.postMessage).toHaveBeenCalledTimes(2);
     expect(deps.postMessage).toHaveBeenCalledWith("t2", "bbb", 3);
+  });
+
+  it("flushTerminal resets mode when buffer empties — next write gets latency mode", () => {
+    const deps = createDeps();
+    const batcher = new PortBatcher(deps);
+
+    batcher.write("t1", "aaa", 3);
+    batcher.write("t1", "bbb", 3); // upgrade to throughput
+
+    // Flush t1 — buffer is now empty, mode should reset to idle
+    batcher.flushTerminal("t1");
+    expect(deps.postMessage).toHaveBeenCalledWith("t1", "aaabbb", 6);
+
+    // Next write should use latency mode (setImmediate), not stale throughput (setTimeout 16)
+    (deps.postMessage as ReturnType<typeof vi.fn>).mockClear();
+    batcher.write("t2", "ccc", 3);
+
+    // setImmediate fires immediately via runAllTimers, not delayed by 16ms
+    vi.advanceTimersByTime(2);
+    expect(deps.postMessage).toHaveBeenCalledWith("t2", "ccc", 3);
   });
 
   it("flushTerminal on non-existent id is a no-op", () => {
