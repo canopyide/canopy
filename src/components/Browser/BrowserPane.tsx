@@ -86,10 +86,15 @@ export function BrowserPane({
   );
   const setBrowserConsoleOpen = useTerminalStore((state) => state.setBrowserConsoleOpen);
 
+  // Track whether the current load is the initial session-restored load (not a fresh panel)
+  const isInitialRestoredLoadRef = useRef(true);
+
   // Initialize history from persisted state or initialUrl
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const terminal = useTerminalStore.getState().getTerminal(id);
     const saved = terminal?.browserHistory;
+    // Only treat this as a restored session load if we actually have persisted history
+    isInitialRestoredLoadRef.current = Boolean(saved?.present);
     const normalized = normalizeBrowserUrl(initialUrl);
     const fallbackPresent = terminal?.browserUrl || normalized.url || initialUrl;
     return initializeBrowserHistory(saved, fallbackPresent);
@@ -234,6 +239,7 @@ export function BrowserPane({
     }
 
     const handleDomReady = () => {
+      isInitialRestoredLoadRef.current = false;
       setIsWebviewReady(true);
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
@@ -276,13 +282,25 @@ export function BrowserPane({
       // Ignore cancellations
       if (event.errorCode === -6) return;
       setIsLoading(false);
-      setLoadError(event.errorDescription || "Failed to load page. The site may be unavailable.");
+      const ERR_CONNECTION_REFUSED = -102;
+      if (
+        event.isMainFrame &&
+        event.errorCode === ERR_CONNECTION_REFUSED &&
+        isInitialRestoredLoadRef.current
+      ) {
+        setLoadError(
+          "The saved URL is no longer reachable. The server may have moved to a different port."
+        );
+      } else {
+        setLoadError(event.errorDescription || "Failed to load page. The site may be unavailable.");
+      }
     };
 
     const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
       const newUrl = event.url;
       // Suppress about:blank navigations triggered by eviction
       if (newUrl === "about:blank" && evictingRef.current) return;
+      isInitialRestoredLoadRef.current = false;
       setBlockedNav(null);
       // Only update history if this is a new URL (not our programmatic navigation)
       if (newUrl !== lastSetUrlRef.current) {
@@ -378,6 +396,7 @@ export function BrowserPane({
       const result = normalizeBrowserUrl(url);
       if (result.error || !result.url) return;
 
+      isInitialRestoredLoadRef.current = false;
       setBlockedNav(null);
       setHistory((prev) => pushBrowserHistory(prev, result.url!));
       setIsLoading(true);
@@ -394,6 +413,7 @@ export function BrowserPane({
   );
 
   const handleBack = useCallback(() => {
+    isInitialRestoredLoadRef.current = false;
     setBlockedNav(null);
     setHistory((prev) => {
       const next = goBackBrowserHistory(prev);
@@ -414,6 +434,7 @@ export function BrowserPane({
   }, [isWebviewReady]);
 
   const handleForward = useCallback(() => {
+    isInitialRestoredLoadRef.current = false;
     setBlockedNav(null);
     setHistory((prev) => {
       const next = goForwardBrowserHistory(prev);
