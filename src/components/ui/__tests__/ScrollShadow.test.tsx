@@ -159,6 +159,18 @@ describe("ScrollShadow", () => {
     expect(inner.className).toContain("p-4");
   });
 
+  it("outer wrapper includes h-full for flex height chain", () => {
+    const { container } = render(
+      <ScrollShadow>
+        <p>Content</p>
+      </ScrollShadow>
+    );
+    const outer = container.firstElementChild!;
+    expect(outer.className).toContain("h-full");
+    expect(outer.className).toContain("min-h-0");
+    expect(outer.className).toContain("overflow-hidden");
+  });
+
   it("passes through additional div props to inner scrollable div", () => {
     render(
       <ScrollShadow role="listbox" tabIndex={0} data-testid="scroll-inner">
