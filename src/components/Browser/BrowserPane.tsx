@@ -86,10 +86,15 @@ export function BrowserPane({
   );
   const setBrowserConsoleOpen = useTerminalStore((state) => state.setBrowserConsoleOpen);
 
+  // Track whether the current load is the initial session-restored load (not a fresh panel)
+  const isInitialRestoredLoadRef = useRef(true);
+
   // Initialize history from persisted state or initialUrl
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const terminal = useTerminalStore.getState().getTerminal(id);
     const saved = terminal?.browserHistory;
+    // Only treat this as a restored session load if we actually have persisted history
+    isInitialRestoredLoadRef.current = Boolean(saved?.present);
     const normalized = normalizeBrowserUrl(initialUrl);
     const fallbackPresent = terminal?.browserUrl || normalized.url || initialUrl;
     return initializeBrowserHistory(saved, fallbackPresent);
@@ -115,7 +120,6 @@ export function BrowserPane({
   // Track if webview has been mounted and is ready
   const [isWebviewReady, setIsWebviewReady] = useState(false);
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitialRestoredLoadRef = useRef(true);
 
   const hasBeenVisible = useHasBeenVisible(id, location);
 
@@ -409,6 +413,7 @@ export function BrowserPane({
   );
 
   const handleBack = useCallback(() => {
+    isInitialRestoredLoadRef.current = false;
     setBlockedNav(null);
     setHistory((prev) => {
       const next = goBackBrowserHistory(prev);
@@ -429,6 +434,7 @@ export function BrowserPane({
   }, [isWebviewReady]);
 
   const handleForward = useCallback(() => {
+    isInitialRestoredLoadRef.current = false;
     setBlockedNav(null);
     setHistory((prev) => {
       const next = goForwardBrowserHistory(prev);
