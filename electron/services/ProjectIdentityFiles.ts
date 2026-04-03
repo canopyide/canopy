@@ -273,8 +273,22 @@ export class ProjectIdentityFiles {
   }
 
   async deleteInRepoRecipe(projectPath: string, recipeName: string): Promise<void> {
+    await this.assertCanopyDirNotSymlink(projectPath);
+    const recipesDir = path.join(projectPath, CANOPY_RECIPES_DIR);
+
+    try {
+      const stat = await fs.lstat(recipesDir);
+      if (stat.isSymbolicLink()) {
+        throw new Error(
+          `.canopy/recipes/ in ${projectPath} is a symbolic link — refusing to delete`
+        );
+      }
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+
     const filename = safeRecipeFilename(recipeName);
-    const filePath = path.join(projectPath, CANOPY_RECIPES_DIR, filename);
+    const filePath = path.join(recipesDir, filename);
     try {
       await fs.unlink(filePath);
     } catch (error) {
