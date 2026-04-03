@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { TabGroup } from "@/types";
+import type { TerminalInstance } from "@shared/types";
 
 vi.mock("@/clients", () => ({
   terminalClient: {
@@ -39,13 +40,26 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 
 const { useTerminalStore } = await import("../../../terminalStore");
 
+type MockTerminal = Partial<TerminalInstance> & { id: string };
+
+function setTerminals(terminals: MockTerminal[]) {
+  useTerminalStore.setState({
+    terminalsById: Object.fromEntries(terminals.map((t) => [t.id, t])) as Record<
+      string,
+      TerminalInstance
+    >,
+    terminalIds: terminals.map((t) => t.id),
+  });
+}
+
 describe("trashTerminal group cleanup", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const { reset } = useTerminalStore.getState();
     reset();
     useTerminalStore.setState({
-      terminals: [],
+      terminalsById: {},
+      terminalIds: [],
       tabGroups: new Map(),
       trashedTerminals: new Map(),
       backgroundedTerminals: new Map(),
@@ -68,36 +82,37 @@ describe("trashTerminal group cleanup", () => {
       location: "grid",
     };
 
+    const terminals: MockTerminal[] = [
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-2",
+        type: "terminal",
+        title: "Shell 2",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-3",
+        type: "terminal",
+        title: "Shell 3",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ];
+    setTerminals(terminals);
     useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-2",
-          type: "terminal",
-          title: "Shell 2",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-3",
-          type: "terminal",
-          title: "Shell 3",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-      ],
       tabGroups: new Map([["group-1", group]]),
       focusedId: "term-1",
     });
@@ -120,38 +135,36 @@ describe("trashTerminal group cleanup", () => {
       location: "grid",
     };
 
-    useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-2",
-          type: "terminal",
-          title: "Shell 2",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-3",
-          type: "terminal",
-          title: "Shell 3",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-      ],
-      tabGroups: new Map([["group-1", group]]),
-    });
+    setTerminals([
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-2",
+        type: "terminal",
+        title: "Shell 2",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-3",
+        type: "terminal",
+        title: "Shell 3",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+    useTerminalStore.setState({ tabGroups: new Map([["group-1", group]]) });
 
     const { trashTerminal } = useTerminalStore.getState();
     trashTerminal("term-1");
@@ -169,29 +182,27 @@ describe("trashTerminal group cleanup", () => {
       location: "grid",
     };
 
-    useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-2",
-          type: "terminal",
-          title: "Shell 2",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-      ],
-      tabGroups: new Map([["group-1", group]]),
-    });
+    setTerminals([
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-2",
+        type: "terminal",
+        title: "Shell 2",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+    useTerminalStore.setState({ tabGroups: new Map([["group-1", group]]) });
 
     const { trashTerminal } = useTerminalStore.getState();
     trashTerminal("term-1");
@@ -208,20 +219,18 @@ describe("trashTerminal group cleanup", () => {
       location: "grid",
     };
 
-    useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-      ],
-      tabGroups: new Map([["group-1", group]]),
-    });
+    setTerminals([
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+    useTerminalStore.setState({ tabGroups: new Map([["group-1", group]]) });
 
     const { trashTerminal } = useTerminalStore.getState();
     trashTerminal("term-1");
@@ -231,27 +240,25 @@ describe("trashTerminal group cleanup", () => {
   });
 
   it("should not affect panels not in any group", () => {
-    useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-      ],
-      tabGroups: new Map(),
-    });
+    setTerminals([
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+    useTerminalStore.setState({ tabGroups: new Map() });
 
     const { trashTerminal } = useTerminalStore.getState();
     trashTerminal("term-1");
 
     const state = useTerminalStore.getState();
     expect(state.tabGroups.size).toBe(0);
-    expect(state.terminals.find((t) => t.id === "term-1")?.location).toBe("trash");
+    expect(state.terminalsById["term-1"]?.location).toBe("trash");
   });
 
   it("should handle dock groups correctly", () => {
@@ -262,38 +269,36 @@ describe("trashTerminal group cleanup", () => {
       location: "dock",
     };
 
-    useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "dock",
-        },
-        {
-          id: "term-2",
-          type: "terminal",
-          title: "Shell 2",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "dock",
-        },
-        {
-          id: "term-3",
-          type: "terminal",
-          title: "Shell 3",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "dock",
-        },
-      ],
-      tabGroups: new Map([["group-1", group]]),
-    });
+    setTerminals([
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "dock",
+      },
+      {
+        id: "term-2",
+        type: "terminal",
+        title: "Shell 2",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "dock",
+      },
+      {
+        id: "term-3",
+        type: "terminal",
+        title: "Shell 3",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "dock",
+      },
+    ]);
+    useTerminalStore.setState({ tabGroups: new Map([["group-1", group]]) });
 
     const { trashTerminal } = useTerminalStore.getState();
     trashTerminal("term-1");
@@ -312,38 +317,36 @@ describe("trashTerminal group cleanup", () => {
       location: "grid",
     };
 
-    useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-2",
-          type: "terminal",
-          title: "Shell 2",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-3",
-          type: "terminal",
-          title: "Shell 3",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-      ],
-      tabGroups: new Map([["group-1", group]]),
-    });
+    setTerminals([
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-2",
+        type: "terminal",
+        title: "Shell 2",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-3",
+        type: "terminal",
+        title: "Shell 3",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+    useTerminalStore.setState({ tabGroups: new Map([["group-1", group]]) });
 
     const { trashTerminal } = useTerminalStore.getState();
     trashTerminal("term-2");
@@ -362,36 +365,34 @@ describe("trashTerminal group cleanup", () => {
       location: "grid",
     };
 
-    useTerminalStore.setState({
-      terminals: [
-        {
-          id: "term-1",
-          type: "terminal",
-          title: "Shell 1",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-        {
-          id: "term-2",
-          type: "terminal",
-          title: "Shell 2",
-          cwd: "/test",
-          cols: 80,
-          rows: 24,
-          location: "grid",
-        },
-      ],
-      tabGroups: new Map([["group-1", group]]),
-    });
+    setTerminals([
+      {
+        id: "term-1",
+        type: "terminal",
+        title: "Shell 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+      {
+        id: "term-2",
+        type: "terminal",
+        title: "Shell 2",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+    useTerminalStore.setState({ tabGroups: new Map([["group-1", group]]) });
 
     const { trashTerminal } = useTerminalStore.getState();
     trashTerminal("term-1");
 
     const state = useTerminalStore.getState();
     // Both should be updated atomically
-    expect(state.terminals.find((t) => t.id === "term-1")?.location).toBe("trash");
+    expect(state.terminalsById["term-1"]?.location).toBe("trash");
     expect(state.tabGroups.has("group-1")).toBe(false);
   });
 });
