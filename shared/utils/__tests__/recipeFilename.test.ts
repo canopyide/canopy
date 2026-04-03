@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeRecipeFilename, stableInRepoId, isInRepoRecipeId } from "../recipeFilename";
+import { safeRecipeFilename, stableInRepoId, isInRepoRecipeId } from "../recipeFilename.js";
 
 describe("safeRecipeFilename", () => {
   it("converts a simple name to lowercase with .json extension", () => {
