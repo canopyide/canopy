@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { TabGroup } from "@/types";
+import type { TerminalInstance } from "@shared/types";
 
 vi.mock("@/clients", () => ({
   terminalClient: {
@@ -39,9 +40,14 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 
 const { useTerminalStore } = await import("../../../terminalStore");
 
-function setTerminals(terminals: any[]) {
+type MockTerminal = Partial<TerminalInstance> & { id: string };
+
+function setTerminals(terminals: MockTerminal[]) {
   useTerminalStore.setState({
-    terminalsById: Object.fromEntries(terminals.map((t) => [t.id, t])),
+    terminalsById: Object.fromEntries(terminals.map((t) => [t.id, t])) as Record<
+      string,
+      TerminalInstance
+    >,
     terminalIds: terminals.map((t) => t.id),
   });
 }
@@ -76,7 +82,7 @@ describe("trashTerminal group cleanup", () => {
       location: "grid",
     };
 
-    const terminals = [
+    const terminals: MockTerminal[] = [
       {
         id: "term-1",
         type: "terminal",

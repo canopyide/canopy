@@ -375,7 +375,9 @@ describe("Tab Group Worktree Invariant", () => {
       setTerminals([t1, t2]);
       useTerminalStore.setState({ tabGroups: new Map([["g1", group]]) });
 
-      const result = useTerminalStore.getState().moveTabGroupToWorktree("g1", undefined as any);
+      const result = useTerminalStore
+        .getState()
+        .moveTabGroupToWorktree("g1", undefined as unknown as string);
       expect(result).toBe(true);
 
       const state = useTerminalStore.getState();

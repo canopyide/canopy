@@ -64,7 +64,8 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   // Get tab groups for the dock
   const tabGroups = useMemo(
     () => getTabGroups("dock", activeWorktreeId ?? undefined),
-    [getTabGroups, activeWorktreeId, storeTerminalIds] // re-compute when terminals change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- storeTerminalIds is an intentional trigger dep
+    [getTabGroups, activeWorktreeId, storeTerminalIds]
   );
 
   const { worktrees } = useWorktrees();
@@ -97,7 +98,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
       const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
         {
-          agentId: agentId as any,
+          agentId,
           location: "dock",
           cwd,
           worktreeId: activeWorktreeId || undefined,

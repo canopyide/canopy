@@ -31,12 +31,17 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 }));
 
 const { useTerminalStore } = await import("../../store/terminalStore");
-type AddTerminalOptions = any;
+import type { TerminalInstance } from "@shared/types";
+import type { AddTerminalOptions } from "../../store/terminalStore";
+type MockTerminal = Partial<TerminalInstance> & { id: string };
 
-function setTerminals(terminals: any[]) {
+function setTerminals(terminals: MockTerminal[]) {
   useTerminalStore.setState({
-    terminalsById: Object.fromEntries(terminals.map((t: any) => [t.id, t])),
-    terminalIds: terminals.map((t: any) => t.id),
+    terminalsById: Object.fromEntries(terminals.map((t) => [t.id, t])) as Record<
+      string,
+      TerminalInstance
+    >,
+    terminalIds: terminals.map((t) => t.id),
   });
 }
 
@@ -71,7 +76,11 @@ describe("Terminal Store Integration", () => {
   describe("Terminal Addition", () => {
     it("should add terminal to store", async () => {
       const mockAddTerminal = vi.fn().mockResolvedValue("test-id-1");
-      useTerminalStore.setState({ addTerminal: mockAddTerminal } as any);
+      useTerminalStore.setState({
+        addTerminal: mockAddTerminal as unknown as ReturnType<
+          typeof useTerminalStore.getState
+        >["addTerminal"],
+      });
 
       await mockAddTerminal({
         id: "test-id-1",
@@ -86,7 +95,11 @@ describe("Terminal Store Integration", () => {
 
     it("should add terminal with worktree ID", async () => {
       const mockAddTerminal = vi.fn().mockResolvedValue("test-id-2");
-      useTerminalStore.setState({ addTerminal: mockAddTerminal } as any);
+      useTerminalStore.setState({
+        addTerminal: mockAddTerminal as unknown as ReturnType<
+          typeof useTerminalStore.getState
+        >["addTerminal"],
+      });
 
       await mockAddTerminal({
         id: "test-id-2",
@@ -108,14 +121,14 @@ describe("Terminal Store Integration", () => {
       const mockAddTerminal = vi.fn().mockResolvedValue("test-id-3");
 
       useTerminalStore.setState({
-        addTerminal: async (options: AddTerminalOptions) => {
+        addTerminal: (async (options: AddTerminalOptions) => {
           const id = await mockAddTerminal(options);
           if (!options.location || options.location === "grid") {
             useTerminalStore.setState({ focusedId: id });
           }
           return id;
-        },
-      } as any);
+        }) as unknown as ReturnType<typeof useTerminalStore.getState>["addTerminal"],
+      });
 
       await useTerminalStore.getState().addTerminal({
         id: "test-id-3",
@@ -124,7 +137,7 @@ describe("Terminal Store Integration", () => {
         cols: 80,
         rows: 24,
         location: "grid",
-      } as any);
+      } as AddTerminalOptions);
 
       const { focusedId } = useTerminalStore.getState();
       expect(focusedId).toBe("test-id-3");
@@ -134,14 +147,14 @@ describe("Terminal Store Integration", () => {
       const mockAddTerminal = vi.fn().mockResolvedValue("test-id-4");
 
       useTerminalStore.setState({
-        addTerminal: async (options: AddTerminalOptions) => {
+        addTerminal: (async (options: AddTerminalOptions) => {
           const id = await mockAddTerminal(options);
           if (!options.location || options.location === "grid") {
             useTerminalStore.setState({ focusedId: id });
           }
           return id;
-        },
-      } as any);
+        }) as unknown as ReturnType<typeof useTerminalStore.getState>["addTerminal"],
+      });
 
       await useTerminalStore.getState().addTerminal({
         id: "test-id-4",
@@ -150,7 +163,7 @@ describe("Terminal Store Integration", () => {
         cols: 80,
         rows: 24,
         location: "dock",
-      } as any);
+      } as AddTerminalOptions);
 
       const { focusedId } = useTerminalStore.getState();
       expect(focusedId).not.toBe("test-id-4");
@@ -190,13 +203,13 @@ describe("Terminal Store Integration", () => {
           return t.id === id ? { ...t, location: "dock" as const } : t;
         });
 
-        const updates: any = {
-          terminalsById: Object.fromEntries(terminals.map((t: any) => [t.id, t])),
-          terminalIds: terminals.map((t: any) => t.id),
+        const updates: Record<string, unknown> = {
+          terminalsById: Object.fromEntries(terminals.map((t) => [t.id, t])),
+          terminalIds: terminals.map((t) => t.id),
         };
 
         if (state.focusedId === id) {
-          const gridTerminals = terminals.filter((t: any) => t.id !== id && t.location === "grid");
+          const gridTerminals = terminals.filter((t) => t.id !== id && t.location === "grid");
           updates.focusedId = gridTerminals[0]?.id ?? null;
         }
 
@@ -208,7 +221,7 @@ describe("Terminal Store Integration", () => {
 
       const terminals = getTerminals();
       const { focusedId } = useTerminalStore.getState();
-      expect(terminals.find((t: any) => t.id === "term-1")?.location).toBe("dock");
+      expect(terminals.find((t: TerminalInstance) => t.id === "term-1")?.location).toBe("dock");
       expect(focusedId).toBe("term-2");
     });
 
@@ -232,8 +245,8 @@ describe("Terminal Store Integration", () => {
           return t.id === id ? { ...t, location: "grid" as const } : t;
         });
         useTerminalStore.setState({
-          terminalsById: Object.fromEntries(terminals.map((t: any) => [t.id, t])),
-          terminalIds: terminals.map((t: any) => t.id),
+          terminalsById: Object.fromEntries(terminals.map((t: TerminalInstance) => [t.id, t])),
+          terminalIds: terminals.map((t: TerminalInstance) => t.id),
           focusedId: id,
         });
         return true;
@@ -244,7 +257,7 @@ describe("Terminal Store Integration", () => {
 
       const terminals = getTerminals();
       const { focusedId } = useTerminalStore.getState();
-      expect(terminals.find((t: any) => t.id === "term-1")?.location).toBe("grid");
+      expect(terminals.find((t: TerminalInstance) => t.id === "term-1")?.location).toBe("grid");
       expect(focusedId).toBe("term-1");
     });
   });
@@ -282,13 +295,13 @@ describe("Terminal Store Integration", () => {
           return t.id === id ? { ...t, location: "trash" as const } : t;
         });
 
-        const updates: any = {
-          terminalsById: Object.fromEntries(terminals.map((t: any) => [t.id, t])),
-          terminalIds: terminals.map((t: any) => t.id),
+        const updates: Record<string, unknown> = {
+          terminalsById: Object.fromEntries(terminals.map((t) => [t.id, t])),
+          terminalIds: terminals.map((t) => t.id),
         };
 
         if (state.focusedId === id) {
-          const gridTerminals = terminals.filter((t: any) => t.id !== id && t.location === "grid");
+          const gridTerminals = terminals.filter((t) => t.id !== id && t.location === "grid");
           updates.focusedId = gridTerminals[0]?.id ?? null;
         }
 
@@ -300,7 +313,7 @@ describe("Terminal Store Integration", () => {
 
       const terminals = getTerminals();
       const { focusedId } = useTerminalStore.getState();
-      expect(terminals.find((t: any) => t.id === "term-1")?.location).toBe("trash");
+      expect(terminals.find((t: TerminalInstance) => t.id === "term-1")?.location).toBe("trash");
       expect(focusedId).toBe("term-2");
     });
 
@@ -324,8 +337,8 @@ describe("Terminal Store Integration", () => {
           return t.id === id ? { ...t, location: "grid" as const } : t;
         });
         useTerminalStore.setState({
-          terminalsById: Object.fromEntries(terminals.map((t: any) => [t.id, t])),
-          terminalIds: terminals.map((t: any) => t.id),
+          terminalsById: Object.fromEntries(terminals.map((t: TerminalInstance) => [t.id, t])),
+          terminalIds: terminals.map((t: TerminalInstance) => t.id),
           focusedId: id,
         });
       });
@@ -335,7 +348,7 @@ describe("Terminal Store Integration", () => {
 
       const terminals = getTerminals();
       const { focusedId } = useTerminalStore.getState();
-      expect(terminals.find((t: any) => t.id === "term-1")?.location).toBe("grid");
+      expect(terminals.find((t: TerminalInstance) => t.id === "term-1")?.location).toBe("grid");
       expect(focusedId).toBe("term-1");
     });
 
@@ -363,13 +376,13 @@ describe("Terminal Store Integration", () => {
           return t.id === id ? { ...t, location: "trash" as const } : t;
         });
 
-        const updates: any = {
-          terminalsById: Object.fromEntries(terminals.map((t: any) => [t.id, t])),
-          terminalIds: terminals.map((t: any) => t.id),
+        const updates: Record<string, unknown> = {
+          terminalsById: Object.fromEntries(terminals.map((t) => [t.id, t])),
+          terminalIds: terminals.map((t) => t.id),
         };
 
         if (state.focusedId === id) {
-          const gridTerminals = terminals.filter((t: any) => t.id !== id && t.location === "grid");
+          const gridTerminals = terminals.filter((t) => t.id !== id && t.location === "grid");
           updates.focusedId = gridTerminals[0]?.id ?? null;
         }
 

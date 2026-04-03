@@ -439,6 +439,7 @@ export function ContentGrid({
   // Get tab groups for the active worktree
   const tabGroups = useMemo(() => {
     return getTabGroups("grid", activeWorktreeId ?? undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- storeTerminalIds is an intentional trigger dep
   }, [getTabGroups, activeWorktreeId, storeTerminalIds]);
 
   // Handler for adding a new tab to a single panel (creates a tab group)
