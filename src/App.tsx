@@ -1660,6 +1660,7 @@ function App() {
         results={panelPalette.results}
         totalResults={panelPalette.totalResults}
         selectedIndex={panelPalette.selectedIndex}
+        matchesById={panelPalette.matchesById}
         onQueryChange={panelPalette.setQuery}
         onSelectPrevious={panelPalette.selectPrevious}
         onSelectNext={panelPalette.selectNext}
