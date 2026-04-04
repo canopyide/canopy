@@ -679,19 +679,24 @@ export const createTabGroupActions = (
 
         for (const group of sanitizedGroups.values()) {
           if (group.panelIds.includes(t.id)) {
-            const needsLocationUpdate = t.location !== group.location;
+            // Skip location override when the terminal has been docked more
+            // recently than the group was recorded — the per-terminal persisted
+            // location is more authoritative for dock state.
+            const skipLocationOverride = t.location === "dock" && group.location !== "dock";
+            const needsLocationUpdate = !skipLocationOverride && t.location !== group.location;
             const needsWorktreeUpdate =
               (t.worktreeId ?? undefined) !== (group.worktreeId ?? undefined);
 
             if (needsLocationUpdate || needsWorktreeUpdate) {
+              const effectiveLocation = needsLocationUpdate ? group.location : t.location;
               terminalsUpdated = true;
               newById[tid] = {
                 ...t,
-                location: group.location,
+                location: effectiveLocation,
                 worktreeId: group.worktreeId,
-                isVisible: group.location === "grid",
+                isVisible: effectiveLocation === "grid",
                 runtimeStatus: deriveRuntimeStatus(
-                  group.location === "grid",
+                  effectiveLocation === "grid",
                   t.flowStatus,
                   t.runtimeStatus
                 ),

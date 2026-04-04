@@ -98,6 +98,7 @@ function makeMockManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTermi
     isSerializedRestoreInProgress: false,
     deferredOutput: [],
     scrollbackRestoreState: "none",
+    attachGeneration: 0,
     attachRevealToken: 0,
     isHibernated: false,
     hibernationTimer: undefined,

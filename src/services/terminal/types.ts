@@ -114,6 +114,10 @@ export interface ManagedTerminal {
   // Project-switch detach state: instance is alive but not in any visible container
   isDetached?: boolean;
 
+  // Attach generation: monotonic counter incremented on each attach().
+  // Used to detect stale unmount cleanup from a previous mount site.
+  attachGeneration: number;
+
   // Attach-reveal: hide terminal during reparent, reveal after render
   attachRevealToken: number;
   attachRevealTimer?: ReturnType<typeof setTimeout>;

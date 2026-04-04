@@ -118,6 +118,7 @@ describe("TerminalInstanceService attach reveal", () => {
       lastWidth: 0,
       lastHeight: 0,
       isAttaching: true,
+      attachGeneration: 0,
       attachRevealToken: 0,
       listeners: [],
       exitSubscribers: new Set(),

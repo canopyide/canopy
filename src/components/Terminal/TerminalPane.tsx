@@ -335,11 +335,14 @@ function TerminalPaneComponent({
     return () => observer.disconnect();
   }, [id, updateVisibility]);
 
-  // Separate unmount cleanup - only runs on actual unmount, not on drag changes
+  // Separate unmount cleanup - only runs on actual unmount, not on drag changes.
+  // Capture attach generation so stale dock unmounts don't background a terminal
+  // that has already been re-attached to the grid.
   useEffect(() => {
+    const gen = terminalInstanceService.getAttachGeneration(id);
     return () => {
       updateVisibility(id, false);
-      terminalInstanceService.setVisible(id, false);
+      terminalInstanceService.setVisible(id, false, gen);
     };
   }, [id, updateVisibility]);
 

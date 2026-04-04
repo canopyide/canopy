@@ -42,6 +42,15 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   // Derive isOpen from store state
   const isOpen = activeDockTerminalId === terminal.id;
 
+  // Click/double-click arbitration: defer single-click action to distinguish from double-click.
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    };
+  }, []);
+
   // Track when popover was just programmatically opened to ignore immediate close events
   const wasJustOpenedRef = useRef(false);
   const prevIsOpenRef = useRef(isOpen);
@@ -219,22 +228,27 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               isDeprioritized && "opacity-50"
             )}
             onClick={(e) => {
-              // Explicitly toggle popover state on click
-              // This ensures the click always works, even if dnd-kit listeners
-              // interfere with Radix Popover's default trigger behavior
               e.preventDefault();
               e.stopPropagation();
-              if (isOpen) {
-                closeDockTerminal();
-              } else {
-                openDockTerminal(terminal.id);
+              if (clickTimerRef.current) {
+                clearTimeout(clickTimerRef.current);
+                clickTimerRef.current = null;
               }
-            }}
-            onDoubleClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const moved = moveTerminalToGrid(terminal.id);
-              if (moved) closeDockTerminal();
+              if (e.detail >= 2) {
+                // Double-click: move to grid. moveTerminalToGrid in the store
+                // atomically clears activeDockTerminalId so no separate close needed.
+                moveTerminalToGrid(terminal.id);
+                return;
+              }
+              // Single-click: defer to distinguish from double-click
+              clickTimerRef.current = setTimeout(() => {
+                clickTimerRef.current = null;
+                if (isOpen) {
+                  closeDockTerminal();
+                } else {
+                  openDockTerminal(terminal.id);
+                }
+              }, 250);
             }}
             aria-label={`${terminal.title} - Click to preview, double-click to move to grid, drag to reorder`}
           >
