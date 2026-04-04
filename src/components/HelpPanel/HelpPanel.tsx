@@ -44,11 +44,24 @@ export function HelpPanel() {
   useEffect(() => {
     if (!isOpen || terminalId || !preferredAgentId || hasAutoLaunched.current) return;
     hasAutoLaunched.current = true;
-    void actionService.dispatch(
-      "help.launchAgent",
-      { agentId: preferredAgentId },
-      { source: "user" }
-    );
+
+    void (async () => {
+      const folderPath = await window.electron.help.getFolderPath();
+      if (!folderPath) return;
+
+      const helpPrompt =
+        "I need help with Canopy, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
+
+      const result = await actionService.dispatch<{ terminalId: string | null }>(
+        "agent.launch",
+        { agentId: preferredAgentId, location: "dock", cwd: folderPath, prompt: helpPrompt },
+        { source: "user" }
+      );
+
+      if (result.ok && result.result?.terminalId) {
+        useHelpPanelStore.getState().setTerminal(result.result.terminalId, preferredAgentId);
+      }
+    })();
   }, [isOpen, terminalId, preferredAgentId]);
 
   // Reset auto-launch guard when panel closes
@@ -121,11 +134,21 @@ export function HelpPanel() {
         clearTerminal();
       }
 
-      await actionService.dispatch(
-        "help.launchAgent",
-        { agentId: selectedAgentId },
+      const folderPath = await window.electron.help.getFolderPath();
+      if (!folderPath) return;
+
+      const helpPrompt =
+        "I need help with Canopy, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
+
+      const result = await actionService.dispatch<{ terminalId: string | null }>(
+        "agent.launch",
+        { agentId: selectedAgentId, location: "dock", cwd: folderPath, prompt: helpPrompt },
         { source: "user" }
       );
+
+      if (result.ok && result.result?.terminalId) {
+        useHelpPanelStore.getState().setTerminal(result.result.terminalId, selectedAgentId);
+      }
     },
     [terminalId, removeTerminal, clearTerminal]
   );
