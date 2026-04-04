@@ -861,6 +861,12 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
             commands: ["curl https://cursor.com/install -fsS | bash"],
           },
         ],
+        windows: [
+          {
+            label: "PowerShell",
+            commands: ["irm 'https://cursor.com/install?win32=true' | iex"],
+          },
+        ],
       },
       troubleshooting: [
         "Restart Canopy after installation to update PATH",
