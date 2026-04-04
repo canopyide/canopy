@@ -713,6 +713,37 @@ describe("cursor detection patterns", () => {
   });
 });
 
+describe("cursor install metadata", () => {
+  it("has Windows install block with correct PowerShell command", () => {
+    const config = getAgentConfig("cursor");
+    const windows = config?.install?.byOs?.windows;
+    expect(windows).toBeDefined();
+    expect(windows).toHaveLength(1);
+    expect(windows![0].label).toBe("PowerShell");
+    expect(windows![0].commands).toEqual(["irm 'https://cursor.com/install?win32=true' | iex"]);
+  });
+
+  it("has install blocks for all three platforms", () => {
+    const config = getAgentConfig("cursor");
+    for (const os of ["macos", "linux", "windows"] as const) {
+      expect(config?.install?.byOs?.[os]).toBeDefined();
+      expect(config?.install?.byOs?.[os]!.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("all built-in agents have Windows or generic install", () => {
+  it.each(["claude", "gemini", "codex", "opencode", "cursor"])(
+    "%s has windows or generic install block",
+    (agentId) => {
+      const config = getAgentConfig(agentId);
+      const hasWindows = (config?.install?.byOs?.windows?.length ?? 0) > 0;
+      const hasGeneric = (config?.install?.byOs?.generic?.length ?? 0) > 0;
+      expect(hasWindows || hasGeneric).toBe(true);
+    }
+  );
+});
+
 describe("opencode detection patterns", () => {
   function compileAgentPatterns(agentId: string, key: string): RegExp[] {
     const config = getAgentConfig(agentId);
