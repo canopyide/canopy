@@ -171,6 +171,10 @@ export const projectClient = {
     return window.electron.project.onCloneProgress(callback);
   },
 
+  cancelClone: (): Promise<void> => {
+    return window.electron.project.cancelClone();
+  },
+
   getRecipes: (projectId: string): Promise<TerminalRecipe[]> => {
     return window.electron.project.getRecipes(projectId);
   },

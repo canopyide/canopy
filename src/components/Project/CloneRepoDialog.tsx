@@ -136,7 +136,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
       if (result.success && result.clonedPath) {
         setClonedPath(result.clonedPath);
         setIsComplete(true);
-      } else {
+      } else if (!result.cancelled) {
         setError(result.error || "Clone failed");
       }
     } catch (err) {
@@ -297,7 +297,10 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={onCancel} disabled={isCloning}>
+              <Button
+                variant="outline"
+                onClick={isCloning ? () => void projectClient.cancelClone() : onCancel}
+              >
                 Cancel
               </Button>
               <Button onClick={() => void startClone()} disabled={!canClone || isCloning}>

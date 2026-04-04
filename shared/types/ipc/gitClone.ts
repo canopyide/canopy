@@ -16,4 +16,5 @@ export interface CloneRepoResult {
   success: boolean;
   clonedPath?: string;
   error?: string;
+  cancelled?: boolean;
 }
