@@ -104,6 +104,8 @@ interface RecipeState {
     terminalIndices?: number[]
   ) => Promise<RecipeSpawnResults>;
 
+  saveToRepo: (recipeId: string, deleteOriginal?: boolean) => Promise<void>;
+
   exportRecipe: (id: string) => string | null;
   importRecipe: (projectId: string | undefined, json: string) => Promise<void>;
 
@@ -321,8 +323,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
   },
 
   deleteRecipe: async (id) => {
-    const recipes = get().recipes;
-    const recipe = recipes.find((r) => r.id === id);
+    // Search merged list first, then source lists as fallback (handles shadowed recipes)
+    const recipe =
+      get().recipes.find((r) => r.id === id) ??
+      get().projectRecipes.find((r) => r.id === id) ??
+      get().globalRecipes.find((r) => r.id === id);
     if (!recipe) {
       throw new Error(`Recipe ${id} not found`);
     }
@@ -362,6 +367,69 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
         recipes: mergeRecipes(prevGlobal, prevProject, prevInRepo),
       });
       throw error;
+    }
+  },
+
+  saveToRepo: async (recipeId, deleteOriginal = false) => {
+    const recipe = get().recipes.find((r) => r.id === recipeId);
+    if (!recipe) throw new Error(`Recipe ${recipeId} not found`);
+    if (isInRepoRecipeId(recipeId)) throw new Error("Recipe is already in-repo");
+
+    const currentProjectId = get().currentProjectId;
+    if (!currentProjectId) throw new Error("No current project");
+
+    const isGlobal = recipe.projectId === undefined;
+    const { projectId: _, worktreeId: _w, ...rest } = recipe;
+    const promoted: TerminalRecipe = { ...rest, id: stableInRepoId(recipe.name) };
+
+    const prevGlobal = get().globalRecipes;
+    const prevProject = get().projectRecipes;
+    const prevInRepo = get().inRepoRecipes;
+
+    const nextInRepo = [...prevInRepo.filter((r) => r.id !== promoted.id), promoted];
+    const nextGlobal =
+      deleteOriginal && isGlobal ? prevGlobal.filter((r) => r.id !== recipeId) : prevGlobal;
+    const nextProject =
+      deleteOriginal && !isGlobal ? prevProject.filter((r) => r.id !== recipeId) : prevProject;
+
+    set({
+      globalRecipes: nextGlobal,
+      projectRecipes: nextProject,
+      inRepoRecipes: nextInRepo,
+      recipes: mergeRecipes(nextGlobal, nextProject, nextInRepo),
+    });
+
+    try {
+      await projectClient.updateInRepoRecipe(currentProjectId, promoted);
+    } catch (error) {
+      console.error("Failed to save recipe to repo:", error);
+      set({
+        globalRecipes: prevGlobal,
+        projectRecipes: prevProject,
+        inRepoRecipes: prevInRepo,
+        recipes: mergeRecipes(prevGlobal, prevProject, prevInRepo),
+      });
+      throw error;
+    }
+
+    if (deleteOriginal) {
+      try {
+        if (isGlobal) {
+          await globalRecipesClient.deleteRecipe(recipeId);
+        } else {
+          await projectClient.deleteRecipe(recipe.projectId!, recipeId);
+        }
+      } catch (error) {
+        // In-repo write succeeded; roll back only the delete portion
+        console.error("Failed to delete original recipe:", error);
+        set({
+          globalRecipes: prevGlobal,
+          projectRecipes: prevProject,
+          inRepoRecipes: nextInRepo,
+          recipes: mergeRecipes(prevGlobal, prevProject, nextInRepo),
+        });
+        throw error;
+      }
     }
   },
 
