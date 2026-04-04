@@ -203,10 +203,36 @@ describe("createAuthenticatedGit", () => {
   });
 
   it("spreads process.env into the env option", () => {
-    createAuthenticatedGit("/test/repo");
+    process.env.CANOPY_TEST_SENTINEL = "sentinel_value";
+    try {
+      createAuthenticatedGit("/test/repo");
 
-    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(options.env.PATH).toBe(process.env.PATH);
+      const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(options.env.PATH).toBe(process.env.PATH);
+      expect(options.env.HOME).toBe(process.env.HOME);
+      expect(options.env.CANOPY_TEST_SENTINEL).toBe("sentinel_value");
+    } finally {
+      delete process.env.CANOPY_TEST_SENTINEL;
+    }
+  });
+
+  it("forced env values override conflicting process.env entries", () => {
+    const origPrompt = process.env.GIT_TERMINAL_PROMPT;
+    const origSsh = process.env.GIT_SSH_COMMAND;
+    process.env.GIT_TERMINAL_PROMPT = "1";
+    process.env.GIT_SSH_COMMAND = "ssh -i /custom/key";
+    try {
+      createAuthenticatedGit("/test/repo");
+
+      const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(options.env.GIT_TERMINAL_PROMPT).toBe("0");
+      expect(options.env.GIT_SSH_COMMAND).toBe("ssh");
+    } finally {
+      if (origPrompt === undefined) delete process.env.GIT_TERMINAL_PROMPT;
+      else process.env.GIT_TERMINAL_PROMPT = origPrompt;
+      if (origSsh === undefined) delete process.env.GIT_SSH_COMMAND;
+      else process.env.GIT_SSH_COMMAND = origSsh;
+    }
   });
 
   it("sets block timeout to 0 for network operations", () => {
