@@ -772,7 +772,12 @@ export const createCorePanelActions = (
 
       const newById = {
         ...state.terminalsById,
-        [id]: { ...terminal, location: "dock" as const },
+        [id]: {
+          ...terminal,
+          location: "dock" as const,
+          isVisible: false,
+          runtimeStatus: deriveRuntimeStatus(false, terminal.flowStatus, terminal.runtimeStatus),
+        },
       };
       saveNormalized(newById, state.terminalIds);
       return { terminalsById: newById };

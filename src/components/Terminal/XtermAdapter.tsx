@@ -220,6 +220,7 @@ function XtermAdapterComponent({
     terminalInstanceService.setInputLocked(terminalId, !!isInputLocked);
 
     terminalInstanceService.attach(terminalId, container);
+    const attachGen = terminalInstanceService.getAttachGeneration(terminalId);
     // Force visibility immediately on mount - don't wait for IntersectionObserver.
     // This prevents data from being dropped during the brief window before the observer fires.
     terminalInstanceService.setVisible(terminalId, true);
@@ -394,7 +395,9 @@ function XtermAdapterComponent({
     onReady?.();
 
     return () => {
-      terminalInstanceService.setVisible(terminalId, false);
+      // Pass the captured generation so stale dock→grid unmount cleanup
+      // doesn't background a terminal that has already been re-attached elsewhere.
+      terminalInstanceService.setVisible(terminalId, false, attachGen);
 
       // Flush pending resizes before unmount
       terminalInstanceService.flushResize(terminalId);

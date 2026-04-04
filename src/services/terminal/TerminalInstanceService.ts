@@ -373,9 +373,15 @@ class TerminalInstanceService {
     });
   }
 
-  setVisible(id: string, isVisible: boolean): void {
+  setVisible(id: string, isVisible: boolean, expectedGeneration?: number): void {
     const managed = this.instances.get(id);
     if (!managed || managed.isHibernated) return;
+
+    // Guard: if a generation was provided and it doesn't match the current
+    // attach generation, this is a stale cleanup from a previous mount — skip.
+    if (expectedGeneration !== undefined && managed.attachGeneration !== expectedGeneration) {
+      return;
+    }
 
     const wasVisible = managed.isVisible;
     if (wasVisible !== isVisible) {
@@ -618,6 +624,7 @@ class TerminalInstanceService {
       isSerializedRestoreInProgress: false,
       deferredOutput: [],
       scrollbackRestoreState: "none",
+      attachGeneration: 0,
       attachRevealToken: 0,
       isAltBuffer: false,
       altBufferListeners: new Set(),
@@ -960,6 +967,7 @@ class TerminalInstanceService {
         this.webGLManager.ensureContext(id, managed);
       }
     }
+    managed.attachGeneration++;
     managed.lastAttachAt = Date.now();
     managed.isDetached = false;
 
@@ -1103,6 +1111,10 @@ class TerminalInstanceService {
     }
 
     return managed;
+  }
+
+  getAttachGeneration(id: string): number {
+    return this.instances.get(id)?.attachGeneration ?? 0;
   }
 
   detach(id: string, container: HTMLElement | null): void {
