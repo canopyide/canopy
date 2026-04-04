@@ -3,7 +3,7 @@ import { CHANNELS } from "../channels.js";
 import { checkRateLimit } from "../utils.js";
 import type { HandlerDependencies } from "../types.js";
 import type { GitStatus } from "../../../shared/types/git.js";
-import { validateCwd, createHardenedGit } from "../../utils/hardenedGit.js";
+import { validateCwd, createHardenedGit, createAuthenticatedGit } from "../../utils/hardenedGit.js";
 import { store } from "../../store.js";
 import { soundService } from "../../services/SoundService.js";
 import { preAgentSnapshotService } from "../../services/PreAgentSnapshotService.js";
@@ -140,7 +140,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     checkRateLimit(CHANNELS.GIT_PUSH, 5, 10_000);
     validateCwd(payload?.cwd);
 
-    const git = createHardenedGit(payload.cwd);
+    const git = createAuthenticatedGit(payload.cwd);
 
     try {
       const branch = await git.revparse(["--abbrev-ref", "HEAD"]);

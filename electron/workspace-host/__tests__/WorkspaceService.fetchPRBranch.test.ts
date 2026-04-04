@@ -18,6 +18,7 @@ vi.mock("../../utils/fs.js", () => ({
 
 vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockSimpleGit),
+  createAuthenticatedGit: vi.fn(() => mockSimpleGit),
   validateCwd: vi.fn(),
 }));
 
@@ -136,11 +137,15 @@ describe("WorkspaceService.fetchPRBranch", () => {
     vi.restoreAllMocks();
   });
 
-  it("should fetch PR branch using correct refspec and emit success", async () => {
+  it("should fetch PR branch using createAuthenticatedGit and emit success", async () => {
+    const { createAuthenticatedGit } = await import("../../utils/hardenedGit.js");
+    const { createHardenedGit } = await import("../../utils/hardenedGit.js");
     mockSimpleGit.raw.mockResolvedValueOnce("");
 
     await service.fetchPRBranch("req-1", "/test/root", 42, "feature/my-branch");
 
+    expect(createAuthenticatedGit).toHaveBeenCalledWith("/test/root");
+    expect(createHardenedGit).not.toHaveBeenCalled();
     expect(mockSimpleGit.raw).toHaveBeenCalledWith([
       "fetch",
       "origin",

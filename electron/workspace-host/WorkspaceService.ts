@@ -3,7 +3,7 @@ import PQueue from "p-queue";
 import { mkdir, writeFile, stat } from "fs/promises";
 import { join as pathJoin, dirname, resolve as pathResolve, isAbsolute } from "path";
 import { SimpleGit, BranchSummary } from "simple-git";
-import { createHardenedGit } from "../utils/hardenedGit.js";
+import { createHardenedGit, createAuthenticatedGit } from "../utils/hardenedGit.js";
 import type { Worktree } from "../../shared/types/worktree.js";
 import type {
   WorkspaceHostEvent,
@@ -906,7 +906,7 @@ export class WorkspaceService {
     headRefName: string
   ): Promise<void> {
     try {
-      const git = createHardenedGit(rootPath);
+      const git = createAuthenticatedGit(rootPath);
       await git.raw(["fetch", "origin", `pull/${prNumber}/head:${headRefName}`]);
       this.sendEvent({ type: "fetch-pr-branch-result", requestId, success: true });
     } catch (error) {
