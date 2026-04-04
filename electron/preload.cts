@@ -615,6 +615,7 @@ const CHANNELS = {
   PROJECT_INIT_GIT_PROGRESS: "project:init-git-progress",
   PROJECT_CLONE_REPO: "project:clone-repo",
   PROJECT_CLONE_PROGRESS: "project:clone-progress",
+  PROJECT_CLONE_CANCEL: "project:clone-cancel",
   PROJECT_GET_RECIPES: "project:get-recipes",
   PROJECT_SAVE_RECIPES: "project:save-recipes",
   PROJECT_ADD_RECIPE: "project:add-recipe",
@@ -1573,6 +1574,8 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.PROJECT_CLONE_PROGRESS, listener);
       return () => ipcRenderer.removeListener(CHANNELS.PROJECT_CLONE_PROGRESS, listener);
     },
+
+    cancelClone: (): Promise<void> => _unwrappingInvoke(CHANNELS.PROJECT_CLONE_CANCEL),
 
     getRecipes: (projectId: string): Promise<TerminalRecipe[]> =>
       _unwrappingInvoke(CHANNELS.PROJECT_GET_RECIPES, projectId),

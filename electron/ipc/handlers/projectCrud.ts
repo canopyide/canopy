@@ -928,6 +928,8 @@ Thumbs.db
   ipcMain.handle(CHANNELS.PROJECT_INIT_GIT_GUIDED, handleProjectInitGitGuided);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_INIT_GIT_GUIDED));
 
+  let cloneAbortController: AbortController | null = null;
+
   const handleProjectCloneRepo = async (
     event: Electron.IpcMainInvokeEvent,
     options: CloneRepoOptions
@@ -1010,23 +1012,29 @@ Thumbs.db
       }
     };
 
+    cloneAbortController = new AbortController();
+
     try {
       emitProgress("starting", 0, "Starting clone...");
 
       const git = createAuthenticatedGit(parentPath, {
+        signal: cloneAbortController.signal,
         progress({ stage, progress }) {
           emitProgress(stage, progress, `${stage}: ${progress}%`);
         },
         extraConfig: ["transfer.bundleURI=false"],
       });
 
+      git.env({ ...process.env, GIT_TERMINAL_PROMPT: "0" });
+
       await git.clone(url, trimmedFolder, shallowClone ? ["--depth", "1"] : []);
 
       emitProgress("complete", 100, "Clone complete");
       return { success: true, clonedPath: targetPath };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      emitProgress("error", 0, `Clone failed: ${errorMessage}`);
+      const wasCancelled =
+        cloneAbortController?.signal.aborted ||
+        (error instanceof Error && (error.name === "AbortError" || /abort/i.test(error.message)));
 
       // Clean up partial clone
       const partialExists = await fs.promises
@@ -1037,11 +1045,28 @@ Thumbs.db
         await fs.promises.rm(targetPath, { recursive: true, force: true }).catch(() => {});
       }
 
+      if (wasCancelled) {
+        emitProgress("cancelled", 0, "Clone cancelled");
+        return { success: false, cancelled: true, error: "Clone cancelled" };
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      emitProgress("error", 0, `Clone failed: ${errorMessage}`);
       return { success: false, error: errorMessage };
+    } finally {
+      cloneAbortController = null;
     }
   };
   ipcMain.handle(CHANNELS.PROJECT_CLONE_REPO, handleProjectCloneRepo);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_CLONE_REPO));
+
+  const handleProjectCloneCancel = async (_event: Electron.IpcMainInvokeEvent): Promise<void> => {
+    if (cloneAbortController) {
+      cloneAbortController.abort();
+    }
+  };
+  ipcMain.handle(CHANNELS.PROJECT_CLONE_CANCEL, handleProjectCloneCancel);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_CLONE_CANCEL));
 
   const handleProjectCheckMissing = async (
     _event: Electron.IpcMainInvokeEvent

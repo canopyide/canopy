@@ -6,10 +6,11 @@ import { render, screen, waitFor, act, fireEvent } from "@testing-library/react"
 import type { ReactNode, ButtonHTMLAttributes } from "react";
 import type { CloneRepoProgressEvent } from "@shared/types/ipc/gitClone";
 
-const { cloneRepoMock, onCloneProgressMock, openDialogMock } = vi.hoisted(() => ({
+const { cloneRepoMock, onCloneProgressMock, openDialogMock, cancelCloneMock } = vi.hoisted(() => ({
   cloneRepoMock: vi.fn(),
   onCloneProgressMock: vi.fn(),
   openDialogMock: vi.fn(),
+  cancelCloneMock: vi.fn(),
 }));
 
 vi.mock("@/clients", () => ({
@@ -17,6 +18,7 @@ vi.mock("@/clients", () => ({
     cloneRepo: cloneRepoMock,
     onCloneProgress: onCloneProgressMock,
     openDialog: openDialogMock,
+    cancelClone: cancelCloneMock,
   },
 }));
 
@@ -327,6 +329,58 @@ describe("CloneRepoDialog", () => {
         shallowClone: true,
       })
     );
+  });
+
+  it("Cancel button calls cancelClone during active clone", async () => {
+    cancelCloneMock.mockResolvedValue(undefined);
+    cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    const cancelBtn = screen.getByText("Cancel");
+    expect((cancelBtn as HTMLButtonElement).disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(cancelBtn);
+    });
+
+    expect(cancelCloneMock).toHaveBeenCalled();
+  });
+
+  it("does not show error after cancelled clone", async () => {
+    cloneRepoMock.mockResolvedValue({ success: false, cancelled: true, error: "Clone cancelled" });
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Clone Failed")).toBeNull();
+    });
   });
 
   it("does not treat full URLs as owner/repo shorthand", async () => {

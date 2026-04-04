@@ -421,6 +421,8 @@ export interface ElectronAPI {
     cloneRepo(options: CloneRepoOptions): Promise<CloneRepoResult>;
     /** Subscribe to clone progress events */
     onCloneProgress(callback: (event: CloneRepoProgressEvent) => void): () => void;
+    /** Cancel an in-progress clone operation */
+    cancelClone(): Promise<void>;
     getRecipes(projectId: string): Promise<TerminalRecipe[]>;
     saveRecipes(projectId: string, recipes: TerminalRecipe[]): Promise<void>;
     addRecipe(projectId: string, recipe: TerminalRecipe): Promise<void>;
