@@ -269,7 +269,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
 
           {/* Help button — right-aligned, always last */}
           <div className="ml-auto shrink-0">
-            <HelpAgentDockButton compact={isCompact} />
+            <HelpAgentDockButton />
           </div>
         </div>
       </ContextMenuTrigger>

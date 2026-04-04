@@ -1,15 +1,11 @@
 import { useCallback } from "react";
+import { CircleHelp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { CanopyIcon } from "@/components/icons/CanopyIcon";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 
-interface HelpAgentDockButtonProps {
-  compact?: boolean;
-}
-
-export function HelpAgentDockButton({ compact = false }: HelpAgentDockButtonProps) {
+export function HelpAgentDockButton() {
   const isOpen = useHelpPanelStore((s) => s.isOpen);
   const toggle = useHelpPanelStore((s) => s.toggle);
 
@@ -23,18 +19,17 @@ export function HelpAgentDockButton({ compact = false }: HelpAgentDockButtonProp
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant="pill"
-            size="sm"
+            variant="ghost"
+            size="icon-sm"
             className={cn(
-              compact ? "px-1.5 min-w-0" : "px-2.5",
-              isOpen && "bg-canopy-border border-canopy-accent/40 ring-1 ring-canopy-accent/30"
+              "opacity-50 hover:opacity-100 transition-opacity",
+              isOpen && "opacity-100 bg-canopy-accent/10 text-canopy-accent"
             )}
             onClick={handleClick}
-            aria-label="Help Agent"
+            aria-label="Help"
             aria-expanded={isOpen}
           >
-            <CanopyIcon className="w-3.5 h-3.5 text-canopy-text/50" />
-            {!compact && <span className="font-medium">Help</span>}
+            <CircleHelp />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top">
