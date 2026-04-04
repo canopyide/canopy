@@ -3,6 +3,7 @@ import { X, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CanopyIcon } from "@/components/icons/CanopyIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
+import { YouTubeEmbedOverlay } from "@/components/Terminal/YouTubeEmbedOverlay";
 import { HelpAgentPicker } from "./HelpAgentPicker";
 import {
   useHelpPanelStore,
@@ -210,19 +211,20 @@ export function HelpPanel() {
           </button>
         )}
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          {agentConfig ? (
-            <>
-              <agentConfig.icon className="w-3.5 h-3.5 shrink-0" brandColor={agentConfig.color} />
-              <span className="text-xs font-medium text-canopy-text/70 truncate">
-                {agentConfig.name} Help
+          <CanopyIcon className="w-3.5 h-3.5 text-canopy-text/50 shrink-0" />
+          <span className="text-xs font-medium text-canopy-text/70 truncate">
+            Canopy Assistant
+            {agentConfig && (
+              <span className="text-canopy-text/40">
+                {" ("}
+                <agentConfig.icon
+                  className="w-3 h-3 inline-block align-[-0.15em]"
+                  brandColor={agentConfig.color}
+                />
+                {` ${agentConfig.name})`}
               </span>
-            </>
-          ) : (
-            <>
-              <CanopyIcon className="w-3.5 h-3.5 text-canopy-text/50 shrink-0" />
-              <span className="text-xs font-medium text-canopy-text/70">Help</span>
-            </>
-          )}
+            )}
+          </span>
         </div>
         <button
           type="button"
@@ -244,6 +246,7 @@ export function HelpPanel() {
               getRefreshTier={getRefreshTier}
               cwd={terminal.cwd}
             />
+            <YouTubeEmbedOverlay terminalId={terminalId} />
           </div>
         ) : (
           <HelpAgentPicker onSelectAgent={handleSelectAgent} />

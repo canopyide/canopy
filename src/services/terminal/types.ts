@@ -4,6 +4,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+
 import { TerminalRefreshTier, TerminalType, PanelKind, AgentState } from "@/types";
 
 export type RefreshTierProvider = () => TerminalRefreshTier;

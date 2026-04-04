@@ -4,7 +4,6 @@ import { useYouTubeEmbeds } from "@/hooks/useYouTubeEmbeds";
 
 interface YouTubeEmbedOverlayProps {
   terminalId: string;
-  cwd?: string;
   className?: string;
 }
 
@@ -87,8 +86,8 @@ function YouTubeEmbedCard({ videoId, onDismiss }: { videoId: string; onDismiss: 
   );
 }
 
-export function YouTubeEmbedOverlay({ terminalId, cwd, className }: YouTubeEmbedOverlayProps) {
-  const { embeds, dismissEmbed } = useYouTubeEmbeds(terminalId, cwd);
+export function YouTubeEmbedOverlay({ terminalId, className }: YouTubeEmbedOverlayProps) {
+  const { embeds, dismissEmbed } = useYouTubeEmbeds(terminalId);
 
   if (embeds.length === 0) return null;
 

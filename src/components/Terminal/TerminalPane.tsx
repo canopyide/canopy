@@ -11,7 +11,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
-import { YouTubeEmbedOverlay } from "./YouTubeEmbedOverlay";
+
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalScrollIndicator } from "./TerminalScrollIndicator";
 import { TerminalRestartStatusBanner } from "./TerminalRestartStatusBanner";
@@ -753,7 +753,6 @@ function TerminalPaneComponent({
               hasBottomBar={showHybridInputBar}
             />
             <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
-            <YouTubeEmbedOverlay terminalId={id} cwd={cwd} />
             {isSearchOpen && (
               <TerminalSearchBar
                 terminalId={id}

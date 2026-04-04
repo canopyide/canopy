@@ -19,7 +19,7 @@ describe("YouTubeEmbedOverlay", () => {
   });
 
   it("renders thumbnail cards for each embed", () => {
-    render(<YouTubeEmbedOverlay terminalId="t1" cwd="/help" />);
+    render(<YouTubeEmbedOverlay terminalId="t1" />);
     const expandButtons = screen.getAllByLabelText("Expand YouTube video");
     expect(expandButtons).toHaveLength(2);
   });
@@ -30,12 +30,12 @@ describe("YouTubeEmbedOverlay", () => {
       embeds: [],
       dismissEmbed: mockDismiss,
     });
-    const { container } = render(<YouTubeEmbedOverlay terminalId="t1" cwd="/help" />);
+    const { container } = render(<YouTubeEmbedOverlay terminalId="t1" />);
     expect(container.firstChild).toBeNull();
   });
 
   it("expands to iframe on click", () => {
-    render(<YouTubeEmbedOverlay terminalId="t1" cwd="/help" />);
+    render(<YouTubeEmbedOverlay terminalId="t1" />);
     const expandButtons = screen.getAllByLabelText("Expand YouTube video");
     fireEvent.click(expandButtons[0]);
     const iframe = screen.getByTitle("YouTube video");
@@ -47,7 +47,7 @@ describe("YouTubeEmbedOverlay", () => {
   });
 
   it("calls dismissEmbed on dismiss button click", () => {
-    render(<YouTubeEmbedOverlay terminalId="t1" cwd="/help" />);
+    render(<YouTubeEmbedOverlay terminalId="t1" />);
     const dismissButtons = screen.getAllByLabelText("Dismiss embed");
     fireEvent.click(dismissButtons[0]);
     expect(mockDismiss).toHaveBeenCalledWith("dQw4w9WgXcQ");

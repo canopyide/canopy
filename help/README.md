@@ -1,56 +1,138 @@
 # Canopy Help System
 
-This directory is a self-contained workspace for running an AI coding agent as an interactive Canopy help assistant. Start any supported CLI agent here and it will automatically pick up the instruction files and documentation.
+Multi-agent help assistant workspace. Runs any supported AI coding agent (Claude Code, Gemini CLI, Codex CLI) in a sandboxed, read-only mode that answers user questions about Canopy using bundled documentation and a live MCP documentation server.
+
+Canopy launches agents in this directory automatically via the help panel — users don't need to `cd` here manually.
 
 ## Quick Start
 
 ```bash
 cd help
 
-# Use any of these:
 claude          # Claude Code
 gemini          # Gemini CLI
 codex           # Codex CLI
 ```
 
-The agent will identify itself as a Canopy help assistant and answer questions about features, keybindings, workflows, and configuration using the bundled documentation.
+Each agent auto-discovers its instruction file and config from the working directory, constrains itself to help-assistant mode, and connects to the `canopy-docs` MCP server for live documentation search.
+
+## Architecture
+
+```
+help/
+├── CLAUDE.md                  # Claude Code system prompt
+├── GEMINI.md                  # Gemini CLI system prompt
+├── AGENTS.md                  # Codex CLI system prompt (OpenAI convention)
+├── .mcp.json                  # Shared MCP server config (Claude + Codex)
+├── .claude/settings.json      # Claude permission lockdown
+├── .gemini/settings.json      # Gemini tool allowlist + MCP config
+├── .codex/config.toml         # Codex sandbox + MCP config
+├── .gitignore                 # Excludes agent caches, sessions, logs
+├── docs/                      # Bundled documentation (12 files)
+│   ├── getting-started.md     # Onboarding, installation, first project
+│   ├── panels-and-grid.md     # Panel types, grid layout, dock management
+│   ├── agents.md              # Agent support, launching, state detection
+│   ├── worktrees.md           # Git worktree orchestration
+│   ├── keybindings.md         # Full keyboard shortcuts reference
+│   ├── actions.md             # Action system and command palette
+│   ├── context-injection.md   # CopyTree context workflows
+│   ├── recipes.md             # Repeatable multi-agent panel setups
+│   ├── themes.md              # 14 built-in themes, customization
+│   ├── browser-and-devpreview.md  # Embedded browser and dev server preview
+│   ├── workflows.md           # Event-driven automation engine
+│   └── issue-guidelines.md    # What issues the project accepts/rejects
+└── README.md                  # This file
+```
 
 ## Supported Agents
 
-| Agent       | Command  | Instruction File | Config                               |
-| ----------- | -------- | ---------------- | ------------------------------------ |
-| Claude Code | `claude` | `CLAUDE.md`      | `.claude/settings.json`, `.mcp.json` |
-| Gemini CLI  | `gemini` | `GEMINI.md`      | `.gemini/settings.json`              |
-| Codex CLI   | `codex`  | `AGENTS.md`      | `.codex/config.toml`                 |
+| Agent       | Command  | System Prompt | Config                                | Permission Model                |
+| ----------- | -------- | ------------- | ------------------------------------- | ------------------------------- |
+| Claude Code | `claude` | `CLAUDE.md`   | `.claude/settings.json` + `.mcp.json` | Explicit allow/deny lists       |
+| Gemini CLI  | `gemini` | `GEMINI.md`   | `.gemini/settings.json`               | Tool allowlist                  |
+| Codex CLI   | `codex`  | `AGENTS.md`   | `.codex/config.toml`                  | Full sandbox, no writable roots |
 
-## Documentation
+Adding a new agent requires three things:
 
-The `docs/` directory contains user-facing documentation covering all major Canopy features:
+1. A system prompt file using that agent's convention (e.g., `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`)
+2. A config file that locks the agent to read-only and connects it to the MCP server
+3. An entry in `.gitignore` for any caches or session files the agent creates
 
-| File                        | Topic                                     |
-| --------------------------- | ----------------------------------------- |
-| `getting-started.md`        | Onboarding, installation, first project   |
-| `panels-and-grid.md`        | Panel types, grid layout, dock            |
-| `agents.md`                 | Agent support, launching, state detection |
-| `worktrees.md`              | Git worktree orchestration                |
-| `keybindings.md`            | Keyboard shortcuts reference              |
-| `actions.md`                | Action system and command palette         |
-| `context-injection.md`      | CopyTree and context workflows            |
-| `recipes.md`                | Terminal recipes                          |
-| `themes.md`                 | Theme system and customization            |
-| `browser-and-devpreview.md` | Embedded browser and dev preview          |
-| `workflows.md`              | Workflow engine and automation            |
+## System Prompts
 
-## How It Works
+All three prompt files (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`) share the same core instructions with minor formatting differences per agent:
 
-Each agent CLI looks for instruction files in its working directory:
+- **Role override:** "You are a Canopy help assistant, NOT a general-purpose coding agent"
+- **Answer workflow:** Search via MCP first, fall back to bundled `docs/`, never fabricate
+- **Tone:** Concise, actionable, grounded in documentation
+- **Scope boundary:** If a question is outside docs, search GitHub issues or offer to file one
+- **GitHub access:** Search/view issues without confirmation; creating issues requires user approval of the draft text and the tool call
+- **Topic coverage:** 11 documentation areas (getting started, panels, agents, worktrees, keybindings, actions, context injection, recipes, themes, browser/devpreview, workflows)
 
-- **Claude Code** reads `CLAUDE.md`, `.claude/settings.json`, and `.mcp.json`
-- **Gemini CLI** reads `GEMINI.md` and `.gemini/settings.json` (includes MCP config)
-- **Codex CLI** reads `AGENTS.md` and `.codex/config.toml`
+## Permission Lockdown
 
-The instruction files tell the agent to act as a help assistant rather than a general-purpose coding agent. Permission configs restrict agents to read-only access — they can read the documentation but cannot modify files or run commands. MCP server configuration connects each agent to the `canopy-docs` server for live documentation search.
+Each agent is restricted to read-only operations plus `gh` CLI access for GitHub issues. No file writes, edits, or arbitrary shell commands are permitted.
 
-## MCP Documentation Search
+**Claude** (`.claude/settings.json`):
 
-Each agent is configured to connect to the `canopy-docs` MCP server at `https://canopyide.com/api/mcp`, which provides live semantic search across all Canopy documentation. Agents prefer MCP search over the bundled `docs/` files for more comprehensive, up-to-date answers.
+- Allows: `Read(**)`, `Glob(**)`, `Grep(**)`, `LS(**)`, `WebFetch`, `mcp__canopy-docs__*`
+- Allows (auto-approved): `Bash(gh issue list*)`, `Bash(gh issue view*)`, `Bash(gh issue search*)`, `Bash(gh search issues*)`
+- Denies: `Write(**)`, `Edit(**)`, `MultiEdit(**)`, `Bash(**)` (catches `gh issue create`, requiring user confirmation)
+
+**Gemini** (`.gemini/settings.json`):
+
+- Allowlist: `read_file`, `list_directory`, `search_files`, `web_search`, `shell`
+- MCP configured inline with `"trust": true`
+- Issue creation requires user confirmation via instruction-level guardrails
+
+**Codex** (`.codex/config.toml`):
+
+- `sandbox = "full"`, `writable_roots = []`, `allowed_commands = ["gh"]`
+- Issue creation requires user confirmation via instruction-level guardrails
+
+## MCP Documentation Server
+
+All agents connect to the `canopy-docs` MCP server at `https://canopyide.com/api/mcp`. This is an HTTP-based MCP server hosted on the Canopy website that provides live semantic search across all published documentation.
+
+**Tools exposed by the server:**
+
+| Tool                 | Purpose                                                                |
+| -------------------- | ---------------------------------------------------------------------- |
+| `search`             | Semantic search across all docs (primary tool for answering questions) |
+| `get_page`           | Fetch full markdown of a specific page by path/URL                     |
+| `list_pages`         | List all indexed documentation pages                                   |
+| `get_site_structure` | Hierarchical page tree                                                 |
+| `get_related_pages`  | Find related pages for further reading                                 |
+
+Agents prefer MCP results over bundled `docs/` files since MCP content is more comprehensive and stays up-to-date. The bundled docs serve as a fallback when MCP is unavailable.
+
+**MCP config locations:**
+
+- Claude and Codex read from the shared `.mcp.json` in the workspace root
+- Gemini has MCP configured inline in `.gemini/settings.json`
+
+## Bundled Documentation
+
+The `docs/` directory contains 11 markdown files covering all major Canopy features. These are user-facing help documents written for end users, not developer docs. They cover:
+
+- **Getting started** — Installation, first launch, agent detection, project setup
+- **Panels and grid** — 5 panel types (Terminal, Agent, Browser, Notes, Dev Preview), grid layout, dock
+- **Agents** — 5 supported agents (Claude, Gemini, Codex, OpenCode, Cursor), state machine, model selection
+- **Worktrees** — Git worktree sidebar, branch switching, per-worktree agent sessions, git operations
+- **Keybindings** — Full shortcut reference, Standard and Vim keymap presets
+- **Actions** — Typed action system, command palette, action categories and safety levels
+- **Context injection** — CopyTree context generation, injection shortcuts, clipboard workflows
+- **Recipes** — Saveable panel configurations for repeatable multi-agent setups
+- **Themes** — 14 built-in themes (7 dark, 7 light), customization system
+- **Browser and dev preview** — Embedded browser panel, Portal dock, dev server auto-detection
+- **Workflows** — Event-driven automation with triggers, conditions, and automation levels
+
+## How Canopy Launches Help Agents
+
+The main Canopy app launches help agents by spawning the agent CLI process with this directory as the working directory. The agent auto-discovers its config files and enters help mode. From the app side, this is handled by the help panel and `agent.launch` action. The help panel provides a dedicated UI for interacting with the help agent within Canopy itself.
+
+## Maintenance
+
+- **Updating docs:** Edit files in `docs/` directly. These are the fallback source — the primary source is the MCP server, so keep the website docs up-to-date as the priority.
+- **Adding an agent:** Create a system prompt file, config file, and `.gitignore` entry following the pattern of existing agents.
+- **Testing:** Run any agent command from this directory and ask it questions about Canopy features to verify it responds correctly and stays in help-assistant mode.

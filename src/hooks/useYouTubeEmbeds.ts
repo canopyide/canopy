@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { terminalClient } from "@/clients/terminalClient";
 import { stripAnsiCodes } from "@shared/utils/artifactParser";
 
@@ -26,14 +26,6 @@ const listeners = new Set<Listener>();
 const dataCleanups = new Map<string, () => void>();
 const subscriberCounts = new Map<string, number>();
 const lineBuffers = new Map<string, string>();
-
-let helpPathPromise: Promise<string | null> | null = null;
-function getHelpPath(): Promise<string | null> {
-  if (!helpPathPromise) {
-    helpPathPromise = window.electron.help.getFolderPath();
-  }
-  return helpPathPromise;
-}
 
 function notifyListeners(terminalId: string, embeds: YouTubeEmbed[]) {
   for (const listener of listeners) {
@@ -91,31 +83,10 @@ function unsubscribeFromData(terminalId: string): void {
   }
 }
 
-export function useYouTubeEmbeds(terminalId: string, cwd?: string) {
+export function useYouTubeEmbeds(terminalId: string) {
   const [embeds, setEmbeds] = useState<YouTubeEmbed[]>(() => embedStore.get(terminalId) ?? []);
-  const [isHelpPanel, setIsHelpPanel] = useState(false);
-  const cwdRef = useRef(cwd);
-  cwdRef.current = cwd;
 
-  // Resolve whether this is a help panel
   useEffect(() => {
-    if (!cwd) return;
-    let cancelled = false;
-    getHelpPath().then((helpPath) => {
-      if (cancelled) return;
-      if (helpPath && cwd.startsWith(helpPath)) {
-        setIsHelpPanel(true);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd]);
-
-  // Subscribe to terminal data when this is a help panel
-  useEffect(() => {
-    if (!isHelpPanel) return;
-
     const count = (subscriberCounts.get(terminalId) ?? 0) + 1;
     subscriberCounts.set(terminalId, count);
     if (count === 1) {
@@ -130,9 +101,8 @@ export function useYouTubeEmbeds(terminalId: string, cwd?: string) {
         unsubscribeFromData(terminalId);
       }
     };
-  }, [isHelpPanel, terminalId]);
+  }, [terminalId]);
 
-  // Listen for store changes
   useEffect(() => {
     const listener: Listener = (tid, newEmbeds) => {
       if (tid === terminalId) {

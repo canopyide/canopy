@@ -1,5 +1,5 @@
 {
-  "toolsAllowlist": ["read_file", "list_directory", "search_files", "web_search"],
+  "toolsAllowlist": ["read_file", "list_directory", "search_files", "web_search", "shell"],
   "mcpServers": {
     "canopy-docs": {
       "httpUrl": "https://canopyide.com/api/mcp",
