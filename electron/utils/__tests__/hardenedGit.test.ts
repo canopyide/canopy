@@ -12,7 +12,13 @@ vi.mock("simple-git", () => ({
   simpleGit: vi.fn(() => mockGitInstance),
 }));
 
-import { validateCwd, createHardenedGit } from "../hardenedGit.js";
+import {
+  validateCwd,
+  createHardenedGit,
+  createAuthenticatedGit,
+  HARDENED_GIT_CONFIG,
+  AUTHENTICATED_GIT_CONFIG,
+} from "../hardenedGit.js";
 import { simpleGit } from "simple-git";
 
 describe("validateCwd", () => {
@@ -147,5 +153,146 @@ describe("createHardenedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options).not.toHaveProperty("abort");
+  });
+});
+
+describe("createAuthenticatedGit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls simpleGit with correct baseDir", () => {
+    createAuthenticatedGit("/test/repo");
+
+    expect(simpleGit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseDir: "/test/repo",
+      })
+    );
+  });
+
+  it("does not include credential-blocking config entries", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.config).not.toContain("credential.helper=");
+    expect(options.config).not.toContain("core.sshCommand=");
+    expect(options.config).not.toContain("core.askpass=");
+  });
+
+  it("includes all non-credential security config entries", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.config).toContain("core.fsmonitor=false");
+    expect(options.config).toContain("core.untrackedCache=false");
+    expect(options.config).toContain("core.pager=cat");
+    expect(options.config).toContain("protocol.ext.allow=never");
+    expect(options.config).toContain("core.gitProxy=");
+    expect(options.config).toContain("core.hooksPath=");
+  });
+
+  it("sets GIT_TERMINAL_PROMPT and GIT_SSH_COMMAND in env", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.env).toMatchObject({
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_SSH_COMMAND: "ssh",
+    });
+  });
+
+  it("spreads process.env into the env option", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.env.PATH).toBe(process.env.PATH);
+  });
+
+  it("sets block timeout to 0 for network operations", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.timeout).toEqual({ block: 0 });
+  });
+
+  it("enables allowUnsafe flags", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.unsafe).toEqual({
+      allowUnsafeProtocolOverride: true,
+      allowUnsafeSshCommand: true,
+      allowUnsafeGitProxy: true,
+      allowUnsafeHooksPath: true,
+    });
+  });
+
+  it("forwards abort signal when provided", () => {
+    const controller = new AbortController();
+    createAuthenticatedGit("/test/repo", { signal: controller.signal });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.abort).toBe(controller.signal);
+  });
+
+  it("does not include abort option when no signal provided", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options).not.toHaveProperty("abort");
+  });
+
+  it("forwards progress callback when provided", () => {
+    const progressFn = vi.fn();
+    createAuthenticatedGit("/test/repo", { progress: progressFn });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.progress).toBe(progressFn);
+  });
+
+  it("does not include progress option when not provided", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options).not.toHaveProperty("progress");
+  });
+
+  it("appends extraConfig items to config", () => {
+    createAuthenticatedGit("/test/repo", {
+      extraConfig: ["transfer.bundleURI=false"],
+    });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.config).toContain("transfer.bundleURI=false");
+  });
+});
+
+describe("config constants", () => {
+  it("HARDENED_GIT_CONFIG includes credential-blocking entries", () => {
+    expect(HARDENED_GIT_CONFIG).toContain("credential.helper=");
+    expect(HARDENED_GIT_CONFIG).toContain("core.sshCommand=");
+    expect(HARDENED_GIT_CONFIG).toContain("core.askpass=");
+  });
+
+  it("AUTHENTICATED_GIT_CONFIG excludes credential-blocking entries", () => {
+    expect(AUTHENTICATED_GIT_CONFIG).not.toContain("credential.helper=");
+    expect(AUTHENTICATED_GIT_CONFIG).not.toContain("core.sshCommand=");
+    expect(AUTHENTICATED_GIT_CONFIG).not.toContain("core.askpass=");
+  });
+
+  it("both configs share the same security base entries", () => {
+    const securityEntries = [
+      "core.fsmonitor=false",
+      "core.untrackedCache=false",
+      "core.pager=cat",
+      "protocol.ext.allow=never",
+      "core.gitProxy=",
+      "core.hooksPath=",
+    ];
+    for (const entry of securityEntries) {
+      expect(HARDENED_GIT_CONFIG).toContain(entry);
+      expect(AUTHENTICATED_GIT_CONFIG).toContain(entry);
+    }
   });
 });

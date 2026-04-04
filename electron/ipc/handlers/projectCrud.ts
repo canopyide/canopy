@@ -25,8 +25,7 @@ import type {
   CloneRepoResult,
   CloneRepoProgressEvent,
 } from "../../../shared/types/ipc/gitClone.js";
-import { createHardenedGit, HARDENED_GIT_CONFIG } from "../../utils/hardenedGit.js";
-import { simpleGit } from "simple-git";
+import { createHardenedGit, createAuthenticatedGit } from "../../utils/hardenedGit.js";
 
 let projectStatsServiceInstance: ProjectStatsService | null = null;
 
@@ -1014,19 +1013,11 @@ Thumbs.db
     try {
       emitProgress("starting", 0, "Starting clone...");
 
-      const git = simpleGit({
-        baseDir: parentPath,
-        config: [...HARDENED_GIT_CONFIG, "transfer.bundleURI=false"],
-        timeout: { block: 0 },
+      const git = createAuthenticatedGit(parentPath, {
         progress({ stage, progress }) {
           emitProgress(stage, progress, `${stage}: ${progress}%`);
         },
-        unsafe: {
-          allowUnsafeProtocolOverride: true,
-          allowUnsafeSshCommand: true,
-          allowUnsafeGitProxy: true,
-          allowUnsafeHooksPath: true,
-        },
+        extraConfig: ["transfer.bundleURI=false"],
       });
 
       await git.clone(url, trimmedFolder, shallowClone ? ["--depth", "1"] : []);

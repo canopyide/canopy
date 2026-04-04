@@ -18,6 +18,7 @@ vi.mock("../../utils/fs.js", () => ({
 
 vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockSimpleGit),
+  createAuthenticatedGit: vi.fn(() => mockSimpleGit),
   validateCwd: vi.fn(),
 }));
 
