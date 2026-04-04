@@ -83,7 +83,7 @@ describe("help.launchAgent", () => {
     expect(window.electron.help.getFolderPath).toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
-      { agentId: "claude", cwd: "/mock/help" },
+      expect.objectContaining({ agentId: "claude", cwd: "/mock/help", location: "dock" }),
       { source: "user" }
     );
     expect(mockNotify).not.toHaveBeenCalled();
@@ -103,7 +103,7 @@ describe("help.launchAgent", () => {
 
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
-      { agentId: "gemini", cwd: "/mock/help" },
+      expect.objectContaining({ agentId: "gemini", cwd: "/mock/help", location: "dock" }),
       { source: "user" }
     );
   });
@@ -122,7 +122,7 @@ describe("help.launchAgent", () => {
 
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
-      { agentId: "claude", cwd: "/mock/help" },
+      expect.objectContaining({ agentId: "claude", cwd: "/mock/help", location: "dock" }),
       { source: "user" }
     );
   });
@@ -141,7 +141,7 @@ describe("help.launchAgent", () => {
 
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
-      { agentId: "codex", cwd: "/mock/help" },
+      expect.objectContaining({ agentId: "codex", cwd: "/mock/help", location: "dock" }),
       { source: "user" }
     );
   });
@@ -165,7 +165,7 @@ describe("help.launchAgent", () => {
 
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
-      { agentId: "claude", cwd: "/mock/help" },
+      expect.objectContaining({ agentId: "claude", cwd: "/mock/help", location: "dock" }),
       { source: "user" }
     );
   });
@@ -180,7 +180,7 @@ describe("help.launchAgent", () => {
 
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
-      { agentId: "codex", cwd: "/mock/help" },
+      expect.objectContaining({ agentId: "codex", cwd: "/mock/help", location: "dock" }),
       { source: "user" }
     );
   });
