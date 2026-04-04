@@ -158,10 +158,20 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       return;
     }
 
-    if (projectIsLoading || !projectSettings || !currentProject) return;
+    const projectChanged =
+      prevProjectIdRef.current !== null && projectId !== prevProjectIdRef.current;
 
-    const projectChanged = projectId !== prevProjectIdRef.current;
-    if (projectIsInitialized && !projectChanged) return;
+    // When the project changes while the dialog is open, cancel any pending save
+    // from the old project and defer initialization until fresh settings arrive.
+    if (projectChanged) {
+      debouncedProjectSaveRef.current.cancel();
+      prevProjectIdRef.current = projectId;
+      setProjectIsInitialized(false);
+      return;
+    }
+
+    if (projectIsLoading || !projectSettings || !currentProject) return;
+    if (projectIsInitialized) return;
 
     const initialRunCommands = projectSettings.runCommands || [];
     const envVars = projectSettings.environmentVariables || {};

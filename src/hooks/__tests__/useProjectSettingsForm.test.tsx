@@ -10,6 +10,7 @@ const {
   mockEnableInRepoSettings,
   mockDisableInRepoSettings,
   mockProjects,
+  mockIsLoading,
 } = vi.hoisted(() => ({
   mockSettings: { value: null as ProjectSettings | null },
   mockSaveSettings: vi.fn().mockResolvedValue(undefined),
@@ -27,13 +28,14 @@ const {
       path: string;
     }>,
   },
+  mockIsLoading: { value: false },
 }));
 
 vi.mock("@/hooks/useProjectSettings", () => ({
   useProjectSettings: () => ({
     settings: mockSettings.value,
     saveSettings: mockSaveSettings,
-    isLoading: false,
+    isLoading: mockIsLoading.value,
     error: null,
   }),
 }));
@@ -83,6 +85,7 @@ const baseSettings: ProjectSettings = {
 
 function resetMocks() {
   mockSettings.value = null;
+  mockIsLoading.value = false;
   mockProjects.value = [
     { id: "proj-1", name: "Test Project", emoji: "🌲", color: undefined, path: "/test" },
   ];
@@ -340,27 +343,21 @@ describe("useProjectSettingsForm", () => {
     expect(typeof result.current.flush).toBe("function");
   });
 
-  it("initializes in one cycle when settings are already loaded at dialog open", async () => {
+  it("initializes correctly when settings are already loaded at dialog open", async () => {
     mockSettings.value = baseSettings;
-    const { result } = renderHook(
+    const { result, rerender } = renderHook(
       ({ isOpen, projectId }: FormProps) => useProjectSettingsForm({ projectId, isOpen }),
       { initialProps: { isOpen: false, tick: 0, projectId: "proj-1" } }
     );
     expect(result.current.projectIsInitialized).toBe(false);
 
-    result.current; // pre-open state
-    const hook = renderHook(
-      ({ isOpen, projectId }: FormProps) => useProjectSettingsForm({ projectId, isOpen }),
-      { initialProps: { isOpen: false, tick: 0, projectId: "proj-1" } }
-    );
-    mockSettings.value = baseSettings;
-    hook.rerender({ isOpen: true, tick: 1, projectId: "proj-1" });
+    rerender({ isOpen: true, tick: 1, projectId: "proj-1" });
 
     await waitFor(() => {
-      expect(hook.result.current.projectIsInitialized).toBe(true);
+      expect(result.current.projectIsInitialized).toBe(true);
     });
-    expect(hook.result.current.projectName).toBe("Test Project");
-    expect(hook.result.current.devServerCommand).toBe("npm run dev");
+    expect(result.current.projectName).toBe("Test Project");
+    expect(result.current.devServerCommand).toBe("npm run dev");
   });
 
   it("rehydrates when projectId changes while dialog stays open", async () => {
@@ -380,8 +377,19 @@ describe("useProjectSettingsForm", () => {
     });
     expect(result.current.projectName).toBe("Test Project");
 
-    mockSettings.value = otherSettings;
+    // Simulate the loading gap: settings are stale while useProjectSettings refetches
+    mockIsLoading.value = true;
     rerender({ isOpen: true, tick: 3, projectId: "proj-2" });
+
+    // Form should be uninitialized while loading new project's settings
+    await waitFor(() => {
+      expect(result.current.projectIsInitialized).toBe(false);
+    });
+
+    // New settings arrive
+    mockIsLoading.value = false;
+    mockSettings.value = otherSettings;
+    rerender({ isOpen: true, tick: 4, projectId: "proj-2" });
 
     await waitFor(() => {
       expect(result.current.projectName).toBe("Other Project");
