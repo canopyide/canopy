@@ -11,11 +11,15 @@ import {
 } from "@/store/helpPanelStore";
 import { useTerminalStore, getTerminalRefreshTier } from "@/store";
 import { AGENT_REGISTRY } from "@/config/agents";
+import { AGENT_REGISTRY as SHARED_AGENT_REGISTRY } from "@shared/config/agentRegistry";
 import { actionService } from "@/services/ActionService";
 import { TerminalRefreshTier } from "@/types";
 import type { TerminalType } from "@/types";
 
 const RESIZE_STEP = 10;
+
+const HELP_PROMPT =
+  "I need help with Canopy, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
 
 export function HelpPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -36,10 +40,24 @@ export function HelpPanel() {
 
   const terminal = useTerminalStore((s) => (terminalId ? s.terminalsById[terminalId] : undefined));
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
+  const addTerminal = useTerminalStore((s) => s.addTerminal);
 
   const agentConfig = agentId ? AGENT_REGISTRY[agentId] : undefined;
 
-  // Auto-launch preferred agent when panel opens without an active terminal
+  // Clean up help terminal before window unload so it doesn't persist as a dock terminal
+  useEffect(() => {
+    const handler = () => {
+      const { terminalId: tid } = useHelpPanelStore.getState();
+      if (tid) {
+        useTerminalStore.getState().removeTerminal(tid);
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  // Auto-launch preferred agent when panel opens without an active terminal.
+  // Uses the agent's continueCommand to resume the last session in the help folder.
   const hasAutoLaunched = useRef(false);
   useEffect(() => {
     if (!isOpen || terminalId || !preferredAgentId || hasAutoLaunched.current) return;
@@ -49,20 +67,36 @@ export function HelpPanel() {
       const folderPath = await window.electron.help.getFolderPath();
       if (!folderPath) return;
 
-      const helpPrompt =
-        "I need help with Canopy, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
+      const sharedConfig =
+        SHARED_AGENT_REGISTRY[preferredAgentId as keyof typeof SHARED_AGENT_REGISTRY];
+      const continueCommand = sharedConfig?.help?.continueCommand;
 
-      const result = await actionService.dispatch<{ terminalId: string | null }>(
-        "agent.launch",
-        { agentId: preferredAgentId, location: "dock", cwd: folderPath, prompt: helpPrompt },
-        { source: "user" }
-      );
-
-      if (result.ok && result.result?.terminalId) {
-        useHelpPanelStore.getState().setTerminal(result.result.terminalId, preferredAgentId);
+      if (continueCommand) {
+        // Use the continue command to resume last session in this folder
+        const newId = await addTerminal({
+          kind: "agent",
+          type: preferredAgentId as TerminalType,
+          agentId: preferredAgentId,
+          cwd: folderPath,
+          command: continueCommand,
+          location: "dock",
+        });
+        if (newId) {
+          useHelpPanelStore.getState().setTerminal(newId, preferredAgentId);
+        }
+      } else {
+        // Fallback: standard launch with help prompt
+        const result = await actionService.dispatch<{ terminalId: string | null }>(
+          "agent.launch",
+          { agentId: preferredAgentId, location: "dock", cwd: folderPath, prompt: HELP_PROMPT },
+          { source: "user" }
+        );
+        if (result.ok && result.result?.terminalId) {
+          useHelpPanelStore.getState().setTerminal(result.result.terminalId, preferredAgentId);
+        }
       }
     })();
-  }, [isOpen, terminalId, preferredAgentId]);
+  }, [isOpen, terminalId, preferredAgentId, addTerminal]);
 
   // Reset auto-launch guard when panel closes
   useEffect(() => {
@@ -137,12 +171,9 @@ export function HelpPanel() {
       const folderPath = await window.electron.help.getFolderPath();
       if (!folderPath) return;
 
-      const helpPrompt =
-        "I need help with Canopy, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
-
       const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
-        { agentId: selectedAgentId, location: "dock", cwd: folderPath, prompt: helpPrompt },
+        { agentId: selectedAgentId, location: "dock", cwd: folderPath, prompt: HELP_PROMPT },
         { source: "user" }
       );
 

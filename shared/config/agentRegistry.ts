@@ -4,6 +4,8 @@ import type { PrerequisiteSpec } from "../types/ipc/system.js";
 export interface AgentHelpConfig {
   args: string[];
   title?: string;
+  /** Shell command to continue the last session in the help folder, with fallback for first run */
+  continueCommand?: string;
 }
 
 export type AgentInstallOS = "macos" | "windows" | "linux" | "generic";
@@ -366,6 +368,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     env: {
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     },
+    help: {
+      args: [],
+      continueCommand: "claude --continue",
+    },
     prerequisites: [
       {
         tool: "claude",
@@ -506,6 +512,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     env: {
       GEMINI_CLI_ALT_SCREEN: "false",
     },
+    help: {
+      args: [],
+      continueCommand: "gemini --resume latest 2>/dev/null || gemini",
+    },
     prerequisites: [
       {
         tool: "gemini",
@@ -641,6 +651,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     resume: {
       args: (sessionId: string) => ["resume", sessionId],
+    },
+    help: {
+      args: [],
+      continueCommand: "codex resume --last 2>/dev/null || codex",
     },
     prerequisites: [
       {

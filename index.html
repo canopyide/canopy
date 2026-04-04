@@ -92,7 +92,6 @@
         height: 48px;
         flex-shrink: 0;
         background: var(--theme-surface-sidebar, #131312);
-        border-bottom: 1px solid var(--theme-border-default, #282828);
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: center;
@@ -179,7 +178,7 @@
       .skel-divider {
         width: 1px;
         height: 20px;
-        margin: 0 4px;
+        margin: 0 10px;
         flex-shrink: 0;
         background: color-mix(
           in oklch,
@@ -194,6 +193,48 @@
         align-items: center;
         gap: 2px;
       }
+      /* Toolbar icon: 32x32 hitbox with centered dot */
+      .skel-toolbar-icon {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .skel-toolbar-icon .skel-shape {
+        width: 16px;
+        height: 16px;
+      }
+      /* GitHub stats pill */
+      .skel-github-stats {
+        display: flex;
+        align-items: center;
+        height: 32px;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-right: 4px;
+        background: color-mix(
+          in oklch,
+          var(--theme-surface-sidebar, #131312),
+          var(--theme-text-primary, #e0e0e0) 4%
+        );
+      }
+      .skel-github-stat {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        height: 100%;
+      }
+      .skel-github-stat + .skel-github-stat {
+        border-left: 1px solid
+          color-mix(
+            in oklch,
+            var(--theme-surface-sidebar, #131312),
+            var(--theme-text-primary, #e0e0e0) 8%
+          );
+      }
 
       /* ── Body layout ── */
       .skeleton-body {
@@ -202,26 +243,51 @@
         min-height: 0;
       }
 
+      /* ── Dock bar ── */
+      .skeleton-dock {
+        height: 40px;
+        flex-shrink: 0;
+        background: var(--theme-surface-panel, #1e1e1f);
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+      }
+      .skeleton-dock-spacer {
+        flex: 1;
+        min-width: 0;
+      }
+      .skeleton-dock-help {
+        margin-left: auto;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        background: color-mix(
+          in oklch,
+          var(--theme-surface-panel, #1e1e1f),
+          var(--theme-text-primary, #e0e0e0) 8%
+        );
+      }
+
       /* ── Sidebar ── */
       .skeleton-sidebar {
         width: var(--skeleton-sidebar-width, 350px);
         flex-shrink: 0;
         background: var(--theme-surface-sidebar, #131312);
-        border-right: 1px solid var(--theme-border-default, #282828);
         display: flex;
         flex-direction: column;
       }
       .skeleton-sidebar-header {
         padding: 8px 12px; /* px-3 py-2 matches actual */
         flex-shrink: 0;
-        border-bottom: 1px solid var(--theme-border-default, #282828);
       }
       .skel-search-input {
         position: relative;
         overflow: hidden;
         height: 32px;
         border-radius: 6px;
-        border: 1px solid var(--theme-border-default, #282828);
         background: color-mix(
           in oklch,
           var(--theme-surface-sidebar, #131312),
@@ -251,10 +317,17 @@
       /* ── Worktree card skeleton ── */
       .skel-card {
         padding: 12px 16px;
-        border-bottom: 1px solid var(--theme-border-default, #282828);
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+
+      /* ── Main + dock column (everything right of sidebar) ── */
+      .skeleton-main-col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
       }
 
       /* ── Main content area ── */
@@ -334,7 +407,6 @@
         position: relative;
         overflow: hidden;
         border-radius: var(--radius-md, 8px);
-        border: 1px solid color-mix(in oklch, var(--theme-border-default, #282828), transparent 40%);
         background: color-mix(
           in oklch,
           var(--theme-surface-canvas, #19191a),
@@ -405,12 +477,15 @@
         margin-bottom: 32px;
         width: fit-content;
         border-radius: var(--radius-lg, 12px);
-        border: 1px solid var(--theme-border-default, #282828);
+        background: color-mix(
+          in oklch,
+          var(--theme-surface-canvas, #19191a),
+          var(--theme-text-primary, #e0e0e0) 3%
+        );
         overflow: hidden;
       }
       .skeleton-pulse-header {
         padding: 12px 16px;
-        border-bottom: 1px solid var(--theme-border-default, #282828);
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -465,14 +540,26 @@
         }
         .skeleton-toolbar {
           background: var(--theme-surface-sidebar, #ebe7de);
-          border-bottom-color: var(--theme-border-default, #d8d2c6);
         }
         .skeleton-sidebar {
           background: var(--theme-surface-sidebar, #ebe7de);
-          border-right-color: var(--theme-border-default, #d8d2c6);
         }
         .skeleton-main {
           background: var(--theme-surface-canvas, #f6f4ef);
+        }
+        .skel-github-stats {
+          background: color-mix(
+            in oklch,
+            var(--theme-surface-sidebar, #ebe7de),
+            var(--theme-text-primary, #1a1a1a) 4%
+          );
+        }
+        .skel-github-stat + .skel-github-stat {
+          border-left-color: color-mix(
+            in oklch,
+            var(--theme-surface-sidebar, #ebe7de),
+            var(--theme-text-primary, #1a1a1a) 8%
+          );
         }
         .skel-shape {
           background: color-mix(
@@ -514,14 +601,7 @@
             transparent 100%
           );
         }
-        .skeleton-sidebar-header {
-          border-bottom-color: var(--theme-border-default, #d8d2c6);
-        }
-        .skel-card {
-          border-bottom-color: var(--theme-border-default, #d8d2c6);
-        }
         .skel-search-input {
-          border-color: var(--theme-border-default, #d8d2c6);
           background: color-mix(
             in oklch,
             var(--theme-surface-sidebar, #ebe7de),
@@ -574,7 +654,6 @@
             var(--theme-surface-canvas, #f6f4ef),
             var(--theme-text-primary, #1a1a1a) 4%
           );
-          border-color: var(--theme-border-default, #d8d2c6);
         }
         .skel-recipe::after {
           background: linear-gradient(
@@ -606,14 +685,22 @@
         .skeleton-logo {
           color: var(--theme-text-primary, #1a1a1a);
         }
+        .skeleton-dock {
+          background: var(--theme-surface-panel, #e8e4db);
+        }
+        .skeleton-dock-help {
+          background: color-mix(
+            in oklch,
+            var(--theme-surface-panel, #e8e4db),
+            var(--theme-text-primary, #1a1a1a) 7%
+          );
+        }
         .skeleton-pulse {
-          border-color: var(--theme-border-default, #d8d2c6);
-        }
-        .skeleton-pulse-header {
-          border-bottom-color: var(--theme-border-default, #d8d2c6);
-        }
-        .skeleton-pulse-stats {
-          border-top-color: var(--theme-border-default, #d8d2c6);
+          background: color-mix(
+            in oklch,
+            var(--theme-surface-canvas, #f6f4ef),
+            var(--theme-text-primary, #1a1a1a) 3%
+          );
         }
         .skel-heat-cell {
           background: color-mix(
@@ -672,31 +759,52 @@
           <!-- macOS traffic light spacer -->
           <div style="width: 64px; flex-shrink: 0"></div>
           <!-- Sidebar toggle -->
-          <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
+          <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
           <div class="skel-divider"></div>
-          <!-- Agent icons (gap-0.5 = 2px matches actual) -->
+          <!-- Agent icons: claude, gemini, codex -->
           <div class="skel-btn-group">
-            <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
-            <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
-            <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
           </div>
           <div class="skel-divider"></div>
-          <!-- Tool icons -->
+          <!-- Tool icons: terminal, browser, dev-preview, panel-palette -->
           <div class="skel-btn-group">
-            <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
-            <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
           </div>
         </div>
         <div class="skeleton-toolbar-center">
           <div class="skel-shape" style="width: 180px; height: 36px; border-radius: 8px"></div>
         </div>
         <div class="skeleton-toolbar-right">
+          <!-- GitHub stats: issues, PRs, commits -->
+          <div class="skel-github-stats">
+            <div class="skel-github-stat">
+              <div class="skel-shape skel-circle" style="width: 14px; height: 14px"></div>
+              <div class="skel-shape" style="width: 16px; height: 11px; border-radius: 3px"></div>
+            </div>
+            <div class="skel-github-stat">
+              <div class="skel-shape skel-circle" style="width: 14px; height: 14px"></div>
+              <div class="skel-shape" style="width: 10px; height: 11px; border-radius: 3px"></div>
+            </div>
+            <div class="skel-github-stat">
+              <div class="skel-shape skel-circle" style="width: 14px; height: 14px"></div>
+              <div class="skel-shape" style="width: 28px; height: 11px; border-radius: 3px"></div>
+            </div>
+          </div>
+          <!-- Tool icons: notifications, notes, copy-tree, settings -->
           <div class="skel-btn-group">
-            <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
-            <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
+            <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
           </div>
           <div class="skel-divider"></div>
-          <div class="skel-shape skel-circle" style="width: 18px; height: 18px"></div>
+          <!-- Context portal -->
+          <div class="skel-toolbar-icon"><div class="skel-shape skel-circle"></div></div>
         </div>
       </div>
 
@@ -743,18 +851,136 @@
           </div>
         </div>
 
-        <!-- Main content area (reveals third) -->
-        <div class="skeleton-main" aria-hidden="true">
-          <div class="skeleton-main-inner">
-            <!-- Logo + title (reveals third) -->
-            <div class="skeleton-logo-section skel-reveal skel-reveal-d3">
+        <!-- Main + dock column -->
+        <div class="skeleton-main-col">
+          <!-- Main content area (reveals third) -->
+          <div class="skeleton-main" aria-hidden="true">
+            <div class="skeleton-main-inner">
+              <!-- Logo + title (reveals third) -->
+              <div class="skeleton-logo-section skel-reveal skel-reveal-d3">
+                <svg
+                  class="skeleton-logo"
+                  viewBox="0 0 177.31 132.85"
+                  width="112"
+                  height="112"
+                  fill="currentColor"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M95.92,132.85h-14.52c-.59,0-1.07-.48-1.07-1.07V36.42c0-.74.27-1.46.77-1.99,2.04-2.17,4.79-3.25,7.55-3.25s5.52,1.09,7.55,3.26c.5.54.77,1.26.77,1.99v95.35c0,.59-.47,1.07-1.07,1.07Z"
+                  />
+                  <path
+                    d="M177.31,70.43v19.64c0,.59-.48,1.07-1.07,1.07h-14.52c-.59,0-1.07-.48-1.07-1.07v-19.67c0-10.29-5.49-19.81-14.41-24.95l-43.18-24.93c-8.92-5.15-19.9-5.15-28.82,0l-43.18,24.93c-8.92,5.15-14.41,14.66-14.41,24.95v17.75c0,.06,0,.13,0,2.14,0,.59-.48,1.07-1.07,1.07H1.07c-.59,0-1.07-.48-1.07-1.07v-19.86c0-16.27,8.68-31.3,22.76-39.43L65.89,6.1c14.09-8.13,31.44-8.13,45.53,0l43.12,24.89c14.09,8.13,22.77,23.17,22.77,39.44Z"
+                  />
+                  <path
+                    d="M63.66,90.05v27.19c0,.59-.48,1.07-1.07,1.07h-14.52c-.59,0-1.07-.48-1.07-1.07v-27.17c0-5.9-3.15-11.34-8.26-14.3l-5.83-3.37c-.66-.38-1.15-1-1.36-1.73s-.41-1.76-.41-2.89c0-4.68,3.21-8.98,7.99-10.11.72-.17,1.48-.05,2.13.32l5.84,3.36c10.25,5.92,16.56,16.85,16.56,28.69Z"
+                  />
+                  <path
+                    d="M113.65,90.05v27.19c0,.59.48,1.07,1.07,1.07h14.52c.59,0,1.07-.48,1.07-1.07v-27.17c0-5.9,3.15-11.34,8.26-14.3l5.83-3.37c.66-.38,1.15-1,1.36-1.73s.41-1.76.41-2.89c0-4.68-3.21-8.98-7.99-10.11-.72-.17-1.48-.05-2.13.32l-5.84,3.36c-10.25,5.92-16.56,16.85-16.56,28.69Z"
+                  />
+                </svg>
+                <div class="skeleton-title"></div>
+              </div>
+
+              <!-- Recipes (reveals fourth) -->
+              <div class="skeleton-recipes skel-reveal skel-reveal-d4">
+                <div class="skel-recipe">
+                  <div class="skel-recipe-row">
+                    <div class="skel-recipe-icon"></div>
+                    <div class="skel-recipe-name" style="width: 50%"></div>
+                  </div>
+                </div>
+                <div class="skel-recipe">
+                  <div class="skel-recipe-row">
+                    <div class="skel-recipe-icon"></div>
+                    <div class="skel-recipe-name" style="width: 70%"></div>
+                  </div>
+                </div>
+                <!-- Create new recipe hint -->
+                <div class="skel-recipe-create">
+                  <div
+                    class="skel-shape"
+                    style="width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0"
+                  ></div>
+                  <div
+                    class="skel-shape"
+                    style="width: 110px; height: 12px; border-radius: 3px"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- Project Pulse (reveals fifth) -->
+              <div class="skeleton-pulse skel-reveal skel-reveal-d5">
+                <div class="skeleton-pulse-header">
+                  <div class="skeleton-pulse-header-left">
+                    <div class="skel-shape skel-circle" style="width: 14px; height: 14px"></div>
+                    <div class="skel-shape" style="width: 88px; height: 13px"></div>
+                  </div>
+                  <div style="display: flex; gap: 2px">
+                    <div class="skel-shape skel-pill" style="width: 32px; height: 22px"></div>
+                    <div class="skel-shape skel-pill" style="width: 36px; height: 22px"></div>
+                    <div class="skel-shape skel-pill" style="width: 36px; height: 22px"></div>
+                  </div>
+                </div>
+                <div class="skeleton-pulse-body">
+                  <!-- Heatmap row -->
+                  <div class="skeleton-heatmap" id="skel-heatmap"></div>
+                  <!-- Summary text -->
+                  <div
+                    class="skel-shape"
+                    style="width: 160px; height: 12px; border-radius: 3px"
+                  ></div>
+                  <!-- Health signal chips -->
+                  <div class="skeleton-pulse-stats" style="padding-top: 12px">
+                    <div class="skel-shape skel-pill" style="width: 72px; height: 22px"></div>
+                    <div class="skel-shape skel-pill" style="width: 48px; height: 22px"></div>
+                    <div class="skel-shape skel-pill" style="width: 48px; height: 22px"></div>
+                    <div class="skel-shape skel-pill" style="width: 88px; height: 22px"></div>
+                    <div class="skel-shape skel-pill" style="width: 96px; height: 22px"></div>
+                  </div>
+                  <!-- Stats row -->
+                  <div class="skeleton-pulse-stats" style="padding-top: 12px">
+                    <div
+                      class="skel-shape"
+                      style="width: 60px; height: 12px; border-radius: 3px"
+                    ></div>
+                    <div
+                      class="skel-shape"
+                      style="width: 52px; height: 12px; border-radius: 3px"
+                    ></div>
+                    <div
+                      class="skel-shape"
+                      style="width: 64px; height: 12px; border-radius: 3px"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tip section (reveals with pulse) -->
+              <div class="skeleton-tip skel-reveal skel-reveal-d5">
+                <div
+                  class="skel-shape"
+                  style="width: 200px; height: 12px; border-radius: 3px"
+                ></div>
+                <div
+                  class="skel-shape"
+                  style="width: 110px; height: 12px; border-radius: 3px"
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dock bar (reveals second, with sidebar) -->
+          <div class="skeleton-dock skel-reveal skel-reveal-d2" aria-hidden="true">
+            <div class="skeleton-dock-spacer"></div>
+            <div class="skeleton-dock-help">
               <svg
-                class="skeleton-logo"
                 viewBox="0 0 177.31 132.85"
-                width="112"
-                height="112"
+                width="14"
+                height="14"
                 fill="currentColor"
                 xmlns="http://www.w3.org/2000/svg"
+                style="opacity: 0.4; flex-shrink: 0"
               >
                 <path
                   d="M95.92,132.85h-14.52c-.59,0-1.07-.48-1.07-1.07V36.42c0-.74.27-1.46.77-1.99,2.04-2.17,4.79-3.25,7.55-3.25s5.52,1.09,7.55,3.26c.5.54.77,1.26.77,1.99v95.35c0,.59-.47,1.07-1.07,1.07Z"
@@ -769,102 +995,11 @@
                   d="M113.65,90.05v27.19c0,.59.48,1.07,1.07,1.07h14.52c.59,0,1.07-.48,1.07-1.07v-27.17c0-5.9,3.15-11.34,8.26-14.3l5.83-3.37c.66-.38,1.15-1,1.36-1.73s.41-1.76.41-2.89c0-4.68-3.21-8.98-7.99-10.11-.72-.17-1.48-.05-2.13.32l-5.84,3.36c-10.25,5.92-16.56,16.85-16.56,28.69Z"
                 />
               </svg>
-              <div class="skeleton-title"></div>
-            </div>
-
-            <!-- Recipes (reveals fourth) -->
-            <div class="skeleton-recipes skel-reveal skel-reveal-d4">
-              <div class="skel-recipe">
-                <div class="skel-recipe-row">
-                  <div class="skel-recipe-icon"></div>
-                  <div class="skel-recipe-name" style="width: 50%"></div>
-                </div>
-              </div>
-              <div class="skel-recipe">
-                <div class="skel-recipe-row">
-                  <div class="skel-recipe-icon"></div>
-                  <div class="skel-recipe-name" style="width: 70%"></div>
-                </div>
-              </div>
-              <!-- Create new recipe hint -->
-              <div class="skel-recipe-create">
-                <div
-                  class="skel-shape"
-                  style="width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0"
-                ></div>
-                <div
-                  class="skel-shape"
-                  style="width: 110px; height: 12px; border-radius: 3px"
-                ></div>
-              </div>
-            </div>
-
-            <!-- Project Pulse (reveals fifth) -->
-            <div class="skeleton-pulse skel-reveal skel-reveal-d5">
-              <div class="skeleton-pulse-header">
-                <div class="skeleton-pulse-header-left">
-                  <div class="skel-shape skel-circle" style="width: 14px; height: 14px"></div>
-                  <div class="skel-shape" style="width: 88px; height: 13px"></div>
-                </div>
-                <div style="display: flex; gap: 2px">
-                  <div class="skel-shape skel-pill" style="width: 32px; height: 22px"></div>
-                  <div class="skel-shape skel-pill" style="width: 36px; height: 22px"></div>
-                  <div class="skel-shape skel-pill" style="width: 36px; height: 22px"></div>
-                </div>
-              </div>
-              <div class="skeleton-pulse-body">
-                <!-- Heatmap row -->
-                <div class="skeleton-heatmap" id="skel-heatmap"></div>
-                <!-- Summary text -->
-                <div
-                  class="skel-shape"
-                  style="width: 160px; height: 12px; border-radius: 3px"
-                ></div>
-                <!-- Health signal chips -->
-                <div
-                  class="skeleton-pulse-stats"
-                  style="
-                    border-top: 1px solid var(--theme-border-default, #282828);
-                    padding-top: 12px;
-                  "
-                >
-                  <div class="skel-shape skel-pill" style="width: 72px; height: 22px"></div>
-                  <div class="skel-shape skel-pill" style="width: 48px; height: 22px"></div>
-                  <div class="skel-shape skel-pill" style="width: 48px; height: 22px"></div>
-                  <div class="skel-shape skel-pill" style="width: 88px; height: 22px"></div>
-                  <div class="skel-shape skel-pill" style="width: 96px; height: 22px"></div>
-                </div>
-                <!-- Stats row -->
-                <div
-                  class="skeleton-pulse-stats"
-                  style="
-                    border-top: 1px solid var(--theme-border-default, #282828);
-                    padding-top: 12px;
-                  "
-                >
-                  <div
-                    class="skel-shape"
-                    style="width: 60px; height: 12px; border-radius: 3px"
-                  ></div>
-                  <div
-                    class="skel-shape"
-                    style="width: 52px; height: 12px; border-radius: 3px"
-                  ></div>
-                  <div
-                    class="skel-shape"
-                    style="width: 64px; height: 12px; border-radius: 3px"
-                  ></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tip section (reveals with pulse) -->
-            <div class="skeleton-tip skel-reveal skel-reveal-d5">
-              <div class="skel-shape" style="width: 200px; height: 12px; border-radius: 3px"></div>
-              <div class="skel-shape" style="width: 110px; height: 12px; border-radius: 3px"></div>
+              <div class="skel-shape" style="width: 32px; height: 11px; border-radius: 3px"></div>
             </div>
           </div>
         </div>
+        <!-- /skeleton-main-col -->
       </div>
     </div>
     <script src="/skeleton-heatmap.js"></script>
