@@ -3,7 +3,6 @@ import { X, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CanopyIcon } from "@/components/icons/CanopyIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
-import { YouTubeEmbedOverlay } from "@/components/Terminal/YouTubeEmbedOverlay";
 import { HelpAgentPicker } from "./HelpAgentPicker";
 import {
   useHelpPanelStore,
@@ -216,12 +215,12 @@ export function HelpPanel() {
             Canopy Assistant
             {agentConfig && (
               <span className="text-canopy-text/40">
-                {" ("}
+                {" — "}
                 <agentConfig.icon
                   className="w-3 h-3 inline-block align-[-0.15em]"
                   brandColor={agentConfig.color}
                 />
-                {` ${agentConfig.name})`}
+                {` ${agentConfig.name}`}
               </span>
             )}
           </span>
@@ -246,7 +245,6 @@ export function HelpPanel() {
               getRefreshTier={getRefreshTier}
               cwd={terminal.cwd}
             />
-            <YouTubeEmbedOverlay terminalId={terminalId} />
           </div>
         ) : (
           <HelpAgentPicker onSelectAgent={handleSelectAgent} />
