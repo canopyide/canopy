@@ -94,7 +94,7 @@ describe("debounce", () => {
     const spy = vi.fn(() => barrier);
 
     const fn = debounce(spy, 0);
-    fn("a");
+    fn();
 
     // Let the timeout fire so the async func starts
     await new Promise((r) => setTimeout(r, 10));
@@ -127,7 +127,7 @@ describe("debounce", () => {
     const spy = vi.fn(() => barrier);
 
     const fn = debounce(spy, 0);
-    fn("a");
+    fn();
 
     // flush triggers the pending call (async func)
     const flush1 = fn.flush();
