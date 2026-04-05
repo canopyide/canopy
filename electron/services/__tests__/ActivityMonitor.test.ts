@@ -3607,9 +3607,13 @@ describe("ActivityMonitor", () => {
       monitor.startPolling();
       onStateChange.mockClear();
 
-      // CPU-high deadline is 3s, silence timeout is 5s
-      // At 5s: silence timeout fires, CPU deadline (3s) already exceeded → idle allowed
-      vi.advanceTimersByTime(6000);
+      // CPU-high deadline is 3s, silence timeout is 5s, idle debounce is 2s
+      // At 2s: idle debounce exceeded but CPU deadline (3s) still active → blocks idle
+      vi.advanceTimersByTime(2000);
+      expect(monitor.getState()).toBe("busy");
+
+      // At 6s: silence timeout fires, CPU deadline (3s) already exceeded → idle allowed
+      vi.advanceTimersByTime(4000);
       expect(monitor.getState()).toBe("idle");
 
       monitor.dispose();
@@ -3696,6 +3700,45 @@ describe("ActivityMonitor", () => {
       expect(onStateChange).toHaveBeenCalledWith("dispose-3", 100, "idle", {
         trigger: "dispose",
       });
+    });
+
+    it("should complete cleanup even if onStateChange throws during dispose", () => {
+      const onStateChange = vi.fn().mockImplementation((_id, _at, state) => {
+        if (state === "idle") throw new Error("callback failed");
+      });
+      const monitor = new ActivityMonitor("dispose-4", 100, onStateChange);
+
+      monitor.onInput("\r");
+      expect(monitor.getState()).toBe("busy");
+
+      // dispose() should not throw despite callback failure
+      expect(() => monitor.dispose()).not.toThrow();
+      expect(monitor.getState()).toBe("idle");
+
+      // Further calls are no-ops — cleanup completed
+      monitor.onInput("\r");
+      monitor.onData("test");
+      vi.advanceTimersByTime(10000);
+      // Only 2 calls: busy from input + idle from dispose (which threw)
+      expect(onStateChange).toHaveBeenCalledTimes(2);
+    });
+
+    it("should remain disposed if callback re-enters via notifySubmission", () => {
+      let monitor: InstanceType<typeof ActivityMonitor>;
+      const onStateChange = vi.fn().mockImplementation((_id, _at, state, meta) => {
+        if (meta?.trigger === "dispose") {
+          monitor.notifySubmission();
+        }
+      });
+      monitor = new ActivityMonitor("dispose-5", 100, onStateChange);
+
+      monitor.onInput("\r");
+      onStateChange.mockClear();
+
+      monitor.dispose();
+      // Should still be idle — re-entrant notifySubmission was blocked by isDisposed
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).toHaveBeenCalledTimes(1);
     });
   });
 });

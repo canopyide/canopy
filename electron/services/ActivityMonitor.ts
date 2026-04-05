@@ -384,14 +384,17 @@ export class ActivityMonitor {
 
   dispose(): void {
     if (this.isDisposed) return;
+    this.isDisposed = true;
 
     // Emit final idle transition if still busy — ensures renderer never stays stuck in "working"
     if (this.state === "busy") {
       this.state = "idle";
-      this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "dispose" });
+      try {
+        this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "dispose" });
+      } catch {
+        // Callback failure must not prevent cleanup
+      }
     }
-
-    this.isDisposed = true;
     this.stopPolling();
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
