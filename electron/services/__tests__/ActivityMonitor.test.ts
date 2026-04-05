@@ -3552,7 +3552,7 @@ describe("ActivityMonitor", () => {
         getDescendantsCpuUsage: vi.fn().mockReturnValue(20),
       };
       const monitor = new ActivityMonitor("cpu-deadline-3", 100, onStateChange, {
-        getVisibleLines: (n: number) => lines.current,
+        getVisibleLines: (_n: number) => lines.current,
         pollingIntervalMs: 50,
         pollingMaxBootMs: 0,
         idleDebounceMs: 500,
@@ -3724,13 +3724,18 @@ describe("ActivityMonitor", () => {
     });
 
     it("should remain disposed if callback re-enters via notifySubmission", () => {
-      let monitor: InstanceType<typeof ActivityMonitor>;
-      const onStateChange = vi.fn().mockImplementation((_id, _at, state, meta) => {
-        if (meta?.trigger === "dispose") {
-          monitor.notifySubmission();
-        }
-      });
-      monitor = new ActivityMonitor("dispose-5", 100, onStateChange);
+      const ref: { monitor?: InstanceType<typeof ActivityMonitor> } = {};
+      const onStateChange = vi
+        .fn()
+        .mockImplementation(
+          (_id: string, _at: number, _state: string, meta?: { trigger?: string }) => {
+            if (meta?.trigger === "dispose") {
+              ref.monitor?.notifySubmission();
+            }
+          }
+        );
+      const monitor = new ActivityMonitor("dispose-5", 100, onStateChange);
+      ref.monitor = monitor;
 
       monitor.onInput("\r");
       onStateChange.mockClear();
