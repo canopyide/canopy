@@ -376,6 +376,11 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
         return { exists: false, error: "Terminal not found in backend" };
       }
 
+      if (getAgentAvailabilityStore().isHelpTerminal(terminal.id)) {
+        logInfo(`terminal:reconnect: Skipping help terminal ${terminalId}`);
+        return { exists: false, error: "Terminal is a help terminal" };
+      }
+
       logInfo(`terminal:reconnect: Reconnecting to ${terminalId}`);
 
       return {

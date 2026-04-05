@@ -94,6 +94,7 @@ export function HelpPanel() {
         { source: "user" }
       );
       if (result.ok && result.result?.terminalId) {
+        if (document.hidden) return;
         useHelpPanelStore.getState().setTerminal(result.result.terminalId, preferredAgentId);
         window.electron.help.markTerminal(result.result.terminalId).catch(() => {});
       }
