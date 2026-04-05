@@ -7,6 +7,7 @@ import { CHANNELS } from "../../channels.js";
 import type { HandlerDependencies } from "../../types.js";
 import { TerminalReplayHistoryPayloadSchema } from "../../../schemas/index.js";
 import { logDebug, logInfo, logWarn, logError } from "../../../utils/logger.js";
+import { getAgentAvailabilityStore } from "../../../services/AgentAvailabilityStore.js";
 
 export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () => void {
   const { ptyClient } = deps;
@@ -187,9 +188,13 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       const terminals = [];
       for (const id of terminalIds) {
         const terminal = await ptyClient.getTerminalAsync(id);
-        // Dev preview PTYs should not be rehydrated as generic terminal panels
-        // during project switching/hydration.
-        if (terminal && terminal.kind !== "dev-preview") {
+        // Dev preview and help PTYs should not be rehydrated as generic terminal
+        // panels during project switching/hydration.
+        if (
+          terminal &&
+          terminal.kind !== "dev-preview" &&
+          !getAgentAvailabilityStore().isHelpTerminal(terminal.id)
+        ) {
           terminals.push({
             id: terminal.id,
             projectId: terminal.projectId,
