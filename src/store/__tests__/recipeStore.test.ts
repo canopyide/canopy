@@ -365,9 +365,7 @@ describe("recipeStore", () => {
   it("preserves args on agent terminals during import", async () => {
     const input = JSON.stringify({
       name: "With Args",
-      terminals: [
-        { type: "claude", title: "Agent", args: "--model sonnet" },
-      ],
+      terminals: [{ type: "claude", title: "Agent", args: "--model sonnet" }],
     });
 
     await useRecipeStore.getState().importRecipe("project-1", input);
@@ -427,9 +425,7 @@ describe("recipeStore", () => {
   it("normalizes empty args to undefined on import", async () => {
     const input = JSON.stringify({
       name: "Empty Args",
-      terminals: [
-        { type: "claude", args: "   " },
-      ],
+      terminals: [{ type: "claude", args: "   " }],
     });
 
     await useRecipeStore.getState().importRecipe("project-1", input);
