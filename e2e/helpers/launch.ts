@@ -208,6 +208,8 @@ export async function getActiveAppWindow(
   throw new Error("No active app window found");
 }
 
+const registeredPages = new WeakSet<Page>();
+
 /**
  * Re-acquire the active app window and wait for it to be ready.
  * Use after any operation that may create a new WebContentsView
@@ -217,7 +219,8 @@ export async function getActiveAppWindow(
 export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Page): Promise<Page> {
   const newWindow = await getActiveAppWindow(app);
 
-  if (!oldPage || newWindow !== oldPage) {
+  if (!registeredPages.has(newWindow)) {
+    registeredPages.add(newWindow);
     newWindow.on("crash", () => console.error("[e2e] Renderer crashed"));
     newWindow.on("console", (msg) => {
       if (msg.type() === "error") console.error("[e2e:console]", msg.text());
