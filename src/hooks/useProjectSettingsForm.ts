@@ -62,6 +62,9 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
   const lastSavedSnapshotRef = useRef<ReturnType<typeof createProjectSettingsSnapshot> | null>(
     null
   );
+  const currentProjectSnapshotRef = useRef<ReturnType<typeof createProjectSettingsSnapshot> | null>(
+    null
+  );
 
   const { recipes, isLoading: recipesLoading } = useRecipeStore();
   const { worktreeMap, worktrees } = useWorktrees();
@@ -123,6 +126,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     currentTerminalSettings,
     notificationOverrides,
   ]);
+  currentProjectSnapshotRef.current = currentProjectSnapshot;
 
   useEffect(() => {
     if (isOpen && !projectIsLoading && projectSettings && currentProject && !projectIsInitialized) {
@@ -220,10 +224,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
   }, [projectSettings, isOpen, projectIsInitialized, currentProject, projectIsLoading]);
 
   useEffect(() => {
-    if (isOpen) {
-      setProjectIsInitialized(false);
-    }
-  }, [projectId, isOpen]);
+    setProjectIsInitialized(false);
+  }, [projectId]);
 
   const projectPersistRef = useRef<() => Promise<void>>(undefined);
   projectPersistRef.current = async () => {
@@ -347,7 +349,12 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
   }, []);
 
   const flush = async () => {
-    await debouncedProjectSaveRef.current.flush();
+    debouncedProjectSaveRef.current.cancel();
+    const current = currentProjectSnapshotRef.current;
+    const last = lastSavedSnapshotRef.current;
+    if (current && last && !areSnapshotsEqual(last, current)) {
+      await projectPersistRef.current?.();
+    }
   };
 
   return {
