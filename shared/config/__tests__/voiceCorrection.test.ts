@@ -159,6 +159,24 @@ describe("buildCorrectionSystemPrompt", () => {
     });
     expect(prompt).toContain("my-app-repo");
   });
+
+  it("extracts directory name from Windows backslash path", () => {
+    const prompt = buildCorrectionSystemPrompt({
+      projectName: "My App",
+      projectPath: "C:\\Users\\dev\\my-repo",
+    });
+    expect(prompt).toContain("my-repo");
+    expect(prompt).not.toContain("C:\\Users\\dev\\my-repo");
+  });
+
+  it("omits Repository line when Windows path directory matches project name", () => {
+    const prompt = buildCorrectionSystemPrompt({
+      projectName: "canopy",
+      projectPath: "C:\\Users\\dev\\canopy",
+    });
+    const projectSection = prompt.split("CURRENT PROJECT:")[1]?.split("\n\n")[0] ?? "";
+    expect(projectSection).not.toContain("Repository:");
+  });
 });
 
 describe("MICRO_CORRECTION_PROMPT", () => {
@@ -234,5 +252,23 @@ describe("buildMicroCorrectionSystemPrompt", () => {
     });
     const guardrailIdx = prompt.lastIndexOf("Return a JSON object");
     expect(guardrailIdx).toBeGreaterThan(prompt.length - 300);
+  });
+
+  it("extracts directory name from Windows backslash path", () => {
+    const prompt = buildMicroCorrectionSystemPrompt({
+      projectName: "My App",
+      projectPath: "C:\\Users\\dev\\my-repo",
+    });
+    expect(prompt).toContain("my-repo");
+    expect(prompt).not.toContain("C:\\Users\\dev\\my-repo");
+  });
+
+  it("omits Repository line when Windows path directory matches project name", () => {
+    const prompt = buildMicroCorrectionSystemPrompt({
+      projectName: "canopy",
+      projectPath: "C:\\Users\\dev\\canopy",
+    });
+    const projectSection = prompt.split("CURRENT PROJECT:")[1]?.split("\n\n")[0] ?? "";
+    expect(projectSection).not.toContain("Repository:");
   });
 });
