@@ -635,6 +635,8 @@ const CHANNELS = {
   PROJECT_SET_TERMINALS: "project:set-terminals",
   PROJECT_GET_TERMINAL_SIZES: "project:get-terminal-sizes",
   PROJECT_SET_TERMINAL_SIZES: "project:set-terminal-sizes",
+  PROJECT_GET_DRAFT_INPUTS: "project:get-draft-inputs",
+  PROJECT_SET_DRAFT_INPUTS: "project:set-draft-inputs",
   PROJECT_GET_TAB_GROUPS: "project:get-tab-groups",
   PROJECT_SET_TAB_GROUPS: "project:set-tab-groups",
   PROJECT_GET_FOCUS_MODE: "project:get-focus-mode",
@@ -1647,6 +1649,12 @@ const api: ElectronAPI = {
       terminalSizes: Record<string, { cols: number; rows: number }>
     ): Promise<void> =>
       _unwrappingInvoke(CHANNELS.PROJECT_SET_TERMINAL_SIZES, { projectId, terminalSizes }),
+
+    getDraftInputs: (projectId: string): Promise<Record<string, string>> =>
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_DRAFT_INPUTS, projectId),
+
+    setDraftInputs: (projectId: string, draftInputs: Record<string, string>): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.PROJECT_SET_DRAFT_INPUTS, { projectId, draftInputs }),
 
     getTabGroups: (projectId: string): Promise<import("../shared/types/index.js").TabGroup[]> =>
       _unwrappingInvoke(CHANNELS.PROJECT_GET_TAB_GROUPS, projectId),

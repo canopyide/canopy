@@ -1,4 +1,5 @@
 import { appClient, terminalClient, worktreeClient, projectClient, systemClient } from "@/clients";
+import { useTerminalInputStore } from "@/store/terminalInputStore";
 import { suppressMruRecording } from "@/store/worktreeStore";
 import { useLayoutConfigStore } from "@/store";
 import { useUserAgentRegistryStore } from "@/store/userAgentRegistryStore";
@@ -280,11 +281,36 @@ export async function hydrateAppState(
           })
       : Promise.resolve(emptyTerminalSizes);
 
+    const emptyDraftInputs: Record<string, string> = {};
+    const draftInputsPromise: Promise<Record<string, string>> = currentProjectId
+      ? projectClient
+          .getDraftInputs(currentProjectId)
+          .then((drafts) => drafts ?? emptyDraftInputs)
+          .catch((error) => {
+            logWarn("Failed to prefetch draft inputs", { error });
+            return emptyDraftInputs;
+          })
+      : Promise.resolve(emptyDraftInputs);
+
     const recipeLoadPromise = currentProjectId
       ? loadRecipes(currentProjectId).catch((error) => {
           logWarn("Failed to load recipes", { error });
         })
       : null;
+
+    // Restore hybrid input bar draft inputs BEFORE terminal panels are created,
+    // so HybridInputBar components pick up drafts from the store at mount time.
+    if (currentProjectId) {
+      try {
+        const draftInputs = await draftInputsPromise;
+        if (!checkCurrent()) return;
+        if (Object.keys(draftInputs).length > 0) {
+          useTerminalInputStore.getState().restoreProjectDraftInputs(currentProjectId, draftInputs);
+        }
+      } catch (error) {
+        logWarn("Failed to restore draft inputs", { error });
+      }
+    }
 
     if (currentProjectId) {
       try {

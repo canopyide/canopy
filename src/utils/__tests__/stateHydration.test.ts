@@ -18,6 +18,8 @@ const worktreeClientMock = {
 const projectClientMock = {
   getTabGroups: vi.fn(),
   getTerminalSizes: vi.fn(),
+  getDraftInputs: vi.fn(),
+  setDraftInputs: vi.fn(),
 };
 
 const terminalConfigClientMock = {
@@ -176,6 +178,7 @@ describe("hydrateAppState", () => {
     worktreeClientMock.getAll.mockResolvedValue([]);
     projectClientMock.getTabGroups.mockResolvedValue([]);
     projectClientMock.getTerminalSizes.mockResolvedValue({});
+    projectClientMock.getDraftInputs.mockResolvedValue({});
   });
 
   afterEach(() => {
