@@ -331,6 +331,110 @@ describe("recipeStore", () => {
     expect(recipe?.terminals[0]?.type).toBe("terminal");
   });
 
+  it("preserves args on agent terminals during import", async () => {
+    const input = JSON.stringify({
+      name: "With Args",
+      terminals: [
+        { type: "claude", title: "Agent", args: "--model sonnet" },
+      ],
+    });
+
+    await useRecipeStore.getState().importRecipe("project-1", input);
+
+    const recipe = useRecipeStore.getState().recipes[0];
+    expect(recipe?.terminals[0]?.args).toBe("--model sonnet");
+  });
+
+  it("drops args on non-agent terminals during import", async () => {
+    const input = JSON.stringify({
+      name: "Terminal Args",
+      terminals: [
+        { type: "terminal", command: "npm test", args: "--model sonnet" },
+        { type: "dev-preview", args: "--flag" },
+      ],
+    });
+
+    await useRecipeStore.getState().importRecipe("project-1", input);
+
+    const recipe = useRecipeStore.getState().recipes[0];
+    expect(recipe?.terminals[0]?.args).toBeUndefined();
+    expect(recipe?.terminals[1]?.args).toBeUndefined();
+  });
+
+  it("filters out terminals with control characters in args", async () => {
+    const input = JSON.stringify({
+      name: "Bad Args",
+      terminals: [
+        { type: "claude", args: "--model\x00evil" },
+        { type: "claude", args: "--model sonnet" },
+      ],
+    });
+
+    await useRecipeStore.getState().importRecipe("project-1", input);
+
+    const recipe = useRecipeStore.getState().recipes[0];
+    expect(recipe?.terminals).toHaveLength(1);
+    expect(recipe?.terminals[0]?.args).toBe("--model sonnet");
+  });
+
+  it("filters out terminals with non-string args", async () => {
+    const input = JSON.stringify({
+      name: "Array Args",
+      terminals: [
+        { type: "claude", args: ["--model", "sonnet"] },
+        { type: "claude", args: "--valid" },
+      ],
+    });
+
+    await useRecipeStore.getState().importRecipe("project-1", input);
+
+    const recipe = useRecipeStore.getState().recipes[0];
+    expect(recipe?.terminals).toHaveLength(1);
+    expect(recipe?.terminals[0]?.args).toBe("--valid");
+  });
+
+  it("normalizes empty args to undefined on import", async () => {
+    const input = JSON.stringify({
+      name: "Empty Args",
+      terminals: [
+        { type: "claude", args: "   " },
+      ],
+    });
+
+    await useRecipeStore.getState().importRecipe("project-1", input);
+
+    const recipe = useRecipeStore.getState().recipes[0];
+    expect(recipe?.terminals[0]?.args).toBeUndefined();
+  });
+
+  it("sanitizes args on update — keeps for agent, drops for non-agent", async () => {
+    useRecipeStore.setState({ currentProjectId: "project-1" });
+    await useRecipeStore
+      .getState()
+      .createRecipe(
+        "project-1",
+        "Recipe",
+        undefined,
+        [{ type: "terminal", title: "Shell", command: "npm test", env: {} }],
+        false
+      );
+
+    const recipeId = useRecipeStore.getState().recipes[0]?.id;
+    expect(recipeId).toBeTruthy();
+
+    updateInRepoRecipeMock.mockClear();
+    await useRecipeStore.getState().updateRecipe(recipeId!, {
+      terminals: [
+        { type: "claude", title: "Agent", args: "--model opus", env: {} },
+        { type: "terminal", title: "Shell", command: "bash", args: "--model opus", env: {} },
+      ],
+    });
+
+    const updated = useRecipeStore.getState().recipes[0];
+    expect(updated?.terminals[0]?.args).toBe("--model opus");
+    expect(updated?.terminals[1]?.args).toBeUndefined();
+  });
+
   describe("global recipes", () => {
     it("loadRecipes fetches from both global and project sources", async () => {
       const globalRecipe = {
