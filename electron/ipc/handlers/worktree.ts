@@ -22,8 +22,8 @@ import { soundService } from "../../services/SoundService.js";
 import { checkRateLimit, waitForRateLimitSlot } from "../utils.js";
 
 const WORKTREE_RATE_LIMIT_KEY = "worktreeCreate";
-const WORKTREE_RATE_LIMIT_MAX = 20;
-const WORKTREE_RATE_LIMIT_WINDOW_MS = 30_000;
+const WORKTREE_RATE_LIMIT_MAX = 2;
+const WORKTREE_RATE_LIMIT_WINDOW_MS = 2_000;
 import { resolveWorktreePattern } from "../../utils/worktreePattern.js";
 import { taskWorktreeService } from "../../services/TaskWorktreeService.js";
 
