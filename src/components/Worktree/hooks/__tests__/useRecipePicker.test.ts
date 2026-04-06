@@ -75,15 +75,18 @@ describe("useRecipePicker", () => {
 
   it("does not invalidate CLONE_LAYOUT_ID as stale", () => {
     const setter = vi.fn();
-    const { result, rerender } = renderHook(
-      (props) => useRecipePicker(props),
-      { initialProps: { ...defaultArgs, setLastSelectedWorktreeRecipeIdByProject: setter } }
-    );
+    const { result, rerender } = renderHook((props) => useRecipePicker(props), {
+      initialProps: { ...defaultArgs, setLastSelectedWorktreeRecipeIdByProject: setter },
+    });
     expect(result.current.selectedRecipeId).toBe(CLONE_LAYOUT_ID);
     setter.mockClear();
 
     // Simulate recipes changing (triggers stale invalidation effect)
-    rerender({ ...defaultArgs, setLastSelectedWorktreeRecipeIdByProject: setter, globalRecipes: [makeRecipe("new-recipe")] });
+    rerender({
+      ...defaultArgs,
+      setLastSelectedWorktreeRecipeIdByProject: setter,
+      globalRecipes: [makeRecipe("new-recipe")],
+    });
     expect(result.current.selectedRecipeId).toBe(CLONE_LAYOUT_ID);
     expect(setter).not.toHaveBeenCalled();
   });

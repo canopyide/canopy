@@ -690,8 +690,7 @@ export function NewWorktreeDialog({
               });
             }
           } catch (cloneErr) {
-            const message =
-              cloneErr instanceof Error ? cloneErr.message : "Failed to clone layout";
+            const message = cloneErr instanceof Error ? cloneErr.message : "Failed to clone layout";
             notify({
               type: "warning",
               title: "Could not clone layout",
@@ -1476,8 +1475,7 @@ export function NewWorktreeDialog({
                         onClick={() => {
                           recipeSelectionTouchedRef.current = true;
                           setSelectedRecipeId(null);
-                          if (projectId)
-                            setLastSelectedWorktreeRecipeIdByProject(projectId, null);
+                          if (projectId) setLastSelectedWorktreeRecipeIdByProject(projectId, null);
                           setRecipePickerOpen(false);
                         }}
                         className={cn(
@@ -1490,55 +1488,53 @@ export function NewWorktreeDialog({
                           <Check className="h-4 w-4 shrink-0 text-canopy-accent" />
                         )}
                       </div>
-                        {globalRecipes.map((recipe) => (
-                          <div
-                            key={recipe.id}
-                            role="option"
-                            aria-selected={recipe.id === selectedRecipeId}
-                            tabIndex={0}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                recipeSelectionTouchedRef.current = true;
-                                setSelectedRecipeId(recipe.id);
-                                if (projectId)
-                                  setLastSelectedWorktreeRecipeIdByProject(projectId, recipe.id);
-                                setRecipePickerOpen(false);
-                              }
-                            }}
-                            onClick={() => {
+                      {globalRecipes.map((recipe) => (
+                        <div
+                          key={recipe.id}
+                          role="option"
+                          aria-selected={recipe.id === selectedRecipeId}
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
                               recipeSelectionTouchedRef.current = true;
                               setSelectedRecipeId(recipe.id);
                               if (projectId)
                                 setLastSelectedWorktreeRecipeIdByProject(projectId, recipe.id);
                               setRecipePickerOpen(false);
-                            }}
-                            className={cn(
-                              "flex items-center justify-between gap-2 px-2 py-1.5 text-sm rounded-[var(--radius-sm)] cursor-pointer hover:bg-canopy-border",
-                              recipe.id === selectedRecipeId && "bg-canopy-border"
-                            )}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="truncate">{recipe.name}</span>
-                              <span className="text-xs text-canopy-text/50 shrink-0">
-                                {recipe.terminals.length} terminal
-                                {recipe.terminals.length !== 1 ? "s" : ""}
-                              </span>
-                              {recipe.id === defaultRecipeId && (
-                                <span className="text-xs text-canopy-accent shrink-0">
-                                  (default)
-                                </span>
-                              )}
-                            </div>
-                            {recipe.id === selectedRecipeId && (
-                              <Check className="h-4 w-4 shrink-0 text-canopy-accent" />
+                            }
+                          }}
+                          onClick={() => {
+                            recipeSelectionTouchedRef.current = true;
+                            setSelectedRecipeId(recipe.id);
+                            if (projectId)
+                              setLastSelectedWorktreeRecipeIdByProject(projectId, recipe.id);
+                            setRecipePickerOpen(false);
+                          }}
+                          className={cn(
+                            "flex items-center justify-between gap-2 px-2 py-1.5 text-sm rounded-[var(--radius-sm)] cursor-pointer hover:bg-canopy-border",
+                            recipe.id === selectedRecipeId && "bg-canopy-border"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="truncate">{recipe.name}</span>
+                            <span className="text-xs text-canopy-text/50 shrink-0">
+                              {recipe.terminals.length} terminal
+                              {recipe.terminals.length !== 1 ? "s" : ""}
+                            </span>
+                            {recipe.id === defaultRecipeId && (
+                              <span className="text-xs text-canopy-accent shrink-0">(default)</span>
                             )}
                           </div>
-                        ))}
-                      </ScrollShadow>
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                          {recipe.id === selectedRecipeId && (
+                            <Check className="h-4 w-4 shrink-0 text-canopy-accent" />
+                          )}
+                        </div>
+                      ))}
+                    </ScrollShadow>
+                  </PopoverContent>
+                </Popover>
+              </div>
 
               {initialPR && prBranchResolved === false && (
                 <div className="flex items-start gap-2 p-3 bg-status-warning/10 border border-status-warning/20 rounded-[var(--radius-md)]">

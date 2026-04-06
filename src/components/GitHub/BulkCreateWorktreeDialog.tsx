@@ -1,6 +1,14 @@
 import { useCallback, useReducer, useRef, useMemo, useEffect, useLayoutEffect } from "react";
 import PQueue from "p-queue";
-import { Check, AlertTriangle, UserPlus, Play, ChevronsUpDown, RotateCcw, Copy } from "lucide-react";
+import {
+  Check,
+  AlertTriangle,
+  UserPlus,
+  Play,
+  ChevronsUpDown,
+  RotateCcw,
+  Copy,
+} from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { WorktreeIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
