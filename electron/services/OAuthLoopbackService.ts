@@ -177,6 +177,6 @@ function cleanup(panelId: string): void {
 }
 
 // Clean up on app quit
-app.on("before-quit", () => {
+app?.on?.("before-quit", () => {
   shutdownAllLoopbacks();
 });
