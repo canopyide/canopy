@@ -559,15 +559,25 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     authUrl: unknown,
     panelId: unknown,
-    webContentsId: unknown
+    webContentsId: unknown,
+    providedSessionStorageSnapshot: unknown
   ): Promise<{ success: boolean; error?: string } | null> => {
     if (
       typeof authUrl !== "string" ||
       typeof panelId !== "string" ||
-      typeof webContentsId !== "number"
+      typeof webContentsId !== "number" ||
+      (providedSessionStorageSnapshot !== undefined &&
+        (!Array.isArray(providedSessionStorageSnapshot) ||
+          providedSessionStorageSnapshot.some(
+            (entry) =>
+              !Array.isArray(entry) ||
+              entry.length !== 2 ||
+              typeof entry[0] !== "string" ||
+              typeof entry[1] !== "string"
+          )))
     ) {
       throw new Error(
-        "Invalid arguments: authUrl must be string, panelId must be string, webContentsId must be number"
+        "Invalid arguments: authUrl must be string, panelId must be string, webContentsId must be number, sessionStorageSnapshot must be string tuples"
       );
     }
 
@@ -577,24 +587,59 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       throw new Error("WebContents ID does not match the registered panel");
     }
 
-    // Step 1: Start loopback server, open system browser, wait for callback
-    const loopbackResult = await startOAuthLoopback(authUrl, panelId);
-    if (!loopbackResult) return null;
-
-    const { callbackUrl, loopbackRedirectUri, originalRedirectUri } = loopbackResult;
-
-    // Step 2: Get the webview's webContents for CDP + navigation
+    // Step 1: Get the webview's webContents for session capture + CDP + navigation
     const wc = webContents.fromId(webContentsId);
     if (!wc || wc.isDestroyed()) {
       console.error("[OAuthLoopback] WebContents not found or destroyed:", webContentsId);
       return { success: false, error: "WebView no longer available" };
     }
 
+    let sessionStorageSnapshot =
+      (providedSessionStorageSnapshot as Array<[string, string]> | undefined) ??
+      (await getWebviewDialogService().consumeOAuthSessionStorage(panelId));
+    if (sessionStorageSnapshot.length === 0) {
+      try {
+        const snapshot = await wc.executeJavaScript(
+          `(() => {
+            try {
+              return Object.entries(sessionStorage).filter(
+                (entry) =>
+                  Array.isArray(entry) &&
+                  entry.length === 2 &&
+                  typeof entry[0] === "string" &&
+                  typeof entry[1] === "string"
+              );
+            } catch {
+              return [];
+            }
+          })()`
+        );
+        if (Array.isArray(snapshot)) {
+          sessionStorageSnapshot = snapshot.filter(
+            (entry): entry is [string, string] =>
+              Array.isArray(entry) &&
+              entry.length === 2 &&
+              typeof entry[0] === "string" &&
+              typeof entry[1] === "string"
+          );
+        }
+      } catch (error) {
+        console.warn("[OAuthLoopback] Failed to capture sessionStorage snapshot:", error);
+      }
+    }
+
+    // Step 2: Start loopback server, open system browser, wait for callback
+    const loopbackResult = await startOAuthLoopback(authUrl, panelId);
+    if (!loopbackResult) return null;
+
+    const { callbackUrl, loopbackRedirectUri, originalRedirectUri } = loopbackResult;
+
     // Step 3: Attach CDP Fetch interceptor BEFORE navigating.
     // This intercepts the token exchange POST and rewrites redirect_uri
     // so it matches what was sent in the authorization request (the loopback URI).
     const INTERCEPT_TIMEOUT_MS = 30_000;
     let fetchEnabled = false;
+    let restoreScriptIdentifier: string | null = null;
     let interceptorListener:
       | ((event: Electron.Event, method: string, params: unknown) => void)
       | null = null;
@@ -604,6 +649,8 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         wc.debugger.attach("1.3");
       }
 
+      await wc.debugger.sendCommand("Page.enable");
+
       // Enable Fetch interception for all HTTP/HTTPS requests (token endpoints)
       await wc.debugger.sendCommand("Fetch.enable", {
         patterns: [
@@ -612,6 +659,31 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         ],
       });
       fetchEnabled = true;
+
+      if (sessionStorageSnapshot.length > 0) {
+        const callbackOrigin = new URL(callbackUrl).origin;
+        const restoreScript = `
+          (() => {
+            const expectedOrigin = ${JSON.stringify(callbackOrigin)};
+            const entries = ${JSON.stringify(sessionStorageSnapshot)};
+            try {
+              if (window.location.origin !== expectedOrigin) return;
+              for (const [key, value] of entries) {
+                if (typeof key === "string" && typeof value === "string") {
+                  sessionStorage.setItem(key, value);
+                }
+              }
+            } catch {
+              // Ignore restoration failures
+            }
+          })();
+        `;
+
+        const result = (await wc.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
+          source: restoreScript,
+        })) as { identifier?: string };
+        restoreScriptIdentifier = result.identifier ?? null;
+      }
 
       // Set up the interceptor as a promise that resolves on first match or timeout
       await new Promise<void>((resolveIntercept) => {
@@ -701,6 +773,13 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       // Clean up CDP Fetch — remove listener and disable
       if (interceptorListener) {
         wc.debugger.removeListener("message", interceptorListener);
+      }
+      if (restoreScriptIdentifier && !wc.isDestroyed()) {
+        wc.debugger
+          .sendCommand("Page.removeScriptToEvaluateOnNewDocument", {
+            identifier: restoreScriptIdentifier,
+          })
+          .catch(() => {});
       }
       if (fetchEnabled && !wc.isDestroyed()) {
         wc.debugger.sendCommand("Fetch.disable").catch(() => {});

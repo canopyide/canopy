@@ -2076,9 +2076,16 @@ const api: ElectronAPI = {
     startOAuthLoopback: (
       authUrl: string,
       panelId: string,
-      webContentsId: number
+      webContentsId: number,
+      sessionStorageSnapshot?: Array<[string, string]>
     ): Promise<{ success: boolean; error?: string } | null> =>
-      _unwrappingInvoke(CHANNELS.WEBVIEW_OAUTH_LOOPBACK, authUrl, panelId, webContentsId),
+      _unwrappingInvoke(
+        CHANNELS.WEBVIEW_OAUTH_LOOPBACK,
+        authUrl,
+        panelId,
+        webContentsId,
+        sessionStorageSnapshot
+      ),
     startConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>
       _unwrappingInvoke(CHANNELS.WEBVIEW_START_CONSOLE_CAPTURE, webContentsId, paneId),
     stopConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>

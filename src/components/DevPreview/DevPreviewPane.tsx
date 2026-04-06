@@ -40,13 +40,54 @@ export function _resetScrollCacheForTests(): void {
 
 import { looksLikeOAuthUrl } from "@shared/utils/urlUtils";
 
+type SessionStorageEntry = [string, string];
+
+async function captureWebviewSessionStorage(
+  webviewElement: Electron.WebviewTag | null
+): Promise<SessionStorageEntry[]> {
+  if (!webviewElement) return [];
+
+  try {
+    const snapshot = await webviewElement.executeJavaScript(
+      `(() => {
+        try {
+          return Object.entries(sessionStorage).filter(
+            (entry) =>
+              Array.isArray(entry) &&
+              entry.length === 2 &&
+              typeof entry[0] === "string" &&
+              typeof entry[1] === "string"
+          );
+        } catch {
+          return [];
+        }
+      })()`
+    );
+
+    if (!Array.isArray(snapshot)) return [];
+    return snapshot.filter(
+      (entry): entry is SessionStorageEntry =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        typeof entry[0] === "string" &&
+        typeof entry[1] === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
 function BlockedNavBanner({
   blockedNav,
   panelId,
   webviewElement,
   onDismiss,
 }: {
-  blockedNav: { url: string; canOpenExternal: boolean };
+  blockedNav: {
+    url: string;
+    canOpenExternal: boolean;
+    sessionStorageSnapshot: SessionStorageEntry[];
+  };
   panelId: string;
   webviewElement: Electron.WebviewTag | null;
   onDismiss: () => void;
@@ -80,7 +121,12 @@ function BlockedNavBanner({
               /* webview not ready */
             }
             if (wcId != null) {
-              await window.electron.webview.startOAuthLoopback(url, panelId, wcId);
+              await window.electron.webview.startOAuthLoopback(
+                url,
+                panelId,
+                wcId,
+                blockedNav.sessionStorageSnapshot
+              );
             }
           }}
           className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-canopy-text/90 transition-colors"
@@ -183,6 +229,7 @@ export function DevPreviewPane({
   const [blockedNav, setBlockedNav] = useState<{
     url: string;
     canOpenExternal: boolean;
+    sessionStorageSnapshot: SessionStorageEntry[];
   } | null>(null);
   const blockedNavTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSetUrlRef = useRef<string>("");
@@ -674,12 +721,21 @@ export function DevPreviewPane({
   useEffect(() => {
     const cleanup = window.electron.webview.onNavigationBlocked((data) => {
       if (data.panelId !== id) return;
+      const sessionStorageSnapshotPromise = looksLikeOAuthUrl(data.url)
+        ? captureWebviewSessionStorage(webviewElement)
+        : Promise.resolve<SessionStorageEntry[]>([]);
       if (blockedNavTimerRef.current) {
         clearTimeout(blockedNavTimerRef.current);
       }
       blockedNavTimerRef.current = setTimeout(() => {
-        setBlockedNav({ url: data.url, canOpenExternal: data.canOpenExternal });
-        blockedNavTimerRef.current = null;
+        void sessionStorageSnapshotPromise.then((sessionStorageSnapshot) => {
+          setBlockedNav({
+            url: data.url,
+            canOpenExternal: data.canOpenExternal,
+            sessionStorageSnapshot,
+          });
+          blockedNavTimerRef.current = null;
+        });
       }, 150);
     });
     return () => {
@@ -689,7 +745,7 @@ export function DevPreviewPane({
         blockedNavTimerRef.current = null;
       }
     };
-  }, [id]);
+  }, [id, webviewElement]);
 
   // Auto-dismiss blocked navigation notification after 10 seconds
   useEffect(() => {

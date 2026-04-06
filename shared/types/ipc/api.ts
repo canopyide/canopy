@@ -817,7 +817,8 @@ export interface ElectronAPI {
     startOAuthLoopback(
       authUrl: string,
       panelId: string,
-      webContentsId: number
+      webContentsId: number,
+      sessionStorageSnapshot?: Array<[string, string]>
     ): Promise<{ success: boolean; error?: string } | null>;
     /** Start CDP console capture for a webview panel */
     startConsoleCapture(webContentsId: number, paneId: string): Promise<void>;

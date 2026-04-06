@@ -28,7 +28,7 @@ import crypto from "crypto";
 import path from "path";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
-import { openAndOnboardProject } from "../helpers/project";
+import { openAndOnboardProject, openProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_LONG } from "../helpers/timeouts";
 
@@ -36,14 +36,44 @@ import { T_SHORT, T_LONG } from "../helpers/timeouts";
 // Fake Keycloak — mimics /realms/{realm}/protocol/openid-connect/auth + /token
 // ---------------------------------------------------------------------------
 
-function createFakeKeycloak(): Server {
+/** Protocol-level event log for decisive assertions. */
+interface OAuthEvents {
+  authRequests: Array<{
+    redirectUri: string;
+    state: string;
+    codeChallenge: string;
+    clientId: string;
+    codeIssued: string;
+  }>;
+  tokenRequests: Array<{
+    code: string;
+    redirectUri: string;
+    codeVerifier: string;
+    clientId: string;
+  }>;
+  validations: Array<{
+    codeValid: boolean;
+    redirectUriValid: boolean;
+    pkceValid: boolean;
+    outcome: "success" | "error";
+    error?: string;
+  }>;
+}
+
+function createFakeKeycloak(): { server: Server; events: OAuthEvents } {
   // Stores issued codes: code → { redirectUri, codeChallenge, clientId }
   const issuedCodes = new Map<
     string,
     { redirectUri: string; codeChallenge: string; clientId: string }
   >();
 
-  return createServer((req: IncomingMessage, res: ServerResponse) => {
+  const events: OAuthEvents = {
+    authRequests: [],
+    tokenRequests: [],
+    validations: [],
+  };
+
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
     // Authorization endpoint — auto-approve (no login form)
@@ -64,6 +94,15 @@ function createFakeKeycloak(): Server {
       const code = crypto.randomUUID();
       issuedCodes.set(code, { redirectUri, codeChallenge, clientId });
 
+      // Record the auth request
+      events.authRequests.push({
+        redirectUri,
+        state: state ?? "",
+        codeChallenge,
+        clientId,
+        codeIssued: code,
+      });
+
       const callback = new URL(redirectUri);
       callback.searchParams.set("code", code);
       if (state) callback.searchParams.set("state", state);
@@ -82,10 +121,13 @@ function createFakeKeycloak(): Server {
       });
       req.on("end", () => {
         const params = new URLSearchParams(body);
-        const code = params.get("code");
-        const redirectUri = params.get("redirect_uri");
-        const codeVerifier = params.get("code_verifier");
-        const clientId = params.get("client_id");
+        const code = params.get("code") ?? "";
+        const redirectUri = params.get("redirect_uri") ?? "";
+        const codeVerifier = params.get("code_verifier") ?? "";
+        const clientId = params.get("client_id") ?? "";
+
+        // Record the token request
+        events.tokenRequests.push({ code, redirectUri, codeVerifier, clientId });
 
         // CORS headers (the webview fetches cross-origin to the fake Keycloak)
         res.setHeader("Access-Control-Allow-Origin", "*");
@@ -93,6 +135,13 @@ function createFakeKeycloak(): Server {
         res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
         if (!code || !redirectUri || !codeVerifier || !clientId) {
+          events.validations.push({
+            codeValid: false,
+            redirectUriValid: false,
+            pkceValid: false,
+            outcome: "error",
+            error: "invalid_request",
+          });
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "invalid_request" }));
           return;
@@ -100,13 +149,28 @@ function createFakeKeycloak(): Server {
 
         const issued = issuedCodes.get(code);
         if (!issued) {
+          events.validations.push({
+            codeValid: false,
+            redirectUriValid: false,
+            pkceValid: false,
+            outcome: "error",
+            error: "invalid_grant:code_expired",
+          });
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "invalid_grant", error_description: "Code expired" }));
           return;
         }
 
         // Validate redirect_uri matches what was sent in the auth request
-        if (issued.redirectUri !== redirectUri) {
+        const redirectUriValid = issued.redirectUri === redirectUri;
+        if (!redirectUriValid) {
+          events.validations.push({
+            codeValid: true,
+            redirectUriValid: false,
+            pkceValid: false, // not checked yet
+            outcome: "error",
+            error: "invalid_grant:redirect_uri_mismatch",
+          });
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -122,11 +186,27 @@ function createFakeKeycloak(): Server {
           .createHash("sha256")
           .update(codeVerifier)
           .digest("base64url");
-        if (expectedChallenge !== issued.codeChallenge) {
+        const pkceValid = expectedChallenge === issued.codeChallenge;
+        if (!pkceValid) {
+          events.validations.push({
+            codeValid: true,
+            redirectUriValid: true,
+            pkceValid: false,
+            outcome: "error",
+            error: "invalid_grant:pkce_mismatch",
+          });
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "invalid_grant", error_description: "PKCE mismatch" }));
           return;
         }
+
+        // All validations passed
+        events.validations.push({
+          codeValid: true,
+          redirectUriValid: true,
+          pkceValid: true,
+          outcome: "success",
+        });
 
         // Success — issue tokens (mimics Keycloak response)
         issuedCodes.delete(code);
@@ -159,6 +239,8 @@ function createFakeKeycloak(): Server {
     res.writeHead(404);
     res.end("Not Found");
   });
+
+  return { server, events };
 }
 
 // ---------------------------------------------------------------------------
@@ -185,14 +267,29 @@ function createFakeNextApp(keycloakUrl: string): Server {
   const code = params.get('code');
   const state = params.get('state');
 
+  // Diagnostic object — records pre-exchange state for decisive E2E assertions
+  const debug = {
+    hadVerifierBeforeExchange: Boolean(sessionStorage.getItem('kc_code_verifier')),
+    hadState: Boolean(sessionStorage.getItem('kc_state')),
+    storedStateMatched: false,
+    tokenExchangeStarted: false,
+    tokenExchangeSucceeded: false,
+    tokenExchangeError: null,
+    finalStatus: 'processing',
+  };
+  window.__oauthDebug = debug;
+
   // Validate state (CSRF protection — mimics keycloak.ts processOAuthCallback)
   const storedState = sessionStorage.getItem('kc_state');
+  debug.storedStateMatched = !state || !storedState || state === storedState;
   if (state && storedState && state !== storedState) {
+    debug.finalStatus = 'error:state_mismatch';
     status.textContent = 'error:state_mismatch';
     return;
   }
 
   if (!code) {
+    debug.finalStatus = 'error:no_code';
     status.textContent = 'error:no_code';
     return;
   }
@@ -200,12 +297,14 @@ function createFakeNextApp(keycloakUrl: string): Server {
   // Get PKCE code_verifier from sessionStorage (stored before redirect)
   const codeVerifier = sessionStorage.getItem('kc_code_verifier');
   if (!codeVerifier) {
+    debug.finalStatus = 'error:no_verifier';
     status.textContent = 'error:no_verifier';
     return;
   }
 
   // Token exchange — mimics keycloak.ts exchangeCodeForTokens()
   // Uses window.location.origin for redirect_uri (this is what CDP must rewrite)
+  debug.tokenExchangeStarted = true;
   try {
     const tokenRes = await fetch('${keycloakUrl}/realms/test/protocol/openid-connect/token', {
       method: 'POST',
@@ -226,12 +325,18 @@ function createFakeNextApp(keycloakUrl: string): Server {
       localStorage.setItem('kc_access_token', data.access_token);
       localStorage.setItem('kc_refresh_token', data.refresh_token || '');
       localStorage.setItem('kc_id_token', data.id_token || '');
+      debug.tokenExchangeSucceeded = true;
+      debug.finalStatus = 'authenticated';
       status.textContent = 'authenticated';
     } else {
+      debug.tokenExchangeError = data.error || 'token_exchange_failed';
+      debug.finalStatus = 'error:' + (data.error || 'token_exchange_failed');
       status.textContent = 'error:' + (data.error || 'token_exchange_failed');
       errorEl.textContent = data.error_description || JSON.stringify(data);
     }
   } catch (e) {
+    debug.tokenExchangeError = 'fetch_failed:' + e.message;
+    debug.finalStatus = 'error:fetch_failed';
     status.textContent = 'error:fetch_failed';
     errorEl.textContent = e.message;
   }
@@ -303,14 +408,18 @@ setTimeout(doLogin, 300);
 
 let ctx: AppContext;
 let keycloakServer: Server;
+let keycloakEvents: OAuthEvents;
 let nextAppServer: Server;
 let keycloakPort: number;
 let appPort: number;
+let fixture: string;
 
 test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
   test.beforeAll(async () => {
     // Start test servers BEFORE launching the app (matches core-dev-preview pattern)
-    keycloakServer = createFakeKeycloak();
+    const keycloak = createFakeKeycloak();
+    keycloakServer = keycloak.server;
+    keycloakEvents = keycloak.events;
     await new Promise<void>((r) => keycloakServer.listen(0, "127.0.0.1", r));
     keycloakPort = (keycloakServer.address() as { port: number }).port;
 
@@ -326,7 +435,7 @@ test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
     // Create fixture with a package.json that has a "dev" script.
     // The dev script starts a tiny HTTP server that serves the fake app.
     // This makes the dev-preview panel detect a dev server and create the webview.
-    const fixture = createFixtureRepo({ name: "oauth-e2e" });
+    fixture = createFixtureRepo({ name: "oauth-e2e" });
 
     // Write a package.json with a dev script that simply echoes the app URL.
     // The dev-preview URL detector looks for localhost URLs in terminal output.
@@ -355,21 +464,31 @@ test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
   test("dev-preview: OAuth redirect blocked → Sign in via Browser → authenticated", async () => {
     // Use a getter so we always reference the latest page after view transitions
     const w = () => ctx.window;
+    const worktreeCards = () => w().locator("[data-worktree-branch]");
 
     // Ensure we're on the project view (not Welcome page).
     // Re-acquire the active window — ProjectViewManager may have created a new view.
     const { getActiveAppWindow } = await import("../helpers/launch");
-    for (let attempt = 0; attempt < 5; attempt++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
       ctx.window = await getActiveAppWindow(ctx.app);
       if (
-        await w()
-          .locator(".sidebar-worktree-card")
+        await worktreeCards()
           .first()
           .isVisible({ timeout: 3000 })
           .catch(() => false)
       ) {
         break;
       }
+
+      // If we're back on Welcome, explicitly reopen the fixture project instead of
+      // relying only on the recent-project shortcut state.
+      const openFolder = w().getByRole("button", { name: "Open Folder" });
+      if (await openFolder.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await openProject(ctx.app, w(), fixture);
+        await w().waitForTimeout(2000);
+        continue;
+      }
+
       // Click recent project on Welcome page if visible
       const recent = w().locator("button", { hasText: /OAuth E2E/i });
       if (await recent.isVisible({ timeout: 1000 }).catch(() => false)) {
@@ -379,10 +498,10 @@ test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
     }
 
     // Verify we're on the project view
-    await expect(w().locator(".sidebar-worktree-card").first()).toBeVisible({ timeout: T_LONG });
+    await expect(worktreeCards().first()).toBeVisible({ timeout: T_LONG });
 
     // Open dev-preview via worktree context menu → Launch → Open Dev Preview
-    await w().locator(".sidebar-worktree-card").first().click({ button: "right" });
+    await worktreeCards().first().click({ button: "right" });
     const launchTrigger = w().locator('[role="menuitem"]', { hasText: /^Launch$/ });
     await expect(launchTrigger).toBeVisible({ timeout: T_SHORT });
     await launchTrigger.hover();
@@ -523,6 +642,71 @@ test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
       .toMatchObject({
         status: "authenticated",
       });
+
+    // -----------------------------------------------------------------------
+    // Layer 1: Protocol-level proof from the fake Keycloak event log
+    // -----------------------------------------------------------------------
+
+    // Exactly one auth request was issued
+    expect(keycloakEvents.authRequests).toHaveLength(1);
+
+    // The auth request's redirect_uri is the loopback pattern
+    // (proves OAuthLoopbackService rewrote the redirect_uri before opening the browser)
+    const authReq = keycloakEvents.authRequests[0];
+    expect(authReq.redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/);
+    expect(authReq.clientId).toBe("test-frontend");
+    expect(authReq.codeChallenge).toBeTruthy();
+    expect(authReq.state).toBeTruthy();
+
+    // Exactly one token exchange was attempted
+    expect(keycloakEvents.tokenRequests).toHaveLength(1);
+
+    // The token exchange used the SAME redirect_uri as the auth request
+    // (proves CDP body rewrite worked — the app sent window.location.origin/auth/callback,
+    //  but CDP intercepted and rewrote it to the loopback URI)
+    const tokenReq = keycloakEvents.tokenRequests[0];
+    expect(tokenReq.redirectUri).toBe(authReq.redirectUri);
+    expect(tokenReq.code).toBe(authReq.codeIssued);
+    expect(tokenReq.codeVerifier).toBeTruthy();
+    expect(tokenReq.clientId).toBe("test-frontend");
+
+    // The fake Keycloak accepted the exchange: redirect_uri matched AND PKCE passed
+    expect(keycloakEvents.validations).toHaveLength(1);
+    expect(keycloakEvents.validations[0]).toEqual({
+      codeValid: true,
+      redirectUriValid: true,
+      pkceValid: true,
+      outcome: "success",
+    });
+
+    // -----------------------------------------------------------------------
+    // Layer 2: App-level diagnostic state from webview's __oauthDebug
+    // -----------------------------------------------------------------------
+
+    const debugState = await w().evaluate(async () => {
+      const wv = document.querySelector("webview") as Electron.WebviewTag | null;
+      if (!wv) return null;
+      try {
+        return await wv.executeJavaScript("window.__oauthDebug");
+      } catch {
+        return null;
+      }
+    });
+
+    // sessionStorage was restored before the callback page ran the exchange
+    expect(debugState).toMatchObject({
+      hadVerifierBeforeExchange: true,
+      hadState: true,
+      storedStateMatched: true,
+      tokenExchangeStarted: true,
+      tokenExchangeSucceeded: true,
+      tokenExchangeError: null,
+      finalStatus: "authenticated",
+    });
+
+    // -----------------------------------------------------------------------
+    // Layer 3: UI-level proof — tokens stored in webview localStorage
+    // -----------------------------------------------------------------------
 
     const authState = await w().evaluate(async () => {
       const wv = document.querySelector("webview") as Electron.WebviewTag | null;
