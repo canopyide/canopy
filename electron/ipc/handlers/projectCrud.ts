@@ -175,13 +175,15 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     // persisted state BEFORE the switch runs.
     const previousProjectId = projectStore.getCurrentProjectId();
     if (outgoingState && previousProjectId) {
-      const validTerminals = sanitizeTerminals(
-        outgoingState.terminals ?? [],
-        `project:switch/pre-apply(${previousProjectId})`
-      );
-      const validSizes = sanitizeTerminalSizes(
-        (outgoingState.terminalSizes ?? {}) as Record<string, unknown>
-      );
+      const validTerminals = outgoingState.terminals
+        ? sanitizeTerminals(
+            outgoingState.terminals,
+            `project:switch/pre-apply(${previousProjectId})`
+          )
+        : undefined;
+      const validSizes = outgoingState.terminalSizes
+        ? sanitizeTerminalSizes(outgoingState.terminalSizes as Record<string, unknown>)
+        : undefined;
       const validDrafts = outgoingState.draftInputs
         ? sanitizeDraftInputs(outgoingState.draftInputs as Record<string, unknown>)
         : undefined;
@@ -189,8 +191,8 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       await projectStore.saveProjectState(previousProjectId, {
         ...(existing ?? { projectId: previousProjectId, sidebarWidth: 350, terminals: [] }),
         projectId: previousProjectId,
-        terminals: validTerminals,
-        terminalSizes: validSizes,
+        ...(validTerminals !== undefined && { terminals: validTerminals }),
+        ...(validSizes !== undefined && { terminalSizes: validSizes }),
         ...(validDrafts !== undefined && { draftInputs: validDrafts }),
       });
     }
@@ -454,13 +456,15 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     // Pre-apply outgoing terminal state
     const previousProjectId = projectStore.getCurrentProjectId();
     if (outgoingState && previousProjectId && previousProjectId !== projectId) {
-      const validTerminals = sanitizeTerminals(
-        outgoingState.terminals ?? [],
-        `project:reopen/pre-apply(${previousProjectId})`
-      );
-      const validSizes = sanitizeTerminalSizes(
-        (outgoingState.terminalSizes ?? {}) as Record<string, unknown>
-      );
+      const validTerminals = outgoingState.terminals
+        ? sanitizeTerminals(
+            outgoingState.terminals,
+            `project:reopen/pre-apply(${previousProjectId})`
+          )
+        : undefined;
+      const validSizes = outgoingState.terminalSizes
+        ? sanitizeTerminalSizes(outgoingState.terminalSizes as Record<string, unknown>)
+        : undefined;
       const validDrafts = outgoingState.draftInputs
         ? sanitizeDraftInputs(outgoingState.draftInputs as Record<string, unknown>)
         : undefined;
@@ -468,8 +472,8 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       await projectStore.saveProjectState(previousProjectId, {
         ...(existing ?? { projectId: previousProjectId, sidebarWidth: 350, terminals: [] }),
         projectId: previousProjectId,
-        terminals: validTerminals,
-        terminalSizes: validSizes,
+        ...(validTerminals !== undefined && { terminals: validTerminals }),
+        ...(validSizes !== undefined && { terminalSizes: validSizes }),
         ...(validDrafts !== undefined && { draftInputs: validDrafts }),
       });
     }
