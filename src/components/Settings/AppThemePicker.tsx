@@ -351,6 +351,8 @@ export function AppThemePicker() {
       <button
         type="button"
         data-testid="theme-picker-trigger"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={() => setOpen(true)}
         className={cn(
           "w-full flex items-center gap-3 p-2 rounded-[var(--radius-md)] border transition-colors text-left",
