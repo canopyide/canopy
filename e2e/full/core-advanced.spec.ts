@@ -7,6 +7,7 @@ import { getGridPanelCount, openBrowser } from "../helpers/panels";
 import {
   addAndSwitchToProject,
   selectExistingProject,
+  selectExistingProjectAndRefresh,
   spawnTerminalAndVerify,
 } from "../helpers/workflows";
 import { SEL } from "../helpers/selectors";
@@ -209,12 +210,10 @@ test.describe.serial("Core: Advanced", () => {
     });
 
     test("switch back to original project restores 1 panel", async () => {
-      const { window } = ctx;
-
-      await selectExistingProject(window, PROJECT_NAME);
+      ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PROJECT_NAME);
 
       await expect
-        .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+        .poll(() => getGridPanelCount(ctx.window), { timeout: T_LONG })
         .toBeGreaterThanOrEqual(1);
     });
   });

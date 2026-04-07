@@ -228,11 +228,19 @@ export async function getActiveAppWindow(
         const win = BrowserWindow.getAllWindows()[0];
         if (!win || win.isDestroyed()) return null;
         const views = win.contentView?.children ?? [];
-        for (const child of views) {
-          const wc = (child as Electron.WebContentsView).webContents;
-          if (wc && !wc.isDestroyed()) return wc.getURL();
+        // The welcome appView is permanently added to contentView and is
+        // typically first. Project views are added on top — iterate from
+        // last to first and prefer the topmost projectId-bearing view.
+        // Fall back to the welcome view URL only if no project view is found.
+        let fallbackUrl: string | null = null;
+        for (let i = views.length - 1; i >= 0; i--) {
+          const wc = (views[i] as Electron.WebContentsView).webContents;
+          if (!wc || wc.isDestroyed()) continue;
+          const url = wc.getURL();
+          if (url.includes("projectId=")) return url;
+          if (fallbackUrl === null) fallbackUrl = url;
         }
-        return null;
+        return fallbackUrl;
       });
     } catch {
       return null;
@@ -294,13 +302,44 @@ const registeredPages = new WeakSet<Page>();
  * (project open, onboarding, empty-grid transition, etc.).
  * If the page hasn't changed, this is a no-op that just confirms readiness.
  */
-export async function refreshActiveWindow(
-  app: ElectronApplication,
-  _oldPage?: Page
-): Promise<Page> {
+export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Page): Promise<Page> {
   // After a project op (open/onboard/switch) the new project WebContentsView
   // may take a moment to load its URL. Wait for the project view rather than
   // returning the welcome page early.
+  //
+  // When called with an `oldPage`, also wait until the currently-attached
+  // WebContents differs from oldPage's URL — otherwise we may snapshot the
+  // attached view *before* the main process has finished swapping it out and
+  // return the still-active outgoing view.
+  const oldUrl = oldPage?.url() ?? null;
+  if (oldUrl && oldUrl.includes("projectId=")) {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      try {
+        const attached = await app.evaluate(({ BrowserWindow }) => {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win || win.isDestroyed()) return null;
+          const views = win.contentView?.children ?? [];
+          // The welcome appView is permanently added to contentView and is
+          // typically first. Project views are added on top — iterate from
+          // last to first and prefer the topmost projectId-bearing view.
+          for (let i = views.length - 1; i >= 0; i--) {
+            const wc = (views[i] as Electron.WebContentsView).webContents;
+            if (wc && !wc.isDestroyed()) {
+              const url = wc.getURL();
+              if (url.includes("projectId=")) return url;
+            }
+          }
+          return null;
+        });
+        if (attached && attached !== oldUrl) break;
+      } catch {
+        // ignore and retry
+      }
+      await wait(150);
+    }
+  }
+
   const newWindow = await getActiveAppWindow(app, 10_000, { requireProject: true });
 
   if (!registeredPages.has(newWindow)) {

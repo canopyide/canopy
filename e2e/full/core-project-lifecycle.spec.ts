@@ -65,44 +65,51 @@ test.describe.serial("Core: Project Lifecycle", () => {
   });
 
   test("project settings shows correct project name", async () => {
-    const { window } = ctx;
+    // Re-acquire the active window so we know which view is current after the
+    // previous switch-isolation test left things on Project A.
+    ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PROJECT_A);
 
     // Open project settings for Project A (currently active)
-    await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
-    const palette = window.locator(SEL.projectSwitcher.palette);
+    await ctx.window.locator(SEL.toolbar.projectSwitcherTrigger).click();
+    let palette = ctx.window.locator(SEL.projectSwitcher.palette);
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 
     const settingsBtn = palette.locator(SEL.projectSwitcher.projectSettings);
     await expect(settingsBtn).toBeVisible({ timeout: T_SHORT });
     await settingsBtn.click();
 
-    await expect(window.locator(SEL.projectSettings.heading)).toBeVisible({ timeout: T_MEDIUM });
+    await expect(ctx.window.locator(SEL.projectSettings.heading)).toBeVisible({
+      timeout: T_MEDIUM,
+    });
 
     // Verify project name input has Project A's name
-    await expect(window.locator("#project-name-input")).toHaveValue(PROJECT_A, {
+    await expect(ctx.window.locator("#project-name-input")).toHaveValue(PROJECT_A, {
       timeout: T_SHORT,
     });
 
     // Close settings
-    await window.locator(SEL.projectSettings.closeButton).click();
-    await expect(window.locator(SEL.projectSettings.heading)).not.toBeVisible({
+    await ctx.window.locator(SEL.projectSettings.closeButton).click();
+    await expect(ctx.window.locator(SEL.projectSettings.heading)).not.toBeVisible({
       timeout: T_SHORT,
     });
 
     // Switch to Project B and verify its name in settings
-    await selectExistingProject(window, PROJECT_B);
+    ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PROJECT_B);
 
-    await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
+    await ctx.window.locator(SEL.toolbar.projectSwitcherTrigger).click();
+    palette = ctx.window.locator(SEL.projectSwitcher.palette);
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
     await palette.locator(SEL.projectSwitcher.projectSettings).click();
 
-    await expect(window.locator(SEL.projectSettings.heading)).toBeVisible({ timeout: T_MEDIUM });
-    await expect(window.locator("#project-name-input")).toHaveValue(PROJECT_B, {
+    await expect(ctx.window.locator(SEL.projectSettings.heading)).toBeVisible({
+      timeout: T_MEDIUM,
+    });
+    await expect(ctx.window.locator("#project-name-input")).toHaveValue(PROJECT_B, {
       timeout: T_SHORT,
     });
 
-    await window.locator(SEL.projectSettings.closeButton).click();
-    await expect(window.locator(SEL.projectSettings.heading)).not.toBeVisible({
+    await ctx.window.locator(SEL.projectSettings.closeButton).click();
+    await expect(ctx.window.locator(SEL.projectSettings.heading)).not.toBeVisible({
       timeout: T_SHORT,
     });
   });
@@ -146,19 +153,22 @@ test.describe.serial("Core: Project Lifecycle", () => {
   });
 
   test("remove project from switcher", async () => {
+    // Switch to Project A so Project B is inactive
+    ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PROJECT_A);
     const { window } = ctx;
 
-    // Switch to Project A so Project B is inactive
-    await selectExistingProject(window, PROJECT_A);
-
-    // Open palette and remove Project B
+    // Open palette and remove Project B via context menu
     await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
     const palette = window.locator(SEL.projectSwitcher.palette);
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 
     const projectBOption = palette.getByRole("option", { name: new RegExp(PROJECT_B) });
     await expect(projectBOption).toBeVisible({ timeout: T_SHORT });
-    await projectBOption.locator(SEL.projectSwitcher.closeButton).click({ force: true });
+    // Right-click to open the context menu for this project row.
+    await projectBOption.click({ button: "right" });
+    const removeItem = window.getByRole("menuitem", { name: "Remove project" });
+    await expect(removeItem).toBeVisible({ timeout: T_SHORT });
+    await removeItem.click();
 
     // Confirm removal
     const dialog = window.getByRole("dialog", { name: "Remove Project from List?" }).last();
