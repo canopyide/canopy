@@ -49,4 +49,12 @@ describe("inferKind", () => {
   it("prefers notePath over devCommand", () => {
     expect(inferKind({ notePath: "/a.md", devCommand: "npm dev" })).toBe("notes");
   });
+
+  it("infers browser from empty-string browserUrl (defined means browser)", () => {
+    expect(inferKind({ browserUrl: "" })).toBe("browser");
+  });
+
+  it("infers notes from empty-string notePath", () => {
+    expect(inferKind({ notePath: "" })).toBe("notes");
+  });
 });

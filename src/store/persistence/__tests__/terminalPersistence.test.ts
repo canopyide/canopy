@@ -498,6 +498,35 @@ describe("TerminalPersistence", () => {
     });
   });
 
+  describe("unregistered extension kind", () => {
+    it("produces base-only snapshot without crashing for unknown kinds", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
+
+      const panel = createMockTerminal({
+        id: "ext-unknown",
+        kind: "custom-widget",
+        title: "Custom",
+        extensionState: { key: "value" },
+        location: "grid",
+      });
+
+      persistence.save([panel], projectId);
+      await vi.advanceTimersByTimeAsync(100);
+
+      const saved = client.setTerminals.mock.calls[0][1] as TerminalSnapshot[];
+      expect(saved).toHaveLength(1);
+      expect(saved[0]).toEqual({
+        id: "ext-unknown",
+        kind: "custom-widget",
+        title: "Custom",
+        worktreeId: undefined,
+        location: "grid",
+        extensionState: { key: "value" },
+      });
+    });
+  });
+
   describe("dev-preview panels", () => {
     it("persists config but not runtime state for dev-preview panels", async () => {
       const client = createMockProjectClient();
