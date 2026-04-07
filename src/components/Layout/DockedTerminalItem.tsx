@@ -206,7 +206,8 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     ? getEffectiveStateIcon(agentState, terminal.waitingReason)
     : null;
   const isDeprioritized =
-    !isOpen && (!agentState || agentState === "idle" || agentState === "completed");
+    !isOpen &&
+    (!agentState || agentState === "idle" || agentState === "completed" || agentState === "exited");
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>

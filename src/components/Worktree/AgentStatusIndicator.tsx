@@ -51,6 +51,13 @@ const STATE_CONFIG: Record<
     label: "completed",
     tooltip: "Agent finished this task",
   },
+  exited: {
+    icon: "–",
+    color: "text-canopy-text/40",
+    pulse: false,
+    label: "exited",
+    tooltip: "Process exited",
+  },
   directing: {
     icon: "✎",
     color: "text-status-info",
@@ -102,6 +109,7 @@ const STATE_PRIORITY: Record<AgentState, number> = {
   running: 4,
   completed: 3,
   waiting: 2,
+  exited: 1,
   idle: 1,
 };
 

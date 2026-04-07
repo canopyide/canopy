@@ -21,6 +21,7 @@ function calculateWorktreeCounts(terminals: TerminalInstance[], worktreeId: stri
     waiting: 0,
     directing: 0,
     completed: 0,
+    exited: 0,
   };
 
   worktreeTerminals.forEach((terminal) => {
