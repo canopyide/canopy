@@ -14,6 +14,8 @@ import type {
   ProjectSwitchOutgoingState,
 } from "../../../shared/types/ipc/project.js";
 import { sanitizeTerminals, sanitizeTerminalSizes, sanitizeDraftInputs } from "./terminalLayout.js";
+import { sanitizeTabGroups } from "../../schemas/index.js";
+import type { TabGroup } from "../../../shared/types/panel.js";
 import { ProjectStatsService } from "../../services/ProjectStatsService.js";
 import type {
   GitInitOptions,
@@ -187,6 +189,13 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       const validDrafts = outgoingState.draftInputs
         ? sanitizeDraftInputs(outgoingState.draftInputs as Record<string, unknown>)
         : undefined;
+      const validTabGroups =
+        outgoingState.tabGroups !== undefined
+          ? (sanitizeTabGroups(
+              outgoingState.tabGroups,
+              `project:switch/pre-apply(${previousProjectId})`
+            ) as TabGroup[])
+          : undefined;
       const existing = await projectStore.getProjectState(previousProjectId);
       await projectStore.saveProjectState(previousProjectId, {
         ...(existing ?? { projectId: previousProjectId, sidebarWidth: 350, terminals: [] }),
@@ -194,6 +203,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         ...(validTerminals !== undefined && { terminals: validTerminals }),
         ...(validSizes !== undefined && { terminalSizes: validSizes }),
         ...(validDrafts !== undefined && { draftInputs: validDrafts }),
+        ...(validTabGroups !== undefined && { tabGroups: validTabGroups }),
       });
     }
 
@@ -468,6 +478,13 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
       const validDrafts = outgoingState.draftInputs
         ? sanitizeDraftInputs(outgoingState.draftInputs as Record<string, unknown>)
         : undefined;
+      const validTabGroups =
+        outgoingState.tabGroups !== undefined
+          ? (sanitizeTabGroups(
+              outgoingState.tabGroups,
+              `project:reopen/pre-apply(${previousProjectId})`
+            ) as TabGroup[])
+          : undefined;
       const existing = await projectStore.getProjectState(previousProjectId);
       await projectStore.saveProjectState(previousProjectId, {
         ...(existing ?? { projectId: previousProjectId, sidebarWidth: 350, terminals: [] }),
@@ -475,6 +492,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         ...(validTerminals !== undefined && { terminals: validTerminals }),
         ...(validSizes !== undefined && { terminalSizes: validSizes }),
         ...(validDrafts !== undefined && { draftInputs: validDrafts }),
+        ...(validTabGroups !== undefined && { tabGroups: validTabGroups }),
       });
     }
 

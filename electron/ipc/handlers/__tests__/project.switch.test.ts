@@ -27,7 +27,7 @@ const projectStoreMock = vi.hoisted(() => ({
   getProjectById:
     vi.fn<(id: string) => { id: string; name: string; path: string; status?: string } | null>(),
   setCurrentProject: vi.fn<(id: string) => Promise<void>>(),
-  getProjectState: vi.fn<(id: string) => Promise<null>>(),
+  getProjectState: vi.fn<(id: string) => Promise<Record<string, unknown> | null>>(),
   saveProjectState: vi.fn<(id: string, state: unknown) => Promise<void>>(),
   getAllProjects: vi.fn(() => []),
   getCurrentProject: vi.fn(() => null),
@@ -292,5 +292,171 @@ describe("project:switch multi-window PVM routing", () => {
 
     expect(pvm2.switchTo).toHaveBeenCalledWith("proj-reopen", "/projects/reopen");
     expect(pvm1.switchTo).not.toHaveBeenCalled();
+  });
+});
+
+describe("project:switch outgoing tabGroups pre-apply (#5001)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("persists tabGroups from outgoingState on project switch", async () => {
+    const mockView = {
+      webContents: { id: 100, isDestroyed: () => false },
+    };
+
+    const pvm = {
+      switchTo: vi.fn().mockResolvedValue({ view: mockView, isNew: false }),
+      getProjectIdForWebContents: vi.fn(),
+    };
+
+    mockGetWindowForWebContents.mockReturnValue(null);
+
+    projectStoreMock.getCurrentProjectId.mockReturnValue("proj-old");
+    projectStoreMock.getProjectById.mockReturnValue({
+      id: "proj-new",
+      name: "New Project",
+      path: "/projects/new",
+    });
+    projectStoreMock.setCurrentProject.mockResolvedValue(undefined);
+    projectStoreMock.getProjectState.mockResolvedValue(null);
+    projectStoreMock.saveProjectState.mockResolvedValue(undefined);
+
+    const deps = {
+      mainWindow: { id: 1 } as unknown,
+      projectViewManager: pvm,
+    } as unknown as HandlerDependencies;
+
+    registerProjectCrudHandlers(deps);
+
+    const handleMap = new Map<string, (...args: unknown[]) => unknown>();
+    for (const call of (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls) {
+      handleMap.set(call[0] as string, call[1] as (...args: unknown[]) => unknown);
+    }
+
+    const handler = handleMap.get(CHANNELS.PROJECT_SWITCH);
+    const fakeEvent = { sender: { id: 99 } };
+    const outgoingState = {
+      terminals: [{ id: "t-1", kind: "browser", title: "B", location: "grid" }],
+      tabGroups: [{ id: "g1", location: "grid", activeTabId: "t-1", panelIds: ["t-1", "t-2"] }],
+      draftInputs: {},
+    };
+
+    await handler!(fakeEvent, "proj-new", outgoingState);
+
+    expect(projectStoreMock.saveProjectState).toHaveBeenCalledWith(
+      "proj-old",
+      expect.objectContaining({
+        tabGroups: expect.arrayContaining([
+          expect.objectContaining({ id: "g1", panelIds: ["t-1", "t-2"] }),
+        ]),
+      })
+    );
+  });
+
+  it("does not include tabGroups when outgoingState has no tabGroups", async () => {
+    const mockView = {
+      webContents: { id: 100, isDestroyed: () => false },
+    };
+
+    const pvm = {
+      switchTo: vi.fn().mockResolvedValue({ view: mockView, isNew: false }),
+      getProjectIdForWebContents: vi.fn(),
+    };
+
+    mockGetWindowForWebContents.mockReturnValue(null);
+
+    projectStoreMock.getCurrentProjectId.mockReturnValue("proj-old");
+    projectStoreMock.getProjectById.mockReturnValue({
+      id: "proj-new",
+      name: "New Project",
+      path: "/projects/new",
+    });
+    projectStoreMock.setCurrentProject.mockResolvedValue(undefined);
+    projectStoreMock.getProjectState.mockResolvedValue(null);
+    projectStoreMock.saveProjectState.mockResolvedValue(undefined);
+
+    const deps = {
+      mainWindow: { id: 1 } as unknown,
+      projectViewManager: pvm,
+    } as unknown as HandlerDependencies;
+
+    registerProjectCrudHandlers(deps);
+
+    const handleMap = new Map<string, (...args: unknown[]) => unknown>();
+    for (const call of (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls) {
+      handleMap.set(call[0] as string, call[1] as (...args: unknown[]) => unknown);
+    }
+
+    const handler = handleMap.get(CHANNELS.PROJECT_SWITCH);
+    const fakeEvent = { sender: { id: 99 } };
+    const outgoingState = {
+      draftInputs: {},
+    };
+
+    await handler!(fakeEvent, "proj-new", outgoingState);
+
+    const savedState = projectStoreMock.saveProjectState.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(savedState).not.toHaveProperty("tabGroups");
+  });
+
+  it("clears stale tabGroups when outgoingState sends empty array", async () => {
+    const mockView = {
+      webContents: { id: 100, isDestroyed: () => false },
+    };
+
+    const pvm = {
+      switchTo: vi.fn().mockResolvedValue({ view: mockView, isNew: false }),
+      getProjectIdForWebContents: vi.fn(),
+    };
+
+    mockGetWindowForWebContents.mockReturnValue(null);
+
+    projectStoreMock.getCurrentProjectId.mockReturnValue("proj-old");
+    projectStoreMock.getProjectById.mockReturnValue({
+      id: "proj-new",
+      name: "New Project",
+      path: "/projects/new",
+    });
+    projectStoreMock.setCurrentProject.mockResolvedValue(undefined);
+    // Simulate existing state with stale tab groups
+    projectStoreMock.getProjectState.mockResolvedValue({
+      projectId: "proj-old",
+      sidebarWidth: 350,
+      terminals: [],
+      tabGroups: [{ id: "stale-g1", location: "grid", activeTabId: "x", panelIds: ["x", "y"] }],
+    });
+    projectStoreMock.saveProjectState.mockResolvedValue(undefined);
+
+    const deps = {
+      mainWindow: { id: 1 } as unknown,
+      projectViewManager: pvm,
+    } as unknown as HandlerDependencies;
+
+    registerProjectCrudHandlers(deps);
+
+    const handleMap = new Map<string, (...args: unknown[]) => unknown>();
+    for (const call of (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls) {
+      handleMap.set(call[0] as string, call[1] as (...args: unknown[]) => unknown);
+    }
+
+    const handler = handleMap.get(CHANNELS.PROJECT_SWITCH);
+    const fakeEvent = { sender: { id: 99 } };
+    const outgoingState = {
+      terminals: [],
+      tabGroups: [],
+      draftInputs: {},
+    };
+
+    await handler!(fakeEvent, "proj-new", outgoingState);
+
+    const savedState = projectStoreMock.saveProjectState.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(savedState.tabGroups).toEqual([]);
   });
 });
