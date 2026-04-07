@@ -578,13 +578,6 @@ describe("OnboardingFlow auto-open wizard on no selected agents", () => {
       expect(trackMock).toHaveBeenCalled();
     });
 
-    // Wizard should not appear as a manual/auto-open
-    // (the welcome step or agent setup step appears as part of onboarding flow instead)
-    const manualWizard = baseElement.ownerDocument.querySelector(
-      '[data-testid="agent-setup-wizard"]'
-    );
-    // If it exists, it should be part of the onboarding flow (step 2), not auto-opened
-    // The key check is that auto-open doesn't trigger during incomplete onboarding
     // With completed=false and no currentStep match, it starts at welcome
     expect(baseElement.ownerDocument.querySelector('[data-testid="welcome-step"]')).toBeTruthy();
   });
