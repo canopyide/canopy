@@ -1,6 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { getPanelKindConfig } from "../panelKindRegistry.js";
-import type { TerminalInstance } from "../../types/panel.js";
+import { describe, it, expect, beforeAll } from "vitest";
+import { getPanelKindConfig } from "@shared/config/panelKindRegistry";
+import type { TerminalInstance } from "@shared/types/panel";
+import { initBuiltInPanelKinds } from "../registry";
+
+beforeAll(() => {
+  initBuiltInPanelKinds();
+});
 
 function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
@@ -11,7 +16,7 @@ function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance 
   };
 }
 
-describe("panelKindRegistry serialize hooks", () => {
+describe("panelKindRegistry serialize hooks (co-located)", () => {
   describe("terminal", () => {
     it("serializes PTY fields", () => {
       const config = getPanelKindConfig("terminal");

@@ -4,7 +4,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { initBuiltInPanelKinds } from "@/panels/registry";
 import { MAX_GRID_TERMINALS } from "../terminalRegistrySlice";
+
+initBuiltInPanelKinds();
 
 vi.mock("@/clients", () => ({
   terminalClient: {

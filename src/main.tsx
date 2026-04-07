@@ -1,3 +1,6 @@
+import { initBuiltInPanelKinds } from "./panels/registry";
+initBuiltInPanelKinds();
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource/jetbrains-mono/400.css";
