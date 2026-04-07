@@ -6,7 +6,6 @@ import { openAndOnboardProject } from "../helpers/project";
 import { getGridPanelCount, openBrowser } from "../helpers/panels";
 import {
   addAndSwitchToProject,
-  selectExistingProject,
   selectExistingProjectAndRefresh,
   spawnTerminalAndVerify,
 } from "../helpers/workflows";
