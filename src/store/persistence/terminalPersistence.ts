@@ -2,7 +2,7 @@ import type { TerminalInstance, TerminalSnapshot, TabGroup } from "@/types";
 import { projectClient } from "@/clients";
 import { debounce } from "@/utils/debounce";
 import { isRendererPerfCaptureEnabled, markRendererPerformance } from "@/utils/performance";
-import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+import { getPanelKindConfig } from "@shared/config/panelKindRegistry";
 import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 
 type ProjectClientType = typeof projectClient;
@@ -15,8 +15,6 @@ export interface TerminalPersistenceOptions {
 }
 
 export function terminalToSnapshot(t: TerminalInstance): TerminalSnapshot {
-  // Note: tabGroupId and orderInGroup are NOT saved on terminals anymore
-  // Tab groups are stored separately in ProjectState.tabGroups
   const base: TerminalSnapshot = {
     id: t.id,
     kind: t.kind,
@@ -26,56 +24,10 @@ export function terminalToSnapshot(t: TerminalInstance): TerminalSnapshot {
     ...(t.extensionState !== undefined && { extensionState: t.extensionState }),
   };
 
-  if (t.kind === "dev-preview") {
-    return {
-      ...base,
-      type: t.type,
-      cwd: t.cwd,
-      command: t.devCommand?.trim() || undefined,
-      ...(t.browserUrl && { browserUrl: t.browserUrl }),
-      ...(t.browserHistory && { browserHistory: t.browserHistory }),
-      ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
-      ...(t.devPreviewConsoleOpen !== undefined && {
-        devPreviewConsoleOpen: t.devPreviewConsoleOpen,
-      }),
-      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
-      ...(t.exitBehavior !== undefined && { exitBehavior: t.exitBehavior }),
-    };
-  }
+  const config = getPanelKindConfig(t.kind ?? "terminal");
+  const fragment = config?.serialize?.(t) ?? {};
 
-  if (panelKindHasPty(t.kind ?? "terminal")) {
-    return {
-      ...base,
-      type: t.type,
-      agentId: t.agentId,
-      cwd: t.cwd,
-      command: t.command?.trim() || undefined,
-      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
-      ...(t.exitBehavior !== undefined && { exitBehavior: t.exitBehavior }),
-      ...(t.agentSessionId && { agentSessionId: t.agentSessionId }),
-      ...(t.agentLaunchFlags?.length && { agentLaunchFlags: t.agentLaunchFlags }),
-      ...(t.agentModelId && { agentModelId: t.agentModelId }),
-      ...(t.agentState && { agentState: t.agentState }),
-      ...(t.lastStateChange !== undefined && { lastStateChange: t.lastStateChange }),
-    };
-  } else if (t.kind === "notes") {
-    return {
-      ...base,
-      notePath: t.notePath,
-      noteId: t.noteId,
-      scope: t.scope,
-      createdAt: t.createdAt,
-    };
-  } else {
-    // Non-PTY panels: browser, assistant, etc.
-    return {
-      ...base,
-      ...(t.browserUrl && { browserUrl: t.browserUrl }),
-      ...(t.browserHistory && { browserHistory: t.browserHistory }),
-      ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
-      ...(t.browserConsoleOpen !== undefined && { browserConsoleOpen: t.browserConsoleOpen }),
-    };
-  }
+  return { ...base, ...fragment };
 }
 
 const DEFAULT_OPTIONS: Required<Omit<TerminalPersistenceOptions, "getProjectId">> &

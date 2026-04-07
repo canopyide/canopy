@@ -6,6 +6,7 @@ import { isWebGLHardwareAccelerated } from "../utils/gpuDetection.js";
 import { isGpuDisabledByFlag } from "./GpuCrashMonitorService.js";
 import { getCrashLoopGuard } from "./CrashLoopGuardService.js";
 import type { HydrateResult } from "../../shared/types/ipc/app.js";
+import { inferKind } from "../../shared/utils/inferPanelKind.js";
 
 /**
  * Build a HydrateResult for project switch payloads.
@@ -37,23 +38,11 @@ export async function buildSwitchHydrateResult(projectId: string): Promise<Hydra
     );
     terminalsToUse = validatedTerminals
       .filter((t) => t.location !== "trash")
-      .map((t) => {
-        let kind = t.kind;
-        if (!kind) {
-          if (t.browserUrl !== undefined) {
-            kind = "browser";
-          } else if (t.notePath !== undefined || t.noteId !== undefined) {
-            kind = "notes";
-          } else {
-            kind = "terminal";
-          }
-        }
-        return {
-          ...t,
-          kind,
-          location: t.location as "grid" | "dock",
-        };
-      });
+      .map((t) => ({
+        ...t,
+        kind: inferKind(t),
+        location: t.location as "grid" | "dock",
+      }));
 
     if (projectState.activeWorktreeId !== undefined) {
       activeWorktreeIdToUse = projectState.activeWorktreeId;
