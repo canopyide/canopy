@@ -96,7 +96,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     showInPalette: true,
     searchAliases: ["web", "chrome", "internet", "www"],
     serialize: (t) => ({
-      ...(t.browserUrl && { browserUrl: t.browserUrl }),
+      ...(t.browserUrl != null && { browserUrl: t.browserUrl }),
       ...(t.browserHistory && { browserHistory: t.browserHistory }),
       ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
       ...(t.browserConsoleOpen !== undefined && { browserConsoleOpen: t.browserConsoleOpen }),
@@ -114,10 +114,10 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     showInPalette: true,
     searchAliases: ["md", "markdown", "text", "memo"],
     serialize: (t) => ({
-      notePath: t.notePath,
-      noteId: t.noteId,
-      scope: t.scope,
-      createdAt: t.createdAt,
+      ...(t.notePath != null && { notePath: t.notePath }),
+      ...(t.noteId != null && { noteId: t.noteId }),
+      ...(t.scope != null && { scope: t.scope }),
+      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
     }),
   },
   "dev-preview": {
@@ -136,7 +136,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
       type: t.type,
       cwd: t.cwd,
       command: t.devCommand?.trim() || undefined,
-      ...(t.browserUrl && { browserUrl: t.browserUrl }),
+      ...(t.browserUrl != null && { browserUrl: t.browserUrl }),
       ...(t.browserHistory && { browserHistory: t.browserHistory }),
       ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
       ...(t.devPreviewConsoleOpen !== undefined && {
