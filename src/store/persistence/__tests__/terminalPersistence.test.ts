@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { initBuiltInPanelKinds } from "@/panels/registry";
 import { TerminalPersistence } from "../terminalPersistence";
 import type { TerminalInstance, TerminalSnapshot } from "@/types";
+
+initBuiltInPanelKinds();
 
 const createMockTerminal = (overrides: Partial<TerminalInstance> = {}): TerminalInstance => ({
   id: "test-1",

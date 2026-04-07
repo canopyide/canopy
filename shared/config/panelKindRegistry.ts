@@ -46,25 +46,11 @@ export interface PanelKindConfig {
   createDefaults?: (options: AddPanelOptions) => Partial<TerminalInstance>;
 }
 
-function serializePtyPanel(t: TerminalInstance): Partial<TerminalSnapshot> {
-  return {
-    type: t.type,
-    agentId: t.agentId,
-    cwd: t.cwd,
-    command: t.command?.trim() || undefined,
-    ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
-    ...(t.exitBehavior !== undefined && { exitBehavior: t.exitBehavior }),
-    ...(t.agentSessionId && { agentSessionId: t.agentSessionId }),
-    ...(t.agentLaunchFlags?.length && { agentLaunchFlags: t.agentLaunchFlags }),
-    ...(t.agentModelId && { agentModelId: t.agentModelId }),
-    ...(t.agentState && { agentState: t.agentState }),
-    ...(t.lastStateChange !== undefined && { lastStateChange: t.lastStateChange }),
-  };
-}
-
 /**
  * Registry of panel kind configurations.
- * Built-in kinds are registered at startup.
+ * Built-in kinds are registered at startup with metadata only.
+ * Serialize and createDefaults hooks are injected by the renderer
+ * via initBuiltInPanelKinds() in src/panels/registry.tsx.
  * Extensions can register additional kinds at runtime.
  */
 const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
@@ -77,9 +63,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     canRestart: true,
     canConvert: true,
     keepAliveOnProjectSwitch: true,
-    showInPalette: false, // Has dedicated spawn action
-    serialize: serializePtyPanel,
-    createDefaults: () => ({}), // PTY fields handled by addTerminal's spawn path
+    showInPalette: false,
   },
   agent: {
     id: "agent",
@@ -90,9 +74,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     canRestart: true,
     canConvert: true,
     keepAliveOnProjectSwitch: true,
-    showInPalette: false, // Has dedicated spawn action
-    serialize: serializePtyPanel,
-    createDefaults: () => ({}), // PTY fields handled by addTerminal's spawn path
+    showInPalette: false,
   },
   browser: {
     id: "browser",
@@ -105,23 +87,6 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
     searchAliases: ["web", "chrome", "internet", "www"],
-    serialize: (t) => ({
-      ...(t.browserUrl != null && { browserUrl: t.browserUrl }),
-      ...(t.browserHistory && { browserHistory: t.browserHistory }),
-      ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
-      ...(t.browserConsoleOpen !== undefined && { browserConsoleOpen: t.browserConsoleOpen }),
-    }),
-    createDefaults: (options) => ({
-      browserUrl:
-        ("browserUrl" in options ? options.browserUrl : undefined) || "http://localhost:3000",
-      browserHistory: "browserHistory" in options ? options.browserHistory : undefined,
-      browserZoom: "browserZoom" in options ? options.browserZoom : undefined,
-      browserConsoleOpen: "browserConsoleOpen" in options ? options.browserConsoleOpen : undefined,
-      type: "terminal" as const,
-      cwd: "",
-      cols: 80,
-      rows: 24,
-    }),
   },
   notes: {
     id: "notes",
@@ -134,67 +99,19 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
     searchAliases: ["md", "markdown", "text", "memo"],
-    serialize: (t) => ({
-      ...(t.notePath != null && { notePath: t.notePath }),
-      ...(t.noteId != null && { noteId: t.noteId }),
-      ...(t.scope != null && { scope: t.scope }),
-      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
-    }),
-    createDefaults: (options) => ({
-      notePath: ("notePath" in options ? options.notePath : undefined) ?? "",
-      noteId: ("noteId" in options ? options.noteId : undefined) ?? "",
-      scope: ("scope" in options ? options.scope : undefined) ?? "project",
-      createdAt: ("createdAt" in options ? options.createdAt : undefined) ?? Date.now(),
-      type: "terminal" as const,
-      cwd: "",
-      cols: 80,
-      rows: 24,
-    }),
   },
   "dev-preview": {
     id: "dev-preview",
     name: "Dev Preview",
     iconId: "monitor",
     color: PANEL_KIND_BRAND_COLORS["dev-preview"],
-    hasPty: false, // Dev-preview panels manage their own ephemeral PTYs via useDevServer hook
-    canRestart: false, // Restart is handled internally by the dev-preview component
+    hasPty: false,
+    canRestart: false,
     canConvert: false,
-    usesTerminalUi: false, // Uses custom browser-based UI, not xterm.js
+    usesTerminalUi: false,
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
     searchAliases: ["localhost", "server", "preview", "port"],
-    serialize: (t) => ({
-      type: t.type,
-      cwd: t.cwd,
-      command: t.devCommand?.trim() || undefined,
-      ...(t.browserUrl != null && { browserUrl: t.browserUrl }),
-      ...(t.browserHistory && { browserHistory: t.browserHistory }),
-      ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
-      ...(t.devPreviewConsoleOpen !== undefined && {
-        devPreviewConsoleOpen: t.devPreviewConsoleOpen,
-      }),
-      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
-      ...(t.exitBehavior !== undefined && { exitBehavior: t.exitBehavior }),
-    }),
-    createDefaults: (options) => ({
-      cwd: ("cwd" in options ? options.cwd : undefined) ?? "",
-      devCommand: "devCommand" in options ? options.devCommand : undefined,
-      browserUrl: "browserUrl" in options ? options.browserUrl : undefined,
-      browserHistory: "browserHistory" in options ? options.browserHistory : undefined,
-      browserZoom: "browserZoom" in options ? options.browserZoom : undefined,
-      devServerStatus: "devServerStatus" in options ? options.devServerStatus : undefined,
-      devServerUrl: ("devServerUrl" in options ? options.devServerUrl : undefined) ?? undefined,
-      devServerError:
-        ("devServerError" in options ? options.devServerError : undefined) ?? undefined,
-      devServerTerminalId:
-        ("devServerTerminalId" in options ? options.devServerTerminalId : undefined) ?? undefined,
-      devPreviewConsoleOpen:
-        "devPreviewConsoleOpen" in options ? options.devPreviewConsoleOpen : undefined,
-      exitBehavior: "exitBehavior" in options ? options.exitBehavior : undefined,
-      type: "terminal" as const,
-      cols: 80,
-      rows: 24,
-    }),
   },
 };
 
