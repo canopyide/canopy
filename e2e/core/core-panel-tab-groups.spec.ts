@@ -15,6 +15,25 @@ test.describe.serial("Core: Panel Tab Groups", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "tab-groups", withMultipleFiles: true });
     ctx = await launchApp();
+
+    // Disable two-pane split mode before the project loads. The 1→2 panel
+    // transition from "Duplicate as new tab" triggers a race condition where
+    // the split layout briefly activates during the intermediate state (two
+    // single-panel groups) and crashes the app. Seeding localStorage before
+    // the zustand store hydrates avoids this.
+    await ctx.window.evaluate(() => {
+      localStorage.setItem(
+        "canopy-two-pane-split",
+        JSON.stringify({
+          state: {
+            config: { enabled: false, defaultRatio: 0.5, preferPreview: false },
+            ratioByWorktreeId: {},
+          },
+          version: 1,
+        })
+      );
+    });
+
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Tab Groups Test");
   });
 
