@@ -100,7 +100,29 @@ export function getPanelKindDefinitions(): PanelKindDefinition[] {
   return Object.values(PANEL_KIND_DEFINITION_REGISTRY);
 }
 
-export function registerPanelKindDefinition(definition: PanelKindDefinition): void {
+export function registerPanelKindDefinition(definition: PanelKindDefinition): void;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function registerPanelKindDefinition(kindId: string, component: ComponentType<any>): void;
+export function registerPanelKindDefinition(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  definitionOrKindId: PanelKindDefinition | string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  component?: ComponentType<any>
+): void {
+  let definition: PanelKindDefinition;
+  if (typeof definitionOrKindId === "string") {
+    const config = getPanelKindConfig(definitionOrKindId);
+    if (!config) {
+      console.warn(
+        `[panelKindRegistry] Cannot register definition for "${definitionOrKindId}": not found in shared registry`
+      );
+      return;
+    }
+    definition = { ...config, component: component! };
+  } else {
+    definition = definitionOrKindId;
+  }
+
   if (PANEL_KIND_DEFINITION_REGISTRY[definition.id]) {
     console.warn(`Panel kind definition "${definition.id}" already registered, overwriting`);
   }
