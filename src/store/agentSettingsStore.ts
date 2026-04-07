@@ -21,7 +21,7 @@ export function normalizeAgentSelection(
     const entry = agents[id];
     if (!entry) continue;
 
-    if (entry.enabled === false && entry.selected !== false) {
+    if (entry.enabled === false && entry.selected === undefined) {
       agents[id] = { ...entry, selected: false };
       changed = true;
     } else if (entry.selected === undefined) {

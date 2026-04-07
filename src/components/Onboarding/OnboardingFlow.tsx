@@ -184,13 +184,14 @@ export function OnboardingFlow({
   }, [advanceStep]);
 
   const handleManualWizardClose = useCallback(() => {
+    void onRefreshSettings();
     const shouldReturn = returnToPaletteRef.current;
     returnToPaletteRef.current = false;
     setManualWizardOpen(false);
     if (shouldReturn) {
       void actionService.dispatch("panel.palette", undefined, { source: "user" });
     }
-  }, []);
+  }, [onRefreshSettings]);
 
   // Agent setup wizard close
   const handleAgentSetupClose = useCallback(async () => {

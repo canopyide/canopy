@@ -498,6 +498,29 @@ describe("OnboardingFlow auto-open wizard on no selected agents", () => {
     });
   });
 
+  it("calls onRefreshSettings when auto-opened wizard is closed", async () => {
+    const refreshMock = vi.fn(() => Promise.resolve());
+    const { getByTestId } = await act(async () => {
+      return render(
+        <OnboardingFlow
+          availability={{} as import("@shared/types").CliAvailability}
+          onRefreshSettings={refreshMock}
+          hasAnySelectedAgent={false}
+        />
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(getByTestId("agent-setup-wizard")).toBeTruthy();
+    });
+
+    await act(async () => {
+      getByTestId("close-wizard").click();
+    });
+
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
   it("does NOT auto-open wizard when hasAnySelectedAgent is null (loading)", async () => {
     const { baseElement } = await act(async () => {
       return render(

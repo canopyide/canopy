@@ -59,6 +59,14 @@ describe("normalizeAgentSelection", () => {
     expect(result.agents.claude.selected).toBe(false);
   });
 
+  it("does not override explicit selected: true when enabled: false", () => {
+    const settings = makeSettings({
+      claude: { enabled: false, selected: true },
+    });
+    const result = normalizeAgentSelection(settings, availability);
+    expect(result.agents.claude.selected).toBe(true);
+  });
+
   it("returns same reference when no changes are needed", () => {
     const settings = makeSettings({
       claude: { selected: true },
