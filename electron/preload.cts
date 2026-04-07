@@ -2827,3 +2827,11 @@ if (process.env.CANOPY_E2E_FAULT_MODE === "1") {
     getRendererListenerCount: (channel: string) => ipcRenderer.listenerCount(channel),
   });
 }
+
+// Generic e2e-mode flag — set whenever the test harness launches Canopy.
+// Used by the renderer to suppress side effects (like the auto-launched
+// primary agent at the end of onboarding) that would otherwise pollute
+// panel-count assertions in tests.
+if (process.env.CANOPY_E2E_MODE === "1") {
+  contextBridge.exposeInMainWorld("__CANOPY_E2E_MODE__", true);
+}
