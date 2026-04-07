@@ -73,6 +73,7 @@ vi.mock("@/store/restartExitSuppression", () => ({
 }));
 
 vi.mock("@/store/projectStore", () => ({
+  setTerminalStoreGetter: vi.fn(),
   useProjectStore: {
     getState: () => ({ currentProject: { id: "proj-1" } }),
   },

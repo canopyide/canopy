@@ -37,6 +37,7 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 
 vi.mock("../../persistence/terminalPersistence", () => ({
   terminalPersistence: {
+    setProjectIdGetter: vi.fn(),
     save: vi.fn(),
     saveTabGroups: vi.fn(),
     load: vi.fn().mockReturnValue([]),

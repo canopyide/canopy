@@ -15,6 +15,7 @@ import type {
 } from "../../../shared/types/ipc/project.js";
 import { sanitizeTerminals, sanitizeTerminalSizes, sanitizeDraftInputs } from "./terminalLayout.js";
 import { sanitizeTabGroups } from "../../schemas/index.js";
+import type { TabGroup } from "../../../shared/types/panel.js";
 import { ProjectStatsService } from "../../services/ProjectStatsService.js";
 import type {
   GitInitOptions,
@@ -190,10 +191,10 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         : undefined;
       const validTabGroups =
         outgoingState.tabGroups !== undefined
-          ? sanitizeTabGroups(
+          ? (sanitizeTabGroups(
               outgoingState.tabGroups,
               `project:switch/pre-apply(${previousProjectId})`
-            )
+            ) as TabGroup[])
           : undefined;
       const existing = await projectStore.getProjectState(previousProjectId);
       await projectStore.saveProjectState(previousProjectId, {
@@ -479,10 +480,10 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
         : undefined;
       const validTabGroups =
         outgoingState.tabGroups !== undefined
-          ? sanitizeTabGroups(
+          ? (sanitizeTabGroups(
               outgoingState.tabGroups,
               `project:reopen/pre-apply(${previousProjectId})`
-            )
+            ) as TabGroup[])
           : undefined;
       const existing = await projectStore.getProjectState(previousProjectId);
       await projectStore.saveProjectState(previousProjectId, {

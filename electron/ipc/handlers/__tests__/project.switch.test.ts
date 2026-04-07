@@ -27,7 +27,7 @@ const projectStoreMock = vi.hoisted(() => ({
   getProjectById:
     vi.fn<(id: string) => { id: string; name: string; path: string; status?: string } | null>(),
   setCurrentProject: vi.fn<(id: string) => Promise<void>>(),
-  getProjectState: vi.fn<(id: string) => Promise<null>>(),
+  getProjectState: vi.fn<(id: string) => Promise<Record<string, unknown> | null>>(),
   saveProjectState: vi.fn<(id: string, state: unknown) => Promise<void>>(),
   getAllProjects: vi.fn(() => []),
   getCurrentProject: vi.fn(() => null),
