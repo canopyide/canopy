@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { launchApp, closeApp, type AppContext } from "../helpers/launch";
+import { launchApp, closeApp, refreshActiveWindow, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { addAndSwitchToProject, selectExistingProjectAndRefresh } from "../helpers/workflows";
@@ -114,6 +114,10 @@ test.describe.serial("Core: Project Management Advanced", () => {
 
   test.describe.serial("Worktree Overview Modal", () => {
     test("modal opens via keyboard shortcut and shows worktree cards", async () => {
+      // Re-acquire the active window — the preceding project-removal tests
+      // may have switched the active WebContentsView. Explicitly re-select
+      // the primary project to ensure we're on the right view.
+      ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PRIMARY_NAME);
       const { window } = ctx;
 
       await window.keyboard.press(`${mod}+Shift+O`);
@@ -156,8 +160,18 @@ test.describe.serial("Core: Project Management Advanced", () => {
         })
         .toBeLessThan(initialCount);
 
-      // Clear search
-      await popover.locator('[aria-label="Clear search"]').click();
+      // Clear search — the filter popover may have auto-closed after the
+      // search reduced results to 0, so use the modal's "Clear all filters"
+      // button which is always visible when filters are active.
+      const clearAllBtn = modal.getByRole("button", { name: "Clear all filters" });
+      if (await clearAllBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await clearAllBtn.click();
+      } else {
+        // Fallback: reopen popover and clear the search input
+        await modal.locator(SEL.worktree.filterButton).click();
+        await expect(popover).toBeVisible({ timeout: T_SHORT });
+        await popover.locator('[aria-label="Clear search"]').click();
+      }
       await window.waitForTimeout(T_SETTLE);
 
       // All cards should reappear
@@ -165,8 +179,11 @@ test.describe.serial("Core: Project Management Advanced", () => {
         .poll(() => cards.count(), { timeout: T_MEDIUM })
         .toBeGreaterThanOrEqual(initialCount);
 
-      // Close popover by clicking the filter button again (toggle)
-      await modal.locator(SEL.worktree.filterButton).click();
+      // Close popover if still open (the "Clear all filters" path closes it,
+      // but the fallback path leaves it open)
+      if (await popover.isVisible({ timeout: 500 }).catch(() => false)) {
+        await modal.locator(SEL.worktree.filterButton).click();
+      }
       await expect(popover).not.toBeVisible({ timeout: T_SHORT });
     });
 

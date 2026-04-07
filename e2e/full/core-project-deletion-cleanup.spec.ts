@@ -71,6 +71,23 @@ test.describe.serial("Deletion Cleanup: Active project close clears UI", () => {
   test.beforeAll(async () => {
     fixtureDir = createFixtureRepo({ name: "active-close" });
     ctx = await launchApp();
+
+    // Disable two-pane split mode: spawning exactly 2 terminals triggers a
+    // race condition where the split layout momentarily activates during the
+    // tab-group intermediate state, causing the Electron process to exit.
+    await ctx.window.evaluate(() => {
+      localStorage.setItem(
+        "canopy-two-pane-split",
+        JSON.stringify({
+          state: {
+            config: { enabled: false, defaultRatio: 0.5, preferPreview: false },
+            ratioByWorktreeId: {},
+          },
+          version: 1,
+        })
+      );
+    });
+
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, PROJECT_NAME);
 
     const panel1 = await spawnTerminalAndVerify(ctx.window);
