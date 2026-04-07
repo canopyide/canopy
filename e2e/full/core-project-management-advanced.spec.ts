@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
-import { addAndSwitchToProject, selectExistingProject } from "../helpers/workflows";
+import { addAndSwitchToProject, selectExistingProjectAndRefresh } from "../helpers/workflows";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
@@ -24,10 +24,10 @@ test.describe.serial("Core: Project Management Advanced", () => {
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, primaryRepo, PRIMARY_NAME);
 
     // Add secondary project
-    await addAndSwitchToProject(ctx.app, ctx.window, secondaryRepo, SECONDARY_NAME);
+    ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, secondaryRepo, SECONDARY_NAME);
 
     // Switch back to primary project
-    await selectExistingProject(ctx.window, PRIMARY_NAME);
+    ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PRIMARY_NAME);
 
     // Verify primary project is active by checking sidebar has worktree cards
     await expect(ctx.window.locator("[data-worktree-branch]").first()).toBeVisible({
@@ -49,10 +49,13 @@ test.describe.serial("Core: Project Management Advanced", () => {
       const palette = window.locator(SEL.projectSwitcher.palette);
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 
-      // Find the secondary project row and click its close/remove button
+      // Find the secondary project row and trigger removal via context menu
       const secondaryOption = palette.getByRole("option", { name: new RegExp(SECONDARY_NAME) });
       await expect(secondaryOption).toBeVisible({ timeout: T_SHORT });
-      await secondaryOption.locator(SEL.projectSwitcher.closeButton).click({ force: true });
+      await secondaryOption.click({ button: "right" });
+      const removeItem = window.getByRole("menuitem", { name: "Remove project" });
+      await expect(removeItem).toBeVisible({ timeout: T_SHORT });
+      await removeItem.click();
 
       // Confirm dialog appears with project name
       const dialog = window.getByRole("dialog", { name: "Remove Project from List?" }).last();
@@ -82,7 +85,10 @@ test.describe.serial("Core: Project Management Advanced", () => {
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 
       const secondaryOption = palette.getByRole("option", { name: new RegExp(SECONDARY_NAME) });
-      await secondaryOption.locator(SEL.projectSwitcher.closeButton).click({ force: true });
+      await secondaryOption.click({ button: "right" });
+      const removeItem2 = window.getByRole("menuitem", { name: "Remove project" });
+      await expect(removeItem2).toBeVisible({ timeout: T_SHORT });
+      await removeItem2.click();
 
       const dialog = window.getByRole("dialog", { name: "Remove Project from List?" }).last();
       await expect(dialog).toBeVisible({ timeout: T_MEDIUM });

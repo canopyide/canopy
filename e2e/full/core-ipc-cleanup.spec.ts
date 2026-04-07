@@ -12,7 +12,7 @@ import {
   getMainListenerSnapshot,
   getRendererListenerSnapshot,
 } from "../helpers/ipcFaults";
-import { addAndSwitchToProject, selectExistingProject } from "../helpers/workflows";
+import { addAndSwitchToProject, selectExistingProjectAndRefresh } from "../helpers/workflows";
 import { rmSync } from "fs";
 
 const MONITORED_CHANNELS = [
@@ -112,10 +112,10 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
       ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, fixture.repoB, "IPC Project B");
       await ctx.window.waitForTimeout(T_SETTLE);
 
-      await selectExistingProject(ctx.window, "IPC Cleanup");
+      ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, "IPC Cleanup");
       await ctx.window.waitForTimeout(T_SETTLE);
 
-      await selectExistingProject(ctx.window, "IPC Project B");
+      ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, "IPC Project B");
       await ctx.window.waitForTimeout(T_SETTLE);
 
       const afterRenderer = await getRendererListenerSnapshot(ctx.window, RENDERER_CHANNELS);
@@ -158,14 +158,18 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
     // Counter should be 0 before any event is sent
     expect(count).toBe(0);
 
-    // Send a single terminal:activity event from the main process
-    await app.evaluate(({ BrowserWindow }) => {
-      const wins = BrowserWindow.getAllWindows();
-      if (wins.length > 0) {
-        wins[0].webContents.send("terminal:activity", {
-          terminalId: "test-terminal-id",
-          headline: "e2e test",
-        });
+    // Send a single terminal:activity event to every alive WebContents —
+    // after the WebContentsView migration the renderer lives inside a
+    // child view, not the BrowserWindow's main webContents, so a single
+    // `wins[0].webContents.send` would miss it.
+    await app.evaluate(({ webContents }) => {
+      for (const wc of webContents.getAllWebContents()) {
+        if (!wc.isDestroyed()) {
+          wc.send("terminal:activity", {
+            terminalId: "test-terminal-id",
+            headline: "e2e test",
+          });
+        }
       }
     });
 

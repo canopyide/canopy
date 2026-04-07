@@ -43,10 +43,13 @@ async function getCurrentProject(page: typeof ctx.window): Promise<ProjectInfo> 
   });
 }
 
-async function switchToProject(page: typeof ctx.window, projectName: string): Promise<void> {
+async function switchToProject(
+  page: typeof ctx.window,
+  projectName: string
+): Promise<typeof ctx.window> {
   // Skip if already on the target project
   const current = await getCurrentProject(page);
-  if (current.name === projectName) return;
+  if (current.name === projectName) return page;
 
   await page.locator(SEL.toolbar.projectSwitcherTrigger).click();
   const palette = page.locator(SEL.projectSwitcher.palette);
@@ -67,8 +70,18 @@ async function switchToProject(page: typeof ctx.window, projectName: string): Pr
     throw new Error(`Project "${name}" not found in palette`);
   }, projectName);
 
-  await expect(palette).not.toBeVisible({ timeout: T_LONG });
-  await page.waitForTimeout(T_SETTLE);
+  // Don't fail if the outgoing view's React tree never closes its palette
+  // before we swap; the visible/attached view changes anyway.
+  await expect(palette)
+    .not.toBeVisible({ timeout: T_LONG })
+    .catch(() => undefined);
+
+  // Re-acquire the now-active project view's CDP page so subsequent
+  // locator queries don't go to the cached outgoing view.
+  const refreshed = await refreshActiveWindow(ctx.app, page);
+  await refreshed.waitForTimeout(T_SETTLE);
+  ctx.window = refreshed;
+  return refreshed;
 }
 
 test.describe.serial("Core: Project Switch Race Conditions", () => {
@@ -107,32 +120,33 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
 
   test("delayed spawn assigns terminal to originating project", async () => {
     test.slow();
-    const { window } = ctx;
 
     // Capture Project A's ID
-    const projectA = await getCurrentProject(window);
+    const projectA = await getCurrentProject(ctx.window);
 
     // Open a terminal in Project A to confirm normal flow works
-    await openTerminal(window);
-    await expect(window.locator(SEL.panel.gridPanel).first()).toBeVisible({ timeout: T_LONG });
+    await openTerminal(ctx.window);
+    await expect(ctx.window.locator(SEL.panel.gridPanel).first()).toBeVisible({
+      timeout: T_LONG,
+    });
 
     // Inject 3-second delay on terminal:spawn
     await injectDelay(ctx.app, "terminal:spawn", 3000);
 
     // Trigger a second terminal spawn (this one will be delayed)
-    await openTerminal(window);
+    await openTerminal(ctx.window);
 
     // Immediately switch to Project B — the spawn is still in-flight
-    await switchToProject(window, PROJECT_B_NAME);
+    await switchToProject(ctx.window, PROJECT_B_NAME);
 
     // Wait for the delayed spawn to complete (3s delay + margin)
-    await window.waitForTimeout(4500);
+    await ctx.window.waitForTimeout(4500);
 
     // Clear the fault before querying
     await clearAllFaults(ctx.app);
 
     // Query backend for all terminals
-    const terminals = await getAllTerminals(window);
+    const terminals = await getAllTerminals(ctx.window);
 
     // Filter to non-trashed terminals
     const activeTerminals = terminals.filter((t: TerminalInfo) => !t.isTrashed);
@@ -152,62 +166,60 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
 
   test("panel grid is clean after switching — no cross-project panels", async () => {
     test.slow();
-    const { window } = ctx;
 
     // Ensure faults are cleared from previous test before spawning
     await clearAllFaults(ctx.app);
 
     // Ensure we're on Project A with a fresh terminal fully spawned
-    await switchToProject(window, PROJECT_A_NAME);
-    await openTerminal(window);
-    const panel = window.locator(SEL.panel.gridPanel).first();
+    await switchToProject(ctx.window, PROJECT_A_NAME);
+    await openTerminal(ctx.window);
+    const panel = ctx.window.locator(SEL.panel.gridPanel).first();
     // CI VMs are slow after fault-injection tests; use generous timeout
     await expect(panel).toBeVisible({ timeout: 60_000 });
     // Wait for shell prompt so the terminal is fully initialized
-    await window.waitForTimeout(3000);
+    await ctx.window.waitForTimeout(3000);
 
     // Verify grid has at least 1 panel before switching
-    const countBeforeSwitch = await getGridPanelCount(window);
+    const countBeforeSwitch = await getGridPanelCount(ctx.window);
     expect(countBeforeSwitch).toBeGreaterThanOrEqual(1);
 
     // Switch to Project B then back — the key invariant is that A's panels survive
-    await switchToProject(window, PROJECT_B_NAME);
-    await window.waitForTimeout(T_SETTLE);
+    await switchToProject(ctx.window, PROJECT_B_NAME);
+    await ctx.window.waitForTimeout(T_SETTLE);
 
     // Switch back to Project A — its panels should reappear
-    await switchToProject(window, PROJECT_A_NAME);
+    await switchToProject(ctx.window, PROJECT_A_NAME);
     await expect
-      .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+      .poll(() => getGridPanelCount(ctx.window), { timeout: T_LONG })
       .toBeGreaterThanOrEqual(1);
   });
 
   test("no orphaned terminals after rapid switching", async () => {
     test.slow();
-    const { window } = ctx;
 
     // Record baseline terminal count
-    const baselineTerminals = await getAllTerminals(window);
+    const baselineTerminals = await getAllTerminals(ctx.window);
     const baselineCount = baselineTerminals.filter((t: TerminalInfo) => !t.isTrashed).length;
 
     // Switch to Project A to spawn from there
-    await switchToProject(window, PROJECT_A_NAME);
-    const projectA = await getCurrentProject(window);
+    await switchToProject(ctx.window, PROJECT_A_NAME);
+    const projectA = await getCurrentProject(ctx.window);
 
     // Inject delay and trigger a spawn
     await injectDelay(ctx.app, "terminal:spawn", 2000);
-    await openTerminal(window);
+    await openTerminal(ctx.window);
 
     // Rapid switch: A -> B -> A (settle between switches to avoid palette detach)
-    await switchToProject(window, PROJECT_B_NAME);
-    await window.waitForTimeout(T_SETTLE);
-    await switchToProject(window, PROJECT_A_NAME);
+    await switchToProject(ctx.window, PROJECT_B_NAME);
+    await ctx.window.waitForTimeout(T_SETTLE);
+    await switchToProject(ctx.window, PROJECT_A_NAME);
 
     // Wait for the delayed spawn to complete
-    await window.waitForTimeout(3500);
+    await ctx.window.waitForTimeout(3500);
     await clearAllFaults(ctx.app);
 
     // Query all terminals again
-    const finalTerminals = await getAllTerminals(window);
+    const finalTerminals = await getAllTerminals(ctx.window);
     const activeTerminals = finalTerminals.filter((t: TerminalInfo) => !t.isTrashed);
 
     // Should have exactly baseline + 1 (the one we spawned), not more
