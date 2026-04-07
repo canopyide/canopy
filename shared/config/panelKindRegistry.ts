@@ -1,4 +1,5 @@
-import type { PanelKind, BuiltInPanelKind } from "../types/panel.js";
+import type { PanelKind, BuiltInPanelKind, TerminalInstance } from "../types/panel.js";
+import type { TerminalSnapshot } from "../types/project.js";
 import { getAgentConfig } from "./agentRegistry.js";
 import { PANEL_KIND_BRAND_COLORS } from "../theme/index.js";
 
@@ -33,6 +34,24 @@ export interface PanelKindConfig {
   shortcut?: string;
   /** Search aliases for fuzzy matching in the panel palette */
   searchAliases?: string[];
+  /** Serialize kind-specific fields from a panel instance into a snapshot fragment */
+  serialize?: (panel: TerminalInstance) => Partial<TerminalSnapshot>;
+}
+
+function serializePtyPanel(t: TerminalInstance): Partial<TerminalSnapshot> {
+  return {
+    type: t.type,
+    agentId: t.agentId,
+    cwd: t.cwd,
+    command: t.command?.trim() || undefined,
+    ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
+    ...(t.exitBehavior !== undefined && { exitBehavior: t.exitBehavior }),
+    ...(t.agentSessionId && { agentSessionId: t.agentSessionId }),
+    ...(t.agentLaunchFlags?.length && { agentLaunchFlags: t.agentLaunchFlags }),
+    ...(t.agentModelId && { agentModelId: t.agentModelId }),
+    ...(t.agentState && { agentState: t.agentState }),
+    ...(t.lastStateChange !== undefined && { lastStateChange: t.lastStateChange }),
+  };
 }
 
 /**
@@ -51,6 +70,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     canConvert: true,
     keepAliveOnProjectSwitch: true,
     showInPalette: false, // Has dedicated spawn action
+    serialize: serializePtyPanel,
   },
   agent: {
     id: "agent",
@@ -62,6 +82,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     canConvert: true,
     keepAliveOnProjectSwitch: true,
     showInPalette: false, // Has dedicated spawn action
+    serialize: serializePtyPanel,
   },
   browser: {
     id: "browser",
@@ -74,6 +95,12 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
     searchAliases: ["web", "chrome", "internet", "www"],
+    serialize: (t) => ({
+      ...(t.browserUrl != null && { browserUrl: t.browserUrl }),
+      ...(t.browserHistory && { browserHistory: t.browserHistory }),
+      ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
+      ...(t.browserConsoleOpen !== undefined && { browserConsoleOpen: t.browserConsoleOpen }),
+    }),
   },
   notes: {
     id: "notes",
@@ -86,6 +113,12 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
     searchAliases: ["md", "markdown", "text", "memo"],
+    serialize: (t) => ({
+      ...(t.notePath != null && { notePath: t.notePath }),
+      ...(t.noteId != null && { noteId: t.noteId }),
+      ...(t.scope != null && { scope: t.scope }),
+      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
+    }),
   },
   "dev-preview": {
     id: "dev-preview",
@@ -99,6 +132,19 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
     searchAliases: ["localhost", "server", "preview", "port"],
+    serialize: (t) => ({
+      type: t.type,
+      cwd: t.cwd,
+      command: t.devCommand?.trim() || undefined,
+      ...(t.browserUrl != null && { browserUrl: t.browserUrl }),
+      ...(t.browserHistory && { browserHistory: t.browserHistory }),
+      ...(t.browserZoom != null && { browserZoom: t.browserZoom }),
+      ...(t.devPreviewConsoleOpen !== undefined && {
+        devPreviewConsoleOpen: t.devPreviewConsoleOpen,
+      }),
+      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
+      ...(t.exitBehavior !== undefined && { exitBehavior: t.exitBehavior }),
+    }),
   },
 };
 

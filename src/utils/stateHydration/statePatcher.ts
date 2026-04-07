@@ -4,6 +4,8 @@ import type { PanelExitBehavior } from "@shared/types/panel";
 import { isRegisteredAgent, getAgentConfig } from "@/config/agents";
 import { generateAgentCommand, buildResumeCommand } from "@shared/types";
 import { logWarn } from "@/utils/logger";
+import { inferKind as inferKindShared } from "@shared/utils/inferPanelKind";
+import { getDeserializer } from "@/config/panelKindSerialisers";
 
 export interface AddTerminalArgs {
   kind?: PanelKind;
@@ -142,14 +144,7 @@ export function resolveAgentId(
   return undefined;
 }
 
-export function inferKind(saved: SavedTerminalData): PanelKind {
-  if (saved.kind) return saved.kind;
-  if (saved.browserUrl !== undefined) return "browser";
-  if (saved.notePath !== undefined || saved.noteId !== undefined) return "notes";
-  if (saved.title === "Assistant" || saved.title?.startsWith("Assistant")) return "assistant";
-  if (!saved.cwd && !saved.command) return "assistant";
-  return "terminal";
-}
+export const inferKind: (saved: SavedTerminalData) => PanelKind = inferKindShared;
 
 export function buildArgsForBackendTerminal(
   backendTerminal: BackendTerminalData,
@@ -324,30 +319,23 @@ export function buildArgsForNonPtyRecreation(
   projectRoot: string
 ): AddTerminalArgs {
   const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
-  const devCommandCandidate = kind === "dev-preview" ? saved.devCommand?.trim() : undefined;
-  const devCommand =
-    kind === "dev-preview" ? devCommandCandidate || saved.command?.trim() || undefined : undefined;
-
-  return {
+  const base: AddTerminalArgs = {
     kind,
     title: saved.title,
     cwd: saved.cwd || projectRoot || "",
     worktreeId: saved.worktreeId,
     location,
     requestedId: saved.id,
-    browserUrl: saved.browserUrl,
-    browserHistory: saved.browserHistory,
-    browserZoom: saved.browserZoom,
-    browserConsoleOpen: kind === "browser" ? saved.browserConsoleOpen : undefined,
-    notePath: saved.notePath,
-    noteId: saved.noteId,
-    scope: saved.scope as "worktree" | "project" | undefined,
-    createdAt: saved.createdAt,
-    devCommand,
-    devPreviewConsoleOpen: kind === "dev-preview" ? saved.devPreviewConsoleOpen : undefined,
     exitBehavior: saved.exitBehavior,
     extensionState: saved.extensionState,
   };
+
+  const deserializer = getDeserializer(kind);
+  if (deserializer) {
+    return { ...base, ...deserializer(saved) };
+  }
+
+  return base;
 }
 
 export function buildArgsForOrphanedTerminal(
