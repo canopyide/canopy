@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inferKind } from "../inferPanelKind";
+import { inferKind } from "../inferPanelKind.js";
 
 describe("inferKind", () => {
   it("returns saved kind when present", () => {

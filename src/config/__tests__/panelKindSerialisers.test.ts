@@ -8,13 +8,13 @@ describe("panelKindSerialisers", () => {
       const result = deserialize!({
         id: "b1",
         browserUrl: "https://example.com",
-        browserHistory: { entries: [], currentIndex: 0 },
+        browserHistory: { past: [], present: "", future: [] },
         browserZoom: 1.5,
         browserConsoleOpen: true,
       });
       expect(result).toEqual({
         browserUrl: "https://example.com",
-        browserHistory: { entries: [], currentIndex: 0 },
+        browserHistory: { past: [], present: "", future: [] },
         browserZoom: 1.5,
         browserConsoleOpen: true,
       });

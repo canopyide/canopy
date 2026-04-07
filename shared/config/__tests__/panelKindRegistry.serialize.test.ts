@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { getPanelKindConfig } from "../panelKindRegistry";
-import type { TerminalInstance } from "../../types/panel";
+import { getPanelKindConfig } from "../panelKindRegistry.js";
+import type { TerminalInstance } from "../../types/panel.js";
 
 function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
@@ -87,14 +87,14 @@ describe("panelKindRegistry serialize hooks", () => {
         makePanel({
           kind: "browser",
           browserUrl: "https://example.com",
-          browserHistory: { entries: [], currentIndex: 0 },
+          browserHistory: { past: [], present: "", future: [] },
           browserZoom: 1.5,
           browserConsoleOpen: true,
         })
       );
       expect(result).toEqual({
         browserUrl: "https://example.com",
-        browserHistory: { entries: [], currentIndex: 0 },
+        browserHistory: { past: [], present: "", future: [] },
         browserZoom: 1.5,
         browserConsoleOpen: true,
       });
