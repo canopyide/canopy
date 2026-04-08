@@ -80,7 +80,6 @@ const reducedStepVariants: Variants = {
 };
 
 
-
 // --- Wizard state machine ---
 
 export type WizardStep =
