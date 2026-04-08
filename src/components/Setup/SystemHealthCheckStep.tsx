@@ -254,7 +254,7 @@ function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; state: Chec
             {versionMismatch && (
               <span
                 className="text-[11px] text-status-warning whitespace-nowrap"
-                title={`v${check.version} — requires v${check.minVersion}+`}
+                title={`${check.version ? `v${check.version}` : "unknown"} — requires v${check.minVersion}+`}
               >
                 needs v{check.minVersion}+
               </span>
