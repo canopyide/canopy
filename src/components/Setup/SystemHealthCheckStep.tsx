@@ -245,20 +245,20 @@ function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; state: Chec
       <div className="flex items-center gap-3 px-3 py-2.5">
         <StatusIcon check={check} loading={loading} />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-canopy-text">{label}</div>
-          {check?.version && !versionMismatch && (
-            <div className="text-[11px] text-canopy-text/40">v{check.version}</div>
-          )}
-          {versionMismatch && (
-            <div className="text-[11px] text-status-warning">
-              v{check.version} — requires v{check.minVersion}+
-            </div>
-          )}
+          <div className="text-sm font-medium text-canopy-text truncate">{label}</div>
         </div>
         {loading ? (
-          <span className="text-[11px] text-canopy-text/30">Checking…</span>
+          <span className="text-[11px] text-canopy-text/30 shrink-0">Checking…</span>
         ) : needsInstall ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            {versionMismatch && (
+              <span
+                className="text-[11px] text-status-warning whitespace-nowrap"
+                title={`${check.version ? `v${check.version}` : "unknown"} — requires v${check.minVersion}+`}
+              >
+                needs v{check.minVersion}+
+              </span>
+            )}
             {installBlocks && (
               <button
                 type="button"
@@ -286,6 +286,10 @@ function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; state: Chec
               </a>
             )}
           </div>
+        ) : check?.version ? (
+          <span className="text-[11px] text-canopy-text/40 shrink-0">v{check.version}</span>
+        ) : check?.available ? (
+          <span className="text-[11px] text-canopy-text/40 shrink-0">Installed</span>
         ) : null}
       </div>
       {expanded && installBlocks && (
