@@ -1443,6 +1443,15 @@ function App() {
   );
 
   const handleWizardFinish = useCallback(() => {
+    // In e2e mode, skip the automatic primary-agent launch — it leaves an
+    // extra panel in the grid that breaks panel-count assertions in tests
+    // that expect a clean post-onboarding state. The behaviour is locally
+    // observable only when an agent CLI (e.g., Claude) is installed, so
+    // tests pass on CI but fail on dev machines without this guard.
+    if (typeof window !== "undefined" && window.__CANOPY_E2E_MODE__) {
+      return;
+    }
+
     const defaultAgent = useAgentPreferencesStore.getState().defaultAgent;
     const selected = agentSettings?.agents
       ? Object.entries(agentSettings.agents)

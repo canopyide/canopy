@@ -598,6 +598,8 @@ const CHANNELS = {
   PROJECT_ADD: "project:add",
   PROJECT_REMOVE: "project:remove",
   PROJECT_UPDATE: "project:update",
+  PROJECT_UPDATED: "project:updated",
+  PROJECT_REMOVED: "project:removed",
   PROJECT_SWITCH: "project:switch",
   PROJECT_OPEN_DIALOG: "project:open-dialog",
   PROJECT_ON_SWITCH: "project:on-switch",
@@ -1517,6 +1519,12 @@ const api: ElectronAPI = {
         hydrateResult?: import("../shared/types/ipc/app.js").HydrateResult;
       }) => void
     ) => _typedOn(CHANNELS.PROJECT_ON_SWITCH, callback),
+
+    onUpdated: (callback: (project: Project) => void) =>
+      _typedOn(CHANNELS.PROJECT_UPDATED, callback),
+
+    onRemoved: (callback: (projectId: string) => void) =>
+      _typedOn(CHANNELS.PROJECT_REMOVED, callback),
 
     getSettings: (projectId: string) => _unwrappingInvoke(CHANNELS.PROJECT_GET_SETTINGS, projectId),
 
@@ -2818,4 +2826,12 @@ if (process.env.CANOPY_E2E_FAULT_MODE === "1") {
   contextBridge.exposeInMainWorld("__CANOPY_E2E_IPC__", {
     getRendererListenerCount: (channel: string) => ipcRenderer.listenerCount(channel),
   });
+}
+
+// Generic e2e-mode flag — set whenever the test harness launches Canopy.
+// Used by the renderer to suppress side effects (like the auto-launched
+// primary agent at the end of onboarding) that would otherwise pollute
+// panel-count assertions in tests.
+if (process.env.CANOPY_E2E_MODE === "1") {
+  contextBridge.exposeInMainWorld("__CANOPY_E2E_MODE__", true);
 }

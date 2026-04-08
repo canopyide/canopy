@@ -6,7 +6,7 @@ import { runTerminalCommand } from "../helpers/terminal";
 import { getGridPanelCount } from "../helpers/panels";
 import {
   addAndSwitchToProject,
-  selectExistingProject,
+  selectExistingProjectAndRefresh,
   spawnTerminalAndVerify,
 } from "../helpers/workflows";
 import { SEL } from "../helpers/selectors";
@@ -121,7 +121,7 @@ test.describe.serial("Core: Error Recovery — Missing Project", () => {
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.repoA, "Project A");
     ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, fixture.repoB, "Project B");
     // Switch back to A so B is inactive (checkMissingProjects skips the active project)
-    await selectExistingProject(ctx.window, "Project A");
+    ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, "Project A");
   });
 
   test.afterAll(async () => {

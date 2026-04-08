@@ -43,9 +43,10 @@ function buildError(overrides: Partial<ErrorPayload> = {}): ErrorPayload {
 
 async function emitError(app: ElectronApplication, overrides: Partial<ErrorPayload> = {}) {
   const payload = buildError(overrides);
-  await app.evaluate(({ BrowserWindow }, err) => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (win) win.webContents.send("error:notify", err);
+  await app.evaluate(({ webContents }, err) => {
+    for (const wc of webContents.getAllWebContents()) {
+      if (!wc.isDestroyed()) wc.send("error:notify", err);
+    }
   }, payload);
 }
 
@@ -56,10 +57,10 @@ async function emitSpawnResult(
   message: string
 ) {
   await app.evaluate(
-    ({ BrowserWindow }, { id, code, msg }) => {
-      const win = BrowserWindow.getAllWindows()[0];
-      if (win) {
-        win.webContents.send("terminal:spawn-result", id, {
+    ({ webContents }, { id, code, msg }) => {
+      for (const wc of webContents.getAllWebContents()) {
+        if (wc.isDestroyed()) continue;
+        wc.send("terminal:spawn-result", id, {
           success: false,
           id,
           error: { code, message: msg },
@@ -221,15 +222,15 @@ test.describe.serial("Core: IPC Error Propagation", () => {
 
     // Send 5 identical errors in a single evaluate to ensure they arrive within 500ms
     await ctx.app.evaluate(
-      ({ BrowserWindow }, { basePayload }) => {
-        const win = BrowserWindow.getAllWindows()[0];
-        if (!win) return;
+      ({ webContents }, { basePayload }) => {
+        const targets = webContents.getAllWebContents().filter((wc) => !wc.isDestroyed());
         for (let i = 0; i < 5; i++) {
-          win.webContents.send("error:notify", {
+          const err = {
             ...basePayload,
             id: `dedup-${Date.now()}-${i}`,
             timestamp: Date.now(),
-          });
+          };
+          for (const wc of targets) wc.send("error:notify", err);
         }
       },
       { basePayload: payload }
