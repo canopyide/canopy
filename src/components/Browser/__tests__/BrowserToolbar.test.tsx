@@ -96,4 +96,16 @@ describe("BrowserToolbar handleSubmit", () => {
     expect(defaultProps.onReload).toHaveBeenCalledTimes(2);
     expect(defaultProps.onNavigate).not.toHaveBeenCalled();
   });
+
+  it("calls onReload for URL with path, query, and hash", () => {
+    const fullUrl = "http://localhost:5173/app?tab=1#section";
+    const { getByTestId } = renderToolbar({ url: fullUrl });
+    const input = getByTestId("browser-address-bar");
+
+    fireEvent.focus(input);
+    fireEvent.submit(input.closest("form")!);
+
+    expect(defaultProps.onReload).toHaveBeenCalledOnce();
+    expect(defaultProps.onNavigate).not.toHaveBeenCalled();
+  });
 });
