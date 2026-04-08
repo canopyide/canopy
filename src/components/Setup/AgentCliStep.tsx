@@ -3,8 +3,7 @@ import { CircleCheck, CircleDashed, Loader2, ExternalLink } from "lucide-react";
 import { AGENT_REGISTRY, getAgentConfig } from "@/config/agents";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { getInstallBlocksForCurrentOS, getInstallCommand } from "@/lib/agentInstall";
-import { terminalClient } from "@/clients";
-import { systemClient } from "@/clients";
+import { terminalClient, systemClient } from "@/clients";
 import { EmbeddedTerminal } from "./EmbeddedTerminal";
 import { AGENT_DESCRIPTIONS } from "./AgentSetupWizard";
 import type { CliAvailability } from "@shared/types";
@@ -152,17 +151,26 @@ export function AgentCliStep({ availability, selections }: AgentCliStepProps) {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {config.install?.docsUrl && (
-                    <button
-                      type="button"
-                      className="text-canopy-text/30 hover:text-canopy-accent transition-colors p-0.5"
+                    <span
+                      role="link"
+                      tabIndex={0}
+                      className="text-canopy-text/30 hover:text-canopy-accent transition-colors p-0.5 cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
+                        e.preventDefault();
                         systemClient.openExternal(config.install!.docsUrl!);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          systemClient.openExternal(config.install!.docsUrl!);
+                        }
                       }}
                       title="View documentation"
                     >
                       <ExternalLink className="w-3 h-3" />
-                    </button>
+                    </span>
                   )}
                   {isInstalled ? (
                     <span className="inline-flex items-center gap-1 text-[11px] text-status-success font-medium">
