@@ -3,7 +3,7 @@ import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/Spinner";
 import { AgentCliStep } from "./AgentCliStep";
-import { SystemHealthCheckStep } from "./SystemHealthCheckStep";
+import { SystemToolsStep } from "./SystemToolsStep";
 import { AGENT_REGISTRY } from "@/config/agents";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { useAgentSettingsStore } from "@/store";
@@ -276,9 +276,7 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
       </AppDialog.Header>
 
       <AppDialog.Body>
-        {state.step.type === "health" && (
-          <SystemHealthCheckStep onSkip={handleHealthContinue} agentIds={AGENT_ORDER} />
-        )}
+        {state.step.type === "health" && <SystemToolsStep onSkip={handleHealthContinue} />}
         {state.step.type === "selection" && (
           <SelectionStep
             availability={state.availability}
