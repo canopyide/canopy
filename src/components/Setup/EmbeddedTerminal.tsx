@@ -4,12 +4,22 @@ import { terminalClient } from "@/clients";
 
 interface EmbeddedTerminalProps {
   className?: string;
+  onTerminalReady?: (id: string) => void;
+  onTerminalExit?: () => void;
 }
 
-export function EmbeddedTerminal({ className }: EmbeddedTerminalProps) {
+export function EmbeddedTerminal({
+  className,
+  onTerminalReady,
+  onTerminalExit,
+}: EmbeddedTerminalProps) {
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const pendingIdRef = useRef<string | null>(null);
+  const onTerminalReadyRef = useRef(onTerminalReady);
+  onTerminalReadyRef.current = onTerminalReady;
+  const onTerminalExitRef = useRef(onTerminalExit);
+  onTerminalExitRef.current = onTerminalExit;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -27,6 +37,7 @@ export function EmbeddedTerminal({ className }: EmbeddedTerminalProps) {
       .then(() => {
         if (mountedRef.current) {
           setTerminalId(id);
+          onTerminalReadyRef.current?.(id);
         } else {
           terminalClient.kill(id).catch(() => {});
         }
@@ -56,6 +67,7 @@ export function EmbeddedTerminal({ className }: EmbeddedTerminalProps) {
 
   const handleExit = useCallback(() => {
     setTerminalId(null);
+    onTerminalExitRef.current?.();
   }, []);
 
   if (!terminalId) {
