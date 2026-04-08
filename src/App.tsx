@@ -1,4 +1,4 @@
-import React, { Profiler, Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Profiler, Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import {
   isElectronAvailable,
