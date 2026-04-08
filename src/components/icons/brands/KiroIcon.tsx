@@ -17,7 +17,7 @@ export function KiroIcon({ className, size = 16, brandColor }: KiroIconProps) {
       className={cn(className)}
       aria-hidden="true"
     >
-      <rect width="1200" height="1200" rx="260" fill={brandColor || "#9046FF"} />
+      <rect width="1200" height="1200" rx="260" fill={brandColor || "currentColor"} />
       <mask
         id="kiro-mask"
         style={{ maskType: "luminance" }}
