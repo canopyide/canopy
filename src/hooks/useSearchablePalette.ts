@@ -165,8 +165,11 @@ export function useSearchablePalette<T>(
       setLocalIsOpen(true);
     }
     setQuery("");
-    setSelectedIndex(0);
-  }, [paletteId]);
+    // Reset to the first navigable item (not blindly 0) so that
+    // palettes with disabled leading items start on the correct row.
+    const firstNav = canNavigate && results.length > 0 ? findNavigable(0, 1) : 0;
+    setSelectedIndex(firstNav);
+  }, [paletteId, canNavigate, results.length, findNavigable]);
 
   const close = useCallback(() => {
     if (paletteId != null) {
