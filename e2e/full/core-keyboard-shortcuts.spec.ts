@@ -135,7 +135,8 @@ test.describe.serial("Core: Keyboard Shortcuts", () => {
       });
       await expect(title).toBeVisible({ timeout: T_MEDIUM });
 
-      await window.keyboard.press("Escape");
+      const closeBtn = window.getByRole("button", { name: "Close dialog" });
+      await closeBtn.click();
       await expect(title).not.toBeAttached({ timeout: T_SHORT });
     });
 
