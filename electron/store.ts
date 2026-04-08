@@ -23,6 +23,7 @@ export interface StoreSchema {
     width: number;
     height: number;
     isMaximized: boolean;
+    isFullScreen?: boolean;
   };
   terminalConfig: {
     scrollbackLines: number; // 100-10000 (user-configurable)
@@ -129,7 +130,14 @@ export interface StoreSchema {
   appAgentConfig: AppAgentConfig;
   windowStates: Record<
     string,
-    { x?: number; y?: number; width: number; height: number; isMaximized: boolean }
+    {
+      x?: number;
+      y?: number;
+      width: number;
+      height: number;
+      isMaximized: boolean;
+      isFullScreen?: boolean;
+    }
   >;
   worktreeIssueMap: Record<string, IssueAssociation>;
   appTheme: Partial<AppThemeConfig>;

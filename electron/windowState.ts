@@ -19,6 +19,7 @@ type WindowStateBounds = {
   width: number;
   height: number;
   isMaximized: boolean;
+  isFullScreen: boolean;
 };
 
 let lastSavedProjectPath: string | null = null;
@@ -42,13 +43,13 @@ function getMruBounds(): WindowStateBounds | null {
 
   // If we have a last-saved project, use that as MRU
   if (lastSavedProjectPath && windowStates[lastSavedProjectPath]) {
-    return windowStates[lastSavedProjectPath];
+    return { isFullScreen: false, ...windowStates[lastSavedProjectPath] };
   }
 
-  // Otherwise, pick the first entry (any existing state is better than defaults)
+  // Otherwise, pick the last entry (any existing state is better than defaults)
   const keys = Object.keys(windowStates);
   if (keys.length > 0) {
-    return windowStates[keys[keys.length - 1]];
+    return { isFullScreen: false, ...windowStates[keys[keys.length - 1]] };
   }
 
   return null;
@@ -78,33 +79,34 @@ function resolveWindowBounds(projectPath: string | null | undefined): WindowStat
   if (projectPath) {
     const windowStates = store.get("windowStates") ?? {};
     if (windowStates[projectPath]) {
-      return windowStates[projectPath];
+      return { isFullScreen: false, ...windowStates[projectPath] };
+    }
+
+    // 2. MRU cascade for new project windows — offset position, suppress maximize/fullscreen
+    const mru = getMruBounds();
+    if (mru && mru.x !== undefined && mru.y !== undefined) {
+      const offset = clampToDisplay({
+        x: (mru.x ?? 0) + MRU_OFFSET_PX,
+        y: (mru.y ?? 0) + MRU_OFFSET_PX,
+        width: mru.width,
+        height: mru.height,
+      });
+      return {
+        ...offset,
+        isMaximized: false, // Don't cascade into maximized
+        isFullScreen: false, // Don't cascade into fullscreen
+      };
     }
   }
 
-  // 2. Try MRU with offset
-  const mru = getMruBounds();
-  if (mru && mru.x !== undefined && mru.y !== undefined) {
-    const offset = clampToDisplay({
-      x: (mru.x ?? 0) + MRU_OFFSET_PX,
-      y: (mru.y ?? 0) + MRU_OFFSET_PX,
-      width: mru.width,
-      height: mru.height,
-    });
-    return {
-      ...offset,
-      isMaximized: false, // Don't cascade into maximized
-    };
-  }
-
-  // 3. Fall back to legacy windowState
+  // 3. Fall back to legacy windowState (cold-start restores full previous state)
   const legacy = store.get("windowState");
   if (legacy && (legacy.x !== undefined || legacy.width !== 1200)) {
-    return legacy;
+    return { isFullScreen: false, ...legacy };
   }
 
   // 4. Defaults
-  return { width: 1200, height: 800, isMaximized: false };
+  return { width: 1200, height: 800, isMaximized: false, isFullScreen: false };
 }
 
 function saveWindowStateForProject(projectPath: string, bounds: WindowStateBounds): void {
@@ -128,10 +130,11 @@ export function createWindowWithState(
     height: windowState.height,
   });
 
-  if (windowState.isMaximized) {
-    win.maximize();
-  }
-
+  // Run the off-screen / oversized recovery check against the initial normal-state bounds,
+  // before calling maximize() or setFullScreen(). On Windows, getBounds() on a maximized
+  // window returns overflow bounds (e.g. width:1928 on a 1920px display) that would falsely
+  // trigger the workArea size check. On macOS, native fullscreen bounds exceed workArea.height.
+  // Checking here ensures we only ever clamp truly invalid saved states.
   const bounds = win.getBounds();
   const display = screen.getDisplayMatching(bounds);
 
@@ -166,29 +169,42 @@ export function createWindowWithState(
     }
   }
 
-  let lastNormalBounds = {
-    x: windowState.x,
-    y: windowState.y,
-    width: windowState.width,
-    height: windowState.height,
-  };
+  // Maximize is applied immediately on the hidden window. Electron updates the
+  // internal frame geometry so the OS presents the window already maximized when
+  // win.show() is called later — no flash of a normal-sized window.
+  //
+  // Fullscreen is deferred until after 'show' because macOS native fullscreen
+  // requires the window to be visible for the Space transition animation.
+  // Fullscreen takes priority over maximize since they are mutually exclusive
+  // on macOS (green button = fullscreen, Option+green = maximize).
+  if (windowState.isFullScreen) {
+    win.once("show", () => {
+      if (!win.isDestroyed()) {
+        win.setFullScreen(true);
+      }
+    });
+  } else if (windowState.isMaximized) {
+    win.maximize();
+  }
 
   const saveState = () => {
     if (win.isDestroyed()) return;
 
     const isMaximized = win.isMaximized();
-    const currentBounds = win.getBounds();
+    const isFullScreen = win.isFullScreen();
 
-    if (!isMaximized) {
-      lastNormalBounds = { ...currentBounds };
-    }
+    // getNormalBounds() returns the pre-maximize/pre-fullscreen frame cached by the OS,
+    // avoiding the macOS race condition where resize events fire mid-animation and
+    // isMaximized() transiently returns false before the transition completes.
+    const normalBounds = win.getNormalBounds();
 
     const entry: WindowStateBounds = {
-      x: lastNormalBounds.x,
-      y: lastNormalBounds.y,
-      width: lastNormalBounds.width,
-      height: lastNormalBounds.height,
+      x: normalBounds.x,
+      y: normalBounds.y,
+      width: normalBounds.width,
+      height: normalBounds.height,
       isMaximized,
+      isFullScreen,
     };
 
     // Save to per-project state
