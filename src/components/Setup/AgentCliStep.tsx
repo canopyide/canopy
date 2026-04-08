@@ -35,6 +35,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
   const [selectedMethodIndex, setSelectedMethodIndex] = useState<Record<string, number>>({});
   const [isBatchRunning, setIsBatchRunning] = useState(false);
   const mountedRef = useRef(true);
+  const installingRef = useRef(new Set<string>());
 
   const selectedAgentIds = useMemo(() => AGENT_ORDER.filter((id) => selections[id]), [selections]);
 
@@ -77,6 +78,8 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
   const handleInstall = useCallback(
     async (agentId: string) => {
       if (!mountedRef.current) return;
+      if (installingRef.current.has(agentId)) return;
+      installingRef.current.add(agentId);
 
       const config = getAgentConfig(agentId);
       if (!config) return;
@@ -128,6 +131,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
           [agentId]: err instanceof Error ? err.message : "Installation failed",
         }));
       } finally {
+        installingRef.current.delete(agentId);
         cleanup();
       }
     },
@@ -297,8 +301,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
               {isManual && currentBlock?.commands && (
                 <div className="pl-14 pt-1.5 pb-1 space-y-1">
                   <div className="text-[11px] text-canopy-text/40 mb-1">
-                    Run this command in your terminal, then click &quot;Check again&quot; or wait
-                    for auto-detection.
+                    Run this command in your terminal. It will be detected automatically.
                   </div>
                   {currentBlock.commands.map((cmd, i) => (
                     <CopyableCommand key={i} command={cmd} />

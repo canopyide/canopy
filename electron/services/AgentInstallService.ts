@@ -15,17 +15,16 @@ export function isBlockExecutable(block: AgentInstallBlock): boolean {
   return block.commands.every((cmd) => !isManualOnlyCommand(cmd));
 }
 
-function parseCommand(command: string): { bin: string; args: string[] } {
+// Windows shell shims (.cmd/.ps1) need shell: true to resolve
+const WINDOWS_CMD_BINS = new Set(["npm", "scoop", "choco", "pnpm", "yarn"]);
+
+function parseCommand(command: string): { bin: string; args: string[]; useShell: boolean } {
   const parts = command.trim().split(/\s+/);
-  let bin = parts[0];
-
-  if (bin === "npm" && process.platform === "win32") {
-    bin = "npm.cmd";
-  }
-
+  const bin = parts[0];
   const args = parts.slice(1);
+  const isWindows = process.platform === "win32";
 
-  if (bin === "npm" || bin === "npm.cmd") {
+  if (bin === "npm" || (isWindows && bin === "npm.cmd")) {
     const suppressFlags = [
       "--silent",
       "--no-progress",
@@ -38,7 +37,10 @@ function parseCommand(command: string): { bin: string; args: string[] } {
     }
   }
 
-  return { bin, args };
+  // On Windows, shell shims need shell: true to resolve .cmd extensions
+  const useShell = isWindows && WINDOWS_CMD_BINS.has(bin);
+
+  return { bin, args, useShell };
 }
 
 function runSingleCommand(
@@ -47,7 +49,7 @@ function runSingleCommand(
   onProgress: (event: AgentInstallProgressEvent) => void
 ): Promise<{ exitCode: number | null }> {
   return new Promise((resolve) => {
-    const { bin, args } = parseCommand(command);
+    const { bin, args, useShell } = parseCommand(command);
     let finalized = false;
 
     const env = {
@@ -59,7 +61,7 @@ function runSingleCommand(
     const child = spawn(bin, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env,
-      shell: false,
+      shell: useShell,
     });
 
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -94,7 +96,8 @@ export async function runAgentInstall(
   }
 
   const os = detectOS();
-  const blocks = config.install?.byOs?.[os] ?? config.install?.byOs?.generic;
+  const osBlocks = config.install?.byOs?.[os];
+  const blocks = osBlocks && osBlocks.length > 0 ? osBlocks : config.install?.byOs?.generic;
   if (!blocks || blocks.length === 0) {
     return { success: false, exitCode: null, error: `No install blocks for ${payload.agentId}` };
   }
