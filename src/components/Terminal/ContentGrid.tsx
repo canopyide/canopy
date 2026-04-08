@@ -13,6 +13,7 @@ import {
   type TerminalInstance,
 } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
 import { GridPanel } from "./GridPanel";
 import { GridTabGroup } from "./GridTabGroup";
 import { GridNotificationBar } from "./GridNotificationBar";
@@ -196,7 +197,10 @@ function RotatingTip() {
 
   const filteredTips = useMemo(
     () =>
-      TIPS.filter((tip) => !tip.requiredAgents || tip.requiredAgents.some((a) => availability[a])),
+      TIPS.filter(
+        (tip) =>
+          !tip.requiredAgents || tip.requiredAgents.some((a) => isAgentReady(availability[a]))
+      ),
     [availability]
   );
 

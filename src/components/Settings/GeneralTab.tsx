@@ -23,6 +23,7 @@ import { getAgentIds, getAgentConfig } from "@/config/agents";
 import { DEFAULT_AGENT_SETTINGS, getAgentSettingsEntry } from "@shared/types";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import type { HibernationConfig, CliAvailability, AgentSettings } from "@shared/types";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
 import { usePreferencesStore } from "@/store";
 import { keybindingService } from "@/services/KeybindingService";
 import { actionService } from "@/services/ActionService";
@@ -377,7 +378,7 @@ export function GeneralTab({
                   const config = getAgentConfig(id);
                   const agentEntry = getAgentSettingsEntry(agentSettings, id);
                   const isSelected = agentEntry.selected !== false;
-                  const isAvailable = cliAvailability[id] ?? false;
+                  const isAvailable = isAgentReady(cliAvailability[id]);
                   const name = config?.name ?? id;
                   const isUnavailable = isSelected && !isAvailable;
 

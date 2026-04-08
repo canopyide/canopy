@@ -18,12 +18,14 @@ import {
 } from "@/components/ui/context-menu";
 
 import type { BuiltInAgentId } from "@shared/config/agentIds";
+import type { AgentAvailabilityState } from "@shared/types";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
 
 type AgentType = BuiltInAgentId;
 
 interface AgentButtonProps {
   type: AgentType;
-  availability?: boolean;
+  availability?: AgentAvailabilityState;
   "data-toolbar-item"?: string;
 }
 
@@ -41,7 +43,7 @@ export function AgentButton({
   const tooltipDetails = config.tooltip ? ` — ${config.tooltip}` : "";
   const shortcut = displayCombo ? ` (${displayCombo})` : "";
   const isLoading = availability === undefined;
-  const isAvailable = availability ?? false;
+  const isAvailable = isAgentReady(availability);
 
   const tooltip = isLoading
     ? `Checking ${config.name} CLI availability...`

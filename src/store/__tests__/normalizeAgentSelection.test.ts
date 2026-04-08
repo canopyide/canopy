@@ -16,11 +16,11 @@ describe("normalizeAgentSelection", () => {
   });
 
   const availability: CliAvailability = {
-    claude: true,
-    gemini: false,
-    codex: true,
-    opencode: false,
-    cursor: false,
+    claude: "ready",
+    gemini: "missing",
+    codex: "ready",
+    opencode: "missing",
+    cursor: "installed",
   } as CliAvailability;
 
   it("fills selected: undefined using CLI availability", () => {
@@ -65,6 +65,15 @@ describe("normalizeAgentSelection", () => {
     });
     const result = normalizeAgentSelection(settings, availability);
     expect(result.agents.claude.selected).toBe(true);
+  });
+
+  it("does not auto-select agents with 'installed' state", () => {
+    const settings = makeSettings({
+      cursor: {},
+    });
+    const result = normalizeAgentSelection(settings, availability);
+    // cursor is "installed" (not "ready"), so should not be auto-selected
+    expect(result.agents.cursor.selected).toBe(false);
   });
 
   it("returns same reference when no changes are needed", () => {

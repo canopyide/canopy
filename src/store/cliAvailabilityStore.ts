@@ -21,7 +21,7 @@ interface CliAvailabilityActions {
 type CliAvailabilityStore = CliAvailabilityState & CliAvailabilityActions;
 
 function defaultAvailability(): CliAvailability {
-  return Object.fromEntries(getAgentIds().map((id) => [id, false])) as CliAvailability;
+  return Object.fromEntries(getAgentIds().map((id) => [id, "missing"])) as CliAvailability;
 }
 
 let epoch = 0;

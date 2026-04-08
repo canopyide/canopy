@@ -30,6 +30,7 @@ export type UsePanelPaletteReturn = UseSearchablePaletteReturn<PanelKindOption> 
 };
 
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
@@ -121,7 +122,9 @@ export function usePanelPalette(): UsePanelPaletteReturn {
           color: agentConfig.color,
           description: displayCombo || agentConfig.shortcut || agentConfig.tooltip,
           category: "agent" as const,
-          installed: isAvailabilityInitialized ? (availability[agentId] ?? false) : undefined,
+          installed: isAvailabilityInitialized
+            ? isAgentInstalled(availability[agentId])
+            : undefined,
         };
       })
       .filter((agent): agent is PanelKindOption => agent !== null);

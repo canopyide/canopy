@@ -117,6 +117,7 @@ import {
   usePaletteStore,
   useNotificationSettingsStore,
 } from "./store";
+import { isAgentReady } from "../shared/utils/agentAvailability";
 import { useShallow } from "zustand/react/shallow";
 import { useMacroFocusStore } from "./store/macroFocusStore";
 import { useSafeModeStore } from "./store/safeModeStore";
@@ -328,7 +329,7 @@ function App() {
       : [];
     const primaryAgent = defaultAgent ?? selected[0];
 
-    if (primaryAgent && availability[primaryAgent]) {
+    if (primaryAgent && isAgentReady(availability[primaryAgent])) {
       launchAgent(primaryAgent, {
         worktreeId: activeWorktreeId ?? undefined,
       }).catch(() => {});

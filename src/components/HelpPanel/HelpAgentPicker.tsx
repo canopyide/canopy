@@ -7,6 +7,7 @@ import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { actionService } from "@/services/ActionService";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { isAgentMissing } from "../../../shared/utils/agentAvailability";
 
 interface HelpAgentPickerProps {
   onSelectAgent: (agentId: string) => void;
@@ -19,7 +20,7 @@ export function HelpAgentPicker({ onSelectAgent }: HelpAgentPickerProps) {
   const enabledAgents = useMemo(() => {
     return BUILT_IN_AGENT_IDS.filter((id) => {
       if (settings?.agents && settings.agents[id]?.selected === false) return false;
-      if (availability[id] === false) return false;
+      if (isAgentMissing(availability[id])) return false;
       return true;
     });
   }, [settings, availability]);

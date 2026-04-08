@@ -34,8 +34,8 @@ export function AgentCliStep({ availability, selections }: AgentCliStepProps) {
   useEffect(() => {
     if (
       installingAgentId &&
-      availability[installingAgentId] === true &&
-      prevAvailabilityRef.current[installingAgentId] !== true
+      availability[installingAgentId] !== "missing" &&
+      prevAvailabilityRef.current[installingAgentId] === "missing"
     ) {
       setInstallingAgentId(null);
       if (installTimeoutRef.current) {
@@ -119,7 +119,7 @@ export function AgentCliStep({ availability, selections }: AgentCliStepProps) {
           const config = AGENT_REGISTRY[agentId];
           if (!config) return null;
 
-          const isInstalled = availability[agentId] === true;
+          const isInstalled = availability[agentId] !== "missing";
           const isInstalling = installingAgentId === agentId;
           const isDisabled = isInstalled || !!installingAgentId || !terminalId;
           const blocks = getInstallBlocksForCurrentOS(config);

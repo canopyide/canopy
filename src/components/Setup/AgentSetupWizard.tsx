@@ -11,6 +11,7 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { cliAvailabilityClient } from "@/clients";
 import { isCanopyEnvEnabled } from "@/utils/env";
 import type { CliAvailability } from "@shared/types";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
 import { Sparkles, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { CanopyAgentIcon } from "@/components/icons";
 
@@ -196,13 +197,13 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
     initRef.current = true;
     const initial: Record<string, boolean> = {};
     for (const agentId of AGENT_ORDER) {
-      initial[agentId] = state.availability[agentId] === true;
+      initial[agentId] = isAgentReady(state.availability[agentId]);
     }
     dispatch({ type: "INIT_SELECTIONS", payload: initial });
   }, [isOpen, isAvailabilityLoading, state.availability, state.selectionsInitialized]);
 
   const installedAgents = useMemo(
-    () => AGENT_ORDER.filter((id) => state.availability[id] === true),
+    () => AGENT_ORDER.filter((id) => isAgentReady(state.availability[id])),
     [state.availability]
   );
 
@@ -394,7 +395,8 @@ function SelectionStep({
           {AGENT_ORDER.map((agentId) => {
             const config = AGENT_REGISTRY[agentId];
             if (!config) return null;
-            const isInstalled = availability[agentId] === true;
+            const agentState = availability[agentId];
+            const isInstalled = agentState !== "missing";
             const isChecked = selections[agentId] ?? false;
             const Icon = config.icon;
             const description = AGENT_DESCRIPTIONS[agentId] ?? config.tooltip ?? "";
@@ -423,9 +425,13 @@ function SelectionStep({
                     <div className="text-[11px] text-canopy-text/40 truncate">{description}</div>
                   )}
                 </div>
-                {isInstalled ? (
+                {agentState === "ready" ? (
                   <span className="text-[11px] text-status-success font-medium shrink-0">
-                    Installed
+                    Ready
+                  </span>
+                ) : isInstalled ? (
+                  <span className="text-[11px] text-status-warning font-medium shrink-0">
+                    Needs login
                   </span>
                 ) : (
                   <span className="text-[11px] text-canopy-text/30 shrink-0">Not installed</span>

@@ -23,8 +23,20 @@ vi.mock("@/config/agents", () => ({
 
 import { useCliAvailabilityStore, cleanupCliAvailabilityStore } from "../cliAvailabilityStore";
 
-const defaultAvail = { claude: false, gemini: false, codex: false, opencode: false, cursor: false };
-const installedAvail = { claude: true, gemini: false, codex: true, opencode: false, cursor: false };
+const defaultAvail = {
+  claude: "missing",
+  gemini: "missing",
+  codex: "missing",
+  opencode: "missing",
+  cursor: "missing",
+};
+const installedAvail = {
+  claude: "ready",
+  gemini: "missing",
+  codex: "ready",
+  opencode: "missing",
+  cursor: "installed",
+};
 
 describe("cliAvailabilityStore", () => {
   beforeEach(() => {

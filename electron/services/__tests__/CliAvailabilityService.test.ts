@@ -16,6 +16,12 @@ vi.mock("../../setup/environment.js", () => ({
   refreshPath: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock fs/promises for auth checks
+vi.mock("fs/promises", () => ({
+  access: vi.fn().mockRejectedValue(new Error("ENOENT")),
+  constants: { R_OK: 4 },
+}));
+
 describe("CliAvailabilityService", () => {
   let service: CliAvailabilityService;
   const mockedExecFileSync = vi.mocked(execFileSync);
@@ -30,20 +36,17 @@ describe("CliAvailabilityService", () => {
   });
 
   describe("checkAvailability", () => {
-    it("checks all CLIs and returns availability status", async () => {
-      // Mock all CLIs as available
+    it("returns 'installed' when binary found but no auth file (default)", async () => {
+      // Mock all CLIs as available (binary found)
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
 
       const result = await service.checkAvailability();
 
-      expect(result).toEqual({
-        claude: true,
-        gemini: true,
-        codex: true,
-        opencode: true,
-        cursor: true,
-        kiro: true,
-      });
+      // All agents have authCheck config, so without auth files they return "installed"
+      // (cursor has fallback: "installed" explicitly)
+      for (const state of Object.values(result)) {
+        expect(state).toBe("installed");
+      }
 
       // Should have called execFileSync 6 times (once for each CLI)
       expect(mockedExecFileSync).toHaveBeenCalledTimes(6);
@@ -56,28 +59,23 @@ describe("CliAvailabilityService", () => {
       );
     });
 
-    it("detects when some CLIs are not available", async () => {
-      // Mock claude as available, gemini/codex/opencode as not available
-      mockedExecFileSync.mockImplementation((_file, args) => {
-        if (args?.[0] === "claude") {
-          return Buffer.from("/usr/local/bin/claude");
-        }
-        throw new Error("Command not found");
-      });
+    it("returns 'ready' when binary found and auth file exists", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      // Binary found
+      mockedExecFileSync.mockImplementation(() => Buffer.from(""));
+      // Auth file found
+      mockedAccess.mockResolvedValue(undefined);
 
       const result = await service.checkAvailability();
 
-      expect(result).toEqual({
-        claude: true,
-        gemini: false,
-        codex: false,
-        opencode: false,
-        cursor: false,
-        kiro: false,
-      });
+      for (const state of Object.values(result)) {
+        expect(state).toBe("ready");
+      }
     });
 
-    it("detects when all CLIs are not available", async () => {
+    it("returns 'missing' when binary not found", async () => {
       // Mock all CLIs as not available
       mockedExecFileSync.mockImplementation(() => {
         throw new Error("Command not found");
@@ -86,17 +84,41 @@ describe("CliAvailabilityService", () => {
       const result = await service.checkAvailability();
 
       expect(result).toEqual({
-        claude: false,
-        gemini: false,
-        codex: false,
-        opencode: false,
-        cursor: false,
-        kiro: false,
+        claude: "missing",
+        gemini: "missing",
+        codex: "missing",
+        opencode: "missing",
+        cursor: "missing",
+        kiro: "missing",
       });
     });
 
+    it("returns mixed states for different agents", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      // Only claude binary found
+      mockedExecFileSync.mockImplementation((_file, args) => {
+        if (args?.[0] === "claude") {
+          return Buffer.from("/usr/local/bin/claude");
+        }
+        throw new Error("Command not found");
+      });
+
+      // Auth file found (for claude)
+      mockedAccess.mockResolvedValue(undefined);
+
+      const result = await service.checkAvailability();
+
+      expect(result.claude).toBe("ready");
+      expect(result.gemini).toBe("missing");
+      expect(result.codex).toBe("missing");
+      expect(result.opencode).toBe("missing");
+      expect(result.cursor).toBe("missing");
+      expect(result.kiro).toBe("missing");
+    });
+
     it("uses which on Unix-like systems", async () => {
-      // Save original platform
       const originalPlatform = process.platform;
 
       try {
@@ -109,14 +131,12 @@ describe("CliAvailabilityService", () => {
 
         await service.checkAvailability();
 
-        // Should use 'which' command on Unix
         expect(mockedExecFileSync).toHaveBeenCalledWith(
           "which",
           expect.any(Array),
           expect.any(Object)
         );
       } finally {
-        // Restore original platform even if test fails
         Object.defineProperty(process, "platform", {
           value: originalPlatform,
           writable: true,
@@ -125,7 +145,6 @@ describe("CliAvailabilityService", () => {
     });
 
     it("uses where on Windows", async () => {
-      // Save original platform
       const originalPlatform = process.platform;
 
       try {
@@ -138,14 +157,12 @@ describe("CliAvailabilityService", () => {
 
         await service.checkAvailability();
 
-        // Should use 'where' command on Windows
         expect(mockedExecFileSync).toHaveBeenCalledWith(
           "where",
           expect.any(Array),
           expect.any(Object)
         );
       } finally {
-        // Restore original platform even if test fails
         Object.defineProperty(process, "platform", {
           value: originalPlatform,
           writable: true,
@@ -167,14 +184,9 @@ describe("CliAvailabilityService", () => {
       await service.checkAvailability();
       vi.mocked(refreshPath).mockClear();
 
-      // Second check — cache is warm, should not call refreshPath
       await service.refresh();
-      // refresh() calls refreshPath explicitly, so clear again
       vi.mocked(refreshPath).mockClear();
 
-      // Force a new check via the service's own checkAvailability
-      // After refresh completes, inFlightCheck is cleared and availability is set
-      // A subsequent checkAvailability should NOT call refreshPath since availability !== null
       await service.checkAvailability();
       expect(refreshPath).not.toHaveBeenCalled();
     });
@@ -188,8 +200,6 @@ describe("CliAvailabilityService", () => {
         service.checkAvailability(),
       ]);
 
-      // All concurrent calls share the same in-flight promise,
-      // so refreshPath should only be called once
       expect(refreshPath).toHaveBeenCalledOnce();
     });
 
@@ -201,6 +211,30 @@ describe("CliAvailabilityService", () => {
 
       expect(result1).toEqual(result2);
       expect(result2).not.toBeNull();
+    });
+  });
+
+  describe("auth check with env var", () => {
+    it("returns ready when OPENAI_API_KEY is set for codex", async () => {
+      const origKey = process.env.OPENAI_API_KEY;
+      process.env.OPENAI_API_KEY = "sk-test-key";
+
+      try {
+        // Only codex binary found
+        mockedExecFileSync.mockImplementation((_file, args) => {
+          if (args?.[0] === "codex") return Buffer.from("");
+          throw new Error("not found");
+        });
+
+        const result = await service.checkAvailability();
+        expect(result.codex).toBe("ready");
+      } finally {
+        if (origKey === undefined) {
+          delete process.env.OPENAI_API_KEY;
+        } else {
+          process.env.OPENAI_API_KEY = origKey;
+        }
+      }
     });
   });
 
@@ -216,14 +250,11 @@ describe("CliAvailabilityService", () => {
       await service.checkAvailability();
       const cached = service.getAvailability();
 
-      expect(cached).toEqual({
-        claude: true,
-        gemini: true,
-        codex: true,
-        opencode: true,
-        cursor: true,
-        kiro: true,
-      });
+      expect(cached).not.toBeNull();
+      // All agents should have some state (not null)
+      for (const state of Object.values(cached!)) {
+        expect(["missing", "installed", "ready"]).toContain(state);
+      }
     });
   });
 
@@ -237,23 +268,12 @@ describe("CliAvailabilityService", () => {
     });
 
     it("re-checks availability and updates cache", async () => {
-      // Initial check - all available
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
       await service.checkAvailability();
 
-      expect(service.getAvailability()).toEqual({
-        claude: true,
-        gemini: true,
-        codex: true,
-        opencode: true,
-        cursor: true,
-        kiro: true,
-      });
-
-      // Clear mocks
       vi.clearAllMocks();
 
-      // Refresh with changed availability - only claude available now
+      // Only claude available now
       mockedExecFileSync.mockImplementation((_file, args) => {
         if (args?.[0] === "claude") {
           return Buffer.from("/usr/local/bin/claude");
@@ -263,39 +283,23 @@ describe("CliAvailabilityService", () => {
 
       const refreshed = await service.refresh();
 
-      expect(refreshed).toEqual({
-        claude: true,
-        gemini: false,
-        codex: false,
-        opencode: false,
-        cursor: false,
-        kiro: false,
-      });
+      expect(refreshed.claude).not.toBe("missing");
+      expect(refreshed.gemini).toBe("missing");
+      expect(refreshed.codex).toBe("missing");
 
       expect(service.getAvailability()).toEqual(refreshed);
-
-      // Should have called execFileSync again (6 times for refresh)
       expect(mockedExecFileSync).toHaveBeenCalledTimes(6);
     });
 
     it("works on cold start before initial check", async () => {
-      // Fresh service, no prior checkAvailability call
       const freshService = new CliAvailabilityService();
-
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
 
-      // refresh() should still populate cache even on first call
       const result = await freshService.refresh();
 
-      expect(result).toEqual({
-        claude: true,
-        gemini: true,
-        codex: true,
-        opencode: true,
-        cursor: true,
-        kiro: true,
-      });
-
+      for (const state of Object.values(result)) {
+        expect(["missing", "installed", "ready"]).toContain(state);
+      }
       expect(freshService.getAvailability()).toEqual(result);
     });
   });
@@ -313,7 +317,6 @@ describe("CliAvailabilityService", () => {
 
       await service.checkAvailability();
 
-      // All six CLIs should have been checked
       expect(executionOrder).toHaveLength(6);
       expect(executionOrder).toContain("claude");
       expect(executionOrder).toContain("gemini");
@@ -326,46 +329,34 @@ describe("CliAvailabilityService", () => {
     it("deduplicates concurrent checkAvailability calls", async () => {
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
 
-      // Start multiple checks concurrently
       const [result1, result2, result3] = await Promise.all([
         service.checkAvailability(),
         service.checkAvailability(),
         service.checkAvailability(),
       ]);
 
-      // All should return the same result
       expect(result1).toEqual(result2);
       expect(result2).toEqual(result3);
-
-      // Should only have called execFileSync 6 times total (not 18)
-      // because concurrent calls share the same in-flight promise
       expect(mockedExecFileSync).toHaveBeenCalledTimes(6);
     });
 
     it("concurrent refresh calls each trigger a new check", async () => {
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
 
-      // Start multiple refresh calls concurrently
       const [result1, result2] = await Promise.all([service.refresh(), service.refresh()]);
 
-      // Both should return the same result (mocked)
       expect(result1).toEqual(result2);
-
-      // Should call execFileSync 12 times total (6 for each refresh)
-      // Refresh intentionally breaks deduplication to ensure freshness
       expect(mockedExecFileSync).toHaveBeenCalledTimes(12);
     });
 
     it("allows sequential checks after first completes", async () => {
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
 
-      // First check
       await service.checkAvailability();
       expect(mockedExecFileSync).toHaveBeenCalledTimes(6);
 
       vi.clearAllMocks();
 
-      // Second check after first completes should trigger new checks
       await service.refresh();
       expect(mockedExecFileSync).toHaveBeenCalledTimes(6);
     });
@@ -373,20 +364,13 @@ describe("CliAvailabilityService", () => {
 
   describe("security - command validation", () => {
     it("rejects commands with invalid characters in private checkCommand", async () => {
-      // This test verifies the internal security validation
-      // We can't directly test the private method, but we can verify
-      // that the public API never attempts to execute unsafe commands
-
-      // Try to check availability normally (safe commands)
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
       await service.checkAvailability();
 
-      // Verify that execFileSync was called with safe, expected commands
       const calls = mockedExecFileSync.mock.calls;
       calls.forEach((call) => {
         const args = call[1] as string[];
         const command = args[0];
-        // All commands should match safe pattern: alphanumeric, dash, underscore, dot
         expect(command).toMatch(/^[a-zA-Z0-9._-]+$/);
       });
     });

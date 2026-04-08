@@ -19,6 +19,7 @@ import { cn } from "../../lib/utils";
 import { getAgentConfig, getAgentIds } from "@/config/agents";
 import { getAgentSettingsEntry } from "@/types";
 import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
 import { WorktreeDetailsSection } from "./WorktreeCard/WorktreeDetailsSection";
 import { WorktreeDialogs } from "./WorktreeCard/WorktreeDialogs";
 import { WorktreeHeader } from "./WorktreeCard/WorktreeHeader";
@@ -487,7 +488,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
       })
       .map((agentId) => {
         const config = getAgentConfig(agentId);
-        const available = agentAvailability?.[agentId] ?? false;
+        const available = isAgentReady(agentAvailability?.[agentId]);
 
         return {
           id: agentId,
