@@ -48,11 +48,8 @@ describe("ThemeSelector", () => {
   it("calls onSelect with id and click origin when item is clicked", () => {
     const onSelect = vi.fn();
     render(<ThemeSelector {...defaultProps} onSelect={onSelect} />);
-    fireEvent.click(screen.getByText("Gamma Theme"));
-    expect(onSelect).toHaveBeenCalledWith("gamma", {
-      x: expect.any(Number),
-      y: expect.any(Number),
-    });
+    fireEvent.click(screen.getByText("Gamma Theme"), { clientX: 123, clientY: 456 });
+    expect(onSelect).toHaveBeenCalledWith("gamma", { x: 123, y: 456 });
   });
 
   it("filters items by search query (case-insensitive)", () => {

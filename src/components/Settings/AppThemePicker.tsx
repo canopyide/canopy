@@ -156,7 +156,10 @@ export function AppThemePicker() {
         appThemeClient.setFollowSystem(false).catch(console.error);
       }
 
-      const scheme = resolveAppTheme(id, customSchemes);
+      // Resolve against a fresh store read — `customSchemes` from the
+      // component closure can be stale when `handleImport` calls
+      // `handleSelect` synchronously right after `addCustomScheme`.
+      const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
       commitSchemeSelection(id);
       runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme));
       setOpen(false);
@@ -188,7 +191,7 @@ export function AppThemePicker() {
         }
       }
     },
-    [commitSchemeSelection, selectedSchemeId, customSchemes, followSystem, setFollowSystem]
+    [commitSchemeSelection, selectedSchemeId, followSystem, setFollowSystem]
   );
 
   const handleShuffle = useCallback(
