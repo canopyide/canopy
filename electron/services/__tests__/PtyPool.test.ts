@@ -145,10 +145,7 @@ describe("PtyPool", () => {
     const first = createFakeProcess(901);
     const second = createFakeProcess(902);
     const third = createFakeProcess(903);
-    spawnMock
-      .mockReturnValueOnce(first)
-      .mockReturnValueOnce(second)
-      .mockReturnValueOnce(third);
+    spawnMock.mockReturnValueOnce(first).mockReturnValueOnce(second).mockReturnValueOnce(third);
 
     const pool = new PtyPool({ poolSize: 1, defaultCwd: "/home/tester" });
     await pool.warmPool();

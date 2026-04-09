@@ -23,10 +23,7 @@ function createFakePooledPty(): FakePooledPty {
   };
 }
 
-function createFakePool(overrides: {
-  defaultCwd: string;
-  acquire: () => unknown;
-}): PtyPool {
+function createFakePool(overrides: { defaultCwd: string; acquire: () => unknown }): PtyPool {
   return {
     acquire: overrides.acquire,
     getDefaultCwd: () => overrides.defaultCwd,
@@ -51,16 +48,7 @@ describe("acquirePtyProcess pool handling (issue #5097)", () => {
       acquire: vi.fn(() => pooled),
     });
 
-    const result = acquirePtyProcess(
-      "t1",
-      baseOptions,
-      {},
-      "/bin/bash",
-      [],
-      false,
-      pool,
-      () => {}
-    );
+    const result = acquirePtyProcess("t1", baseOptions, {}, "/bin/bash", [], false, pool, () => {});
 
     expect(result).toBe(pooled);
     expect(spawnMock).not.toHaveBeenCalled();
