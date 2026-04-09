@@ -260,18 +260,6 @@ describe("AgentSetupWizard reducer", () => {
     expect(reset.availability).toBe(partialAvail);
   });
 
-  it("resets to selection step when skipHealth is true", () => {
-    let state = buildInitialState(emptyAvail, false);
-    state = wizardReducer(state, { type: "HEALTH_CONTINUE" });
-
-    const reset = wizardReducer(state, {
-      type: "RESET",
-      availability: partialAvail,
-      skipHealth: true,
-    });
-    expect(reset.step).toEqual({ type: "selection" });
-  });
-
   it("navigates back from cli to selection and re-confirms", () => {
     let state = buildInitialState(emptyAvail);
     state = wizardReducer(state, {

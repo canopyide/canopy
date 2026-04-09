@@ -61,11 +61,8 @@ vi.mock("@/utils/env", () => ({
   isCanopyEnvEnabled: () => false,
 }));
 
-let capturedWizardProps: Record<string, unknown> = {};
-
 vi.mock("@/components/Setup/AgentSetupWizard", () => ({
   AgentSetupWizard: vi.fn((props: { onClose: () => void; isFirstRun?: boolean }) => {
-    capturedWizardProps = props;
     return (
       <div data-testid="agent-setup-wizard" data-first-run={props.isFirstRun ? "true" : "false"}>
         <button data-testid="close-wizard" onClick={props.onClose}>
@@ -87,7 +84,7 @@ describe("OnboardingFlow first-run", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedWizardProps = {};
+
     onboardingMock.get.mockResolvedValue({ ...defaultOnboardingState });
   });
 
@@ -152,7 +149,7 @@ describe("OnboardingFlow telemetry tracking", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedWizardProps = {};
+
     onboardingMock.get.mockResolvedValue({ ...defaultOnboardingState });
   });
 
@@ -220,7 +217,7 @@ describe("OnboardingFlow resume and legacy steps", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedWizardProps = {};
+
     onboardingMock.get.mockResolvedValue({ ...defaultOnboardingState });
   });
 
@@ -296,7 +293,7 @@ describe("OnboardingFlow auto-open wizard on no selected agents", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedWizardProps = {};
+
     onboardingMock.get.mockResolvedValue({ ...completedOnboardingState });
   });
 
