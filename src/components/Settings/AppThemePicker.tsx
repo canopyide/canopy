@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { AlertTriangle, Monitor, Palette, Shuffle } from "lucide-react";
 import { ThemeSelector } from "./ThemeSelector";
 import { cn } from "@/lib/utils";
