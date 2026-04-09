@@ -443,6 +443,13 @@ describe("CliAvailabilityService", () => {
 
       const result = await service.checkAvailability();
       expect(result.kiro).toBe("ready");
+
+      // Upper-bound guard: the only Kiro auth file probed must be the SSO
+      // token cache. Catches any future reintroduction of extra Kiro paths.
+      const kiroProbedPaths = mockedAccess.mock.calls
+        .map((call) => String(call[0]))
+        .filter((p) => p.includes(".kiro") || p.includes("kiro-auth-token"));
+      expect(kiroProbedPaths).toEqual([ssoTokenPath]);
     });
 
     it("probes only .copilot/config.json for Copilot (NOT .config/gh/hosts.yml)", async () => {

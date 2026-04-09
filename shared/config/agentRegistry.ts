@@ -1105,8 +1105,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       args: [],
     },
     authCheck: {
-      // AWS SSO users authenticate via `kiro login --use-sso`, which writes
-      // a token cache to ~/.aws/sso/cache/kiro-auth-token.json. Probe that
+      // AWS SSO users authenticate via `kiro-cli login` (optionally with
+      // --use-device-flow for headless/SSH), which writes a Kiro-specific
+      // token cache to ~/.aws/sso/cache/kiro-auth-token.json. Probe that
       // file so SSO-authenticated users reach "ready" instead of "installed".
       // Non-SSO Kiro auth is managed via the OS keychain and internal state
       // directories (e.g. ~/Library/Application Support/kiro-cli/ on macOS,
