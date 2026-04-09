@@ -241,7 +241,7 @@ describe("buildArgsForReconnectedFallback", () => {
     const result = buildArgsForReconnectedFallback(reconnected, saved, "/fallback");
     expect(result.existingId).toBe("t1");
     expect(result.cwd).toBe("/reconnected");
-    expect(result.title).toBe("Shell");
+    expect(result.title).toBe("Old Title");
     expect(result.worktreeId).toBe("wt1");
     expect(result.location).toBe("dock");
   });
@@ -255,6 +255,15 @@ describe("buildArgsForReconnectedFallback", () => {
     expect(result.cwd).toBe("/saved");
     expect(result.title).toBe("Saved");
     expect(result.worktreeId).toBe("wt1");
+  });
+
+  it("falls back to reconnected title when saved title is missing", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", cwd: "/p", kind: "terminal", title: "Shell" },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.title).toBe("Shell");
   });
 });
 

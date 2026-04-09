@@ -207,7 +207,7 @@ export function buildArgsForReconnectedFallback(
     kind: reconnectedKind ?? (agentId ? "agent" : "terminal"),
     type: reconnectedTerminal.type ?? saved.type,
     agentId,
-    title: reconnectedTerminal.title ?? saved.title,
+    title: saved.title ?? reconnectedTerminal.title,
     cwd,
     worktreeId: reconnectedTerminal.worktreeId ?? saved.worktreeId,
     location,
