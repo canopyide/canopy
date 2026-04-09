@@ -48,6 +48,11 @@ export function FixedDropdown({
   const overlayCount = useUIStore((state) => state.overlayCount);
   const [overlayGraceActive, setOverlayGraceActive] = useState(false);
   const baselineOverlayCountRef = useRef<number>(0);
+  // Carry the latest overlay count into the grace-setup effect without
+  // adding it as a reactive dependency — re-running on every count change
+  // would wrongly reset the grace window on each in-flight rise.
+  const latestOverlayCountRef = useRef<number>(overlayCount);
+  latestOverlayCountRef.current = overlayCount;
 
   useEffect(() => {
     if (!open) {
@@ -56,14 +61,13 @@ export function FixedDropdown({
       return;
     }
     setOverlayGraceActive(true);
-    baselineOverlayCountRef.current = overlayCount;
+    baselineOverlayCountRef.current = latestOverlayCountRef.current;
     const handle = setTimeout(() => {
       setOverlayGraceActive(false);
     }, OVERLAY_RACE_GRACE_MS);
     return () => {
       clearTimeout(handle);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- overlayCount is read only to seed the baseline at the open transition; in-flight rises during the grace window are tracked by the auto-close effect below
   }, [open]);
 
   useEffect(() => setMounted(true), []);
