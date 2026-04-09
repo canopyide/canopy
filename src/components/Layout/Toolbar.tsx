@@ -60,21 +60,23 @@ import { ToolbarSettingsButton } from "./ToolbarSettingsButton";
 import { ToolbarProblemsButton } from "./ToolbarProblemsButton";
 import { ToolbarPortalButton } from "./ToolbarPortalButton";
 
-import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
+import { getAgentConfig } from "@/config/agents";
 
 const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
   "agent-setup",
   ...(BUILT_IN_AGENT_IDS as unknown as ToolbarButtonId[]),
 ]);
 
-const OVERFLOW_MENU_META: Partial<
-  Record<AnyToolbarButtonId, { label: string; icon: React.ComponentType<{ className?: string }> }>
-> = {
-  claude: { label: "Claude", icon: SquareTerminal },
-  gemini: { label: "Gemini", icon: SquareTerminal },
-  codex: { label: "Codex", icon: SquareTerminal },
-  opencode: { label: "OpenCode", icon: SquareTerminal },
-  cursor: { label: "Cursor", icon: SquareTerminal },
+type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
+
+export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> = {
+  ...(Object.fromEntries(
+    BUILT_IN_AGENT_IDS.map((id) => [
+      id,
+      { label: getAgentConfig(id)?.name ?? id, icon: SquareTerminal },
+    ])
+  ) as unknown as Record<BuiltInAgentId, OverflowMenuMeta>),
   terminal: { label: "Terminal", icon: SquareTerminal },
   browser: { label: "Browser", icon: Globe },
   "dev-server": { label: "Dev Preview", icon: Monitor },
@@ -358,61 +360,22 @@ export function Toolbar({
         render: () => <AgentSetupButton key="agent-setup" data-toolbar-item="" />,
         isAvailable: !hasAnySelectedAgent,
       },
-      claude: {
-        render: () => (
-          <AgentButton
-            key="claude"
-            type="claude"
-            availability={agentAvailability?.claude}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.claude?.selected !== false,
-      },
-      gemini: {
-        render: () => (
-          <AgentButton
-            key="gemini"
-            type="gemini"
-            availability={agentAvailability?.gemini}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.gemini?.selected !== false,
-      },
-      codex: {
-        render: () => (
-          <AgentButton
-            key="codex"
-            type="codex"
-            availability={agentAvailability?.codex}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.codex?.selected !== false,
-      },
-      opencode: {
-        render: () => (
-          <AgentButton
-            key="opencode"
-            type="opencode"
-            availability={agentAvailability?.opencode}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.opencode?.selected !== false,
-      },
-      cursor: {
-        render: () => (
-          <AgentButton
-            key="cursor"
-            type="cursor"
-            availability={agentAvailability?.cursor}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.cursor?.selected !== false,
-      },
+      ...Object.fromEntries(
+        BUILT_IN_AGENT_IDS.map((id) => [
+          id,
+          {
+            render: () => (
+              <AgentButton
+                key={id}
+                type={id}
+                availability={agentAvailability?.[id]}
+                data-toolbar-item=""
+              />
+            ),
+            isAvailable: !agentSettings || agentSettings.agents?.[id]?.selected !== false,
+          },
+        ])
+      ),
       terminal: {
         render: () => (
           <ToolbarLauncherButton
@@ -776,11 +739,7 @@ export function Toolbar({
 
   const overflowActions = useMemo<Partial<Record<AnyToolbarButtonId, () => void>>>(
     () => ({
-      claude: () => onLaunchAgent("claude"),
-      gemini: () => onLaunchAgent("gemini"),
-      codex: () => onLaunchAgent("codex"),
-      opencode: () => onLaunchAgent("opencode"),
-      cursor: () => onLaunchAgent("cursor"),
+      ...Object.fromEntries(BUILT_IN_AGENT_IDS.map((id) => [id, () => onLaunchAgent(id)])),
       terminal: () => onLaunchAgent("terminal"),
       browser: () => onLaunchAgent("browser"),
       "dev-server": () => {

@@ -1,4 +1,4 @@
-import type { BuiltInAgentId } from "../config/agentIds.js";
+import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "../config/agentIds.js";
 
 /** Identifier for plugin-contributed toolbar buttons (namespaced as plugin.name.buttonId) */
 export type PluginToolbarButtonId = `plugin.${string}`;
@@ -6,15 +6,17 @@ export type PluginToolbarButtonId = `plugin.${string}`;
 /** Identifier for any toolbar button (built-in or plugin-contributed) */
 export type AnyToolbarButtonId = ToolbarButtonId | PluginToolbarButtonId;
 
-/** Unique identifier for built-in toolbar buttons */
+/**
+ * Unique identifier for built-in toolbar buttons.
+ *
+ * Agent button IDs are derived from `BUILT_IN_AGENT_IDS` so that adding a new
+ * agent to the registry automatically makes it a valid toolbar button ID
+ * without touching this union.
+ */
 export type ToolbarButtonId =
   | "sidebar-toggle"
   | "agent-setup"
-  | "claude"
-  | "gemini"
-  | "codex"
-  | "opencode"
-  | "cursor"
+  | BuiltInAgentId
   | "terminal"
   | "browser"
   | "dev-server"
@@ -43,15 +45,7 @@ export interface LauncherDefaults {
   /** Always show dev server option in palette, even if devServerCommand not configured */
   alwaysShowDevServer: boolean;
   /** Default panel type to highlight when palette opens */
-  defaultSelection?:
-    | "terminal"
-    | "claude"
-    | "gemini"
-    | "codex"
-    | "opencode"
-    | "cursor"
-    | "browser"
-    | "dev-server";
+  defaultSelection?: "terminal" | BuiltInAgentId | "browser" | "dev-server";
   /** Default agent for automated workflows like "What's Next?" */
   defaultAgent?: BuiltInAgentId;
 }
@@ -65,11 +59,9 @@ export const TOOLBAR_BUTTON_PRIORITIES: Record<ToolbarButtonId, ToolbarButtonPri
   "github-stats": 1,
   "voice-recording": 1,
   "agent-setup": 2,
-  claude: 2,
-  gemini: 2,
-  codex: 2,
-  opencode: 2,
-  cursor: 2,
+  ...(Object.fromEntries(
+    BUILT_IN_AGENT_IDS.map((id) => [id, 2 as ToolbarButtonPriority])
+  ) as Record<BuiltInAgentId, ToolbarButtonPriority>),
   terminal: 3,
   browser: 3,
   "dev-server": 3,
