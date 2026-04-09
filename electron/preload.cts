@@ -744,6 +744,13 @@ const CHANNELS = {
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
   HIBERNATION_PROJECT_HIBERNATED: "hibernation:project-hibernated",
 
+  // Idle terminal notification channels
+  IDLE_TERMINAL_GET_CONFIG: "idle-terminal:get-config",
+  IDLE_TERMINAL_UPDATE_CONFIG: "idle-terminal:update-config",
+  IDLE_TERMINAL_CLOSE_PROJECT: "idle-terminal:close-project",
+  IDLE_TERMINAL_DISMISS_PROJECT: "idle-terminal:dismiss-project",
+  IDLE_TERMINAL_NOTIFY: "idle-terminal:notify",
+
   // System Sleep channels
   SYSTEM_SLEEP_GET_METRICS: "system-sleep:get-metrics",
   SYSTEM_SLEEP_GET_AWAKE_TIME: "system-sleep:get-awake-time",
@@ -2139,6 +2146,35 @@ const api: ElectronAPI = {
         timestamp: number;
       }) => void
     ): (() => void) => _typedOn(CHANNELS.HIBERNATION_PROJECT_HIBERNATED, callback),
+  },
+
+  // Idle Terminal Notification API
+  idleTerminals: {
+    getConfig: (): Promise<{ enabled: boolean; thresholdMinutes: number }> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_GET_CONFIG),
+
+    updateConfig: (
+      config: Partial<{ enabled: boolean; thresholdMinutes: number }>
+    ): Promise<{ enabled: boolean; thresholdMinutes: number }> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_UPDATE_CONFIG, config),
+
+    closeProject: (projectId: string): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_CLOSE_PROJECT, projectId),
+
+    dismissProject: (projectId: string): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_DISMISS_PROJECT, projectId),
+
+    onNotify: (
+      callback: (payload: {
+        projects: Array<{
+          projectId: string;
+          projectName: string;
+          terminalCount: number;
+          idleMinutes: number;
+        }>;
+        timestamp: number;
+      }) => void
+    ): (() => void) => _typedOn(CHANNELS.IDLE_TERMINAL_NOTIFY, callback),
   },
 
   // System Sleep API

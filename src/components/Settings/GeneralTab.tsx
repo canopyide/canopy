@@ -22,7 +22,12 @@ import type { SettingsSubtabItem } from "./SettingsSubtabBar";
 import { getAgentIds, getAgentConfig } from "@/config/agents";
 import { DEFAULT_AGENT_SETTINGS, getAgentSettingsEntry } from "@shared/types";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
-import type { HibernationConfig, CliAvailability, AgentSettings } from "@shared/types";
+import type {
+  HibernationConfig,
+  IdleTerminalNotifyConfig,
+  CliAvailability,
+  AgentSettings,
+} from "@shared/types";
 import { isAgentReady } from "../../../shared/utils/agentAvailability";
 import { usePreferencesStore } from "@/store";
 import { keybindingService } from "@/services/KeybindingService";
@@ -73,6 +78,13 @@ const THRESHOLD_PRESETS = [
   { value: 72, label: "72h" },
 ] as const;
 
+const IDLE_TERMINAL_THRESHOLD_PRESETS = [
+  { value: 30, label: "30m" },
+  { value: 60, label: "1h" },
+  { value: 120, label: "2h" },
+  { value: 240, label: "4h" },
+] as const;
+
 interface ShortcutDisplay {
   actionId: string;
   key: string;
@@ -95,6 +107,8 @@ export function GeneralTab({
 
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [hibernationConfig, setHibernationConfig] = useState<HibernationConfig | null>(null);
+  const [idleNotifyConfig, setIdleNotifyConfig] = useState<IdleTerminalNotifyConfig | null>(null);
+  const [isIdleNotifySaving, setIsIdleNotifySaving] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [cliAvailability, setCliAvailability] = useState<CliAvailability | null>(null);
@@ -168,6 +182,20 @@ export function GeneralTab({
         if (cancelled) return;
         console.error("Failed to load hibernation config:", error);
         setConfigError(error instanceof Error ? error.message : "Failed to load settings");
+      });
+
+    actionService
+      .dispatch("idleTerminalNotify.getConfig", undefined, { source: "user" })
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) {
+          throw new Error(result.error.message);
+        }
+        setIdleNotifyConfig(result.result as IdleTerminalNotifyConfig);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Failed to load idle terminal notify config:", error);
       });
 
     return () => {
@@ -286,6 +314,54 @@ export function GeneralTab({
     } finally {
       if (isMountedRef.current) {
         setIsSaving(false);
+      }
+    }
+  };
+
+  const handleIdleNotifyToggle = async () => {
+    if (!idleNotifyConfig || isIdleNotifySaving) return;
+    setIsIdleNotifySaving(true);
+    try {
+      const result = await actionService.dispatch(
+        "idleTerminalNotify.updateConfig",
+        { enabled: !idleNotifyConfig.enabled },
+        { source: "user" }
+      );
+      if (!isMountedRef.current) return;
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      setIdleNotifyConfig(result.result as IdleTerminalNotifyConfig);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error("Failed to update idle terminal notify config:", error);
+    } finally {
+      if (isMountedRef.current) {
+        setIsIdleNotifySaving(false);
+      }
+    }
+  };
+
+  const handleIdleNotifyThresholdChange = async (value: number) => {
+    if (!idleNotifyConfig || isIdleNotifySaving) return;
+    setIsIdleNotifySaving(true);
+    try {
+      const result = await actionService.dispatch(
+        "idleTerminalNotify.updateConfig",
+        { thresholdMinutes: value },
+        { source: "user" }
+      );
+      if (!isMountedRef.current) return;
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      setIdleNotifyConfig(result.result as IdleTerminalNotifyConfig);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error("Failed to update idle terminal notify threshold:", error);
+    } finally {
+      if (isMountedRef.current) {
+        setIsIdleNotifySaving(false);
       }
     }
   };
@@ -510,6 +586,59 @@ export function GeneralTab({
 
       {effectiveSubtab === "hibernation" && (
         <>
+          {idleNotifyConfig && (
+            <SettingsSection
+              icon={Moon}
+              title="Idle Terminal Notifications"
+              description="Get a friendly reminder when terminals in background projects have been idle for a while. Doesn't kill anything — just lets you decide."
+              id="general-idle-terminal-notify"
+            >
+              <SettingsSwitchCard
+                icon={Moon}
+                title={
+                  idleNotifyConfig.enabled
+                    ? "Idle Notifications Enabled"
+                    : "Enable Idle Notifications"
+                }
+                subtitle={
+                  idleNotifyConfig.enabled
+                    ? `After ${idleNotifyConfig.thresholdMinutes} min of terminal inactivity`
+                    : "Notify me about idle terminals in background projects"
+                }
+                isEnabled={idleNotifyConfig.enabled}
+                onChange={handleIdleNotifyToggle}
+                ariaLabel="Idle Terminal Notifications Toggle"
+                disabled={isIdleNotifySaving}
+              />
+
+              {idleNotifyConfig.enabled && (
+                <div id="general-idle-terminal-threshold" className="space-y-2">
+                  <label className="text-sm text-canopy-text/70">Idle Threshold</label>
+                  <div className="flex gap-2">
+                    {IDLE_TERMINAL_THRESHOLD_PRESETS.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        disabled={isIdleNotifySaving}
+                        onClick={() => handleIdleNotifyThresholdChange(value)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium transition-colors",
+                          idleNotifyConfig.thresholdMinutes === value
+                            ? "bg-canopy-accent/10 border border-canopy-accent text-canopy-accent"
+                            : "border border-canopy-border hover:bg-tint/5 text-canopy-text/70"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-canopy-text/40">
+                    A toast appears when background project terminals have been quiet this long,
+                    with options to close them or dismiss the reminder.
+                  </p>
+                </div>
+              )}
+            </SettingsSection>
+          )}
           {configError ? (
             <div className="p-4 rounded-[var(--radius-lg)] border border-[color-mix(in_oklab,var(--color-status-error)_50%,transparent)] bg-[color-mix(in_oklab,var(--color-status-error)_10%,transparent)]">
               <p className="text-sm text-status-error">

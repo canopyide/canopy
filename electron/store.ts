@@ -40,6 +40,11 @@ export interface StoreSchema {
     enabled: boolean;
     inactiveThresholdHours: number;
   };
+  idleTerminalNotify: {
+    enabled: boolean;
+    thresholdMinutes: number;
+  };
+  idleTerminalDismissals: Record<string, number>;
   appState: {
     activeWorktreeId?: string;
     sidebarWidth: number;
@@ -218,6 +223,11 @@ const storeOptions = {
       enabled: false,
       inactiveThresholdHours: 24,
     },
+    idleTerminalNotify: {
+      enabled: true,
+      thresholdMinutes: 60,
+    },
+    idleTerminalDismissals: {},
     appState: {
       sidebarWidth: 350,
       focusMode: false,

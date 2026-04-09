@@ -138,6 +138,7 @@ import type {
   TerminalResourceBatchPayload,
 } from "../pty-host.js";
 import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
+import type { IdleTerminalNotifyConfig, IdleTerminalNotifyPayload } from "./idleTerminals.js";
 import type { AgentRegistry, AgentMetadata } from "./agentCapabilities.js";
 import type { AppThemeConfig } from "../appTheme.js";
 import type {
@@ -1132,6 +1133,24 @@ export interface IpcInvokeMap {
     result: HibernationConfig;
   };
 
+  // Idle terminal notification channels
+  "idle-terminal:get-config": {
+    args: [];
+    result: IdleTerminalNotifyConfig;
+  };
+  "idle-terminal:update-config": {
+    args: [config: Partial<IdleTerminalNotifyConfig>];
+    result: IdleTerminalNotifyConfig;
+  };
+  "idle-terminal:close-project": {
+    args: [projectId: string];
+    result: void;
+  };
+  "idle-terminal:dismiss-project": {
+    args: [projectId: string];
+    result: void;
+  };
+
   // Keybinding channels
   "keybinding:get-overrides": {
     args: [];
@@ -1955,6 +1974,9 @@ export interface IpcEventMap {
 
   // Hibernation events
   "hibernation:project-hibernated": HibernationProjectHibernatedPayload;
+
+  // Idle terminal notification events
+  "idle-terminal:notify": IdleTerminalNotifyPayload;
 
   // App theme events
   "app-theme:system-appearance-changed": { isDark: boolean; schemeId: string };

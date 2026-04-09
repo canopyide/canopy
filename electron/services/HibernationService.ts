@@ -321,6 +321,21 @@ export class HibernationService {
     }
   }
 
+  /**
+   * Public entry point for hibernating a project on demand (e.g. from the
+   * idle-terminal "Close Them" action). Dynamically resolves PtyManager and
+   * runs the same flow as scheduled hibernation so DevPreview callbacks fire
+   * and the renderer sees the standard `hibernation:project-hibernated` event.
+   */
+  async hibernateProjectOnDemand(
+    projectId: string,
+    projectName: string,
+    reason: "scheduled" | "memory-pressure" = "scheduled"
+  ): Promise<number> {
+    const { getPtyManager } = await import("./PtyManager.js");
+    return this.hibernateProject(projectId, projectName, reason, getPtyManager());
+  }
+
   private async hibernateProject(
     projectId: string,
     projectName: string,

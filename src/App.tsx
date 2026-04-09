@@ -21,6 +21,7 @@ import {
   useReEntrySummary,
 } from "./hooks";
 import { useHibernationNotifications } from "./hooks/useHibernationNotifications";
+import { useIdleTerminalNotifications } from "./hooks/useIdleTerminalNotifications";
 import { useDiskSpaceWarnings } from "./hooks/useDiskSpaceWarnings";
 import { useActionRegistry } from "./hooks/useActionRegistry";
 import { useUpdateListener } from "./hooks/useUpdateListener";
@@ -135,6 +136,7 @@ import { SidebarContent, preloadNewWorktreeDialog, E2EFaultInjector } from "./co
 function App() {
   useErrors();
   useHibernationNotifications();
+  useIdleTerminalNotifications();
   useDiskSpaceWarnings();
   useUnloadCleanup();
   useResourceProfile();
