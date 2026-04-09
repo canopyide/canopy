@@ -30,16 +30,11 @@ import {
   RotateCcw,
   StickyNote,
 } from "lucide-react";
-import {
-  ClaudeIcon,
-  GeminiIcon,
-  CodexIcon,
-  OpenCodeIcon,
-  CanopyAgentIcon,
-  CopyTreeIcon,
-} from "@/components/icons";
+import { CanopyAgentIcon, CopyTreeIcon } from "@/components/icons";
 import { useToolbarPreferencesStore } from "@/store";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
+import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { getAgentConfig } from "@/config/agents";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -54,26 +49,21 @@ const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
     icon: <CanopyAgentIcon className="h-4 w-4" />,
     description: "Shown only when no agents are enabled in Agent Settings",
   },
-  claude: {
-    label: "Claude Agent",
-    icon: <ClaudeIcon className="h-4 w-4" />,
-    description: "Launch Claude AI agent",
-  },
-  gemini: {
-    label: "Gemini Agent",
-    icon: <GeminiIcon className="h-4 w-4" />,
-    description: "Launch Gemini AI agent",
-  },
-  codex: {
-    label: "Codex Agent",
-    icon: <CodexIcon className="h-4 w-4" />,
-    description: "Launch Codex AI agent",
-  },
-  opencode: {
-    label: "OpenCode Agent",
-    icon: <OpenCodeIcon className="h-4 w-4" />,
-    description: "Launch OpenCode AI agent",
-  },
+  ...Object.fromEntries(
+    BUILT_IN_AGENT_IDS.map((id) => {
+      const cfg = getAgentConfig(id);
+      const Icon = cfg?.icon;
+      const name = cfg?.name ?? id;
+      return [
+        id,
+        {
+          label: `${name} Agent`,
+          icon: Icon ? <Icon className="h-4 w-4" /> : <SquareTerminal className="h-4 w-4" />,
+          description: `Launch ${name} AI agent`,
+        },
+      ];
+    })
+  ),
   terminal: {
     label: "Terminal",
     icon: <SquareTerminal className="h-4 w-4" />,
@@ -360,10 +350,11 @@ export function ToolbarSettingsTab() {
             >
               <option value="">None (first available)</option>
               <option value="terminal">Terminal</option>
-              <option value="claude">Claude</option>
-              <option value="gemini">Gemini</option>
-              <option value="codex">Codex</option>
-              <option value="opencode">OpenCode</option>
+              {BUILT_IN_AGENT_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {getAgentConfig(id)?.name ?? id}
+                </option>
+              ))}
               <option value="browser">Browser</option>
               <option value="dev-server">Dev Preview</option>
             </select>
