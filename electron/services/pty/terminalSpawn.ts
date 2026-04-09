@@ -97,8 +97,15 @@ export function acquirePtyProcess(
   ptyPool: PtyPool | null,
   onWriteError: (error: unknown, context: { operation: string }) => void
 ): pty.IPty {
+  // The pool is a global singleton pre-warmed at whichever project most
+  // recently called drainAndRefill(). In multi-window setups a different
+  // window may have drained the pool to a different cwd, so skip the pool
+  // when its current cwd doesn't match the caller's request — the direct
+  // pty.spawn below will honour options.cwd via node-pty's kernel chdir.
+  const poolCwdMatches = ptyPool ? ptyPool.getDefaultCwd() === options.cwd : false;
   const canUsePool =
     ptyPool &&
+    poolCwdMatches &&
     !isAgentTerminal &&
     !options.shell &&
     !options.env &&

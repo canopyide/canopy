@@ -17,13 +17,22 @@ interface FakePtyProcess {
 
 function createFakeProcess(pid: number | "missing" = 100): FakePtyProcess {
   let onExitHandler: ((event: { exitCode: number }) => void) | null = null;
+  let alive = true;
   const process: FakePtyProcess = {
     onData: vi.fn(() => ({ dispose: vi.fn() })),
     onExit: vi.fn((callback: (event: { exitCode: number }) => void) => {
       onExitHandler = callback;
     }),
-    kill: vi.fn(),
+    // Real node-pty kill() triggers onExit asynchronously. Mirror that here so
+    // drain tests exercise the onExit→refill cascade against the epoch guard.
+    kill: vi.fn(() => {
+      if (alive) {
+        alive = false;
+        onExitHandler?.({ exitCode: 0 });
+      }
+    }),
     emitExit: (exitCode: number) => {
+      alive = false;
       onExitHandler?.({ exitCode });
     },
   };
