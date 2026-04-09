@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const storeBacking: Record<string, unknown> = {};
 const storeMock = vi.hoisted(() => ({
@@ -376,5 +376,3 @@ describe("IdleTerminalNotificationService", () => {
     });
   });
 });
-
-void (storeMock as Mock | undefined);
