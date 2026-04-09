@@ -1,7 +1,10 @@
 import { ipcMain } from "electron";
 import { CHANNELS } from "../channels.js";
 import { getAgentIds } from "../../../shared/config/agentRegistry.js";
-import type { AgentAvailabilityState, AgentInstallPayload } from "../../../shared/types/ipc/system.js";
+import type {
+  AgentAvailabilityState,
+  AgentInstallPayload,
+} from "../../../shared/types/ipc/system.js";
 import { sendToRenderer } from "../utils.js";
 import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { runAgentInstall } from "../../services/AgentInstallService.js";
