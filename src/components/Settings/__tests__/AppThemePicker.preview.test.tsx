@@ -268,6 +268,69 @@ describe("AppThemePicker hover preview", () => {
     expect((injectTheme.mock.calls[0][0] as { id: string }).id).toBe("theme-c");
   });
 
+  it("handles the pending-revert + click-commit + close race without re-injecting the origin", () => {
+    const { rerender } = render(<AppThemePicker />);
+    openDialog();
+
+    const injectTheme = storeState.injectTheme as ReturnType<typeof vi.fn>;
+    const commitSchemeSelection = storeState.commitSchemeSelection as ReturnType<typeof vi.fn>;
+
+    const cardB = screen.getAllByRole("option").find((o) => o.textContent?.includes("Theme B"))!;
+
+    // Hover B, then leave B — a revert rAF is now queued but not yet flushed.
+    fireEvent.pointerEnter(cardB);
+    fireEvent.pointerLeave(cardB);
+    expect(pendingRaf.length).toBe(1);
+
+    // User clicks B to commit before the rAF fires.
+    fireEvent.click(cardB);
+    expect(commitSchemeSelection).toHaveBeenCalledWith("theme-b");
+
+    // Simulate the store state update that the real commitSchemeSelection would
+    // perform so the subsequent close handler reads the committed value.
+    storeState.selectedSchemeId = "theme-b";
+    rerender(<AppThemePicker />);
+
+    injectTheme.mockClear();
+
+    // Flush the pending revert rAF that was queued on pointerLeave before the
+    // click. It should revert to the currently committed scheme, not the
+    // pre-commit origin.
+    flushRaf();
+
+    const revertCallIds = injectTheme.mock.calls.map(
+      (call: unknown[]) => (call[0] as { id: string }).id
+    );
+    // Origin theme-a should NOT be re-injected.
+    expect(revertCallIds).not.toContain("theme-a");
+
+    injectTheme.mockClear();
+    fireEvent.click(screen.getByTestId("dialog-close"));
+
+    // Closing should sync DOM to the committed theme-b, never the origin.
+    expect(injectTheme).toHaveBeenCalledTimes(1);
+    expect((injectTheme.mock.calls[0][0] as { id: string }).id).toBe("theme-b");
+  });
+
+  it("unmount cleanup restores DOM to the committed theme", () => {
+    const { unmount } = render(<AppThemePicker />);
+    openDialog();
+
+    const injectTheme = storeState.injectTheme as ReturnType<typeof vi.fn>;
+    const cardB = screen.getAllByRole("option").find((o) => o.textContent?.includes("Theme B"))!;
+    fireEvent.pointerEnter(cardB);
+
+    injectTheme.mockClear();
+    unmount();
+
+    // Unmount should have triggered a committed-theme re-inject so the preview
+    // does not leak into the chrome after a tab switch.
+    expect(injectTheme).toHaveBeenCalled();
+    const lastId = (injectTheme.mock.calls[injectTheme.mock.calls.length - 1][0] as { id: string })
+      .id;
+    expect(lastId).toBe("theme-a");
+  });
+
   it("updates the aria-live region with the previewed theme name", () => {
     const { container } = render(<AppThemePicker />);
     openDialog();

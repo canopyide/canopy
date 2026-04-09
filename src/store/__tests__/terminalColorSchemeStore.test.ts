@@ -227,6 +227,50 @@ describe("terminalColorSchemeStore", () => {
       });
     });
 
+    it("invalidates the cache correctly across a null → dracula → null → default → null walk", () => {
+      const store = useTerminalColorSchemeStore.getState();
+      store.setSelectedSchemeId("solarized-dark");
+
+      const solarized = getSchemeById("solarized-dark")!;
+      const dracula = getSchemeById("dracula")!;
+      const mapped = getMappedTerminalScheme("daintree")!;
+
+      const expectSolarized = () =>
+        expect(selectEffectiveTheme(useTerminalColorSchemeStore.getState())).toEqual({
+          ...solarized.colors,
+          ...getTerminalScrollbarDefaults(solarized.type),
+        });
+      const expectDracula = () =>
+        expect(selectEffectiveTheme(useTerminalColorSchemeStore.getState())).toEqual({
+          ...dracula.colors,
+          ...getTerminalScrollbarDefaults(dracula.type),
+        });
+      const expectMapped = () =>
+        expect(selectEffectiveTheme(useTerminalColorSchemeStore.getState())).toEqual({
+          ...mapped.colors,
+          ...getTerminalScrollbarDefaults(mapped.type),
+        });
+
+      // Start: previewSchemeId null → committed is solarized-dark.
+      expectSolarized();
+
+      // Hop 1: preview dracula.
+      store.setPreviewSchemeId("dracula");
+      expectDracula();
+
+      // Hop 2: clear preview → back to solarized.
+      store.setPreviewSchemeId(null);
+      expectSolarized();
+
+      // Hop 3: preview the default app-linked scheme → reflects app theme mapping.
+      store.setPreviewSchemeId(DEFAULT_SCHEME_ID);
+      expectMapped();
+
+      // Hop 4: clear again → back to solarized.
+      store.setPreviewSchemeId(null);
+      expectSolarized();
+    });
+
     it("removeCustomScheme clears a dangling previewSchemeId pointing at it", () => {
       const store = useTerminalColorSchemeStore.getState();
       store.addCustomScheme(CUSTOM_SCHEME);

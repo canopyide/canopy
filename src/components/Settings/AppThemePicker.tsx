@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { AlertTriangle, Monitor, Palette, Shuffle } from "lucide-react";
 import { ThemeSelector } from "./ThemeSelector";
 import { cn } from "@/lib/utils";
@@ -232,6 +239,22 @@ export function AppThemePicker() {
     }
     setPreviewAnnouncement("");
   }, [allSchemes, selectedSchemeId, injectTheme]);
+
+  // If the picker unmounts mid-preview (e.g. the parent settings view
+  // switches tabs without closing the theme modal first), make sure the DOM
+  // is snapped back to whatever the store currently says is committed so we
+  // do not leak a preview into the app chrome.
+  useEffect(() => {
+    return () => {
+      const committedId = useAppThemeStore.getState().selectedSchemeId;
+      const { customSchemes: storeCustomSchemes } = useAppThemeStore.getState();
+      const pool = [...BUILT_IN_APP_SCHEMES, ...storeCustomSchemes];
+      const committed = pool.find((s) => s.id === committedId);
+      if (committed) {
+        useAppThemeStore.getState().injectTheme(committed);
+      }
+    };
+  }, []);
 
   const handleShuffle = useCallback(
     (e: MouseEvent) => {
