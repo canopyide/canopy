@@ -1105,7 +1105,13 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       args: [],
     },
     authCheck: {
-      configPathsAll: [".kiro/credentials", ".kiro/config.json"],
+      // Kiro CLI auth is managed via the OS keychain and internal state
+      // directories (e.g. ~/Library/Application Support/kiro-cli/ on macOS,
+      // ~/.local/share/kiro-cli/ on Linux). There is no reliable, human-readable
+      // cross-platform auth file to probe, so we fall back to "installed"
+      // whenever the binary is present — mirroring the pattern used by Cursor
+      // (also keychain-based).
+      fallback: "installed",
     },
     prerequisites: [
       {
@@ -1229,6 +1235,15 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       args: (sessionId: string) => ["--resume=" + sessionId],
     },
     authCheck: {
+      // GitHub Copilot CLI primarily stores auth in the OS keychain
+      // (macOS Keychain under "copilot-cli", Linux libsecret/GNOME Keyring).
+      // ~/.copilot/config.json is written as a fallback when the keychain
+      // is unavailable (headless Linux, CI). We intentionally do NOT probe
+      // ~/.config/gh/hosts.yml — that file is populated by any `gh auth login`
+      // for general GitHub CLI use, not specifically Copilot, so presence
+      // does not imply a Copilot subscription or active auth. The
+      // "installed" fallback covers the macOS keychain case where no
+      // filesystem token exists.
       configPathsAll: [".copilot/config.json"],
       fallback: "installed",
     },
