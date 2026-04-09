@@ -235,6 +235,82 @@ describe("useNoteVoiceInput", () => {
     expect(dispatched).toHaveLength(0);
   });
 
+  it("handles back-to-back sessions (lastSegmentCountRef reset)", () => {
+    const { view, dispatched } = makeEditorView("Hello ");
+    const ref = { current: view };
+
+    renderHook(() => useNoteVoiceInput("panel-1", ref));
+
+    const makeBuffer = (liveText: string, completedSegments: string[]) => ({
+      liveText,
+      completedSegments,
+      sessionDraftStart: -1,
+      draftLengthAtSegmentStart: -1,
+      pendingCorrections: [] as never[],
+      aiCorrectionSpans: [] as never[],
+      activeParagraphStart: -1,
+      transcriptPhase: "interim" as const,
+    });
+
+    // Session 1: delta then complete
+    act(() => {
+      useVoiceRecordingStore.setState({
+        activeTarget: { panelId: "panel-1" },
+        panelBuffers: { "panel-1": makeBuffer("first", []) },
+      });
+    });
+    act(() => {
+      useVoiceRecordingStore.setState((prev) => ({
+        panelBuffers: {
+          ...prev.panelBuffers,
+          "panel-1": {
+            ...prev.panelBuffers["panel-1"],
+            liveText: "",
+            completedSegments: ["first"],
+          },
+        },
+      }));
+    });
+
+    expect(dispatched).toHaveLength(2);
+
+    // Session 2: beginSession resets completedSegments to []
+    act(() => {
+      useVoiceRecordingStore.setState((prev) => ({
+        panelBuffers: {
+          ...prev.panelBuffers,
+          "panel-1": makeBuffer("", []),
+        },
+      }));
+    });
+
+    // New delta + complete in session 2
+    act(() => {
+      useVoiceRecordingStore.setState((prev) => ({
+        panelBuffers: {
+          ...prev.panelBuffers,
+          "panel-1": makeBuffer("second", []),
+        },
+      }));
+    });
+    act(() => {
+      useVoiceRecordingStore.setState((prev) => ({
+        panelBuffers: {
+          ...prev.panelBuffers,
+          "panel-1": {
+            ...prev.panelBuffers["panel-1"],
+            liveText: "",
+            completedSegments: ["second"],
+          },
+        },
+      }));
+    });
+
+    // Should have 4 dispatches: 2 from session 1 + 2 from session 2
+    expect(dispatched).toHaveLength(4);
+    expect(dispatched[3]).toEqual(expect.objectContaining({ insert: "second" }));
+  });
+
   it("resets tracking refs on cleanup", () => {
     const { view, dispatched } = makeEditorView("Hello ");
     const ref = { current: view };

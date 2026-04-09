@@ -35,6 +35,11 @@ export function useNoteVoiceInput(
       const segmentCount = buffer.completedSegments.length;
       const prevSegmentCount = prevBuffer?.completedSegments.length ?? 0;
 
+      // Reset tracking when a new session begins (beginSession clears completedSegments)
+      if (segmentCount < lastSegmentCountRef.current) {
+        lastSegmentCountRef.current = 0;
+      }
+
       if (segmentCount > prevSegmentCount && segmentCount > lastSegmentCountRef.current) {
         const newSegments = buffer.completedSegments.slice(prevSegmentCount);
         const finalText = newSegments.join(" ");
