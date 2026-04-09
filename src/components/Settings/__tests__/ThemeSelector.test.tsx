@@ -45,11 +45,14 @@ describe("ThemeSelector", () => {
     expect(selected!.textContent).toContain("Beta Theme");
   });
 
-  it("calls onSelect when item is clicked", () => {
+  it("calls onSelect with id and click origin when item is clicked", () => {
     const onSelect = vi.fn();
     render(<ThemeSelector {...defaultProps} onSelect={onSelect} />);
     fireEvent.click(screen.getByText("Gamma Theme"));
-    expect(onSelect).toHaveBeenCalledWith("gamma");
+    expect(onSelect).toHaveBeenCalledWith("gamma", {
+      x: expect.any(Number),
+      y: expect.any(Number),
+    });
   });
 
   it("filters items by search query (case-insensitive)", () => {
