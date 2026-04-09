@@ -182,8 +182,13 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
           const layout = state.layout as
             | { leftButtons?: string[]; rightButtons?: string[]; hiddenButtons?: string[] }
             | undefined;
-          const renameAgentSetup = (buttons?: string[]) =>
-            buttons?.map((id) => (id === "agent-setup" ? "agent-tray" : id));
+          const renameAgentSetup = (buttons?: string[]) => {
+            if (!buttons) return buttons;
+            const renamed = buttons.map((id) => (id === "agent-setup" ? "agent-tray" : id));
+            // Dedupe so a persisted list that already contained "agent-tray"
+            // does not produce duplicate React keys after the rename.
+            return Array.from(new Set(renamed));
+          };
           if (layout) {
             layout.leftButtons = renameAgentSetup(layout.leftButtons);
             layout.rightButtons = renameAgentSetup(layout.rightButtons);

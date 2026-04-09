@@ -241,6 +241,71 @@ describe("toolbarPreferencesStore", () => {
       expect(store.getState().layout.leftButtons).toContain("dev-server");
     });
 
+    it("v2→v3 renames 'agent-setup' to 'agent-tray' across all button arrays", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-setup", "claude", "terminal"],
+              rightButtons: ["settings"],
+              hiddenButtons: ["agent-setup"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 2,
+        })
+      );
+
+      const store = await loadStore();
+      const { layout } = store.getState();
+      expect(layout.leftButtons).toContain("agent-tray");
+      expect(layout.leftButtons).not.toContain("agent-setup");
+      expect(layout.hiddenButtons).toContain("agent-tray");
+      expect(layout.hiddenButtons).not.toContain("agent-setup");
+      // Position preserved (first) — agent-tray should be at index 0.
+      expect(layout.leftButtons[0]).toBe("agent-tray");
+    });
+
+    it("v2→v3 rename dedupes when both 'agent-setup' and 'agent-tray' coexist", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-setup", "claude", "agent-tray"],
+              rightButtons: [],
+              hiddenButtons: [],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 2,
+        })
+      );
+
+      const store = await loadStore();
+      const trayCount = store
+        .getState()
+        .layout.leftButtons.filter((id) => id === "agent-tray").length;
+      expect(trayCount).toBe(1);
+    });
+
+    it("v2→v3 handles missing layout without throwing", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 2,
+        })
+      );
+
+      const store = await loadStore();
+      // Should hydrate with defaults.
+      expect(store.getState().layout.leftButtons).toContain("agent-tray");
+    });
+
     it("migrates v0 state through both migrations", async () => {
       storageMock.setItem(
         STORAGE_KEY,

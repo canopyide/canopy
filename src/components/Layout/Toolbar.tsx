@@ -43,6 +43,7 @@ import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 import { useProjectStore } from "@/store/projectStore";
 import { usePreferencesStore, useToolbarPreferencesStore, useVoiceRecordingStore } from "@/store";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import type { ToolbarButtonId, AnyToolbarButtonId } from "@/../../shared/types/toolbar";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
@@ -142,6 +143,12 @@ export function Toolbar({
   const showDeveloperTools = usePreferencesStore((state) => state.showDeveloperTools);
   const notificationsEnabled = useNotificationSettingsStore((s) => s.enabled);
   const toolbarLayout = useToolbarPreferencesStore((state) => state.layout);
+  // Live subscription so pin/unpin toggles from the AgentTrayButton immediately
+  // update per-agent toolbar button visibility. The `agentSettings` prop is
+  // sourced from `useAgentLauncher()`'s local useState which does not react to
+  // store mutations, so we prefer the store value when available.
+  const liveAgentSettings = useAgentSettingsStore((s) => s.settings);
+  const effectiveAgentSettings = liveAgentSettings ?? agentSettings;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [treeCopied, setTreeCopied] = useState(false);
@@ -357,7 +364,6 @@ export function Toolbar({
           <AgentTrayButton
             key="agent-tray"
             agentAvailability={agentAvailability}
-            agentSettings={agentSettings}
             data-toolbar-item=""
           />
         ),
@@ -375,7 +381,8 @@ export function Toolbar({
                 data-toolbar-item=""
               />
             ),
-            isAvailable: !agentSettings || agentSettings.agents?.[id]?.selected !== false,
+            isAvailable:
+              !effectiveAgentSettings || effectiveAgentSettings.agents?.[id]?.selected !== false,
           },
         ])
       ),
@@ -588,7 +595,7 @@ export function Toolbar({
       isFocusMode,
       onToggleFocusMode,
       agentAvailability,
-      agentSettings,
+      effectiveAgentSettings,
       onLaunchAgent,
       sidebarShortcut,
       notesShortcut,

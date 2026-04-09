@@ -16,12 +16,11 @@ import { getAgentConfig, type AgentIconProps } from "@/config/agents";
 import { actionService } from "@/services/ActionService";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
-import type { AgentSettings, CliAvailability } from "@shared/types";
-import { isAgentInstalled, isAgentMissing } from "../../../shared/utils/agentAvailability";
+import type { CliAvailability } from "@shared/types";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
 
 interface AgentTrayButtonProps {
   agentAvailability?: CliAvailability;
-  agentSettings?: AgentSettings | null;
   "data-toolbar-item"?: string;
 }
 
@@ -39,34 +38,41 @@ function buildAgentRow(id: BuiltInAgentId): AgentRow | null {
 
 export function AgentTrayButton({
   agentAvailability,
-  agentSettings,
   "data-toolbar-item": dataToolbarItem,
 }: AgentTrayButtonProps) {
+  // Subscribe to the store directly so pin/unpin toggles update the UI
+  // immediately without depending on any caller-side refetch.
+  const agentSettings = useAgentSettingsStore((s) => s.settings);
   const setAgentSelected = useAgentSettingsStore((s) => s.setAgentSelected);
 
-  const { installedUnpinned, installedAll, notInstalled } = useMemo(() => {
-    const installedUnpinned: AgentRow[] = [];
-    const installedAll: AgentRow[] = [];
-    const notInstalled: AgentRow[] = [];
+  const isAvailabilityLoading = agentAvailability === undefined;
+
+  const { readyUnpinned, readyAll, needsSetup } = useMemo(() => {
+    const readyUnpinned: AgentRow[] = [];
+    const readyAll: AgentRow[] = [];
+    const needsSetup: AgentRow[] = [];
 
     for (const id of BUILT_IN_AGENT_IDS) {
       const row = buildAgentRow(id);
       if (!row) continue;
 
       const availabilityState = agentAvailability?.[id];
-      const installed = isAgentInstalled(availabilityState);
-      const missing = availabilityState !== undefined && isAgentMissing(availabilityState);
+      // Launch is only safe for "ready" (authenticated). "installed" means
+      // the CLI binary was found but the agent isn't authenticated, so it
+      // belongs in the setup section alongside missing agents.
+      const ready = isAgentReady(availabilityState);
+      const resolved = availabilityState !== undefined;
       const pinned = agentSettings?.agents?.[id]?.selected !== false;
 
-      if (installed) {
-        installedAll.push(row);
-        if (!pinned) installedUnpinned.push(row);
-      } else if (missing) {
-        notInstalled.push(row);
+      if (ready) {
+        readyAll.push(row);
+        if (!pinned) readyUnpinned.push(row);
+      } else if (resolved) {
+        needsSetup.push(row);
       }
     }
 
-    return { installedUnpinned, installedAll, notInstalled };
+    return { readyUnpinned, readyAll, needsSetup };
   }, [agentAvailability, agentSettings]);
 
   const handleLaunch = (agentId: BuiltInAgentId) => {
@@ -85,8 +91,7 @@ export function AgentTrayButton({
     );
   };
 
-  const hasAnyContent =
-    installedUnpinned.length > 0 || installedAll.length > 0 || notInstalled.length > 0;
+  const hasAnyContent = readyUnpinned.length > 0 || readyAll.length > 0 || needsSetup.length > 0;
 
   return (
     <DropdownMenu>
@@ -109,14 +114,17 @@ export function AgentTrayButton({
         </Tooltip>
       </TooltipProvider>
       <DropdownMenuContent align="start" sideOffset={4} className="min-w-[14rem]">
-        {!hasAnyContent && (
-          <div className="px-2.5 py-2 text-xs text-canopy-text/60">No agents available</div>
-        )}
+        {!hasAnyContent &&
+          (isAvailabilityLoading ? (
+            <div className="px-2.5 py-2 text-xs text-canopy-text/60">Checking agents…</div>
+          ) : (
+            <div className="px-2.5 py-2 text-xs text-canopy-text/60">No agents available</div>
+          ))}
 
-        {installedUnpinned.length > 0 && (
+        {readyUnpinned.length > 0 && (
           <>
             <DropdownMenuLabel>Launch</DropdownMenuLabel>
-            {installedUnpinned.map((row) => (
+            {readyUnpinned.map((row) => (
               <DropdownMenuItem key={`launch-${row.id}`} onSelect={() => handleLaunch(row.id)}>
                 <span className="mr-2 inline-flex h-4 w-4 items-center justify-center">
                   <row.Icon brandColor={getBrandColorHex(row.id)} />
@@ -127,11 +135,11 @@ export function AgentTrayButton({
           </>
         )}
 
-        {installedAll.length > 0 && (
+        {readyAll.length > 0 && (
           <>
-            {installedUnpinned.length > 0 && <DropdownMenuSeparator />}
+            {readyUnpinned.length > 0 && <DropdownMenuSeparator />}
             <DropdownMenuLabel>Pin to Toolbar</DropdownMenuLabel>
-            {installedAll.map((row) => {
+            {readyAll.map((row) => {
               const pinned = agentSettings?.agents?.[row.id]?.selected !== false;
               return (
                 <DropdownMenuCheckboxItem
@@ -147,11 +155,11 @@ export function AgentTrayButton({
           </>
         )}
 
-        {notInstalled.length > 0 && (
+        {needsSetup.length > 0 && (
           <>
-            {(installedUnpinned.length > 0 || installedAll.length > 0) && <DropdownMenuSeparator />}
-            <DropdownMenuLabel>Not Installed</DropdownMenuLabel>
-            {notInstalled.map((row) => (
+            {(readyUnpinned.length > 0 || readyAll.length > 0) && <DropdownMenuSeparator />}
+            <DropdownMenuLabel>Needs Setup</DropdownMenuLabel>
+            {needsSetup.map((row) => (
               <DropdownMenuItem key={`setup-${row.id}`} onSelect={() => handleSetup(row.id)}>
                 <span className="mr-2 inline-flex h-4 w-4 items-center justify-center opacity-60">
                   <row.Icon brandColor={getBrandColorHex(row.id)} />
