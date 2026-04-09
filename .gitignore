@@ -90,3 +90,4 @@ reports/
 planning/
 .planning/
 .tmp
+*.tgz
