@@ -64,7 +64,10 @@ describe("sortTierByInstalled", () => {
   });
 
   it("ignores extra availability keys not in the tier", () => {
-    const result = sortTierByInstalled(["claude"] as const, { claude: "ready", gemini: "ready" } as CliAvailability);
+    const result = sortTierByInstalled(
+      ["claude"] as const,
+      { claude: "ready", gemini: "ready" } as CliAvailability
+    );
     expect(result).toEqual(["claude"]);
   });
 });
