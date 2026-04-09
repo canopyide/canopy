@@ -16,7 +16,7 @@ describe("AGENT_DESCRIPTIONS", () => {
   });
 
   it("all descriptions are non-empty strings", () => {
-    for (const [id, desc] of Object.entries(AGENT_DESCRIPTIONS)) {
+    for (const [_id, desc] of Object.entries(AGENT_DESCRIPTIONS)) {
       expect(typeof desc).toBe("string");
       expect(desc.length).toBeGreaterThan(0);
     }
