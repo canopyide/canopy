@@ -29,8 +29,9 @@ import {
   Rocket,
   RotateCcw,
   StickyNote,
+  Puzzle,
 } from "lucide-react";
-import { CanopyAgentIcon, CopyTreeIcon } from "@/components/icons";
+import { CopyTreeIcon } from "@/components/icons";
 import { useToolbarPreferencesStore } from "@/store";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
@@ -44,10 +45,10 @@ import { SettingsSwitchCard } from "./SettingsSwitchCard";
 type ButtonMetadata = { label: string; icon: React.ReactNode; description: string };
 
 const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
-  "agent-setup": {
-    label: "Agent Setup",
-    icon: <CanopyAgentIcon className="h-4 w-4" />,
-    description: "Shown only when no agents are enabled in Agent Settings",
+  "agent-tray": {
+    label: "Agent Tray",
+    icon: <Puzzle className="h-4 w-4" />,
+    description: "Overflow tray for installed-but-unpinned agents and setup links",
   },
   ...Object.fromEntries(
     BUILT_IN_AGENT_IDS.map((id) => {

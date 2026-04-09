@@ -102,8 +102,8 @@ describe("Toolbar keyboard navigation — issue #2814", () => {
       );
     });
 
-    it("passes data-toolbar-item to AgentSetupButton", () => {
-      expect(source).toMatch(/<AgentSetupButton[\s\S]*?data-toolbar-item=""/);
+    it("passes data-toolbar-item to AgentTrayButton", () => {
+      expect(source).toMatch(/<AgentTrayButton[\s\S]*?data-toolbar-item=""/);
     });
 
     it("passes data-toolbar-item to VoiceRecordingToolbarButton", () => {

@@ -19,6 +19,7 @@ import {
   Ellipsis,
   GitBranch,
   StickyNote,
+  Puzzle,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { CopyTreeIcon, McpServerIcon } from "@/components/icons";
@@ -26,7 +27,7 @@ import { cn } from "@/lib/utils";
 import { shortcutHintStore } from "@/store/shortcutHintStore";
 import { isMac, isLinux, createTooltipWithShortcut } from "@/lib/platform";
 import { AgentButton } from "./AgentButton";
-import { AgentSetupButton } from "./AgentSetupButton";
+import { AgentTrayButton } from "./AgentTrayButton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -64,7 +65,7 @@ import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds
 import { getAgentConfig } from "@/config/agents";
 
 const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
-  "agent-setup",
+  "agent-tray",
   ...(BUILT_IN_AGENT_IDS as unknown as ToolbarButtonId[]),
 ]);
 
@@ -77,6 +78,7 @@ export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenu
       { label: getAgentConfig(id)?.name ?? id, icon: SquareTerminal },
     ])
   ) as unknown as Record<BuiltInAgentId, OverflowMenuMeta>),
+  "agent-tray": { label: "Agent Tray", icon: Puzzle },
   terminal: { label: "Terminal", icon: SquareTerminal },
   browser: { label: "Browser", icon: Globe },
   "dev-server": { label: "Dev Preview", icon: Monitor },
@@ -313,12 +315,6 @@ export function Toolbar({
     [getToolbarItems, syncToolbarTabStops]
   );
 
-  const hasAnySelectedAgent = useMemo(() => {
-    if (!agentSettings) return true;
-    const agents = agentSettings.agents ?? {};
-    return BUILT_IN_AGENT_IDS.some((id) => agents[id]?.selected !== false);
-  }, [agentSettings]);
-
   const toolbarIconButtonClass = "toolbar-icon-button text-canopy-text transition-colors";
   const toolbarDividerClass = "toolbar-divider w-px h-5 mx-1";
 
@@ -356,9 +352,16 @@ export function Toolbar({
         ),
         isAvailable: true,
       },
-      "agent-setup": {
-        render: () => <AgentSetupButton key="agent-setup" data-toolbar-item="" />,
-        isAvailable: !hasAnySelectedAgent,
+      "agent-tray": {
+        render: () => (
+          <AgentTrayButton
+            key="agent-tray"
+            agentAvailability={agentAvailability}
+            agentSettings={agentSettings}
+            data-toolbar-item=""
+          />
+        ),
+        isAvailable: true,
       },
       ...Object.fromEntries(
         BUILT_IN_AGENT_IDS.map((id) => [
@@ -586,7 +589,6 @@ export function Toolbar({
       onToggleFocusMode,
       agentAvailability,
       agentSettings,
-      hasAnySelectedAgent,
       onLaunchAgent,
       sidebarShortcut,
       notesShortcut,

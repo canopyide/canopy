@@ -15,7 +15,7 @@ export type AnyToolbarButtonId = ToolbarButtonId | PluginToolbarButtonId;
  */
 export type ToolbarButtonId =
   | "sidebar-toggle"
-  | "agent-setup"
+  | "agent-tray"
   | BuiltInAgentId
   | "terminal"
   | "browser"
@@ -58,7 +58,7 @@ export const TOOLBAR_BUTTON_PRIORITIES: Record<ToolbarButtonId, ToolbarButtonPri
   "portal-toggle": 1,
   "github-stats": 1,
   "voice-recording": 1,
-  "agent-setup": 2,
+  "agent-tray": 2,
   ...(Object.fromEntries(
     BUILT_IN_AGENT_IDS.map((id) => [id, 2 as ToolbarButtonPriority])
   ) as Record<BuiltInAgentId, ToolbarButtonPriority>),

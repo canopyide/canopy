@@ -50,10 +50,21 @@ describe("Toolbar — agent registry zero-touch guarantee (issue #5070)", () => 
       }
     });
 
-    it("assigns agent buttons priority 2 (grouped with agent-setup)", () => {
+    it("assigns agent buttons priority 2 (grouped with agent-tray)", () => {
       for (const id of BUILT_IN_AGENT_IDS) {
         expect(TOOLBAR_BUTTON_PRIORITIES[id]).toBe(2);
       }
+    });
+
+    it("registers the agent-tray button at priority 2", () => {
+      expect(TOOLBAR_BUTTON_PRIORITIES["agent-tray"]).toBe(2);
+    });
+  });
+
+  describe("agent-tray button registration", () => {
+    it("has an OVERFLOW_MENU_META entry", () => {
+      expect(OVERFLOW_MENU_META["agent-tray"]).toBeDefined();
+      expect(OVERFLOW_MENU_META["agent-tray"]?.label).toBeTruthy();
     });
   });
 
