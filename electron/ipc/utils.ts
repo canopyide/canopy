@@ -58,8 +58,14 @@ interface RateLimitState {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
+interface LeakyBucketState {
+  nextAvailableMs: number;
+  pendingCount: number;
+}
+
 const MAX_QUEUE_DEPTH = 50;
 const rateLimitQueues = new Map<string, RateLimitState>();
+const leakyBucketQueues = new Map<string, LeakyBucketState>();
 
 let restoreQuota = 0;
 let restoreQuotaTimer: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +96,15 @@ function getOrCreateState(key: string): RateLimitState {
   return state;
 }
 
+function getOrCreateLeakyState(key: string): LeakyBucketState {
+  let state = leakyBucketQueues.get(key);
+  if (!state) {
+    state = { nextAvailableMs: 0, pendingCount: 0 };
+    leakyBucketQueues.set(key, state);
+  }
+  return state;
+}
+
 function drainQueue(state: RateLimitState, maxCalls: number, windowMs: number): void {
   const now = Date.now();
   state.timestamps = state.timestamps.filter((t) => now - t < windowMs);
@@ -115,7 +130,68 @@ function scheduleDrain(state: RateLimitState, maxCalls: number, windowMs: number
   }, delay);
 }
 
+/**
+ * Reserve a rate-limit slot and wait until it is ready.
+ *
+ * Two modes:
+ *
+ * 1. `waitForRateLimitSlot(key, intervalMs)` — **strict-interval leaky bucket.**
+ *    Guarantees at most one caller is released every `intervalMs` milliseconds.
+ *    Concurrent callers claim sequential slots synchronously at call time, so
+ *    a burst of N `Promise.all` callers is released steadily at
+ *    `intervalMs` spacing rather than in batches. Use this for operations that
+ *    must be serialised with a smooth cadence (e.g. git worktree creation).
+ *
+ * 2. `waitForRateLimitSlot(key, maxCalls, windowMs)` — **sliding window.**
+ *    Up to `maxCalls` callers may run within any `windowMs` window; excess
+ *    callers queue and drain as the window rolls forward. Used by batch-
+ *    tolerant callers (e.g. terminal spawn) that accept bursts but need an
+ *    overall cap.
+ */
+export async function waitForRateLimitSlot(key: string, intervalMs: number): Promise<void>;
 export async function waitForRateLimitSlot(
+  key: string,
+  maxCalls: number,
+  windowMs: number
+): Promise<void>;
+export async function waitForRateLimitSlot(
+  key: string,
+  maxCallsOrInterval: number,
+  windowMs?: number
+): Promise<void> {
+  if (windowMs === undefined) {
+    return waitForLeakyBucketSlot(key, maxCallsOrInterval);
+  }
+  return waitForSlidingWindowSlot(key, maxCallsOrInterval, windowMs);
+}
+
+async function waitForLeakyBucketSlot(key: string, intervalMs: number): Promise<void> {
+  const state = getOrCreateLeakyState(key);
+
+  if (state.pendingCount >= MAX_QUEUE_DEPTH) {
+    throw new Error("Spawn queue full");
+  }
+
+  // Synchronous slot reservation — MUST happen before any await so that
+  // concurrent callers each claim a unique sequential slot. If this advance
+  // happened after an await, two simultaneous callers could both read the
+  // same `nextAvailableMs` and end up scheduled for the same instant.
+  const now = Date.now();
+  const slotMs = Math.max(now, state.nextAvailableMs);
+  state.nextAvailableMs = slotMs + intervalMs;
+  const waitMs = slotMs - now;
+
+  if (waitMs <= 0) return;
+
+  state.pendingCount++;
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+  } finally {
+    state.pendingCount--;
+  }
+}
+
+async function waitForSlidingWindowSlot(
   key: string,
   maxCalls: number,
   windowMs: number
@@ -151,6 +227,10 @@ export function drainRateLimitQueues(): void {
     }
   }
   rateLimitQueues.clear();
+  // Leaky-bucket in-flight sleeps cannot be cancelled — they will resolve
+  // harmlessly after shutdown. Clearing state ensures fresh callers on the
+  // same key after a drain are not blocked by stale `nextAvailableMs`.
+  leakyBucketQueues.clear();
 }
 
 export function _resetRateLimitQueuesForTest(): void {
