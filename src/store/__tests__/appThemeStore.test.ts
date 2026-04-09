@@ -97,6 +97,7 @@ describe("appThemeStore.recentSchemeIds LRU", () => {
       id: "custom-app-theme",
       name: "Custom",
       type: "dark" as const,
+      builtin: false,
       tokens: {} as never,
     };
     useAppThemeStore.getState().addCustomScheme(customScheme);
