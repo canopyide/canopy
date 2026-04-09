@@ -443,9 +443,13 @@ export function AgentSetupWizard({
 
   const commitTelemetry = useCallback(async (level: "errors" | "off") => {
     if (telemetryCommittedRef.current) return;
-    telemetryCommittedRef.current = true;
-    await window.electron.privacy.setTelemetryLevel(level);
-    await window.electron.telemetry.markPromptShown();
+    try {
+      await window.electron.privacy.setTelemetryLevel(level);
+      await window.electron.telemetry.markPromptShown();
+      telemetryCommittedRef.current = true;
+    } catch (error) {
+      console.error("Failed to commit telemetry preference:", error);
+    }
   }, []);
 
   const installedAgents = useMemo(
