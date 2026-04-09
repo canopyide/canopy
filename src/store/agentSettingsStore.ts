@@ -3,6 +3,7 @@ import type { AgentSettings, AgentSettingsEntry, CliAvailability } from "@shared
 import { agentSettingsClient } from "@/clients";
 import { DEFAULT_AGENT_SETTINGS } from "@shared/types";
 import { getEffectiveAgentIds } from "../../shared/config/agentRegistry";
+import { isAgentReady } from "../../shared/utils/agentAvailability";
 
 /**
  * In-memory normalization: fills `selected: undefined` entries using CLI availability
@@ -25,7 +26,7 @@ export function normalizeAgentSelection(
       agents[id] = { ...entry, selected: false };
       changed = true;
     } else if (entry.selected === undefined) {
-      agents[id] = { ...entry, selected: availability[id] === true };
+      agents[id] = { ...entry, selected: isAgentReady(availability[id]) };
       changed = true;
     }
   }
@@ -156,7 +157,7 @@ export async function migrateAgentSelection(availability: CliAvailability): Prom
     try {
       // First: migrate agents without `selected` (existing migration)
       for (const agentId of agentsNeedingMigration) {
-        const selected = availability[agentId] === true;
+        const selected = isAgentReady(availability[agentId]);
         await agentSettingsClient.set(agentId, { selected });
       }
 

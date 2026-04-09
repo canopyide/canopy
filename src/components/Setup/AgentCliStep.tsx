@@ -7,6 +7,7 @@ import { terminalClient, systemClient } from "@/clients";
 import { EmbeddedTerminal } from "./EmbeddedTerminal";
 import { AGENT_DESCRIPTIONS } from "./AgentSetupWizard";
 import type { CliAvailability } from "@shared/types";
+import { isAgentInstalled, isAgentMissing } from "@shared/utils/agentAvailability";
 
 const AGENT_ORDER = BUILT_IN_AGENT_IDS;
 
@@ -34,8 +35,8 @@ export function AgentCliStep({ availability, selections }: AgentCliStepProps) {
   useEffect(() => {
     if (
       installingAgentId &&
-      availability[installingAgentId] === true &&
-      prevAvailabilityRef.current[installingAgentId] !== true
+      isAgentInstalled(availability[installingAgentId]) &&
+      isAgentMissing(prevAvailabilityRef.current[installingAgentId])
     ) {
       setInstallingAgentId(null);
       if (installTimeoutRef.current) {
@@ -119,7 +120,7 @@ export function AgentCliStep({ availability, selections }: AgentCliStepProps) {
           const config = AGENT_REGISTRY[agentId];
           if (!config) return null;
 
-          const isInstalled = availability[agentId] === true;
+          const isInstalled = isAgentInstalled(availability[agentId]);
           const isInstalling = installingAgentId === agentId;
           const isDisabled = isInstalled || !!installingAgentId || !terminalId;
           const blocks = getInstallBlocksForCurrentOS(config);

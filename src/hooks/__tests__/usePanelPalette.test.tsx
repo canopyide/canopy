@@ -17,7 +17,7 @@ const {
   getEffectiveAgentIdsMock: vi.fn(),
   getEffectiveAgentConfigMock: vi.fn(),
   cliAvailabilityState: {
-    availability: { claude: true, gemini: false } as Record<string, boolean>,
+    availability: { claude: "ready", gemini: "missing" } as Record<string, string>,
     isInitialized: true,
     isLoading: false,
     isRefreshing: false,
@@ -107,7 +107,7 @@ describe("usePanelPalette", () => {
       }
       return undefined;
     });
-    cliAvailabilityState.availability = { claude: true, gemini: false };
+    cliAvailabilityState.availability = { claude: "ready", gemini: "missing" };
     cliAvailabilityState.isInitialized = true;
     cliAvailabilityState.lastCheckedAt = Date.now();
 
@@ -305,7 +305,7 @@ describe("usePanelPalette", () => {
   describe("agent availability", () => {
     it("sets installed=true for available agents", () => {
       getEffectiveAgentIdsMock.mockReturnValue(["claude"]);
-      cliAvailabilityState.availability = { claude: true };
+      cliAvailabilityState.availability = { claude: "ready" };
 
       const { result } = renderHook(() => usePanelPalette());
 
@@ -321,7 +321,7 @@ describe("usePanelPalette", () => {
         color: "#4285f4",
         tooltip: "Gemini agent",
       });
-      cliAvailabilityState.availability = { gemini: false };
+      cliAvailabilityState.availability = { gemini: "missing" };
 
       const { result } = renderHook(() => usePanelPalette());
 
@@ -362,7 +362,7 @@ describe("usePanelPalette", () => {
         color: "#4285f4",
         tooltip: "Gemini agent",
       });
-      cliAvailabilityState.availability = { gemini: false };
+      cliAvailabilityState.availability = { gemini: "missing" };
 
       const { result } = renderHook(() => usePanelPalette());
 
@@ -383,7 +383,7 @@ describe("usePanelPalette", () => {
 
     it("handleSelect returns option for installed agent", () => {
       getEffectiveAgentIdsMock.mockReturnValue(["claude"]);
-      cliAvailabilityState.availability = { claude: true };
+      cliAvailabilityState.availability = { claude: "ready" };
 
       const { result } = renderHook(() => usePanelPalette());
 

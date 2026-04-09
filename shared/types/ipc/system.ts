@@ -26,8 +26,11 @@ export interface SystemWakePayload {
   timestamp: number;
 }
 
+/** Three-state availability for an individual agent CLI */
+export type AgentAvailabilityState = "missing" | "installed" | "ready";
+
 /** CLI availability status for AI agents */
-export type CliAvailability = Record<AgentId, boolean>;
+export type CliAvailability = Record<AgentId, AgentAvailabilityState>;
 
 /** Version information for an agent */
 export interface AgentVersionInfo {

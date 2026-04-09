@@ -5,6 +5,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { agentHelpClient } from "@/clients";
 import { cliAvailabilityClient } from "@/clients";
 import type { AgentHelpResult } from "@shared/types/ipc/agent";
+import type { AgentAvailabilityState } from "@shared/types";
+import { isAgentInstalled, isAgentMissing } from "../../../shared/utils/agentAvailability";
 
 interface AgentHelpOutputProps {
   agentId: string;
@@ -24,7 +26,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
   const [helpResult, setHelpResult] = useState<AgentHelpResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isCliAvailable, setIsCliAvailable] = useState<boolean | null>(null);
+  const [isCliAvailable, setIsCliAvailable] = useState<AgentAvailabilityState | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
@@ -32,9 +34,9 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
   const checkCliAvailability = useCallback(async () => {
     try {
       const availability = await cliAvailabilityClient.get();
-      return availability[agentId] ?? false;
+      return availability[agentId] ?? "missing";
     } catch {
-      return false;
+      return "missing";
     }
   }, [agentId]);
 
@@ -70,7 +72,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
       const available = await checkCliAvailability();
       setIsCliAvailable(available);
 
-      if (!available) {
+      if (!isAgentInstalled(available)) {
         setIsLoading(false);
         return;
       }
@@ -165,7 +167,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
           </p>
         </div>
 
-        {isCliAvailable && (
+        {isAgentInstalled(isCliAvailable ?? undefined) && (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -200,7 +202,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
         </div>
       )}
 
-      {!isLoading && isCliAvailable === false && (
+      {!isLoading && isAgentMissing(isCliAvailable ?? undefined) && isCliAvailable !== null && (
         <div className="px-4 py-6 rounded-[var(--radius-md)] border border-canopy-border bg-surface text-center space-y-2">
           <p className="text-sm text-canopy-text/60">CLI not found</p>
           <p className="text-xs text-canopy-text/40 select-text">

@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import { CHANNELS } from "../channels.js";
 import { getAgentIds } from "../../../shared/config/agentRegistry.js";
+import type { AgentAvailabilityState } from "../../../shared/types/ipc/system.js";
 import type { HandlerDependencies } from "../types.js";
 
 export function registerAgentCliHandlers(deps: HandlerDependencies): () => void {
@@ -10,7 +11,9 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
   const handleSystemGetCliAvailability = async () => {
     if (!cliAvailabilityService) {
       console.warn("[IPC] CliAvailabilityService not available");
-      return Object.fromEntries(getAgentIds().map((id) => [id, false]));
+      return Object.fromEntries(
+        getAgentIds().map((id) => [id, "missing" as AgentAvailabilityState])
+      );
     }
 
     const cached = cliAvailabilityService.getAvailability();
@@ -26,7 +29,9 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
   const handleSystemRefreshCliAvailability = async () => {
     if (!cliAvailabilityService) {
       console.warn("[IPC] CliAvailabilityService not available");
-      return Object.fromEntries(getAgentIds().map((id) => [id, false]));
+      return Object.fromEntries(
+        getAgentIds().map((id) => [id, "missing" as AgentAvailabilityState])
+      );
     }
 
     return await cliAvailabilityService.refresh();

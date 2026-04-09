@@ -125,6 +125,17 @@ export interface AgentModelConfig {
   shortLabel: string;
 }
 
+export interface AgentAuthCheck {
+  /** Platform-specific config file paths to check (relative to os.homedir()) */
+  configPaths?: Partial<Record<"darwin" | "linux" | "win32", string[]>>;
+  /** Platform-independent config file paths (relative to os.homedir()) */
+  configPathsAll?: string[];
+  /** Environment variable that indicates auth when present */
+  envVar?: string;
+  /** Fallback state when binary found but auth check is inconclusive */
+  fallback?: "installed" | "ready";
+}
+
 export interface AgentConfig {
   id: string;
   name: string;
@@ -232,6 +243,11 @@ export interface AgentConfig {
    * Merged with baseline prerequisites during health checks.
    */
   prerequisites?: PrerequisiteSpec[];
+  /**
+   * Authentication check configuration.
+   * Used by CliAvailabilityService to distinguish "installed" from "ready".
+   */
+  authCheck?: AgentAuthCheck;
 }
 
 export const AGENT_REGISTRY: Record<string, AgentConfig> = {
@@ -368,6 +384,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     help: {
       args: [],
+    },
+    authCheck: {
+      configPathsAll: [".claude/config.json"],
     },
     prerequisites: [
       {
@@ -512,6 +531,14 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     help: {
       args: [],
     },
+    authCheck: {
+      configPaths: {
+        darwin: ["Library/Application Support/gemini/credentials.json"],
+        linux: [".config/gemini/credentials.json"],
+        win32: [".config/gemini/credentials.json"],
+      },
+      envVar: "GEMINI_API_KEY",
+    },
     prerequisites: [
       {
         tool: "gemini",
@@ -651,6 +678,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     help: {
       args: [],
+    },
+    authCheck: {
+      configPathsAll: [".config/openai/auth.json", ".openai/auth.json"],
+      envVar: "OPENAI_API_KEY",
     },
     prerequisites: [
       {
@@ -820,6 +851,13 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     resume: {
       args: (sessionId: string) => ["-s", sessionId],
     },
+    authCheck: {
+      configPaths: {
+        darwin: ["Library/Application Support/opencode/config.json"],
+        linux: [".config/opencode/config.json"],
+        win32: [".config/opencode/config.json"],
+      },
+    },
     prerequisites: [
       {
         tool: "opencode",
@@ -915,6 +953,16 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       },
       maxConcurrent: 2,
       enabled: true,
+    },
+    authCheck: {
+      // Cursor may store tokens in OS Keychain on newer versions;
+      // file check is best-effort, default to "installed" if inconclusive.
+      configPaths: {
+        darwin: ["Library/Application Support/Cursor/User/globalStorage/storage.json"],
+        linux: [".config/Cursor/User/globalStorage/storage.json"],
+        win32: ["AppData/Roaming/Cursor/User/globalStorage/storage.json"],
+      },
+      fallback: "installed",
     },
     prerequisites: [
       {
@@ -1046,6 +1094,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     help: {
       args: [],
+    },
+    authCheck: {
+      configPathsAll: [".kiro/credentials", ".kiro/config.json"],
     },
     prerequisites: [
       {

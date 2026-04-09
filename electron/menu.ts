@@ -3,6 +3,7 @@ import { projectStore } from "./services/ProjectStore.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { getEffectiveRegistry } from "../shared/config/agentRegistry.js";
 import type { CliAvailabilityService } from "./services/CliAvailabilityService.js";
+import { isAgentInstalled } from "../shared/utils/agentAvailability.js";
 import * as CliInstallService from "./services/CliInstallService.js";
 import { getWindowRegistry, getProjectViewManager } from "./window/windowRef.js";
 import { autoUpdaterService } from "./services/AutoUpdaterService.js";
@@ -58,9 +59,7 @@ export function createApplicationMenu(
     const items: Electron.MenuItemConstructorOptions[] = [];
 
     Object.values(getEffectiveRegistry()).forEach((agent) => {
-      const isAvailable = availability?.[agent.id] ?? false;
-
-      if (isAvailable) {
+      if (isAgentInstalled(availability?.[agent.id])) {
         items.push({
           label: `New ${agent.name}`,
           accelerator: agent.shortcut ? convertShortcutToAccelerator(agent.shortcut) : undefined,

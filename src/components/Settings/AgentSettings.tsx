@@ -485,7 +485,7 @@ export function AgentSettings({
               const installBlocks = agentConfig ? getInstallBlocksForCurrentOS(agentConfig) : null;
               const hasInstallConfig = agentConfig?.install;
 
-              if (isCliAvailable === true) {
+              if (isCliAvailable === "ready") {
                 return null;
               }
 
@@ -504,9 +504,13 @@ export function AgentSettings({
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <h5 className="text-sm font-medium text-canopy-text">Installation</h5>
+                      <h5 className="text-sm font-medium text-canopy-text">
+                        {isCliAvailable === "installed" ? "Authentication" : "Installation"}
+                      </h5>
                       <p className="text-xs text-canopy-text/50 select-text">
-                        {activeAgent.name} CLI not found
+                        {isCliAvailable === "installed"
+                          ? `${activeAgent.name} CLI found but not authenticated`
+                          : `${activeAgent.name} CLI not found`}
                       </p>
                     </div>
                     <Button

@@ -1,5 +1,6 @@
 import type { CliAvailability } from "@shared/types";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
+import { isAgentReady } from "../../shared/utils/agentAvailability";
 
 /**
  * Resolve which agent to use given a user preference, an optional secondary
@@ -13,7 +14,8 @@ export function getDefaultAgentId(
   selectedAgents?: Set<string>
 ): BuiltInAgentId | null {
   const isUsable = (id: string) =>
-    availability[id as keyof CliAvailability] && (!selectedAgents || selectedAgents.has(id));
+    isAgentReady(availability[id as keyof CliAvailability]) &&
+    (!selectedAgents || selectedAgents.has(id));
 
   if (
     defaultAgent &&

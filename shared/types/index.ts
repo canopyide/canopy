@@ -121,6 +121,7 @@ export type {
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
   AppMetricsSummary,
+  AgentAvailabilityState,
   CliAvailability,
   AgentVersionInfo,
   AgentUpdateSettings,
