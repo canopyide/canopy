@@ -36,6 +36,8 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
   const [isBatchRunning, setIsBatchRunning] = useState(false);
   const mountedRef = useRef(true);
   const installingRef = useRef(new Set<string>());
+  const cardStatusesRef = useRef(cardStatuses);
+  cardStatusesRef.current = cardStatuses;
 
   const selectedAgentIds = useMemo(() => AGENT_ORDER.filter((id) => selections[id]), [selections]);
 
@@ -79,7 +81,6 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
     async (agentId: string) => {
       if (!mountedRef.current) return;
       if (installingRef.current.has(agentId)) return;
-      installingRef.current.add(agentId);
 
       const config = getAgentConfig(agentId);
       if (!config) return;
@@ -90,6 +91,8 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
       const methodIdx = selectedMethodIndex[agentId] ?? 0;
       const block = blocks[methodIdx] ?? blocks[0];
       if (!isBlockExecutable(block)) return;
+
+      installingRef.current.add(agentId);
 
       const jobId = crypto.randomUUID();
       const errorLog: string[] = [];
@@ -142,14 +145,14 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
     setIsBatchRunning(true);
     for (const agentId of selectedAgentIds) {
       if (!mountedRef.current) break;
-      const status = cardStatuses[agentId];
+      const status = cardStatusesRef.current[agentId];
       if (status === "installed" || status === "manual") continue;
       await handleInstall(agentId);
     }
     if (mountedRef.current) {
       setIsBatchRunning(false);
     }
-  }, [selectedAgentIds, cardStatuses, handleInstall]);
+  }, [selectedAgentIds, handleInstall]);
 
   const handleMethodChange = useCallback((agentId: string, index: number) => {
     setSelectedMethodIndex((prev) => ({ ...prev, [agentId]: index }));
