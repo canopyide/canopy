@@ -131,8 +131,8 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     expect(screen.queryByText("Codex")).toBeNull();
     expect(screen.queryByText("Opencode")).toBeNull();
     expect(screen.queryByText("Cursor")).toBeNull();
-    // No orange warning labels anywhere
-    expect(screen.queryByText("CLI not found")).toBeNull();
+    // Both visible rows render the "Ready" badge
+    expect(screen.getAllByText("Ready")).toHaveLength(2);
   });
 
   it("hides installed but user-disabled agents", async () => {
@@ -173,7 +173,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     await renderGeneralTab();
 
     await waitFor(() => {
-      expect(screen.getByText(/Canopy supports 1 more agent →/)).toBeTruthy();
+      expect(screen.getByText(/Canopy supports 1 more agent\b/)).toBeTruthy();
     });
   });
 
