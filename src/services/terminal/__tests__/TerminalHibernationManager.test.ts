@@ -377,10 +377,11 @@ describe("TerminalHibernationManager", () => {
 
       manager.unhibernate("t1");
 
-      // Grab the last registered onWriteParsed callback and invoke it
-      const callback = freshTerminalOnWriteParsed.mock.calls.at(-1)?.[0] as
-        | (() => void)
-        | undefined;
+      // Grab the last registered onWriteParsed callback and invoke it.
+      // The mock is declared without typed args, so coerce the call log to
+      // a shape we can index into.
+      const calls = freshTerminalOnWriteParsed.mock.calls as unknown as Array<[() => void]>;
+      const callback = calls.at(-1)?.[0];
       expect(callback).toBeTypeOf("function");
       callback!();
 
