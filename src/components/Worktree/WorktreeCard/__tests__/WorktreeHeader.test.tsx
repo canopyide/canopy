@@ -623,76 +623,62 @@ describe("WorktreeHeader decorative elements", () => {
 });
 
 describe("WorktreeHeader hover:underline on badges", () => {
-  it("issue badge text span has hover:underline only when card is active", () => {
-    const { container, rerender } = renderHeader({
-      worktree: { ...baseWorktree, issueNumber: 42, issueTitle: "Test issue" },
-      badges: { onOpenIssue: noop },
-    });
-    const inactiveSpan = container.querySelector('button[aria-label*="Open issue"] .truncate');
-    expect(inactiveSpan).toBeDefined();
-    expect(inactiveSpan!.className).not.toContain("hover:underline");
+  const issueWt = { ...baseWorktree, issueNumber: 42, issueTitle: "Test issue" };
+  const prWt = { ...baseWorktree, prNumber: 101, prState: "open" as const };
+  const planWt = { ...baseWorktree, hasPlanFile: true, planFilePath: "TODO.md" };
 
-    rerender(
-      <TooltipProvider>
-        <WorktreeHeader
-          worktree={{ ...baseWorktree, issueNumber: 42, issueTitle: "Test issue" }}
-          isActive={true}
-          isMainWorktree={false}
-          isPinned={false}
-          branchLabel="feature/test"
-          badges={{ onOpenIssue: noop }}
-          menu={baseMenu}
-        />
-      </TooltipProvider>
-    );
-    const activeSpan = container.querySelector('button[aria-label*="Open issue"] .truncate');
-    expect(activeSpan!.className).toContain("hover:underline");
+  function getIssueSpan(container: HTMLElement) {
+    return container.querySelector('button[aria-label*="Open issue"] .truncate');
+  }
+
+  it("sidebar variant: issue badge underline only when active", () => {
+    const { container } = renderHeader({ worktree: issueWt, badges: { onOpenIssue: noop } });
+    expect(getIssueSpan(container)!.className).not.toContain("hover:underline");
+
+    const { container: activeContainer } = renderHeader({
+      worktree: issueWt,
+      badges: { onOpenIssue: noop },
+      isActive: true,
+    });
+    expect(getIssueSpan(activeContainer)!.className).toContain("hover:underline");
   });
 
-  it("PR badge number span has hover:underline only when card is active", () => {
-    const { rerender } = renderHeader({
-      worktree: { ...baseWorktree, prNumber: 101, prState: "open" },
-      badges: { onOpenPR: noop },
-    });
+  it("sidebar variant: PR badge underline only when active", () => {
+    const { unmount } = renderHeader({ worktree: prWt, badges: { onOpenPR: noop } });
     expect(screen.getByText("#101").className).not.toContain("hover:underline");
+    unmount();
 
-    rerender(
-      <TooltipProvider>
-        <WorktreeHeader
-          worktree={{ ...baseWorktree, prNumber: 101, prState: "open" }}
-          isActive={true}
-          isMainWorktree={false}
-          isPinned={false}
-          branchLabel="feature/test"
-          badges={{ onOpenPR: noop }}
-          menu={baseMenu}
-        />
-      </TooltipProvider>
-    );
+    renderHeader({ worktree: prWt, badges: { onOpenPR: noop }, isActive: true });
     expect(screen.getByText("#101").className).toContain("hover:underline");
   });
 
-  it("plan badge text span has hover:underline only when card is active", () => {
-    const { rerender } = renderHeader({
-      worktree: { ...baseWorktree, hasPlanFile: true, planFilePath: "TODO.md" },
-      badges: { onOpenPlan: noop },
-    });
+  it("sidebar variant: plan badge underline only when active", () => {
+    const { unmount } = renderHeader({ worktree: planWt, badges: { onOpenPlan: noop } });
     expect(screen.getByText("TODO.md").className).not.toContain("hover:underline");
+    unmount();
 
-    rerender(
-      <TooltipProvider>
-        <WorktreeHeader
-          worktree={{ ...baseWorktree, hasPlanFile: true, planFilePath: "TODO.md" }}
-          isActive={true}
-          isMainWorktree={false}
-          isPinned={false}
-          branchLabel="feature/test"
-          badges={{ onOpenPlan: noop }}
-          menu={baseMenu}
-        />
-      </TooltipProvider>
-    );
+    renderHeader({ worktree: planWt, badges: { onOpenPlan: noop }, isActive: true });
     expect(screen.getByText("TODO.md").className).toContain("hover:underline");
+  });
+
+  it("grid variant: badges keep hover:underline regardless of active state", () => {
+    const { container, unmount } = renderHeader({
+      worktree: { ...issueWt, prNumber: 101, prState: "open", hasPlanFile: true, planFilePath: "TODO.md" },
+      badges: { onOpenIssue: noop, onOpenPR: noop, onOpenPlan: noop },
+      variant: "grid",
+    });
+    expect(getIssueSpan(container)!.className).toContain("hover:underline");
+    expect(screen.getByText("#101").className).toContain("hover:underline");
+    expect(screen.getByText("TODO.md").className).toContain("hover:underline");
+    unmount();
+
+    const { container: activeContainer } = renderHeader({
+      worktree: { ...issueWt, prNumber: 101, prState: "open", hasPlanFile: true, planFilePath: "TODO.md" },
+      badges: { onOpenIssue: noop, onOpenPR: noop, onOpenPlan: noop },
+      variant: "grid",
+      isActive: true,
+    });
+    expect(getIssueSpan(activeContainer)!.className).toContain("hover:underline");
   });
 });
 
