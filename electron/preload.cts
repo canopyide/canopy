@@ -2004,6 +2004,9 @@ const api: ElectronAPI = {
     setCustomSchemes: (schemesJson: string) =>
       _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_CUSTOM_SCHEMES, schemesJson),
 
+    setRecentSchemeIds: (ids: string[]) =>
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_RECENT_SCHEME_IDS, ids),
+
     importColorScheme: () => _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_IMPORT_COLOR_SCHEME),
 
     setScreenReaderMode: (mode: "auto" | "on" | "off") =>
@@ -2547,6 +2550,9 @@ const api: ElectronAPI = {
 
     setPreferredLightScheme: (schemeId: string) =>
       _unwrappingInvoke(CHANNELS.APP_THEME_SET_PREFERRED_LIGHT_SCHEME, schemeId),
+
+    setRecentSchemeIds: (ids: string[]) =>
+      _unwrappingInvoke(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS, ids),
 
     onSystemAppearanceChanged: (
       callback: (payload: { isDark: boolean; schemeId: string }) => void
