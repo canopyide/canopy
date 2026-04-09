@@ -490,7 +490,7 @@ function BulkCommandPaletteInner() {
     mode,
     keystrokePreset,
     pendingDestructive,
-    selectedIds.size,
+    selectedIds,
     resolveTargetIds,
     closePalette,
     handlePreview,
