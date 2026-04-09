@@ -28,6 +28,8 @@ export type BuiltInActionId =
   | "cliAvailability.refresh"
   | "hibernation.getConfig"
   | "hibernation.updateConfig"
+  | "idleTerminalNotify.getConfig"
+  | "idleTerminalNotify.updateConfig"
   | "agentSettings.get"
   | "agentSettings.set"
   | "agentSettings.reset"

@@ -15,6 +15,7 @@ import { registerGithubHandlers } from "./handlers/github.js";
 import { registerAppHandlers } from "./handlers/app.js";
 import { registerPortalHandlers } from "./handlers/portal.js";
 import { registerHibernationHandlers } from "./handlers/hibernation.js";
+import { registerIdleTerminalHandlers } from "./handlers/idleTerminals.js";
 import { registerSystemSleepHandlers } from "./handlers/systemSleep.js";
 import { registerKeybindingHandlers } from "./handlers/keybinding.js";
 import { registerWorktreeConfigHandlers } from "./handlers/worktreeConfig.js";
@@ -110,6 +111,7 @@ export function registerIpcHandlers(deps: HandlerDependencies): () => void {
     register(() => registerPortalHandlers(deps));
     register(() => registerMenuHandlers(deps));
     register(() => registerHibernationHandlers(deps));
+    register(() => registerIdleTerminalHandlers(deps));
     register(() => registerSystemSleepHandlers(deps));
     register(() => registerKeybindingHandlers(deps));
     register(() => registerWorktreeConfigHandlers(deps));

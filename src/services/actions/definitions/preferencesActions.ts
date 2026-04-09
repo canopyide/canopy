@@ -5,6 +5,7 @@ import {
   agentSettingsClient,
   appClient,
   hibernationClient,
+  idleTerminalClient,
   terminalConfigClient,
   worktreeConfigClient,
 } from "@/clients";
@@ -219,6 +220,37 @@ export function registerPreferencesActions(
     run: async (args: unknown) => {
       const config = args as { enabled?: boolean; inactiveThresholdHours?: number };
       return await hibernationClient.updateConfig(config);
+    },
+  }));
+
+  actions.set("idleTerminalNotify.getConfig", () => ({
+    id: "idleTerminalNotify.getConfig",
+    title: "Get Idle Terminal Notification Config",
+    description: "Get idle terminal notification configuration",
+    category: "settings",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      return await idleTerminalClient.getConfig();
+    },
+  }));
+
+  actions.set("idleTerminalNotify.updateConfig", () => ({
+    id: "idleTerminalNotify.updateConfig",
+    title: "Update Idle Terminal Notification Config",
+    description: "Update idle terminal notification configuration",
+    category: "settings",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      enabled: z.boolean().optional(),
+      thresholdMinutes: z.number().int().positive().optional(),
+    }),
+    run: async (args: unknown) => {
+      const config = args as { enabled?: boolean; thresholdMinutes?: number };
+      return await idleTerminalClient.updateConfig(config);
     },
   }));
 

@@ -49,6 +49,7 @@ import {
   initializeHibernationService,
   getHibernationService,
 } from "../services/HibernationService.js";
+import { initializeIdleTerminalNotificationService } from "../services/IdleTerminalNotificationService.js";
 import {
   initializeSystemSleepService,
   getSystemSleepService,
@@ -190,6 +191,9 @@ async function initializeDeferredServices(
 
   initializeHibernationService();
   console.log("[MAIN] HibernationService initialized");
+
+  initializeIdleTerminalNotificationService();
+  console.log("[MAIN] IdleTerminalNotificationService initialized");
 
   initializeSystemSleepService();
   console.log("[MAIN] SystemSleepService initialized");

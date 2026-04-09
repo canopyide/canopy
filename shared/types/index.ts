@@ -153,6 +153,10 @@ export type {
   // Hibernation types
   HibernationConfig,
   HibernationProjectHibernatedPayload,
+  // Idle terminal notification types
+  IdleTerminalNotifyConfig,
+  IdleTerminalNotifyPayload,
+  IdleTerminalProjectEntry,
   // System Sleep types
   SleepPeriod,
   SystemSleepMetrics,

@@ -99,6 +99,7 @@ import type {
 } from "./github.js";
 import type { TerminalConfig } from "./config.js";
 import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
+import type { IdleTerminalNotifyConfig, IdleTerminalNotifyPayload } from "./idleTerminals.js";
 import type { SystemSleepMetrics } from "./systemSleep.js";
 import type { KeyAction } from "../keymap.js";
 
@@ -856,6 +857,13 @@ export interface ElectronAPI {
     onProjectHibernated(
       callback: (payload: HibernationProjectHibernatedPayload) => void
     ): () => void;
+  };
+  idleTerminals: {
+    getConfig(): Promise<IdleTerminalNotifyConfig>;
+    updateConfig(config: Partial<IdleTerminalNotifyConfig>): Promise<IdleTerminalNotifyConfig>;
+    closeProject(projectId: string): Promise<void>;
+    dismissProject(projectId: string): Promise<void>;
+    onNotify(callback: (payload: IdleTerminalNotifyPayload) => void): () => void;
   };
   systemSleep: {
     /** Get metrics about system sleep tracking */

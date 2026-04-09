@@ -309,6 +309,12 @@ export const CHANNELS = {
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
   HIBERNATION_PROJECT_HIBERNATED: "hibernation:project-hibernated",
 
+  IDLE_TERMINAL_GET_CONFIG: "idle-terminal:get-config",
+  IDLE_TERMINAL_UPDATE_CONFIG: "idle-terminal:update-config",
+  IDLE_TERMINAL_CLOSE_PROJECT: "idle-terminal:close-project",
+  IDLE_TERMINAL_DISMISS_PROJECT: "idle-terminal:dismiss-project",
+  IDLE_TERMINAL_NOTIFY: "idle-terminal:notify",
+
   WEBVIEW_SET_LIFECYCLE_STATE: "webview:set-lifecycle-state",
   WEBVIEW_REGISTER_PANEL: "webview:register-panel",
   WEBVIEW_DIALOG_REQUEST: "webview:dialog-request",
