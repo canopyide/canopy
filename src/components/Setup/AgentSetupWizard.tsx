@@ -79,7 +79,6 @@ const reducedStepVariants: Variants = {
   exit: { opacity: 0, transition: { duration: 0.1 } },
 };
 
-
 // --- Wizard state machine ---
 
 export type WizardStep =
