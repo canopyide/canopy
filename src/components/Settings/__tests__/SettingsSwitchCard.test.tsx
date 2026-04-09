@@ -43,4 +43,21 @@ describe("SettingsSwitchCard", () => {
     );
     expect(screen.getByLabelText("Reset Test Setting to default")).toBeTruthy();
   });
+
+  it("uses bg-canopy-text on the thumb in the OFF state for WCAG 1.4.11 contrast", () => {
+    const { container } = render(<SettingsSwitchCard {...defaultProps} isEnabled={false} />);
+    // The thumb is the only element using translate-x-1 in this component.
+    const thumb = container.querySelector(".translate-x-1");
+    expect(thumb).not.toBeNull();
+    expect(thumb?.className).toContain("bg-canopy-text");
+    expect(thumb?.className).not.toContain("bg-text-inverse");
+  });
+
+  it("uses bg-text-inverse on the thumb in the ON state (sits on accent track)", () => {
+    const { container } = render(<SettingsSwitchCard {...defaultProps} isEnabled={true} />);
+    const thumb = container.querySelector(".translate-x-6");
+    expect(thumb).not.toBeNull();
+    expect(thumb?.className).toContain("bg-text-inverse");
+    expect(thumb?.className).not.toContain("bg-canopy-text");
+  });
 });
