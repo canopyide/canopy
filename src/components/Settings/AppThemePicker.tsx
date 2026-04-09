@@ -100,6 +100,7 @@ export function AppThemePicker() {
   const selectedSchemeId = useAppThemeStore((s) => s.selectedSchemeId);
   const customSchemes = useAppThemeStore((s) => s.customSchemes);
   const commitSchemeSelection = useAppThemeStore((s) => s.commitSchemeSelection);
+  const injectTheme = useAppThemeStore((s) => s.injectTheme);
   const addCustomScheme = useAppThemeStore((s) => s.addCustomScheme);
   const recentSchemeIds = useAppThemeStore((s) => s.recentSchemeIds);
   const followSystem = useAppThemeStore((s) => s.followSystem);
@@ -111,6 +112,7 @@ export function AppThemePicker() {
   const [importWarnings, setImportWarnings] = useState<AppThemeValidationWarning[]>([]);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [previewAnnouncement, setPreviewAnnouncement] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoGenRef = useRef(0);
@@ -162,7 +164,7 @@ export function AppThemePicker() {
       const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
       commitSchemeSelection(id);
       runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme));
-      setOpen(false);
+      // Modal stays open during live preview so the user can keep browsing.
 
       try {
         await appThemeClient.setColorScheme(id);
@@ -193,6 +195,43 @@ export function AppThemePicker() {
     },
     [commitSchemeSelection, selectedSchemeId, followSystem, setFollowSystem]
   );
+
+  const handleOpen = useCallback(() => {
+    setPreviewAnnouncement("");
+    setOpen(true);
+  }, []);
+
+  const handleModalClose = useCallback(() => {
+    // On close, ensure the DOM reflects the currently committed selection.
+    // If the user only hovered (no click), the store's selectedSchemeId is
+    // unchanged and this reverts the ephemeral preview. If the user clicked
+    // to commit, the store already holds the new selection so this is a
+    // no-op visually but keeps store and DOM in lockstep regardless.
+    const committed = allSchemes.find((s) => s.id === selectedSchemeId);
+    if (committed) {
+      injectTheme(committed);
+    }
+    setPreviewAnnouncement("");
+    setOpen(false);
+  }, [allSchemes, injectTheme, selectedSchemeId]);
+
+  const handlePreviewItem = useCallback(
+    (id: string) => {
+      const scheme = allSchemes.find((s) => s.id === id);
+      if (!scheme) return;
+      injectTheme(scheme);
+      setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+    },
+    [allSchemes, injectTheme]
+  );
+
+  const handlePreviewEnd = useCallback(() => {
+    const committed = allSchemes.find((s) => s.id === selectedSchemeId);
+    if (committed) {
+      injectTheme(committed);
+    }
+    setPreviewAnnouncement("");
+  }, [allSchemes, selectedSchemeId, injectTheme]);
 
   const handleShuffle = useCallback(
     (e: MouseEvent) => {
@@ -351,7 +390,7 @@ export function AppThemePicker() {
         data-testid="theme-picker-trigger"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={handleOpen}
         className={cn(
           "w-full flex items-center gap-3 p-2 rounded-[var(--radius-md)] border transition-colors text-left",
           "border-canopy-border bg-canopy-bg hover:border-canopy-text/30"
@@ -395,7 +434,7 @@ export function AppThemePicker() {
 
       <AppDialog
         isOpen={open}
-        onClose={() => setOpen(false)}
+        onClose={handleModalClose}
         size="xl"
         data-testid="theme-picker-dialog"
       >
@@ -414,6 +453,9 @@ export function AppThemePicker() {
             ]}
             selectedId={selectedSchemeId}
             onSelect={handleSelect}
+            onPreviewItem={handlePreviewItem}
+            onPreviewEnd={handlePreviewEnd}
+            previewAnnouncement={previewAnnouncement}
             columns={3}
             renderPreview={(scheme) => <HeroImage scheme={scheme} size={130} />}
             renderMeta={(scheme) => {
