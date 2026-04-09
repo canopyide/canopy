@@ -9,7 +9,6 @@ import { projectStore } from "./ProjectStore.js";
 import { logInfo, logError } from "../utils/logger.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
-import { writeHibernatedMarker } from "./pty/terminalSessionPersistence.js";
 
 const DEFAULT_CONFIG: IdleTerminalNotifyConfig = {
   enabled: true,
@@ -36,10 +35,6 @@ interface PtyManagerLike {
     lastOutputTime: number;
     hasPty?: boolean;
   }>;
-  gracefulKillByProject: (
-    id: string,
-    opts?: { preserveSession?: boolean }
-  ) => Promise<Array<{ id: string; agentSessionId: string | null }>>;
 }
 
 /**
@@ -57,7 +52,13 @@ interface PtyManagerLike {
 export class IdleTerminalNotificationService {
   private checkInterval: NodeJS.Timeout | null = null;
   private initialCheckTimer: NodeJS.Timeout | null = null;
-  private startedAt = 0;
+  /**
+   * Timestamp before which we suppress all broadcasts. Set once on the very
+   * first `start()` for this process lifetime and never bumped again — so
+   * toggling `enabled` off/on in Settings doesn't keep pushing the first
+   * real check further out.
+   */
+  private quietUntil: number | null = null;
   private readonly CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   private readonly STARTUP_QUIET_MS = 2 * 60 * 1000; // 2 minutes
   private readonly INITIAL_CHECK_DELAY_MS = 5_000;
@@ -121,7 +122,12 @@ export class IdleTerminalNotificationService {
       return;
     }
 
-    this.startedAt = Date.now();
+    // Only seed the startup quiet period on the very first start in this
+    // process lifetime. Toggling the feature off/on in Settings should not
+    // re-apply the 2-minute suppression window.
+    if (this.quietUntil === null) {
+      this.quietUntil = Date.now() + this.STARTUP_QUIET_MS;
+    }
     logInfo("idle-terminal-notify-started");
 
     this.checkInterval = setInterval(() => {
@@ -166,23 +172,41 @@ export class IdleTerminalNotificationService {
     logInfo("idle-terminal-notify-dismissed", { projectId });
   }
 
+  /**
+   * "Close Them" action handler. Delegates to HibernationService so that
+   * project-scoped cleanup callbacks (e.g. DevPreview session teardown) run
+   * and the renderer sees the standard hibernation event — same as if the
+   * scheduled hibernation timer had closed the project itself.
+   */
   async closeProject(projectId: string): Promise<number> {
     if (!projectId) return 0;
-    const { getPtyManager } = await import("./PtyManager.js");
-    const ptyManager = getPtyManager() as unknown as PtyManagerLike;
-    const results = await ptyManager.gracefulKillByProject(projectId, {
-      preserveSession: true,
-    });
-    for (const result of results) {
-      writeHibernatedMarker(result.id);
+
+    const project = projectStore.getAllProjects().find((p) => p.id === projectId);
+    const projectName = project?.name ?? projectId;
+
+    try {
+      const { getHibernationService } = await import("./HibernationService.js");
+      const terminalsKilled = await getHibernationService().hibernateProjectOnDemand(
+        projectId,
+        projectName,
+        "scheduled"
+      );
+
+      // Only burn a cooldown slot if we actually acted on something — otherwise
+      // an empty project would silently suppress future legitimate notifications.
+      if (terminalsKilled > 0) {
+        this.dismissProject(projectId);
+      }
+
+      logInfo("idle-terminal-notify-closed", {
+        projectId,
+        terminalsKilled,
+      });
+      return terminalsKilled;
+    } catch (error) {
+      logError("idle-terminal-notify-close-failed", error, { projectId });
+      throw error;
     }
-    // Set cooldown so the project doesn't re-fire immediately
-    this.dismissProject(projectId);
-    logInfo("idle-terminal-notify-closed", {
-      projectId,
-      terminalsKilled: results.length,
-    });
-    return results.length;
   }
 
   private readDismissals(): Record<string, number> {
@@ -201,9 +225,10 @@ export class IdleTerminalNotificationService {
     const config = this.getConfig();
     if (!config.enabled) return;
 
-    // Startup quiet period — give services time to settle and don't fire immediately
-    // after the user opens the app.
-    if (this.startedAt && Date.now() - this.startedAt < this.STARTUP_QUIET_MS) {
+    // Startup quiet period — give services time to settle and don't fire
+    // immediately after the user opens the app. Gated on `quietUntil`, which
+    // is seeded once on first start and never bumped thereafter.
+    if (this.quietUntil !== null && Date.now() < this.quietUntil) {
       return;
     }
 

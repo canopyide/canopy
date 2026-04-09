@@ -25,6 +25,9 @@ vi.mock("../ProjectStore.js", () => ({ projectStore: projectStoreMock }));
 
 const broadcastToRendererMock = vi.hoisted(() => vi.fn());
 const writeHibernatedMarkerMock = vi.hoisted(() => vi.fn());
+const hibernateProjectOnDemandMock = vi.hoisted(() =>
+  vi.fn(async (_projectId: string, _projectName: string) => 0)
+);
 
 vi.mock("../../utils/logger.js", () => ({ logInfo: vi.fn(), logError: vi.fn() }));
 
@@ -44,6 +47,12 @@ vi.mock("../../ipc/channels.js", () => ({
 
 vi.mock("../pty/terminalSessionPersistence.js", () => ({
   writeHibernatedMarker: writeHibernatedMarkerMock,
+}));
+
+vi.mock("../HibernationService.js", () => ({
+  getHibernationService: () => ({
+    hibernateProjectOnDemand: hibernateProjectOnDemandMock,
+  }),
 }));
 
 import { IdleTerminalNotificationService } from "../IdleTerminalNotificationService.js";
@@ -73,6 +82,7 @@ async function runCheck(service: IdleTerminalNotificationService): Promise<void>
 describe("IdleTerminalNotificationService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    hibernateProjectOnDemandMock.mockImplementation(async () => 0);
     for (const k of Object.keys(storeBacking)) delete storeBacking[k];
   });
 
@@ -270,39 +280,84 @@ describe("IdleTerminalNotificationService", () => {
     it("does not fire during the startup quiet period", async () => {
       setup();
       const service = new IdleTerminalNotificationService();
-      // Simulate the service having just started: set startedAt to now
-      (service as unknown as { startedAt: number }).startedAt = Date.now();
+      // Simulate the service having just started: set quietUntil 30s in the future
+      (service as unknown as { quietUntil: number | null }).quietUntil = Date.now() + 30_000;
       await runCheck(service);
       expect(broadcastToRendererMock).not.toHaveBeenCalled();
     });
   });
 
   describe("closeProject", () => {
-    it("calls gracefulKillByProject with preserveSession and writes hibernation markers", async () => {
-      ptyManagerMock.gracefulKillByProject.mockResolvedValue([
-        { id: "t1", agentSessionId: null },
-        { id: "t2", agentSessionId: "session-x" },
-      ]);
+    it("delegates to HibernationService so DevPreview callbacks run", async () => {
+      projectStoreMock.getAllProjects.mockReturnValue([makeProject("proj-1", "Old")]);
+      hibernateProjectOnDemandMock.mockResolvedValueOnce(2);
 
       const service = new IdleTerminalNotificationService();
       const killed = await service.closeProject("proj-1");
 
       expect(killed).toBe(2);
-      expect(ptyManagerMock.gracefulKillByProject).toHaveBeenCalledWith("proj-1", {
-        preserveSession: true,
-      });
-      expect(writeHibernatedMarkerMock).toHaveBeenCalledWith("t1");
-      expect(writeHibernatedMarkerMock).toHaveBeenCalledWith("t2");
-      // Should also set a dismissal cooldown
+      expect(hibernateProjectOnDemandMock).toHaveBeenCalledWith("proj-1", "Old", "scheduled");
       const dismissals = storeBacking.idleTerminalDismissals as Record<string, number>;
       expect(dismissals["proj-1"]).toBeGreaterThan(0);
     });
 
-    it("rejects empty projectId without calling pty manager", async () => {
+    it("falls back to projectId when the project is not in the store", async () => {
+      projectStoreMock.getAllProjects.mockReturnValue([]);
+      hibernateProjectOnDemandMock.mockResolvedValueOnce(1);
+
+      const service = new IdleTerminalNotificationService();
+      await service.closeProject("ghost-proj");
+
+      expect(hibernateProjectOnDemandMock).toHaveBeenCalledWith(
+        "ghost-proj",
+        "ghost-proj",
+        "scheduled"
+      );
+    });
+
+    it("does NOT set a dismissal cooldown when 0 terminals were killed", async () => {
+      projectStoreMock.getAllProjects.mockReturnValue([makeProject("proj-1")]);
+      hibernateProjectOnDemandMock.mockResolvedValueOnce(0);
+
+      const service = new IdleTerminalNotificationService();
+      await service.closeProject("proj-1");
+
+      expect(storeBacking.idleTerminalDismissals).toBeUndefined();
+    });
+
+    it("re-throws errors from hibernateProjectOnDemand", async () => {
+      projectStoreMock.getAllProjects.mockReturnValue([makeProject("proj-1")]);
+      hibernateProjectOnDemandMock.mockRejectedValueOnce(new Error("boom"));
+
+      const service = new IdleTerminalNotificationService();
+      await expect(service.closeProject("proj-1")).rejects.toThrow("boom");
+    });
+
+    it("rejects empty projectId without delegating", async () => {
       const service = new IdleTerminalNotificationService();
       const killed = await service.closeProject("");
       expect(killed).toBe(0);
-      expect(ptyManagerMock.gracefulKillByProject).not.toHaveBeenCalled();
+      expect(hibernateProjectOnDemandMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("startup quiet period", () => {
+    it("is seeded on the first start() and not re-bumped by a subsequent start()", () => {
+      storeBacking.idleTerminalNotify = { enabled: true, thresholdMinutes: 60 };
+      const service = new IdleTerminalNotificationService();
+      service.start();
+      const initialQuietUntil = (service as unknown as { quietUntil: number | null }).quietUntil;
+      expect(initialQuietUntil).not.toBeNull();
+
+      service.stop();
+      // Simulate time passing
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 10 * 60 * 1000);
+      service.start();
+      const secondQuietUntil = (service as unknown as { quietUntil: number | null }).quietUntil;
+      expect(secondQuietUntil).toBe(initialQuietUntil);
+      service.stop();
+      vi.useRealTimers();
     });
   });
 
