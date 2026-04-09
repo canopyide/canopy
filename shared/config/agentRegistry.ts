@@ -1105,13 +1105,11 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       args: [],
     },
     authCheck: {
-      // Kiro CLI auth is managed via the OS keychain and internal state
-      // directories (e.g. ~/Library/Application Support/kiro-cli/ on macOS,
-      // ~/.local/share/kiro-cli/ on Linux). There is no reliable, human-readable
-      // cross-platform auth file to probe, so we fall back to "installed"
-      // whenever the binary is present — mirroring the pattern used by Cursor
-      // (also keychain-based).
-      fallback: "installed",
+      configPathsAll: [
+        ".kiro/credentials",
+        ".kiro/config.json",
+        ".aws/sso/cache/kiro-auth-token.json",
+      ],
     },
     prerequisites: [
       {
