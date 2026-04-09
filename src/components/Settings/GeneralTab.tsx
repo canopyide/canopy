@@ -466,9 +466,7 @@ export function GeneralTab({
                           type="button"
                           className="text-xs text-canopy-accent hover:underline"
                           onClick={() =>
-                            window.dispatchEvent(
-                              new CustomEvent("canopy:open-agent-setup-wizard")
-                            )
+                            window.dispatchEvent(new CustomEvent("canopy:open-agent-setup-wizard"))
                           }
                         >
                           Run setup wizard
