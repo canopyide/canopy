@@ -121,6 +121,18 @@ export interface WorktreeSnapshot {
   /** Whether this worktree's project has a resource config block */
   hasResourceConfig?: boolean;
 
+  /** Whether the resource config has a status command */
+  hasStatusCommand?: boolean;
+
+  /** Whether the resource config has a pause command */
+  hasPauseCommand?: boolean;
+
+  /** Whether the resource config has a resume command */
+  hasResumeCommand?: boolean;
+
+  /** Whether the resource config has a teardown command */
+  hasTeardownCommand?: boolean;
+
   /** Worktree environment mode ("local" or an environment key from resourceEnvironments) */
   worktreeMode?: string;
 
