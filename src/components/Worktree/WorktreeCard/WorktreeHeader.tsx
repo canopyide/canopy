@@ -475,7 +475,7 @@ export function WorktreeHeader({
                       </div>
                     )}
                     {resourceLastOutput && (
-                      <pre className="mb-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-surface-raised p-2 font-mono text-[11px] text-text-secondary">
+                      <pre className="mb-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-surface-panel-elevated p-2 font-mono text-[11px] text-text-secondary">
                         {resourceLastOutput.trim()}
                       </pre>
                     )}

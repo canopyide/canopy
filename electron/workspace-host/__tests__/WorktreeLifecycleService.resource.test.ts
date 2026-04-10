@@ -803,6 +803,11 @@ describe("WorktreeLifecycleService — Resource Config", () => {
         worktree_path: "/w/feat",
         worktree_name: "feat-branch",
         project_root: "/project",
+        endpoint: undefined,
+        "parent-dir": "/",
+        "base-folder": "project",
+        "branch-slug": "feature-test",
+        "repo-name": "project",
       });
     });
 
@@ -819,6 +824,10 @@ describe("WorktreeLifecycleService — Resource Config", () => {
         worktree_name: "test",
         project_root: "/p",
         endpoint: "https://app.example.com",
+        "parent-dir": "/",
+        "base-folder": "p",
+        "branch-slug": "main",
+        "repo-name": "p",
       });
     });
 

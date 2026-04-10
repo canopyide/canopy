@@ -314,7 +314,7 @@ describe("WorkspaceService.runResourceAction", () => {
       );
     });
 
-    it("sets lastStatus=unhealthy for non-JSON output", async () => {
+    it("sets lastStatus=unknown for non-JSON output", async () => {
       const monitor = createAndRegisterMonitor();
       await setupConfig({
         resource: { status: "check-status", provision: ["provision-cmd"] },
@@ -325,7 +325,7 @@ describe("WorkspaceService.runResourceAction", () => {
 
       expect(monitor.resourceStatus).toEqual(
         expect.objectContaining({
-          lastStatus: "unhealthy",
+          lastStatus: "unknown",
           lastOutput: "not valid json at all",
         })
       );
