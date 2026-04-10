@@ -29,6 +29,6 @@ describe("canopyTheme", () => {
 
   it("is a valid CodeMirror extension array", () => {
     expect(Array.isArray(canopyTheme)).toBe(true);
-    expect(canopyTheme.length).toBeGreaterThan(0);
+    expect((canopyTheme as readonly unknown[]).length).toBeGreaterThan(0);
   });
 });
