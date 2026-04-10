@@ -373,7 +373,171 @@ describe("checkRateLimit", () => {
   });
 });
 
-describe("waitForRateLimitSlot", () => {
+describe("waitForRateLimitSlot (leaky bucket, 2-arg)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetRateLimitQueuesForTest();
+  });
+
+  afterEach(() => {
+    _resetRateLimitQueuesForTest();
+    vi.useRealTimers();
+  });
+
+  it("resolves immediately for the first caller on a fresh key", async () => {
+    const start = Date.now();
+    await waitForRateLimitSlot("lb-test", 5_000);
+    expect(Date.now()).toBe(start);
+  });
+
+  it("serializes a concurrent burst at fixed intervals (no feast/famine)", async () => {
+    const resolvedAt: number[] = [];
+    const start = Date.now();
+    const INTERVAL = 6_000;
+    const N = 5;
+
+    // Fire all callers synchronously via Promise.all — mimics the bulk
+    // worktree dialog dispatching concurrent requests.
+    const promises = Array.from({ length: N }, (_, i) =>
+      waitForRateLimitSlot("lb-burst", INTERVAL).then(() => {
+        resolvedAt.push(Date.now() - start);
+        return i;
+      })
+    );
+
+    // Allow microtasks to settle before advancing time.
+    await vi.advanceTimersByTimeAsync(0);
+    // First caller resolves immediately (waitMs = 0 on fresh bucket).
+    expect(resolvedAt).toEqual([0]);
+
+    // Advance through each interval; exactly one more resolves each time.
+    for (let i = 1; i < N; i++) {
+      await vi.advanceTimersByTimeAsync(INTERVAL);
+      expect(resolvedAt).toEqual(Array.from({ length: i + 1 }, (_, k) => k * INTERVAL));
+    }
+
+    await Promise.all(promises);
+  });
+
+  it("does not burst-release after a long idle then concurrent arrival", async () => {
+    const INTERVAL = 4_000;
+    // Seed the bucket
+    await waitForRateLimitSlot("lb-idle", INTERVAL);
+    // Idle past the interval — nextAvailableMs is in the past
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    const resolved: number[] = [];
+    const startAfterIdle = Date.now();
+    const promises = [0, 1, 2].map((i) =>
+      waitForRateLimitSlot("lb-idle", INTERVAL).then(() => {
+        resolved.push(Date.now() - startAfterIdle);
+        return i;
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    // First caller gets through immediately (idle bucket), subsequent
+    // callers spaced by INTERVAL — not released all at once.
+    expect(resolved).toEqual([0]);
+
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    expect(resolved).toEqual([0, INTERVAL]);
+
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    expect(resolved).toEqual([0, INTERVAL, 2 * INTERVAL]);
+
+    await Promise.all(promises);
+  });
+
+  it("different keys do not block each other", async () => {
+    const INTERVAL = 5_000;
+    await waitForRateLimitSlot("lb-keyA", INTERVAL);
+    // Immediately after keyA's first slot, keyB should still resolve immediately
+    const before = Date.now();
+    await waitForRateLimitSlot("lb-keyB", INTERVAL);
+    expect(Date.now()).toBe(before);
+  });
+
+  it("rejects when pending callers exceed MAX_QUEUE_DEPTH (50)", async () => {
+    const INTERVAL = 1_000;
+    const pending: Promise<void>[] = [];
+    // First call resolves immediately (no pending count); 50 subsequent
+    // callers each wait and bump pendingCount to 50.
+    await waitForRateLimitSlot("lb-overflow", INTERVAL);
+    for (let i = 0; i < 50; i++) {
+      pending.push(waitForRateLimitSlot("lb-overflow", INTERVAL));
+    }
+    // The 51st pending caller exceeds MAX_QUEUE_DEPTH.
+    await expect(waitForRateLimitSlot("lb-overflow", INTERVAL)).rejects.toThrow("Spawn queue full");
+
+    // Let all pending callers resolve so the test cleans up.
+    await vi.advanceTimersByTimeAsync(60_000);
+    await Promise.all(pending);
+  });
+
+  it("pendingCount decrements after resolve so a subsequent caller can queue again", async () => {
+    const INTERVAL = 2_000;
+    await waitForRateLimitSlot("lb-decrement", INTERVAL);
+    const p1 = waitForRateLimitSlot("lb-decrement", INTERVAL);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await p1;
+
+    // After p1 resolves and its finally block runs, pendingCount is back to 0.
+    // A new pending caller must be accepted.
+    const p2 = waitForRateLimitSlot("lb-decrement", INTERVAL);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await expect(p2).resolves.toBeUndefined();
+  });
+
+  it("drainRateLimitQueues clears leaky bucket state so new callers start fresh", async () => {
+    const INTERVAL = 5_000;
+    await waitForRateLimitSlot("lb-drain", INTERVAL);
+    // Bucket's nextAvailableMs is now ~5s in the future. Without drain, a
+    // new caller would wait. After drain, state is cleared and the next
+    // caller resolves immediately.
+    drainRateLimitQueues();
+
+    const before = Date.now();
+    await waitForRateLimitSlot("lb-drain", INTERVAL);
+    expect(Date.now()).toBe(before);
+  });
+
+  it("drainRateLimitQueues rejects in-flight leaky bucket waiters", async () => {
+    const INTERVAL = 5_000;
+    // First caller consumes the immediate slot.
+    await waitForRateLimitSlot("lb-drain-reject", INTERVAL);
+    // Second caller will sleep ~INTERVAL ms waiting for its reserved slot.
+    const pending = waitForRateLimitSlot("lb-drain-reject", INTERVAL);
+
+    // Drain before the timer fires — the waiter must be rejected, not
+    // silently resumed (otherwise shutdown races real IPC work).
+    drainRateLimitQueues();
+
+    await expect(pending).rejects.toThrow("App is shutting down");
+
+    // Even if we advance past the original sleep, the rejected promise
+    // stays rejected and does not leak a second resolve.
+    await vi.advanceTimersByTimeAsync(INTERVAL * 2);
+  });
+
+  it("treats intervalMs <= 0 as a no-op (defensive guard)", async () => {
+    const before = Date.now();
+    await waitForRateLimitSlot("lb-zero", 0);
+    await waitForRateLimitSlot("lb-zero", -100);
+    expect(Date.now()).toBe(before);
+  });
+
+  it("_resetRateLimitQueuesForTest clears leaky bucket state", async () => {
+    await waitForRateLimitSlot("lb-reset", 5_000);
+    _resetRateLimitQueuesForTest();
+
+    const before = Date.now();
+    await waitForRateLimitSlot("lb-reset", 5_000);
+    expect(Date.now()).toBe(before);
+  });
+});
+
+describe("waitForRateLimitSlot (sliding window, 3-arg)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     _resetRateLimitQueuesForTest();

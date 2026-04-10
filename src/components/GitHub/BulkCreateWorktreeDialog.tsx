@@ -222,9 +222,12 @@ function progressReducer(state: ProgressState, action: ProgressAction): Progress
 }
 
 const MAX_AUTO_RETRIES = 2;
+// Cap in-flight creation requests as defense-in-depth for `.git/` lock
+// contention (see #3807). The backend leaky-bucket rate limiter is the
+// primary throttle — pacing at the producer side would only create a
+// conflicting secondary rate limiter and re-introduce the feast/famine
+// burst pattern (see #5098).
 const QUEUE_CONCURRENCY = 2;
-const QUEUE_INTERVAL_CAP = 1;
-const QUEUE_INTERVAL_MS = 300;
 const BACKOFF_BASE_MS = 3000;
 const BACKOFF_CAP_MS = 30000;
 const VERIFICATION_SETTLE_MS = 800;
@@ -498,9 +501,6 @@ export function BulkCreateWorktreeDialog({
 
       const queue = new PQueue({
         concurrency: QUEUE_CONCURRENCY,
-        intervalCap: QUEUE_INTERVAL_CAP,
-        interval: QUEUE_INTERVAL_MS,
-        strict: true,
       });
       queueRef.current = queue;
       const currentRunItems = new Set(toCreate.map((p) => p.item.number));
