@@ -14,7 +14,6 @@ const DEFAULT_LEFT_BUTTONS: ToolbarButtonId[] = [
   "terminal",
   "browser",
   "dev-server",
-  "panel-palette",
 ];
 
 const DEFAULT_RIGHT_BUTTONS: ToolbarButtonId[] = [
@@ -153,7 +152,7 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
     }),
     {
       name: "canopy-toolbar-preferences",
-      version: 3,
+      version: 4,
       storage: createSafeJSONStorage(),
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
@@ -193,6 +192,17 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
             layout.leftButtons = renameAgentSetup(layout.leftButtons);
             layout.rightButtons = renameAgentSetup(layout.rightButtons);
             layout.hiddenButtons = renameAgentSetup(layout.hiddenButtons);
+          }
+        }
+        if (version < 4) {
+          const layout = state.layout as
+            | { leftButtons?: string[]; rightButtons?: string[]; hiddenButtons?: string[] }
+            | undefined;
+          if (layout) {
+            const drop = (buttons?: string[]) => buttons?.filter((id) => id !== "panel-palette");
+            layout.leftButtons = drop(layout.leftButtons);
+            layout.rightButtons = drop(layout.rightButtons);
+            layout.hiddenButtons = drop(layout.hiddenButtons);
           }
         }
         return state as unknown as ToolbarPreferencesState;
