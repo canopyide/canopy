@@ -3,16 +3,17 @@ import { PRIntegrationService, type PRIntegrationCallbacks } from "../PRIntegrat
 import type { TypedEventBus } from "../../services/events.js";
 
 function makeEventBus(): TypedEventBus {
-  const listeners = new Map<string, Set<(...args: any[]) => void>>();
+  type Handler = (...args: unknown[]) => void;
+  const listeners = new Map<string, Set<Handler>>();
   return {
-    on(event: string, handler: (...args: any[]) => void) {
+    on(event: string, handler: Handler) {
       if (!listeners.has(event)) listeners.set(event, new Set());
       listeners.get(event)!.add(handler);
       return () => {
         listeners.get(event)?.delete(handler);
       };
     },
-    emit(event: string, ...args: any[]) {
+    emit(event: string, ...args: unknown[]) {
       listeners.get(event)?.forEach((h) => h(...args));
     },
   } as unknown as TypedEventBus;
@@ -30,20 +31,27 @@ function makeCallbacks(): PRIntegrationCallbacks {
 describe("PRIntegrationService", () => {
   let eventBus: TypedEventBus;
   let callbacks: PRIntegrationCallbacks;
-  let prServiceMock: {
-    initialize: ReturnType<typeof vi.fn>;
-    start: ReturnType<typeof vi.fn>;
-    reset: ReturnType<typeof vi.fn>;
-    refresh: ReturnType<typeof vi.fn>;
-    getStatus: ReturnType<typeof vi.fn>;
-  };
+  interface PullRequestServiceLike {
+    initialize(rootPath: string): void;
+    start(): Promise<void>;
+    reset(): void;
+    refresh(): void;
+    getStatus(): {
+      isPolling: boolean;
+      candidateCount: number;
+      resolvedCount: number;
+      isEnabled: boolean;
+    };
+  }
+
+  let prServiceMock: PullRequestServiceLike;
 
   beforeEach(() => {
     eventBus = makeEventBus();
     callbacks = makeCallbacks();
     prServiceMock = {
       initialize: vi.fn(),
-      start: vi.fn().mockResolvedValue(undefined),
+      start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
       reset: vi.fn(),
       refresh: vi.fn(),
       getStatus: vi.fn(() => ({
