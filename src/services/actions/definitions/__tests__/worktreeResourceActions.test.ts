@@ -9,8 +9,10 @@ vi.mock("@/clients", () => ({
   worktreeClient: { resourceAction: vi.fn() },
 }));
 
+const mockWorktrees = new Map<string, Record<string, unknown>>();
+
 vi.mock("@/store/createWorktreeStore", () => ({
-  getCurrentViewStore: () => ({ getState: () => ({ worktrees: new Map() }) }),
+  getCurrentViewStore: () => ({ getState: () => ({ worktrees: mockWorktrees }) }),
 }));
 
 vi.mock("@/store/worktreeStore", () => ({
@@ -85,7 +87,23 @@ describe("worktree resource action definitions", () => {
     expect(def.isEnabled!({ activeWorktreeId: "/test" })).toBe(false);
   });
 
-  it("provision/teardown/resume/pause/status are enabled only when hasResourceConfig", () => {
+  afterEach(() => {
+    mockWorktrees.clear();
+  });
+
+  it.each([
+    ["worktree.resource.provision", "hasProvisionCommand"],
+    ["worktree.resource.teardown", "hasTeardownCommand"],
+    ["worktree.resource.resume", "hasResumeCommand"],
+    ["worktree.resource.pause", "hasPauseCommand"],
+    ["worktree.resource.status", "hasStatusCommand"],
+  ] as const)("%s is enabled when %s is true", (actionId, flag) => {
+    mockWorktrees.set("/test", { [flag]: true });
+    const def = registry.get(actionId)!();
+    expect(def.isEnabled!({ activeWorktreeId: "/test" })).toBe(true);
+  });
+
+  it("provision/teardown/resume/pause/status are disabled when worktree lacks command-specific flags", () => {
     const nonConnectIds = RESOURCE_ACTION_IDS.filter((id) => id !== "worktree.resource.connect");
     for (const id of nonConnectIds) {
       const def = registry.get(id)!();

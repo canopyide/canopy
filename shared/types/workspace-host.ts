@@ -133,6 +133,9 @@ export interface WorktreeSnapshot {
   /** Whether the resource config has a teardown command */
   hasTeardownCommand?: boolean;
 
+  /** Whether the resource config has a provision command */
+  hasProvisionCommand?: boolean;
+
   /** Worktree environment mode ("local" or an environment key from resourceEnvironments) */
   worktreeMode?: string;
 

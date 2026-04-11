@@ -729,4 +729,42 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
   });
+
+  describe("snapshot capability flags", () => {
+    it("includes hasStatusCommand and hasProvisionCommand in snapshot when set", () => {
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, makeCallbacks(), "main");
+      monitor.setHasResourceConfig(true);
+      monitor.setHasStatusCommand(true);
+      monitor.setHasProvisionCommand(true);
+
+      const snapshot = monitor.getSnapshot();
+      expect(snapshot.hasStatusCommand).toBe(true);
+      expect(snapshot.hasProvisionCommand).toBe(true);
+    });
+
+    it("omits hasStatusCommand and hasProvisionCommand from snapshot when not set", () => {
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, makeCallbacks(), "main");
+
+      const snapshot = monitor.getSnapshot();
+      expect(snapshot.hasStatusCommand).toBeUndefined();
+      expect(snapshot.hasProvisionCommand).toBeUndefined();
+    });
+
+    it("includes all five command capability flags when set", () => {
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, makeCallbacks(), "main");
+      monitor.setHasResourceConfig(true);
+      monitor.setHasStatusCommand(true);
+      monitor.setHasProvisionCommand(true);
+      monitor.setHasPauseCommand(true);
+      monitor.setHasResumeCommand(true);
+      monitor.setHasTeardownCommand(true);
+
+      const snapshot = monitor.getSnapshot();
+      expect(snapshot.hasStatusCommand).toBe(true);
+      expect(snapshot.hasProvisionCommand).toBe(true);
+      expect(snapshot.hasPauseCommand).toBe(true);
+      expect(snapshot.hasResumeCommand).toBe(true);
+      expect(snapshot.hasTeardownCommand).toBe(true);
+    });
+  });
 });

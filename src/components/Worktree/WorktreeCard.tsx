@@ -70,6 +70,8 @@ export function worktreeCardPropsAreEqual(
       a.hasPauseCommand !== b.hasPauseCommand ||
       a.hasResumeCommand !== b.hasResumeCommand ||
       a.hasTeardownCommand !== b.hasTeardownCommand ||
+      a.hasStatusCommand !== b.hasStatusCommand ||
+      a.hasProvisionCommand !== b.hasProvisionCommand ||
       a.worktreeMode !== b.worktreeMode ||
       a.worktreeEnvironmentLabel !== b.worktreeEnvironmentLabel ||
       a.taskId !== b.taskId ||
@@ -336,6 +338,8 @@ export const WorktreeCard = React.memo(function WorktreeCard({
   const hasPauseCommand = !!worktree.hasPauseCommand;
   const hasResumeCommand = !!worktree.hasResumeCommand;
   const hasTeardownCommand = !!worktree.hasTeardownCommand;
+  const hasStatusCommand = !!worktree.hasStatusCommand;
+  const hasProvisionCommand = !!worktree.hasProvisionCommand;
 
   const {
     runningRecipeId,
@@ -765,7 +769,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
                 resourceLastOutput={worktree.resourceStatus?.lastOutput}
                 resourceEndpoint={worktree.resourceStatus?.endpoint}
                 resourceLastCheckedAt={worktree.resourceStatus?.lastCheckedAt}
-                onCheckResourceStatus={hasResourceConfig ? handleResourceStatus : undefined}
+                onCheckResourceStatus={hasStatusCommand ? handleResourceStatus : undefined}
                 badges={{
                   onOpenIssue: worktree.issueNumber ? handleOpenIssueExternal : undefined,
                   onOpenPR: worktree.prNumber ? handleOpenPRExternal : undefined,
@@ -826,13 +830,13 @@ export const WorktreeCard = React.memo(function WorktreeCard({
                   resourceEnvironmentKeys,
                   onSwitchEnvironment: handleSwitchEnvironment,
                   resourceStatus: worktree.resourceStatus?.lastStatus,
-                  onResourceProvision: hasResourceConfig ? handleResourceProvision : undefined,
+                  onResourceProvision: hasProvisionCommand ? handleResourceProvision : undefined,
                   onResourceResume: hasResumeCommand ? handleResourceResume : undefined,
                   onResourcePause: hasPauseCommand ? handleResourcePause : undefined,
                   onResourceConnect: worktree.resourceConnectCommand
                     ? handleResourceConnect
                     : undefined,
-                  onResourceStatus: hasResourceConfig ? handleResourceStatus : undefined,
+                  onResourceStatus: hasStatusCommand ? handleResourceStatus : undefined,
                   onResourceTeardown: hasTeardownCommand ? handleResourceTeardown : undefined,
                 }}
               />
@@ -870,9 +874,9 @@ export const WorktreeCard = React.memo(function WorktreeCard({
                     onResourceConnect={
                       worktree.resourceConnectCommand ? handleResourceConnect : undefined
                     }
-                    onResourceProvision={hasResourceConfig ? handleResourceProvision : undefined}
+                    onResourceProvision={hasProvisionCommand ? handleResourceProvision : undefined}
                     onResourceTeardown={hasTeardownCommand ? handleResourceTeardown : undefined}
-                    onResourceStatus={hasResourceConfig ? handleResourceStatus : undefined}
+                    onResourceStatus={hasStatusCommand ? handleResourceStatus : undefined}
                   />
 
                   <WorktreeTerminalSection
@@ -955,11 +959,11 @@ export const WorktreeCard = React.memo(function WorktreeCard({
           worktreeMode={worktree.worktreeMode}
           resourceEnvironmentKeys={resourceEnvironmentKeys}
           onSwitchEnvironment={handleSwitchEnvironment}
-          onResourceProvision={hasResourceConfig ? handleResourceProvision : undefined}
+          onResourceProvision={hasProvisionCommand ? handleResourceProvision : undefined}
           onResourceResume={hasResumeCommand ? handleResourceResume : undefined}
           onResourcePause={hasPauseCommand ? handleResourcePause : undefined}
           onResourceConnect={worktree.resourceConnectCommand ? handleResourceConnect : undefined}
-          onResourceStatus={hasResourceConfig ? handleResourceStatus : undefined}
+          onResourceStatus={hasStatusCommand ? handleResourceStatus : undefined}
           onResourceTeardown={hasTeardownCommand ? handleResourceTeardown : undefined}
         />
       </ContextMenuContent>

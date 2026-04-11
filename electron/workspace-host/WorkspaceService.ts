@@ -410,6 +410,7 @@ export class WorkspaceService {
       monitor.setHasPauseCommand(!!resourceConfig.pause?.length);
       monitor.setHasResumeCommand(!!resourceConfig.resume?.length);
       monitor.setHasTeardownCommand(!!resourceConfig.teardown?.length);
+      monitor.setHasProvisionCommand(!!resourceConfig.provision?.length);
       monitor.setResourceProvider(resourceConfig.provider);
       monitor.setResourceConnectCommand(
         resourceConfig.connect ? sub(resourceConfig.connect) : undefined
@@ -734,6 +735,7 @@ export class WorkspaceService {
           m.setHasPauseCommand(!!resolvedResource.pause?.length);
           m.setHasResumeCommand(!!resolvedResource.resume?.length);
           m.setHasTeardownCommand(!!resolvedResource.teardown?.length);
+          m.setHasProvisionCommand(!!resolvedResource.provision?.length);
           m.setResourceProvider(resolvedResource.provider);
           m.setResourceConnectCommand(
             resolvedResource.connect
@@ -833,6 +835,7 @@ export class WorkspaceService {
         m.setHasPauseCommand(!!resolvedResource.pause?.length);
         m.setHasResumeCommand(!!resolvedResource.resume?.length);
         m.setHasTeardownCommand(!!resolvedResource.teardown?.length);
+        m.setHasProvisionCommand(!!resolvedResource.provision?.length);
         m.setResourceProvider(resolvedResource.provider);
         m.setResourceConnectCommand(
           resolvedResource.connect ? sub(resolvedResource.connect) : undefined
@@ -1605,6 +1608,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     monitor.setHasPauseCommand(!!resourceConfig.pause?.length);
     monitor.setHasResumeCommand(!!resourceConfig.resume?.length);
     monitor.setHasTeardownCommand(!!resourceConfig.teardown?.length);
+    monitor.setHasProvisionCommand(!!resourceConfig.provision?.length);
     monitor.setResourceProvider(resourceConfig.provider);
     monitor.setResourceConnectCommand(
       resourceConfig.connect ? sub(resourceConfig.connect) : undefined

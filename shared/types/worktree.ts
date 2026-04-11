@@ -166,6 +166,12 @@ export interface Worktree {
   /** Whether the configured resource environment has a teardown command */
   hasTeardownCommand?: boolean;
 
+  /** Whether the configured resource environment has a status command */
+  hasStatusCommand?: boolean;
+
+  /** Whether the configured resource environment has a provision command */
+  hasProvisionCommand?: boolean;
+
   /** Worktree environment mode ("local" or an environment key from resourceEnvironments) */
   worktreeMode?: string;
 

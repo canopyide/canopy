@@ -118,6 +118,7 @@ export class WorktreeMonitor {
   private _hasPauseCommand: boolean = false;
   private _hasResumeCommand: boolean = false;
   private _hasTeardownCommand: boolean = false;
+  private _hasProvisionCommand: boolean = false;
   private _worktreeMode: string = "local";
   private _worktreeEnvironmentLabel: string | undefined;
 
@@ -349,6 +350,14 @@ export class WorktreeMonitor {
     this._hasTeardownCommand = has;
   }
 
+  get hasProvisionCommand(): boolean {
+    return this._hasProvisionCommand;
+  }
+
+  setHasProvisionCommand(has: boolean): void {
+    this._hasProvisionCommand = has;
+  }
+
   setHasStatusCommand(has: boolean): void {
     this._hasStatusCommand = has;
     if (has && this._hasResourceConfig && this._isRunning) {
@@ -552,9 +561,11 @@ export class WorktreeMonitor {
       resourceStatus,
       resourceConnectCommand: this._resourceConnectCommand,
       hasResourceConfig: this._hasResourceConfig || undefined,
+      hasStatusCommand: this._hasStatusCommand || undefined,
       hasPauseCommand: this._hasPauseCommand || undefined,
       hasResumeCommand: this._hasResumeCommand || undefined,
       hasTeardownCommand: this._hasTeardownCommand || undefined,
+      hasProvisionCommand: this._hasProvisionCommand || undefined,
       worktreeMode: this._worktreeMode !== "local" ? this._worktreeMode : undefined,
       worktreeEnvironmentLabel: this._worktreeEnvironmentLabel,
       hasPlanFile: this.hasPlanFile || undefined,

@@ -833,7 +833,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!worktreeId) return false;
       const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
-      return !!worktree?.hasResourceConfig;
+      return !!worktree?.hasProvisionCommand;
     },
     run: async (args: unknown, ctx: ActionContext) => {
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
@@ -856,7 +856,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!worktreeId) return false;
       const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
-      return !!worktree?.hasResourceConfig;
+      return !!worktree?.hasTeardownCommand;
     },
     run: async (args: unknown, ctx: ActionContext) => {
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
@@ -879,7 +879,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!worktreeId) return false;
       const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
-      return !!worktree?.hasResourceConfig;
+      return !!worktree?.hasResumeCommand;
     },
     run: async (args: unknown, ctx: ActionContext) => {
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
@@ -902,7 +902,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!worktreeId) return false;
       const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
-      return !!worktree?.hasResourceConfig;
+      return !!worktree?.hasPauseCommand;
     },
     run: async (args: unknown, ctx: ActionContext) => {
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
@@ -925,7 +925,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!worktreeId) return false;
       const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
-      return !!worktree?.hasResourceConfig;
+      return !!worktree?.hasStatusCommand;
     },
     run: async (args: unknown, ctx: ActionContext) => {
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
