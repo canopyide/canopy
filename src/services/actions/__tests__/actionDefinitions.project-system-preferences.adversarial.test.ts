@@ -294,7 +294,7 @@ beforeEach(() => {
   });
 
   useAgentSettingsStore.setState({
-    settings: { agents: { codex: { selected: true } } },
+    settings: { agents: { codex: { pinned: true } } },
     isLoading: true,
     error: "stale",
     isInitialized: false,
@@ -680,17 +680,17 @@ describe("preferences action hardening", () => {
   });
 
   it("updates agent settings store only after successful client responses", async () => {
-    mocks.agentSettingsClient.get.mockResolvedValueOnce({ agents: { codex: { selected: false } } });
-    mocks.agentSettingsClient.set.mockResolvedValueOnce({ agents: { codex: { selected: true } } });
+    mocks.agentSettingsClient.get.mockResolvedValueOnce({ agents: { codex: { pinned: false } } });
+    mocks.agentSettingsClient.set.mockResolvedValueOnce({ agents: { codex: { pinned: true } } });
     mocks.agentSettingsClient.reset.mockRejectedValueOnce(new Error("reset failed"));
     const { service } = buildService(registerPreferencesActions);
 
     await expect(service.dispatch("agentSettings.get")).resolves.toEqual({
       ok: true,
-      result: { agents: { codex: { selected: false } } },
+      result: { agents: { codex: { pinned: false } } },
     });
     expect(useAgentSettingsStore.getState()).toMatchObject({
-      settings: { agents: { codex: { selected: false } } },
+      settings: { agents: { codex: { pinned: false } } },
       isLoading: false,
       error: null,
       isInitialized: true,
@@ -699,14 +699,14 @@ describe("preferences action hardening", () => {
     await expect(
       service.dispatch("agentSettings.set", {
         agentId: "codex",
-        settings: { selected: true },
+        settings: { pinned: true },
       })
     ).resolves.toEqual({
       ok: true,
-      result: { agents: { codex: { selected: true } } },
+      result: { agents: { codex: { pinned: true } } },
     });
     expect(useAgentSettingsStore.getState().settings).toEqual({
-      agents: { codex: { selected: true } },
+      agents: { codex: { pinned: true } },
     });
 
     const failure = await service.dispatch("agentSettings.reset");
@@ -716,7 +716,7 @@ describe("preferences action hardening", () => {
       expect(failure.error.message).toBe("reset failed");
     }
     expect(useAgentSettingsStore.getState().settings).toEqual({
-      agents: { codex: { selected: true } },
+      agents: { codex: { pinned: true } },
     });
   });
 

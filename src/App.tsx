@@ -187,7 +187,7 @@ function App() {
   const hasAnySelectedAgent = useMemo(() => {
     if (agentSettings === null) return null;
     const agents = agentSettings.agents ?? {};
-    return BUILT_IN_AGENT_IDS.some((id) => agents[id]?.selected !== false);
+    return BUILT_IN_AGENT_IDS.some((id) => agents[id]?.pinned === true);
   }, [agentSettings]);
 
   useTerminalConfig();
@@ -328,7 +328,7 @@ function App() {
     const defaultAgent = useAgentPreferencesStore.getState().defaultAgent;
     const selected = agentSettings?.agents
       ? Object.entries(agentSettings.agents)
-          .filter(([, entry]) => entry.selected === true)
+          .filter(([, entry]) => entry.pinned === true)
           .map(([id]) => id)
       : [];
     const primaryAgent = defaultAgent ?? selected[0];

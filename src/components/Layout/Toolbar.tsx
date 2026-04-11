@@ -381,8 +381,7 @@ export function Toolbar({
                 data-toolbar-item=""
               />
             ),
-            isAvailable:
-              !effectiveAgentSettings || effectiveAgentSettings.agents?.[id]?.selected !== false,
+            isAvailable: effectiveAgentSettings?.agents?.[id]?.pinned === true,
           },
         ])
       ),

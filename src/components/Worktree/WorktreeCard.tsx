@@ -575,8 +575,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
     return agentIds
       .filter((agentId) => {
         const entry = getAgentSettingsEntry(agentSettings, agentId);
-        // selected === false = explicitly deselected; undefined = pre-migration, treat as visible
-        return entry.selected !== false;
+        return entry.pinned === true;
       })
       .map((agentId) => {
         const config = getAgentConfig(agentId);

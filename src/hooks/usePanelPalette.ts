@@ -105,7 +105,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
 
     const isAgentHidden = (agentId: string): boolean => {
       if (!agentSettings?.agents) return false;
-      return agentSettings.agents[agentId]?.selected === false;
+      return agentSettings.agents[agentId]?.pinned !== true;
     };
 
     const agentKinds = getEffectiveAgentIds()

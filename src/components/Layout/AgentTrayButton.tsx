@@ -43,7 +43,7 @@ export function AgentTrayButton({
   // Subscribe to the store directly so pin/unpin toggles update the UI
   // immediately without depending on any caller-side refetch.
   const agentSettings = useAgentSettingsStore((s) => s.settings);
-  const setAgentSelected = useAgentSettingsStore((s) => s.setAgentSelected);
+  const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
 
   const isAvailabilityLoading = agentAvailability === undefined;
 
@@ -62,7 +62,7 @@ export function AgentTrayButton({
       // belongs in the setup section alongside missing agents.
       const ready = isAgentReady(availabilityState);
       const resolved = availabilityState !== undefined;
-      const pinned = agentSettings?.agents?.[id]?.selected !== false;
+      const pinned = agentSettings?.agents?.[id]?.pinned === true;
 
       if (ready) {
         readyAll.push(row);
@@ -80,7 +80,7 @@ export function AgentTrayButton({
   };
 
   const handleTogglePin = (agentId: BuiltInAgentId, checked: boolean) => {
-    void setAgentSelected(agentId, checked);
+    void setAgentPinned(agentId, checked);
   };
 
   const handleSetup = (agentId: BuiltInAgentId) => {
@@ -140,7 +140,7 @@ export function AgentTrayButton({
             {readyUnpinned.length > 0 && <DropdownMenuSeparator />}
             <DropdownMenuLabel>Pin to Toolbar</DropdownMenuLabel>
             {readyAll.map((row) => {
-              const pinned = agentSettings?.agents?.[row.id]?.selected !== false;
+              const pinned = agentSettings?.agents?.[row.id]?.pinned === true;
               return (
                 <DropdownMenuCheckboxItem
                   key={`pin-${row.id}`}

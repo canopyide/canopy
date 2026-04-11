@@ -396,7 +396,7 @@ export function ContentGrid({
     if (!gridAgentSettings?.agents) return undefined;
     return new Set(
       Object.entries(gridAgentSettings.agents)
-        .filter(([, entry]) => entry.selected !== false)
+        .filter(([, entry]) => entry.pinned === true)
         .map(([id]) => id)
     );
   }, [gridAgentSettings]);
