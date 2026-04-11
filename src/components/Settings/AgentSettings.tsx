@@ -42,7 +42,6 @@ export function AgentSettings({
 
   const cliAvailability = useCliAvailabilityStore((state) => state.availability);
   const isCliLoading = useCliAvailabilityStore((state) => state.isLoading);
-  const isCliInitialized = useCliAvailabilityStore((state) => state.isInitialized);
   const isRefreshingCli = useCliAvailabilityStore((state) => state.isRefreshing);
   const cliError = useCliAvailabilityStore((state) => state.error);
   const initializeCliAvailability = useCliAvailabilityStore((state) => state.initialize);
