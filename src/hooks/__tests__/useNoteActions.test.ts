@@ -305,6 +305,31 @@ describe("useNoteActions", () => {
     });
   });
 
+  describe("refresh on open", () => {
+    it("calls refresh when palette opens", () => {
+      const props = defaultProps();
+
+      renderHook(() => useNoteActions(props));
+
+      expect(props.refresh).toHaveBeenCalled();
+    });
+
+    it("calls refresh again when palette is closed and reopened", () => {
+      const props = defaultProps();
+
+      const { rerender } = renderHook(({ hookProps }) => useNoteActions(hookProps), {
+        initialProps: { hookProps: props },
+      });
+
+      expect(props.refresh).toHaveBeenCalledTimes(1);
+
+      rerender({ hookProps: { ...props, isOpen: false } });
+      rerender({ hookProps: { ...props, isOpen: true } });
+
+      expect(props.refresh).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("handleSelectNote", () => {
     it("flushes and checks auto-delete when switching notes", async () => {
       const oldNote = makeNote({ id: "old", title: "" });
