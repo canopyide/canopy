@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { getAgentIds, getAgentConfig } from "@/config/agents";
-import {
-  useAgentSettingsStore,
-  useCliAvailabilityStore,
-  migrateAgentSelection,
-  useAgentPreferencesStore,
-} from "@/store";
+import { useAgentSettingsStore, useCliAvailabilityStore, useAgentPreferencesStore } from "@/store";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
@@ -41,13 +36,12 @@ export function AgentSettings({
     error: loadError,
     initialize,
     updateAgent,
-    setAgentSelected,
+    setAgentPinned,
     reset,
   } = useAgentSettingsStore();
 
   const cliAvailability = useCliAvailabilityStore((state) => state.availability);
   const isCliLoading = useCliAvailabilityStore((state) => state.isLoading);
-  const isCliInitialized = useCliAvailabilityStore((state) => state.isInitialized);
   const isRefreshingCli = useCliAvailabilityStore((state) => state.isRefreshing);
   const cliError = useCliAvailabilityStore((state) => state.error);
   const initializeCliAvailability = useCliAvailabilityStore((state) => state.initialize);
@@ -64,14 +58,6 @@ export function AgentSettings({
   useEffect(() => {
     void initializeCliAvailability();
   }, [initializeCliAvailability]);
-
-  // Migrate selection state for agents that don't have `selected` set yet.
-  // Gate on CLI availability being fully initialized (not just not-loading) to avoid
-  // persisting incorrect `false` defaults when the CLI check errored or is still pending.
-  useEffect(() => {
-    if (!settings || !isCliInitialized || isCliLoading) return;
-    void migrateAgentSelection(cliAvailability);
-  }, [settings, isCliInitialized, isCliLoading, cliAvailability]);
 
   const handleRefreshCliAvailability = useCallback(async () => {
     if (isRefreshingCli) return;
@@ -107,7 +93,7 @@ export function AgentSettings({
             color: config.color,
             Icon: config.icon,
             usageUrl: config.usageUrl,
-            selected: entry.selected !== false,
+            selected: entry.pinned === true,
             dangerousEnabled: entry.dangerousEnabled ?? false,
             hasCustomFlags: Boolean(entry.customFlags?.trim()),
           };
@@ -281,21 +267,21 @@ export function AgentSettings({
               </>
             }
           >
-            {/* Enable Agent Toggle */}
+            {/* Pin to Toolbar Toggle */}
             <div id="agents-enable">
               <SettingsSwitchCard
                 variant="compact"
-                title="Enable agent"
-                subtitle="When disabled, this agent is hidden everywhere and treated as if it is not installed"
-                isEnabled={activeEntry.selected !== false}
+                title="Pin to toolbar"
+                subtitle="When pinned, this agent appears in the toolbar for quick access"
+                isEnabled={activeEntry.pinned === true}
                 onChange={() => {
-                  const current = activeEntry.selected !== false;
+                  const current = activeEntry.pinned === true;
                   void (async () => {
-                    await setAgentSelected(activeAgent.id, !current);
+                    await setAgentPinned(activeAgent.id, !current);
                     onSettingsChange?.();
                   })();
                 }}
-                ariaLabel={`Enable ${activeAgent.name}`}
+                ariaLabel={`Pin ${activeAgent.name} to toolbar`}
               />
             </div>
 

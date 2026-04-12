@@ -115,7 +115,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     setupElectron();
   });
 
-  it("renders only installed, enabled agents (hides uninstalled)", async () => {
+  it("renders only installed, pinned agents (hides uninstalled)", async () => {
     setupDispatchMock(
       {
         claude: "ready",
@@ -124,7 +124,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
         opencode: "missing",
         cursor: "missing",
       },
-      { agents: {} } as unknown as AgentSettings
+      { agents: { claude: { pinned: true }, gemini: { pinned: true } } } as unknown as AgentSettings
     );
 
     await renderGeneralTab();
@@ -141,10 +141,12 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     expect(screen.getAllByText("Ready")).toHaveLength(2);
   });
 
-  it("hides installed but user-disabled agents", async () => {
+  it("hides unpinned agents", async () => {
     setupDispatchMock(
       { claude: "ready", gemini: "ready", codex: "ready", opencode: "missing", cursor: "missing" },
-      { agents: { gemini: { selected: false } } } as unknown as AgentSettings
+      {
+        agents: { claude: { pinned: true }, codex: { pinned: true }, gemini: { pinned: false } },
+      } as unknown as AgentSettings
     );
 
     await renderGeneralTab();
@@ -166,7 +168,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
         opencode: "missing",
         cursor: "missing",
       },
-      { agents: {} } as unknown as AgentSettings
+      { agents: { claude: { pinned: true }, gemini: { pinned: true } } } as unknown as AgentSettings
     );
 
     await renderGeneralTab();
@@ -179,7 +181,14 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
   it("uses singular 'agent' when hiddenCount is 1", async () => {
     setupDispatchMock(
       { claude: "ready", gemini: "ready", codex: "ready", opencode: "ready", cursor: "missing" },
-      { agents: {} } as unknown as AgentSettings
+      {
+        agents: {
+          claude: { pinned: true },
+          gemini: { pinned: true },
+          codex: { pinned: true },
+          opencode: { pinned: true },
+        },
+      } as unknown as AgentSettings
     );
 
     await renderGeneralTab();
@@ -189,10 +198,18 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     });
   });
 
-  it("hides summary when all agents installed", async () => {
+  it("hides summary when all agents installed and pinned", async () => {
     setupDispatchMock(
       { claude: "ready", gemini: "ready", codex: "ready", opencode: "ready", cursor: "ready" },
-      { agents: {} } as unknown as AgentSettings
+      {
+        agents: {
+          claude: { pinned: true },
+          gemini: { pinned: true },
+          codex: { pinned: true },
+          opencode: { pinned: true },
+          cursor: { pinned: true },
+        },
+      } as unknown as AgentSettings
     );
 
     await renderGeneralTab();
@@ -213,7 +230,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
         opencode: "missing",
         cursor: "missing",
       },
-      { agents: {} } as unknown as AgentSettings
+      { agents: { claude: { pinned: true }, gemini: { pinned: true } } } as unknown as AgentSettings
     );
 
     await renderGeneralTab();
@@ -290,7 +307,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
         opencode: "missing",
         cursor: "missing",
       },
-      { agents: {} } as unknown as AgentSettings
+      { agents: { claude: { pinned: true }, gemini: { pinned: true } } } as unknown as AgentSettings
     );
 
     const onNavigate = vi.fn();
@@ -321,7 +338,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
         opencode: "missing",
         cursor: "missing",
       },
-      { agents: {} } as unknown as AgentSettings
+      { agents: { claude: { pinned: true }, gemini: { pinned: true } } } as unknown as AgentSettings
     );
 
     await renderGeneralTab();

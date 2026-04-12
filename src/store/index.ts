@@ -65,8 +65,7 @@ export { useGitHubConfigStore, cleanupGitHubConfigStore } from "./githubConfigSt
 export {
   useAgentSettingsStore,
   cleanupAgentSettingsStore,
-  getSelectedAgents,
-  migrateAgentSelection,
+  getPinnedAgents,
 } from "./agentSettingsStore";
 
 export { useCliAvailabilityStore, cleanupCliAvailabilityStore } from "./cliAvailabilityStore";

@@ -328,7 +328,7 @@ export function AgentSetupWizard({
   const [hasFatalHealthFailure, setHasFatalHealthFailure] = useState(false);
   const [isHealthChecking, setIsHealthChecking] = useState(true);
 
-  const { setAgentSelected } = useAgentSettingsStore();
+  const { setAgentPinned } = useAgentSettingsStore();
   const isAvailabilityLoading = useCliAvailabilityStore((s) => s.isLoading || s.isRefreshing);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -479,14 +479,14 @@ export function AgentSetupWizard({
       if (isFirstRun) {
         await commitTelemetry(telemetryEnabled ? "errors" : "off");
       }
-      for (const [agentId, selected] of Object.entries(state.selections)) {
-        await setAgentSelected(agentId, selected);
+      for (const [agentId, pinned] of Object.entries(state.selections)) {
+        await setAgentPinned(agentId, pinned);
       }
       dispatch({ type: "SELECTION_CONTINUE" });
     } finally {
       setIsSaving(false);
     }
-  }, [state.selections, setAgentSelected, isFirstRun, commitTelemetry, telemetryEnabled]);
+  }, [state.selections, setAgentPinned, isFirstRun, commitTelemetry, telemetryEnabled]);
 
   const handleCliContinue = useCallback(() => {
     directionRef.current = 1;

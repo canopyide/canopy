@@ -69,13 +69,8 @@ export const DEFAULT_ROUTING_CONFIG: AgentRoutingConfig = {
 };
 
 export interface AgentSettingsEntry {
-  /**
-   * @deprecated Use `selected` instead. Kept for migration compatibility only.
-   * Will be removed in a future release.
-   */
-  enabled?: boolean;
-  /** Enable this agent — when false the agent is hidden everywhere and treated as not installed */
-  selected?: boolean;
+  /** When true, this agent is pinned to the toolbar. Opt-in: absent/false means unpinned. */
+  pinned?: boolean;
   customFlags?: string;
   /** Additional args appended when dangerous mode is enabled */
   dangerousArgs?: string;

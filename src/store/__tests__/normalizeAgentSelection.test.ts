@@ -1,12 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { normalizeAgentSelection } from "../agentSettingsStore";
-import type { AgentSettings, CliAvailability } from "@shared/types";
+import type { AgentSettings } from "@shared/types";
 
 describe("normalizeAgentSelection", () => {
-  const makeSettings = (
-    agents: Record<string, { selected?: boolean; enabled?: boolean }>
-  ): AgentSettings => ({
+  const makeSettings = (agents: Record<string, { pinned?: boolean }>): AgentSettings => ({
     agents: Object.fromEntries(
       Object.entries(agents).map(([id, overrides]) => [
         id,
@@ -15,73 +13,32 @@ describe("normalizeAgentSelection", () => {
     ),
   });
 
-  const availability: CliAvailability = {
-    claude: "ready",
-    gemini: "missing",
-    codex: "ready",
-    opencode: "missing",
-    cursor: "installed",
-  } as CliAvailability;
+  it("preserves explicit pinned: true and pinned: false", () => {
+    const settings = makeSettings({
+      claude: { pinned: false },
+      gemini: { pinned: true },
+    });
+    const result = normalizeAgentSelection(settings);
+    expect(result.agents.claude.pinned).toBe(false);
+    expect(result.agents.gemini.pinned).toBe(true);
+  });
 
-  it("fills selected: undefined using CLI availability", () => {
+  it("seeds pinned: false for registered agents with no stored pinned value", () => {
     const settings = makeSettings({
       claude: {},
       gemini: {},
     });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(true);
-    expect(result.agents.gemini.selected).toBe(false);
-  });
-
-  it("preserves explicit selected: true and selected: false", () => {
-    const settings = makeSettings({
-      claude: { selected: false },
-      gemini: { selected: true },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(false);
-    expect(result.agents.gemini.selected).toBe(true);
-  });
-
-  it("migrates deprecated enabled: false to selected: false", () => {
-    const settings = makeSettings({
-      claude: { enabled: false },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(false);
-  });
-
-  it("does not overwrite selected: false with enabled migration", () => {
-    const settings = makeSettings({
-      claude: { enabled: false, selected: false },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(false);
-  });
-
-  it("does not override explicit selected: true when enabled: false", () => {
-    const settings = makeSettings({
-      claude: { enabled: false, selected: true },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(true);
-  });
-
-  it("does not auto-select agents with 'installed' state", () => {
-    const settings = makeSettings({
-      cursor: {},
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    // cursor is "installed" (not "ready"), so should not be auto-selected
-    expect(result.agents.cursor.selected).toBe(false);
+    const result = normalizeAgentSelection(settings);
+    expect(result.agents.claude.pinned).toBe(false);
+    expect(result.agents.gemini.pinned).toBe(false);
   });
 
   it("returns same reference when no changes are needed", () => {
     const settings = makeSettings({
-      claude: { selected: true },
-      gemini: { selected: false },
+      claude: { pinned: true },
+      gemini: { pinned: false },
     });
-    const result = normalizeAgentSelection(settings, availability);
+    const result = normalizeAgentSelection(settings);
     expect(result).toBe(settings);
   });
 });

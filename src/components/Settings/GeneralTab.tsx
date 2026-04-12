@@ -453,7 +453,7 @@ export function GeneralTab({
                 const installedAgentIds = allAgentIds.filter(
                   (id) =>
                     isAgentInstalled(cliAvailability[id]) &&
-                    getAgentSettingsEntry(agentSettings, id).selected !== false
+                    getAgentSettingsEntry(agentSettings, id).pinned === true
                 );
                 const hiddenCount = allAgentIds.length - installedAgentIds.length;
 

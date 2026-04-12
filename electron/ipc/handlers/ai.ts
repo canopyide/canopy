@@ -83,14 +83,17 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     const currentSettings = normalizeAgentSettings(
       store.get("agentSettings", DEFAULT_AGENT_SETTINGS)
     );
+    const merged = {
+      ...(currentSettings.agents?.[safeAgentType] ?? {}),
+      ...settings,
+    };
+    // Strip retired legacy keys — never persist them back
+    const { selected: _s, enabled: _e, ...safeEntry } = merged as Record<string, unknown>;
     const updatedSettings = {
       ...currentSettings.root,
       agents: {
         ...currentSettings.agents,
-        [safeAgentType]: {
-          ...(currentSettings.agents?.[safeAgentType] ?? {}),
-          ...settings,
-        },
+        [safeAgentType]: safeEntry,
       },
     };
     store.set("agentSettings", updatedSettings);

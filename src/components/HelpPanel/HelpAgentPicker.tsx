@@ -19,7 +19,7 @@ export function HelpAgentPicker({ onSelectAgent }: HelpAgentPickerProps) {
 
   const enabledAgents = useMemo(() => {
     return BUILT_IN_AGENT_IDS.filter((id) => {
-      if (settings?.agents && settings.agents[id]?.selected === false) return false;
+      if (settings?.agents && settings.agents[id]?.pinned !== true) return false;
       if (isAgentMissing(availability[id])) return false;
       return true;
     });

@@ -52,10 +52,9 @@ vi.mock("@/store/userAgentRegistryStore", () => ({
 vi.mock("@/store/agentSettingsStore", () => ({
   useAgentSettingsStore: (
     selector: (state: {
-      settings: { agents: Record<string, { selected?: boolean }> } | null;
+      settings: { agents: Record<string, { pinned?: boolean }> } | null;
     }) => unknown
-  ) =>
-    selector({ settings: { agents: { claude: { selected: true }, gemini: { selected: true } } } }),
+  ) => selector({ settings: { agents: { claude: { pinned: true }, gemini: { pinned: true } } } }),
 }));
 
 vi.mock("@/store/cliAvailabilityStore", () => {
