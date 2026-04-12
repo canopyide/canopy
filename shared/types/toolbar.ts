@@ -27,7 +27,6 @@ export type ToolbarButtonId =
   | "settings"
   | "problems"
   | "notification-center"
-  | "panel-palette"
   | "portal-toggle";
 
 /** Configuration for which toolbar buttons are visible and their order */
@@ -65,7 +64,6 @@ export const TOOLBAR_BUTTON_PRIORITIES: Record<ToolbarButtonId, ToolbarButtonPri
   terminal: 3,
   browser: 3,
   "dev-server": 3,
-  "panel-palette": 4,
   settings: 5,
   "notification-center": 5,
   notes: 5,

@@ -172,7 +172,7 @@ describe("toolbarPreferencesStore", () => {
     it("restores multiple hidden buttons across both sides", async () => {
       setStoredState({
         layout: {
-          leftButtons: ["terminal", "browser", "panel-palette"],
+          leftButtons: ["terminal", "browser", "dev-server"],
           rightButtons: ["notes", "settings", "copy-tree"],
           hiddenButtons: ["terminal", "notes", "copy-tree"],
         },
@@ -230,7 +230,7 @@ describe("toolbarPreferencesStore", () => {
     it("re-inserts dev-server for persisted state missing it via mergeButtonList", async () => {
       setStoredState({
         layout: {
-          leftButtons: ["terminal", "browser", "panel-palette"],
+          leftButtons: ["terminal", "browser", "notes"],
           rightButtons: ["notes", "settings"],
           hiddenButtons: [],
         },
@@ -306,7 +306,49 @@ describe("toolbarPreferencesStore", () => {
       expect(store.getState().layout.leftButtons).toContain("agent-tray");
     });
 
-    it("migrates v0 state through both migrations", async () => {
+    it("v3→v4 drops 'panel-palette' from all button arrays", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-tray", "claude", "terminal", "browser", "panel-palette"],
+              rightButtons: ["settings", "panel-palette"],
+              hiddenButtons: ["panel-palette"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 3,
+        })
+      );
+
+      const store = await loadStore();
+      const { layout } = store.getState();
+      expect(layout.leftButtons).not.toContain("panel-palette");
+      expect(layout.rightButtons).not.toContain("panel-palette");
+      expect(layout.hiddenButtons).not.toContain("panel-palette");
+      // Order of remaining items preserved
+      expect(layout.leftButtons).toContain("agent-tray");
+      expect(layout.leftButtons).toContain("terminal");
+      expect(layout.leftButtons).toContain("browser");
+    });
+
+    it("v3→v4 handles missing layout without throwing", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 3,
+        })
+      );
+
+      const store = await loadStore();
+      expect(store.getState().layout.leftButtons).toBeDefined();
+    });
+
+    it("migrates v0 state through all migrations", async () => {
       storageMock.setItem(
         STORAGE_KEY,
         JSON.stringify({

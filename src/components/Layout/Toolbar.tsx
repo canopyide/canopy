@@ -15,7 +15,6 @@ import {
   Globe,
   Monitor,
   Bell,
-  LayoutGrid,
   Ellipsis,
   GitBranch,
   StickyNote,
@@ -83,7 +82,6 @@ export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenu
   terminal: { label: "Terminal", icon: SquareTerminal },
   browser: { label: "Browser", icon: Globe },
   "dev-server": { label: "Dev Preview", icon: Monitor },
-  "panel-palette": { label: "Panel Palette", icon: LayoutGrid },
   "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
   "notification-center": { label: "Notifications", icon: Bell },
   notes: { label: "Notes", icon: StickyNote },
@@ -431,17 +429,6 @@ export function Toolbar({
         ),
         isAvailable: !!currentProject,
       },
-      "panel-palette": {
-        render: () => (
-          <ToolbarLauncherButton
-            key="panel-palette"
-            type="panel-palette"
-            onLaunchAgent={onLaunchAgent}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: true,
-      },
       "voice-recording": {
         render: () => <VoiceRecordingToolbarButton key="voice-recording" data-toolbar-item="" />,
         isAvailable: hasActiveVoiceRecording,
@@ -752,9 +739,6 @@ export function Toolbar({
       browser: () => onLaunchAgent("browser"),
       "dev-server": () => {
         void actionService.dispatch("devServer.start", undefined, { source: "user" });
-      },
-      "panel-palette": () => {
-        void actionService.dispatch("panel.palette", undefined, { source: "user" });
       },
       "notification-center": () => {
         useUIStore.getState().toggleNotificationCenter();
