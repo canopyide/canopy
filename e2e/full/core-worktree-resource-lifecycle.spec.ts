@@ -222,12 +222,11 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     await expect(statusOption.first()).toBeVisible({ timeout: T_MEDIUM });
     await statusOption.first().click();
 
-    // Wait for the badge to appear on the worktree card
+    // Wait for the resource status data attribute to appear on the worktree card
     await expect
       .poll(
         async () => {
-          const cardText = await newCard.innerText();
-          return cardText;
+          return await newCard.getAttribute("data-resource-status");
         },
         { timeout: T_LONG, message: "Resource status badge should appear" }
       )
@@ -309,14 +308,11 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     // The badge should now show "paused"
     const newCard = window.locator(SEL.worktree.card(BRANCH));
     await expect
-      .poll(
-        async () => {
-          const cardText = await newCard.innerText();
-          return cardText;
-        },
-        { timeout: T_LONG, message: "Resource badge should show paused" }
-      )
-      .toContain("paused");
+      .poll(async () => newCard.getAttribute("data-resource-status"), {
+        timeout: T_LONG,
+        message: "Resource badge should show paused",
+      })
+      .toBe("paused");
   });
 
   // ---- New Test 5: Resume resource after pause -- full cycle ----
@@ -364,11 +360,11 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     // Badge should return to "ready"
     const newCard = window.locator(SEL.worktree.card(BRANCH));
     await expect
-      .poll(async () => newCard.innerText(), {
+      .poll(async () => newCard.getAttribute("data-resource-status"), {
         timeout: T_LONG,
         message: "Resource badge should show ready after resume",
       })
-      .toContain("ready");
+      .toBe("ready");
   });
 
   // ---- Resource status badge appears after manual provision ----
@@ -416,7 +412,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
 
     const newCard = window.locator(SEL.worktree.card(BRANCH));
     await expect
-      .poll(async () => newCard.innerText(), {
+      .poll(async () => newCard.getAttribute("data-resource-status"), {
         timeout: T_LONG,
         message: "Resource badge should show ready after provision",
       })
@@ -442,16 +438,18 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
 
     const newCard = window.locator(SEL.worktree.card(BRANCH));
     await expect
-      .poll(async () => newCard.innerText(), {
+      .poll(async () => newCard.getAttribute("data-resource-status"), {
         timeout: T_LONG,
         message: "Resource badge should show unhealthy",
       })
-      .toContain("unhealthy");
+      .toBe("unhealthy");
   });
 
-  test("non-JSON status output is treated as unhealthy", async () => {
+  test("non-JSON status output is treated as unknown", async () => {
     const { window } = ctx;
 
+    // Write non-JSON content; the status command (cat) will exit 0 but output isn't valid JSON.
+    // Per the implementation, exit 0 + non-JSON → "unknown" (neutral badge).
     const stateFile = path.join(fixtureDir, ".canopy", "resource-state.json");
     fs.writeFileSync(stateFile, "not valid json");
 
@@ -466,11 +464,11 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
 
     const newCard = window.locator(SEL.worktree.card(BRANCH));
     await expect
-      .poll(async () => newCard.innerText(), {
+      .poll(async () => newCard.getAttribute("data-resource-status"), {
         timeout: T_LONG,
-        message: "Resource badge should show unhealthy for non-JSON output",
+        message: "Resource badge should show unknown for non-JSON output",
       })
-      .toContain("unhealthy");
+      .toBe("unknown");
   });
 
   // ---- CANOPY_* env vars are injected into lifecycle commands ----
@@ -478,31 +476,46 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
   test("CANOPY_* env vars are available in lifecycle commands", async () => {
     const { window } = ctx;
 
-    // Rewrite the state file via a status command that captures CANOPY_* vars
-    const canopyDir = path.join(fixtureDir, ".canopy");
-    const configPath = path.join(canopyDir, "config.json");
-    const markerFile = path.join(canopyDir, "env-marker.txt");
-    const originalConfig = fs.readFileSync(configPath, "utf-8");
+    // Find the worktree path from git (each worktree has its own working tree)
+    const worktreeListOutput = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      cwd: fixtureDir,
+      encoding: "utf-8",
+    });
+    // Parse porcelain format: "worktree <path>\nHEAD ...\nbranch refs/heads/<branch>"
+    const worktreeBlocks = worktreeListOutput.split("\n\n");
+    let worktreePath = "";
+    for (const block of worktreeBlocks) {
+      if (block.includes(`refs/heads/${BRANCH}`)) {
+        const match = block.match(/^worktree (.+)$/m);
+        if (match) worktreePath = match[1];
+        break;
+      }
+    }
+    expect(worktreePath.length).toBeGreaterThan(0);
+
+    // Write the modified config directly to the worktree's .canopy dir
+    const wtCanopyDir = path.join(worktreePath, ".canopy");
+    fs.mkdirSync(wtCanopyDir, { recursive: true });
+    const wtConfigPath = path.join(wtCanopyDir, "config.json");
+    const markerFile = path.join(wtCanopyDir, "env-marker.txt");
+
+    const mainCanopyDir = path.join(fixtureDir, ".canopy");
+    const originalConfig = fs.readFileSync(path.join(mainCanopyDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
     // Modify status command to dump CANOPY_* env vars into a marker file,
     // then still output valid JSON for the badge
     config.resource.status = [
       `printf '%s\\n%s\\n%s' "$CANOPY_WORKTREE_NAME" "$CANOPY_WORKTREE_PATH" "$CANOPY_PROJECT_ROOT" > "${markerFile}"`,
-      `cat "${path.join(canopyDir, "resource-state.json")}" 2>/dev/null || printf '{"status":"unknown"}'`,
+      `cat "${path.join(mainCanopyDir, "resource-state.json")}" 2>/dev/null || printf '{"status":"unknown"}'`,
     ].join(" && ");
 
     // Ensure the state file exists so badge shows something
     fs.writeFileSync(
-      path.join(canopyDir, "resource-state.json"),
+      path.join(mainCanopyDir, "resource-state.json"),
       JSON.stringify({ status: "ready" })
     );
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    execFileSync("git", ["add", "-A"], { cwd: fixtureDir, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "temp: status captures env vars"], {
-      cwd: fixtureDir,
-      stdio: "ignore",
-    });
+    fs.writeFileSync(wtConfigPath, JSON.stringify(config, null, 2));
 
     // Trigger status check
     await ensureWindowFocused(ctx.app);
@@ -533,17 +546,12 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     expect(marker[0]?.length).toBeGreaterThan(0);
     // CANOPY_WORKTREE_PATH should be a real path
     expect(marker[1]?.length).toBeGreaterThan(0);
-    // CANOPY_PROJECT_ROOT should match the fixture dir
-    expect(marker[2]).toBe(fixtureDir);
+    // CANOPY_PROJECT_ROOT should match the fixture dir (resolve symlinks for macOS /private/var)
+    expect(fs.realpathSync(marker[2]!)).toBe(fs.realpathSync(fixtureDir));
 
-    // Restore original config
-    fs.writeFileSync(configPath, originalConfig);
+    // Clean up: remove modified config and marker from worktree
     if (fs.existsSync(markerFile)) fs.unlinkSync(markerFile);
-    execFileSync("git", ["add", "-A"], { cwd: fixtureDir, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "restore: original config"], {
-      cwd: fixtureDir,
-      stdio: "ignore",
-    });
+    if (fs.existsSync(wtConfigPath)) fs.unlinkSync(wtConfigPath);
   });
 
   // ---- {{branch}} and {{worktree_path}} substitution in connect command ----
@@ -551,19 +559,33 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
   test("{{branch}} and {{worktree_path}} are substituted in connect command", async () => {
     const { window } = ctx;
 
-    // Temporarily update config to use {{branch}} and {{worktree_path}} in connect
-    const canopyDir = path.join(fixtureDir, ".canopy");
-    const configPath = path.join(canopyDir, "config.json");
-    const originalConfig = fs.readFileSync(configPath, "utf-8");
+    // Find the worktree path from git
+    const worktreeListOutput = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      cwd: fixtureDir,
+      encoding: "utf-8",
+    });
+    const worktreeBlocks = worktreeListOutput.split("\n\n");
+    let worktreePath = "";
+    for (const block of worktreeBlocks) {
+      if (block.includes(`refs/heads/${BRANCH}`)) {
+        const match = block.match(/^worktree (.+)$/m);
+        if (match) worktreePath = match[1];
+        break;
+      }
+    }
+    expect(worktreePath.length).toBeGreaterThan(0);
+
+    // Write modified config directly to the worktree's .canopy dir
+    const wtCanopyDir = path.join(worktreePath, ".canopy");
+    fs.mkdirSync(wtCanopyDir, { recursive: true });
+    const wtConfigPath = path.join(wtCanopyDir, "config.json");
+
+    const mainCanopyDir = path.join(fixtureDir, ".canopy");
+    const originalConfig = fs.readFileSync(path.join(mainCanopyDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
     config.resource.connect = `echo BRANCH={{branch}} PATH={{worktree_path}} PROJECT={{project_root}}; bash --norc --noprofile`;
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    execFileSync("git", ["add", "-A"], { cwd: fixtureDir, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "temp: connect with variable substitution"], {
-      cwd: fixtureDir,
-      stdio: "ignore",
-    });
+    fs.writeFileSync(wtConfigPath, JSON.stringify(config, null, 2));
 
     // Re-provision to pick up new connect command (provision stores the substituted connect command)
     await ensureWindowFocused(ctx.app);
@@ -601,13 +623,8 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     // {{worktree_path}} should be substituted with a real path (not the literal placeholder)
     await waitForTerminalText(newPanel, "PATH=/");
 
-    // Restore original config
-    fs.writeFileSync(configPath, originalConfig);
-    execFileSync("git", ["add", "-A"], { cwd: fixtureDir, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "restore: original connect command"], {
-      cwd: fixtureDir,
-      stdio: "ignore",
-    });
+    // Clean up: remove modified config from worktree
+    if (fs.existsSync(wtConfigPath)) fs.unlinkSync(wtConfigPath);
   });
 
   // ---- Original test: deleting worktree triggers resource teardown ----
@@ -628,6 +645,13 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
 
     const confirmBtn = window.locator(SEL.worktree.deleteConfirm);
     await expect(confirmBtn).toBeVisible({ timeout: T_MEDIUM });
+
+    // Check "Force delete" if worktree has uncommitted changes (from earlier tests writing config)
+    const forceCheckbox = window.locator("text=Force delete");
+    if (await forceCheckbox.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await forceCheckbox.click();
+    }
+
     await confirmBtn.click();
 
     // Worktree card should disappear

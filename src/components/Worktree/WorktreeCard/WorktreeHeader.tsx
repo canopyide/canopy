@@ -402,8 +402,9 @@ export function WorktreeHeader({
               aria-label="Pinned"
             />
           )}
-          {worktree.worktreeMode &&
-            worktree.worktreeMode !== "local" &&
+          {((worktree.worktreeMode && worktree.worktreeMode !== "local") ||
+            resourceStatusLabel ||
+            isLifecycleRunning) &&
             (() => {
               const EnvironmentIcon =
                 (environmentIcon && ENVIRONMENT_ICONS[environmentIcon]) || Cloud;

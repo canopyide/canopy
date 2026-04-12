@@ -174,7 +174,11 @@ function resourceStatusEqual(
     a.lastStatus === b.lastStatus &&
     a.provider === b.provider &&
     a.endpoint === b.endpoint &&
-    a.lastCheckedAt === b.lastCheckedAt
+    a.lastCheckedAt === b.lastCheckedAt &&
+    a.lastOutput === b.lastOutput &&
+    a.error === b.error &&
+    a.resumedAt === b.resumedAt &&
+    a.pausedAt === b.pausedAt
   );
 }
 

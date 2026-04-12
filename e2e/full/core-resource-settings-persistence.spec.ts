@@ -231,7 +231,7 @@ test.describe.serial("Full: Resource Settings Persistence", () => {
 
     // Badge should show ready or unknown
     await expect
-      .poll(async () => newCard.innerText(), {
+      .poll(async () => newCard.getAttribute("data-resource-status"), {
         timeout: T_LONG,
         message: "Resource status badge should appear",
       })
