@@ -81,7 +81,7 @@ export function useNoteEditor({
 
   // Load note content when selected
   useEffect(() => {
-    const note = latestSelectedNoteRef.current;
+    const note = selectedNote;
     if (!note) {
       setNoteContent("");
       setNoteMetadata(null);
@@ -112,6 +112,7 @@ export function useNoteEditor({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only on id change; selectedNote captured via closure for concurrent-mode safety
   }, [selectedNote?.id]);
 
   const handleContentChange = useCallback(
@@ -128,6 +129,7 @@ export function useNoteEditor({
       }
 
       saveTimeoutRef.current = setTimeout(async () => {
+        saveTimeoutRef.current = null;
         try {
           const result = await notesClient.write(
             note.path,
@@ -172,11 +174,14 @@ export function useNoteEditor({
         setHasConflict(true);
       } else if (result.lastModified) {
         setNoteLastModified(result.lastModified);
+        if (latestContentRef.current.trim()) {
+          setLastSelectedNoteId(note.id);
+        }
       }
     } catch (e) {
       console.error("Failed to flush save:", e);
     }
-  }, []);
+  }, [setLastSelectedNoteId]);
 
   const getLatestContent = useCallback(() => {
     return latestContentRef.current;

@@ -106,6 +106,7 @@ export function useNoteActions({
       hasRestoredRef.current = false;
       autoCreatedRef.current = false;
       initialize();
+      refresh();
       setQuery("");
       setSelectedIndex(0);
       setSelectedNote(null);
@@ -119,6 +120,7 @@ export function useNoteActions({
   }, [
     isOpen,
     initialize,
+    refresh,
     setQuery,
     setSelectedNote,
     setNoteContent,
