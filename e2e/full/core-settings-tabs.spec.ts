@@ -457,20 +457,22 @@ test.describe.serial("Core: Settings Tabs Coverage", () => {
     // Default Worktree Mode should be visible
     await expect(panel.locator("text=Default Worktree Mode")).toBeVisible({ timeout: T_SHORT });
 
-    // "Local" radio is always present with value="local"
-    const localRadio = panel.locator('input[type="radio"][value="local"]');
+    // Scope radios to the worktreeMode group — AutomationTab also renders a
+    // branchPrefixMode radio group in this panel, so an unscoped lookup would
+    // pick up those radios too.
+    const worktreeModeRadios = panel.locator('input[type="radio"][name="worktreeMode"]');
+    const localRadio = panel.locator('input[type="radio"][name="worktreeMode"][value="local"]');
     await expect(localRadio).toBeVisible({ timeout: T_SHORT });
 
     // Local should be default
     await expect(localRadio).toBeChecked({ timeout: T_SHORT });
 
     // Find the first non-local radio option (one of the environment keys)
-    const allRadios = panel.locator('input[type="radio"]');
-    const radioCount = await allRadios.count();
+    const radioCount = await worktreeModeRadios.count();
     expect(radioCount).toBeGreaterThanOrEqual(2);
 
     // Pick the second radio (first environment key after "Local")
-    const envRadio = allRadios.nth(1);
+    const envRadio = worktreeModeRadios.nth(1);
     await envRadio.click();
     await expect(envRadio).toBeChecked({ timeout: T_SHORT });
     await expect(localRadio).not.toBeChecked({ timeout: T_SHORT });

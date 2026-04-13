@@ -100,9 +100,14 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
       timeout: T_SHORT,
     });
 
-    // Verify the global var appears with "Global" badge
-    await expect(window.locator("text=TEST_GLOBAL_KEY")).toBeVisible({ timeout: T_MEDIUM });
-    await expect(window.locator("text=Global").first()).toBeVisible({ timeout: T_SHORT });
+    // Verify the global var appears with "Global" badge (scope to the tab panel
+    // so we don't hit the <option value="global">Global</option> in the sidebar
+    // scope selector, which also matches text="Global").
+    const variablesPanel = window.locator("#settings-panel-project\\:variables");
+    await expect(variablesPanel.getByText("TEST_GLOBAL_KEY")).toBeVisible({ timeout: T_MEDIUM });
+    await expect(variablesPanel.getByText("Global", { exact: true })).toBeVisible({
+      timeout: T_SHORT,
+    });
   });
 
   test("Project var overrides show Overridden badge", async () => {
