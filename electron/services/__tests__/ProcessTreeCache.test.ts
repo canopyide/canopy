@@ -7,6 +7,7 @@ type CacheInternals = {
   childrenMap: Map<number, number[]>;
   cpuSnapshots: Map<string, CpuSnapshot>;
   isRefreshing: boolean;
+  isWindows: boolean;
   pollTimer: NodeJS.Timeout | null;
   disposed: boolean;
   currentIntervalMs: number;
@@ -327,6 +328,8 @@ describe("poll scheduling and adaptive backoff", () => {
     vi.useFakeTimers();
     cache = new ProcessTreeCache(2500);
     internals = cache as unknown as CacheInternals;
+    // Force the Unix refresh path so stubbing refreshUnix works on Windows CI too
+    internals.isWindows = false;
     // Stub refreshUnix so no real `ps` calls happen
     refreshSpy = vi.fn();
     // Default stub: returns same PIDs (no change)

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "events";
+import { join as pathJoin } from "path";
 import type { WorkspaceService } from "../WorkspaceService.js";
 import type { WorktreeMonitor } from "../WorktreeMonitor.js";
 import type { Worktree } from "../../../shared/types/worktree.js";
@@ -418,14 +419,16 @@ describe("WorkspaceService.runResourceAction", () => {
 
       await service.runResourceAction("req-wrap1", "/test/worktree", "status");
 
-      expect(mockMkdir).toHaveBeenCalledWith("/test/worktree/.canopy", { recursive: true });
+      const canopyDir = pathJoin("/test/worktree", ".canopy");
+      const wrapperPath = pathJoin("/test/worktree", ".canopy", "canopy-remote");
+      expect(mockMkdir).toHaveBeenCalledWith(canopyDir, { recursive: true });
       expect(mockWriteFile).toHaveBeenCalledWith(
-        "/test/worktree/.canopy/canopy-remote",
+        wrapperPath,
         expect.stringContaining("#!/usr/bin/env bash"),
         expect.objectContaining({ mode: 0o755 })
       );
       expect(mockWriteFile).toHaveBeenCalledWith(
-        "/test/worktree/.canopy/canopy-remote",
+        wrapperPath,
         expect.stringContaining("Endpoint: ec2-1-2-3-4.compute.amazonaws.com"),
         expect.anything()
       );
@@ -454,7 +457,7 @@ describe("WorkspaceService.runResourceAction", () => {
       await service.runResourceAction("req-wrap2", "/test/worktree", "status");
 
       expect(mockWriteFile).not.toHaveBeenCalledWith(
-        "/test/worktree/.canopy/canopy-remote",
+        pathJoin("/test/worktree", ".canopy", "canopy-remote"),
         expect.anything(),
         expect.anything()
       );
@@ -482,7 +485,7 @@ describe("WorkspaceService.runResourceAction", () => {
       await service.runResourceAction("req-wrap3", "/test/worktree", "status");
 
       expect(mockWriteFile).not.toHaveBeenCalledWith(
-        "/test/worktree/.canopy/canopy-remote",
+        pathJoin("/test/worktree", ".canopy", "canopy-remote"),
         expect.anything(),
         expect.anything()
       );
@@ -510,7 +513,7 @@ describe("WorkspaceService.runResourceAction", () => {
       await service.runResourceAction("req-wrap4", "/test/worktree", "status");
 
       expect(mockWriteFile).not.toHaveBeenCalledWith(
-        "/test/worktree/.canopy/canopy-remote",
+        pathJoin("/test/worktree", ".canopy", "canopy-remote"),
         expect.anything(),
         expect.anything()
       );
