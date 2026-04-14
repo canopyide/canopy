@@ -39,6 +39,8 @@ vi.mock("@shared/theme", () => ({
 
 import type { ActionCallbacks, ActionRegistry } from "../../actionTypes";
 
+const APP_CONFIG_RELOAD_LISTENER_STATE_KEY = "__canopyAppConfigReloadListenerState";
+
 let registerAppActions: typeof import("../appActions").registerAppActions;
 
 async function loadFreshModule() {
@@ -49,6 +51,7 @@ async function loadFreshModule() {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  Reflect.deleteProperty(globalThis, APP_CONFIG_RELOAD_LISTENER_STATE_KEY);
   Object.defineProperty(globalThis, "window", {
     value: {
       electron: {
@@ -67,6 +70,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
+  Reflect.deleteProperty(globalThis, APP_CONFIG_RELOAD_LISTENER_STATE_KEY);
 });
 
 function register() {
@@ -85,6 +89,22 @@ describe("appActions adversarial", () => {
     register();
 
     expect(onConfigReloadedMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("module reloads reuse a single onConfigReloaded subscription", async () => {
+    register();
+    const cb = onConfigReloadedMock.mock.calls[0][0];
+
+    await loadFreshModule();
+    register();
+
+    expect(onConfigReloadedMock).toHaveBeenCalledTimes(1);
+
+    await cb();
+
+    expect(userAgentRefreshMock).toHaveBeenCalledTimes(1);
+    expect(agentSettingsRefreshMock).toHaveBeenCalledTimes(1);
+    expect(loadOverridesMock).toHaveBeenCalledTimes(1);
   });
 
   it("onConfigReloaded callback triggers the refresh fan-out", async () => {

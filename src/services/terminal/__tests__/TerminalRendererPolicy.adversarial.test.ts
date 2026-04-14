@@ -209,4 +209,31 @@ describe("TerminalRendererPolicy adversarial", () => {
 
     expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
+
+  it("CLEAR_TIER_STATE_CANCELS_PENDING_WAKE_AND_RELEASES_GENERATION", async () => {
+    const wake = deferred<boolean>();
+    const managed = createManagedTerminal({
+      lastAppliedTier: TerminalRefreshTier.BACKGROUND,
+      needsWake: true,
+    });
+    const deps: RendererPolicyDeps = {
+      getInstance: vi.fn(() => managed),
+      wakeAndRestore: vi.fn(() => wake.promise),
+    };
+
+    const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+    const policy = new TerminalRendererPolicy(deps);
+    policy.initializeBackendTier("terminal-1", "background");
+
+    policy.applyRendererPolicy("terminal-1", TerminalRefreshTier.FOCUSED);
+    policy.clearTierState("terminal-1");
+    wake.resolve(true);
+    await wake.promise;
+    await Promise.resolve();
+
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
+    expect((policy as unknown as { wakeGeneration: Map<string, number> }).wakeGeneration.size).toBe(
+      0
+    );
+  });
 });

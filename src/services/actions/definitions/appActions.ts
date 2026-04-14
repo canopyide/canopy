@@ -21,12 +21,29 @@ async function refreshRendererConfig(): Promise<void> {
   actionService.dispatch("cliAvailability.refresh", undefined, { source: "agent" });
 }
 
-// Module-level guard prevents re-subscribing onConfigReloaded when
-// registerAppActions is called multiple times (HMR, tests, or repeated
-// registry rebuilds in multi-window startup). Without it, a single main-
-// process config-reload event would fan out the refresh-all-stores
-// sequence N times per reload cycle.
-let configReloadedSubscribed = false;
+interface AppConfigReloadListenerState {
+  refresh: (() => Promise<void>) | null;
+  subscribed: boolean;
+}
+
+const APP_CONFIG_RELOAD_LISTENER_STATE_KEY = "__canopyAppConfigReloadListenerState";
+
+function getAppConfigReloadListenerState(): AppConfigReloadListenerState {
+  const target = globalThis as typeof globalThis & {
+    [APP_CONFIG_RELOAD_LISTENER_STATE_KEY]?: AppConfigReloadListenerState;
+  };
+  const existing = target[APP_CONFIG_RELOAD_LISTENER_STATE_KEY];
+  if (existing) {
+    return existing;
+  }
+
+  const created: AppConfigReloadListenerState = {
+    refresh: null,
+    subscribed: false,
+  };
+  target[APP_CONFIG_RELOAD_LISTENER_STATE_KEY] = created;
+  return created;
+}
 
 export function registerAppActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   actions.set("app.newWindow", () => ({
@@ -89,20 +106,24 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
 
   // Subscribe to config reloaded events from main process.
   // Fires after both action-triggered and menu-triggered reloads.
-  // Dedup across registration cycles so repeated registerAppActions calls
-  // (tests, HMR) do not fan out refreshes multiple times per reload.
+  // Dedup across repeated register calls and module reloads (tests/HMR)
+  // while keeping the active refresh implementation hot-swappable.
+  const listenerState = getAppConfigReloadListenerState();
+  listenerState.refresh = async () => {
+    try {
+      await refreshRendererConfig();
+    } catch (e) {
+      console.error("[app.reloadConfig] Failed to refresh renderer config:", e);
+    }
+  };
   if (
-    !configReloadedSubscribed &&
+    !listenerState.subscribed &&
     typeof window !== "undefined" &&
     typeof window.electron?.app?.onConfigReloaded === "function"
   ) {
-    configReloadedSubscribed = true;
+    listenerState.subscribed = true;
     window.electron.app.onConfigReloaded(async () => {
-      try {
-        await refreshRendererConfig();
-      } catch (e) {
-        console.error("[app.reloadConfig] Failed to refresh renderer config:", e);
-      }
+      await listenerState.refresh?.();
     });
   }
 

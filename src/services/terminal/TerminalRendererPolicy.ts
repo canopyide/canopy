@@ -147,6 +147,7 @@ export class TerminalRendererPolicy {
     this.clearManagedTierState(id);
     this.lastBackendTier.delete(id);
     this.knownTerminalIds.delete(id);
+    this.wakeGeneration.delete(id);
   }
 
   /**
@@ -181,6 +182,7 @@ export class TerminalRendererPolicy {
     }
     this.knownTerminalIds.clear();
     this.lastBackendTier.clear();
+    this.wakeGeneration.clear();
   }
 
   private clearManagedTierState(id: string): void {
