@@ -96,6 +96,12 @@ vi.mock("@/hooks", () => ({
   useKeybindingDisplay: () => null,
 }));
 
+vi.mock("@/store/ccrFlavorsStore", () => ({
+  useCcrFlavorsStore: (
+    selector: (s: { ccrFlavorsByAgent: Record<string, unknown[]> }) => unknown
+  ) => selector({ ccrFlavorsByAgent: {} }),
+}));
+
 vi.mock("@shared/config/agentIds", () => ({
   BUILT_IN_AGENT_IDS: ["claude", "gemini", "codex"] as const,
 }));
@@ -108,6 +114,7 @@ vi.mock("@/config/agents", () => ({
       <span data-testid={`agent-icon-${id}`} data-brand={props.brandColor} />
     ),
   }),
+  getMergedFlavors: () => [],
 }));
 
 vi.mock("@/lib/colorUtils", () => ({
@@ -165,6 +172,13 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
   DropdownMenuShortcut: ({ children }: { children: React.ReactNode }) => (
     <span data-testid="menu-shortcut">{children}</span>
+  ),
+  DropdownMenuSub: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuSubTrigger: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="submenu-trigger">{children}</div>
+  ),
+  DropdownMenuSubContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="submenu-content">{children}</div>
   ),
 }));
 

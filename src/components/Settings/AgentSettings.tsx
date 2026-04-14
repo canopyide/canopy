@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { getAgentIds, getAgentConfig } from "@/config/agents";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { getAgentIds, getAgentConfig, getMergedFlavors, type AgentFlavor } from "@/config/agents";
 import { useAgentSettingsStore, useCliAvailabilityStore, useAgentPreferencesStore } from "@/store";
 import { cliAvailabilityClient } from "@/clients";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
@@ -10,7 +11,7 @@ import {
   type AgentCliDetails,
 } from "@shared/types";
 import { isAgentPinned } from "../../../shared/utils/agentPinned";
-import { RotateCcw, ExternalLink } from "lucide-react";
+import { RotateCcw, ExternalLink, Plus, Copy, Trash2, Pencil } from "lucide-react";
 import { DaintreeAgentIcon } from "@/components/icons";
 import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
@@ -96,6 +97,16 @@ export function AgentSettings({
 
   const defaultAgent = useAgentPreferencesStore((state) => state.defaultAgent);
   const setDefaultAgent = useAgentPreferencesStore((state) => state.setDefaultAgent);
+
+  const ccrFlavorsByAgent = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent);
+
+  // Rate limiting refs
+  const lastAddTimeRef = useRef(0);
+  const lastEditTimeRef = useRef(0);
+
+  // Flavor editing state
+  const [editingFlavorId, setEditingFlavorId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
 
   const agentIds = useMemo(() => getAgentIds(), []);
   const effectiveSettings = settings ?? DEFAULT_AGENT_SETTINGS;
@@ -310,6 +321,283 @@ export function AgentSettings({
                 ariaLabel={`Pin ${activeAgent.name} to toolbar`}
               />
             </div>
+
+            {/* Default Flavor Picker - only for agents with flavors */}
+            {(() => {
+              const ccrFlavors = ccrFlavorsByAgent[activeAgent.id];
+              const customFlavors = activeEntry.customFlavors;
+              const allFlavors = getMergedFlavors(activeAgent.id, customFlavors, ccrFlavors);
+
+              const handleAddFlavor = () => {
+                const now = Date.now();
+                // Rate limiting: max 5 adds per minute (12s between adds)
+                if (now - lastAddTimeRef.current < 12000) {
+                  console.warn("Rate limit exceeded for flavor creation");
+                  return;
+                }
+                lastAddTimeRef.current = now;
+
+                const id = `user-${now}`;
+                const updated = [
+                  ...(activeEntry.customFlavors ?? []),
+                  { id, name: "New Flavor", env: {} },
+                ];
+                void (async () => {
+                  await updateAgent(activeAgent.id, { customFlavors: updated });
+                  onSettingsChange?.();
+                })();
+              };
+
+              if (allFlavors.length === 0 && !customFlavors?.length) {
+                return (
+                  <div id="agents-flavors" className="space-y-3 pt-2 border-t border-daintree-border">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-daintree-text">Flavors</label>
+                        <p className="text-xs text-daintree-text/40 select-text">
+                          Variants with different env overrides and model routes
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-daintree-accent hover:text-daintree-accent/80"
+                        onClick={handleAddFlavor}
+                      >
+                        <Plus size={14} />
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+
+              const handleDuplicateFlavor = (flavor: AgentFlavor) => {
+                const id = `user-${Date.now()}`;
+                const updated = [
+                  ...(activeEntry.customFlavors ?? []),
+                  { ...flavor, id, name: `${flavor.name} (copy)` },
+                ];
+                void (async () => {
+                  await updateAgent(activeAgent.id, { customFlavors: updated });
+                  onSettingsChange?.();
+                })();
+              };
+
+              const handleDeleteFlavor = (flavorId: string) => {
+                const updated = (activeEntry.customFlavors ?? []).filter((f) => f.id !== flavorId);
+                void (async () => {
+                  const updates: Record<string, unknown> = { customFlavors: updated };
+                  if (activeEntry.flavorId === flavorId) {
+                    updates.flavorId = undefined;
+                  }
+                  await updateAgent(activeAgent.id, updates);
+                  onSettingsChange?.();
+                })();
+              };
+
+              const handleUpdateFlavor = (flavorId: string, patch: Partial<AgentFlavor>) => {
+                const updated = (activeEntry.customFlavors ?? []).map((f) =>
+                  f.id === flavorId ? { ...f, ...patch } : f
+                );
+                void (async () => {
+                  try {
+                    await updateAgent(activeAgent.id, { customFlavors: updated });
+                    onSettingsChange?.();
+                  } catch (error) {
+                    console.error("Failed to update flavor:", error);
+                  }
+                })();
+              };
+
+              const handleStartEdit = (flavor: AgentFlavor) => {
+                if (!flavor.name || flavor.name.length > 200) {
+                  console.warn("Invalid flavor name length");
+                  return;
+                }
+                if (/[<>'"&]/.test(flavor.name)) {
+                  console.warn("Flavor name contains dangerous characters");
+                  return;
+                }
+                setEditingFlavorId(flavor.id);
+                setEditName(flavor.name);
+              };
+
+              const handleCommitEdit = () => {
+                const trimmed = editName.trim();
+                if (
+                  editingFlavorId &&
+                  trimmed &&
+                  trimmed.length <= 200 &&
+                  !/[<>'"&]/.test(trimmed)
+                ) {
+                  const now = Date.now();
+                  if (now - lastEditTimeRef.current < 100) return;
+                  lastEditTimeRef.current = now;
+                  handleUpdateFlavor(editingFlavorId, { name: trimmed });
+                }
+                setEditingFlavorId(null);
+                setEditName("");
+              };
+
+              const handleCancelEdit = () => {
+                setEditingFlavorId(null);
+                setEditName("");
+              };
+
+              const isCcrFlavor = (id: string) => id.startsWith("ccr-");
+              const isCustomFlavor = (id: string) => id.startsWith("user-");
+
+              return (
+                <div id="agents-flavors" className="space-y-3 pt-2 border-t border-daintree-border">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-sm font-medium text-daintree-text">Flavors</label>
+                      <p className="text-xs text-daintree-text/40 select-text">
+                        Variants with different env overrides and model routes
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-daintree-accent hover:text-daintree-accent/80"
+                      onClick={handleAddFlavor}
+                    >
+                      <Plus size={14} />
+                      Add
+                    </Button>
+                  </div>
+
+                  {/* Default flavor selector */}
+                  {allFlavors.length > 1 && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-daintree-text/60 block">Default flavor</label>
+                      <select
+                        value={activeEntry.flavorId ?? ""}
+                        onChange={(e) => {
+                          void (async () => {
+                            await updateAgent(activeAgent.id, {
+                              flavorId: e.target.value || undefined,
+                            });
+                            onSettingsChange?.();
+                          })();
+                        }}
+                        className="w-full px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-none transition-colors"
+                      >
+                        <option value="">Vanilla (no overrides)</option>
+                        {allFlavors.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Flavor list */}
+                  <div className="space-y-1.5">
+                    {allFlavors.map((flavor) => {
+                      const isCcr = isCcrFlavor(flavor.id);
+                      const isCustom = isCustomFlavor(flavor.id);
+                      const envKeys = flavor.env ? Object.keys(flavor.env) : [];
+                      return (
+                        <div
+                          key={flavor.id}
+                          className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {editingFlavorId === flavor.id ? (
+                                <input
+                                  className="text-sm text-daintree-text font-medium bg-daintree-bg border border-daintree-accent rounded px-1 py-0.5 w-40 focus:outline-none"
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  onBlur={handleCommitEdit}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleCommitEdit();
+                                    }
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleCancelEdit();
+                                    }
+                                  }}
+                                  autoFocus
+                                  data-testid="flavor-edit-input"
+                                  placeholder="Enter flavor name..."
+                                />
+                              ) : (
+                                <button
+                                  className="text-sm text-daintree-text font-medium truncate hover:text-daintree-accent transition-colors text-left"
+                                  onClick={() => isCustom && handleStartEdit(flavor)}
+                                  title={isCustom ? `Click to edit "${flavor.name}"` : flavor.name}
+                                  style={{ minWidth: 0 }}
+                                >
+                                  {flavor.name}
+                                </button>
+                              )}
+                              {isCcr && (
+                                <span
+                                  data-testid="flavor-badge-auto"
+                                  className="text-[10px] text-daintree-text/40 bg-daintree-text/10 px-1.5 py-0.5 rounded"
+                                >
+                                  auto
+                                </span>
+                              )}
+                              {isCustom && (
+                                <span
+                                  data-testid="flavor-badge-custom"
+                                  className="text-[10px] text-daintree-accent bg-daintree-accent/10 px-1.5 py-0.5 rounded"
+                                >
+                                  custom
+                                </span>
+                              )}
+                            </div>
+                            {envKeys.length > 0 && (
+                              <div className="text-[11px] text-daintree-text/40 font-mono truncate">
+                                {envKeys.join(", ")}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isCustom && (
+                              <>
+                                <button
+                                  className="p-1 text-daintree-text/40 hover:text-daintree-text rounded transition-colors"
+                                  onClick={() => handleStartEdit(flavor)}
+                                  aria-label={`Edit ${flavor.name}`}
+                                  title={`Click to edit "${flavor.name}"`}
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                                <button
+                                  className="p-1 text-daintree-text/40 hover:text-daintree-text rounded transition-colors"
+                                  onClick={() => handleDeleteFlavor(flavor.id)}
+                                  aria-label={`Delete ${flavor.name}`}
+                                  title={`Click to delete "${flavor.name}"`}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              className="p-1 text-daintree-text/40 hover:text-daintree-text rounded transition-colors"
+                              onClick={() => handleDuplicateFlavor(flavor)}
+                              aria-label={`Duplicate ${flavor.name}`}
+                              title={`Click to duplicate "${flavor.name}"`}
+                            >
+                              <Copy size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Dangerous Mode Toggle */}
             <div id="agents-skip-permissions" className="space-y-2">

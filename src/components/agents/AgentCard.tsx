@@ -71,6 +71,8 @@ function OnboardingCard({
 }: AgentCardOnboardingProps & { identity: AgentIdentity }) {
   const { name, color, Icon, description } = identity;
   const installed = isAgentInstalled(availability[agentId]);
+  const agentConfig = getAgentConfig(agentId);
+  const flavorCount = agentConfig?.flavors?.length ?? 0;
 
   return (
     <label
@@ -93,11 +95,18 @@ function OnboardingCard({
         description={description}
         compact={compact}
       />
-      {installed ? (
-        <span className="text-[11px] text-status-success font-medium shrink-0">Installed</span>
-      ) : (
-        <span className="text-[11px] text-daintree-text/30 shrink-0">Not installed</span>
-      )}
+      <div className="flex items-center gap-2 shrink-0">
+        {flavorCount > 1 && (
+          <span className="text-[10px] text-daintree-accent font-medium bg-daintree-accent/10 px-1.5 py-0.5 rounded">
+            {flavorCount} flavors
+          </span>
+        )}
+        {installed ? (
+          <span className="text-[11px] text-status-success font-medium">Installed</span>
+        ) : (
+          <span className="text-[11px] text-daintree-text/30">Not installed</span>
+        )}
+      </div>
     </label>
   );
 }
