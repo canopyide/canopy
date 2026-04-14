@@ -8,9 +8,15 @@ import { isElectronAvailable } from "./useElectron";
 
 import { agentSettingsClient, systemClient } from "@/clients";
 import { useHomeDir } from "@/hooks/app/useHomeDir";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
 import type { AgentSettings, CliAvailability } from "@shared/types";
 import { generateAgentCommand, buildAgentLaunchFlags } from "@shared/types";
-import { getAgentConfig, isRegisteredAgent, getAgentDisplayTitle } from "@/config/agents";
+import {
+  getAgentConfig,
+  isRegisteredAgent,
+  getAgentDisplayTitle,
+  getMergedFlavor,
+} from "@/config/agents";
 
 const CLIPBOARD_DIR_NAME = "daintree-clipboard";
 
@@ -21,6 +27,7 @@ export interface LaunchAgentOptions {
   prompt?: string;
   interactive?: boolean;
   modelId?: string;
+  flavorId?: string;
 }
 
 export interface UseAgentLauncherReturn {
@@ -152,8 +159,26 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
       let command: string | undefined;
       let launchFlags: string[] | undefined;
+      let flavorEnv: Record<string, string> | undefined;
+      let flavor: import("../../shared/config/agentRegistry").AgentFlavor | undefined;
       if (agentConfig) {
         const entry = agentSettings?.agents?.[agentId] ?? {};
+        const resolvedFlavorId = launchOptions?.flavorId ?? entry.flavorId;
+        const ccrFlavors = useCcrFlavorsStore.getState().ccrFlavorsByAgent[agentId];
+        flavor = isAgent
+          ? getMergedFlavor(agentId, resolvedFlavorId, entry.customFlavors, ccrFlavors)
+          : undefined;
+
+        // Stale flavorId cleanup: if saved flavor no longer exists, clear it
+        if (resolvedFlavorId && !flavor) {
+          const { useAgentSettingsStore: settingsStore } =
+            await import("@/store/agentSettingsStore");
+          void settingsStore.getState().updateAgent(agentId, { flavorId: undefined });
+        }
+
+        if (flavor?.env) {
+          flavorEnv = flavor.env;
+        }
 
         // Resolve clipboard directory for agents that need it (e.g. Gemini)
         let clipboardDirectory: string | undefined;
@@ -171,6 +196,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
           interactive: launchOptions?.interactive ?? true,
           clipboardDirectory,
           modelId: launchOptions?.modelId,
+          flavorArgs: flavor?.args?.join(" "),
         });
 
         // Capture process-level flags for session resume persistence
@@ -191,18 +217,22 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         return null;
       }
 
+      const flavorTitle = isAgent && flavor ? `${title} (${flavor.name})` : title;
+
       const options: AddPanelOptions = isAgent
         ? {
             kind: "agent",
             type: agentId as any,
             agentId,
             command: command as string,
-            title,
+            title: flavorTitle,
             cwd,
             worktreeId: targetWorktreeId || undefined,
             location: launchOptions?.location,
             agentLaunchFlags: launchFlags,
             agentModelId: launchOptions?.modelId,
+            agentFlavorId: flavor?.id,
+            env: flavorEnv,
           }
         : {
             kind: "terminal",
