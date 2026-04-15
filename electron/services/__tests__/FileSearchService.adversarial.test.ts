@@ -53,7 +53,7 @@ describe("FileSearchService adversarial", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
     tempDirs.length = 0;
-  });
+  }, 60_000);
 
   async function createService() {
     const { FileSearchService } = await import("../FileSearchService.js");
@@ -169,25 +169,29 @@ describe("FileSearchService adversarial", () => {
     ]);
   });
 
-  it("enforces the fallback file cap before overflowing traversal results", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "file-search-adv-"));
-    tempDirs.push(dir);
-    createHardenedGitMock.mockReturnValue(createGitClient());
-    for (let index = 0; index < 19_999; index++) {
-      writeFile(path.join(dir, `file-${index}.txt`));
+  it(
+    "enforces the fallback file cap before overflowing traversal results",
+    { timeout: 60_000 },
+    async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "file-search-adv-"));
+      tempDirs.push(dir);
+      createHardenedGitMock.mockReturnValue(createGitClient());
+      for (let index = 0; index < 19_999; index++) {
+        writeFile(path.join(dir, `file-${index}.txt`));
+      }
+      writeFile(path.join(dir, "overflow", "sentinel.txt"));
+
+      const service = await createService();
+
+      expect(await service.search({ cwd: dir, query: "", limit: 999 })).toHaveLength(100);
+      await expect(
+        service.search({ cwd: dir, query: "file-19998.txt", limit: 5 })
+      ).resolves.toEqual(["file-19998.txt"]);
+      await expect(
+        service.search({ cwd: dir, query: "overflow/sentinel.txt", limit: 5 })
+      ).resolves.toEqual([]);
     }
-    writeFile(path.join(dir, "overflow", "sentinel.txt"));
-
-    const service = await createService();
-
-    expect(await service.search({ cwd: dir, query: "", limit: 999 })).toHaveLength(100);
-    await expect(service.search({ cwd: dir, query: "file-19998.txt", limit: 5 })).resolves.toEqual([
-      "file-19998.txt",
-    ]);
-    await expect(
-      service.search({ cwd: dir, query: "overflow/sentinel.txt", limit: 5 })
-    ).resolves.toEqual([]);
-  });
+  );
 
   it("clamps limits and preserves stable empty-query ordering with directories", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "file-search-adv-"));

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import path from "path";
 
 const fsMock = vi.hoisted(() => ({
   readFile: vi.fn(),
@@ -18,8 +19,8 @@ vi.mock("../../utils/fs.js", () => utilsMock);
 
 import { GlobalFileStore } from "../GlobalFileStore.js";
 
-const CONFIG_DIR = "/tmp/canopy-global";
-const RECIPES_FILE = `${CONFIG_DIR}/recipes.json`;
+const CONFIG_DIR = path.normalize("/tmp/canopy-global");
+const RECIPES_FILE = path.join(CONFIG_DIR, "recipes.json");
 
 describe("GlobalFileStore adversarial", () => {
   let store: GlobalFileStore;

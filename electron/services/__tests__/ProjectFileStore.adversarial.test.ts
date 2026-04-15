@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import path from "path";
 
 const fsMock = vi.hoisted(() => ({
   readFile: vi.fn(),
@@ -22,9 +23,9 @@ import { ProjectFileStore } from "../ProjectFileStore.js";
 
 const VALID_ID = "a".repeat(64);
 const INVALID_ID_TRAVERSAL = "../../../etc/passwd";
-const CONFIG_DIR = "/tmp/canopy-projects";
-const EXPECTED_STATE_DIR = `${CONFIG_DIR}/${VALID_ID}`;
-const EXPECTED_RECIPES_FILE = `${EXPECTED_STATE_DIR}/recipes.json`;
+const CONFIG_DIR = path.normalize("/tmp/canopy-projects");
+const EXPECTED_STATE_DIR = path.join(CONFIG_DIR, VALID_ID);
+const EXPECTED_RECIPES_FILE = path.join(EXPECTED_STATE_DIR, "recipes.json");
 
 describe("ProjectFileStore adversarial", () => {
   let store: ProjectFileStore;

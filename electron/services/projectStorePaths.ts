@@ -20,9 +20,10 @@ export function getProjectStateDir(projectsConfigDir: string, projectId: string)
   if (!isValidProjectId(projectId)) {
     return null;
   }
-  const stateDir = path.join(projectsConfigDir, projectId);
+  const normalizedRoot = path.normalize(projectsConfigDir);
+  const stateDir = path.join(normalizedRoot, projectId);
   const normalized = path.normalize(stateDir);
-  if (!normalized.startsWith(projectsConfigDir + path.sep)) {
+  if (!normalized.startsWith(normalizedRoot + path.sep)) {
     return null;
   }
   return normalized;

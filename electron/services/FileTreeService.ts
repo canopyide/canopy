@@ -100,7 +100,7 @@ export class FileTreeService {
 
         nodes.push({
           name: entry.name,
-          path: relativePath,
+          path: gitRelativePath,
           isDirectory,
           size,
           children: undefined,
