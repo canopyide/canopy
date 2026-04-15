@@ -425,7 +425,7 @@ export async function hydrateAppState(
                     kind: args.kind,
                     agentId: args.agentId,
                     location,
-                    worktreeId: backendTerminal.worktreeId,
+                    worktreeId: args.worktreeId,
                     title: backendTerminal.title,
                   });
 
@@ -459,7 +459,7 @@ export async function hydrateAppState(
                   restoreTasks.push({
                     terminalId: restoredTerminalId,
                     label: saved.id,
-                    worktreeId: backendTerminal.worktreeId,
+                    worktreeId: args.worktreeId,
                     location,
                   });
 

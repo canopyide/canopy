@@ -159,7 +159,7 @@ export function buildArgsForBackendTerminal(
     agentId,
     title: saved.title ?? backendTerminal.title,
     cwd,
-    worktreeId: backendTerminal.worktreeId,
+    worktreeId: saved.worktreeId ?? backendTerminal.worktreeId,
     location,
     existingId: backendTerminal.id,
     agentState: backendTerminal.agentState,

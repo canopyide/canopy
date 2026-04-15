@@ -224,6 +224,24 @@ describe("buildArgsForBackendTerminal", () => {
     );
     expect(result.title).toBe("Shell");
   });
+
+  it("prefers saved worktreeId over stale backend worktreeId", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "agent", title: "Claude", worktreeId: "wt-original" },
+      { id: "t1", location: "grid", worktreeId: "wt-dragged" },
+      "/p"
+    );
+    expect(result.worktreeId).toBe("wt-dragged");
+  });
+
+  it("falls back to backend worktreeId when saved worktreeId is missing", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal", title: "Shell", worktreeId: "wt-backend" },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.worktreeId).toBe("wt-backend");
+  });
 });
 
 describe("buildArgsForReconnectedFallback", () => {
