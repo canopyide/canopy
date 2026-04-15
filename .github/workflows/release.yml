@@ -455,10 +455,10 @@ jobs:
       - name: Upload binaries to R2
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CANOPY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CANOPY_R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: ${{ secrets.CANOPY_R2_ENDPOINT }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.CANOPY_R2_BUCKET }}
         run: |
           aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
@@ -476,10 +476,10 @@ jobs:
       - name: Upload metadata to R2
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CANOPY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CANOPY_R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: ${{ secrets.CANOPY_R2_ENDPOINT }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.CANOPY_R2_BUCKET }}
         run: |
           aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
