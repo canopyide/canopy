@@ -225,8 +225,9 @@ describe("WorkspaceService.runResourceAction", () => {
   // --- runResourceAction when no monitor found ---
 
   it("sends error when worktree not found", async () => {
-    await service.runResourceAction("req-1", "/nonexistent", "status");
+    const result = await service.runResourceAction("req-1", "/nonexistent", "status");
 
+    expect(result).toEqual({ success: false, error: "Worktree not found" });
     expect(mockSendEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "resource-action-result",
@@ -243,8 +244,9 @@ describe("WorkspaceService.runResourceAction", () => {
     createAndRegisterMonitor();
     service["projectRootPath"] = null;
 
-    await service.runResourceAction("req-2", "/test/worktree", "provision");
+    const result = await service.runResourceAction("req-2", "/test/worktree", "provision");
 
+    expect(result).toEqual({ success: false, error: "No project root path" });
     expect(mockSendEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "resource-action-result",
@@ -261,8 +263,9 @@ describe("WorkspaceService.runResourceAction", () => {
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockRejectedValue(new Error("ENOENT"));
 
-    await service.runResourceAction("req-3", "/test/worktree", "provision");
+    const result = await service.runResourceAction("req-3", "/test/worktree", "provision");
 
+    expect(result).toEqual({ success: false, error: "No resource config found" });
     expect(mockSendEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "resource-action-result",
