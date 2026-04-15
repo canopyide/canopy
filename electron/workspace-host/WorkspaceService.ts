@@ -1649,7 +1649,15 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       return { success: false, error: "Worktree not found" };
     }
 
-    if (signal.aborted) return { success: false, error: "Aborted" };
+    if (signal.aborted) {
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "Aborted",
+      });
+      return { success: false, error: "Aborted" };
+    }
 
     const config = await this.lifecycleService.loadConfig(monitor.path, this.projectRootPath);
 
@@ -1789,7 +1797,15 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         onProgress: () => {},
       });
 
-      if (result.aborted) return { success: false, error: "Aborted" };
+      if (result.aborted) {
+        this.sendEvent({
+          type: "resource-action-result",
+          requestId,
+          success: false,
+          error: "Aborted",
+        });
+        return { success: false, error: "Aborted" };
+      }
 
       // Re-read monitor after await — it may have been removed during the command
       const statusMonitor = this.monitors.get(worktreeId);
@@ -2028,6 +2044,9 @@ ${connectCommand} "$@"
   dispose(): void {
     this._shutdownController.abort();
     this.prService.cleanup();
+    for (const id of this.monitors.keys()) {
+      this.cleanupResourceActionState(id);
+    }
     for (const monitor of this.monitors.values()) {
       monitor.stop();
     }
