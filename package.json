@@ -189,11 +189,11 @@
   },
   "build": {
     "asar": true,
-    "appId": "com.daintreeide.app",
+    "appId": "com.daintree.app",
     "publish": [
       {
         "provider": "generic",
-        "url": "https://updates.daintreeide.com/releases/"
+        "url": "https://updates.daintree.org/releases/"
       }
     ],
     "electronUpdaterCompatibility": ">=2.16",

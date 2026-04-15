@@ -10,7 +10,7 @@ import { markPerformance } from "./utils/performance.js";
 import { enforceIpcSenderValidation, setupPermissionLockdown } from "./setup/security.js";
 import {
   registerAppProtocol,
-  registerCanopyFileProtocol,
+  registerDaintreeFileProtocol,
   setupWebviewCSP,
 } from "./setup/protocols.js";
 import { registerAppLifecycleHandlers } from "./lifecycle/appLifecycle.js";
@@ -81,7 +81,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
   {
-    scheme: "canopy-file",
+    scheme: "daintree-file",
     privileges: {
       secure: true,
       supportFetchAPI: true,
@@ -279,7 +279,7 @@ if (!gotTheLock) {
     try {
       setupPermissionLockdown();
       registerAppProtocol(distPath);
-      registerCanopyFileProtocol();
+      registerDaintreeFileProtocol();
       setupWebviewCSP();
       await createWindow(undefined, lastActiveProjectId ?? undefined);
       getCrashLoopGuard().startStabilityTimer();

@@ -21,9 +21,9 @@ describe("trustedRenderer", () => {
 
   describe("isTrustedRendererUrl", () => {
     it("should allow production app:// origin", () => {
-      expect(isTrustedRendererUrl("app://canopy")).toBe(true);
-      expect(isTrustedRendererUrl("app://canopy/")).toBe(true);
-      expect(isTrustedRendererUrl("app://canopy/path/to/page")).toBe(true);
+      expect(isTrustedRendererUrl("app://daintree")).toBe(true);
+      expect(isTrustedRendererUrl("app://daintree/")).toBe(true);
+      expect(isTrustedRendererUrl("app://daintree/path/to/page")).toBe(true);
     });
 
     it("should allow localhost:5173 dev origin", () => {
@@ -56,7 +56,7 @@ describe("trustedRenderer", () => {
     });
 
     it("should reject app protocol with non-standard port", () => {
-      expect(isTrustedRendererUrl("app://canopy:1234")).toBe(false);
+      expect(isTrustedRendererUrl("app://daintree:1234")).toBe(false);
     });
 
     it("should reject userinfo tricks", () => {
@@ -69,8 +69,8 @@ describe("trustedRenderer", () => {
     it("should allow query strings and hash fragments", () => {
       expect(isTrustedRendererUrl("http://localhost:5173/?foo=bar")).toBe(true);
       expect(isTrustedRendererUrl("http://localhost:5173/#/path")).toBe(true);
-      expect(isTrustedRendererUrl("app://canopy/index.html?v=1")).toBe(true);
-      expect(isTrustedRendererUrl("app://canopy/#/settings")).toBe(true);
+      expect(isTrustedRendererUrl("app://daintree/index.html?v=1")).toBe(true);
+      expect(isTrustedRendererUrl("app://daintree/#/settings")).toBe(true);
     });
 
     it("should handle malformed URLs", () => {
@@ -98,7 +98,7 @@ describe("trustedRenderer", () => {
   describe("getTrustedOrigins", () => {
     it("should return all trusted origins including dev origins in development", () => {
       const origins = getTrustedOrigins();
-      expect(origins).toContain("app://canopy");
+      expect(origins).toContain("app://daintree");
       expect(origins).toContain("http://localhost:5173");
       expect(origins).toContain("http://127.0.0.1:5173");
     });

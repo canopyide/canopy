@@ -81,7 +81,7 @@ Each agent is restricted to read-only operations plus `gh` CLI access for GitHub
 
 ## MCP Documentation Server
 
-All agents connect to the `canopy-docs` MCP server at `https://canopyide.com/api/mcp`. This is an HTTP-based MCP server hosted on the Canopy website that provides live semantic search across all published documentation.
+All agents connect to the `canopy-docs` MCP server at `https://daintree.org/api/mcp`. This is an HTTP-based MCP server hosted on the Canopy website that provides live semantic search across all published documentation.
 
 **Tools exposed by the server:**
 

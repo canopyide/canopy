@@ -1,6 +1,6 @@
 # GitHub Issue Guidelines
 
-When helping a user submit a feature request or bug report to the Canopy repository (`canopyide/canopy`), use these guidelines to ensure the issue is well-scoped and likely to be accepted.
+When helping a user submit a feature request or bug report to the Canopy repository (`daintree/canopy`), use these guidelines to ensure the issue is well-scoped and likely to be accepted.
 
 ## What Canopy Is
 

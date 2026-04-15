@@ -425,14 +425,14 @@ export function GeneralTab({
                 onClick={() =>
                   void actionService.dispatch(
                     "system.openExternal",
-                    { url: "https://canopyide.com" },
+                    { url: "https://daintree.org" },
                     { source: "user" }
                   )
                 }
                 className="flex items-center gap-1.5 text-xs text-text-muted hover:text-canopy-accent transition-colors pt-1"
               >
                 <ExternalLink className="w-3 h-3" />
-                canopyide.com
+                daintree.org
               </button>
             </div>
           </div>

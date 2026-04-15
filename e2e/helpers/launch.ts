@@ -47,7 +47,7 @@ async function pollForAppWindow(app: ElectronApplication, timeoutMs: number): Pr
     let fallback: Page | null = null;
     for (const w of app.windows()) {
       const url = w.url();
-      if (url.startsWith("app://canopy/") || url.includes("localhost")) {
+      if (url.startsWith("app://daintree/") || url.includes("localhost")) {
         if (url.includes("projectId=")) return w;
         fallback = w;
       }
@@ -263,7 +263,7 @@ export async function getActiveAppWindow(
 
     for (const w of app.windows()) {
       const url = w.url();
-      if (!(url.startsWith("app://canopy/") || url.includes("localhost"))) continue;
+      if (!(url.startsWith("app://daintree/") || url.includes("localhost"))) continue;
 
       // Best match: a project view that the main process currently has
       // attached to the BrowserWindow.

@@ -20,7 +20,7 @@ import type {
   CrashRecoveryConfig,
 } from "@shared/types/ipc";
 
-const ISSUES_URL = "https://github.com/canopyide/canopy/issues/new";
+const ISSUES_URL = "https://github.com/daintree/canopy/issues/new";
 
 interface CrashRecoveryDialogProps {
   crash: PendingCrash;

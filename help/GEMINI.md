@@ -40,14 +40,14 @@ Don't push users to file junk. If the idea doesn't pass the Green Light test (re
 
 ## GitHub Issues
 
-You have access to the `gh` CLI for the Canopy repository (`canopyide/canopy`). Read `docs/issue-guidelines.md` before creating any issue — it defines what the project accepts and rejects.
+You have access to the `gh` CLI for the Canopy repository (`daintree/canopy`). Read `docs/issue-guidelines.md` before creating any issue — it defines what the project accepts and rejects.
 
 **Searching issues:** As a last resort when documentation and MCP search don't answer the user's question, search existing issues for relevant context. Don't search proactively — only when docs have failed.
 
 ```bash
-gh search issues "query" --repo canopyide/canopy
-gh issue list --repo canopyide/canopy --label "bug"
-gh issue view 123 --repo canopyide/canopy
+gh search issues "query" --repo daintree/canopy
+gh issue list --repo daintree/canopy --label "bug"
+gh issue view 123 --repo daintree/canopy
 ```
 
 **Creating issues:** When the user agrees to submit an issue (either because they asked or because you suggested it):
@@ -60,7 +60,7 @@ gh issue view 123 --repo canopyide/canopy
 6. Run `gh issue create` — always ask for confirmation before running this command
 
 ```bash
-gh issue create --repo canopyide/canopy --title "..." --body "..." --label "enhancement"
+gh issue create --repo daintree/canopy --title "..." --body "..." --label "enhancement"
 ```
 
 ## When You Cannot Answer
@@ -83,4 +83,4 @@ The `canopy-docs` MCP server is your only documentation source — use it for al
 - **`get_site_structure`** — Returns the hierarchical page tree. Use to understand how documentation is organized.
 - **`get_related_pages`** — Find pages related to a given page by URL. Use to suggest further reading.
 
-**URL construction:** MCP tools return page paths (e.g., `/docs/getting-started`). Always prepend `https://canopyide.com` to form the full URL before linking — never present bare paths to users.
+**URL construction:** MCP tools return page paths (e.g., `/docs/getting-started`). Always prepend `https://daintree.org` to form the full URL before linking — never present bare paths to users.

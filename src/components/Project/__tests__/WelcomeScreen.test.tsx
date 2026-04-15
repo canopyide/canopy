@@ -420,7 +420,7 @@ describe("WelcomeScreen", () => {
     expect(newsletterButton).toBeTruthy();
 
     fireEvent.click(newsletterButton);
-    expect(openExternalMock).toHaveBeenCalledWith("https://canopyide.com/newsletter");
+    expect(openExternalMock).toHaveBeenCalledWith("https://daintree.org/newsletter");
   });
 
   // --- Adaptive Layout ---

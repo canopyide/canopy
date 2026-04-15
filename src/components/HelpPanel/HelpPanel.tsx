@@ -296,7 +296,7 @@ export function HelpPanel() {
             {agentConfig.name}
           </span>
           <a
-            href="https://canopyide.com"
+            href="https://daintree.org"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 hover:text-canopy-text/60 transition-colors"

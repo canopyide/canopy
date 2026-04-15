@@ -149,7 +149,7 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
           <button
             type="button"
             onClick={() =>
-              void window.electron?.system?.openExternal("https://canopyide.com/newsletter")
+              void window.electron?.system?.openExternal("https://daintree.org/newsletter")
             }
             className="flex items-center gap-1.5 hover:text-canopy-text/60 transition-colors"
           >

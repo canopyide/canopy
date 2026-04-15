@@ -312,7 +312,7 @@ export function setupBrowserWindow(
       appWebContents.loadURL(`${devServerUrl}${qs}`);
     } else {
       console.log("[MAIN] Loading production build via app:// protocol");
-      appWebContents.loadURL(`app://canopy/index.html${qs}`);
+      appWebContents.loadURL(`app://daintree/index.html${qs}`);
     }
   };
 
@@ -522,7 +522,7 @@ export function setupBrowserWindow(
       const devServerUrl = getDevServerUrl();
       return `${devServerUrl}/recovery.html?${params}`;
     }
-    return `app://canopy/recovery.html?${params}`;
+    return `app://daintree/recovery.html?${params}`;
   }
 
   return {

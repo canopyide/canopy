@@ -71,7 +71,7 @@ Adaptive performance management with three profiles — Performance, Balanced, a
 ### Install
 
 ```bash
-git clone https://github.com/canopyide/canopy.git
+git clone https://github.com/daintree/canopy.git
 cd canopy
 npm install
 ```

@@ -15,7 +15,7 @@ vi.mock("simple-git", () => ({
 }));
 
 function makeTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "canopy-file-search-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "daintree-file-search-"));
 }
 
 function writeFile(filePath: string, content = "x"): void {

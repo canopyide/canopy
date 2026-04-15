@@ -42,7 +42,7 @@ export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
     description: "Get product updates and tips in your inbox.",
     icon: Mail,
     actionId: "system.openExternal",
-    actionArgs: { url: "https://canopyide.com/newsletter" },
+    actionArgs: { url: "https://daintree.org/newsletter" },
     markOnClick: true,
   },
 ];

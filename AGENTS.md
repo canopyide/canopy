@@ -10,7 +10,7 @@ Electron 41, React 19, Vite 8, TypeScript, Tailwind CSS v4, Zustand 5, node-pty,
 
 ## Repo
 
-Public repo: `canopyide/canopy` — https://github.com/canopyide/canopy
+Public repo: `daintree/canopy` — https://github.com/daintree/canopy
 
 ## Project Structure
 

@@ -15,7 +15,7 @@ app.setAboutPanelOptions({
   applicationVersion: app.getVersion(),
   version: "Beta",
   copyright: `© ${new Date().getFullYear()} Canopy Team`,
-  website: "https://github.com/canopyide/canopy",
+  website: "https://github.com/daintree/canopy",
 });
 
 function convertShortcutToAccelerator(shortcut: string): string {
@@ -394,7 +394,7 @@ export function createApplicationMenu(
         {
           label: "Learn More",
           click: async () => {
-            await shell.openExternal("https://github.com/canopyide/canopy");
+            await shell.openExternal("https://github.com/daintree/canopy");
           },
         },
         ...(process.platform !== "darwin" && app.isPackaged

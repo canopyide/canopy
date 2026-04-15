@@ -42,7 +42,7 @@ function isSvgFile(filePath: string): boolean {
 }
 
 function buildCanopyFileUrl(filePath: string, rootPath: string): string {
-  return `canopy-file://load?path=${encodeURIComponent(filePath)}&root=${encodeURIComponent(rootPath)}`;
+  return `daintree-file://load?path=${encodeURIComponent(filePath)}&root=${encodeURIComponent(rootPath)}`;
 }
 
 const ERROR_MESSAGES: Record<FileReadErrorCode, string> = {
@@ -65,7 +65,7 @@ export function FileViewerModal({
   onClose,
 }: FileViewerModalProps) {
   // If the file is outside the project root, use its parent directory as the
-  // effective root so that the canopy-file:// protocol and files.read IPC
+  // effective root so that the daintree-file:// protocol and files.read IPC
   // containment checks pass.
   const fwd = (p: string) => p.replace(/\\/g, "/");
   const fwdRoot = fwd(rootPath).replace(/\/$/, "") + "/";
