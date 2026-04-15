@@ -13,7 +13,7 @@ const fsMock = vi.hoisted(() => ({
 const electronMock = vi.hoisted(() => ({
   app: {
     isPackaged: false,
-    getPath: vi.fn(() => "/tmp/test-appdata"),
+    getPath: vi.fn<(key?: string) => string>(() => "/tmp/test-appdata"),
     setPath: vi.fn(),
     commandLine: { appendSwitch: vi.fn() },
     enableSandbox: vi.fn(),
@@ -608,7 +608,7 @@ describe("Canopy -> Daintree userData migration gating", () => {
     Object.defineProperty(process, "platform", { value: "darwin", writable: true });
     process.argv = ["electron", "main.js"];
     electronMock.app.isPackaged = true;
-    electronMock.app.getPath.mockImplementation((key: string) => {
+    electronMock.app.getPath.mockImplementation((key?: string) => {
       if (key === "userData") return "/tmp/user-data/Daintree";
       if (key === "appData") return "/tmp/user-data";
       return "/tmp/test";
@@ -619,14 +619,14 @@ describe("Canopy -> Daintree userData migration gating", () => {
     Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
     process.argv = originalArgv;
     if (originalVariant === undefined) {
-      delete process.env.BUILD_VARIANT;
+      Reflect.deleteProperty(process.env, "BUILD_VARIANT");
     } else {
-      process.env.BUILD_VARIANT = originalVariant;
+      (process.env as Record<string, string | undefined>).BUILD_VARIANT = originalVariant;
     }
   });
 
   it("runs the migration when BUILD_VARIANT is unset (Daintree default)", async () => {
-    delete process.env.BUILD_VARIANT;
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
     // Legacy Canopy userData exists; new Daintree userData does not.
     fsMock.existsSync.mockImplementation((p: string) => {
       if (p.endsWith(".rebrand-migrated")) return false;
@@ -642,7 +642,7 @@ describe("Canopy -> Daintree userData migration gating", () => {
   });
 
   it("skips the migration when BUILD_VARIANT=canopy (legacy build)", async () => {
-    process.env.BUILD_VARIANT = "canopy";
+    (process.env as Record<string, string | undefined>).BUILD_VARIANT = "canopy";
     fsMock.existsSync.mockImplementation((p: string) => {
       if (p.endsWith(".rebrand-migrated")) return false;
       if (p.endsWith("/Canopy")) return true;
