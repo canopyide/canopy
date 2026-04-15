@@ -843,7 +843,12 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       try {
         await worktreeClient.resourceAction(targetWorktreeId, "provision");
       } catch (err) {
-        notify({ type: "error", priority: "high", title: "Provision failed", message: (err as Error).message || "Resource provisioning failed" });
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Provision failed",
+          message: (err as Error).message || "Resource provisioning failed",
+        });
       }
     },
   }));
@@ -870,7 +875,12 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       try {
         await worktreeClient.resourceAction(targetWorktreeId, "teardown");
       } catch (err) {
-        notify({ type: "error", priority: "high", title: "Teardown failed", message: (err as Error).message || "Resource teardown failed" });
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Teardown failed",
+          message: (err as Error).message || "Resource teardown failed",
+        });
       }
     },
   }));
@@ -897,7 +907,12 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       try {
         await worktreeClient.resourceAction(targetWorktreeId, "resume");
       } catch (err) {
-        notify({ type: "error", priority: "high", title: "Resume failed", message: (err as Error).message || "Resource resume failed" });
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Resume failed",
+          message: (err as Error).message || "Resource resume failed",
+        });
       }
     },
   }));
@@ -924,7 +939,12 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       try {
         await worktreeClient.resourceAction(targetWorktreeId, "pause");
       } catch (err) {
-        notify({ type: "error", priority: "high", title: "Pause failed", message: (err as Error).message || "Resource pause failed" });
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Pause failed",
+          message: (err as Error).message || "Resource pause failed",
+        });
       }
     },
   }));
@@ -951,7 +971,12 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       try {
         await worktreeClient.resourceAction(targetWorktreeId, "status");
       } catch (err) {
-        notify({ type: "error", priority: "high", title: "Status check failed", message: (err as Error).message || "Resource status check failed" });
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Status check failed",
+          message: (err as Error).message || "Resource status check failed",
+        });
       }
     },
   }));
