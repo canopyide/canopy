@@ -182,8 +182,6 @@ export interface OnboardingState {
   completed: boolean;
   currentStep: string | null;
   agentSetupIds: string[];
-  // TODO(0.9.0): Remove after deleting the temporary onboarding localStorage
-  // rebrand shim that backfills old Canopy keys.
   firstRunToastSeen: boolean;
   newsletterPromptSeen: boolean;
   waitingNudgeSeen: boolean;
