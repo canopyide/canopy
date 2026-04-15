@@ -721,7 +721,7 @@ describe("WorkspaceService.runResourceAction", () => {
 
       await service.runResourceAction("req-sub1", "/test/worktree", "provision");
 
-      expect(monitor.resourceConnectCommand).toBe("ssh feat-deploy@host.example.com");
+      expect(monitor.resourceConnectCommand).toBe("ssh 'feat-deploy'@host.example.com");
     });
 
     it("substitutes {{branch}} in connect command", async () => {
@@ -736,7 +736,7 @@ describe("WorkspaceService.runResourceAction", () => {
 
       await service.runResourceAction("req-sub2", "/test/worktree", "provision");
 
-      expect(monitor.resourceConnectCommand).toBe("ssh root@feature/remote.dev.example.com");
+      expect(monitor.resourceConnectCommand).toBe("ssh root@'feature/remote'.dev.example.com");
     });
 
     it("leaves unresolved {{endpoint}} placeholder intact", async () => {
@@ -768,7 +768,7 @@ describe("WorkspaceService.runResourceAction", () => {
       await service.runResourceAction("req-sub4", "/test/worktree", "provision");
 
       expect(runCommandsSpy).toHaveBeenCalledWith(
-        ["deploy --name=my-wt --branch=feat/x"],
+        ["deploy --name='my-wt' --branch='feat/x'"],
         expect.any(Object)
       );
     });
