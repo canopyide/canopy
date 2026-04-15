@@ -11,7 +11,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
 import { GitService } from "./GitService.js";
-import { isCanopyError } from "../utils/errorTypes.js";
+import { isDaintreeError } from "../utils/errorTypes.js";
 import { logError } from "../utils/logger.js";
 import { store } from "../store.js";
 import { getSharedDb } from "./persistence/db.js";
@@ -128,7 +128,7 @@ export class ProjectStore {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const causeMessage =
-        isCanopyError(error) && error.cause instanceof Error ? error.cause.message : undefined;
+        isDaintreeError(error) && error.cause instanceof Error ? error.cause.message : undefined;
       const combined = [message, causeMessage].filter(Boolean).join("\n");
       const lower = combined.toLowerCase();
 
@@ -181,7 +181,7 @@ export class ProjectStore {
       frecencyScore: FRECENCY_COLD_START,
       lastAccessedAt: now,
       ...(inRepo.color ? { color: inRepo.color } : {}),
-      ...(inRepo.found ? { canopyConfigPresent: true } : {}),
+      ...(inRepo.found ? { daintreeConfigPresent: true } : {}),
     };
 
     const db = getSharedDb();
@@ -194,7 +194,7 @@ export class ProjectStore {
         lastOpened: project.lastOpened,
         color: project.color ?? null,
         status: project.status ?? null,
-        canopyConfigPresent: project.daintreeConfigPresent ?? null,
+        daintreeConfigPresent: project.daintreeConfigPresent ?? null,
         inRepoSettings: project.inRepoSettings ?? null,
         frecencyScore: FRECENCY_COLD_START,
         lastAccessedAt: now,
@@ -243,7 +243,7 @@ export class ProjectStore {
       color: string | null;
       lastOpened: number;
       status: string | null;
-      canopyConfigPresent: boolean | null;
+      daintreeConfigPresent: boolean | null;
       inRepoSettings: boolean | null;
       pinned: number;
       frecencyScore: number;
@@ -425,7 +425,7 @@ export class ProjectStore {
           lastOpened: updatedProject.lastOpened,
           color: updatedProject.color ?? null,
           status: updatedProject.status ?? null,
-          canopyConfigPresent: updatedProject.daintreeConfigPresent ?? null,
+          daintreeConfigPresent: updatedProject.daintreeConfigPresent ?? null,
           inRepoSettings: updatedProject.inRepoSettings ?? null,
           pinned: updatedProject.pinned ? 1 : 0,
           frecencyScore: updatedProject.frecencyScore ?? FRECENCY_COLD_START,
@@ -446,7 +446,7 @@ export class ProjectStore {
           lastOpened: oldProject.lastOpened,
           color: oldProject.color ?? null,
           status: oldProject.status ?? null,
-          canopyConfigPresent: oldProject.daintreeConfigPresent ?? null,
+          daintreeConfigPresent: oldProject.daintreeConfigPresent ?? null,
           inRepoSettings: oldProject.inRepoSettings ?? null,
           pinned: oldProject.pinned ? 1 : 0,
           frecencyScore: oldProject.frecencyScore ?? FRECENCY_COLD_START,

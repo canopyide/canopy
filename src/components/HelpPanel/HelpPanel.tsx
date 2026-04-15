@@ -302,7 +302,7 @@ export function HelpPanel() {
             className="flex items-center gap-1 hover:text-daintree-text/60 transition-colors"
           >
             <DaintreeIcon className="w-3.5 h-3.5" />
-            CanopyIDE.com
+            Daintree.org
           </a>
         </div>
       )}

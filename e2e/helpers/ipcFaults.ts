@@ -12,7 +12,7 @@ export async function injectFault(
 ): Promise<void> {
   await app.evaluate(
     (_modules, { channel, message, code }) => {
-      const registry = globalThis.__canopyFaultRegistry;
+      const registry = globalThis.__daintreeFaultRegistry;
       if (!registry)
         throw new Error("Fault mode not enabled — launch with DAINTREE_E2E_FAULT_MODE=1");
       registry[channel] = { kind: "error", message, ...(code ? { code } : {}) };
@@ -32,7 +32,7 @@ export async function injectDelay(
 ): Promise<void> {
   await app.evaluate(
     (_modules, { channel, delayMs }) => {
-      const registry = globalThis.__canopyFaultRegistry;
+      const registry = globalThis.__daintreeFaultRegistry;
       if (!registry)
         throw new Error("Fault mode not enabled — launch with DAINTREE_E2E_FAULT_MODE=1");
       registry[channel] = { kind: "delay", delayMs };
@@ -44,7 +44,7 @@ export async function injectDelay(
 /** Clear the fault for a single IPC channel. */
 export async function clearFault(app: ElectronApplication, channel: string): Promise<void> {
   await app.evaluate((_modules, ch) => {
-    const registry = globalThis.__canopyFaultRegistry;
+    const registry = globalThis.__daintreeFaultRegistry;
     if (registry) delete registry[ch];
   }, channel);
 }
@@ -52,8 +52,8 @@ export async function clearFault(app: ElectronApplication, channel: string): Pro
 /** Clear all injected faults. */
 export async function clearAllFaults(app: ElectronApplication): Promise<void> {
   await app.evaluate(() => {
-    if (globalThis.__canopyFaultRegistry) {
-      globalThis.__canopyFaultRegistry = {};
+    if (globalThis.__daintreeFaultRegistry) {
+      globalThis.__daintreeFaultRegistry = {};
     }
   });
 }

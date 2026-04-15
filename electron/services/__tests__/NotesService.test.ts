@@ -40,11 +40,11 @@ describe("NotesService", () => {
       expect(files[0]).toMatch(/\.md$/);
 
       // Ensure no .daintree directory was created in any project-like dir
-      const canopyExists = await fs
+      const daintreeExists = await fs
         .access(path.join(projectDir, ".daintree"))
         .then(() => true)
         .catch(() => false);
-      expect(canopyExists).toBe(false);
+      expect(daintreeExists).toBe(false);
     } finally {
       await fs.rm(projectDir, { recursive: true, force: true });
     }

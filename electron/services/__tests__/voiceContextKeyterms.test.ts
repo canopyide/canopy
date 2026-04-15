@@ -127,9 +127,9 @@ describe("assembleKeyterms", () => {
   it("adds project name tokens", async () => {
     const result = await assembleKeyterms({
       customDictionary: [],
-      projectName: "CanopyEditor",
+      projectName: "DaintreeEditor",
     });
-    expect(result).toContain("CanopyEditor");
+    expect(result).toContain("DaintreeEditor");
   });
 
   it("adds branch name tokens when projectPath provided", async () => {

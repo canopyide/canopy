@@ -24,7 +24,7 @@ test.describe.serial("Core: Error Boundaries", () => {
 
     // Trigger re-render of the E2EFaultInjector component
     await window.evaluate(() => {
-      window.dispatchEvent(new Event("__canopy_e2e_trigger_render__"));
+      window.dispatchEvent(new Event("__daintree_e2e_trigger_render__"));
     });
 
     // Wait for the error fallback to appear

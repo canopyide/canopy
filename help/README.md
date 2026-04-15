@@ -64,7 +64,7 @@ Each agent is restricted to read-only operations plus `gh` CLI access for GitHub
 
 **Claude** (`.claude/settings.json`):
 
-- Allows: `Read(**)`, `Glob(**)`, `Grep(**)`, `LS(**)`, `WebFetch`, `mcp__canopy-docs__*`
+- Allows: `Read(**)`, `Glob(**)`, `Grep(**)`, `LS(**)`, `WebFetch`, `mcp__daintree-docs__*`
 - Allows (auto-approved): `Bash(gh issue list*)`, `Bash(gh issue view*)`, `Bash(gh issue search*)`, `Bash(gh search issues*)`
 - Denies: `Write(**)`, `Edit(**)`, `MultiEdit(**)`, `Bash(**)` (catches `gh issue create`, requiring user confirmation)
 

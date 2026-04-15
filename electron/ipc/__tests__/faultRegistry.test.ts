@@ -4,12 +4,12 @@ describe("faultRegistry (env enabled)", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv("DAINTREE_E2E_FAULT_MODE", "1");
-    globalThis.__canopyFaultRegistry = undefined;
+    globalThis.__daintreeFaultRegistry = undefined;
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    globalThis.__canopyFaultRegistry = undefined;
+    globalThis.__daintreeFaultRegistry = undefined;
   });
 
   async function loadRegistry() {
@@ -19,9 +19,9 @@ describe("faultRegistry (env enabled)", () => {
   it("initFaultRegistry creates the registry", async () => {
     const { initFaultRegistry, FAULT_MODE_ENABLED } = await loadRegistry();
     expect(FAULT_MODE_ENABLED).toBe(true);
-    expect(globalThis.__canopyFaultRegistry).toBeUndefined();
+    expect(globalThis.__daintreeFaultRegistry).toBeUndefined();
     initFaultRegistry();
-    expect(globalThis.__canopyFaultRegistry).toEqual({});
+    expect(globalThis.__daintreeFaultRegistry).toEqual({});
   });
 
   it("setFault and getFault round-trip", async () => {
@@ -91,12 +91,12 @@ describe("faultRegistry (env disabled)", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv("DAINTREE_E2E_FAULT_MODE", "");
-    globalThis.__canopyFaultRegistry = undefined;
+    globalThis.__daintreeFaultRegistry = undefined;
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    globalThis.__canopyFaultRegistry = undefined;
+    globalThis.__daintreeFaultRegistry = undefined;
   });
 
   async function loadRegistry() {
@@ -111,7 +111,7 @@ describe("faultRegistry (env disabled)", () => {
   it("initFaultRegistry is a no-op", async () => {
     const { initFaultRegistry } = await loadRegistry();
     initFaultRegistry();
-    expect(globalThis.__canopyFaultRegistry).toBeUndefined();
+    expect(globalThis.__daintreeFaultRegistry).toBeUndefined();
   });
 
   it("getFault returns undefined", async () => {
@@ -122,7 +122,7 @@ describe("faultRegistry (env disabled)", () => {
   it("setFault is a no-op", async () => {
     const { setFault } = await loadRegistry();
     setFault("ch", { kind: "error", message: "nope" });
-    expect(globalThis.__canopyFaultRegistry).toBeUndefined();
+    expect(globalThis.__daintreeFaultRegistry).toBeUndefined();
   });
 
   it("applyInvokeFault resolves immediately", async () => {

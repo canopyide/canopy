@@ -38,14 +38,14 @@ describe("In-repo settings — enable/disable UI logic", () => {
     expect(inRepoSettings).toBe(false);
   });
 
-  it("disabling leaves .daintree/ files in place (canopyConfigPresent unchanged)", () => {
+  it("disabling leaves .daintree/ files in place (daintreeConfigPresent unchanged)", () => {
     let inRepoSettings = true;
-    const canopyConfigPresent = true;
+    const daintreeConfigPresent = true;
 
     inRepoSettings = false;
 
     expect(inRepoSettings).toBe(false);
-    expect(canopyConfigPresent).toBe(true);
+    expect(daintreeConfigPresent).toBe(true);
   });
 
   it("shows error and keeps in-repo mode off when enable IPC fails", () => {
@@ -96,11 +96,11 @@ describe("In-repo settings — enable/disable UI logic", () => {
     expect(callCount).toBe(0);
   });
 
-  it("canopyConfigPresent can be true while inRepoSettings is false (loaded but sync not enabled)", () => {
-    const canopyConfigPresent = true;
+  it("daintreeConfigPresent can be true while inRepoSettings is false (loaded but sync not enabled)", () => {
+    const daintreeConfigPresent = true;
     const inRepoSettings = false;
 
-    expect(canopyConfigPresent).toBe(true);
+    expect(daintreeConfigPresent).toBe(true);
     expect(inRepoSettings).toBe(false);
   });
 });

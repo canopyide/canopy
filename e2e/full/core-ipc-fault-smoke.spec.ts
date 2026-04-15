@@ -28,7 +28,7 @@ test.describe.serial("Core: IPC Fault Injection Smoke", () => {
 
   test("fault registry is initialized", async () => {
     const registryExists = await ctx.app.evaluate(() => {
-      return globalThis.__canopyFaultRegistry !== undefined;
+      return globalThis.__daintreeFaultRegistry !== undefined;
     });
     expect(registryExists).toBe(true);
   });

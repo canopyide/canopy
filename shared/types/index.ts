@@ -405,7 +405,7 @@ export type {
   BuilderFieldValidation,
   BuilderField,
   BuilderStep,
-  CanopyCommand,
+  DaintreeCommand,
   CommandManifestEntry,
   CommandExecutePayload,
   CommandGetPayload,

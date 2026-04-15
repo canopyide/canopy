@@ -50,7 +50,7 @@ describe("webviewCsp", () => {
     });
 
     it("identifies shared daintree-app partition as project", () => {
-      expect(classifyPartition("persist:daintree-app")).toBe("project");
+      expect(classifyPartition("persist:daintree")).toBe("project");
     });
 
     it("identifies legacy per-project partitions as project", () => {

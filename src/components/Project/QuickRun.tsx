@@ -53,8 +53,8 @@ type SuggestionItem =
       type: "history";
     };
 
-const HISTORY_KEY_PREFIX = "canopy_cmd_history_";
-const AUTO_RESTART_KEY_PREFIX = "canopy_quickrun_autorestart_";
+const HISTORY_KEY_PREFIX = "daintree_cmd_history_";
+const AUTO_RESTART_KEY_PREFIX = "daintree_quickrun_autorestart_";
 const MAX_HISTORY = 10;
 
 /**

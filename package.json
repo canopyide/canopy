@@ -1,5 +1,5 @@
 {
-  "name": "daintree-app",
+  "name": "daintree",
   "productName": "Daintree",
   "version": "0.6.0",
   "description": "Daintree IDE - An Electron-based development environment",
@@ -189,7 +189,7 @@
   },
   "build": {
     "asar": true,
-    "appId": "com.daintree.app",
+    "appId": "org.daintree.app",
     "publish": [
       {
         "provider": "generic",
@@ -321,7 +321,7 @@
     },
     "linux": {
       "icon": "build/icon.png",
-      "executableName": "daintree-app",
+      "executableName": "daintree",
       "target": [
         "AppImage",
         "deb"
@@ -329,7 +329,7 @@
       "category": "Development",
       "desktop": {
         "entry": {
-          "StartupWMClass": "daintree-app"
+          "StartupWMClass": "daintree"
         }
       },
       "extraResources": [

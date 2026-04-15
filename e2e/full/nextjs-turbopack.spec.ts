@@ -107,7 +107,7 @@ server.listen(0, '127.0.0.1', () => {
     // Open dev preview panel via the exposed E2E action dispatcher
     await window.evaluate(async () => {
       const dispatch = (window as unknown as Record<string, (...args: unknown[]) => unknown>)
-        .__canopyDispatchAction;
+        .__daintreeDispatchAction;
       if (typeof dispatch === "function") {
         await dispatch("devServer.start", undefined, { source: "user" });
       }
@@ -140,7 +140,7 @@ server.listen(0, '127.0.0.1', () => {
           async () => {
             return window.evaluate((id) => {
               const reader = (window as unknown as Record<string, unknown>)
-                .__canopyReadTerminalBuffer;
+                .__daintreeReadTerminalBuffer;
               if (typeof reader === "function") return reader(id) as string;
               return "";
             }, terminalId);

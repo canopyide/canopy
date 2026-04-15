@@ -15,7 +15,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { EditorView } from "@codemirror/view";
-import { canopyTheme } from "./editorTheme";
+import { daintreeTheme } from "./editorTheme";
 import { notesTypographyExtension } from "./codeBlockExtension";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import {
@@ -555,7 +555,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                             <CodeMirror
                               value={editor.noteContent}
                               height="100%"
-                              theme={canopyTheme}
+                              theme={daintreeTheme}
                               extensions={extensions}
                               onChange={editor.handleContentChange}
                               onCreateEditor={(view) => {

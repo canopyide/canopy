@@ -40,7 +40,7 @@ const CREATE_TABLES_SQL = `
     last_opened INTEGER NOT NULL,
     color TEXT,
     status TEXT,
-    canopy_config_present INTEGER,
+    daintree_config_present INTEGER,
     in_repo_settings INTEGER,
     pinned INTEGER NOT NULL DEFAULT 0,
     frecency_score REAL NOT NULL DEFAULT 3.0,

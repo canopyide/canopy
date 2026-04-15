@@ -1,12 +1,12 @@
 import { cn } from "@/lib/utils";
 
-interface CanopyIconProps {
+interface DaintreeIconProps {
   className?: string;
   size?: number;
   style?: React.CSSProperties;
 }
 
-export function DaintreeIcon({ className, size = 16, style }: CanopyIconProps) {
+export function DaintreeIcon({ className, size = 16, style }: DaintreeIconProps) {
   return (
     <svg
       viewBox="0 0 177.31 132.85"

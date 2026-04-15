@@ -9,7 +9,7 @@ let repoPath: string;
 
 async function resetRateLimits(app: AppContext["app"]): Promise<void> {
   await app.evaluate(() => {
-    const fn = (globalThis as any).__canopyResetRateLimits;
+    const fn = (globalThis as any).__daintreeResetRateLimits;
     if (!fn)
       throw new Error("Rate limit reset not available — launch with DAINTREE_E2E_FAULT_MODE=1");
     fn();

@@ -18,4 +18,4 @@ if [ -f "$SANDBOX" ]; then
 fi
 
 # Symlink daintree-app binary into PATH for CLI discovery
-ln -sf /opt/Daintree/daintree-app /usr/bin/daintree-app
+ln -sf /opt/Daintree/daintree /usr/bin/daintree

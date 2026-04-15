@@ -19,7 +19,7 @@ import { notesClient, type NoteMetadata } from "@/clients/notesClient";
 import { useProjectStore } from "@/store/projectStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { VoiceInputButton } from "@/components/Terminal/VoiceInputButton";
-import { canopyTheme } from "./editorTheme";
+import { daintreeTheme } from "./editorTheme";
 import { notesTypographyExtension } from "./codeBlockExtension";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { MarkdownToolbar } from "./MarkdownToolbar";
@@ -389,7 +389,7 @@ export function NotesPane({
                   <CodeMirror
                     value={content}
                     height="100%"
-                    theme={canopyTheme}
+                    theme={daintreeTheme}
                     extensions={extensions}
                     onChange={handleContentChange}
                     onCreateEditor={(view) => {
@@ -433,7 +433,7 @@ export function NotesPane({
                 <CodeMirror
                   value={content}
                   height="100%"
-                  theme={canopyTheme}
+                  theme={daintreeTheme}
                   extensions={extensions}
                   onChange={handleContentChange}
                   onCreateEditor={(view) => {

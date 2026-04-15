@@ -21,19 +21,24 @@ function createMockSession() {
   };
 }
 
-const { defaultSession, browserSession, portalSession, canopyAppSession, sessionCreatedListeners } =
-  vi.hoisted(() => {
-    return {
-      defaultSession: createMockSession(),
-      browserSession: createMockSession(),
-      portalSession: createMockSession(),
-      canopyAppSession: createMockSession(),
-      sessionCreatedListeners: [] as Array<
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (ses: any) => void
-      >,
-    };
-  });
+const {
+  defaultSession,
+  browserSession,
+  portalSession,
+  daintreeAppSession,
+  sessionCreatedListeners,
+} = vi.hoisted(() => {
+  return {
+    defaultSession: createMockSession(),
+    browserSession: createMockSession(),
+    portalSession: createMockSession(),
+    daintreeAppSession: createMockSession(),
+    sessionCreatedListeners: [] as Array<
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ses: any) => void
+    >,
+  };
+});
 
 vi.mock("electron", () => ({
   app: {
@@ -57,7 +62,7 @@ vi.mock("electron", () => ({
     fromPartition: vi.fn((partition: string) => {
       if (partition === "persist:browser") return browserSession;
       if (partition === "persist:portal") return portalSession;
-      if (partition === "persist:daintree-app") return canopyAppSession;
+      if (partition === "persist:daintree") return daintreeAppSession;
       return createMockSession();
     }),
   },
@@ -109,8 +114,8 @@ describe("setupPermissionLockdown", () => {
     expect(browserSession.setPermissionCheckHandler).toHaveBeenCalledTimes(1);
     expect(portalSession.setPermissionRequestHandler).toHaveBeenCalledTimes(1);
     expect(portalSession.setPermissionCheckHandler).toHaveBeenCalledTimes(1);
-    expect(canopyAppSession.setPermissionRequestHandler).toHaveBeenCalledTimes(1);
-    expect(canopyAppSession.setPermissionCheckHandler).toHaveBeenCalledTimes(1);
+    expect(daintreeAppSession.setPermissionRequestHandler).toHaveBeenCalledTimes(1);
+    expect(daintreeAppSession.setPermissionCheckHandler).toHaveBeenCalledTimes(1);
   });
 
   describe("default session (trusted)", () => {
@@ -243,7 +248,7 @@ describe("setupPermissionLockdown", () => {
   describe("daintree-app session (trusted)", () => {
     it("allows clipboard-read, clipboard-sanitized-write, and media", () => {
       setupPermissionLockdown();
-      const handler = getRequestHandler(canopyAppSession);
+      const handler = getRequestHandler(daintreeAppSession);
       expect(testPermissionRequest(handler, "clipboard-read")).toBe(true);
       expect(testPermissionRequest(handler, "clipboard-sanitized-write")).toBe(true);
       expect(testPermissionRequest(handler, "media")).toBe(true);
@@ -251,7 +256,7 @@ describe("setupPermissionLockdown", () => {
 
     it("denies untrusted permissions", () => {
       setupPermissionLockdown();
-      const handler = getRequestHandler(canopyAppSession);
+      const handler = getRequestHandler(daintreeAppSession);
       expect(testPermissionRequest(handler, "geolocation")).toBe(false);
       expect(testPermissionRequest(handler, "notifications")).toBe(false);
       expect(testPermissionRequest(handler, "fileSystem")).toBe(false);
@@ -259,7 +264,7 @@ describe("setupPermissionLockdown", () => {
 
     it("check handler grants trusted and denies untrusted", () => {
       setupPermissionLockdown();
-      const handler = getCheckHandler(canopyAppSession);
+      const handler = getCheckHandler(daintreeAppSession);
       expect(handler(mockWebContents, "clipboard-read", "app://daintree", {})).toBe(true);
       expect(handler(mockWebContents, "media", "app://daintree", {})).toBe(true);
       expect(handler(mockWebContents, "geolocation", "app://daintree", {})).toBe(false);
@@ -307,15 +312,15 @@ describe("setupPermissionLockdown", () => {
 
     it("does not double-lock daintree-app partition via session-created (eagerly locked)", () => {
       setupPermissionLockdown();
-      const dynamicCanopySession = createMockSession();
-      Object.defineProperty(dynamicCanopySession, "partition", {
-        value: "persist:daintree-app",
+      const dynamicDaintreeSession = createMockSession();
+      Object.defineProperty(dynamicDaintreeSession, "partition", {
+        value: "persist:daintree",
       });
 
-      sessionCreatedListeners[0](dynamicCanopySession);
+      sessionCreatedListeners[0](dynamicDaintreeSession);
 
-      expect(dynamicCanopySession.setPermissionRequestHandler).not.toHaveBeenCalled();
-      expect(dynamicCanopySession.setPermissionCheckHandler).not.toHaveBeenCalled();
+      expect(dynamicDaintreeSession.setPermissionRequestHandler).not.toHaveBeenCalled();
+      expect(dynamicDaintreeSession.setPermissionCheckHandler).not.toHaveBeenCalled();
     });
 
     it("handles sessions with missing partition property", () => {

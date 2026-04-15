@@ -26,7 +26,7 @@ interface AppConfigReloadListenerState {
   subscribed: boolean;
 }
 
-const APP_CONFIG_RELOAD_LISTENER_STATE_KEY = "__canopyAppConfigReloadListenerState";
+const APP_CONFIG_RELOAD_LISTENER_STATE_KEY = "__daintreeAppConfigReloadListenerState";
 
 function getAppConfigReloadListenerState(): AppConfigReloadListenerState {
   const target = globalThis as typeof globalThis & {

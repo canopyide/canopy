@@ -422,9 +422,9 @@ describe("WorkspaceService.runResourceAction", () => {
 
       await service.runResourceAction("req-wrap1", "/test/worktree", "status");
 
-      const canopyDir = pathJoin("/test/worktree", ".daintree");
+      const daintreeDir = pathJoin("/test/worktree", ".daintree");
       const wrapperPath = pathJoin("/test/worktree", ".daintree", "daintree-remote");
-      expect(mockMkdir).toHaveBeenCalledWith(canopyDir, { recursive: true });
+      expect(mockMkdir).toHaveBeenCalledWith(daintreeDir, { recursive: true });
       expect(mockWriteFile).toHaveBeenCalledWith(
         wrapperPath,
         expect.stringContaining("#!/usr/bin/env bash"),

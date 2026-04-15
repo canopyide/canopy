@@ -31,14 +31,14 @@ export type ResourceConfig = z.infer<typeof ResourceConfigSchema>;
 
 const ResourcesConfigSchema = z.record(z.string(), ResourceConfigSchema);
 
-const CanopyLifecycleConfigSchema = z.object({
+const DaintreeLifecycleConfigSchema = z.object({
   setup: z.array(z.string()).optional(),
   teardown: z.array(z.string()).optional(),
   resource: ResourceConfigSchema.optional(),
   resources: ResourcesConfigSchema.optional(),
 });
 
-export type DaintreeLifecycleConfig = z.infer<typeof CanopyLifecycleConfigSchema>;
+export type DaintreeLifecycleConfig = z.infer<typeof DaintreeLifecycleConfigSchema>;
 
 /** Variables available for {{variable}} substitution in lifecycle commands. */
 export interface LifecycleVariables {
@@ -121,7 +121,7 @@ export class WorktreeLifecycleService {
         continue;
       }
 
-      const result = CanopyLifecycleConfigSchema.safeParse(raw);
+      const result = DaintreeLifecycleConfigSchema.safeParse(raw);
       if (!result.success) {
         console.warn("[WorktreeLifecycle] Invalid config at:", configPath, result.error.message);
         continue;

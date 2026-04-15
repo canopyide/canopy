@@ -26,10 +26,10 @@ let fixtureDir: string;
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 function writeResourceConfig(repoDir: string) {
-  const canopyDir = path.join(repoDir, ".daintree");
-  fs.mkdirSync(canopyDir, { recursive: true });
+  const daintreeDir = path.join(repoDir, ".daintree");
+  fs.mkdirSync(daintreeDir, { recursive: true });
 
-  const stateFile = path.join(canopyDir, "resource-state.json");
+  const stateFile = path.join(daintreeDir, "resource-state.json");
 
   const config = {
     setup: [],
@@ -48,7 +48,7 @@ function writeResourceConfig(repoDir: string) {
     },
   };
 
-  fs.writeFileSync(path.join(canopyDir, "config.json"), JSON.stringify(config, null, 2));
+  fs.writeFileSync(path.join(daintreeDir, "config.json"), JSON.stringify(config, null, 2));
 
   execFileSync("git", ["add", "-A"], { cwd: repoDir, stdio: "ignore" });
   execFileSync("git", ["commit", "-m", "add resource config"], { cwd: repoDir, stdio: "ignore" });

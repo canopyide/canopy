@@ -41,7 +41,7 @@ function isSvgFile(filePath: string): boolean {
   return filePath.split(".").pop()?.toLowerCase() === SVG_EXTENSION;
 }
 
-function buildCanopyFileUrl(filePath: string, rootPath: string): string {
+function buildDaintreeFileUrl(filePath: string, rootPath: string): string {
   return `daintree-file://load?path=${encodeURIComponent(filePath)}&root=${encodeURIComponent(rootPath)}`;
 }
 
@@ -388,7 +388,7 @@ export function FileViewerModal({
             {loadState === "image" && (
               <img
                 key={filePath}
-                src={buildCanopyFileUrl(filePath, effectiveRootPath)}
+                src={buildDaintreeFileUrl(filePath, effectiveRootPath)}
                 alt={fileName}
                 className="max-w-full max-h-[70vh] object-contain rounded"
                 draggable={false}

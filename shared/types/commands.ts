@@ -110,7 +110,7 @@ export interface BuilderStep {
 }
 
 /** Command definition */
-export interface CanopyCommand<TArgs = Record<string, unknown>, TResult = unknown> {
+export interface DaintreeCommand<TArgs = Record<string, unknown>, TResult = unknown> {
   /** Unique command identifier using colon namespace (e.g., "github:create-issue") */
   id: string;
   /** Human-readable label */

@@ -118,7 +118,7 @@ export function registerProjectInRepoSettingsHandlers(_deps: HandlerDependencies
 
     return projectStore.updateProject(projectId, {
       inRepoSettings: true,
-      canopyConfigPresent: true,
+      daintreeConfigPresent: true,
     });
   };
   ipcMain.handle(CHANNELS.PROJECT_ENABLE_IN_REPO_SETTINGS, handleProjectEnableInRepoSettings);

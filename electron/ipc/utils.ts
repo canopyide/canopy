@@ -269,7 +269,7 @@ export function _resetRateLimitQueuesForTest(): void {
 }
 
 if (process.env.DAINTREE_E2E_FAULT_MODE === "1") {
-  (globalThis as Record<string, unknown>).__canopyResetRateLimits = _resetRateLimitQueuesForTest;
+  (globalThis as Record<string, unknown>).__daintreeResetRateLimits = _resetRateLimitQueuesForTest;
 }
 
 export function sendToRenderer(

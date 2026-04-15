@@ -37,7 +37,7 @@ export interface Project {
   /** Project lifecycle status (defaults to 'closed' for backward compatibility) */
   status?: ProjectStatus;
   /** Whether a .daintree/project.json was found in the repository root */
-  canopyConfigPresent?: boolean;
+  daintreeConfigPresent?: boolean;
   /** Whether in-repo settings mode is enabled (writes to .daintree/ on update) */
   inRepoSettings?: boolean;
   /** Whether the project is pinned to the top of the project switcher */

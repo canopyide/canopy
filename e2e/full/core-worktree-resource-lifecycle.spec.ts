@@ -33,10 +33,10 @@ const BRANCH = "e2e/resource-lifecycle";
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 function writeResourceConfig(repoDir: string) {
-  const canopyDir = path.join(repoDir, ".daintree");
-  fs.mkdirSync(canopyDir, { recursive: true });
+  const daintreeDir = path.join(repoDir, ".daintree");
+  fs.mkdirSync(daintreeDir, { recursive: true });
 
-  const stateFile = path.join(canopyDir, "resource-state.json");
+  const stateFile = path.join(daintreeDir, "resource-state.json");
 
   const config = {
     setup: [],
@@ -55,7 +55,7 @@ function writeResourceConfig(repoDir: string) {
     },
   };
 
-  fs.writeFileSync(path.join(canopyDir, "config.json"), JSON.stringify(config, null, 2));
+  fs.writeFileSync(path.join(daintreeDir, "config.json"), JSON.stringify(config, null, 2));
 
   execFileSync("git", ["add", "-A"], { cwd: repoDir, stdio: "ignore" });
   execFileSync("git", ["commit", "-m", "add resource config"], { cwd: repoDir, stdio: "ignore" });
@@ -494,25 +494,25 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     expect(worktreePath.length).toBeGreaterThan(0);
 
     // Write the modified config directly to the worktree's .daintree dir
-    const wtCanopyDir = path.join(worktreePath, ".daintree");
-    fs.mkdirSync(wtCanopyDir, { recursive: true });
-    const wtConfigPath = path.join(wtCanopyDir, "config.json");
-    const markerFile = path.join(wtCanopyDir, "env-marker.txt");
+    const wtDaintreeDir = path.join(worktreePath, ".daintree");
+    fs.mkdirSync(wtDaintreeDir, { recursive: true });
+    const wtConfigPath = path.join(wtDaintreeDir, "config.json");
+    const markerFile = path.join(wtDaintreeDir, "env-marker.txt");
 
-    const mainCanopyDir = path.join(fixtureDir, ".daintree");
-    const originalConfig = fs.readFileSync(path.join(mainCanopyDir, "config.json"), "utf-8");
+    const mainDaintreeDir = path.join(fixtureDir, ".daintree");
+    const originalConfig = fs.readFileSync(path.join(mainDaintreeDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
     // Modify status command to dump CANOPY_* env vars into a marker file,
     // then still output valid JSON for the badge
     config.resource.status = [
       `printf '%s\\n%s\\n%s' "$DAINTREE_WORKTREE_NAME" "$DAINTREE_WORKTREE_PATH" "$DAINTREE_PROJECT_ROOT" > "${markerFile}"`,
-      `cat "${path.join(mainCanopyDir, "resource-state.json")}" 2>/dev/null || printf '{"status":"unknown"}'`,
+      `cat "${path.join(mainDaintreeDir, "resource-state.json")}" 2>/dev/null || printf '{"status":"unknown"}'`,
     ].join(" && ");
 
     // Ensure the state file exists so badge shows something
     fs.writeFileSync(
-      path.join(mainCanopyDir, "resource-state.json"),
+      path.join(mainDaintreeDir, "resource-state.json"),
       JSON.stringify({ status: "ready" })
     );
     fs.writeFileSync(wtConfigPath, JSON.stringify(config, null, 2));
@@ -576,12 +576,12 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     expect(worktreePath.length).toBeGreaterThan(0);
 
     // Write modified config directly to the worktree's .daintree dir
-    const wtCanopyDir = path.join(worktreePath, ".daintree");
-    fs.mkdirSync(wtCanopyDir, { recursive: true });
-    const wtConfigPath = path.join(wtCanopyDir, "config.json");
+    const wtDaintreeDir = path.join(worktreePath, ".daintree");
+    fs.mkdirSync(wtDaintreeDir, { recursive: true });
+    const wtConfigPath = path.join(wtDaintreeDir, "config.json");
 
-    const mainCanopyDir = path.join(fixtureDir, ".daintree");
-    const originalConfig = fs.readFileSync(path.join(mainCanopyDir, "config.json"), "utf-8");
+    const mainDaintreeDir = path.join(fixtureDir, ".daintree");
+    const originalConfig = fs.readFileSync(path.join(mainDaintreeDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
     config.resource.connect = `echo BRANCH={{branch}} PATH={{worktree_path}} PROJECT={{project_root}}; bash --norc --noprofile`;
@@ -673,8 +673,8 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     const { window } = ctx;
 
     // Temporarily update config.json to have a failing teardown
-    const canopyDir = path.join(fixtureDir, ".daintree");
-    const configPath = path.join(canopyDir, "config.json");
+    const daintreeDir = path.join(fixtureDir, ".daintree");
+    const configPath = path.join(daintreeDir, "config.json");
     const originalConfig = fs.readFileSync(configPath, "utf-8");
 
     const failConfig = JSON.parse(originalConfig);

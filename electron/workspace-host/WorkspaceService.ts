@@ -43,8 +43,8 @@ async function ensureNoteFile(worktreePath: string): Promise<void> {
     await stat(notePath);
   } catch {
     try {
-      const canopyDir = dirname(notePath);
-      await mkdir(canopyDir, { recursive: true });
+      const daintreeDir = dirname(notePath);
+      await mkdir(daintreeDir, { recursive: true });
       await writeFile(notePath, "", { flag: "wx" });
     } catch (createError) {
       const code = (createError as NodeJS.ErrnoException).code;

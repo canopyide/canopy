@@ -68,8 +68,8 @@ describe("writeInRepoProjectIdentity", () => {
 
   it("is atomic: no .tmp files left after write", async () => {
     await identityFiles.writeInRepoProjectIdentity(tmpDir, { name: "Test" });
-    const canopyDir = path.join(tmpDir, ".daintree");
-    const files = await fs.readdir(canopyDir);
+    const daintreeDir = path.join(tmpDir, ".daintree");
+    const files = await fs.readdir(daintreeDir);
     const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
     expect(tmpFiles).toHaveLength(0);
   });
@@ -177,8 +177,8 @@ describe("writeInRepoSettings", () => {
 
   it("is atomic: no .tmp files left after write", async () => {
     await identityFiles.writeInRepoSettings(tmpDir, makeSettings());
-    const canopyDir = path.join(tmpDir, ".daintree");
-    const files = await fs.readdir(canopyDir);
+    const daintreeDir = path.join(tmpDir, ".daintree");
+    const files = await fs.readdir(daintreeDir);
     const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
     expect(tmpFiles).toHaveLength(0);
   });
