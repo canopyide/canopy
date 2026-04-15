@@ -39,9 +39,9 @@ describe("NotesService", () => {
       expect(files.length).toBe(1);
       expect(files[0]).toMatch(/\.md$/);
 
-      // Ensure no .canopy directory was created in any project-like dir
+      // Ensure no .daintree directory was created in any project-like dir
       const canopyExists = await fs
-        .access(path.join(projectDir, ".canopy"))
+        .access(path.join(projectDir, ".daintree"))
         .then(() => true)
         .catch(() => false);
       expect(canopyExists).toBe(false);

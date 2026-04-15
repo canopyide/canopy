@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isSensitiveVar,
   filterEnvironment,
-  injectCanopyMetadata,
+  injectDaintreeMetadata,
   ensureUtf8Locale,
 } from "../EnvironmentFilter.js";
 
@@ -118,10 +118,10 @@ describe("filterEnvironment", () => {
   });
 });
 
-describe("injectCanopyMetadata", () => {
+describe("injectDaintreeMetadata", () => {
   it("injects paneId and cwd always", () => {
     const env = { PATH: "/usr/bin" };
-    const result = injectCanopyMetadata(env, {
+    const result = injectDaintreeMetadata(env, {
       paneId: "pane-123",
       cwd: "/Users/test/project",
     });
@@ -132,7 +132,7 @@ describe("injectCanopyMetadata", () => {
   });
 
   it("injects optional projectId and worktreeId when provided", () => {
-    const result = injectCanopyMetadata(
+    const result = injectDaintreeMetadata(
       {},
       {
         paneId: "p1",
@@ -147,7 +147,7 @@ describe("injectCanopyMetadata", () => {
   });
 
   it("omits projectId and worktreeId keys when undefined", () => {
-    const result = injectCanopyMetadata({}, { paneId: "p1", cwd: "/cwd" });
+    const result = injectDaintreeMetadata({}, { paneId: "p1", cwd: "/cwd" });
 
     expect("DAINTREE_PROJECT_ID" in result).toBe(false);
     expect("DAINTREE_WORKTREE_ID" in result).toBe(false);
@@ -155,7 +155,7 @@ describe("injectCanopyMetadata", () => {
 
   it("does not mutate the input env", () => {
     const env = { PATH: "/usr/bin" };
-    injectCanopyMetadata(env, { paneId: "x", cwd: "/c" });
+    injectDaintreeMetadata(env, { paneId: "x", cwd: "/c" });
     expect("DAINTREE_PANE_ID" in env).toBe(false);
   });
 });
@@ -219,7 +219,7 @@ describe("ensureUtf8Locale", () => {
   });
 });
 
-describe("filterEnvironment + injectCanopyMetadata integration", () => {
+describe("filterEnvironment + injectDaintreeMetadata integration", () => {
   it("produces a clean env with metadata for a typical developer shell", () => {
     const shellEnv = {
       PATH: "/usr/local/bin:/usr/bin",
@@ -240,7 +240,7 @@ describe("filterEnvironment + injectCanopyMetadata integration", () => {
     };
 
     const filtered = filterEnvironment(shellEnv);
-    const final = injectCanopyMetadata(filtered, {
+    const final = injectDaintreeMetadata(filtered, {
       paneId: "new-pane-id",
       cwd: "/Users/dev/project",
       projectId: "proj-1",

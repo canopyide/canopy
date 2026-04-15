@@ -485,7 +485,7 @@ describe("AutoUpdaterService", () => {
 
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
-        url: "https://updates.canopyide.com/releases/",
+        url: "https://updates.daintreeide.com/releases/",
         channel: "latest",
       });
       expect(autoUpdaterMock.allowDowngrade).toBe(true);
@@ -497,7 +497,7 @@ describe("AutoUpdaterService", () => {
 
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
-        url: "https://updates.canopyide.com/nightly/",
+        url: "https://updates.daintreeide.com/nightly/",
         channel: "nightly",
       });
     });
@@ -534,7 +534,7 @@ describe("AutoUpdaterService", () => {
       expect(storeMock.set).toHaveBeenCalledWith("updateChannel", "nightly");
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
-        url: "https://updates.canopyide.com/nightly/",
+        url: "https://updates.daintreeide.com/nightly/",
         channel: "nightly",
       });
     });

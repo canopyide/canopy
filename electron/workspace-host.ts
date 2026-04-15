@@ -10,10 +10,7 @@ for (const stream of [process.stdout, process.stderr]) {
 }
 
 import { MessagePort } from "node:worker_threads";
-import { applyLegacyEnvAliases } from "../shared/utils/envCompat.js";
 import { initializeLogger } from "./utils/logger.js";
-
-applyLegacyEnvAliases();
 import { copyTreeService } from "./services/CopyTreeService.js";
 import { fileTreeService } from "./services/FileTreeService.js";
 import { projectPulseService } from "./services/ProjectPulseService.js";

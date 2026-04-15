@@ -52,8 +52,8 @@ describe("WorktreeLifecycleService", () => {
       const projectConfig = { setup: ["npm install"], teardown: ["docker compose down"] };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined; // main repo config exists
       });
 
@@ -69,13 +69,13 @@ describe("WorktreeLifecycleService", () => {
 
       mockAccess.mockImplementation(async (p: string) => {
         // user config does not exist
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
         // worktree config exists (second check)
         return undefined;
       });
 
       mockReadFile.mockImplementation(async (p: string) => {
-        if (n(p).endsWith("/worktree/.canopy/config.json")) {
+        if (n(p).endsWith("/worktree/.daintree/config.json")) {
           return JSON.stringify(worktreeConfig);
         }
         return JSON.stringify(mainConfig);
@@ -101,7 +101,7 @@ describe("WorktreeLifecycleService", () => {
 
       let readCount = 0;
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -121,7 +121,7 @@ describe("WorktreeLifecycleService", () => {
 
       let readCount = 0;
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -139,7 +139,7 @@ describe("WorktreeLifecycleService", () => {
       const config = { teardown: ["docker compose down"] };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (!n(p).endsWith("/project/.canopy/config.json")) throw new Error("ENOENT");
+        if (!n(p).endsWith("/project/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -152,18 +152,18 @@ describe("WorktreeLifecycleService", () => {
   });
 
   describe("copyCanopyDir", () => {
-    it("does nothing if source .canopy does not exist", async () => {
+    it("does nothing if source .daintree does not exist", async () => {
       mockAccess.mockRejectedValue(new Error("ENOENT"));
       await service.copyCanopyDir("/main/repo", "/new/worktree");
       expect(mockCp).not.toHaveBeenCalled();
     });
 
-    it("copies .canopy from src to dest even if dest already exists (force:false preserves existing)", async () => {
+    it("copies .daintree from src to dest even if dest already exists (force:false preserves existing)", async () => {
       mockAccess.mockResolvedValue(undefined); // src exists
       await service.copyCanopyDir("/main/repo", "/new/worktree");
       expect(mockCp).toHaveBeenCalledWith(
-        path.join("/main/repo", ".canopy"),
-        path.join("/new/worktree", ".canopy"),
+        path.join("/main/repo", ".daintree"),
+        path.join("/new/worktree", ".daintree"),
         {
           recursive: true,
           force: false,
@@ -172,16 +172,16 @@ describe("WorktreeLifecycleService", () => {
       );
     });
 
-    it("copies .canopy from src to dest when src exists", async () => {
+    it("copies .daintree from src to dest when src exists", async () => {
       mockAccess.mockImplementation(async (p: string) => {
-        if ((p as string).includes(path.join("/main/repo", ".canopy"))) return undefined; // src exists
+        if ((p as string).includes(path.join("/main/repo", ".daintree"))) return undefined; // src exists
         throw new Error("ENOENT"); // dest does not
       });
 
       await service.copyCanopyDir("/main/repo", "/new/worktree");
       expect(mockCp).toHaveBeenCalledWith(
-        path.join("/main/repo", ".canopy"),
-        path.join("/new/worktree", ".canopy"),
+        path.join("/main/repo", ".daintree"),
+        path.join("/new/worktree", ".daintree"),
         {
           recursive: true,
           force: false,
@@ -192,7 +192,7 @@ describe("WorktreeLifecycleService", () => {
 
     it("does not throw if cp fails", async () => {
       mockAccess.mockImplementation(async (p: string) => {
-        if ((p as string).includes(path.join("/main/repo", ".canopy"))) return undefined;
+        if ((p as string).includes(path.join("/main/repo", ".daintree"))) return undefined;
         throw new Error("ENOENT");
       });
       mockCp.mockRejectedValue(new Error("Permission denied"));

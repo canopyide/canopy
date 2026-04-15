@@ -5,9 +5,9 @@ import os from "os";
 import type { ProjectSettings, TerminalRecipe } from "../../types/index.js";
 import { ProjectIdentityFiles } from "../ProjectIdentityFiles.js";
 
-const DAINTREE_PROJECT_JSON = ".canopy/project.json";
-const DAINTREE_SETTINGS_JSON = ".canopy/settings.json";
-const DAINTREE_RECIPES_DIR = ".canopy/recipes";
+const DAINTREE_PROJECT_JSON = ".daintree/project.json";
+const DAINTREE_SETTINGS_JSON = ".daintree/settings.json";
+const DAINTREE_RECIPES_DIR = ".daintree/recipes";
 
 function makeSettings(overrides: Partial<ProjectSettings> = {}): ProjectSettings {
   return { runCommands: [], ...overrides };
@@ -26,7 +26,7 @@ describe("writeInRepoProjectIdentity", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("creates .canopy/ directory and project.json when absent", async () => {
+  it("creates .daintree/ directory and project.json when absent", async () => {
     await identityFiles.writeInRepoProjectIdentity(tmpDir, {
       name: "My App",
       emoji: "🚀",
@@ -68,7 +68,7 @@ describe("writeInRepoProjectIdentity", () => {
 
   it("is atomic: no .tmp files left after write", async () => {
     await identityFiles.writeInRepoProjectIdentity(tmpDir, { name: "Test" });
-    const canopyDir = path.join(tmpDir, ".canopy");
+    const canopyDir = path.join(tmpDir, ".daintree");
     const files = await fs.readdir(canopyDir);
     const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
     expect(tmpFiles).toHaveLength(0);
@@ -81,8 +81,8 @@ describe("writeInRepoProjectIdentity", () => {
     expect(raw).toContain("  ");
   });
 
-  it("works when .canopy/ already exists", async () => {
-    await fs.mkdir(path.join(tmpDir, ".canopy"), { recursive: true });
+  it("works when .daintree/ already exists", async () => {
+    await fs.mkdir(path.join(tmpDir, ".daintree"), { recursive: true });
     await identityFiles.writeInRepoProjectIdentity(tmpDir, { name: "Existing Dir" });
     const content = JSON.parse(
       await fs.readFile(path.join(tmpDir, DAINTREE_PROJECT_JSON), "utf-8")
@@ -104,7 +104,7 @@ describe("writeInRepoSettings", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("creates .canopy/ directory and settings.json when absent", async () => {
+  it("creates .daintree/ directory and settings.json when absent", async () => {
     await identityFiles.writeInRepoSettings(
       tmpDir,
       makeSettings({
@@ -177,7 +177,7 @@ describe("writeInRepoSettings", () => {
 
   it("is atomic: no .tmp files left after write", async () => {
     await identityFiles.writeInRepoSettings(tmpDir, makeSettings());
-    const canopyDir = path.join(tmpDir, ".canopy");
+    const canopyDir = path.join(tmpDir, ".daintree");
     const files = await fs.readdir(canopyDir);
     const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
     expect(tmpFiles).toHaveLength(0);
@@ -228,7 +228,7 @@ describe("writeInRepoRecipe", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("creates .canopy/recipes/ directory and writes recipe file", async () => {
+  it("creates .daintree/recipes/ directory and writes recipe file", async () => {
     await identityFiles.writeInRepoRecipe(tmpDir, makeRecipe({ name: "My Recipe" }));
     const filePath = path.join(tmpDir, DAINTREE_RECIPES_DIR, "my-recipe.json");
     const content = JSON.parse(await fs.readFile(filePath, "utf-8"));
@@ -292,7 +292,7 @@ describe("readInRepoRecipes", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("returns empty array when .canopy/recipes/ does not exist", async () => {
+  it("returns empty array when .daintree/recipes/ does not exist", async () => {
     const recipes = await identityFiles.readInRepoRecipes(tmpDir);
     expect(recipes).toEqual([]);
   });

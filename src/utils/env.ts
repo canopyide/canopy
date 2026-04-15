@@ -25,35 +25,6 @@ function getRuntimeBridgeValue(key: DaintreeEnvKey): string | undefined {
   return undefined;
 }
 
-const warnedLegacyKeys = new Set<string>();
-
-function legacyCanopyKey(key: DaintreeEnvKey): string {
-  return key.replace(/^DAINTREE_/, "CANOPY_");
-}
-
-function readLegacyFallback(key: DaintreeEnvKey): string | undefined {
-  const legacy = legacyCanopyKey(key);
-  const viteLegacy = (import.meta.env as Record<string, string | undefined>)[legacy];
-  if (typeof viteLegacy === "string") {
-    if (!warnedLegacyKeys.has(legacy)) {
-      warnedLegacyKeys.add(legacy);
-      // eslint-disable-next-line no-console
-      console.warn(`[daintree] env var ${legacy} is deprecated; use ${key} instead.`);
-    }
-    return viteLegacy;
-  }
-  const processLegacy = getProcessEnv()?.[legacy];
-  if (typeof processLegacy === "string") {
-    if (!warnedLegacyKeys.has(legacy)) {
-      warnedLegacyKeys.add(legacy);
-      // eslint-disable-next-line no-console
-      console.warn(`[daintree] env var ${legacy} is deprecated; use ${key} instead.`);
-    }
-    return processLegacy;
-  }
-  return undefined;
-}
-
 export function getDaintreeEnv(key: DaintreeEnvKey): string | undefined {
   const runtimeValue = getRuntimeBridgeValue(key);
   if (runtimeValue !== undefined) {
@@ -65,12 +36,7 @@ export function getDaintreeEnv(key: DaintreeEnvKey): string | undefined {
     return viteValue;
   }
 
-  const processValue = getProcessEnv()?.[key];
-  if (typeof processValue === "string") {
-    return processValue;
-  }
-
-  return readLegacyFallback(key);
+  return getProcessEnv()?.[key];
 }
 
 export function isDaintreeEnvEnabled(key: DaintreeEnvKey): boolean {

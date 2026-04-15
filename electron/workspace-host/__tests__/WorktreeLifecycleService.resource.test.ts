@@ -79,8 +79,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -106,8 +106,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -128,8 +128,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       const config = { resource: {} };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -144,8 +144,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       const config = { setup: ["npm install"] };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -162,7 +162,7 @@ describe("WorktreeLifecycleService — Resource Config", () => {
 
       let readCount = 0;
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -182,7 +182,7 @@ describe("WorktreeLifecycleService — Resource Config", () => {
 
       let readCount = 0;
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -202,7 +202,7 @@ describe("WorktreeLifecycleService — Resource Config", () => {
 
       let readCount = 0;
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -227,8 +227,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -255,8 +255,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -447,8 +447,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -473,8 +473,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -496,8 +496,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -517,8 +517,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -540,8 +540,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -564,8 +564,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -581,8 +581,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -596,8 +596,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       const config = { setup: ["npm install"] };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 
@@ -616,8 +616,8 @@ describe("WorktreeLifecycleService — Resource Config", () => {
       };
 
       mockAccess.mockImplementation(async (p: string) => {
-        if (n(p).includes("/.canopy/projects/")) throw new Error("ENOENT");
-        if (n(p).endsWith("/worktree/.canopy/config.json")) throw new Error("ENOENT");
+        if (n(p).includes("/.daintree/projects/")) throw new Error("ENOENT");
+        if (n(p).endsWith("/worktree/.daintree/config.json")) throw new Error("ENOENT");
         return undefined;
       });
 

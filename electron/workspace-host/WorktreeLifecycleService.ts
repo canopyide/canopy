@@ -93,9 +93,9 @@ export class WorktreeLifecycleService {
 
   /**
    * Load the merged lifecycle config for a worktree, using the priority chain:
-   * 1. User-level: ~/.canopy/projects/<sanitized-rootPath>/config.json
-   * 2. Worktree-level: <worktreePath>/.canopy/config.json
-   * 3. Main repo level: <projectRootPath>/.canopy/config.json
+   * 1. User-level: ~/.daintree/projects/<sanitized-rootPath>/config.json
+   * 2. Worktree-level: <worktreePath>/.daintree/config.json
+   * 3. Main repo level: <projectRootPath>/.daintree/config.json
    *
    * The first existing, valid config file found (highest priority first) wins completely.
    */
@@ -105,9 +105,9 @@ export class WorktreeLifecycleService {
   ): Promise<CanopyLifecycleConfig | null> {
     const sanitizedRoot = projectRootPath.replace(/[/\\:*?"<>|]/g, "_");
     const candidates = [
-      pathJoin(this.homeDir, ".canopy", "projects", sanitizedRoot, "config.json"),
-      pathJoin(worktreePath, ".canopy", "config.json"),
-      pathJoin(projectRootPath, ".canopy", "config.json"),
+      pathJoin(this.homeDir, ".daintree", "projects", sanitizedRoot, "config.json"),
+      pathJoin(worktreePath, ".daintree", "config.json"),
+      pathJoin(projectRootPath, ".daintree", "config.json"),
     ];
 
     for (const configPath of candidates) {
@@ -162,13 +162,13 @@ export class WorktreeLifecycleService {
   }
 
   /**
-   * Copy .canopy/ from the main repo to the new worktree.
+   * Copy .daintree/ from the main repo to the new worktree.
    * Skips if source does not exist. Existing files in dest are never overwritten
    * so worktree-level overrides are preserved.
    */
   async copyCanopyDir(srcPath: string, destPath: string): Promise<void> {
-    const src = pathJoin(srcPath, ".canopy");
-    const dest = pathJoin(destPath, ".canopy");
+    const src = pathJoin(srcPath, ".daintree");
+    const dest = pathJoin(destPath, ".daintree");
 
     if (!(await fileExists(src))) {
       return;
@@ -178,7 +178,7 @@ export class WorktreeLifecycleService {
       // force:false preserves any files already present in dest (e.g. worktree-level overrides)
       await cp(src, dest, { recursive: true, force: false, errorOnExist: false });
     } catch (err) {
-      console.warn("[WorktreeLifecycle] Failed to copy .canopy dir:", err);
+      console.warn("[WorktreeLifecycle] Failed to copy .daintree dir:", err);
     }
   }
 
@@ -376,8 +376,8 @@ export class WorktreeLifecycleService {
   ): Promise<Record<string, ResourceConfig> | null> {
     const sanitizedRoot = projectRootPath.replace(/[/\\:*?"<>|]/g, "_");
     const candidates = [
-      pathJoin(this.homeDir, ".canopy", "projects", sanitizedRoot, "settings.json"),
-      pathJoin(projectRootPath, ".canopy", "settings.json"),
+      pathJoin(this.homeDir, ".daintree", "projects", sanitizedRoot, "settings.json"),
+      pathJoin(projectRootPath, ".daintree", "settings.json"),
     ];
     for (const settingsPath of candidates) {
       if (!(await fileExists(settingsPath))) continue;
@@ -422,26 +422,18 @@ export class WorktreeLifecycleService {
       DAINTREE_WORKTREE_PATH: worktreePath,
       DAINTREE_PROJECT_ROOT: projectRootPath,
       DAINTREE_WORKTREE_NAME: worktreeName,
-      // Legacy dual-emit — remove after one release cycle.
-      CANOPY_WORKTREE_PATH: worktreePath,
-      CANOPY_PROJECT_ROOT: projectRootPath,
-      CANOPY_WORKTREE_NAME: worktreeName,
     };
     if (branch) {
       env.DAINTREE_BRANCH = branch;
-      env.CANOPY_BRANCH = branch;
     }
     if (resource?.provider) {
       env.DAINTREE_RESOURCE_PROVIDER = resource.provider;
-      env.CANOPY_RESOURCE_PROVIDER = resource.provider;
     }
     if (resource?.endpoint) {
       env.DAINTREE_RESOURCE_ENDPOINT = resource.endpoint;
-      env.CANOPY_RESOURCE_ENDPOINT = resource.endpoint;
     }
     if (resource?.lastOutput) {
       env.DAINTREE_RESOURCE_STATUS = resource.lastOutput;
-      env.CANOPY_RESOURCE_STATUS = resource.lastOutput;
     }
     return env;
   }

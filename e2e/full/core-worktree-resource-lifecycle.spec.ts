@@ -33,7 +33,7 @@ const BRANCH = "e2e/resource-lifecycle";
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 function writeResourceConfig(repoDir: string) {
-  const canopyDir = path.join(repoDir, ".canopy");
+  const canopyDir = path.join(repoDir, ".daintree");
   fs.mkdirSync(canopyDir, { recursive: true });
 
   const stateFile = path.join(canopyDir, "resource-state.json");
@@ -61,7 +61,7 @@ function writeResourceConfig(repoDir: string) {
   execFileSync("git", ["commit", "-m", "add resource config"], { cwd: repoDir, stdio: "ignore" });
 }
 
-/** Helper to create a worktree (local mode — lifecycle commands come from .canopy/config.json) */
+/** Helper to create a worktree (local mode — lifecycle commands come from .daintree/config.json) */
 async function createWorktree(
   window: Awaited<ReturnType<typeof launchApp>>["window"],
   branch: string
@@ -424,7 +424,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
   test("unhealthy status JSON is reflected in badge", async () => {
     const { window } = ctx;
 
-    const stateFile = path.join(fixtureDir, ".canopy", "resource-state.json");
+    const stateFile = path.join(fixtureDir, ".daintree", "resource-state.json");
     fs.writeFileSync(stateFile, JSON.stringify({ status: "unhealthy" }));
 
     await ensureWindowFocused(ctx.app);
@@ -450,7 +450,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
 
     // Write non-JSON content; the status command (cat) will exit 0 but output isn't valid JSON.
     // Per the implementation, exit 0 + non-JSON → "unknown" (neutral badge).
-    const stateFile = path.join(fixtureDir, ".canopy", "resource-state.json");
+    const stateFile = path.join(fixtureDir, ".daintree", "resource-state.json");
     fs.writeFileSync(stateFile, "not valid json");
 
     await ensureWindowFocused(ctx.app);
@@ -493,13 +493,13 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     }
     expect(worktreePath.length).toBeGreaterThan(0);
 
-    // Write the modified config directly to the worktree's .canopy dir
-    const wtCanopyDir = path.join(worktreePath, ".canopy");
+    // Write the modified config directly to the worktree's .daintree dir
+    const wtCanopyDir = path.join(worktreePath, ".daintree");
     fs.mkdirSync(wtCanopyDir, { recursive: true });
     const wtConfigPath = path.join(wtCanopyDir, "config.json");
     const markerFile = path.join(wtCanopyDir, "env-marker.txt");
 
-    const mainCanopyDir = path.join(fixtureDir, ".canopy");
+    const mainCanopyDir = path.join(fixtureDir, ".daintree");
     const originalConfig = fs.readFileSync(path.join(mainCanopyDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
@@ -575,12 +575,12 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     }
     expect(worktreePath.length).toBeGreaterThan(0);
 
-    // Write modified config directly to the worktree's .canopy dir
-    const wtCanopyDir = path.join(worktreePath, ".canopy");
+    // Write modified config directly to the worktree's .daintree dir
+    const wtCanopyDir = path.join(worktreePath, ".daintree");
     fs.mkdirSync(wtCanopyDir, { recursive: true });
     const wtConfigPath = path.join(wtCanopyDir, "config.json");
 
-    const mainCanopyDir = path.join(fixtureDir, ".canopy");
+    const mainCanopyDir = path.join(fixtureDir, ".daintree");
     const originalConfig = fs.readFileSync(path.join(mainCanopyDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
@@ -673,7 +673,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     const { window } = ctx;
 
     // Temporarily update config.json to have a failing teardown
-    const canopyDir = path.join(fixtureDir, ".canopy");
+    const canopyDir = path.join(fixtureDir, ".daintree");
     const configPath = path.join(canopyDir, "config.json");
     const originalConfig = fs.readFileSync(configPath, "utf-8");
 

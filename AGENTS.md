@@ -62,7 +62,7 @@ src/                         # Renderer (React 19)
     └── electron.d.ts        # window.electron types
 ```
 
-Tests live in `__tests__/` folders beside source files. `.canopy/recipes/*.json` files are intentionally tracked in git.
+Tests live in `__tests__/` folders beside source files. `.daintree/recipes/*.json` files are intentionally tracked in git.
 
 ## Key Architecture
 

@@ -13,7 +13,7 @@ import { ensureWindowFocused } from "../helpers/focus";
 /**
  * E2E tests for resource settings persistence and GUI-driven configuration.
  *
- * Strategy: The fixture repo has .canopy/config.json with a `resources` block
+ * Strategy: The fixture repo has .daintree/config.json with a `resources` block
  * containing "e2e-docker" environment commands. Test 1 adds "e2e-docker" via
  * the Settings GUI (which populates projectSettings.resourceEnvironments).
  * After that, the create worktree dialog shows the mode selector with
@@ -26,7 +26,7 @@ let fixtureDir: string;
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 function writeResourceConfig(repoDir: string) {
-  const canopyDir = path.join(repoDir, ".canopy");
+  const canopyDir = path.join(repoDir, ".daintree");
   fs.mkdirSync(canopyDir, { recursive: true });
 
   const stateFile = path.join(canopyDir, "resource-state.json");

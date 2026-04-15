@@ -20,7 +20,7 @@ describe("readInRepoProjectIdentity", () => {
   });
 
   async function writeProjectJson(content: string): Promise<void> {
-    const dir = path.join(tmpDir, ".canopy");
+    const dir = path.join(tmpDir, ".daintree");
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "project.json"), content, "utf-8");
   }

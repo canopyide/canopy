@@ -211,7 +211,7 @@ describe("WorkspaceService.runResourceAction", () => {
     const mockReadFile = vi.mocked(fsModule.readFile);
 
     mockAccess.mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
@@ -422,8 +422,8 @@ describe("WorkspaceService.runResourceAction", () => {
 
       await service.runResourceAction("req-wrap1", "/test/worktree", "status");
 
-      const canopyDir = pathJoin("/test/worktree", ".canopy");
-      const wrapperPath = pathJoin("/test/worktree", ".canopy", "canopy-remote");
+      const canopyDir = pathJoin("/test/worktree", ".daintree");
+      const wrapperPath = pathJoin("/test/worktree", ".daintree", "canopy-remote");
       expect(mockMkdir).toHaveBeenCalledWith(canopyDir, { recursive: true });
       expect(mockWriteFile).toHaveBeenCalledWith(
         wrapperPath,
@@ -460,7 +460,7 @@ describe("WorkspaceService.runResourceAction", () => {
       await service.runResourceAction("req-wrap2", "/test/worktree", "status");
 
       expect(mockWriteFile).not.toHaveBeenCalledWith(
-        pathJoin("/test/worktree", ".canopy", "canopy-remote"),
+        pathJoin("/test/worktree", ".daintree", "canopy-remote"),
         expect.anything(),
         expect.anything()
       );
@@ -488,7 +488,7 @@ describe("WorkspaceService.runResourceAction", () => {
       await service.runResourceAction("req-wrap3", "/test/worktree", "status");
 
       expect(mockWriteFile).not.toHaveBeenCalledWith(
-        pathJoin("/test/worktree", ".canopy", "canopy-remote"),
+        pathJoin("/test/worktree", ".daintree", "canopy-remote"),
         expect.anything(),
         expect.anything()
       );
@@ -516,7 +516,7 @@ describe("WorkspaceService.runResourceAction", () => {
       await service.runResourceAction("req-wrap4", "/test/worktree", "status");
 
       expect(mockWriteFile).not.toHaveBeenCalledWith(
-        pathJoin("/test/worktree", ".canopy", "canopy-remote"),
+        pathJoin("/test/worktree", ".daintree", "canopy-remote"),
         expect.anything(),
         expect.anything()
       );
@@ -1085,7 +1085,7 @@ describe("WorkspaceService.runLifecycleTeardown — resource teardown integratio
 
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     vi.mocked(fsModule.readFile).mockResolvedValue(JSON.stringify(config) as never);
@@ -1116,7 +1116,7 @@ describe("WorkspaceService.runLifecycleTeardown — resource teardown integratio
 
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     vi.mocked(fsModule.readFile).mockResolvedValue(JSON.stringify(config) as never);
@@ -1148,7 +1148,7 @@ describe("WorkspaceService.runLifecycleTeardown — resource teardown integratio
 
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     vi.mocked(fsModule.readFile).mockResolvedValue(JSON.stringify(config) as never);
@@ -1232,7 +1232,7 @@ describe("WorkspaceService.runLifecycleSetup — resource config caching", () =>
 
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     vi.mocked(fsModule.readFile).mockResolvedValue(JSON.stringify(config) as never);
@@ -1253,7 +1253,7 @@ describe("WorkspaceService.runLifecycleSetup — resource config caching", () =>
 
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     vi.mocked(fsModule.readFile).mockResolvedValue(JSON.stringify(config) as never);
@@ -1276,7 +1276,7 @@ describe("WorkspaceService.runLifecycleSetup — resource config caching", () =>
 
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     vi.mocked(fsModule.readFile).mockResolvedValue(JSON.stringify(config) as never);
@@ -1342,7 +1342,7 @@ describe("WorkspaceService.runResourceAction — concurrency", () => {
     const mockReadFile = vi.mocked(fsModule.readFile);
 
     mockAccess.mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
+      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
       throw new Error("ENOENT");
     });
     mockReadFile.mockResolvedValue(JSON.stringify(config) as never);

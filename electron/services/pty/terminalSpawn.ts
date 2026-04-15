@@ -1,6 +1,10 @@
 import * as pty from "node-pty";
 import { getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
-import { filterEnvironment, injectCanopyMetadata, ensureUtf8Locale } from "./EnvironmentFilter.js";
+import {
+  filterEnvironment,
+  injectDaintreeMetadata,
+  ensureUtf8Locale,
+} from "./EnvironmentFilter.js";
 import {
   buildNonInteractiveEnv,
   AGENT_ENV_EXCLUSIONS,
@@ -55,7 +59,7 @@ export function buildTerminalEnv(
         string
       >)
     : {};
-  const mergedEnv = injectCanopyMetadata(
+  const mergedEnv = injectDaintreeMetadata(
     { ...filteredBaseEnv, ...intentionalEnv },
     {
       paneId: id,

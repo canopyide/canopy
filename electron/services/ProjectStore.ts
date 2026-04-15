@@ -43,8 +43,8 @@ function rowToProject(row: ProjectRow): Project {
   };
   if (row.color !== null && row.color !== undefined) project.color = row.color;
   if (row.status !== null && row.status !== undefined) project.status = row.status as ProjectStatus;
-  if (row.canopyConfigPresent !== null && row.canopyConfigPresent !== undefined)
-    project.canopyConfigPresent = row.canopyConfigPresent;
+  if (row.daintreeConfigPresent !== null && row.daintreeConfigPresent !== undefined)
+    project.daintreeConfigPresent = row.daintreeConfigPresent;
   if (row.inRepoSettings !== null && row.inRepoSettings !== undefined)
     project.inRepoSettings = row.inRepoSettings;
   if (row.pinned) project.pinned = true;
@@ -194,7 +194,7 @@ export class ProjectStore {
         lastOpened: project.lastOpened,
         color: project.color ?? null,
         status: project.status ?? null,
-        canopyConfigPresent: project.canopyConfigPresent ?? null,
+        canopyConfigPresent: project.daintreeConfigPresent ?? null,
         inRepoSettings: project.inRepoSettings ?? null,
         frecencyScore: FRECENCY_COLD_START,
         lastAccessedAt: now,
@@ -255,8 +255,8 @@ export class ProjectStore {
     if ("color" in updates) set.color = updates.color ?? null;
     if (updates.lastOpened !== undefined) set.lastOpened = updates.lastOpened;
     if (updates.status !== undefined) set.status = updates.status ?? null;
-    if (updates.canopyConfigPresent !== undefined)
-      set.canopyConfigPresent = updates.canopyConfigPresent ?? null;
+    if (updates.daintreeConfigPresent !== undefined)
+      set.daintreeConfigPresent = updates.daintreeConfigPresent ?? null;
     if (updates.inRepoSettings !== undefined) set.inRepoSettings = updates.inRepoSettings ?? null;
     if (updates.pinned !== undefined) set.pinned = updates.pinned ? 1 : 0;
     if (updates.frecencyScore !== undefined) set.frecencyScore = updates.frecencyScore;
@@ -425,7 +425,7 @@ export class ProjectStore {
           lastOpened: updatedProject.lastOpened,
           color: updatedProject.color ?? null,
           status: updatedProject.status ?? null,
-          canopyConfigPresent: updatedProject.canopyConfigPresent ?? null,
+          canopyConfigPresent: updatedProject.daintreeConfigPresent ?? null,
           inRepoSettings: updatedProject.inRepoSettings ?? null,
           pinned: updatedProject.pinned ? 1 : 0,
           frecencyScore: updatedProject.frecencyScore ?? FRECENCY_COLD_START,
@@ -446,7 +446,7 @@ export class ProjectStore {
           lastOpened: oldProject.lastOpened,
           color: oldProject.color ?? null,
           status: oldProject.status ?? null,
-          canopyConfigPresent: oldProject.canopyConfigPresent ?? null,
+          canopyConfigPresent: oldProject.daintreeConfigPresent ?? null,
           inRepoSettings: oldProject.inRepoSettings ?? null,
           pinned: oldProject.pinned ? 1 : 0,
           frecencyScore: oldProject.frecencyScore ?? FRECENCY_COLD_START,

@@ -14,9 +14,33 @@ import type { ActionManifestEntry, ActionDispatchResult } from "../../shared/typ
 import { store } from "../store.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 
-const DISCOVERY_DIR = path.join(os.homedir(), ".canopy");
+const DISCOVERY_DIR = path.join(os.homedir(), ".daintree");
+const LEGACY_DISCOVERY_DIR = path.join(os.homedir(), ".canopy");
 const DISCOVERY_FILE = path.join(DISCOVERY_DIR, "mcp.json");
-const MCP_SERVER_KEY = "canopy";
+const MCP_SERVER_KEY = "daintree";
+
+// One-shot rebrand migration: rename ~/.canopy -> ~/.daintree if the new dir
+// doesn't exist yet and the old one does. Runs once per process.
+let discoveryMigrationRan = false;
+async function migrateDiscoveryDir(): Promise<void> {
+  if (discoveryMigrationRan) return;
+  discoveryMigrationRan = true;
+  try {
+    await fs.access(DISCOVERY_DIR);
+    return;
+  } catch {
+    /* fall through */
+  }
+  try {
+    const stat = await fs.lstat(LEGACY_DISCOVERY_DIR);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return;
+    await fs.rename(LEGACY_DISCOVERY_DIR, DISCOVERY_DIR);
+    // eslint-disable-next-line no-console
+    console.log(`[daintree] Migrated ${LEGACY_DISCOVERY_DIR} -> ${DISCOVERY_DIR}`);
+  } catch {
+    /* legacy dir absent or migration failed — safe to ignore */
+  }
+}
 const DEFAULT_PORT = 45454;
 const MAX_PORT_RETRIES = 10;
 
@@ -125,7 +149,7 @@ export class McpServerService {
   }
 
   async generateApiKey(): Promise<string> {
-    const key = `canopy_${randomUUID().replace(/-/g, "")}`;
+    const key = `daintree_${randomUUID().replace(/-/g, "")}`;
     store.set("mcpServer", { ...this.getConfig(), apiKey: key });
     if (this.isRunning) {
       await this.writeDiscoveryFile();
@@ -615,6 +639,7 @@ export class McpServerService {
   private async writeDiscoveryFile(): Promise<void> {
     if (!this.port) return;
     try {
+      await migrateDiscoveryDir();
       await fs.mkdir(DISCOVERY_DIR, { recursive: true });
 
       let existing: Record<string, unknown> = {};

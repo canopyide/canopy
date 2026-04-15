@@ -163,7 +163,7 @@ export function McpServerSettingsTab() {
 
                 <p className="text-xs text-canopy-text/50 leading-relaxed select-text">
                   Paste the copied config into your MCP client (e.g. Claude Code, Cursor,{" "}
-                  <code className="text-canopy-text/70">~/.canopy/mcp.json</code>).
+                  <code className="text-canopy-text/70">~/.daintree/mcp.json</code>).
                   {status.apiKey && " The config includes the authorization header."}
                 </p>
               </div>
@@ -289,8 +289,8 @@ export function McpServerSettingsTab() {
         title="Auto-Discovery"
         description={
           status.enabled
-            ? "The server address is written to ~/.canopy/mcp.json while Canopy is running. Agents started from Canopy terminals can read this file to connect automatically. The file is removed when Canopy quits."
-            : "When enabled, the server address is written to ~/.canopy/mcp.json for automatic discovery by agents."
+            ? "The server address is written to ~/.daintree/mcp.json while Canopy is running. Agents started from Canopy terminals can read this file to connect automatically. The file is removed when Canopy quits."
+            : "When enabled, the server address is written to ~/.daintree/mcp.json for automatic discovery by agents."
         }
       >
         <></>

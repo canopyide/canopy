@@ -1,5 +1,5 @@
 // Silence EPIPE errors on stdout/stderr. When the parent terminal is closed
-// (e.g. user quits Terminal.app while Canopy runs), writes to the broken pipe
+// (e.g. user quits Terminal.app while Daintree runs), writes to the broken pipe
 // throw an uncaught EPIPE that would crash the main process. These are harmless.
 for (const stream of [process.stdout, process.stderr]) {
   if (stream && typeof stream.on === "function") {
@@ -39,7 +39,27 @@ if (app.isPackaged) {
 // each test run gets its own isolated data directory.
 const hasExplicitUserDataDir = process.argv.some((a) => a.startsWith("--user-data-dir"));
 if (!app.isPackaged && !hasExplicitUserDataDir) {
-  app.setPath("userData", path.join(app.getPath("appData"), "canopy-app-dev"));
+  app.setPath("userData", path.join(app.getPath("appData"), "daintree-dev"));
+}
+
+// One-shot rebrand migration: copy old userData dir into the new one on first
+// launch. Runs only when the new dir does not exist yet and the old one does.
+// Skipped when --user-data-dir is explicitly set (e.g. E2E tests).
+if (!hasExplicitUserDataDir) {
+  try {
+    const newUserData = app.getPath("userData");
+    if (!fs.existsSync(newUserData)) {
+      const appData = app.getPath("appData");
+      const legacyName = app.isPackaged ? "Canopy" : "canopy-app-dev";
+      const legacyUserData = path.join(appData, legacyName);
+      if (fs.existsSync(legacyUserData)) {
+        fs.cpSync(legacyUserData, newUserData, { recursive: true });
+        console.log(`[daintree] Migrated userData ${legacyUserData} -> ${newUserData}`);
+      }
+    }
+  } catch (err) {
+    console.warn("[daintree] userData migration failed:", err);
+  }
 }
 
 // GPU crash fallback: disable hardware acceleration before app.whenReady()
@@ -284,7 +304,7 @@ if (isSmokeTest) {
 
 app.enableSandbox();
 
-// Prevent macOS keychain prompt ("canopy-app Safe Storage").
+// Prevent macOS keychain prompt ("Daintree Safe Storage").
 // Chromium encrypts cookies/network state via the OS keychain by default.
 // We don't rely on Chromium cookie encryption — all secrets are in electron-store.
 app.commandLine.appendSwitch("use-mock-keychain");

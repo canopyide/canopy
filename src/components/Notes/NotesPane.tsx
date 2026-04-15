@@ -260,7 +260,7 @@ export function NotesPane({
   }, [viewMode, editorMountKey]);
 
   const handleCopyPath = useCallback(async () => {
-    const addressablePath = `@.canopy/notes/${notePath}`;
+    const addressablePath = `@.daintree/notes/${notePath}`;
     try {
       await navigator.clipboard.writeText(addressablePath);
       setCopied(true);

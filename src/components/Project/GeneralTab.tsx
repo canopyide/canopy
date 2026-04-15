@@ -516,15 +516,15 @@ export function GeneralTab({
         </h3>
         <p className="text-xs text-canopy-text/60 mb-4">
           Store project name, emoji, and run commands in{" "}
-          <code className="font-mono text-canopy-text/80">.canopy/</code> so your team shares the
+          <code className="font-mono text-canopy-text/80">.daintree/</code> so your team shares the
           same configuration.
         </p>
 
-        {currentProject?.canopyConfigPresent && (
+        {currentProject?.daintreeConfigPresent && (
           <div className="flex items-center gap-2 mb-3 text-xs text-canopy-text/60">
             <FolderOpen className="h-3.5 w-3.5 text-status-success shrink-0" />
             <span>
-              Settings loaded from <code className="font-mono text-canopy-text/80">.canopy/</code>
+              Settings loaded from <code className="font-mono text-canopy-text/80">.daintree/</code>
             </span>
           </div>
         )}
@@ -555,8 +555,8 @@ export function GeneralTab({
             <div className="text-left">
               <div className="text-sm font-medium">Store settings in repository</div>
               <div className="text-xs opacity-70">
-                Writes to <code className="font-mono">.canopy/project.json</code> and{" "}
-                <code className="font-mono">.canopy/settings.json</code>
+                Writes to <code className="font-mono">.daintree/project.json</code> and{" "}
+                <code className="font-mono">.daintree/settings.json</code>
               </div>
             </div>
           </div>
@@ -595,12 +595,12 @@ export function GeneralTab({
               </p>
               <ul className="space-y-1 text-xs text-canopy-text/60">
                 <li className="flex items-center gap-2">
-                  <span className="font-mono text-canopy-text/80">.canopy/project.json</span>—
+                  <span className="font-mono text-canopy-text/80">.daintree/project.json</span>—
                   project name, emoji, color
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="font-mono text-canopy-text/80">.canopy/settings.json</span>— run
-                  commands, dev server, context settings
+                  <span className="font-mono text-canopy-text/80">.daintree/settings.json</span>—
+                  run commands, dev server, context settings
                 </li>
               </ul>
               <p className="mt-2 text-xs text-canopy-text/50">

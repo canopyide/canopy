@@ -325,7 +325,7 @@ export function RecipeManager({
                 Team Recipes
               </h3>
               <p className="text-xs text-canopy-text/60 mb-3">
-                Shared via .canopy/recipes/ in the repository
+                Shared via .daintree/recipes/ in the repository
               </p>
               <div className="border border-canopy-border rounded-[var(--radius-md)] divide-y divide-canopy-border">
                 {inRepoRecipes.map((r) => renderRecipeRow(r))}
@@ -400,7 +400,7 @@ export function RecipeManager({
         description={
           saveError
             ? `Error: ${saveError}`
-            : "This recipe will be written to .canopy/recipes/ in the repository where it can be committed and shared with the team."
+            : "This recipe will be written to .daintree/recipes/ in the repository where it can be committed and shared with the team."
         }
         confirmLabel={saveError ? "Retry" : "Save to Repo"}
         isConfirmLoading={isSaving}

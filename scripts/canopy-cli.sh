@@ -108,7 +108,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
   # Fall back to Spotlight if the script is not installed as an app symlink.
   if [[ -z "$APP_PATH" ]] && command -v mdfind &>/dev/null; then
-    APP_PATH="$(mdfind 'kMDItemCFBundleIdentifier == "com.canopy.commandcenter"' 2>/dev/null | head -1)"
+    APP_PATH="$(mdfind 'kMDItemCFBundleIdentifier == "com.daintree.commandcenter"' 2>/dev/null | head -1)"
     [[ -n "$APP_PATH" && ! -d "$APP_PATH" ]] && APP_PATH=""
   fi
 

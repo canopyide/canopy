@@ -22,10 +22,6 @@ for (const stream of [process.stdout, process.stderr]) {
 
 import { MessagePort } from "node:worker_threads";
 import os from "node:os";
-import { applyLegacyEnvAliases } from "../shared/utils/envCompat.js";
-
-applyLegacyEnvAliases();
-
 import { PtyManager } from "./services/PtyManager.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { ProcessTreeCache } from "./services/ProcessTreeCache.js";

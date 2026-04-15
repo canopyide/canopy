@@ -111,7 +111,7 @@ export function registerRecipeActions(actions: ActionRegistry, _callbacks: Actio
     id: "recipe.saveToRepo",
     title: "Save Recipe to Repository",
     description:
-      "Promote a recipe to in-repo storage (.canopy/recipes/) for git tracking and team sharing",
+      "Promote a recipe to in-repo storage (.daintree/recipes/) for git tracking and team sharing",
     category: "recipes",
     kind: "command",
     danger: "confirm",
