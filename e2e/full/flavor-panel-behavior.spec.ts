@@ -4,12 +4,7 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
-import {
-  writeCcrConfig,
-  removeCcrConfig,
-  navigateToAgentSettings,
-  addCustomFlavor,
-} from "../helpers/flavors";
+import { removeCcrConfig, navigateToAgentSettings, addCustomFlavor } from "../helpers/flavors";
 
 let ctx: AppContext;
 
