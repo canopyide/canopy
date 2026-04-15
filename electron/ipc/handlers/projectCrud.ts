@@ -36,7 +36,6 @@ export function getProjectStatsService(): ProjectStatsService | null {
 }
 
 export function registerProjectCrudHandlers(deps: HandlerDependencies): () => void {
-  const mainWindow = deps.windowRegistry?.getPrimary()?.browserWindow ?? deps.mainWindow;
   const handlers: Array<() => void> = [];
 
   const projectSwitchService = deps.projectSwitchService ?? new ProjectSwitchService(deps);
@@ -294,13 +293,14 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
   ipcMain.handle(CHANNELS.PROJECT_SWITCH, handleProjectSwitch);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SWITCH));
 
-  const handleProjectOpenDialog = async () => {
+  const handleProjectOpenDialog = async (event: Electron.IpcMainInvokeEvent) => {
+    const senderWindow = getWindowForWebContents(event.sender);
     const dialogOpts = {
       properties: ["openDirectory" as const, "createDirectory" as const],
       title: "Open Git Repository",
     };
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, dialogOpts)
+    const result = senderWindow
+      ? await dialog.showOpenDialog(senderWindow, dialogOpts)
       : await dialog.showOpenDialog(dialogOpts);
 
     if (result.canceled || result.filePaths.length === 0) {
