@@ -639,7 +639,6 @@ describe("protocol registration", () => {
   });
 
   it("registers both file protocol aliases on per-project sessions", async () => {
-    const { session } = await import("electron");
     const handle = vi.fn();
     const mockSession = { protocol: { handle } } as unknown as Electron.Session;
 
