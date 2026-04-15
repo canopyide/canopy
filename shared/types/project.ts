@@ -102,6 +102,10 @@ export interface PanelSnapshot {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time for per-panel model selection */
   agentModelId?: string;
+  /** Flavor ID active at launch time, used to restore colored icon on reload */
+  agentFlavorId?: string;
+  /** Flavor hex color captured at launch time; fallback when flavor is later deleted */
+  agentFlavorColor?: string;
   /** Last known agent state for crash recovery display */
   agentState?: AgentState;
   /** Timestamp of last agent state change */

@@ -2,15 +2,18 @@ import type { TerminalInstance } from "@/store";
 import type { AddPanelOptions } from "@/store/slices/panelRegistry/types";
 import type { TabGroupLocation } from "@/types";
 import { generateAgentCommand } from "@shared/types";
-import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
+import { getAgentConfig, isRegisteredAgent, getMergedFlavor } from "@/config/agents";
 import { agentSettingsClient, systemClient } from "@/clients";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
 
 /**
  * Generate the startup command for a panel being duplicated.
  * For agent panels, re-generates the command from current settings.
  * For all others, copies the existing command.
  */
-async function resolveCommandForPanel(panel: TerminalInstance): Promise<string | undefined> {
+async function resolveCommandForPanel(
+  panel: TerminalInstance
+): Promise<{ command: string | undefined; env: Record<string, string> | undefined }> {
   if (panel.agentId && isRegisteredAgent(panel.agentId)) {
     const agentConfig = getAgentConfig(panel.agentId);
     if (agentConfig) {
@@ -20,22 +23,38 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<string |
           systemClient.getTmpDir().catch(() => ""),
         ]);
         const entry = agentSettings?.agents?.[panel.agentId] ?? {};
+        const ccrFlavors = useCcrFlavorsStore.getState().ccrFlavorsByAgent[panel.agentId];
+        const flavor = panel.agentFlavorId
+          ? getMergedFlavor(panel.agentId, panel.agentFlavorId, entry.customFlavors, ccrFlavors)
+          : undefined;
+        const effectiveEntry = flavor
+          ? {
+              ...entry,
+              ...(flavor.dangerousEnabled !== undefined && {
+                dangerousEnabled: flavor.dangerousEnabled,
+              }),
+              ...(flavor.customFlags !== undefined && { customFlags: flavor.customFlags }),
+              ...(flavor.inlineMode !== undefined && { inlineMode: flavor.inlineMode }),
+            }
+          : entry;
         const clipboardDirectory = tmpDir ? `${tmpDir}/daintree-clipboard` : undefined;
-        return generateAgentCommand(agentConfig.command, entry, panel.agentId, {
+        const command = generateAgentCommand(agentConfig.command, effectiveEntry, panel.agentId, {
           interactive: true,
           clipboardDirectory,
           modelId: panel.agentModelId,
+          flavorArgs: flavor?.args?.join(" "),
         });
+        return { command, env: flavor?.env };
       } catch (error) {
         console.warn(
           `Failed to get agent settings for ${panel.agentId}, using existing command:`,
           error
         );
-        return panel.command ?? agentConfig.command;
+        return { command: panel.command ?? agentConfig.command, env: undefined };
       }
     }
   }
-  return panel.command;
+  return { command: panel.command, env: undefined };
 }
 
 function buildBrowserOptions(panel: TerminalInstance) {
@@ -135,11 +154,14 @@ export function buildPanelSnapshotOptions(panel: TerminalInstance): AddPanelOpti
     kind: "terminal",
     type: panel.type,
     agentId: panel.agentId,
+    title: panel.title,
     cwd: panel.cwd || "",
     worktreeId: panel.worktreeId,
     exitBehavior: panel.exitBehavior,
     isInputLocked: panel.isInputLocked,
     agentModelId: panel.agentModelId,
+    agentFlavorId: panel.agentFlavorId,
+    agentFlavorColor: panel.agentFlavorColor,
     agentLaunchFlags: panel.agentLaunchFlags ? [...panel.agentLaunchFlags] : undefined,
     command: panel.command,
   };
@@ -158,7 +180,7 @@ export async function buildPanelDuplicateOptions(
   targetLocation: TabGroupLocation
 ): Promise<AddPanelOptions> {
   const kind = sourcePanel.kind ?? "terminal";
-  const command = await resolveCommandForPanel(sourcePanel);
+  const { command, env } = await resolveCommandForPanel(sourcePanel);
 
   if (kind === "agent") {
     if (!sourcePanel.agentId || !command) {
@@ -225,12 +247,16 @@ export async function buildPanelDuplicateOptions(
     type: sourcePanel.type,
     agentId: sourcePanel.agentId,
     cwd: sourcePanel.cwd || "",
+    title: sourcePanel.title,
     worktreeId: sourcePanel.worktreeId,
     location: targetLocation,
     exitBehavior: sourcePanel.exitBehavior,
     isInputLocked: sourcePanel.isInputLocked,
     agentModelId: sourcePanel.agentModelId,
+    agentFlavorId: sourcePanel.agentFlavorId,
+    agentFlavorColor: sourcePanel.agentFlavorColor,
     agentLaunchFlags: sourcePanel.agentLaunchFlags,
+    env,
     command,
   };
 }

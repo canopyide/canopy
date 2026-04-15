@@ -55,6 +55,7 @@ export interface ContentPanelProps extends BasePanelProps {
   type?: TerminalType;
   agentId?: string;
   detectedProcessId?: string;
+  flavorColor?: string;
   isExited?: boolean;
   exitCode?: number | null;
   isWorking?: boolean;
@@ -111,6 +112,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     type,
     agentId,
     detectedProcessId,
+    flavorColor,
     isExited = false,
     exitCode = null,
     isWorking: _isWorking = false,
@@ -302,6 +304,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
           type={type}
           agentId={agentId}
           detectedProcessId={detectedProcessId}
+          flavorColor={flavorColor}
           worktreeAccentColor={worktreeAccentColor}
           worktreeBranch={worktreeBranch}
           isFocused={isFocused}

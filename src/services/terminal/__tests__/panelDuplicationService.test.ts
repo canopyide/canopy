@@ -22,6 +22,8 @@ vi.mock("@shared/types", () => ({
   ),
 }));
 
+const getMergedFlavorMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/config/agents", () => ({
   isRegisteredAgent: vi.fn((id: string) => id === "claude" || id === "gemini"),
   getAgentConfig: vi.fn((id: string) =>
@@ -31,6 +33,13 @@ vi.mock("@/config/agents", () => ({
         ? { command: "gemini-cmd" }
         : undefined
   ),
+  getMergedFlavor: (...args: unknown[]) => getMergedFlavorMock(...args),
+}));
+
+vi.mock("@/store/ccrFlavorsStore", () => ({
+  useCcrFlavorsStore: {
+    getState: vi.fn(() => ({ ccrFlavorsByAgent: {} })),
+  },
 }));
 
 function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
@@ -81,10 +90,10 @@ describe("buildPanelSnapshotOptions", () => {
     expect(result!.agentLaunchFlags).not.toBe(panel.agentLaunchFlags);
   });
 
-  it("does not include title in the snapshot", () => {
+  it("copies title to the snapshot", () => {
     const panel = makePanel({ title: "My Terminal" });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result!.title).toBeUndefined();
+    expect(result!.title).toBe("My Terminal");
   });
 
   it("does not include location in the snapshot", () => {
@@ -156,6 +165,30 @@ describe("buildPanelSnapshotOptions", () => {
       agentModelId: "opus",
       agentLaunchFlags: ["--verbose"],
     });
+  });
+
+  it("copies agentFlavorId to the snapshot", () => {
+    const panel = makePanel({ agentFlavorId: "user-abc" });
+    const result = buildPanelSnapshotOptions(panel);
+    expect(result.agentFlavorId).toBe("user-abc");
+  });
+
+  it("copies agentFlavorColor to the snapshot", () => {
+    const panel = makePanel({ agentFlavorColor: "#ff6600" });
+    const result = buildPanelSnapshotOptions(panel);
+    expect(result.agentFlavorColor).toBe("#ff6600");
+  });
+
+  it("copies title to the snapshot (preserves 'Claude (FlavorName)' format)", () => {
+    const panel = makePanel({ title: "Claude (My Flavor)" });
+    const result = buildPanelSnapshotOptions(panel);
+    expect(result.title).toBe("Claude (My Flavor)");
+  });
+
+  it("omits agentFlavorId when undefined", () => {
+    const panel = makePanel({ agentFlavorId: undefined });
+    const result = buildPanelSnapshotOptions(panel);
+    expect(result.agentFlavorId).toBeUndefined();
   });
 });
 
@@ -312,5 +345,200 @@ describe("panelDuplicationService", () => {
     await expect(buildPanelDuplicateOptions(panel, "grid")).rejects.toThrow(
       /Cannot duplicate agent panel.*agentId/
     );
+  });
+
+  it("copies agentFlavorId to duplicate options", async () => {
+    const panel = makePanel({ agentFlavorId: "user-abc" });
+    const result = await buildPanelDuplicateOptions(panel, "grid");
+    expect(result.agentFlavorId).toBe("user-abc");
+  });
+
+  it("copies agentFlavorColor to duplicate options", async () => {
+    const panel = makePanel({ agentFlavorColor: "#ff6600" });
+    const result = await buildPanelDuplicateOptions(panel, "grid");
+    expect(result.agentFlavorColor).toBe("#ff6600");
+  });
+
+  it("copies title to duplicate options (preserves 'Agent (Flavor)' format)", async () => {
+    const panel = makePanel({ title: "Claude (My Flavor)" });
+    const result = await buildPanelDuplicateOptions(panel, "grid");
+    expect(result.title).toBe("Claude (My Flavor)");
+  });
+
+  it("propagates flavor env from resolveCommandForPanel into duplicate options", async () => {
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: {} },
+    });
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-abc",
+      name: "My Flavor",
+      env: { MY_VAR: "val", ANOTHER: "one" },
+    });
+
+    const panel = makePanel({
+      kind: "agent",
+      agentId: "claude",
+      agentFlavorId: "user-abc",
+    });
+    const result = await buildPanelDuplicateOptions(panel, "grid");
+
+    expect(result.env).toEqual({ MY_VAR: "val", ANOTHER: "one" });
+  });
+
+  it("has no env when flavor has no env block", async () => {
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: {} },
+    });
+    getMergedFlavorMock.mockReturnValue({ id: "user-abc", name: "No Env" });
+
+    const panel = makePanel({
+      kind: "agent",
+      agentId: "claude",
+      agentFlavorId: "user-abc",
+    });
+    const result = await buildPanelDuplicateOptions(panel, "grid");
+
+    expect(result.env).toBeUndefined();
+  });
+
+  it("has no env when agentFlavorId is absent", async () => {
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: {} },
+    });
+
+    const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: undefined });
+    const result = await buildPanelDuplicateOptions(panel, "grid");
+
+    expect(result.env).toBeUndefined();
+  });
+});
+
+// ── adversarial: behavioral overrides must reach generateAgentCommand ─────────
+// These tests assert on the arguments passed to the generateAgentCommand spy to
+// prove that flavor dangerousEnabled / customFlags / inlineMode / args are
+// actually merged before the command is built.  Without these tests a silently
+// ignored settings arg would hide the bug.
+
+describe("adversarial: behavioral overrides flow to generateAgentCommand in duplication", () => {
+  let buildPanelDuplicateOptions: (
+    panel: TerminalInstance,
+    location: "grid" | "dock"
+  ) => Promise<AddPanelOptions>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const mod = await import("../panelDuplicationService");
+    buildPanelDuplicateOptions = mod.buildPanelDuplicateOptions;
+  });
+
+  async function getGenerateAgentCommandSpy() {
+    const mod = await import("@shared/types");
+    return vi.mocked(mod.generateAgentCommand);
+  }
+
+  it("dangerousEnabled=true from flavor overrides base false in effectiveEntry", async () => {
+    const spy = await getGenerateAgentCommandSpy();
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: { dangerousEnabled: false } },
+    });
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-abc",
+      name: "Dangerous",
+      dangerousEnabled: true,
+    });
+
+    const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
+    await buildPanelDuplicateOptions(panel, "grid");
+
+    expect(spy).toHaveBeenCalled();
+    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.dangerousEnabled).toBe(true);
+  });
+
+  it("customFlags from flavor overrides empty base in effectiveEntry", async () => {
+    const spy = await getGenerateAgentCommandSpy();
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: { customFlags: "" } },
+    });
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-abc",
+      name: "Flagged",
+      customFlags: "--extra-flag",
+    });
+
+    const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
+    await buildPanelDuplicateOptions(panel, "grid");
+
+    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.customFlags).toBe("--extra-flag");
+  });
+
+  it("inlineMode=false from flavor overrides base true in effectiveEntry", async () => {
+    const spy = await getGenerateAgentCommandSpy();
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: { inlineMode: true } },
+    });
+    getMergedFlavorMock.mockReturnValue({ id: "user-abc", name: "NoInline", inlineMode: false });
+
+    const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
+    await buildPanelDuplicateOptions(panel, "grid");
+
+    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.inlineMode).toBe(false);
+  });
+
+  it("flavor.dangerousEnabled=undefined does NOT clobber base true (undefined guard)", async () => {
+    const spy = await getGenerateAgentCommandSpy();
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: { dangerousEnabled: true } },
+    });
+    getMergedFlavorMock.mockReturnValue({ id: "user-abc", name: "NoOverride" });
+
+    const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
+    await buildPanelDuplicateOptions(panel, "grid");
+
+    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.dangerousEnabled).toBe(true);
+  });
+
+  it("flavor.args are joined and passed as flavorArgs option", async () => {
+    const spy = await getGenerateAgentCommandSpy();
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: {} },
+    });
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-abc",
+      name: "WithArgs",
+      args: ["--verbose", "--trace"],
+    });
+
+    const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
+    await buildPanelDuplicateOptions(panel, "grid");
+
+    const opts = spy.mock.calls[0][3] as Record<string, unknown>;
+    expect(opts.flavorArgs).toBe("--verbose --trace");
+  });
+
+  it("flavorArgs is undefined when flavor has no args", async () => {
+    const spy = await getGenerateAgentCommandSpy();
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: {} },
+    });
+    getMergedFlavorMock.mockReturnValue({ id: "user-abc", name: "NoArgs" });
+
+    const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
+    await buildPanelDuplicateOptions(panel, "grid");
+
+    const opts = spy.mock.calls[0][3] as Record<string, unknown>;
+    expect(opts.flavorArgs).toBeUndefined();
   });
 });

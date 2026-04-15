@@ -290,10 +290,11 @@ export const SEL = {
     editButton: '[aria-label^="Edit"]',
     deleteButton: '[aria-label^="Delete"]',
     duplicateButton: '[aria-label^="Duplicate"]',
-    toolbarChevron: '[aria-label$="flavor selector"]',
+    toolbarChevron: '[aria-label$="choose flavor"]',
     trayLaunchFlavorSubmenu: '[data-testid="submenu-trigger"]',
     trayLaunchFlavorItem: '[data-testid="submenu-content"] [role="menuitem"]',
     contextFlavorSubmenu: '[role="menu"]:text("Launch with Flavor")',
     vanillaOption: 'option[value=""]',
+    customFlavorOption: '#agents-flavors select optgroup[label="Custom"] option',
   },
 } as const;

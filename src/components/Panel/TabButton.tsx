@@ -22,6 +22,7 @@ export interface TabInfo {
   kind: PanelKind;
   agentState?: AgentState;
   isActive: boolean;
+  flavorColor?: string;
 }
 
 export interface TabButtonProps {
@@ -33,6 +34,7 @@ export interface TabButtonProps {
   kind: PanelKind;
   agentState?: AgentState;
   isActive: boolean;
+  flavorColor?: string;
   onClick: () => void;
   onClose: () => void;
   sortableListeners?: DraggableSyntheticListeners;
@@ -50,6 +52,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     kind,
     agentState,
     isActive,
+    flavorColor,
     onClick,
     onClose,
     sortableListeners,
@@ -243,7 +246,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
                 agentId={agentId}
                 detectedProcessId={detectedProcessId}
                 className="w-3.5 h-3.5"
-                brandColor={getBrandColorHex(agentId ?? type)}
+                brandColor={flavorColor ?? getBrandColorHex(agentId ?? type)}
               />
             </span>
 

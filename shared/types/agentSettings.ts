@@ -98,7 +98,16 @@ export interface AgentSettingsEntry {
     description?: string;
     env?: Record<string, string>;
     args?: string[];
+    dangerousEnabled?: boolean;
+    customFlags?: string;
+    inlineMode?: boolean;
+    color?: string;
   }>;
+  /**
+   * Environment variables applied to every launch of this agent, regardless of flavor.
+   * Flavor-level env overrides these when keys overlap.
+   */
+  globalEnv?: Record<string, string>;
   [key: string]: unknown;
 }
 

@@ -47,7 +47,9 @@ import type { BuiltInAgentId } from "@shared/config/agentIds";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { actionService } from "@/services/ActionService";
 import { InputTracker } from "@/services/clearCommandDetection";
-import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
+import { getAgentConfig, getMergedFlavors, isRegisteredAgent } from "@/config/agents";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
 import { terminalClient } from "@/clients";
 import type { HybridInputBarHandle } from "./HybridInputBar";
 const LazyHybridInputBar = lazy(() =>
@@ -71,6 +73,8 @@ export interface TerminalPaneProps {
   title: string;
   type?: TerminalType;
   agentId?: string;
+  agentFlavorId?: string;
+  flavorColor?: string;
   worktreeId?: string;
   cwd: string;
   isFocused: boolean;
@@ -108,6 +112,8 @@ function TerminalPaneComponent({
   title,
   type,
   agentId,
+  agentFlavorId,
+  flavorColor,
   worktreeId,
   cwd,
   isFocused,
@@ -236,6 +242,21 @@ function TerminalPaneComponent({
   const showHybridInputBar = isAgentTerminal && hybridInputEnabled && !suppressForFleetDeck;
 
   const queueCount = usePanelStore((state) => state.commandQueueCountById[id] ?? 0);
+
+  // Live flavor color — re-derives from settings whenever the user edits a flavor's color
+  const flavorCustomFlavors = useAgentSettingsStore((s) =>
+    agentId ? s.settings?.agents?.[agentId]?.customFlavors : undefined
+  );
+  const flavorCcrFlavors = useCcrFlavorsStore((s) =>
+    agentId ? s.ccrFlavorsByAgent[agentId] : undefined
+  );
+  const liveFlavorColor = useMemo(() => {
+    if (!agentFlavorId || !agentId) return flavorColor;
+    const flavor = getMergedFlavors(agentId, flavorCustomFlavors, flavorCcrFlavors).find(
+      (f) => f.id === agentFlavorId
+    );
+    return flavor?.color ?? flavorColor;
+  }, [agentFlavorId, agentId, flavorCustomFlavors, flavorCcrFlavors, flavorColor]);
 
   const pingedIdSelector = useMemo(
     () => (state: ReturnType<typeof usePanelStore.getState>) => state.pingedId === id,
@@ -644,6 +665,7 @@ function TerminalPaneComponent({
       kind={kind}
       type={type}
       agentId={agentId}
+      flavorColor={liveFlavorColor}
       isFocused={isFocused}
       isMaximized={isMaximized}
       location={location}

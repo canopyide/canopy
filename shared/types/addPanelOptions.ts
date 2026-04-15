@@ -46,6 +46,8 @@ export interface AddPanelOptionsBase {
   agentModelId?: string;
   /** Flavor ID selected at launch time for per-panel flavor selection */
   agentFlavorId?: string;
+  /** Flavor brand color (hex) captured at launch time for per-panel icon tinting */
+  agentFlavorColor?: string;
 }
 
 /** Options for creating a terminal panel */

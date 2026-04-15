@@ -4,9 +4,27 @@ vi.mock("@/utils/logger", () => ({
   logWarn: vi.fn(),
 }));
 
+const getMergedFlavorMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/config/agents", () => ({
   isRegisteredAgent: (type: string) => ["claude", "gemini", "codex", "opencode"].includes(type),
   getAgentConfig: (id: string) => ({ command: id }),
+  getMergedFlavor: (...args: unknown[]) => getMergedFlavorMock(...args),
+  // Pass-through: global env sanitization is tested separately in agents-adversarial
+  sanitizeAgentEnv: (env: Record<string, unknown> | undefined) => {
+    if (!env || typeof env !== "object") return undefined;
+    const result: Record<string, string> = {};
+    for (const [k, v] of Object.entries(env)) {
+      if (typeof v === "string") result[k] = v;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+  },
+}));
+
+vi.mock("@/store/ccrFlavorsStore", () => ({
+  useCcrFlavorsStore: {
+    getState: vi.fn(() => ({ ccrFlavorsByAgent: {} })),
+  },
 }));
 
 const buildResumeCommandMock = vi.fn(
@@ -14,8 +32,10 @@ const buildResumeCommandMock = vi.fn(
     `${agentId} --resume ${sessionId}`
 );
 
-const generateAgentCommandMock = vi.fn(
-  (base: string, _settings: unknown, _id: string, _opts: unknown): string => `${base} --generated`
+const generateAgentCommandMock = vi.hoisted(() =>
+  vi.fn(
+    (base: string, _settings: unknown, _id: string, _opts: unknown): string => `${base} --generated`
+  )
 );
 
 vi.mock("@shared/types", async () => {
@@ -937,5 +957,570 @@ describe("buildArgsForReconnectedFallback — agent launch flags", () => {
     );
     expect(result.agentLaunchFlags).toEqual(["--saved"]);
     expect(result.agentModelId).toBe("saved-m");
+  });
+});
+
+// ── flavor override path ──────────────────────────────────────────────────────
+
+describe("buildArgsForRespawn — flavor overrides", () => {
+  const FLAVOR = {
+    id: "user-aaa",
+    name: "My Flavor",
+    env: { MY_API_KEY: "secret", ANTHROPIC_BASE_URL: "https://proxy.test" },
+    customFlags: "--verbose",
+    dangerousEnabled: true,
+    inlineMode: false,
+  };
+
+  beforeEach(() => {
+    getMergedFlavorMock.mockReset();
+  });
+
+  it("passes agentFlavorId through to result", () => {
+    getMergedFlavorMock.mockReturnValue(FLAVOR);
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-aaa",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.agentFlavorId).toBe("user-aaa");
+  });
+
+  it("propagates flavor env vars into the returned env", () => {
+    getMergedFlavorMock.mockReturnValue(FLAVOR);
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-aaa",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.env).toEqual(FLAVOR.env);
+  });
+
+  it("calls getMergedFlavor with the correct agentId and flavorId", () => {
+    getMergedFlavorMock.mockReturnValue(FLAVOR);
+    buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-aaa",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: { customFlavors: [FLAVOR] } } },
+      false,
+      undefined
+    );
+    expect(getMergedFlavorMock).toHaveBeenCalledWith(
+      "claude",
+      "user-aaa",
+      [FLAVOR],
+      undefined // no CCR flavors in ccrFlavorsByAgent mock
+    );
+  });
+
+  it("returns no env when the flavor has no env block", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "user-bbb", name: "No Env Flavor" });
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-bbb",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.env).toBeUndefined();
+  });
+
+  it("falls back gracefully when the saved flavor no longer exists (stale ID)", () => {
+    getMergedFlavorMock.mockReturnValue(undefined);
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-deleted",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.env).toBeUndefined();
+    // command should still be generated from base settings
+    expect(result.command).toBe("claude --generated");
+  });
+
+  it("does not call getMergedFlavor when agentFlavorId is absent", () => {
+    buildArgsForRespawn(
+      { id: "t1", kind: "agent", agentId: "claude", cwd: "/p", location: "grid" },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(getMergedFlavorMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves agentFlavorId through all four buildArgs paths", () => {
+    // buildArgsForBackendTerminal
+    const r1 = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      { id: "t1", location: "grid", agentFlavorId: "user-aaa" },
+      "/p"
+    );
+    expect(r1.agentFlavorId).toBe("user-aaa");
+
+    // buildArgsForReconnectedFallback
+    const r2 = buildArgsForReconnectedFallback(
+      { id: "t1", cwd: "/p" },
+      { id: "t1", location: "grid", agentFlavorId: "user-bbb" },
+      "/p"
+    );
+    expect(r2.agentFlavorId).toBe("user-bbb");
+
+    // buildArgsForNonPtyRecreation
+    const r3 = buildArgsForNonPtyRecreation(
+      { id: "t1", kind: "browser", location: "grid", agentFlavorId: "user-ccc" },
+      "browser",
+      "/p"
+    );
+    expect(r3.agentFlavorId).toBe("user-ccc");
+  });
+});
+
+// ── adversarial: behavioral overrides must reach generateAgentCommand ─────────
+// These tests spy on generateAgentCommand arguments to prove that flavor
+// dangerousEnabled / customFlags / inlineMode / args overrides are actually
+// merged into the effectiveEntry passed to the command builder.  Previously the
+// mock ignored the settings arg entirely, so a bug in the merge would be silent.
+
+describe("adversarial: behavioral overrides flow through to generateAgentCommand", () => {
+  const BASE = {
+    id: "t1",
+    kind: "agent" as const,
+    agentId: "claude",
+    cwd: "/p",
+    location: "grid" as const,
+    agentFlavorId: "user-x",
+  };
+
+  beforeEach(() => {
+    getMergedFlavorMock.mockReset();
+    generateAgentCommandMock.mockClear();
+  });
+
+  it("dangerousEnabled=true from flavor overrides base false in effectiveEntry", () => {
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-x",
+      name: "Dangerous",
+      dangerousEnabled: true,
+    });
+    buildArgsForRespawn(
+      BASE,
+      "agent",
+      "/p",
+      { agents: { claude: { dangerousEnabled: false } } },
+      false,
+      undefined
+    );
+    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.dangerousEnabled).toBe(true);
+  });
+
+  it("customFlags from flavor overrides empty base in effectiveEntry", () => {
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-x",
+      name: "Flagged",
+      customFlags: "--my-flag",
+    });
+    buildArgsForRespawn(
+      BASE,
+      "agent",
+      "/p",
+      { agents: { claude: { customFlags: "" } } },
+      false,
+      undefined
+    );
+    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.customFlags).toBe("--my-flag");
+  });
+
+  it("inlineMode=false from flavor overrides base true in effectiveEntry", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "user-x", name: "NoInline", inlineMode: false });
+    buildArgsForRespawn(
+      BASE,
+      "agent",
+      "/p",
+      { agents: { claude: { inlineMode: true } } },
+      false,
+      undefined
+    );
+    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.inlineMode).toBe(false);
+  });
+
+  it("flavor.dangerousEnabled=undefined does NOT clobber base true (undefined guard)", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "user-x", name: "NoOverride" });
+    buildArgsForRespawn(
+      BASE,
+      "agent",
+      "/p",
+      { agents: { claude: { dangerousEnabled: true } } },
+      false,
+      undefined
+    );
+    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.dangerousEnabled).toBe(true);
+  });
+
+  it("flavor.customFlags=undefined does NOT clobber base value (undefined guard)", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "user-x", name: "NoFlagOverride" });
+    buildArgsForRespawn(
+      BASE,
+      "agent",
+      "/p",
+      { agents: { claude: { customFlags: "--base-flag" } } },
+      false,
+      undefined
+    );
+    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.customFlags).toBe("--base-flag");
+  });
+
+  it("flavor.args are joined and passed as flavorArgs option", () => {
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-x",
+      name: "WithArgs",
+      args: ["--system-prompt", "be concise"],
+    });
+    buildArgsForRespawn(BASE, "agent", "/p", { agents: { claude: {} } }, false, undefined);
+    const opts = generateAgentCommandMock.mock.calls[0][3] as Record<string, unknown>;
+    expect(opts.flavorArgs).toBe("--system-prompt be concise");
+  });
+
+  it("single-element flavor.args produces correct flavorArgs string", () => {
+    getMergedFlavorMock.mockReturnValue({
+      id: "user-x",
+      name: "OneArg",
+      args: ["--output-format=json"],
+    });
+    buildArgsForRespawn(BASE, "agent", "/p", { agents: { claude: {} } }, false, undefined);
+    const opts = generateAgentCommandMock.mock.calls[0][3] as Record<string, unknown>;
+    expect(opts.flavorArgs).toBe("--output-format=json");
+  });
+
+  it("no flavor → generateAgentCommand receives unmodified base entry", () => {
+    const baseWithNoFlavor = {
+      id: "t1",
+      kind: "agent" as const,
+      agentId: "claude",
+      cwd: "/p",
+      location: "grid" as const,
+    };
+    buildArgsForRespawn(
+      baseWithNoFlavor,
+      "agent",
+      "/p",
+      { agents: { claude: { dangerousEnabled: true, customFlags: "--base-flag" } } },
+      false,
+      undefined
+    );
+    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry.dangerousEnabled).toBe(true);
+    expect(entry.customFlags).toBe("--base-flag");
+  });
+
+  it("flavorArgs is undefined when flavor has no args field", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "user-x", name: "NoArgs" });
+    buildArgsForRespawn(BASE, "agent", "/p", { agents: { claude: {} } }, false, undefined);
+    const opts = generateAgentCommandMock.mock.calls[0][3] as Record<string, unknown>;
+    expect(opts.flavorArgs).toBeUndefined();
+  });
+});
+
+// ── adversarial: agentFlavorColor must be restored on respawn ─────────────────
+// Bug: buildArgsForRespawn looks up the flavor (which has a color field) but
+// never writes agentFlavorColor into the returned AddTerminalArgs object.
+// After an Electron reload, the dock icon loses its flavor tint and falls back
+// to the vanilla brand color instead of the flavor color.
+
+describe("adversarial: agentFlavorColor must be carried through buildArgsForRespawn", () => {
+  beforeEach(() => {
+    getMergedFlavorMock.mockReset();
+    generateAgentCommandMock.mockClear();
+  });
+
+  it("returns agentFlavorColor from the live flavor color on respawn", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "user-x", name: "Colored", color: "#ff6600" });
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-x",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.agentFlavorColor).toBe("#ff6600");
+  });
+
+  it("returns agentFlavorColor=undefined when flavor has no color field", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "user-x", name: "No Color" });
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-x",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.agentFlavorColor).toBeUndefined();
+  });
+
+  it("falls back to saved.agentFlavorColor when the live flavor is gone (deleted flavor)", () => {
+    getMergedFlavorMock.mockReturnValue(undefined); // flavor deleted
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "user-deleted",
+        agentFlavorColor: "#aabbcc",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.agentFlavorColor).toBe("#aabbcc");
+  });
+});
+
+// ── adversarial: agentFlavorColor missing from non-respawn build paths ─────────
+// buildArgsForRespawn was fixed to include agentFlavorColor, but three other
+// builder functions (BackendTerminal, ReconnectedFallback, NonPtyRecreation)
+// still forward agentFlavorId without forwarding agentFlavorColor.
+// That means panels hydrated via those paths lose their color fallback.
+
+describe("Adversarial: buildArgsForBackendTerminal preserves agentFlavorColor", () => {
+  it("forwards agentFlavorColor from saved state", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      { id: "t1", location: "grid", agentFlavorId: "user-x", agentFlavorColor: "#ff6600" },
+      "/p"
+    );
+    expect(result.agentFlavorColor).toBe("#ff6600");
+  });
+
+  it("returns undefined agentFlavorColor when saved has none", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      { id: "t1", location: "grid", agentFlavorId: "user-x" },
+      "/p"
+    );
+    expect(result.agentFlavorColor).toBeUndefined();
+  });
+});
+
+describe("Adversarial: buildArgsForReconnectedFallback preserves agentFlavorColor", () => {
+  it("forwards agentFlavorColor from saved state", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      { id: "t1", location: "grid", agentFlavorId: "user-x", agentFlavorColor: "#ff6600" },
+      "/p"
+    );
+    expect(result.agentFlavorColor).toBe("#ff6600");
+  });
+
+  it("returns undefined agentFlavorColor when saved has none", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      { id: "t1", location: "grid", agentFlavorId: "user-x" },
+      "/p"
+    );
+    expect(result.agentFlavorColor).toBeUndefined();
+  });
+});
+
+describe("Adversarial: buildArgsForNonPtyRecreation preserves agentFlavorColor", () => {
+  it("forwards agentFlavorColor from saved state", () => {
+    const result = buildArgsForNonPtyRecreation(
+      { id: "t1", location: "grid", agentFlavorId: "user-x", agentFlavorColor: "#ff6600" },
+      "agent",
+      "/p"
+    );
+    expect(result.agentFlavorColor).toBe("#ff6600");
+  });
+
+  it("returns undefined agentFlavorColor when saved has none", () => {
+    const result = buildArgsForNonPtyRecreation(
+      { id: "t1", location: "grid", agentFlavorId: "user-x" },
+      "agent",
+      "/p"
+    );
+    expect(result.agentFlavorColor).toBeUndefined();
+  });
+});
+
+describe("Adversarial: buildArgsForOrphanedTerminal preserves agentFlavorColor", () => {
+  // OrphanedTerminal receives BackendTerminalData which has no saved state,
+  // so agentFlavorColor cannot be restored — this test documents that
+  // buildArgsForOrphanedTerminal does NOT have access to saved.agentFlavorColor
+  // and therefore the result is always undefined (by design — no saved state available).
+  it("result has no agentFlavorColor (backend-only data — no saved state available)", () => {
+    const result = buildArgsForOrphanedTerminal(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      "/p"
+    );
+    expect(result.agentFlavorColor).toBeUndefined();
+  });
+});
+
+// ── adversarial: globalEnv merge in buildArgsForRespawn ───────────────────────
+// globalEnv is a new per-agent field that applies env vars to every launch
+// regardless of which flavor is active. Three invariants to verify:
+//   1. Global env applies even when no flavor is active (vanilla mode)
+//   2. Flavor env wins when keys overlap
+//   3. Non-overlapping keys from both global and flavor survive
+
+describe("Adversarial: globalEnv merge in buildArgsForRespawn", () => {
+  it("applies globalEnv when no flavor is active (no saved agentFlavorId)", () => {
+    getMergedFlavorMock.mockReturnValue(undefined);
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        // no agentFlavorId
+      },
+      "agent",
+      "/p",
+      { agents: { claude: { globalEnv: { MY_GLOBAL: "base-url" } } } },
+      false,
+      undefined
+    );
+    expect(result.env).toEqual({ MY_GLOBAL: "base-url" });
+  });
+
+  it("flavor env wins over globalEnv when keys overlap", () => {
+    getMergedFlavorMock.mockReturnValue({
+      id: "f1",
+      name: "Flavor",
+      env: { SHARED: "flavor-wins", FLAVOR_ONLY: "f" },
+    });
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "f1",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: { globalEnv: { SHARED: "global-loses", GLOBAL_ONLY: "g" } } } },
+      false,
+      undefined
+    );
+    expect(result.env?.SHARED).toBe("flavor-wins");
+    expect(result.env?.FLAVOR_ONLY).toBe("f");
+    expect(result.env?.GLOBAL_ONLY).toBe("g");
+  });
+
+  it("non-overlapping global and flavor keys both survive in the merged env", () => {
+    getMergedFlavorMock.mockReturnValue({
+      id: "f1",
+      name: "Flavor",
+      env: { FLAVOR_KEY: "fv" },
+    });
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "f1",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: { globalEnv: { GLOBAL_KEY: "gv" } } } },
+      false,
+      undefined
+    );
+    expect(result.env).toEqual({ GLOBAL_KEY: "gv", FLAVOR_KEY: "fv" });
+  });
+
+  it("returns undefined env when globalEnv is empty and flavor has no env", () => {
+    getMergedFlavorMock.mockReturnValue({ id: "f1", name: "No Env Flavor" });
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentFlavorId: "f1",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.env).toBeUndefined();
   });
 });

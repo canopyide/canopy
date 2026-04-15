@@ -95,8 +95,8 @@ test.describe.serial("Flavors: Custom Add (13–24)", () => {
     await goToClaudeSettings();
     await addCustomFlavor(ctx.window);
     await addCustomFlavor(ctx.window);
-    const customBadges = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.customBadge);
-    const count = await customBadges.count();
+    const customOptions = ctx.window.locator(SEL.flavor.customFlavorOption);
+    const count = await customOptions.count();
     expect(count).toBeGreaterThanOrEqual(3);
   });
 

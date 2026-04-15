@@ -111,7 +111,7 @@ function RunningDot({ state }: { state: AgentState | null }) {
 
 type SplitLaunchItemProps = {
   row: AgentRow;
-  onLaunch: (agentId: BuiltInAgentId, flavorId?: string) => void;
+  onLaunch: (agentId: BuiltInAgentId, flavorId?: string | null) => void;
 };
 
 function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
@@ -121,8 +121,10 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
     const el = leftAreaRef.current;
     if (!el) return;
     const handler = (e: PointerEvent) => {
+      // Prevent Radix from opening the submenu when clicking the main area
       e.stopPropagation();
-      onLaunch(row.id);
+      e.preventDefault();
+      onLaunch(row.id, null);
     };
     el.addEventListener("pointerdown", handler, true);
     return () => el.removeEventListener("pointerdown", handler, true);
@@ -145,8 +147,17 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
         </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent data-testid="submenu-content">
+        <DropdownMenuItem onSelect={() => onLaunch(row.id, null)}>
+          <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
+            <row.Icon brandColor={getBrandColorHex(row.id)} />
+          </span>
+          Vanilla
+        </DropdownMenuItem>
         {row.flavors!.map((flavor) => (
           <DropdownMenuItem key={flavor.id} onSelect={() => onLaunch(row.id, flavor.id)}>
+            <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
+              <row.Icon brandColor={flavor.color ?? getBrandColorHex(row.id)} />
+            </span>
             {flavor.name.replace(/^CCR:\s*/, "")}
           </DropdownMenuItem>
         ))}
@@ -360,11 +371,11 @@ export function AgentTrayButton({
     ccrFlavorsByAgent,
   ]);
 
-  const handleLaunch = useCallback((agentId: BuiltInAgentId, flavorId?: string) => {
+  const handleLaunch = useCallback((agentId: BuiltInAgentId, flavorId?: string | null) => {
     setOpen(false);
     void actionService.dispatch(
       "agent.launch",
-      { agentId, ...(flavorId ? { flavorId } : {}) },
+      { agentId, ...(flavorId !== undefined ? { flavorId } : {}) },
       { source: "user" }
     );
   }, []);
@@ -421,7 +432,7 @@ export function AgentTrayButton({
   const showFallback = !isAvailabilityLoading && !hasAnyContent && fallbackSetup.length > 0;
 
   const renderLaunchItem = (row: AgentRow) => {
-    if (row.flavors && row.flavors.length > 1) {
+    if (row.flavors && row.flavors.length > 0) {
       return <SplitLaunchItem key={`launch-${row.id}`} row={row} onLaunch={handleLaunch} />;
     }
 

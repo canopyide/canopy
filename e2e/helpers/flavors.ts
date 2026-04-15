@@ -65,10 +65,35 @@ export async function navigateToAgentSettings(
   await expect(listbox).not.toBeVisible({ timeout: 5000 });
 }
 
-export function getFlavorRowByName(window: import("@playwright/test").Page, name: string) {
-  return window.locator(`${SEL.flavor.section}`).locator("div.flex.items-center.border", {
-    hasText: name,
-  });
+/**
+ * Selects the named flavor in the flavor `<select>` and returns the detail-view
+ * panel that appears below it.  With the select+detail design only one flavor's
+ * detail is visible at a time; call this function sequentially for each flavor
+ * you need to inspect.
+ */
+export async function getFlavorRowByName(
+  window: import("@playwright/test").Page,
+  name: string
+): Promise<import("@playwright/test").Locator> {
+  const select = window.locator(SEL.flavor.defaultSelect);
+  await select.waitFor({ state: "visible", timeout: 10_000 });
+
+  // Select the matching option (strip "CCR: " prefix from display)
+  const options = select.locator("option");
+  const allTexts = await options.allTextContents();
+  const matchingText = allTexts.find(
+    (t) =>
+      t.trim() === name || t.trim() === `CCR: ${name}` || t.replace(/^CCR:\s*/, "").trim() === name
+  );
+  if (!matchingText) throw new Error(`Flavor option "${name}" not found in select`);
+  await select.selectOption({ label: matchingText });
+
+  // Return the detail-view panel (the first bordered panel below the select)
+  return window
+    .locator(
+      `${SEL.flavor.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-canopy-border`
+    )
+    .first();
 }
 
 export async function addCustomFlavor(window: import("@playwright/test").Page): Promise<void> {

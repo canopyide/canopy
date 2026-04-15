@@ -142,6 +142,14 @@ export interface AgentFlavor {
   description?: string;
   env?: Record<string, string>;
   args?: string[];
+  /** Per-flavor override: when set, overrides the agent-level dangerousEnabled setting */
+  dangerousEnabled?: boolean;
+  /** Per-flavor override: extra CLI flags merged on top of agent-level customFlags */
+  customFlags?: string;
+  /** Per-flavor override: when set, overrides the agent-level inlineMode setting */
+  inlineMode?: boolean;
+  /** Optional brand color (CSS hex) used to tint the agent icon for this flavor */
+  color?: string;
 }
 
 export interface AgentConfig {
@@ -298,6 +306,12 @@ export interface AgentConfig {
    * If omitted, the first flavor in the array is the default.
    */
   defaultFlavorId?: string;
+  /**
+   * Suggested environment variable overrides for this agent, shown as UI hints
+   * in the flavor and global-env editors.
+   * `defaultValue` is pre-populated when a new flavor is created for this agent.
+   */
+  envSuggestions?: Array<{ key: string; hint: string; defaultValue?: string }>;
 }
 
 export const AGENT_REGISTRY: Record<string, AgentConfig> = {
@@ -457,6 +471,31 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         versionArgs: ["--version"],
         severity: "fatal",
         installUrl: "https://github.com/anthropics/claude-code",
+      },
+    ],
+    envSuggestions: [
+      { key: "ANTHROPIC_AUTH_TOKEN", hint: "your Z.AI API key", defaultValue: "" },
+      {
+        key: "ANTHROPIC_BASE_URL",
+        hint: "https://api.z.ai/api/anthropic",
+        defaultValue: "https://api.z.ai/api/anthropic",
+      },
+      { key: "ANTHROPIC_DEFAULT_OPUS_MODEL", hint: "e.g. glm-5.1", defaultValue: "glm-5.1" },
+      {
+        key: "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        hint: "e.g. glm-4.7",
+        defaultValue: "glm-4.7",
+      },
+      {
+        key: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        hint: "e.g. glm-4.5-air",
+        defaultValue: "glm-4.5-air",
+      },
+      { key: "API_TIMEOUT_MS", hint: "e.g. 3000000", defaultValue: "3000000" },
+      {
+        key: "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+        hint: "1 to disable telemetry",
+        defaultValue: "1",
       },
     ],
   },

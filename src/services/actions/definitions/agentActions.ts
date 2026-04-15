@@ -23,7 +23,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       prompt: z.string().optional(),
       interactive: z.boolean().optional(),
       model: z.string().optional(),
-      flavorId: z.string().optional(),
+      flavorId: z.string().nullable().optional(),
     }),
     run: async (args: unknown) => {
       const { agentId, location, cwd, worktreeId, prompt, interactive, model, flavorId } = args as {
@@ -34,7 +34,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         prompt?: string;
         interactive?: boolean;
         model?: string;
-        flavorId?: string;
+        flavorId?: string | null;
       };
       const terminalId = await callbacks.onLaunchAgent(agentId, {
         location,

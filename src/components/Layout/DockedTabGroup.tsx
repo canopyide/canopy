@@ -23,6 +23,9 @@ import {
   useFocusStore,
   type TerminalInstance,
 } from "@/store";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { getMergedFlavors } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
@@ -353,6 +356,26 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const isDeprioritized = !isOpen && isGroupDeprioritized(panels);
   const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);
 
+  const agentSettingsAll = useAgentSettingsStore((s) => s.settings);
+  const ccrFlavorsByAgent = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent);
+
+  // Per-panel flavor colors for tab bar
+  const panelFlavorColors = useMemo(() => {
+    return new Map(
+      panels.map((p) => {
+        const vanilla = getBrandColorHex(p.agentId ?? p.type);
+        if (!p.agentFlavorId || !p.agentId) return [p.id, vanilla] as const;
+        const flavors = getMergedFlavors(
+          p.agentId,
+          agentSettingsAll?.agents?.[p.agentId]?.customFlavors,
+          ccrFlavorsByAgent[p.agentId]
+        );
+        const flavor = flavors.find((f) => f.id === p.agentFlavorId);
+        return [p.id, flavor?.color ?? p.agentFlavorColor ?? vanilla] as const;
+      })
+    );
+  }, [panels, agentSettingsAll, ccrFlavorsByAgent]);
+
   if (!activePanel || panels.length === 0) {
     return null;
   }
@@ -362,7 +385,9 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const isWaiting = activePanel.agentState === "waiting";
   const isActive = isWorking || isRunning || isWaiting;
   const commandText = activePanel.activityHeadline || activePanel.lastCommand;
-  const brandColor = getBrandColorHex(activePanel.agentId ?? activePanel.type);
+  const brandColor =
+    panelFlavorColors.get(activePanel.id) ??
+    getBrandColorHex(activePanel.agentId ?? activePanel.type);
   const agentState = activePanel.agentState;
   const displayTitle = getBaseTitle(activePanel.title);
   const showStateIcon = agentState && agentState !== "idle" && agentState !== "completed";
@@ -520,6 +545,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                   kind={panel.kind ?? "terminal"}
                   agentState={panel.agentState}
                   isActive={panel.id === activeTabId}
+                  flavorColor={panelFlavorColors.get(panel.id)}
                   onClick={() => handleTabClick(panel.id)}
                   onClose={() => handleTabClose(panel.id)}
                   onRename={(newTitle) => handleTabRename(panel.id, newTitle)}

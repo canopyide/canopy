@@ -40,7 +40,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = getFlavorRowByName(ctx.window, "Env Model");
+    const row = await getFlavorRowByName(ctx.window, "Env Model");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
   });
@@ -57,7 +57,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = getFlavorRowByName(ctx.window, "Env Url");
+    const row = await getFlavorRowByName(ctx.window, "Env Url");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_BASE_URL")).toBeVisible({ timeout: T_SHORT });
   });
@@ -94,7 +94,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = getFlavorRowByName(ctx.window, "Multi Env");
+    const row = await getFlavorRowByName(ctx.window, "Multi Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
     await expect(row.getByText("ANTHROPIC_BASE_URL")).toBeVisible({ timeout: T_SHORT });
@@ -139,7 +139,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = getFlavorRowByName(ctx.window, "Mono Env");
+    const row = await getFlavorRowByName(ctx.window, "Mono Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
 
     const envText = row.locator("span.font-mono, code.font-mono");
@@ -153,7 +153,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     }
   });
 
-  test("69. Two flavors with same env key — select second and verify", async () => {
+  test("69. Two flavors with same env key — select each and verify", async () => {
     writeCcrConfig([
       { id: "dup-first", name: "Dup First", model: "dup-model-a" },
       { id: "dup-second", name: "Dup Second", model: "dup-model-b" },
@@ -161,24 +161,21 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row1 = getFlavorRowByName(ctx.window, "Dup First");
-    const row2 = getFlavorRowByName(ctx.window, "Dup Second");
-    await expect(row1).toBeVisible({ timeout: T_MEDIUM });
-    await expect(row2).toBeVisible({ timeout: T_MEDIUM });
 
+    // Select first flavor and check its env key
+    const row1 = await getFlavorRowByName(ctx.window, "Dup First");
+    await expect(row1).toBeVisible({ timeout: T_MEDIUM });
     await expect(row1.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
+
+    // Select second flavor and check its env key
+    const row2 = await getFlavorRowByName(ctx.window, "Dup Second");
+    await expect(row2).toBeVisible({ timeout: T_MEDIUM });
     await expect(row2.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
 
+    // Verify second is now selected
     const select = ctx.window.locator(SEL.flavor.defaultSelect);
-    const options = select.locator("option");
-    const allTexts = await options.allTextContents();
-    const secondLabel = allTexts.find((t) => t.includes("Dup Second"));
-    if (secondLabel) {
-      await select.selectOption({ label: secondLabel });
-      await ctx.window.waitForTimeout(T_SETTLE);
-      const val = await select.inputValue();
-      expect(val).toBeTruthy();
-    }
+    const val = await select.inputValue();
+    expect(val).toBeTruthy();
   });
 
   test("70. Settings section shows env keys correctly for created flavor", async () => {
@@ -197,7 +194,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     const section = ctx.window.locator(SEL.flavor.section);
     await expect(section).toBeVisible({ timeout: T_MEDIUM });
 
-    const row = getFlavorRowByName(ctx.window, "Section Env");
+    const row = await getFlavorRowByName(ctx.window, "Section Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
 
     const rowText = await row.textContent();

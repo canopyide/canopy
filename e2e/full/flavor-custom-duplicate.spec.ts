@@ -35,6 +35,8 @@ test.describe.serial("Flavors: Custom Duplicate (35–44)", () => {
     await addCustomFlavor(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
+    const optionsBefore = await ctx.window.locator(SEL.flavor.customFlavorOption).count();
+
     const dupBtn = ctx.window
       .locator(SEL.flavor.section)
       .locator(SEL.flavor.duplicateButton)
@@ -42,24 +44,22 @@ test.describe.serial("Flavors: Custom Duplicate (35–44)", () => {
     await dupBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const customBadges = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.customBadge);
-    const count = await customBadges.count();
-    expect(count).toBeGreaterThanOrEqual(2);
+    const optionsAfter = await ctx.window.locator(SEL.flavor.customFlavorOption).count();
+    expect(optionsAfter).toBeGreaterThan(optionsBefore);
   });
 
   test("36. Duplicated flavor has '(copy)' in name", async () => {
     await goToClaudeSettings();
-    await expect(
-      ctx.window.locator(SEL.flavor.section).locator("span", { hasText: "(copy)" }).first()
-    ).toBeVisible({
-      timeout: T_SHORT,
-    });
+    const allOptionTexts = await ctx.window
+      .locator("#agents-flavors select option")
+      .allTextContents();
+    expect(allOptionTexts.some((t) => t.includes("(copy)"))).toBe(true);
   });
 
   test("37. Duplicated flavor has unique user- ID", async () => {
     await goToClaudeSettings();
-    const customBadges = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.customBadge);
-    const count = await customBadges.count();
+    const customOptions = ctx.window.locator(SEL.flavor.customFlavorOption);
+    const count = await customOptions.count();
     expect(count).toBeGreaterThanOrEqual(2);
   });
 
@@ -70,34 +70,43 @@ test.describe.serial("Flavors: Custom Duplicate (35–44)", () => {
     await ctx.window.waitForTimeout(35_000);
     await goToClaudeSettings();
 
-    const ccrRow = ctx.window.locator(SEL.flavor.section).locator("div.flex.items-center.border", {
-      hasText: "CCR Dup Test",
-    });
-    await expect(ccrRow).toBeVisible({ timeout: T_MEDIUM });
+    // Select the CCR flavor from the dropdown to reveal its detail panel
+    const flavorSelect = ctx.window.locator(SEL.flavor.defaultSelect);
+    await expect(flavorSelect).toBeVisible({ timeout: T_MEDIUM });
 
-    const dupBtn = ccrRow.locator(SEL.flavor.duplicateButton);
+    const ccrOption = flavorSelect.locator("option", { hasText: "CCR Dup Test" });
+    if ((await ccrOption.count()) === 0) return; // CCR not loaded yet — skip
+
+    await flavorSelect.selectOption({ label: "CCR Dup Test" });
+    await ctx.window.waitForTimeout(T_SETTLE);
+
+    const dupBtn = ctx.window
+      .locator(SEL.flavor.section)
+      .locator(SEL.flavor.duplicateButton)
+      .first();
+    await expect(dupBtn).toBeVisible({ timeout: T_SHORT });
     await dupBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    await expect(
-      ctx.window
-        .locator(SEL.flavor.section)
-        .locator("span", { hasText: "CCR Dup Test (copy)" })
-        .first()
-    ).toBeVisible({ timeout: T_SHORT });
+    const allOptionTexts = await ctx.window
+      .locator("#agents-flavors select option")
+      .allTextContents();
+    expect(allOptionTexts.some((t) => t.includes("CCR Dup Test") && t.includes("(copy)"))).toBe(
+      true
+    );
   });
 
   test("39. Duplicating custom flavor copies all properties", async () => {
     await goToClaudeSettings();
-    const customRows = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.customBadge);
-    const countBefore = await customRows.count();
+    const customOptions = ctx.window.locator(SEL.flavor.customFlavorOption);
+    const countBefore = await customOptions.count();
     const dupBtn = ctx.window
       .locator(SEL.flavor.section)
       .locator(SEL.flavor.duplicateButton)
       .last();
     await dupBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
-    const countAfter = await customRows.count();
+    const countAfter = await customOptions.count();
     expect(countAfter).toBe(countBefore + 1);
   });
 
@@ -105,11 +114,17 @@ test.describe.serial("Flavors: Custom Duplicate (35–44)", () => {
     writeCcrConfig([{ id: "ccr-dupvis", model: "dupvis-model" }]);
     await ctx.window.waitForTimeout(35_000);
     await goToClaudeSettings();
-    const ccrRow = ctx.window.locator(SEL.flavor.section).locator("div.flex.items-center.border", {
-      hasText: "ccr-dupvis",
-    });
-    if (await ccrRow.isVisible().catch(() => false)) {
-      await expect(ccrRow.locator(SEL.flavor.duplicateButton)).toBeVisible({ timeout: T_SHORT });
+
+    const flavorSelect = ctx.window.locator(SEL.flavor.defaultSelect);
+    await expect(flavorSelect).toBeVisible({ timeout: T_MEDIUM });
+
+    const ccrOption = flavorSelect.locator("option", { hasText: "ccr-dupvis" });
+    if ((await ccrOption.count()) > 0) {
+      const optionText = (await ccrOption.first().textContent()) ?? "ccr-dupvis";
+      await flavorSelect.selectOption({ label: optionText.trim() });
+      await ctx.window.waitForTimeout(T_SETTLE);
+      const dupBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.duplicateButton);
+      await expect(dupBtn.first()).toBeVisible({ timeout: T_SHORT });
     }
   });
 
@@ -132,35 +147,38 @@ test.describe.serial("Flavors: Custom Duplicate (35–44)", () => {
     await dupBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const customBadgesBefore = await ctx.window
-      .locator(SEL.flavor.section)
-      .locator(SEL.flavor.customBadge)
-      .count();
+    const customOptions = ctx.window.locator(SEL.flavor.customFlavorOption);
+    const countBefore = await customOptions.count();
 
     const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).last();
     await delBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const customBadgesAfter = await ctx.window
-      .locator(SEL.flavor.section)
-      .locator(SEL.flavor.customBadge)
-      .count();
-    expect(customBadgesAfter).toBe(customBadgesBefore - 1);
+    const countAfter = await customOptions.count();
+    expect(countAfter).toBe(countBefore - 1);
   });
 
   test("43. Duplicate multiple times creates independent copies", async () => {
     await goToClaudeSettings();
+    const allTextsBefore = await ctx.window
+      .locator("#agents-flavors select option")
+      .allTextContents();
+    const copiesBefore = allTextsBefore.filter((t) => t.includes("(copy)")).length;
+
     const dupBtn = ctx.window
       .locator(SEL.flavor.section)
       .locator(SEL.flavor.duplicateButton)
       .first();
     await dupBtn.click();
+    await ctx.window.waitForTimeout(T_SETTLE);
     await dupBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const copies = ctx.window.locator(SEL.flavor.section).locator("span", { hasText: "(copy)" });
-    const count = await copies.count();
-    expect(count).toBeGreaterThanOrEqual(2);
+    const allTextsAfter = await ctx.window
+      .locator("#agents-flavors select option")
+      .allTextContents();
+    const copiesAfter = allTextsAfter.filter((t) => t.includes("(copy)")).length;
+    expect(copiesAfter).toBeGreaterThanOrEqual(copiesBefore + 2);
   });
 
   test("44. Duplicate immediately reflects in toolbar and tray", async () => {

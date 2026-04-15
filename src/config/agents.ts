@@ -55,6 +55,36 @@ export const AGENT_DESCRIPTIONS: Record<string, string> = {
   copilot: "GitHub's AI assistant with broad model choice",
 };
 
+/**
+ * Sanitizes an env var map: rejects dangerous keys, injection patterns,
+ * non-string values, and prototype-polluting keys.
+ * Returns undefined when no safe entries remain.
+ */
+export function sanitizeAgentEnv(
+  env: Record<string, unknown> | undefined
+): Record<string, string> | undefined {
+  if (!env || typeof env !== "object") return undefined;
+  const sanitized: Record<string, string> = {};
+  let entries: [string, unknown][];
+  try {
+    entries = Object.entries(env);
+  } catch {
+    return undefined;
+  }
+  for (const [key, rawValue] of entries) {
+    if (typeof rawValue !== "string") continue;
+    const value = rawValue;
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    if (value.includes("$(") || value.includes("`") || value.includes(";") || value.includes("|"))
+      continue;
+    if (value.length > 10000) continue;
+    if (["PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"].includes(key.toUpperCase()))
+      continue;
+    sanitized[key] = value;
+  }
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+}
+
 export function getMergedFlavors(
   agentId: string,
   customFlavors?: AgentFlavor[],
@@ -63,49 +93,55 @@ export function getMergedFlavors(
   const registryFlavors = ccrFlavors ?? getAgentConfig(agentId)?.flavors ?? [];
   const custom = customFlavors ?? [];
 
-  // Sanitize and validate env vars to prevent injection attacks
-  const sanitizeEnv = (env?: Record<string, string>) => {
-    if (!env || typeof env !== "object") return undefined;
-    const sanitized: Record<string, string> = {};
-    let entries: [string, unknown][];
-    try {
-      entries = Object.entries(env);
-    } catch {
-      return undefined;
-    }
-    for (const [key, rawValue] of entries) {
-      // Reject non-string values (circular refs, objects, etc.)
-      if (typeof rawValue !== "string") continue;
-      const value = rawValue;
-      // Reject keys that could cause prototype pollution
-      if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
-      // Reject values with shell injection patterns
-      if (value.includes("$(") || value.includes("`") || value.includes(";") || value.includes("|"))
-        continue;
-      // Limit value length to prevent resource exhaustion
-      if (value.length > 10000) continue;
-      // Reject dangerous system environment variables
-      if (
-        ["PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"].includes(key.toUpperCase())
-      )
-        continue;
-      sanitized[key] = value;
-    }
-    return sanitized;
-  };
-
   // Validate and sanitize flavor objects
   const validateFlavor = (flavor: AgentFlavor): AgentFlavor | null => {
-    if (!flavor.id || !flavor.name) return null;
-    if (flavor.name.length > 200) return null;
-    if (/[<>'"&]/.test(flavor.name)) return null; // Basic XSS prevention
+    // Trim name first so a whitespace-only string is caught by the empty check below
+    const trimmedName = flavor.name?.trim() ?? "";
+    if (!flavor.id || !trimmedName) return null;
+    if (trimmedName.length > 200) return null;
+    if (/[<>]/.test(trimmedName)) return null; // Block XSS-relevant angle brackets only
     if (flavor.id.length > 100) return null;
     if (!/^[a-zA-Z0-9_.-]+$/.test(flavor.id)) return null; // Only safe ID chars
 
+    // Sanitize args array — filter out non-string, empty, injection-containing, or oversized entries
+    const sanitizeArgs = (args?: string[]): string[] | undefined => {
+      if (!Array.isArray(args)) return undefined;
+      const safe = args.filter(
+        (a) =>
+          typeof a === "string" &&
+          a.length > 0 &&
+          a.length <= 10000 &&
+          !a.includes(";") &&
+          !a.includes("|") &&
+          !a.includes("$(") &&
+          !a.includes("`") &&
+          !a.includes("&") &&
+          !a.includes(">")
+      );
+      return safe.length > 0 ? safe : undefined;
+    };
+
     return {
       ...flavor,
-      name: flavor.name.trim(),
-      env: sanitizeEnv(flavor.env),
+      name: trimmedName,
+      env: sanitizeAgentEnv(flavor.env),
+      args: sanitizeArgs(flavor.args),
+      dangerousEnabled:
+        typeof flavor.dangerousEnabled === "boolean" ? flavor.dangerousEnabled : undefined,
+      customFlags:
+        typeof flavor.customFlags === "string" &&
+        !flavor.customFlags.includes(";") &&
+        !flavor.customFlags.includes("|") &&
+        !flavor.customFlags.includes("$(") &&
+        !flavor.customFlags.includes("`")
+          ? flavor.customFlags.slice(0, 10000)
+          : undefined,
+      inlineMode: typeof flavor.inlineMode === "boolean" ? flavor.inlineMode : undefined,
+      color:
+        typeof flavor.color === "string" &&
+        /^#[0-9a-fA-F]{3,4}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$/.test(flavor.color)
+          ? flavor.color
+          : undefined,
     };
   };
 
@@ -133,13 +169,14 @@ export function getMergedFlavor(
   customFlavors?: AgentFlavor[],
   ccrFlavors?: AgentFlavor[]
 ): AgentFlavor | undefined {
-  if (!flavorId) {
+  if (flavorId === undefined) {
     const merged = getMergedFlavors(agentId, customFlavors, ccrFlavors);
     const config = getAgentConfig(agentId);
     const defaultId = config?.defaultFlavorId;
     if (defaultId) return merged.find((f) => f.id === defaultId);
     return merged[0];
   }
+  if (!flavorId) return undefined;
   const merged = getMergedFlavors(agentId, customFlavors, ccrFlavors);
   return merged.find((f) => f.id === flavorId);
 }

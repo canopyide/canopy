@@ -304,9 +304,10 @@ export function AgentButton({
                         "hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] focus-visible:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))]",
                         !isReady && !isLoading && "opacity-60"
                       )}
-                      aria-label={`${config.name} flavor selector`}
+                      aria-label={`${ariaLabel} — choose flavor`}
                     >
-                      <ChevronDown className="h-3 w-3" />
+                      {iconElement}
+                      <ChevronDown className="absolute bottom-0.5 right-0.5 h-2 w-2 opacity-60" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" sideOffset={4} className="min-w-[12rem]">
@@ -315,12 +316,15 @@ export function AgentButton({
                       onSelect={() => {
                         void actionService.dispatch(
                           "agent.launch",
-                          { agentId: type },
+                          { agentId: type, flavorId: null },
                           { source: "user" }
                         );
                       }}
                     >
-                      Vanilla (no overrides)
+                      <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
+                        <config.icon brandColor={getBrandColorHex(type)} />
+                      </span>
+                      Vanilla
                     </DropdownMenuItem>
                     {flavors.map((flavor) => (
                       <DropdownMenuItem
@@ -334,6 +338,9 @@ export function AgentButton({
                           );
                         }}
                       >
+                        <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
+                          <config.icon brandColor={flavor.color ?? getBrandColorHex(type)} />
+                        </span>
                         {flavor.name.replace(/^CCR:\s*/, "")}
                       </DropdownMenuItem>
                     ))}
