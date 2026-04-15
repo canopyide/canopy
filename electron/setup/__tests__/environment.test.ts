@@ -5,12 +5,15 @@ const fsMock = vi.hoisted(() => ({
   existsSync: vi.fn<(p: string) => boolean>(),
   readdirSync: vi.fn<(p: string) => string[]>(),
   rmSync: vi.fn(),
+  cpSync: vi.fn(),
+  renameSync: vi.fn(),
+  writeFileSync: vi.fn(),
 }));
 
 const electronMock = vi.hoisted(() => ({
   app: {
     isPackaged: false,
-    getPath: vi.fn(() => "/tmp/test-appdata"),
+    getPath: vi.fn<(key?: string) => string>(() => "/tmp/test-appdata"),
     setPath: vi.fn(),
     commandLine: { appendSwitch: vi.fn() },
     enableSandbox: vi.fn(),
@@ -28,10 +31,16 @@ vi.mock("fs", () => ({
     existsSync: fsMock.existsSync,
     readdirSync: fsMock.readdirSync,
     rmSync: fsMock.rmSync,
+    cpSync: fsMock.cpSync,
+    renameSync: fsMock.renameSync,
+    writeFileSync: fsMock.writeFileSync,
   },
   existsSync: fsMock.existsSync,
   readdirSync: fsMock.readdirSync,
   rmSync: fsMock.rmSync,
+  cpSync: fsMock.cpSync,
+  renameSync: fsMock.renameSync,
+  writeFileSync: fsMock.writeFileSync,
 }));
 
 vi.mock("electron", () => electronMock);
@@ -587,5 +596,62 @@ describe("fixPath packaging guard", () => {
     await import("../environment.js");
 
     expect(fixPathMock.default).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Canopy -> Daintree userData migration gating", () => {
+  const originalVariant = process.env.BUILD_VARIANT;
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
+    process.argv = ["electron", "main.js"];
+    electronMock.app.isPackaged = true;
+    electronMock.app.getPath.mockImplementation((key?: string) => {
+      if (key === "userData") return "/tmp/user-data/Daintree";
+      if (key === "appData") return "/tmp/user-data";
+      return "/tmp/test";
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    process.argv = originalArgv;
+    if (originalVariant === undefined) {
+      Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    } else {
+      (process.env as Record<string, string | undefined>).BUILD_VARIANT = originalVariant;
+    }
+  });
+
+  it("runs the migration when BUILD_VARIANT is unset (Daintree default)", async () => {
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    // Legacy Canopy userData exists; new Daintree userData does not.
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("/Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    expect(fsMock.cpSync).toHaveBeenCalledWith("/tmp/user-data/Canopy", "/tmp/user-data/Daintree", {
+      recursive: true,
+    });
+  });
+
+  it("skips the migration when BUILD_VARIANT=canopy (legacy build)", async () => {
+    (process.env as Record<string, string | undefined>).BUILD_VARIANT = "canopy";
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("/Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+    expect(fsMock.renameSync).not.toHaveBeenCalled();
   });
 });

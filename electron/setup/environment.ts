@@ -39,7 +39,10 @@ if (app.isPackaged) {
 // each test run gets its own isolated data directory.
 const hasExplicitUserDataDir = process.argv.some((a) => a.startsWith("--user-data-dir"));
 if (!app.isPackaged && !hasExplicitUserDataDir) {
-  app.setPath("userData", path.join(app.getPath("appData"), "daintree-dev"));
+  // Keep dev data separate per variant so `BUILD_VARIANT=canopy npm run dev`
+  // doesn't collide with the default Daintree dev instance.
+  const devDirName = process.env.BUILD_VARIANT === "canopy" ? "canopy-app-dev" : "daintree-dev";
+  app.setPath("userData", path.join(app.getPath("appData"), devDirName));
 }
 
 // TODO(0.9.0): Remove this temporary Canopy -> Daintree userData migration
@@ -48,8 +51,10 @@ if (!app.isPackaged && !hasExplicitUserDataDir) {
 // launch, then rename the SQLite db file. A `.rebrand-migrated` marker gates
 // the skip so a partial copy can be retried on next launch instead of leaving
 // the user stranded with a half-populated userData.
-// Skipped when --user-data-dir is explicitly set (e.g. E2E tests).
-if (!hasExplicitUserDataDir) {
+// Skipped when --user-data-dir is explicitly set (e.g. E2E tests), and
+// skipped entirely for the legacy Canopy variant (it IS the Canopy user data
+// and must stay in place — migrating it would copy it into itself).
+if (!hasExplicitUserDataDir && process.env.BUILD_VARIANT !== "canopy") {
   try {
     const newUserData = app.getPath("userData");
     const markerPath = path.join(newUserData, ".rebrand-migrated");
