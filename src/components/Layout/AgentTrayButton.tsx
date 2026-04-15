@@ -1,5 +1,5 @@
 import { useMemo, type ComponentType } from "react";
-import { Puzzle } from "lucide-react";
+import { Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -62,7 +62,7 @@ export function AgentTrayButton({
       // belongs in the setup section alongside missing agents.
       const ready = isAgentReady(availabilityState);
       const resolved = availabilityState !== undefined;
-      const pinned = agentSettings?.agents?.[id]?.pinned === true;
+      const pinned = agentSettings?.agents?.[id]?.pinned !== false;
 
       if (ready) {
         readyAll.push(row);
@@ -106,14 +106,19 @@ export function AgentTrayButton({
                 className="toolbar-agent-button text-daintree-text hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] focus-visible:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] transition-colors"
                 aria-label="Agent tray"
               >
-                <Puzzle />
+                <Plug />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">Agent Tray</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <DropdownMenuContent align="start" sideOffset={4} className="min-w-[14rem]">
+      <DropdownMenuContent
+        align="start"
+        sideOffset={4}
+        className="min-w-[14rem]"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         {!hasAnyContent &&
           (isAvailabilityLoading ? (
             <div className="px-2.5 py-2 text-xs text-daintree-text/60">Checking agents…</div>
@@ -140,7 +145,7 @@ export function AgentTrayButton({
             {readyUnpinned.length > 0 && <DropdownMenuSeparator />}
             <DropdownMenuLabel>Pin to Toolbar</DropdownMenuLabel>
             {readyAll.map((row) => {
-              const pinned = agentSettings?.agents?.[row.id]?.pinned === true;
+              const pinned = agentSettings?.agents?.[row.id]?.pinned !== false;
               return (
                 <DropdownMenuCheckboxItem
                   key={`pin-${row.id}`}

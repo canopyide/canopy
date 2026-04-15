@@ -97,7 +97,7 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
-  Puzzle: () => <span data-testid="puzzle-icon" />,
+  Plug: () => <span data-testid="plug-icon" />,
 }));
 
 import { AgentTrayButton } from "../AgentTrayButton";
@@ -113,10 +113,10 @@ describe("AgentTrayButton", () => {
     mockSettings = null;
   });
 
-  it("renders the puzzle trigger with accessible label", () => {
+  it("renders the plug trigger with accessible label", () => {
     const { getByLabelText, getByTestId } = render(<AgentTrayButton />);
     expect(getByLabelText("Agent tray")).toBeTruthy();
-    expect(getByTestId("puzzle-icon")).toBeTruthy();
+    expect(getByTestId("plug-icon")).toBeTruthy();
   });
 
   it("only shows ready (not merely installed) agents in the Launch section", () => {
@@ -257,7 +257,7 @@ describe("AgentTrayButton", () => {
     expect(getByText("No agents available")).toBeTruthy();
   });
 
-  it("handles null store settings gracefully (agents treated as unpinned)", () => {
+  it("handles null store settings gracefully (agents default to pinned)", () => {
     mockSettings = null;
     const availability = {
       claude: "ready",
@@ -269,13 +269,15 @@ describe("AgentTrayButton", () => {
     );
 
     const labels = queryAllByTestId("menu-label").map((el) => el.textContent);
-    // With null settings, agents are unpinned — they show in Launch, not as pinned
-    expect(labels).toContain("Launch");
+    // With null settings, every entry's pinned reads as undefined, which the
+    // tray treats as pinned — so ready agents only appear in "Pin to Toolbar"
+    // and never in the launch list.
+    expect(labels).not.toContain("Launch");
     expect(labels).toContain("Pin to Toolbar");
 
     const boxes = getAllByRole("menuitemcheckbox");
     for (const box of boxes) {
-      expect(box.getAttribute("aria-checked")).toBe("false");
+      expect(box.getAttribute("aria-checked")).toBe("true");
     }
   });
 });

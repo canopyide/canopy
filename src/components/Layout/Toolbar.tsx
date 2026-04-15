@@ -18,7 +18,7 @@ import {
   Ellipsis,
   GitBranch,
   StickyNote,
-  Puzzle,
+  Plug,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { CopyTreeIcon, McpServerIcon } from "@/components/icons";
@@ -49,6 +49,7 @@ import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import type { CliAvailability, AgentSettings } from "@shared/types";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { ProjectSwitcherPalette } from "@/components/Project/ProjectSwitcherPalette";
@@ -78,7 +79,7 @@ export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenu
       { label: getAgentConfig(id)?.name ?? id, icon: SquareTerminal },
     ])
   ) as unknown as Record<BuiltInAgentId, OverflowMenuMeta>),
-  "agent-tray": { label: "Agent Tray", icon: Puzzle },
+  "agent-tray": { label: "Agent Tray", icon: Plug },
   terminal: { label: "Terminal", icon: SquareTerminal },
   browser: { label: "Browser", icon: Globe },
   "dev-server": { label: "Dev Preview", icon: Monitor },
@@ -379,7 +380,9 @@ export function Toolbar({
                 data-toolbar-item=""
               />
             ),
-            isAvailable: effectiveAgentSettings?.agents?.[id]?.pinned === true,
+            isAvailable:
+              isAgentReady(agentAvailability?.[id]) &&
+              effectiveAgentSettings?.agents?.[id]?.pinned !== false,
           },
         ])
       ),

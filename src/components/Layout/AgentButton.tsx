@@ -90,12 +90,7 @@ export function AgentButton({
                   )}
                   aria-label={ariaLabel}
                 >
-                  <div className="relative">
-                    <config.icon brandColor={getBrandColorHex(type)} />
-                    {!isAvailable && !isLoading && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-status-warning rounded-full ring-2 ring-daintree-sidebar" />
-                    )}
-                  </div>
+                  <config.icon brandColor={getBrandColorHex(type)} />
                 </Button>
               </span>
             </TooltipTrigger>

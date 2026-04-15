@@ -5,9 +5,10 @@ import { DEFAULT_AGENT_SETTINGS } from "@shared/types";
 import { getEffectiveAgentIds } from "../../shared/config/agentRegistry";
 
 /**
- * In-memory normalization: seeds `pinned: false` for any registered agent
- * that has no stored entry. Does NOT persist — persistent migration is
- * handled by migration-012 in the main process.
+ * In-memory normalization: seeds `pinned: true` for any registered agent that
+ * is either missing from stored settings or has no explicit `pinned` value.
+ * Does NOT persist. New/installed agents default to pinned so they surface in
+ * the toolbar until the user explicitly unpins them.
  */
 export function normalizeAgentSelection(settings: AgentSettings): AgentSettings {
   const registeredIds = getEffectiveAgentIds();
@@ -16,10 +17,15 @@ export function normalizeAgentSelection(settings: AgentSettings): AgentSettings 
 
   for (const id of registeredIds) {
     const entry = agents[id];
-    if (!entry) continue;
+
+    if (!entry) {
+      agents[id] = { pinned: true };
+      changed = true;
+      continue;
+    }
 
     if (entry.pinned === undefined) {
-      agents[id] = { ...entry, pinned: false };
+      agents[id] = { ...entry, pinned: true };
       changed = true;
     }
   }

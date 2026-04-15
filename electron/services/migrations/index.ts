@@ -9,7 +9,7 @@ import { migration008 } from "./008-split-notification-sounds.js";
 import { migration009 } from "./009-per-project-window-state.js";
 import { migration010 } from "./010-add-working-pulse-setting.js";
 import { migration011 } from "./011-minimal-soundscape-defaults.js";
-import { migration012 } from "./012-flip-agent-pinned-opt-in.js";
+import { migration012 } from "./012-default-pin-agents.js";
 
 export const migrations: Migration[] = [
   migration002,

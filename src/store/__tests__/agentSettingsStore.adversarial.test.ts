@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 describe("agentSettingsStore adversarial", () => {
-  it("normalizeAgentSelection seeds pinned:false on entries missing the flag", () => {
+  it("normalizeAgentSelection seeds pinned:true on entries missing the flag", () => {
     const before = {
       agents: {
         claude: {
@@ -56,15 +56,15 @@ describe("agentSettingsStore adversarial", () => {
           autoCompact: true,
           defaultMethodIndex: 0,
           customCommand: null,
-          pinned: true,
+          pinned: false,
           flags: {},
         },
       },
     };
 
     const after = normalizeAgentSelection(before as never);
-    expect(after.agents.claude.pinned).toBe(false);
-    expect(after.agents.codex.pinned).toBe(true);
+    expect(after.agents.claude.pinned).toBe(true);
+    expect(after.agents.codex.pinned).toBe(false);
   });
 
   it("normalizeAgentSelection returns the same reference when no changes are needed", () => {
@@ -141,8 +141,14 @@ describe("agentSettingsStore adversarial", () => {
   });
 
   it("reset(agentId) forwards the id argument and stores the returned settings", async () => {
+    // Pre-populate every registered agent so normalizeAgentSelection has no
+    // missing entries to seed — that way the store ends up with the exact
+    // reference the client returned.
     const returned = {
-      agents: { claude: { pinned: false, enabled: true, flags: {} } },
+      agents: {
+        claude: { pinned: false, enabled: true, flags: {} },
+        codex: { pinned: true, enabled: true, flags: {} },
+      },
     } as never;
     clientMock.reset.mockResolvedValue(returned);
 
@@ -169,20 +175,20 @@ describe("agentSettingsStore adversarial", () => {
     expect(getPinnedAgents()).toEqual([]);
   });
 
-  it("initialize applies normalizeAgentSelection so missing pinned flags are seeded in memory", async () => {
+  it("initialize applies normalizeAgentSelection so missing pinned flags default to true", async () => {
     registryMock.getEffectiveAgentIds.mockReturnValue(["claude", "codex"]);
     clientMock.get.mockResolvedValue({
       agents: {
         claude: { enabled: true, flags: {} },
-        codex: { enabled: true, pinned: true, flags: {} },
+        codex: { enabled: true, pinned: false, flags: {} },
       },
     });
 
     await useAgentSettingsStore.getState().initialize();
 
     const state = useAgentSettingsStore.getState();
-    expect(state.settings?.agents.claude?.pinned).toBe(false);
-    expect(state.settings?.agents.codex?.pinned).toBe(true);
+    expect(state.settings?.agents.claude?.pinned).toBe(true);
+    expect(state.settings?.agents.codex?.pinned).toBe(false);
   });
 
   it("getPinnedAgents returns only agents with explicit pinned:true", () => {

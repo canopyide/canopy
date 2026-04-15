@@ -536,11 +536,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       args: [],
     },
     authCheck: {
-      configPaths: {
-        darwin: ["Library/Application Support/gemini/credentials.json"],
-        linux: [".config/gemini/credentials.json"],
-        win32: [".config/gemini/credentials.json"],
-      },
+      // Gemini CLI persists OAuth creds to ~/.gemini/oauth_creds.json on all
+      // platforms (Node CLI using os.homedir()). GEMINI_API_KEY is also a
+      // first-class auth signal supported directly by the CLI.
+      configPathsAll: [".gemini/oauth_creds.json", ".gemini/google_accounts.json"],
       envVar: "GEMINI_API_KEY",
     },
     prerequisites: [
@@ -684,7 +683,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       args: [],
     },
     authCheck: {
-      configPathsAll: [".config/openai/auth.json", ".openai/auth.json"],
+      // Codex CLI persists auth to ~/.codex/auth.json on all platforms.
+      // OPENAI_API_KEY is also a first-class auth signal for the CLI.
+      configPathsAll: [".codex/auth.json"],
       envVar: "OPENAI_API_KEY",
     },
     prerequisites: [
