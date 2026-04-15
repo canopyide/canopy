@@ -5,7 +5,7 @@ import path from "path";
 import type { Migration } from "../StoreMigrations.js";
 import { MigrationRunner } from "../StoreMigrations.js";
 import { migration004 } from "../migrations/004-upgrade-correction-model.js";
-import { migration006 } from "../migrations/006-rename-theme-daintree-to-daintree.js";
+import { migration006 } from "../migrations/006-rename-theme-canopy-to-daintree.js";
 import { migration007 } from "../migrations/007-reduce-default-terminal-scrollback.js";
 import { migration008 } from "../migrations/008-split-notification-sounds.js";
 import { migration011 } from "../migrations/011-minimal-soundscape-defaults.js";
@@ -184,10 +184,10 @@ describe("MigrationRunner", () => {
     });
   });
 
-  describe("migration 006 — rename theme daintree to daintree", () => {
-    it('renames colorSchemeId "daintree" to "daintree" and preserves sibling fields', () => {
+  describe("migration 006 — rename theme canopy to daintree", () => {
+    it('renames colorSchemeId "canopy" to "daintree" and preserves sibling fields', () => {
       const store = createMockStore(storePath, {
-        appTheme: { colorSchemeId: "daintree", colorVisionMode: "default", customSchemes: "[]" },
+        appTheme: { colorSchemeId: "canopy", colorVisionMode: "default", customSchemes: "[]" },
       });
       migration006.up(store as never);
       const appTheme = store.data.appTheme as Record<string, unknown>;
@@ -196,9 +196,9 @@ describe("MigrationRunner", () => {
       expect(appTheme.customSchemes).toBe("[]");
     });
 
-    it('renames colorSchemeId "daintree-slate" to "daintree"', () => {
+    it('renames colorSchemeId "canopy-slate" to "daintree"', () => {
       const store = createMockStore(storePath, {
-        appTheme: { colorSchemeId: "daintree-slate" },
+        appTheme: { colorSchemeId: "canopy-slate" },
       });
       migration006.up(store as never);
       const appTheme = store.data.appTheme as Record<string, unknown>;

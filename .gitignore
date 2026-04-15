@@ -84,11 +84,13 @@ reports/
 *.AppImage
 *.deb
 *.rpm
-.canopy/notes/
-.canopy/canopy-remote
+.daintree/notes/
+.daintree/daintree-remote
 
 # Planning docs (private)
 planning/
 .planning/
 .tmp
 *.tgz
+.canopy/notes/
+.canopy/canopy-remote

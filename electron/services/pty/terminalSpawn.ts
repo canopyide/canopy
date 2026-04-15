@@ -81,7 +81,7 @@ export function buildTerminalEnv(
     normalizedAgentId ? (AGENT_ENV_EXCLUSIONS[normalizedAgentId] ?? []) : []
   );
   const filteredAgentEnv = Object.fromEntries(
-    Object.entries(agentEnv).filter(([key]) => !exclusions.has(key) && !key.startsWith("CANOPY_"))
+    Object.entries(agentEnv).filter(([key]) => !exclusions.has(key) && !key.startsWith("DAINTREE_"))
   ) as Record<string, string>;
 
   return ensureUtf8Locale(

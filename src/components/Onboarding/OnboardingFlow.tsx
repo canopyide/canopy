@@ -8,9 +8,9 @@ import type { CliAvailability } from "@shared/types";
 const SKIP_FIRST_RUN_DIALOGS = isDaintreeEnvEnabled("DAINTREE_E2E_SKIP_FIRST_RUN_DIALOGS");
 
 const LEGACY_KEYS = {
-  agentSelection: "daintree:agent-selection-dismissed",
-  agentSetup: "daintree:agent-setup-complete",
-  firstRunToast: "daintree:first-run-toast",
+  agentSelection: "canopy:agent-selection-dismissed",
+  agentSetup: "canopy:agent-setup-complete",
+  firstRunToast: "canopy:first-run-toast",
 } as const;
 
 type OnboardingStep = "agentSetup";

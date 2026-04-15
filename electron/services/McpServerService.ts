@@ -20,25 +20,35 @@ const DISCOVERY_FILE = path.join(DISCOVERY_DIR, "mcp.json");
 const MCP_SERVER_KEY = "daintree";
 
 // One-shot rebrand migration: rename ~/.canopy -> ~/.daintree if the new dir
-// doesn't exist yet and the old one does. Runs once per process.
-let discoveryMigrationRan = false;
+// doesn't exist yet and the old one does. Success and "nothing-to-do"
+// outcomes are cached; transient failures are not, so retries stay possible.
+let discoverySettled = false;
 async function migrateDiscoveryDir(): Promise<void> {
-  if (discoveryMigrationRan) return;
-  discoveryMigrationRan = true;
+  if (discoverySettled) return;
   try {
     await fs.access(DISCOVERY_DIR);
+    discoverySettled = true;
     return;
   } catch {
     /* fall through */
   }
   try {
     const stat = await fs.lstat(LEGACY_DISCOVERY_DIR);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) return;
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      discoverySettled = true;
+      return;
+    }
+  } catch {
+    discoverySettled = true; // Legacy dir absent — nothing to do.
+    return;
+  }
+  try {
     await fs.rename(LEGACY_DISCOVERY_DIR, DISCOVERY_DIR);
+    discoverySettled = true;
     // eslint-disable-next-line no-console
     console.log(`[daintree] Migrated ${LEGACY_DISCOVERY_DIR} -> ${DISCOVERY_DIR}`);
   } catch {
-    /* legacy dir absent or migration failed — safe to ignore */
+    /* transient failure — leave uncached so writeDiscoveryFile() retries */
   }
 }
 const DEFAULT_PORT = 45454;

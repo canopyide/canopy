@@ -43,18 +43,39 @@ if (!app.isPackaged && !hasExplicitUserDataDir) {
 }
 
 // One-shot rebrand migration: copy old userData dir into the new one on first
-// launch. Runs only when the new dir does not exist yet and the old one does.
+// launch, then rename the SQLite db file. A `.rebrand-migrated` marker gates
+// the skip so a partial copy can be retried on next launch instead of leaving
+// the user stranded with a half-populated userData.
 // Skipped when --user-data-dir is explicitly set (e.g. E2E tests).
 if (!hasExplicitUserDataDir) {
   try {
     const newUserData = app.getPath("userData");
-    if (!fs.existsSync(newUserData)) {
+    const markerPath = path.join(newUserData, ".rebrand-migrated");
+    if (!fs.existsSync(markerPath)) {
       const appData = app.getPath("appData");
       const legacyName = app.isPackaged ? "Canopy" : "canopy-app-dev";
       const legacyUserData = path.join(appData, legacyName);
       if (fs.existsSync(legacyUserData)) {
+        // If a partial copy from a previous aborted run exists, wipe it so
+        // we start from a clean state.
+        if (fs.existsSync(newUserData)) {
+          fs.rmSync(newUserData, { recursive: true, force: true });
+        }
         fs.cpSync(legacyUserData, newUserData, { recursive: true });
+        // Rename the SQLite database + WAL/SHM/backup artifacts in place.
+        for (const suffix of ["", "-wal", "-shm", ".backup"]) {
+          const oldDb = path.join(newUserData, "canopy.db" + suffix);
+          const newDb = path.join(newUserData, "daintree.db" + suffix);
+          if (fs.existsSync(oldDb) && !fs.existsSync(newDb)) {
+            fs.renameSync(oldDb, newDb);
+          }
+        }
+        fs.writeFileSync(markerPath, new Date().toISOString());
         console.log(`[daintree] Migrated userData ${legacyUserData} -> ${newUserData}`);
+      } else if (fs.existsSync(newUserData)) {
+        // No legacy dir but new dir already exists (fresh install or already
+        // migrated on a prior version) — drop the marker so we don't re-check.
+        fs.writeFileSync(markerPath, new Date().toISOString());
       }
     }
   } catch (err) {
