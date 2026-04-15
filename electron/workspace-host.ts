@@ -129,11 +129,15 @@ async function handleWorktreePortRequest(
 
       case "resource-action": {
         const requestId = `port-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        await workspaceService.runResourceAction(
+        const actionResult = await workspaceService.runResourceAction(
           requestId,
           payload.worktreeId as string,
           payload.action as "provision" | "teardown" | "resume" | "pause" | "status"
         );
+        if (!actionResult.success) {
+          rPort.postMessage({ id, error: actionResult.error ?? "Resource action failed" });
+          return;
+        }
         result = { ok: true };
         break;
       }

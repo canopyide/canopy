@@ -5,6 +5,7 @@ import { copyTreeClient, githubClient, systemClient, worktreeClient } from "@/cl
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { DEFAULT_COPYTREE_FORMAT } from "@/lib/copyTreeFormat";
+import { notify } from "@/lib/notify";
 
 export function registerWorktreeActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   // Query action: list all worktrees with metadata
@@ -839,7 +840,11 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
       const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) throw new Error("No worktree selected");
-      await worktreeClient.resourceAction(targetWorktreeId, "provision");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "provision");
+      } catch (err) {
+        notify({ type: "error", priority: "high", title: "Provision failed", message: (err as Error).message || "Resource provisioning failed" });
+      }
     },
   }));
 
@@ -862,7 +867,11 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
       const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) throw new Error("No worktree selected");
-      await worktreeClient.resourceAction(targetWorktreeId, "teardown");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "teardown");
+      } catch (err) {
+        notify({ type: "error", priority: "high", title: "Teardown failed", message: (err as Error).message || "Resource teardown failed" });
+      }
     },
   }));
 
@@ -885,7 +894,11 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
       const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) throw new Error("No worktree selected");
-      await worktreeClient.resourceAction(targetWorktreeId, "resume");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "resume");
+      } catch (err) {
+        notify({ type: "error", priority: "high", title: "Resume failed", message: (err as Error).message || "Resource resume failed" });
+      }
     },
   }));
 
@@ -908,7 +921,11 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
       const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) throw new Error("No worktree selected");
-      await worktreeClient.resourceAction(targetWorktreeId, "pause");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "pause");
+      } catch (err) {
+        notify({ type: "error", priority: "high", title: "Pause failed", message: (err as Error).message || "Resource pause failed" });
+      }
     },
   }));
 
@@ -931,7 +948,11 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       const { worktreeId } = (args ?? {}) as { worktreeId?: string };
       const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) throw new Error("No worktree selected");
-      return await worktreeClient.resourceAction(targetWorktreeId, "status");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "status");
+      } catch (err) {
+        notify({ type: "error", priority: "high", title: "Status check failed", message: (err as Error).message || "Resource status check failed" });
+      }
     },
   }));
 

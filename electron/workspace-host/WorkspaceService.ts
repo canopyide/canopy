@@ -1546,7 +1546,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     worktreeId: string,
     action: "provision" | "teardown" | "resume" | "pause" | "status",
     environmentId?: string
-  ): Promise<void> {
+  ): Promise<{ success: boolean; error?: string; output?: string }> {
     const monitor = this.monitors.get(worktreeId);
     if (!monitor) {
       this.sendEvent({
@@ -1555,7 +1555,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         success: false,
         error: "Worktree not found",
       });
-      return;
+      return { success: false, error: "Worktree not found" };
     }
 
     if (!this.projectRootPath) {
@@ -1565,7 +1565,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         success: false,
         error: "No project root path",
       });
-      return;
+      return { success: false, error: "No project root path" };
     }
 
     const config = await this.lifecycleService.loadConfig(monitor.path, this.projectRootPath);
@@ -1603,7 +1603,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         success: false,
         error: "No resource config found",
       });
-      return;
+      return { success: false, error: "No resource config found" };
     }
 
     const vars = this.lifecycleService.buildVariables(
@@ -1660,7 +1660,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           success: true,
           output: `Resource is already ${currentStatus}`,
         });
-        return;
+        return { success: true, output: `Resource is already ${currentStatus}` };
       }
       if (currentStatus === "paused" || currentStatus === "stopped") {
         // "stopped" kept here only to gracefully handle a transient read from a CLI
@@ -1681,7 +1681,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           success: false,
           error: "No status command configured",
         });
-        return;
+        return { success: false, error: "No status command configured" };
       }
 
       const statusCmd = sub(resourceConfig.status);
@@ -1765,7 +1765,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         output: result.output,
         error: result.error,
       });
-      return;
+      return { success: result.success, output: result.output, error: result.error };
     }
 
     const commands = (
@@ -1780,7 +1780,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         success: false,
         error: `No ${effectiveAction} commands configured`,
       });
-      return;
+      return { success: false, error: `No ${effectiveAction} commands configured` };
     }
 
     const phase = `resource-${effectiveAction}` as const;
@@ -1869,6 +1869,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       output: result.output,
       error: result.error,
     });
+    return { success: result.success, output: result.output, error: result.error };
   }
 
   async hasResourceConfig(rootPath: string): Promise<boolean> {

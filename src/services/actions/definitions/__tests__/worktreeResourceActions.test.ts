@@ -1,12 +1,19 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionDefinition } from "@shared/types/actions";
+
+const mockNotify = vi.fn();
+vi.mock("@/lib/notify", () => ({
+  notify: (...args: unknown[]) => mockNotify(...args),
+}));
+
+const mockResourceAction = vi.fn();
 
 // Stub all external imports that worktreeActions.ts pulls in
 vi.mock("@/clients", () => ({
   copyTreeClient: {},
   githubClient: {},
   systemClient: {},
-  worktreeClient: { resourceAction: vi.fn() },
+  worktreeClient: { resourceAction: mockResourceAction },
 }));
 
 const mockWorktrees = new Map<string, Record<string, unknown>>();
@@ -87,6 +94,11 @@ describe("worktree resource action definitions", () => {
     expect(def.isEnabled!({ activeWorktreeId: "/test" })).toBe(false);
   });
 
+  beforeEach(() => {
+    mockResourceAction.mockReset();
+    mockNotify.mockReset();
+  });
+
   afterEach(() => {
     mockWorktrees.clear();
   });
@@ -110,5 +122,41 @@ describe("worktree resource action definitions", () => {
       // No worktree in the mocked store → isEnabled should return false
       expect(def.isEnabled!({ activeWorktreeId: "/test" }), `${id} should be disabled`).toBe(false);
     }
+  });
+
+  it.each([
+    ["worktree.resource.provision", "provision", "Provision failed"],
+    ["worktree.resource.teardown", "teardown", "Teardown failed"],
+    ["worktree.resource.resume", "resume", "Resume failed"],
+    ["worktree.resource.pause", "pause", "Pause failed"],
+    ["worktree.resource.status", "status", "Status check failed"],
+  ] as const)("%s calls notify on failure", async (actionId, _action, expectedTitle) => {
+    mockResourceAction.mockRejectedValueOnce(new Error("Command exited with code 1"));
+    const def = registry.get(actionId)!();
+    await def.run!({}, { activeWorktreeId: "/test" });
+
+    expect(mockNotify).toHaveBeenCalledOnce();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        priority: "high",
+        title: expectedTitle,
+        message: "Command exited with code 1",
+      })
+    );
+  });
+
+  it.each([
+    "worktree.resource.provision",
+    "worktree.resource.teardown",
+    "worktree.resource.resume",
+    "worktree.resource.pause",
+    "worktree.resource.status",
+  ] as const)("%s does not notify on success", async (actionId) => {
+    mockResourceAction.mockResolvedValueOnce(undefined);
+    const def = registry.get(actionId)!();
+    await def.run!({}, { activeWorktreeId: "/test" });
+
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 });
