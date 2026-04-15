@@ -163,7 +163,7 @@ export class WorkspaceService {
   ): Promise<void> {
     try {
       this.projectRootPath = projectRootPath;
-      // Merge: global (lowest priority) < project-level < CANOPY_* (set in buildEnv)
+      // Merge: global (lowest priority) < project-level < DAINTREE_* (set in buildEnv)
       const projectEnvVars = await this.loadProjectEnvVars(projectRootPath);
       this.projectEnvVars = { ...(globalEnvVars ?? {}), ...projectEnvVars };
       this.git = createHardenedGit(projectRootPath, this._shutdownController.signal);

@@ -37,9 +37,9 @@ describe("scoreProjectQuery", () => {
     expect(nameMatch).toBeGreaterThan(pathMatch);
   });
 
-  it("gives word boundary bonus: 'cp' matching daintree-project beats mid-word", () => {
-    const boundaryMatch = scoreProjectQuery("cp", "daintree-project", "/path");
-    const midWordMatch = scoreProjectQuery("cp", "script-producer", "/path");
+  it("gives word boundary bonus: 'dp' at boundary beats mid-word", () => {
+    const boundaryMatch = scoreProjectQuery("dp", "app-dplant", "/path");
+    const midWordMatch = scoreProjectQuery("dp", "xdplant", "/path");
     expect(boundaryMatch).toBeGreaterThan(midWordMatch);
   });
 

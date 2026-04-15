@@ -95,7 +95,7 @@ describe("filterEnvironment", () => {
     expect("UNDEFINED_VAR" in result).toBe(false);
   });
 
-  it("strips CANOPY_* vars from inherited env (anti-spoofing)", () => {
+  it("strips DAINTREE_* vars from inherited env (anti-spoofing)", () => {
     const env = {
       PATH: "/usr/bin",
       DAINTREE_PANE_ID: "spoofed-id",
@@ -235,7 +235,7 @@ describe("filterEnvironment + injectDaintreeMetadata integration", () => {
       AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG",
       DATABASE_URL: "postgres://localhost/dev",
       MY_CUSTOM_TOKEN: "tok_abc123",
-      // Pre-existing CANOPY_ vars should be stripped
+      // Pre-existing DAINTREE_ vars should be stripped
       DAINTREE_PANE_ID: "old-id",
     };
 
@@ -260,7 +260,7 @@ describe("filterEnvironment + injectDaintreeMetadata integration", () => {
     expect(final.DATABASE_URL).toBeUndefined();
     expect(final.MY_CUSTOM_TOKEN).toBeUndefined();
 
-    // CANOPY_* freshly injected (not spoofed)
+    // DAINTREE_* freshly injected (not spoofed)
     expect(final.DAINTREE_PANE_ID).toBe("new-pane-id");
     expect(final.DAINTREE_CWD).toBe("/Users/dev/project");
     expect(final.DAINTREE_PROJECT_ID).toBe("proj-1");

@@ -17,5 +17,5 @@ if [ -f "$SANDBOX" ]; then
   chmod 4755 "$SANDBOX"
 fi
 
-# Symlink daintree-app binary into PATH for CLI discovery
+# Symlink Daintree into PATH for CLI discovery
 ln -sf /opt/Daintree/daintree /usr/bin/daintree

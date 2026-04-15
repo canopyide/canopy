@@ -184,7 +184,7 @@ export class WorktreeLifecycleService {
 
   /**
    * Run an array of shell commands sequentially in a given directory.
-   * Each command is spawned with a minimal env + CANOPY_* vars.
+   * Each command is spawned with a minimal env + DAINTREE_* vars.
    * A shared timeout covers the entire set of commands.
    * On Unix, process group kill terminates the whole tree; on Windows, taskkill /T is used.
    */

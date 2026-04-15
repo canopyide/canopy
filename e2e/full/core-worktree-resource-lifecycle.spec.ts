@@ -471,9 +471,9 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
       .toBe("unknown");
   });
 
-  // ---- CANOPY_* env vars are injected into lifecycle commands ----
+  // ---- DAINTREE_* env vars are injected into lifecycle commands ----
 
-  test("CANOPY_* env vars are available in lifecycle commands", async () => {
+  test("DAINTREE_* env vars are available in lifecycle commands", async () => {
     const { window } = ctx;
 
     // Find the worktree path from git (each worktree has its own working tree)
@@ -503,7 +503,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     const originalConfig = fs.readFileSync(path.join(mainDaintreeDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
-    // Modify status command to dump CANOPY_* env vars into a marker file,
+    // Modify status command to dump DAINTREE_* env vars into a marker file,
     // then still output valid JSON for the badge
     config.resource.status = [
       `printf '%s\\n%s\\n%s' "$DAINTREE_WORKTREE_NAME" "$DAINTREE_WORKTREE_PATH" "$DAINTREE_PROJECT_ROOT" > "${markerFile}"`,

@@ -155,7 +155,7 @@ describe("assembleKeyterms", () => {
 
   it("deduplicates case-insensitively", async () => {
     const result = await assembleKeyterms({
-      customDictionary: ["Daintree", "daintree", "CANOPY"],
+      customDictionary: ["Daintree", "daintree", "FOREST"],
     });
     expect(result.filter((t) => t.toLowerCase() === "daintree").length).toBe(1);
   });

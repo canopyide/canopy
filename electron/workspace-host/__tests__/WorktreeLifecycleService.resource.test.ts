@@ -629,7 +629,7 @@ describe("WorktreeLifecycleService — Resource Config", () => {
   });
 
   describe("buildEnv (regression check)", () => {
-    it("returns standard CANOPY_* and non-interactive env vars", () => {
+    it("returns standard DAINTREE_* and non-interactive env vars", () => {
       const env = service.buildEnv("/worktrees/feat", "/project", "feature/resource-lifecycle");
       expect(env).toEqual({
         CI: "true",

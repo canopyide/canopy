@@ -1,6 +1,6 @@
 # Release Workflow
 
-Automated build and publish workflow for Canopy releases to Cloudflare R2.
+Automated build and publish workflow for Daintree releases to Cloudflare R2.
 
 ## Setup
 

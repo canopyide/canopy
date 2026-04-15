@@ -202,7 +202,7 @@ describe("WorktreeLifecycleService", () => {
   });
 
   describe("buildEnv", () => {
-    it("returns CANOPY_* and non-interactive environment variables", () => {
+    it("returns DAINTREE_* and non-interactive environment variables", () => {
       const env = service.buildEnv("/worktrees/feat", "/project", "feature/my-branch");
       expect(env).toEqual({
         CI: "true",

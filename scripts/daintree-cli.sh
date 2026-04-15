@@ -79,7 +79,7 @@ USAGE
         exit 0
       fi
     else
-      if pgrep -f "daintree-app" &>/dev/null; then
+      if pgrep -f "(/|^)daintree([[:space:]]|$)" &>/dev/null || pgrep -f "daintree-app" &>/dev/null; then
         echo "Daintree is running"
         exit 0
       fi
@@ -134,28 +134,30 @@ if [[ "$(uname)" == "Darwin" ]]; then
   exit 0
 fi
 
-# --- Linux: locate the daintree-app binary ---
+# --- Linux: locate the Daintree binary ---
 DAINTREE_BIN=""
 
-# 1. Script-relative: works for both .deb (/opt/Daintree/) and AppImage FUSE mount
-_candidate="$(dirname "$(dirname "$SCRIPT_PATH")")/daintree-app"
-if [[ -x "$_candidate" ]]; then
-  DAINTREE_BIN="$_candidate"
-fi
+for candidate in \
+  "$(dirname "$(dirname "$SCRIPT_PATH")")/daintree" \
+  "$(dirname "$(dirname "$SCRIPT_PATH")")/daintree-app" \
+  "${APPDIR:-}/daintree" \
+  "${APPDIR:-}/daintree-app" \
+  "/opt/Daintree/daintree" \
+  "/opt/Daintree/daintree-app"; do
+  if [[ -n "$candidate" && -x "$candidate" ]]; then
+    DAINTREE_BIN="$candidate"
+    break
+  fi
+done
 
-# 2. $APPDIR set by AppImage runtime — points to the FUSE mount root
-if [[ -z "$DAINTREE_BIN" && -n "${APPDIR:-}" && -x "$APPDIR/daintree-app" ]]; then
-  DAINTREE_BIN="$APPDIR/daintree-app"
-fi
-
-# 3. Hardcoded .deb install location
-if [[ -z "$DAINTREE_BIN" && -x "/opt/Daintree/daintree-app" ]]; then
-  DAINTREE_BIN="/opt/Daintree/daintree-app"
-fi
-
-# 4. PATH lookup (last resort)
-if [[ -z "$DAINTREE_BIN" ]] && command -v daintree-app &>/dev/null; then
-  DAINTREE_BIN="$(command -v daintree-app)"
+# PATH lookup (last resort)
+if [[ -z "$DAINTREE_BIN" ]]; then
+  for command_name in daintree daintree-app; do
+    if command -v "$command_name" &>/dev/null; then
+      DAINTREE_BIN="$(command -v "$command_name")"
+      break
+    fi
+  done
 fi
 
 if [[ -z "$DAINTREE_BIN" ]]; then

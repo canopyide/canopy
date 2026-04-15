@@ -57,7 +57,15 @@ const originalArgv = [...process.argv];
 function getCandidatePaths(): string[] {
   return fsMock.existsSync.mock.calls
     .map((c) => c[0])
-    .filter((p) => !p.includes("gpu-disabled.flag"));
+    .filter(
+      (p) =>
+        !p.includes("gpu-disabled.flag") &&
+        !p.includes(".rebrand-migrated") &&
+        !p.includes("canopy-app-dev") &&
+        !p.includes("daintree-dev") &&
+        !p.endsWith("Canopy") &&
+        !p.endsWith("Daintree")
+    );
 }
 
 describe("V8 flag setup", () => {
