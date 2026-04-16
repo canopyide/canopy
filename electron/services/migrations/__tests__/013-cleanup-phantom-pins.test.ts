@@ -126,6 +126,46 @@ describe("migration013 — cleanup phantom pinned entries", () => {
     expect(store.set).toHaveBeenCalledTimes(1);
   });
 
+  it("does not throw on malformed agentSettings shapes", () => {
+    const shapes: Array<[string, unknown]> = [
+      ["agents is null", { agents: null }],
+      ["agents is a string", { agents: "oops" }],
+      ["agents is an array", { agents: [] }],
+      ["an entry is null", { agents: { claude: null } }],
+      ["an entry is a string", { agents: { claude: "oops" } }],
+      ["agentSettings is a string", "nope"],
+      ["agentSettings is an array", []],
+    ];
+
+    for (const [label, value] of shapes) {
+      const store = makeStoreMock({ agentSettings: value });
+      expect(() => migration013.up(store), `case: ${label}`).not.toThrow();
+    }
+  });
+
+  it("preserves malformed non-phantom entries untouched", () => {
+    // A corrupted entry like `null` is not phantom (predicate requires an
+    // object) and not our problem to repair — it should pass through
+    // alongside any phantom-stripping that happens.
+    const data: Record<string, unknown> = {
+      agentSettings: {
+        agents: {
+          opencode: { pinned: true },
+          broken: null,
+          claude: { pinned: true, customFlags: "" },
+        },
+      },
+    };
+    const store = makeStoreMock(data);
+    migration013.up(store);
+
+    const written = (store.set as ReturnType<typeof vi.fn>).mock.calls[0][1] as {
+      agents: Record<string, unknown>;
+    };
+    expect(Object.keys(written.agents).sort()).toEqual(["broken", "claude"]);
+    expect(written.agents.broken).toBeNull();
+  });
+
   it("removes multiple phantoms in one call", () => {
     const data: Record<string, unknown> = {
       agentSettings: {

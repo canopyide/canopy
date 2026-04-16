@@ -90,26 +90,40 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
     if (initPromise) return initPromise;
 
     const myEpoch = ++normalizeEpoch;
-    initPromise = (async () => {
+    const promise = (async () => {
       try {
         set({ isLoading: true, error: null });
 
         const raw = (await agentSettingsClient.get()) ?? DEFAULT_AGENT_SETTINGS;
-        if (myEpoch !== normalizeEpoch) return;
+        if (myEpoch !== normalizeEpoch) {
+          // A concurrent refresh/update bumped the epoch — its result is
+          // authoritative. Flip `isInitialized` anyway so the store exits the
+          // loading state (and future `initialize()` calls no-op as intended).
+          set({ isLoading: false, isInitialized: true });
+          return;
+        }
         const { availability, hasRealData } = readAvailabilitySnapshot();
         const settings = normalizeAgentSelection(raw, availability, hasRealData);
         set({ settings, isLoading: false, isInitialized: true });
       } catch (e) {
-        if (myEpoch !== normalizeEpoch) return;
+        if (myEpoch !== normalizeEpoch) {
+          set({ isLoading: false, isInitialized: true });
+          return;
+        }
         set({
           error: e instanceof Error ? e.message : "Failed to load agent settings",
           isLoading: false,
           isInitialized: true,
         });
+      } finally {
+        // Clear the cached promise so a later `initialize()` can retry after
+        // cleanup/reset, even if this run was superseded by a concurrent op.
+        if (initPromise === promise) initPromise = null;
       }
     })();
 
-    return initPromise;
+    initPromise = promise;
+    return promise;
   },
 
   refresh: async () => {
@@ -122,7 +136,10 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
       const settings = normalizeAgentSelection(raw, availability, hasRealData);
       set({ settings });
     } catch (e) {
-      if (myEpoch !== normalizeEpoch) throw e;
+      // Stale failures yield silently — whichever newer op bumped the epoch
+      // owns the error surface now, and fire-and-forget callers should not
+      // see spurious unhandled rejections from an invalidated attempt.
+      if (myEpoch !== normalizeEpoch) return;
       set({ error: e instanceof Error ? e.message : "Failed to refresh agent settings" });
       throw e;
     }
@@ -138,7 +155,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
       const settings = normalizeAgentSelection(raw, availability, hasRealData);
       set({ settings });
     } catch (e) {
-      if (myEpoch !== normalizeEpoch) throw e;
+      if (myEpoch !== normalizeEpoch) return;
       set({ error: e instanceof Error ? e.message : `Failed to update ${agentId} settings` });
       throw e;
     }
@@ -158,7 +175,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
       const settings = normalizeAgentSelection(raw, availability, hasRealData);
       set({ settings });
     } catch (e) {
-      if (myEpoch !== normalizeEpoch) throw e;
+      if (myEpoch !== normalizeEpoch) return;
       set({ error: e instanceof Error ? e.message : "Failed to reset agent settings" });
       throw e;
     }

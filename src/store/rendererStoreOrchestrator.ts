@@ -121,12 +121,18 @@ export function initStoreOrchestrator(): () => void {
   unsubscribers.push(unsubLayoutUndo);
 
   // 5. Availability → agent-settings re-normalization: installed/missing state
-  //    is the input to `normalizeAgentSelection`, so re-run normalization once
-  //    real availability data arrives (see issue #5158). Fires only on the
-  //    `hasRealData: false → true` transition; re-checks after a manual
-  //    refresh do not need to re-run since availability is read live.
+  //    is the input to `normalizeAgentSelection`, so re-run normalization any
+  //    time a fresh availability snapshot lands (see issue #5158). Fires on
+  //    the `hasRealData: false → true` transition AND on subsequent
+  //    `availability` reference changes — the latter covers the focus-refresh
+  //    path in `useAgentLauncher`, where a user who installs a CLI outside
+  //    Daintree needs their tray/toolbar state to reconcile without an app
+  //    restart. `cliAvailabilityStore` only swaps the `availability` object
+  //    on real IPC completion, so ref equality is a reliable trigger.
   const unsubAvailability = useCliAvailabilityStore.subscribe((state, prevState) => {
-    if (!state.hasRealData || prevState.hasRealData) return;
+    const realDataLanded = state.hasRealData && !prevState.hasRealData;
+    const availabilityChanged = state.availability !== prevState.availability;
+    if (!realDataLanded && !availabilityChanged) return;
     const { isInitialized, isLoading } = useAgentSettingsStore.getState();
     if (!isInitialized || isLoading) return;
     void useAgentSettingsStore.getState().refresh();

@@ -287,4 +287,68 @@ describe("agentSettingsStore adversarial", () => {
     expect(state.isInitialized).toBe(false);
     expect(state.settings?.agents.claude?.customFlags).not.toBe("hello");
   });
+
+  it("stale refresh failures yield silently instead of throwing unhandled rejections", async () => {
+    registryMock.getEffectiveAgentIds.mockReturnValue(["claude"]);
+    setAvailability({ claude: "ready" }, true);
+
+    useAgentSettingsStore.setState({
+      settings: { agents: { claude: { pinned: true } } } as never,
+      isInitialized: true,
+      isLoading: false,
+    });
+
+    let rejectStale: (e: unknown) => void = () => {};
+    clientMock.get
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectStale = reject;
+          })
+      )
+      .mockResolvedValueOnce({ agents: { claude: { pinned: false } } });
+
+    const stale = useAgentSettingsStore.getState().refresh();
+    const fresh = useAgentSettingsStore.getState().refresh();
+    await fresh;
+
+    // Now fail the stale attempt. It must NOT reject — fire-and-forget
+    // callers (orchestrator subscription, toggle handlers) would surface an
+    // unhandled rejection otherwise.
+    rejectStale(new Error("stale failure"));
+    await expect(stale).resolves.toBeUndefined();
+
+    expect(useAgentSettingsStore.getState().settings?.agents.claude?.pinned).toBe(false);
+  });
+
+  it("initialize after a concurrent refresh flips isInitialized even when the result is stale", async () => {
+    registryMock.getEffectiveAgentIds.mockReturnValue(["claude"]);
+    setAvailability({ claude: "ready" }, true);
+
+    let resolveInit: (v: unknown) => void = () => {};
+    clientMock.get
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveInit = resolve;
+          })
+      )
+      .mockResolvedValueOnce({ agents: { claude: { pinned: false } } });
+
+    // Kick off init; it holds initPromise. While in-flight, another caller
+    // triggers a refresh (bumping the epoch and invalidating init).
+    const initPending = useAgentSettingsStore.getState().initialize();
+    useAgentSettingsStore.setState({ isInitialized: false, isLoading: true });
+    const concurrent = useAgentSettingsStore.getState().refresh();
+    await concurrent;
+
+    resolveInit({ agents: { claude: { pinned: true } } });
+    await initPending;
+
+    // Stale init must still flip isInitialized and clear initPromise so
+    // subsequent `initialize()` calls short-circuit (no-op) correctly.
+    const state = useAgentSettingsStore.getState();
+    expect(state.isInitialized).toBe(true);
+    expect(state.isLoading).toBe(false);
+  });
 });

@@ -837,7 +837,7 @@ describe("rendererStoreOrchestrator", () => {
       expect(agentSettingsClient.get).toHaveBeenCalledTimes(1);
     });
 
-    it("does not fire when hasRealData is already true", () => {
+    it("does not fire on unrelated cliAvailabilityStore updates", () => {
       useCliAvailabilityStore.setState({ hasRealData: true });
 
       useAgentSettingsStore.setState({
@@ -848,11 +848,36 @@ describe("rendererStoreOrchestrator", () => {
       });
       (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockClear();
 
-      // Mutating something unrelated while hasRealData stays true — must NOT
-      // trigger a re-normalize.
+      // Mutate a sibling flag without changing `availability` or the
+      // `hasRealData` transition — must NOT trigger a re-normalize.
       useCliAvailabilityStore.setState({ isRefreshing: true });
 
       expect(agentSettingsClient.get).not.toHaveBeenCalled();
+    });
+
+    it("re-runs normalization when availability ref changes after initial boot", async () => {
+      useCliAvailabilityStore.setState({
+        availability: { claude: "missing" } as never,
+        hasRealData: true,
+      });
+
+      useAgentSettingsStore.setState({
+        settings: { agents: {} },
+        isInitialized: true,
+        isLoading: false,
+        error: null,
+      });
+      (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockClear();
+
+      // Simulate the user installing a CLI outside Daintree: focus listener
+      // refreshes cliAvailabilityStore, which swaps the `availability` ref.
+      useCliAvailabilityStore.setState({
+        availability: { claude: "ready" } as never,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(agentSettingsClient.get).toHaveBeenCalledTimes(1);
     });
 
     it("skips refresh when agentSettingsStore is not yet initialized", () => {
