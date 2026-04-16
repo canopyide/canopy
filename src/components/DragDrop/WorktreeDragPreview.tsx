@@ -58,7 +58,7 @@ export function WorktreeDragPreview({ worktree }: WorktreeDragPreviewProps) {
           </div>
           <span
             style={{
-              fontFamily: '"JetBrains Mono", monospace',
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               color: "color-mix(in srgb, var(--color-daintree-text) 50%, transparent)",
               whiteSpace: "nowrap",
@@ -88,7 +88,7 @@ export function WorktreeDragPreview({ worktree }: WorktreeDragPreviewProps) {
           />
           <span
             style={{
-              fontFamily: '"JetBrains Mono", monospace',
+              fontFamily: "var(--font-mono)",
               fontSize: 11,
               fontWeight: 500,
               color: "var(--color-daintree-text)",

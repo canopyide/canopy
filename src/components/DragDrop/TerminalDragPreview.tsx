@@ -81,7 +81,7 @@ export function TerminalDragPreview({ terminal, groupTabCount }: TerminalDragPre
         {/* Title text */}
         <span
           style={{
-            fontFamily: '"JetBrains Mono", monospace',
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             fontWeight: 500,
             color: "var(--color-daintree-text)",

@@ -394,6 +394,10 @@
   --color-cat-pink: var(--theme-category-pink);
   --color-cat-violet: var(--theme-category-violet);
   --color-cat-slate: var(--theme-category-slate);
+
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 }
 
 pre code.hljs {
@@ -722,7 +726,7 @@ code.hljs {
 
   /* Xterm font - required for correct font measurement */
   .xterm {
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
   }
 
   /* Hide native viewport scrollbar — xterm v6 provides its own overlay scrollbar */
@@ -739,7 +743,15 @@ code.hljs {
   samp,
   pre,
   .font-mono {
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
+  }
+
+  /* CodeMirror defaults to a bare `monospace`, which renders as serif on
+     some systems when JetBrains Mono hasn't finished loading. Force the
+     full mono stack on every CodeMirror instance. */
+  .cm-editor,
+  .cm-editor .cm-scroller {
+    font-family: var(--font-mono);
   }
 
   /* Daintree prose theme - customized typography for dark theme */
@@ -768,7 +780,7 @@ code.hljs {
     padding: 0.125rem 0.375rem;
     border-radius: var(--radius-xs);
     font-size: 0.8125rem;
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
     border: 1px solid color-mix(in oklab, var(--color-daintree-border) 50%, transparent);
   }
 
@@ -782,7 +794,7 @@ code.hljs {
     background: color-mix(in oklab, var(--color-daintree-sidebar) 30%, transparent);
     border: 1px solid var(--color-daintree-border);
     border-radius: var(--radius-lg);
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
   }
 
   /* Prose link hover */
@@ -1618,7 +1630,7 @@ body[data-performance-mode="true"] .github-status-error {
 
 /* React-Diff-View Tokyo Night Theme Overrides */
 .diff-viewer {
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
 }
