@@ -66,7 +66,7 @@ export const theme: BuiltInThemeSource = {
       function: "#4D9FD6",
       link: "#1A7258",
       quote: "#758A9E",
-      chip: "#0FA8C0",
+      chip: "#18A0B2",
     },
     strategy: {
       shadowStyle: "crisp",
