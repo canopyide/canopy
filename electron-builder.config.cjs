@@ -1,17 +1,32 @@
 const VALID_VARIANTS = ["daintree", "canopy"];
 const PACKAGE_VERSION = require("./package.json").version;
 
+// electron-builder 26.x enforces the channel enum: "alpha" | "beta" | "dev"
+// | "rc" | "stable" | null. Anything else fails schema validation. We return
+// null for stable and nightly — stable and nightly both publish a `latest.yml`
+// at their respective URL prefixes (URL separation, not channel separation).
+// Nightly is detected from the version string and routed to a separate publish
+// URL in the factory below.
 function getPublishChannel(version) {
   if (version.includes("-rc")) return "rc";
   if (version.includes("-beta")) return "beta";
-  return "latest";
+  return null;
 }
 
+// TODO(0.9.0): Remove the `canopy` entry entirely when the dual-variant build
+// is retired. See github #5130.
+//
+// Each variant pins `debPackageName` and `updaterCacheDirName` explicitly
+// because both default to `package.json.name` ("daintree") — without these
+// overrides the canopy `.deb` would ship as `Package: daintree` (breaking
+// in-place dpkg upgrades from old 0.6.x) and both variants would share
+// `daintree-updater` as their download cache directory.
 const VARIANTS = {
   daintree: {
     appId: "org.daintree.app",
     productName: "Daintree",
     publishUrl: "https://updates.daintree.org/releases/",
+    nightlyPublishUrl: "https://updates.daintree.org/nightly/",
     icon: "build/icon",
     linuxExecutableName: "daintree",
     linuxStartupWMClass: "daintree",
@@ -21,6 +36,8 @@ const VARIANTS = {
     cliScript: "scripts/daintree-cli.sh",
     cliScriptName: "daintree-cli.sh",
     apparmorName: "daintree.apparmor",
+    debPackageName: "daintree",
+    updaterCacheDirName: "daintree-updater",
     microphoneDescription:
       "Daintree uses the microphone for voice dictation into terminal inputs.",
   },
@@ -37,6 +54,8 @@ const VARIANTS = {
     cliScript: "scripts/legacy/canopy-cli.sh",
     cliScriptName: "canopy-cli.sh",
     apparmorName: "canopy.apparmor",
+    debPackageName: "canopy-app",
+    updaterCacheDirName: "canopy-updater",
     microphoneDescription:
       "Canopy uses the microphone for voice dictation into terminal inputs.",
   },
@@ -52,18 +71,34 @@ module.exports = async function () {
 
   const v = VARIANTS[variant];
   const publishChannel = getPublishChannel(PACKAGE_VERSION);
+  const isNightly = PACKAGE_VERSION.includes("-nightly");
+  if (isNightly && !v.nightlyPublishUrl) {
+    throw new Error(
+      `Nightly builds are not supported for variant "${variant}" (no nightlyPublishUrl configured).`
+    );
+  }
+  const publishUrl = isNightly ? v.nightlyPublishUrl : v.publishUrl;
+
+  // Only include `channel` when it's a valid enum value; passing null is
+  // accepted but passing undefined via object-spread can still trip some
+  // downstream tooling, so we build the entry conditionally.
+  const publishEntry = { provider: "generic", url: publishUrl };
+  if (publishChannel !== null) {
+    publishEntry.channel = publishChannel;
+  }
 
   return {
     asar: true,
     appId: v.appId,
     productName: v.productName,
-    publish: [{ provider: "generic", url: v.publishUrl, channel: publishChannel }],
+    updaterCacheDirName: v.updaterCacheDirName,
+    publish: [publishEntry],
     electronUpdaterCompatibility: ">=2.16",
     npmRebuild: true,
     electronLanguages: ["en-US"],
     directories: {
       buildResources: "build",
-      output: `release/${variant}`,
+      output: "release",
     },
     files: [
       "dist/**/*",
@@ -148,6 +183,7 @@ module.exports = async function () {
       ],
     },
     deb: {
+      packageName: v.debPackageName,
       depends: [
         "libc6 (>= 2.31)",
         "libgtk-3-0",

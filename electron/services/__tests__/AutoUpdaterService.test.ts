@@ -483,23 +483,28 @@ describe("AutoUpdaterService", () => {
       storeMock.get.mockReturnValue(undefined);
       autoUpdaterService.initialize();
 
+      // No `channel` field: stable and nightly both serve latest.yml under
+      // their respective URL prefixes (URL separation, not channel separation).
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
         url: "https://updates.daintree.org/releases/",
-        channel: "latest",
       });
-      expect(autoUpdaterMock.allowDowngrade).toBe(true);
+      // Stable channel must never silently downgrade — a regressed latest.yml
+      // would otherwise walk installed users backwards.
+      expect(autoUpdaterMock.allowDowngrade).toBe(false);
     });
 
-    it("uses nightly URL when stored channel is nightly", () => {
+    it("uses nightly URL and enables allowDowngrade when stored channel is nightly", () => {
       storeMock.get.mockReturnValue("nightly");
       autoUpdaterService.initialize();
 
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
         url: "https://updates.daintree.org/nightly/",
-        channel: "nightly",
       });
+      // Nightly permits downgrade so a stable user opting in can receive
+      // semver-lower nightly builds of the same base version.
+      expect(autoUpdaterMock.allowDowngrade).toBe(true);
     });
 
     it("calls setFeedURL before initial update check", () => {
@@ -535,7 +540,6 @@ describe("AutoUpdaterService", () => {
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
         url: "https://updates.daintree.org/nightly/",
-        channel: "nightly",
       });
     });
 

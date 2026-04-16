@@ -627,20 +627,86 @@ describe("Canopy -> Daintree userData migration gating", () => {
 
   it("runs the migration when BUILD_VARIANT is unset (Daintree default)", async () => {
     Reflect.deleteProperty(process.env, "BUILD_VARIANT");
-    // Legacy Canopy userData exists; new Daintree userData does not.
+    // Legacy Canopy userData exists; new Daintree userData does not (no
+    // daintree.db marker).
     fsMock.existsSync.mockImplementation((p: string) => {
       if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return false;
       if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
       return false;
     });
 
     await import("../environment.js");
 
+    // Copy goes into a staging dir first (atomic rename pattern) with a
+    // filter that excludes Chromium singleton/cache/crashpad state.
     expect(fsMock.cpSync).toHaveBeenCalledWith(
       path.join("/tmp/user-data", "Canopy"),
-      "/tmp/user-data/Daintree",
-      { recursive: true }
+      "/tmp/user-data/Daintree.migrating",
+      expect.objectContaining({
+        recursive: true,
+        filter: expect.any(Function),
+      })
     );
+    // Staging is atomically promoted into place.
+    expect(fsMock.renameSync).toHaveBeenCalledWith(
+      "/tmp/user-data/Daintree.migrating",
+      "/tmp/user-data/Daintree"
+    );
+  });
+
+  it("skips the migration when Daintree data already exists (daintree.db present)", async () => {
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    // Must not touch the existing Daintree userData. A previous migration
+    // attempt may have crashed between the copy and the marker write — the
+    // user has since used Daintree and accumulated real state.
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+    expect(fsMock.rmSync).not.toHaveBeenCalled();
+    expect(fsMock.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining(".rebrand-migrated"),
+      expect.stringContaining("skipped: daintree.db already present")
+    );
+  });
+
+  it("excludes Chromium singleton / cache / crashpad state from the copy", async () => {
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return false;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    const cpCall = fsMock.cpSync.mock.calls[0];
+    expect(cpCall).toBeDefined();
+    const filter = cpCall[2].filter as (src: string) => boolean;
+    // Inheriting SingletonLock that points at a live Canopy PID would make
+    // Daintree fail to launch (Chromium treats it as a secondary instance).
+    expect(filter("/tmp/user-data/Canopy/SingletonLock")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/SingletonCookie")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/SingletonSocket")).toBe(false);
+    // Crashpad state would re-report Canopy's old crashes under Daintree's
+    // bundle id.
+    expect(filter("/tmp/user-data/Canopy/Crashpad")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/Crash Reports")).toBe(false);
+    // Caches regenerate — copying wastes I/O.
+    expect(filter("/tmp/user-data/Canopy/GPUCache")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/Code Cache")).toBe(false);
+    // Real user state is kept.
+    expect(filter("/tmp/user-data/Canopy/canopy.db")).toBe(true);
+    expect(filter("/tmp/user-data/Canopy/Preferences")).toBe(true);
+    expect(filter("/tmp/user-data/Canopy/Local Storage")).toBe(true);
   });
 
   it("skips the migration when BUILD_VARIANT=canopy (legacy build)", async () => {

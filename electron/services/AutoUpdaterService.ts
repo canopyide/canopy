@@ -36,15 +36,24 @@ class AutoUpdaterService {
 
   private configureFeedForChannel(channel: "stable" | "nightly"): void {
     // The legacy Canopy variant has no nightly channel — pin to stable so the
-    // updater fetches latest-*.yml (not nightly-*.yml, which would 404 on the
-    // Canopy feed).
+    // updater fetches latest-*.yml at the Canopy feed (no nightly URL exists
+    // on the Canopy side).
     const effectiveChannel: "stable" | "nightly" = IS_LEGACY_BUILD ? "stable" : channel;
+    // URL separation (not channel-name separation) routes stable vs. nightly.
+    // Both feeds serve `latest*.yml` under their respective URL prefixes —
+    // electron-builder 26.x restricts the publish `channel` field to a fixed
+    // enum, so we can't emit a `nightly.yml`. Omitting channel here makes
+    // electron-updater fall back to `latest*.yml` at whichever URL is active.
     autoUpdater.setFeedURL({
       provider: "generic",
       url: effectiveChannel === "nightly" ? NIGHTLY_FEED_URL : STABLE_FEED_URL,
-      channel: effectiveChannel === "nightly" ? "nightly" : "latest",
     });
-    autoUpdater.allowDowngrade = true;
+    // Only nightly permits downgrades: a user who opts into the nightly channel
+    // from e.g. 0.6.0 stable needs to be able to receive 0.6.0-nightly.X, which
+    // is semver-lower than the stable they're on. Stable feeds must never
+    // downgrade — a regressed or overwritten latest.yml would otherwise walk
+    // every installed user backwards on the next check.
+    autoUpdater.allowDowngrade = effectiveChannel === "nightly";
   }
 
   private runUpdateCheck(context: "Initial" | "Periodic"): void {

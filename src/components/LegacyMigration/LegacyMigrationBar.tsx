@@ -1,10 +1,11 @@
 import { systemClient } from "@/clients/systemClient";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 
-// TODO(0.9): Remove this component and its usage in src/App.tsx. The legacy
+// TODO(0.9.0): Remove this component and its usage in src/App.tsx. The legacy
 // Canopy build variant is being dropped in 0.9 — delete the component, its
 // tests, and the IS_LEGACY_BUILD branch in App.tsx.
 const DOWNLOAD_URL = "https://daintree.org/download";
+const BLOG_URL = "https://daintree.org/blog/from-canopy-to-daintree";
 
 export function LegacyMigrationBar() {
   const openExternal = (url: string) => {
@@ -22,11 +23,17 @@ export function LegacyMigrationBar() {
       <div className="flex min-w-0 items-center gap-3">
         <DaintreeIcon size={18} className="shrink-0 text-white" />
         <p className="truncate text-sm">
-          <span className="font-semibold text-white">
-            Canopy is now Daintree — same app, new name.
-          </span>
+          <span className="font-semibold text-white">Canopy is being renamed to Daintree</span>
           <span className="ml-1 text-white/75">
-            Reinstall under Daintree to keep receiving updates.
+            —{" "}
+            <button
+              type="button"
+              onClick={() => openExternal(BLOG_URL)}
+              className="cursor-pointer text-white underline decoration-white/50 underline-offset-2 transition-colors hover:decoration-white focus:outline-none focus:ring-2 focus:ring-white/60 focus:ring-offset-1 focus:ring-offset-[#B24522]"
+            >
+              here&rsquo;s why
+            </button>
+            . Install Daintree to switch to the renamed build.
           </span>
         </p>
       </div>

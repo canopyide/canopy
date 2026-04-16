@@ -22,8 +22,11 @@ permissions:
 
 env:
   NODE_VERSION: "22"
-  NIGHTLY_CHANNEL: "nightly"
-  NIGHTLY_URL: "https://updates.daintree.org/nightly/"
+  # Nightly is Daintree-only. Legacy Canopy ships via tagged releases in
+  # release.yml, not nightly. Nightly publish URL + filename are resolved by
+  # electron-builder.config.cjs from the stamped `-nightly.*` version — no
+  # CLI overrides here.
+  BUILD_VARIANT: "daintree"
 
 jobs:
   matrix-setup:
@@ -164,10 +167,16 @@ jobs:
 
       - name: Stamp nightly version
         shell: bash
+        # Version must be unique per run. Date-only stamps collide on same-day
+        # reruns and — combined with the `immutable` cache-control on binaries —
+        # cause sha512 mismatches for clients who downloaded the earlier run.
+        # UTC second-granular timestamp + short SHA gives us uniqueness and
+        # traceability back to the commit.
         run: |
-          DATE=$(date -u +%Y%m%d)
+          STAMP=$(date -u +%Y%m%d%H%M%S)
+          SHA=$(git rev-parse --short=7 HEAD)
           BASE=$(node -p "require('./package.json').version.replace(/-.*/, '')")
-          NIGHTLY_VERSION="${BASE}-nightly.${DATE}"
+          NIGHTLY_VERSION="${BASE}-nightly.${STAMP}.${SHA}"
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
@@ -226,6 +235,12 @@ jobs:
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
 
+      # Publish URL is set by electron-builder.config.cjs based on the stamped
+      # -nightly.* version (routes to nightlyPublishUrl). We intentionally do
+      # NOT pass -c.publish.url / -c.publish.channel CLI overrides: those
+      # replace the array-shaped publish config with a plain object and strip
+      # `provider: generic`, which fails schema validation. Everything the
+      # nightly needs is expressed in the version string + config.
       - name: Package (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash
@@ -240,9 +255,7 @@ jobs:
           npm_config_build_from_source: "true"
         run: |
           npx electron-builder --publish never \
-            -c.buildDependenciesFromSource=true \
-            -c.publish.url="${{ env.NIGHTLY_URL }}" \
-            -c.publish.channel="${{ env.NIGHTLY_CHANNEL }}"
+            -c.buildDependenciesFromSource=true
 
       - name: Package (Linux/Windows)
         if: ${{ !startsWith(matrix.os, 'macos') }}
@@ -250,25 +263,27 @@ jobs:
         env:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
-          npx electron-builder --publish never \
-            -c.publish.url="${{ env.NIGHTLY_URL }}" \
-            -c.publish.channel="${{ env.NIGHTLY_CHANNEL }}"
+          npx electron-builder --publish never
 
+      # Nightly and stable both publish `latest*.yml` — URL separation (not
+      # channel-name separation) distinguishes them. The nightly URL prefix is
+      # set by the config when it sees a -nightly.* version.
       - name: Validate update metadata (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          if [ ! -f "release/nightly.yml" ]; then
-            echo "::error::Missing release/nightly.yml - Windows auto-update will not work"
+          if [ ! -f "release/latest.yml" ]; then
+            echo "::error::Missing release/latest.yml - Windows auto-update will not work"
             exit 1
           fi
+          node scripts/ci/validate-update-metadata.mjs release/latest.yml
 
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
-          if [ ! -f "release/nightly-mac.yml" ]; then
-            echo "::error::Missing release/nightly-mac.yml - macOS auto-update will not work"
+          if [ ! -f "release/latest-mac.yml" ]; then
+            echo "::error::Missing release/latest-mac.yml - macOS auto-update will not work"
             exit 1
           fi
           DMG_COUNT=$(find release -maxdepth 1 -name '*.dmg' | wc -l | tr -d ' ')
@@ -278,16 +293,18 @@ jobs:
             find release -maxdepth 1 \( -name '*.dmg' -o -name '*.zip' \) -exec ls -la {} +
             exit 1
           fi
-          echo "Found $DMG_COUNT DMGs, $ZIP_COUNT ZIPs, and nightly-mac.yml"
+          echo "Found $DMG_COUNT DMGs, $ZIP_COUNT ZIPs, and latest-mac.yml"
+          node scripts/ci/validate-update-metadata.mjs release/latest-mac.yml
 
       - name: Validate update metadata (Linux)
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
-          if [ ! -f "release/nightly-linux.yml" ]; then
-            echo "::error::Missing release/nightly-linux.yml - Linux auto-update will not work"
+          if [ ! -f "release/latest-linux.yml" ]; then
+            echo "::error::Missing release/latest-linux.yml - Linux auto-update will not work"
             exit 1
           fi
+          node scripts/ci/validate-update-metadata.mjs release/latest-linux.yml
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
@@ -300,7 +317,7 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.blockmap
-            release/nightly*.yml
+            release/latest*.yml
           retention-days: 3
           if-no-files-found: error
 
@@ -356,7 +373,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
         run: |
           aws s3 sync release/ "s3://${R2_BUCKET}/nightly/" \
             --endpoint-url "${R2_ENDPOINT}" \
@@ -377,13 +394,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
         run: |
           aws s3 sync release/ "s3://${R2_BUCKET}/nightly/" \
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --exclude "*" \
-            --include "nightly*.yml" \
+            --include "latest*.yml" \
             --cache-control "no-cache, no-store, must-revalidate"
 
       - name: Clean up old nightly builds
@@ -393,9 +410,9 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
         run: |
-          CUTOFF=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%S)
+          CUTOFF=$(date -u -d "3 days ago" +%Y-%m-%dT%H:%M:%S)
           echo "Deleting nightly objects older than ${CUTOFF}"
 
           OBJECTS=$(aws s3api list-objects-v2 \

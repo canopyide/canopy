@@ -35,6 +35,16 @@ describe("LegacyMigrationBar", () => {
     expect(openExternalMock).toHaveBeenCalledWith("https://daintree.org/download");
   });
 
+  it("opens the rename blog post when the here's why link is clicked", () => {
+    render(<LegacyMigrationBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /here.?s why/i }));
+
+    expect(openExternalMock).toHaveBeenCalledWith(
+      "https://daintree.org/blog/from-canopy-to-daintree"
+    );
+  });
+
   it("has no dismiss control (bar is permanent)", () => {
     render(<LegacyMigrationBar />);
 
