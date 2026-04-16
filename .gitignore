@@ -95,3 +95,6 @@ planning/
 .planning/
 .tmp
 *.tgz
+
+# Claude Code session markers
+.claude/nf-session-seen-*.flag
