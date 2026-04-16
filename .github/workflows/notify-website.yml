@@ -1,0 +1,151 @@
+name: Notify Website
+
+on:
+  push:
+    branches: [develop]
+  release:
+    types: [published]
+  pull_request:
+    types: [opened, closed]
+  issues:
+    types: [opened, closed]
+
+jobs:
+  notify:
+    # Skip fork PRs — secrets are unavailable and we don't want untrusted
+    # events hitting the webhook endpoint.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Build payload and notify
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBSITE_WEBHOOK_SECRET }}
+          EVENT_NAME: ${{ github.event_name }}
+          # Push context
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          COMMIT_EMAIL: ${{ github.event.head_commit.author.email }}
+          COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          COMPARE_URL: ${{ github.event.compare }}
+          PUSHER: ${{ github.event.pusher.name }}
+          # Release context
+          REL_TAG: ${{ github.event.release.tag_name }}
+          REL_NAME: ${{ github.event.release.name }}
+          REL_URL: ${{ github.event.release.html_url }}
+          REL_PRERELEASE: ${{ github.event.release.prerelease }}
+          REL_AUTHOR: ${{ github.event.release.author.login }}
+          REL_PUBLISHED: ${{ github.event.release.published_at }}
+          # Pull request context
+          PR_ACTION: ${{ github.event.action }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+          PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          PR_ADDITIONS: ${{ github.event.pull_request.additions }}
+          PR_DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_CHANGED: ${{ github.event.pull_request.changed_files }}
+          # Issue context
+          ISS_ACTION: ${{ github.event.action }}
+          ISS_NUMBER: ${{ github.event.issue.number }}
+          ISS_TITLE: ${{ github.event.issue.title }}
+          ISS_URL: ${{ github.event.issue.html_url }}
+          ISS_AUTHOR: ${{ github.event.issue.user.login }}
+          ISS_STATE: ${{ github.event.issue.state }}
+          ISS_CREATED: ${{ github.event.issue.created_at }}
+          ISS_CLOSED: ${{ github.event.issue.closed_at }}
+          ISS_LABELS_JSON: ${{ toJSON(github.event.issue.labels) }}
+        run: |
+          case "$EVENT_NAME" in
+            push)
+              PAYLOAD=$(jq -n '{
+                event: "push",
+                ref: env.REF,
+                branch: env.REF_NAME,
+                commit: {
+                  sha: env.SHA,
+                  message: env.COMMIT_MSG,
+                  author: env.COMMIT_AUTHOR,
+                  email: env.COMMIT_EMAIL,
+                  timestamp: env.COMMIT_TIMESTAMP,
+                  url: env.COMMIT_URL
+                },
+                compare: env.COMPARE_URL,
+                pusher: env.PUSHER
+              }')
+              ;;
+            release)
+              PAYLOAD=$(jq -n '{
+                event: "release",
+                release: {
+                  tag: env.REL_TAG,
+                  name: env.REL_NAME,
+                  url: env.REL_URL,
+                  prerelease: (env.REL_PRERELEASE == "true"),
+                  author: env.REL_AUTHOR,
+                  publishedAt: env.REL_PUBLISHED
+                }
+              }')
+              ;;
+            pull_request)
+              if [ "$PR_ACTION" = "closed" ] && [ "$PR_MERGED" = "true" ]; then
+                export PR_ACTION="merged"
+              fi
+              PAYLOAD=$(jq -n '{
+                event: "pull_request",
+                action: env.PR_ACTION,
+                pullRequest: {
+                  number: (env.PR_NUMBER | tonumber? // 0),
+                  title: env.PR_TITLE,
+                  url: env.PR_URL,
+                  author: env.PR_AUTHOR,
+                  base: env.PR_BASE,
+                  head: env.PR_HEAD,
+                  mergedBy: (if env.PR_MERGED_BY == "" then null else env.PR_MERGED_BY end),
+                  mergedAt: (if env.PR_MERGED_AT == "" then null else env.PR_MERGED_AT end),
+                  additions: (env.PR_ADDITIONS | tonumber? // 0),
+                  deletions: (env.PR_DELETIONS | tonumber? // 0),
+                  changedFiles: (env.PR_CHANGED | tonumber? // 0)
+                }
+              }')
+              ;;
+            issues)
+              PAYLOAD=$(jq -n '{
+                event: "issue",
+                action: env.ISS_ACTION,
+                issue: {
+                  number: (env.ISS_NUMBER | tonumber? // 0),
+                  title: env.ISS_TITLE,
+                  url: env.ISS_URL,
+                  author: env.ISS_AUTHOR,
+                  state: env.ISS_STATE,
+                  labels: (env.ISS_LABELS_JSON | fromjson | map(.name)),
+                  createdAt: env.ISS_CREATED,
+                  closedAt: (if env.ISS_CLOSED == "" then null else env.ISS_CLOSED end)
+                }
+              }')
+              ;;
+          esac
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer ${WEBHOOK_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            https://daintree.org/api/github/webhook)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Response (HTTP ${HTTP_CODE}): ${BODY}"
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::warning::Website cache refresh failed (HTTP ${HTTP_CODE})"
+          fi
