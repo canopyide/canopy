@@ -636,9 +636,11 @@ describe("Canopy -> Daintree userData migration gating", () => {
 
     await import("../environment.js");
 
-    expect(fsMock.cpSync).toHaveBeenCalledWith("/tmp/user-data/Canopy", "/tmp/user-data/Daintree", {
-      recursive: true,
-    });
+    expect(fsMock.cpSync).toHaveBeenCalledWith(
+      path.join("/tmp/user-data", "Canopy"),
+      "/tmp/user-data/Daintree",
+      { recursive: true }
+    );
   });
 
   it("skips the migration when BUILD_VARIANT=canopy (legacy build)", async () => {
