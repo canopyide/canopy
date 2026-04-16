@@ -6,6 +6,7 @@ import type {
   DevPreviewSessionRequest,
   DevPreviewStopByPanelRequest,
   DevPreviewStateChangedPayload,
+  DevPreviewGetByWorktreeRequest,
 } from "../../../shared/types/ipc/devPreview.js";
 import { DevPreviewSessionService } from "../../services/DevPreviewSessionService.js";
 import { getHibernationService } from "../../services/HibernationService.js";
@@ -42,6 +43,18 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     return sessionService.getState(request);
   };
   handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_GET_STATE, handleGetState));
+
+  const handleGetByWorktree = async (
+    _event: Electron.IpcMainInvokeEvent,
+    request: DevPreviewGetByWorktreeRequest
+  ) => {
+    if (!request || typeof request.worktreeId !== "string" || !request.worktreeId.trim()) {
+      throw new Error("worktreeId is required");
+    }
+    return sessionService.getByWorktree(request.worktreeId);
+  };
+  ipcMain.handle(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE, handleGetByWorktree);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE));
 
   const unsubHibernation = getHibernationService().onProjectHibernated((projectId) => {
     sessionService.stopByProject(projectId).catch((err) => {
