@@ -120,46 +120,56 @@ describe("appThemeViewTransition", () => {
       runThemeReveal({ x: 100, y: 100 }, mutate);
 
       expect(startSpy).toHaveBeenCalledTimes(1);
-      // The library defers mutate until the browser invokes the callback.
       expect(mutate).not.toHaveBeenCalled();
       capturedMutate()?.();
       expect(mutate).toHaveBeenCalledTimes(1);
     });
 
-    it("animates the new root pseudo with a circle clip-path to the farthest corner", async () => {
+    it("wipes left-to-right when click is on the left side", async () => {
       const { animateSpy } = installViewTransitionMock();
-      // Origin at (0,0) on a 1000x800 viewport → radius = hypot(1000, 800)
-      const expected = Math.hypot(1000, 800);
 
-      runThemeReveal({ x: 0, y: 0 }, () => {});
+      runThemeReveal({ x: 100, y: 400 }, () => {});
       await Promise.resolve();
 
       expect(animateSpy).toHaveBeenCalledTimes(1);
       const [keyframes, options] = animateSpy.mock.calls[0];
       expect(keyframes).toEqual({
-        clipPath: [`circle(0px at 0px 0px)`, `circle(${expected}px at 0px 0px)`],
+        clipPath: ["inset(0 0 0 0)", "inset(0 0 0 100%)"],
       });
       expect(options).toMatchObject({
-        pseudoElement: "::view-transition-new(root)",
-        duration: 350,
+        pseudoElement: "::view-transition-old(root)",
+        duration: 400,
+        easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+        fill: "forwards",
       });
     });
 
-    it("falls back to viewport center when origin is null", async () => {
+    it("wipes right-to-left when click is on the right side", async () => {
       const { animateSpy } = installViewTransitionMock();
-      // Center (500, 400) on 1000x800 → radius = hypot(500, 400)
-      const expected = Math.hypot(500, 400);
+
+      runThemeReveal({ x: 800, y: 400 }, () => {});
+      await Promise.resolve();
+
+      const [keyframes] = animateSpy.mock.calls[0];
+      expect(keyframes).toEqual({
+        clipPath: ["inset(0 0 0 0)", "inset(0 100% 0 0)"],
+      });
+    });
+
+    it("defaults to left-to-right wipe when origin is null", async () => {
+      const { animateSpy } = installViewTransitionMock();
 
       runThemeReveal(null, () => {});
       await Promise.resolve();
 
       const [keyframes] = animateSpy.mock.calls[0];
-      expect(keyframes.clipPath[1]).toBe(`circle(${expected}px at 500px 400px)`);
+      expect(keyframes).toEqual({
+        clipPath: ["inset(0 0 0 0)", "inset(0 0 0 100%)"],
+      });
     });
 
     it("swallows ready-promise rejections without throwing", async () => {
       const rejected = Promise.reject(new Error("aborted"));
-      // Prevent unhandled rejection noise by attaching a handler before the tick.
       rejected.catch(() => {});
       (document as unknown as { startViewTransition: unknown }).startViewTransition = vi.fn(() => ({
         ready: rejected,

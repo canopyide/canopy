@@ -69,9 +69,9 @@ test.describe.serial("Core: Settings Pages Load", () => {
       timeout: T_SHORT,
     });
 
-    // App subtab (default) should show the theme picker trigger
+    // App subtab (default) should show the inline theme list
     const settingsPanel = window.locator('[role="dialog"]');
-    await expect(settingsPanel.locator('[data-testid="theme-picker-trigger"]')).toBeVisible({
+    await expect(settingsPanel.locator('[role="listbox"][aria-label="Theme list"]')).toBeVisible({
       timeout: T_SHORT,
     });
 

@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -8,47 +7,17 @@ import {
   type FormEvent,
   type MouseEvent,
 } from "react";
-import { AlertTriangle, Monitor, Palette, Shuffle } from "lucide-react";
-import { ThemeSelector } from "./ThemeSelector";
+import { AlertTriangle, Check, Monitor, Search, Shuffle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BUILT_IN_APP_SCHEMES } from "@/config/appColorSchemes";
 import { injectSchemeToDOM, useAppThemeStore } from "@/store/appThemeStore";
 import { appThemeClient } from "@/clients/appThemeClient";
-import { prefersReducedMotion, runThemeReveal } from "@/lib/appThemeViewTransition";
+import { runThemeReveal } from "@/lib/appThemeViewTransition";
 import { applyAccentOverrideToScheme, resolveAppTheme } from "@shared/theme";
-import { AppDialog } from "@/components/ui/AppDialog";
 import { PaletteStrip } from "@/components/ui/PaletteStrip";
 import { APP_THEME_PREVIEW_KEYS, getAppThemeWarnings } from "@shared/theme";
 import type { AppColorScheme, AppThemeValidationWarning } from "@shared/types/appTheme";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
-
-function HeroImage({ scheme, size }: { scheme: AppColorScheme; size: number }) {
-  if (scheme.heroImage?.trim()) {
-    return (
-      <img
-        src={scheme.heroImage}
-        alt={scheme.name}
-        width={size}
-        height={size}
-        loading="lazy"
-        className="rounded-lg object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <div
-      className="rounded-lg flex items-center justify-center"
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: scheme.tokens[APP_THEME_PREVIEW_KEYS.background],
-      }}
-    >
-      <PaletteStrip scheme={scheme} />
-    </div>
-  );
-}
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -105,13 +74,69 @@ function PreferredSchemePicker({
   );
 }
 
+function ThemeRow({
+  scheme,
+  isSelected,
+  onSelect,
+  warnings,
+}: {
+  scheme: AppColorScheme;
+  isSelected: boolean;
+  onSelect: (id: string, origin: { x: number; y: number }) => void;
+  warnings: AppThemeValidationWarning[];
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={isSelected}
+      onClick={(e) => onSelect(scheme.id, { x: e.clientX, y: e.clientY })}
+      className={cn(
+        "w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-colors",
+        isSelected ? "bg-daintree-accent/10" : "hover:bg-surface-hover"
+      )}
+    >
+      {scheme.heroImage ? (
+        <img
+          src={scheme.heroImage.replace("/themes/", "/themes/thumb/")}
+          alt=""
+          className="w-10 h-10 rounded-sm shrink-0 object-cover"
+        />
+      ) : (
+        <div
+          className="w-10 h-10 rounded-sm shrink-0 border border-daintree-border/50"
+          style={{ backgroundColor: scheme.tokens[APP_THEME_PREVIEW_KEYS.background] }}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-daintree-text truncate">{scheme.name}</span>
+          {warnings.length > 0 && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-status-warning/10 px-1.5 py-0.5 text-[10px] text-status-warning shrink-0">
+              <AlertTriangle className="h-2.5 w-2.5" />
+              {warnings.length}
+            </span>
+          )}
+        </div>
+        {scheme.location && (
+          <span className="text-[11px] text-daintree-text/40 truncate block">
+            {scheme.location}
+          </span>
+        )}
+      </div>
+      <PaletteStrip scheme={scheme} />
+      <div className="w-4 shrink-0 flex items-center justify-center">
+        {isSelected && <Check className="w-3.5 h-3.5 text-daintree-accent" />}
+      </div>
+    </button>
+  );
+}
+
 export function AppThemePicker() {
   const selectedSchemeId = useAppThemeStore((s) => s.selectedSchemeId);
   const customSchemes = useAppThemeStore((s) => s.customSchemes);
   const commitSchemeSelection = useAppThemeStore((s) => s.commitSchemeSelection);
-  const injectTheme = useAppThemeStore((s) => s.injectTheme);
   const addCustomScheme = useAppThemeStore((s) => s.addCustomScheme);
-  const recentSchemeIds = useAppThemeStore((s) => s.recentSchemeIds);
   const followSystem = useAppThemeStore((s) => s.followSystem);
   const setFollowSystem = useAppThemeStore((s) => s.setFollowSystem);
   const preferredDarkSchemeId = useAppThemeStore((s) => s.preferredDarkSchemeId);
@@ -122,38 +147,31 @@ export function AppThemePicker() {
   const setAccentColorOverride = useAppThemeStore((s) => s.setAccentColorOverride);
   const [importWarnings, setImportWarnings] = useState<AppThemeValidationWarning[]>([]);
   const [importMessage, setImportMessage] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [previewAnnouncement, setPreviewAnnouncement] = useState("");
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"dark" | "light">(() =>
+    (selectedSchemeId &&
+      [...BUILT_IN_APP_SCHEMES, ...customSchemes].find((s) => s.id === selectedSchemeId)?.type) ===
+    "light"
+      ? "light"
+      : "dark"
+  );
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoGenRef = useRef(0);
   const shuffleQueueRef = useRef<string[]>([]);
 
   const allSchemes = useMemo(() => [...BUILT_IN_APP_SCHEMES, ...customSchemes], [customSchemes]);
-  const recentSchemes = useMemo(
-    () =>
-      recentSchemeIds
-        .map((id) => allSchemes.find((s) => s.id === id))
-        .filter((s): s is AppColorScheme => Boolean(s)),
-    [recentSchemeIds, allSchemes]
-  );
-  const recentIdSet = useMemo(() => new Set(recentSchemes.map((s) => s.id)), [recentSchemes]);
-  const darkSchemes = useMemo(
-    () => allSchemes.filter((s) => s.type !== "light" && !recentIdSet.has(s.id)),
-    [allSchemes, recentIdSet]
-  );
-  const lightSchemes = useMemo(
-    () => allSchemes.filter((s) => s.type === "light" && !recentIdSet.has(s.id)),
-    [allSchemes, recentIdSet]
-  );
-  // Unfiltered dark/light lists — used for follow-system preferred pickers that
-  // should not hide recently-used themes.
-  const allDarkSchemes = useMemo(() => allSchemes.filter((s) => s.type !== "light"), [allSchemes]);
-  const allLightSchemes = useMemo(() => allSchemes.filter((s) => s.type === "light"), [allSchemes]);
+  const darkSchemes = useMemo(() => allSchemes.filter((s) => s.type !== "light"), [allSchemes]);
+  const lightSchemes = useMemo(() => allSchemes.filter((s) => s.type === "light"), [allSchemes]);
   const selectedScheme = useMemo(
     () => allSchemes.find((s) => s.id === selectedSchemeId) ?? allSchemes[0],
     [allSchemes, selectedSchemeId]
   );
+
+  const lowerQuery = query.toLowerCase();
+  const filteredThemes = useMemo(() => {
+    const byType = typeFilter === "light" ? lightSchemes : darkSchemes;
+    if (!lowerQuery) return byType;
+    return byType.filter((s) => s.name.toLowerCase().includes(lowerQuery));
+  }, [darkSchemes, lightSchemes, typeFilter, lowerQuery]);
 
   const warningsByScheme = useMemo(
     () =>
@@ -170,8 +188,6 @@ export function AppThemePicker() {
     () => accentColorOverride ?? selectedScheme.tokens["accent-primary"],
     [accentColorOverride, selectedScheme]
   );
-  // Native <input type="color"> only accepts #rrggbb. Fall back to black if the
-  // theme's accent-primary is a non-hex expression (e.g. oklch()).
   const pickerValue = useMemo(() => {
     const candidate = accentColorOverride ?? selectedScheme.tokens["accent-primary"];
     return /^#[0-9a-f]{6}$/i.test(candidate) ? candidate.toLowerCase() : "#000000";
@@ -179,7 +195,6 @@ export function AppThemePicker() {
 
   const handleAccentInput = useCallback(
     (e: FormEvent<HTMLInputElement>) => {
-      // Live preview during drag — Zustand only, no IPC write spam.
       setAccentColorOverride(e.currentTarget.value);
     },
     [setAccentColorOverride]
@@ -187,7 +202,6 @@ export function AppThemePicker() {
 
   const handleAccentCommit = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
-      // Persist on release/close.
       setAccentColorOverride(e.target.value);
       appThemeClient.setAccentColorOverride(e.target.value).catch((error) => {
         console.error("Failed to persist accent color override:", error);
@@ -205,120 +219,24 @@ export function AppThemePicker() {
 
   const handleSelect = useCallback(
     async (id: string, origin?: { x: number; y: number }) => {
-      const prev = selectedSchemeId;
-
       if (followSystem) {
         setFollowSystem(false);
         appThemeClient.setFollowSystem(false).catch(console.error);
       }
 
-      // Resolve against a fresh store read — `customSchemes` from the
-      // component closure can be stale when `handleImport` calls
-      // `handleSelect` synchronously right after `addCustomScheme`.
       const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
       commitSchemeSelection(id);
+      setTypeFilter(scheme.type === "light" ? "light" : "dark");
       runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme));
-      // Modal stays open during live preview so the user can keep browsing.
 
       try {
         await appThemeClient.setColorScheme(id);
-        // Only persist the updated recents once the selection itself was saved.
-        // Read back from the store so we capture the post-LRU-update state.
         await appThemeClient.setRecentSchemeIds(useAppThemeStore.getState().recentSchemeIds);
       } catch (error) {
         console.error("Failed to persist app theme:", error);
       }
-
-      if (scheme.heroVideo && id !== prev && !prefersReducedMotion()) {
-        const gen = ++videoGenRef.current;
-        const video = videoRef.current;
-        if (video) {
-          video.src = scheme.heroVideo;
-          video.load();
-          video.oncanplaythrough = () => {
-            if (videoGenRef.current !== gen) return;
-            video.style.opacity = "1";
-            video.play().catch(() => {});
-          };
-          video.onended = () => {
-            if (videoGenRef.current !== gen) return;
-            video.style.opacity = "0";
-          };
-        }
-      }
     },
-    [commitSchemeSelection, selectedSchemeId, followSystem, setFollowSystem]
-  );
-
-  const handleOpen = useCallback(() => {
-    setPreviewAnnouncement("");
-    setOpen(true);
-  }, []);
-
-  const handleModalClose = useCallback(() => {
-    // On close, ensure the DOM reflects the currently committed selection.
-    // If the user only hovered (no click), the store's selectedSchemeId is
-    // unchanged and this reverts the ephemeral preview. If the user clicked
-    // to commit, the store already holds the new selection so this is a
-    // no-op visually but keeps store and DOM in lockstep regardless.
-    const committed = allSchemes.find((s) => s.id === selectedSchemeId);
-    if (committed) {
-      injectTheme(committed);
-    }
-    setPreviewAnnouncement("");
-    setOpen(false);
-  }, [allSchemes, injectTheme, selectedSchemeId]);
-
-  const handlePreviewItem = useCallback(
-    (id: string) => {
-      const scheme = allSchemes.find((s) => s.id === id);
-      if (!scheme) return;
-      injectTheme(scheme);
-      setPreviewAnnouncement(`Previewing: ${scheme.name}`);
-    },
-    [allSchemes, injectTheme]
-  );
-
-  const handlePreviewEnd = useCallback(() => {
-    const committed = allSchemes.find((s) => s.id === selectedSchemeId);
-    if (committed) {
-      injectTheme(committed);
-    }
-    setPreviewAnnouncement("");
-  }, [allSchemes, selectedSchemeId, injectTheme]);
-
-  // If the picker unmounts mid-preview (e.g. the parent settings view
-  // switches tabs without closing the theme modal first), make sure the DOM
-  // is snapped back to whatever the store currently says is committed so we
-  // do not leak a preview into the app chrome.
-  useEffect(() => {
-    return () => {
-      const committedId = useAppThemeStore.getState().selectedSchemeId;
-      const { customSchemes: storeCustomSchemes } = useAppThemeStore.getState();
-      const pool = [...BUILT_IN_APP_SCHEMES, ...storeCustomSchemes];
-      const committed = pool.find((s) => s.id === committedId);
-      if (committed) {
-        useAppThemeStore.getState().injectTheme(committed);
-      }
-    };
-  }, []);
-
-  const handleShuffle = useCallback(
-    (e: MouseEvent) => {
-      const otherIds = allSchemes.map((s) => s.id).filter((id) => id !== selectedSchemeId);
-      if (otherIds.length === 0) return;
-
-      // Filter out current theme in case it was manually selected mid-cycle
-      shuffleQueueRef.current = shuffleQueueRef.current.filter((id) => id !== selectedSchemeId);
-
-      if (shuffleQueueRef.current.length === 0) {
-        shuffleQueueRef.current = shuffleArray(otherIds);
-      }
-
-      const nextId = shuffleQueueRef.current.shift()!;
-      handleSelect(nextId, { x: e.clientX, y: e.clientY });
-    },
-    [allSchemes, selectedSchemeId, handleSelect]
+    [commitSchemeSelection, followSystem, setFollowSystem]
   );
 
   const handleToggleFollowSystem = useCallback(async () => {
@@ -389,8 +307,6 @@ export function AppThemePicker() {
   const handleExport = useCallback(async () => {
     if (!selectedScheme) return;
     try {
-      // Bake the accent override into the exported scheme tokens so
-      // downstream users of the exported JSON see the user's chosen accent.
       const effectiveScheme = applyAccentOverrideToScheme(selectedScheme, accentColorOverride);
       await appThemeClient.exportTheme(effectiveScheme);
     } catch (error) {
@@ -399,7 +315,24 @@ export function AppThemePicker() {
     }
   }, [selectedScheme, accentColorOverride]);
 
-  const selectedWarnings = warningsByScheme.get(selectedScheme.id) ?? [];
+  const handleShuffle = useCallback(
+    (e: MouseEvent) => {
+      const otherIds = allSchemes.map((s) => s.id).filter((id) => id !== selectedSchemeId);
+      if (otherIds.length === 0) return;
+
+      shuffleQueueRef.current = shuffleQueueRef.current.filter((id) => id !== selectedSchemeId);
+
+      if (shuffleQueueRef.current.length === 0) {
+        shuffleQueueRef.current = shuffleArray(otherIds);
+      }
+
+      const nextId = shuffleQueueRef.current.shift()!;
+      handleSelect(nextId, { x: e.clientX, y: e.clientY });
+    },
+    [allSchemes, selectedSchemeId, handleSelect]
+  );
+
+  const isEmpty = filteredThemes.length === 0;
 
   return (
     <div className="space-y-3">
@@ -417,13 +350,13 @@ export function AppThemePicker() {
         <div className="space-y-2 pl-1">
           <PreferredSchemePicker
             label="Preferred dark theme"
-            schemes={allDarkSchemes}
+            schemes={darkSchemes}
             selectedId={preferredDarkSchemeId}
             onSelect={handlePreferredDarkChange}
           />
           <PreferredSchemePicker
             label="Preferred light theme"
-            schemes={allLightSchemes}
+            schemes={lightSchemes}
             selectedId={preferredLightSchemeId}
             onSelect={handlePreferredLightChange}
           />
@@ -458,52 +391,100 @@ export function AppThemePicker() {
         </div>
       )}
 
-      <button
-        type="button"
-        data-testid="theme-picker-trigger"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={handleOpen}
-        className={cn(
-          "w-full flex items-center gap-3 p-2 rounded-[var(--radius-md)] border transition-colors text-left",
-          "border-daintree-border bg-daintree-bg hover:border-daintree-text/30"
-        )}
-      >
-        <div className="relative shrink-0">
-          <HeroImage scheme={selectedScheme} size={96} />
-          {selectedScheme.heroVideo && (
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              preload="none"
-              className="absolute inset-0 w-full h-full rounded-lg object-cover transition-opacity duration-500"
-              style={{ opacity: 0 }}
+      <div className="flex flex-col rounded-[var(--radius-md)] border border-daintree-border overflow-hidden">
+        <div className="relative h-[190px] shrink-0 overflow-hidden">
+          {selectedScheme.heroImage ? (
+            <img
+              src={selectedScheme.heroImage}
+              alt={selectedScheme.name}
+              className="w-full h-full object-cover"
             />
+          ) : (
+            <div
+              className="w-full h-full flex items-center justify-center"
+              style={{
+                backgroundColor: selectedScheme.tokens[APP_THEME_PREVIEW_KEYS.background],
+              }}
+            >
+              <PaletteStrip scheme={selectedScheme} />
+            </div>
           )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-daintree-text truncate">
+          <div className="absolute bottom-0 inset-x-0 bg-black/40 backdrop-blur-sm px-3 py-1.5 flex items-center justify-between">
+            <span className="text-sm font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
               {selectedScheme.name}
             </span>
-            {selectedWarnings.length > 0 && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-status-warning/10 px-1.5 py-0.5 text-[10px] text-status-warning shrink-0">
-                <AlertTriangle className="h-2.5 w-2.5" />
-                {selectedWarnings.length}
+            {selectedScheme.location && (
+              <span className="text-[11px] text-white/75 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                {selectedScheme.location}
               </span>
             )}
           </div>
-          {selectedScheme.location && (
-            <span className="text-xs text-daintree-text/50 truncate block">
-              {selectedScheme.location}
-            </span>
-          )}
-          <div className="mt-1.5">
-            <PaletteStrip scheme={selectedScheme} />
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-daintree-border shrink-0">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0 focus-within:border-daintree-accent">
+            <Search className="w-3.5 h-3.5 shrink-0 text-daintree-text/40 pointer-events-none" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setQuery("");
+                }
+              }}
+              placeholder="Filter themes..."
+              aria-label="Filter themes"
+              className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder:text-daintree-text/40 focus:outline-none"
+            />
+          </div>
+          <div className="flex rounded-[var(--radius-md)] border border-daintree-border overflow-hidden shrink-0">
+            <button
+              type="button"
+              onClick={() => setTypeFilter("dark")}
+              className={cn(
+                "px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                typeFilter === "dark"
+                  ? "bg-daintree-accent/15 text-daintree-text"
+                  : "text-daintree-text/50 hover:text-daintree-text/70"
+              )}
+            >
+              Dark
+            </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter("light")}
+              className={cn(
+                "px-2.5 py-0.5 text-[11px] font-medium transition-colors border-l border-daintree-border",
+                typeFilter === "light"
+                  ? "bg-daintree-accent/15 text-daintree-text"
+                  : "text-daintree-text/50 hover:text-daintree-text/70"
+              )}
+            >
+              Light
+            </button>
           </div>
         </div>
-      </button>
+
+        <div role="listbox" aria-label="Theme list">
+          {isEmpty ? (
+            <p className="text-xs text-daintree-text/50 text-center py-4">
+              No themes match your search.
+            </p>
+          ) : (
+            filteredThemes.map((scheme) => (
+              <ThemeRow
+                key={scheme.id}
+                scheme={scheme}
+                isSelected={scheme.id === selectedSchemeId}
+                onSelect={handleSelect}
+                warnings={warningsByScheme.get(scheme.id) ?? []}
+              />
+            ))
+          )}
+        </div>
+      </div>
 
       <section
         aria-label="Accent color"
@@ -549,63 +530,6 @@ export function AppThemePicker() {
           </button>
         )}
       </section>
-
-      <AppDialog
-        isOpen={open}
-        onClose={handleModalClose}
-        size="xl"
-        data-testid="theme-picker-dialog"
-      >
-        <AppDialog.Header>
-          <AppDialog.Title icon={<Palette className="h-5 w-5" />}>Choose a theme</AppDialog.Title>
-          <AppDialog.CloseButton />
-        </AppDialog.Header>
-        <AppDialog.BodyScroll>
-          <ThemeSelector<AppColorScheme>
-            groups={[
-              ...(recentSchemes.length > 0
-                ? [{ label: "Recently Used", items: recentSchemes }]
-                : []),
-              ...(darkSchemes.length > 0 ? [{ label: "Dark", items: darkSchemes }] : []),
-              ...(lightSchemes.length > 0 ? [{ label: "Light", items: lightSchemes }] : []),
-            ]}
-            selectedId={selectedSchemeId}
-            onSelect={handleSelect}
-            onPreviewItem={handlePreviewItem}
-            onPreviewEnd={handlePreviewEnd}
-            previewAnnouncement={previewAnnouncement}
-            columns={3}
-            renderPreview={(scheme) => <HeroImage scheme={scheme} size={130} />}
-            renderMeta={(scheme) => {
-              const warnings = warningsByScheme.get(scheme.id) ?? [];
-              return (
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-daintree-text truncate">
-                      {scheme.name}
-                    </span>
-                    {warnings.length > 0 && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-status-warning/10 px-1.5 py-0.5 text-[10px] text-status-warning shrink-0">
-                        <AlertTriangle className="h-2.5 w-2.5" />
-                        {warnings.length}
-                      </span>
-                    )}
-                  </div>
-                  {scheme.location && (
-                    <span className="text-[11px] text-daintree-text/50 truncate block">
-                      {scheme.location}
-                    </span>
-                  )}
-                  <div className="mt-1">
-                    <PaletteStrip scheme={scheme} />
-                  </div>
-                </div>
-              );
-            }}
-            getName={(s) => s.name}
-          />
-        </AppDialog.BodyScroll>
-      </AppDialog>
 
       <div className="flex items-center gap-3">
         <button

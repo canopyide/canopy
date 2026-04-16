@@ -1996,11 +1996,9 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
   }
 }
 
-/* Circular reveal for app theme switches (issue #5073).
-   The picker/shuffle click captures the origin (clientX/Y) and animates the
-   new root snapshot via WAAPI with a clip-path: circle() expand. Here we
-   disable the UA default cross-fade so the old snapshot stays fully opaque
-   beneath the expanding new snapshot. */
+/* Horizontal wipe for app theme switches.
+   The old snapshot sits on top and is clipped away via WAAPI clip-path:inset(),
+   revealing the new snapshot underneath. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
@@ -2008,11 +2006,11 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
 }
 
 ::view-transition-old(root) {
-  z-index: 1;
+  z-index: 2;
 }
 
 ::view-transition-new(root) {
-  z-index: 2;
+  z-index: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

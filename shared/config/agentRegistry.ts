@@ -1134,7 +1134,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     color: "#8957e5",
     iconId: "copilot",
     supportsContextInjection: true,
-    shortcut: "Cmd/Ctrl+Alt+I",
+    shortcut: "Cmd/Ctrl+Alt+H",
     tooltip: "GitHub's AI coding agent",
     usageUrl: "https://github.com/features/copilot",
     contextWindow: 160_000,

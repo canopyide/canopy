@@ -32,43 +32,30 @@ test.describe.serial("Core: Settings Tabs Coverage", () => {
       timeout: T_SHORT,
     });
 
-    // "App" subtab is the default — click the theme picker trigger to open the modal
+    // "App" subtab is the default — the inline theme list should be visible
     const settingsPanel = window.locator('[role="dialog"]');
-    const themeTrigger = settingsPanel.locator('[data-testid="theme-picker-trigger"]');
-    await expect(themeTrigger).toBeVisible({ timeout: T_SHORT });
-    await themeTrigger.click();
-    const themeDialog = window.locator('[data-testid="theme-picker-dialog"]');
-    await expect(themeDialog).toBeVisible({ timeout: T_SHORT });
-    const themeListbox = themeDialog.locator('[role="listbox"][aria-label="Theme list"]');
+    const themeListbox = settingsPanel.locator('[role="listbox"][aria-label="Theme list"]');
     await expect(themeListbox).toBeVisible({ timeout: T_SHORT });
 
-    // Select a different theme option from the list
+    // Select a different theme option from the inline list
     const options = themeListbox.locator('[role="option"]');
     const optionCount = await options.count();
     expect(optionCount).toBeGreaterThanOrEqual(2);
 
-    // Find an option that is NOT currently selected and get its name
+    // Find an option that is NOT currently selected
     let targetOption = options.first();
-    let targetName = "";
     for (let i = 0; i < optionCount; i++) {
       const option = options.nth(i);
       const selected = await option.getAttribute("aria-selected");
       if (selected !== "true") {
         targetOption = option;
-        targetName = (await option.textContent()) ?? "";
         break;
       }
     }
 
     await targetOption.click();
-    // Theme modal stays open on selection so users can keep browsing. Close it
-    // explicitly before asserting the trigger reflects the committed theme.
-    await expect(themeDialog).toBeVisible({ timeout: T_SHORT });
-    await window.keyboard.press("Escape");
-    await expect(themeDialog).not.toBeVisible({ timeout: T_SHORT });
-    if (targetName) {
-      await expect(themeTrigger).toContainText(targetName, { timeout: T_SHORT });
-    }
+    // The clicked option should now be selected
+    await expect(targetOption).toHaveAttribute("aria-selected", "true", { timeout: T_SHORT });
 
     await window.keyboard.press("Escape");
     await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });

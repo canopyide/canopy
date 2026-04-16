@@ -74,23 +74,6 @@ vi.mock("@/config/appColorSchemes", () => {
   };
 });
 
-vi.mock("@/hooks/useEscapeStack", () => ({
-  useEscapeStack: vi.fn(),
-}));
-
-vi.mock("@/hooks/useAnimatedPresence", () => ({
-  useAnimatedPresence: vi.fn(() => ({ isVisible: false, shouldRender: false })),
-}));
-
-vi.mock("@/hooks", () => ({
-  useOverlayState: vi.fn(),
-  useEscapeStack: vi.fn(),
-}));
-
-vi.mock("@/store", () => ({
-  usePortalStore: vi.fn(() => ({ isOpen: false, width: 0 })),
-}));
-
 import { AppThemePicker } from "../AppThemePicker";
 
 describe("AppThemePicker shuffle button", () => {
@@ -144,7 +127,6 @@ describe("AppThemePicker shuffle button", () => {
       document as unknown as { startViewTransition: typeof startViewTransition }
     ).startViewTransition = startViewTransition;
 
-    // Force motion allowed + visible
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: () => ({
@@ -173,15 +155,12 @@ describe("AppThemePicker shuffle button", () => {
     render(<AppThemePicker />);
     const shuffleBtn = screen.getByText("Random theme");
 
-    // With 3 schemes and current being "theme-a", the queue has 2 items
     fireEvent.click(shuffleBtn);
     fireEvent.click(shuffleBtn);
 
     expect(commitSchemeSelection).toHaveBeenCalledTimes(2);
     const ids = commitSchemeSelection.mock.calls.map((call: unknown[]) => call[0] as string);
-    // Both should be from the other themes
     expect(ids.every((id) => id !== "theme-a")).toBe(true);
-    // Both IDs in the first cycle should be unique (both b and c)
     expect(new Set(ids).size).toBe(2);
   });
 });
