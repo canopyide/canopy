@@ -392,7 +392,7 @@ export function AppThemePicker() {
       )}
 
       <div className="flex flex-col rounded-[var(--radius-md)] border border-daintree-border overflow-hidden">
-        <div className="relative h-[190px] shrink-0 overflow-hidden">
+        <div className="relative h-[200px] shrink-0 overflow-hidden">
           {selectedScheme.heroImage ? (
             <img
               src={selectedScheme.heroImage}
