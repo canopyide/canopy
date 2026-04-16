@@ -630,7 +630,7 @@ describe("Canopy -> Daintree userData migration gating", () => {
     // Legacy Canopy userData exists; new Daintree userData does not.
     fsMock.existsSync.mockImplementation((p: string) => {
       if (p.endsWith(".rebrand-migrated")) return false;
-      if (p.endsWith("/Canopy")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
       return false;
     });
 
@@ -645,7 +645,7 @@ describe("Canopy -> Daintree userData migration gating", () => {
     (process.env as Record<string, string | undefined>).BUILD_VARIANT = "canopy";
     fsMock.existsSync.mockImplementation((p: string) => {
       if (p.endsWith(".rebrand-migrated")) return false;
-      if (p.endsWith("/Canopy")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
       return false;
     });
 
