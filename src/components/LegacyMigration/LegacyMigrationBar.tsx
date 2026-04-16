@@ -16,14 +16,14 @@ export function LegacyMigrationBar() {
     <div
       role="region"
       aria-label="Canopy has been renamed to Daintree"
-      className="fixed bottom-0 left-0 right-0 z-50 flex h-10 w-full items-center justify-between gap-4 border-t border-black/20 px-4"
+      className="fixed bottom-0 left-0 right-0 z-50 flex h-10 w-full items-center justify-center gap-5 border-t border-black/20 px-4"
       style={{ backgroundColor: "#B24522" }}
       data-testid="legacy-migration-bar"
     >
       <div className="flex min-w-0 items-center gap-3">
         <DaintreeIcon size={18} className="shrink-0 text-white" />
         <p className="truncate text-sm">
-          <span className="font-semibold text-white">Canopy is being renamed to Daintree</span>
+          <span className="font-semibold text-white">Daintree is the new name for Canopy</span>
           <span className="ml-1 text-white/75">
             —{" "}
             <button
