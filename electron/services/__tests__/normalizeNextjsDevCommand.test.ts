@@ -8,10 +8,17 @@ vi.mock("node:fs/promises", () => ({
   readFile: (...args: unknown[]) => mockReadFile(...(args as [string, string])),
 }));
 
+const mockResolveNextMajorVersion = vi.fn<() => Promise<number | null>>();
+
+vi.mock("../../utils/resolveNextVersion.js", () => ({
+  resolveNextMajorVersion: (...args: unknown[]) => mockResolveNextMajorVersion(...(args as [])),
+}));
+
 import { beforeEach } from "vitest";
 
 beforeEach(() => {
   mockReadFile.mockReset();
+  mockResolveNextMajorVersion.mockResolvedValue(15);
 });
 
 function mockPkg(scripts: Record<string, string>): void {
@@ -130,6 +137,29 @@ describe("normalizeNextjsDevCommand", () => {
       expect(await normalizeNextjsDevCommand("python manage.py runserver", CWD)).toBe(
         "python manage.py runserver"
       );
+    });
+  });
+
+  describe("version gating", () => {
+    it("skips injection when Next.js major is 14", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(14);
+      mockPkg({ dev: "next dev" });
+      expect(await normalizeNextjsDevCommand("npm run dev", CWD)).toBe("npm run dev");
+    });
+
+    it("skips injection when version is null", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(null);
+      expect(await normalizeNextjsDevCommand("next dev", CWD)).toBe("next dev");
+    });
+
+    it("injects when Next.js major is 15", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(15);
+      expect(await normalizeNextjsDevCommand("next dev", CWD)).toBe("next dev --turbopack");
+    });
+
+    it("skips injection when turbopackEnabled is false", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(15);
+      expect(await normalizeNextjsDevCommand("next dev", CWD, false)).toBe("next dev");
     });
   });
 });
