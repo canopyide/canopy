@@ -34,6 +34,10 @@ function defaultAvailability(): CliAvailability {
 const CACHE_STORAGE_KEY = "daintree:cliAvailability:v1";
 // Stale cache is still shown but triggers a synchronous refresh on init.
 const CACHE_STALE_AFTER_MS = 24 * 60 * 60 * 1000; // 24h
+// Short-window throttle for mid-session refreshes (tray-open, visibility,
+// focus). Keeps rapid triggers from spamming IPC; longer-term staleness is
+// governed by CACHE_STALE_AFTER_MS during initialize.
+const REFRESH_THROTTLE_MS = 30 * 1000;
 
 const VALID_STATES: ReadonlySet<AgentAvailabilityState> = new Set<AgentAvailabilityState>([
   "ready",
@@ -168,6 +172,14 @@ export const useCliAvailabilityStore = create<CliAvailabilityStore>()((set, get)
   refresh: () => {
     // If init is still in-flight, join it rather than firing a duplicate IPC call.
     if (initPromise) return initPromise;
+
+    // Skip if the last successful probe landed within the throttle window.
+    // Failed refreshes do not set lastCheckedAt, so they stay retryable.
+    const { lastCheckedAt } = get();
+    if (lastCheckedAt !== null && Date.now() - lastCheckedAt < REFRESH_THROTTLE_MS) {
+      return Promise.resolve();
+    }
+
     if (refreshPromise) return refreshPromise;
 
     if (!isElectronAvailable()) return Promise.resolve();
