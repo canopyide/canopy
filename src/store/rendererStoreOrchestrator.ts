@@ -9,6 +9,8 @@ import { semanticAnalysisService } from "@/services/SemanticAnalysisService";
 import { useConsoleCaptureStore } from "./consoleCaptureStore";
 import { useVoiceRecordingStore } from "./voiceRecordingStore";
 import { useLayoutUndoStore } from "./layoutUndoStore";
+import { useCliAvailabilityStore } from "./cliAvailabilityStore";
+import { useAgentSettingsStore } from "./agentSettingsStore";
 import { debounce } from "@/utils/debounce";
 
 const debouncedPersistMruList = debounce(persistMruList, 150);
@@ -117,6 +119,19 @@ export function initStoreOrchestrator(): () => void {
     prevIdSet = currentIdSet;
   });
   unsubscribers.push(unsubLayoutUndo);
+
+  // 5. Availability → agent-settings re-normalization: installed/missing state
+  //    is the input to `normalizeAgentSelection`, so re-run normalization once
+  //    real availability data arrives (see issue #5158). Fires only on the
+  //    `hasRealData: false → true` transition; re-checks after a manual
+  //    refresh do not need to re-run since availability is read live.
+  const unsubAvailability = useCliAvailabilityStore.subscribe((state, prevState) => {
+    if (!state.hasRealData || prevState.hasRealData) return;
+    const { isInitialized, isLoading } = useAgentSettingsStore.getState();
+    if (!isInitialized || isLoading) return;
+    void useAgentSettingsStore.getState().refresh();
+  });
+  unsubscribers.push(unsubAvailability);
 
   cleanupFn = () => {
     for (const unsub of unsubscribers) unsub();
