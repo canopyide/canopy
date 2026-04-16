@@ -94,6 +94,20 @@ function countProjectRows(dbPath: string): number {
   }
 }
 
+// Detect Chromium-side Daintree state — Preferences, Local Storage, and the
+// `persist:daintree` partition are all written by previous Daintree launches
+// even when the user never opened a project. Used as a second signal so the
+// row-count probe alone never wipes out customized state (themes, layouts,
+// auth tokens stored in localStorage). Marker file is intentionally ignored
+// here so the auto-heal pre-check can still delete a stale skip marker.
+function hasDaintreeUsageMarkers(newUserData: string): boolean {
+  return (
+    fs.existsSync(path.join(newUserData, "Preferences")) ||
+    fs.existsSync(path.join(newUserData, "Local Storage")) ||
+    fs.existsSync(path.join(newUserData, "Partitions", "daintree"))
+  );
+}
+
 if (!hasExplicitUserDataDir && process.env.BUILD_VARIANT !== "canopy") {
   try {
     const newUserData = app.getPath("userData");
@@ -128,7 +142,13 @@ if (!hasExplicitUserDataDir && process.env.BUILD_VARIANT !== "canopy") {
           } catch {
             // probe failed — leave canopyRows = 0 (no auto-heal)
           }
-          if (daintreeRows === 0 && canopyRows > 0) {
+          // Extra guard: never auto-heal when Chromium-side Daintree state
+          // exists. A user who launched pre-release Daintree, customized
+          // prefs/themes, but never opened a project would have the same
+          // (zero-row daintree.db, populated canopy.db) shape — wiping
+          // their state to re-run the migration is exactly the bug we are
+          // fixing in the other direction.
+          if (daintreeRows === 0 && canopyRows > 0 && !hasDaintreeUsageMarkers(newUserData)) {
             fs.rmSync(markerPath);
             console.log(
               "[daintree] Auto-healing rebrand migration — stale skip marker found alongside empty daintree.db; re-running migration"
@@ -147,16 +167,21 @@ if (!hasExplicitUserDataDir && process.env.BUILD_VARIANT !== "canopy") {
       // Replace the old `fs.existsSync(daintreeDbPath)` guard with a row
       // count: a schema-only DB has zero rows in `projects` and is safe to
       // overwrite. Any probe error is treated as "has data" (fail-safe).
-      let daintreeHasData = false;
+      let daintreeHasRows = false;
       if (fs.existsSync(daintreeDbPath)) {
         try {
-          daintreeHasData = countProjectRows(daintreeDbPath) > 0;
+          daintreeHasRows = countProjectRows(daintreeDbPath) > 0;
         } catch {
-          daintreeHasData = true;
+          daintreeHasRows = true;
         }
       }
+      // Either real project rows OR Chromium-side state means Daintree has
+      // been used — block the migration in both cases. The usage-marker
+      // check protects pre-release users who customized prefs/themes but
+      // never opened a project from having their state wiped.
+      const daintreeAlreadyUsed = daintreeHasRows || hasDaintreeUsageMarkers(newUserData);
 
-      if (daintreeHasData) {
+      if (daintreeAlreadyUsed) {
         // Daintree has already been used — never overwrite real user state.
         // Drop the marker so we don't re-check on every launch. Atomic
         // write so a crash mid-write doesn't leave a half-formed marker
@@ -220,12 +245,15 @@ if (!hasExplicitUserDataDir && process.env.BUILD_VARIANT !== "canopy") {
           fs.rmSync(newUserData, { recursive: true, force: true });
         }
         fs.renameSync(stagingPath, newUserData);
-        fs.writeFileSync(markerPath, new Date().toISOString());
+        // Atomic write: if a crash happens between the rename above and a
+        // partial marker write, next launch would see no marker and could
+        // re-run the migration over already-migrated data.
+        resilientAtomicWriteFileSync(markerPath, new Date().toISOString());
         console.log(`[daintree] Migrated userData ${legacyUserData} -> ${newUserData}`);
       } else if (fs.existsSync(newUserData)) {
         // No legacy dir but new dir already exists (fresh install or already
         // migrated on a prior version) — drop the marker so we don't re-check.
-        fs.writeFileSync(markerPath, new Date().toISOString());
+        resilientAtomicWriteFileSync(markerPath, new Date().toISOString());
       }
     }
   } catch (err) {

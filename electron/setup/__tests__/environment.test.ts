@@ -855,6 +855,104 @@ describe("Canopy -> Daintree userData migration gating", () => {
     );
   });
 
+  it("fail-safe: treats prepare/get error as 'has data' and closes the DB", async () => {
+    // Covers a different SQLITE error path: constructor succeeds but the
+    // probe query throws (e.g. SQLITE_BUSY mid-read or a missing table).
+    // The finally block must still close the connection so WAL/SHM handles
+    // don't leak into the persistence service that opens this DB seconds later.
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+    const closeSpy = vi.fn();
+    sqliteMock.Database.mockImplementation(
+      class {
+        prepare = () => ({
+          get: () => {
+            const err = new Error("database is locked") as Error & { code: string };
+            err.code = "SQLITE_BUSY";
+            throw err;
+          },
+        });
+        close = closeSpy;
+      } as unknown as new () => unknown
+    );
+
+    await import("../environment.js");
+
+    expect(closeSpy).toHaveBeenCalled();
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+    expect(fsUtilsMock.resilientAtomicWriteFileSync).toHaveBeenCalledWith(
+      expect.stringContaining(".rebrand-migrated"),
+      expect.stringContaining("skipped: daintree.db already present")
+    );
+  });
+
+  it("does NOT migrate when daintree.db is empty but Chromium-side state exists (Preferences)", async () => {
+    // A pre-release Daintree user who customized prefs/themes but never opened
+    // a project leaves zero rows in projects but does write `Preferences`.
+    // Migrating Canopy data over them would wipe out their customization at
+    // the rmSync(newUserData, recursive) step. This is the symmetric bug to
+    // #5156 — a regression in the opposite direction.
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Daintree/Preferences")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+    // Zero rows is the default beforeEach mock — the usage-marker check is
+    // what must catch this case.
+
+    await import("../environment.js");
+
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+    expect(fsMock.rmSync).not.toHaveBeenCalled();
+    expect(fsUtilsMock.resilientAtomicWriteFileSync).toHaveBeenCalledWith(
+      expect.stringContaining(".rebrand-migrated"),
+      expect.stringContaining("skipped: daintree.db already present")
+    );
+  });
+
+  it("does NOT auto-heal when Chromium-side Daintree state exists (Local Storage)", async () => {
+    // Same protection in the auto-heal direction — a pre-release user with a
+    // stale skip marker who customized Daintree (creating Local Storage) but
+    // never opened a project must not have their state wiped by auto-heal.
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return true; // marker stays
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Daintree/Local Storage")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+    fsMock.readFileSync.mockReturnValue(
+      "2026-04-16T14:31:00.178Z\nskipped: daintree.db already present\n"
+    );
+    sqliteMock.Database.mockImplementation(
+      class {
+        constructor(dbPath: unknown) {
+          const isCanopy = typeof dbPath === "string" && dbPath.endsWith("canopy.db");
+          (this as { prepare: unknown }).prepare = () => ({
+            get: () => ({ count: isCanopy ? 5 : 0 }),
+          });
+          (this as { close: unknown }).close = vi.fn();
+        }
+      } as unknown as new () => unknown
+    );
+
+    await import("../environment.js");
+
+    expect(fsMock.rmSync).not.toHaveBeenCalledWith(
+      path.join("/tmp/user-data/Daintree", ".rebrand-migrated")
+    );
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+  });
+
   it("excludes Chromium singleton / cache / crashpad state from the copy", async () => {
     Reflect.deleteProperty(process.env, "BUILD_VARIANT");
     fsMock.existsSync.mockImplementation((p: string) => {
