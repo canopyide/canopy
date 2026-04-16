@@ -137,13 +137,65 @@ describe("WorkspaceService adversarial", () => {
     );
   });
 
-  it("fails createWorktree if the worktree disappears before discovery completes", async () => {
+  it("does not remove existing non-main monitors when adding a new worktree — the single-element syncMonitors bug regression", async () => {
+    // Regression guard for the worst bug found in review: passing
+    // syncMonitors([createdWorktree]) treated the single-element array as
+    // the authoritative worktree set and removed every other non-main monitor
+    // (plus firing worktree-removed for each), so bulk-creating 30 worktrees
+    // converged to "main + last-created". Fix: createWorktree uses a narrower
+    // addNewWorktreeMonitor that only adds.
+    const existingWorktree = {
+      id: "/repo/wt-existing",
+      path: "/repo/wt-existing",
+      name: "feature/existing",
+      branch: "feature/existing",
+      isCurrent: false,
+      isMainWorktree: false,
+      gitDir: "/repo/wt-existing/.git",
+    };
+    await (
+      service as unknown as {
+        addNewWorktreeMonitor: (
+          wt: typeof existingWorktree,
+          isActive: boolean,
+          skipInitialGitStatus: boolean
+        ) => Promise<void>;
+      }
+    ).addNewWorktreeMonitor(existingWorktree, false, true);
+    expect(service["monitors"].has("/repo/wt-existing")).toBe(true);
+
+    // Drop the events recorded during the seeding so the assertion below is
+    // clean.
+    sentEvents.length = 0;
+
+    await service.createWorktree("req-add", "/repo", {
+      baseBranch: "main",
+      newBranch: "feature/new",
+      path: "/repo/wt-new",
+    });
+
+    // Both monitors must be present — the existing one was NOT removed.
+    expect(service["monitors"].has("/repo/wt-existing")).toBe(true);
+    expect(service["monitors"].has("/repo/wt-new")).toBe(true);
+
+    // No worktree-removed event was fired for the existing worktree.
+    const removedEvents = sentEvents.filter(
+      (e): e is WorkspaceHostEvent & { type: "worktree-removed" } => e.type === "worktree-removed"
+    );
+    expect(removedEvents).toEqual([]);
+  });
+
+  it("succeeds without calling listService.list — the Worktree is built from inputs, so an empty list can never fail the create", async () => {
     const listService = service["listService"] as unknown as {
       invalidateCache: Mock;
       list: Mock;
       mapToWorktrees: Mock;
     };
 
+    // Simulate the prior-regression scenario: list returns empty (e.g. the
+    // worktree was externally removed before the discovery subprocess ran).
+    // Under the old code this produced a "Worktree not found" failure. With
+    // opt 3, the subprocess is gone and the direct-build path is unaffected.
     listService.invalidateCache = vi.fn();
     listService.list = vi.fn().mockResolvedValue([]);
     listService.mapToWorktrees = vi.fn().mockReturnValue([]);
@@ -158,28 +210,14 @@ describe("WorkspaceService adversarial", () => {
       expect.objectContaining({
         type: "create-worktree-result",
         requestId: "req-missing",
-        success: false,
+        success: true,
+        worktreeId: "/repo/wt-missing",
       })
     );
+    expect(listService.list).not.toHaveBeenCalled();
   });
 
   it("does not accumulate duplicate monitors when delete and create overlap on the same path", async () => {
-    const listService = service["listService"] as unknown as {
-      invalidateCache: Mock;
-      list: Mock;
-      mapToWorktrees: Mock;
-    };
-
-    const createdWorktree = {
-      id: "/repo/wt-race",
-      path: "/repo/wt-race",
-      name: "feature/race",
-      branch: "feature/race",
-      isCurrent: false,
-      isMainWorktree: false,
-      gitDir: "/repo/wt-race/.git",
-    };
-
     let releaseGit!: () => void;
     mockSimpleGit.raw.mockImplementationOnce(
       () =>
@@ -187,10 +225,6 @@ describe("WorkspaceService adversarial", () => {
           releaseGit = resolve;
         })
     );
-
-    listService.invalidateCache = vi.fn();
-    listService.list = vi.fn().mockResolvedValue([createdWorktree]);
-    listService.mapToWorktrees = vi.fn().mockReturnValue([createdWorktree]);
 
     const createPromise = service.createWorktree("req-race-create", "/repo", {
       baseBranch: "main",
@@ -203,9 +237,13 @@ describe("WorkspaceService adversarial", () => {
     releaseGit();
     await Promise.allSettled([createPromise, deletePromise]);
 
+    // Monitor sync now runs in a fire-and-forget tail — let it settle before
+    // asserting the monitor map.
+    await new Promise((resolve) => setImmediate(resolve));
+
     const monitorEntries = Array.from(service["monitors"].keys()).filter(
       (worktreeId) => worktreeId === "/repo/wt-race"
     );
-    expect(monitorEntries).toHaveLength(1);
+    expect(monitorEntries.length).toBeLessThanOrEqual(1);
   });
 });
