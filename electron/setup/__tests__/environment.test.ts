@@ -8,6 +8,7 @@ const fsMock = vi.hoisted(() => ({
   cpSync: vi.fn(),
   renameSync: vi.fn(),
   writeFileSync: vi.fn(),
+  readFileSync: vi.fn<(p: string, enc: string) => string>(),
 }));
 
 const electronMock = vi.hoisted(() => ({
@@ -26,6 +27,23 @@ const fixPathMock = vi.hoisted(() => ({
   default: vi.fn(),
 }));
 
+const sqliteMock = vi.hoisted(() => ({
+  get: vi.fn(),
+  prepare: vi.fn(),
+  close: vi.fn(),
+  Database: vi.fn(),
+}));
+
+const fsUtilsMock = vi.hoisted(() => ({
+  resilientAtomicWriteFileSync: vi.fn(),
+  resilientRename: vi.fn(),
+  resilientRenameSync: vi.fn(),
+  resilientDirectWriteFile: vi.fn(),
+  resilientAtomicWriteFile: vi.fn(),
+  resilientUnlink: vi.fn(),
+  waitForPathExists: vi.fn(),
+}));
+
 vi.mock("fs", () => ({
   default: {
     existsSync: fsMock.existsSync,
@@ -34,6 +52,7 @@ vi.mock("fs", () => ({
     cpSync: fsMock.cpSync,
     renameSync: fsMock.renameSync,
     writeFileSync: fsMock.writeFileSync,
+    readFileSync: fsMock.readFileSync,
   },
   existsSync: fsMock.existsSync,
   readdirSync: fsMock.readdirSync,
@@ -41,11 +60,16 @@ vi.mock("fs", () => ({
   cpSync: fsMock.cpSync,
   renameSync: fsMock.renameSync,
   writeFileSync: fsMock.writeFileSync,
+  readFileSync: fsMock.readFileSync,
 }));
 
 vi.mock("electron", () => electronMock);
 
 vi.mock("fix-path", () => fixPathMock);
+
+vi.mock("better-sqlite3", () => ({ default: sqliteMock.Database }));
+
+vi.mock("../../utils/fs.js", () => fsUtilsMock);
 
 vi.mock("node:v8", () => ({
   default: { setFlagsFromString: vi.fn() },
@@ -613,6 +637,20 @@ describe("Canopy -> Daintree userData migration gating", () => {
       if (key === "appData") return "/tmp/user-data";
       return "/tmp/test";
     });
+    // Re-wire the better-sqlite3 chain after vi.resetAllMocks() — the reset
+    // clears the implementation set inside vi.mock(...) factories, so the
+    // Database -> prepare -> get chain has to be rebuilt every test. Vitest
+    // 4 requires `mockImplementation` with a `class` (or `function`, not arrow)
+    // when the mock is invoked with `new`. Default: probe returns 0 rows
+    // (empty DB) so migration proceeds unless a test overrides.
+    sqliteMock.get.mockReturnValue({ count: 0 });
+    sqliteMock.prepare.mockReturnValue({ get: sqliteMock.get });
+    sqliteMock.Database.mockImplementation(
+      class {
+        prepare = sqliteMock.prepare;
+        close = sqliteMock.close;
+      } as unknown as new () => unknown
+    );
   });
 
   afterEach(() => {
@@ -655,7 +693,7 @@ describe("Canopy -> Daintree userData migration gating", () => {
     );
   });
 
-  it("skips the migration when Daintree data already exists (daintree.db present)", async () => {
+  it("skips the migration when Daintree data already exists (daintree.db has rows)", async () => {
     Reflect.deleteProperty(process.env, "BUILD_VARIANT");
     fsMock.existsSync.mockImplementation((p: string) => {
       if (p.endsWith(".rebrand-migrated")) return false;
@@ -663,6 +701,8 @@ describe("Canopy -> Daintree userData migration gating", () => {
       if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
       return false;
     });
+    // The DB exists AND has real rows — a real Daintree user.
+    sqliteMock.get.mockReturnValue({ count: 1 });
 
     await import("../environment.js");
 
@@ -671,7 +711,145 @@ describe("Canopy -> Daintree userData migration gating", () => {
     // user has since used Daintree and accumulated real state.
     expect(fsMock.cpSync).not.toHaveBeenCalled();
     expect(fsMock.rmSync).not.toHaveBeenCalled();
-    expect(fsMock.writeFileSync).toHaveBeenCalledWith(
+    expect(fsUtilsMock.resilientAtomicWriteFileSync).toHaveBeenCalledWith(
+      expect.stringContaining(".rebrand-migrated"),
+      expect.stringContaining("skipped: daintree.db already present")
+    );
+  });
+
+  it("migrates when daintree.db exists but the projects table is empty (issue #5156)", async () => {
+    // Pre-release Daintree launches caused openDb() to create a schema-only
+    // empty daintree.db. The previous existsSync-only guard mistook this for
+    // a real install and silently left user data unmigrated. Now we probe
+    // for actual rows.
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return true; // file exists but...
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+    // ...projects table has 0 rows (default beforeEach mock value).
+
+    await import("../environment.js");
+
+    // Migration runs into the staging dir and is atomically promoted.
+    expect(fsMock.cpSync).toHaveBeenCalledWith(
+      path.join("/tmp/user-data", "Canopy"),
+      "/tmp/user-data/Daintree.migrating",
+      expect.objectContaining({ recursive: true, filter: expect.any(Function) })
+    );
+    expect(fsMock.renameSync).toHaveBeenCalledWith(
+      "/tmp/user-data/Daintree.migrating",
+      "/tmp/user-data/Daintree"
+    );
+    // The skip marker is NOT written.
+    expect(fsUtilsMock.resilientAtomicWriteFileSync).not.toHaveBeenCalledWith(
+      expect.stringContaining(".rebrand-migrated"),
+      expect.stringContaining("skipped: daintree.db already present")
+    );
+  });
+
+  it("auto-heals: deletes a stale skip marker and re-runs migration when daintree.db is empty and canopy.db has rows", async () => {
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    // Marker is initially present but gets deleted by the auto-heal pre-check;
+    // the !existsSync(markerPath) gate has to flip after rmSync runs.
+    let markerDeleted = false;
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return !markerDeleted;
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+    fsMock.rmSync.mockImplementation((p: string) => {
+      if (typeof p === "string" && p.endsWith(".rebrand-migrated")) {
+        markerDeleted = true;
+      }
+    });
+    fsMock.readFileSync.mockReturnValue(
+      "2026-04-16T14:31:00.178Z\nskipped: daintree.db already present\n"
+    );
+    // Discriminate by path: empty daintree.db, populated canopy.db. Vitest 4
+    // requires a class (not an arrow function) when the mock is `new`-called.
+    sqliteMock.Database.mockImplementation(
+      class {
+        constructor(dbPath: unknown) {
+          const isCanopy = typeof dbPath === "string" && dbPath.endsWith("canopy.db");
+          (this as { prepare: unknown }).prepare = () => ({
+            get: () => ({ count: isCanopy ? 3 : 0 }),
+          });
+          (this as { close: unknown }).close = vi.fn();
+        }
+      } as unknown as new () => unknown
+    );
+
+    await import("../environment.js");
+
+    // Stale marker is deleted, then the migration runs.
+    expect(fsMock.rmSync).toHaveBeenCalledWith(
+      path.join("/tmp/user-data/Daintree", ".rebrand-migrated")
+    );
+    expect(fsMock.cpSync).toHaveBeenCalledWith(
+      path.join("/tmp/user-data", "Canopy"),
+      "/tmp/user-data/Daintree.migrating",
+      expect.objectContaining({ recursive: true, filter: expect.any(Function) })
+    );
+    expect(fsMock.renameSync).toHaveBeenCalledWith(
+      "/tmp/user-data/Daintree.migrating",
+      "/tmp/user-data/Daintree"
+    );
+  });
+
+  it("does NOT auto-heal when the marker says skipped but canopy.db has no rows", async () => {
+    // Edge case: legitimate first-launch user with zero projects in Canopy
+    // who somehow got the skip marker — we must not re-trigger migration
+    // and clobber whatever's in Daintree.
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return true; // marker stays
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+    fsMock.readFileSync.mockReturnValue(
+      "2026-04-16T14:31:00.178Z\nskipped: daintree.db already present\n"
+    );
+    // Both DBs report 0 rows.
+    sqliteMock.get.mockReturnValue({ count: 0 });
+
+    await import("../environment.js");
+
+    // Marker is NOT deleted, migration does NOT run.
+    expect(fsMock.rmSync).not.toHaveBeenCalledWith(
+      path.join("/tmp/user-data/Daintree", ".rebrand-migrated")
+    );
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+  });
+
+  it("fail-safe: treats DB probe error as 'has data' and skips migration", async () => {
+    // If daintree.db is corrupt, locked, or otherwise unreadable we must
+    // never overwrite it — the user's data could still be in there.
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+    sqliteMock.Database.mockImplementation(
+      class {
+        constructor() {
+          const err = new Error("file is not a database") as Error & { code: string };
+          err.code = "SQLITE_NOTADB";
+          throw err;
+        }
+      } as unknown as new () => unknown
+    );
+
+    await import("../environment.js");
+
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+    expect(fsUtilsMock.resilientAtomicWriteFileSync).toHaveBeenCalledWith(
       expect.stringContaining(".rebrand-migrated"),
       expect.stringContaining("skipped: daintree.db already present")
     );
