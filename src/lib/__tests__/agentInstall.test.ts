@@ -88,45 +88,45 @@ describe("agentInstall", () => {
     });
   });
 
-  describe("getInstallBlocksForCurrentOS", () => {
-    const mockAgent: AgentConfig = {
-      id: "test",
-      name: "Test",
-      command: "test",
-      color: "#000000",
-      iconId: "test",
-      supportsContextInjection: false,
-      install: {
-        docsUrl: "https://example.com/docs",
-        byOs: {
-          macos: [
-            {
-              label: "Homebrew",
-              commands: ["brew install test"],
-            },
-          ],
-          windows: [
-            {
-              label: "npm",
-              commands: ["npm install -g test"],
-            },
-          ],
-          linux: [
-            {
-              label: "apt",
-              commands: ["apt install test"],
-            },
-          ],
-          generic: [
-            {
-              label: "Generic",
-              commands: ["curl https://example.com/install.sh | sh"],
-            },
-          ],
-        },
+  const mockAgent: AgentConfig = {
+    id: "test",
+    name: "Test",
+    command: "test",
+    color: "#000000",
+    iconId: "test",
+    supportsContextInjection: false,
+    install: {
+      docsUrl: "https://example.com/docs",
+      byOs: {
+        macos: [
+          {
+            label: "Homebrew",
+            commands: ["brew install test"],
+          },
+        ],
+        windows: [
+          {
+            label: "npm",
+            commands: ["npm install -g test"],
+          },
+        ],
+        linux: [
+          {
+            label: "apt",
+            commands: ["apt install test"],
+          },
+        ],
+        generic: [
+          {
+            label: "Generic",
+            commands: ["curl https://example.com/install.sh | sh"],
+          },
+        ],
       },
-    };
+    },
+  };
 
+  describe("getInstallBlocksForCurrentOS", () => {
     it("should return macOS blocks on macOS", async () => {
       stubNavigator(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
@@ -322,6 +322,160 @@ describe("agentInstall", () => {
       const blocks = getInstallBlocksForCurrentOS(agentWithEmptyMacOS);
       expect(blocks).toHaveLength(1);
       expect(blocks?.[0].label).toBe("Generic");
+    });
+  });
+
+  describe("getDefaultInstallBlock", () => {
+    it("should return the first block for current OS", async () => {
+      stubNavigator(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "MacIntel"
+      );
+      const { getDefaultInstallBlock } = await import("../agentInstall");
+      const agentWithMultiple: AgentConfig = {
+        ...mockAgent,
+        install: {
+          byOs: {
+            macos: [
+              { label: "curl", commands: ["curl https://example.com/install | bash"] },
+              { label: "npm", commands: ["npm install -g test"] },
+              { label: "Homebrew", commands: ["brew install test"] },
+            ],
+          },
+        },
+      };
+      const block = getDefaultInstallBlock(agentWithMultiple);
+      expect(block).not.toBeNull();
+      expect(block?.label).toBe("curl");
+    });
+
+    it("should return null for agent with no install config", async () => {
+      stubNavigator("", "");
+      const { getDefaultInstallBlock } = await import("../agentInstall");
+      const agentNoInstall: AgentConfig = {
+        id: "test",
+        name: "Test",
+        command: "test",
+        color: "#000",
+        iconId: "test",
+        supportsContextInjection: false,
+      };
+      expect(getDefaultInstallBlock(agentNoInstall)).toBeNull();
+    });
+
+    it("should return null when blocks array is empty", async () => {
+      stubNavigator(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "MacIntel"
+      );
+      const { getDefaultInstallBlock } = await import("../agentInstall");
+      const agentEmpty: AgentConfig = {
+        ...mockAgent,
+        install: { byOs: { macos: [] } },
+      };
+      expect(getDefaultInstallBlock(agentEmpty)).toBeNull();
+    });
+  });
+
+  describe("getInstallCommand", () => {
+    it("should return single command as-is", async () => {
+      const { getInstallCommand } = await import("../agentInstall");
+      expect(getInstallCommand({ commands: ["npm install -g test"] })).toBe("npm install -g test");
+    });
+
+    it("should join multiple commands with newline", async () => {
+      const { getInstallCommand } = await import("../agentInstall");
+      expect(
+        getInstallCommand({
+          commands: ["scoop bucket add extras", "scoop install extras/opencode"],
+        })
+      ).toBe("scoop bucket add extras\nscoop install extras/opencode");
+    });
+
+    it("should return null for empty commands array", async () => {
+      const { getInstallCommand } = await import("../agentInstall");
+      expect(getInstallCommand({ commands: [] })).toBeNull();
+    });
+
+    it("should return null for undefined commands", async () => {
+      const { getInstallCommand } = await import("../agentInstall");
+      expect(getInstallCommand({ label: "steps-only", steps: ["Do something"] })).toBeNull();
+    });
+  });
+
+  describe("isManualOnlyCommand", () => {
+    it("should detect curl | bash as manual", async () => {
+      const { isManualOnlyCommand } = await import("../agentInstall");
+      expect(isManualOnlyCommand("curl -fsSL https://example.com/install | bash")).toBe(true);
+    });
+
+    it("should detect curl | sh as manual", async () => {
+      const { isManualOnlyCommand } = await import("../agentInstall");
+      expect(isManualOnlyCommand("curl https://example.com/install.sh | sh")).toBe(true);
+    });
+
+    it("should detect iex pipe as manual", async () => {
+      const { isManualOnlyCommand } = await import("../agentInstall");
+      expect(isManualOnlyCommand("irm 'https://example.com/install?win32=true' | iex")).toBe(true);
+    });
+
+    it("should NOT flag npm install as manual", async () => {
+      const { isManualOnlyCommand } = await import("../agentInstall");
+      expect(isManualOnlyCommand("npm install -g @anthropic-ai/claude-code")).toBe(false);
+    });
+
+    it("should NOT flag brew install as manual", async () => {
+      const { isManualOnlyCommand } = await import("../agentInstall");
+      expect(isManualOnlyCommand("brew install opencode")).toBe(false);
+    });
+
+    it("should NOT flag scoop install as manual", async () => {
+      const { isManualOnlyCommand } = await import("../agentInstall");
+      expect(isManualOnlyCommand("scoop install extras/opencode")).toBe(false);
+    });
+  });
+
+  describe("isBlockExecutable", () => {
+    it("should return true for npm-only blocks", async () => {
+      const { isBlockExecutable } = await import("../agentInstall");
+      expect(isBlockExecutable({ commands: ["npm install -g test"] })).toBe(true);
+    });
+
+    it("should return true for multi-command non-pipe blocks", async () => {
+      const { isBlockExecutable } = await import("../agentInstall");
+      expect(
+        isBlockExecutable({
+          commands: ["scoop bucket add extras", "scoop install extras/opencode"],
+        })
+      ).toBe(true);
+    });
+
+    it("should return false for curl pipe blocks", async () => {
+      const { isBlockExecutable } = await import("../agentInstall");
+      expect(
+        isBlockExecutable({
+          commands: ["curl -fsSL https://opencode.ai/install | bash"],
+        })
+      ).toBe(false);
+    });
+
+    it("should return false if any command in block is manual", async () => {
+      const { isBlockExecutable } = await import("../agentInstall");
+      expect(
+        isBlockExecutable({
+          commands: ["npm install -g test", "curl https://example.com | bash"],
+        })
+      ).toBe(false);
+    });
+
+    it("should return false for empty commands", async () => {
+      const { isBlockExecutable } = await import("../agentInstall");
+      expect(isBlockExecutable({ commands: [] })).toBe(false);
+    });
+
+    it("should return false for undefined commands", async () => {
+      const { isBlockExecutable } = await import("../agentInstall");
+      expect(isBlockExecutable({ label: "no-commands" })).toBe(false);
     });
   });
 });

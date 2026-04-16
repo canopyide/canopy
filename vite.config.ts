@@ -13,14 +13,20 @@ const devServerConfig = getDevServerConfig();
 const devServerOrigins = getDevServerOrigins();
 const devServerWebSocketOrigins = getDevServerWebSocketOrigins();
 
+const IS_LEGACY_BUILD = process.env.BUILD_VARIANT === "canopy";
+// Custom protocol schemes used by the app's file handlers. Both schemes stay
+// whitelisted through the 0.8 migration window so Daintree can still load
+// persisted canopy-file:// URLs after a manual reinstall from Canopy.
+const FILE_SCHEMES = "daintree-file: canopy-file:";
+
 // CSP definitions for development and production
 const DEV_CSP = [
   `default-src 'self' ${devServerOrigins.join(" ")} ${devServerWebSocketOrigins.join(" ")}`,
   `script-src 'self' ${devServerOrigins.join(" ")} 'unsafe-eval'`,
   `style-src 'self' ${devServerOrigins.join(" ")} 'unsafe-inline'`,
   "font-src 'self' data:",
-  `connect-src 'self' ${devServerOrigins.join(" ")} ${devServerWebSocketOrigins.join(" ")} canopy-file:`,
-  `img-src 'self' ${devServerOrigins.join(" ")} https://avatars.githubusercontent.com canopy-file: data:`,
+  `connect-src 'self' ${devServerOrigins.join(" ")} ${devServerWebSocketOrigins.join(" ")} ${FILE_SCHEMES}`,
+  `img-src 'self' ${devServerOrigins.join(" ")} https://avatars.githubusercontent.com ${FILE_SCHEMES} data:`,
   "frame-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*",
 ].join("; ");
 
@@ -29,8 +35,8 @@ const PROD_CSP = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
-  "connect-src 'self' canopy-file:",
-  "img-src 'self' https://avatars.githubusercontent.com canopy-file: data: blob:",
+  `connect-src 'self' ${FILE_SCHEMES}`,
+  `img-src 'self' https://avatars.githubusercontent.com ${FILE_SCHEMES} data: blob:`,
   "frame-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*",
   "worker-src 'self' blob:",
   "object-src 'none'",
@@ -61,7 +67,10 @@ function cspTransformPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  envPrefix: ["VITE_", "CANOPY_"],
+  envPrefix: ["VITE_", "DAINTREE_"],
+  define: {
+    IS_LEGACY_BUILD: JSON.stringify(IS_LEGACY_BUILD),
+  },
   plugins: [
     react(),
     babel({

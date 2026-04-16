@@ -1,10 +1,11 @@
 import os from "os";
 import PQueue from "p-queue";
-import { mkdir, writeFile, stat } from "fs/promises";
+import { mkdir, writeFile, stat, readFile } from "fs/promises";
 import { join as pathJoin, dirname, resolve as pathResolve, isAbsolute } from "path";
+import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
 import { SimpleGit, BranchSummary } from "simple-git";
 import { createHardenedGit, createAuthenticatedGit } from "../utils/hardenedGit.js";
-import type { Worktree } from "../../shared/types/worktree.js";
+import type { Worktree, WorktreeResourceStatus } from "../../shared/types/worktree.js";
 import type {
   WorkspaceHostEvent,
   WorktreeSnapshot,
@@ -15,6 +16,7 @@ import type {
 } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache } from "../utils/git.js";
 import { getGitDir, clearGitDirCache } from "../utils/gitUtils.js";
+import { ensureDaintreeDirMigrated } from "../services/projectDirMigration.js";
 import { extractIssueNumberSync, extractIssueNumber } from "../services/issueExtractor.js";
 import { GitHubAuth } from "../services/github/GitHubAuth.js";
 import { pullRequestService } from "../services/PullRequestService.js";
@@ -42,8 +44,8 @@ async function ensureNoteFile(worktreePath: string): Promise<void> {
     await stat(notePath);
   } catch {
     try {
-      const canopyDir = dirname(notePath);
-      await mkdir(canopyDir, { recursive: true });
+      const daintreeDir = dirname(notePath);
+      await mkdir(daintreeDir, { recursive: true });
       await writeFile(notePath, "", { flag: "wx" });
     } catch (createError) {
       const code = (createError as NodeJS.ErrnoException).code;
@@ -69,10 +71,13 @@ export class WorkspaceService {
   private git: SimpleGit | null = null;
   private pollingEnabled: boolean = true;
   private projectRootPath: string | null = null;
+  private projectEnvVars: Record<string, string> = {};
   private lifecycleService = new WorktreeLifecycleService();
   private listService = new WorktreeListService();
   private prService: PRIntegrationService;
   private _shutdownController = new AbortController();
+  private resourceActionQueues = new Map<string, PQueue>();
+  private resourceActionAbortControllers = new Map<string, AbortController>();
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {
     this.prService = new PRIntegrationService(pullRequestService, events, {
@@ -152,9 +157,20 @@ export class WorkspaceService {
     });
   }
 
-  async loadProject(requestId: string, projectRootPath: string): Promise<void> {
+  async loadProject(
+    requestId: string,
+    projectRootPath: string,
+    globalEnvVars?: Record<string, string>
+  ): Promise<void> {
     try {
       this.projectRootPath = projectRootPath;
+      // TODO(0.9.0): Remove — .canopy -> .daintree project dir rename.
+      // Must run before any .daintree/config.json read so legacy worktree
+      // lifecycle configs and recipes from pre-rebrand repos migrate in time.
+      await ensureDaintreeDirMigrated(projectRootPath);
+      // Merge: global (lowest priority) < project-level < DAINTREE_* (set in buildEnv)
+      const projectEnvVars = await this.loadProjectEnvVars(projectRootPath);
+      this.projectEnvVars = { ...(globalEnvVars ?? {}), ...projectEnvVars };
       this.git = createHardenedGit(projectRootPath, this._shutdownController.signal);
       this.listService.setGit(this.git, projectRootPath);
 
@@ -230,6 +246,7 @@ export class WorkspaceService {
           this.activeWorktreeId = null;
         }
 
+        this.cleanupResourceActionState(id);
         monitor.stop();
         this.monitors.delete(id);
         clearGitDirCache(monitor.path);
@@ -327,6 +344,15 @@ export class WorkspaceService {
             onExternalRemoval: (worktreeId) => {
               this.handleExternalWorktreeRemoval(worktreeId);
             },
+            onResourceStatusPoll: (worktreeId) => {
+              return this.runResourceAction(
+                `auto-status-${worktreeId}`,
+                worktreeId,
+                "status",
+                undefined,
+                { origin: "auto-poll" }
+              );
+            },
           },
           this.mainBranch,
           this.pollQueue
@@ -346,7 +372,71 @@ export class WorkspaceService {
         if (wt.branch && !issueNumber) {
           void this.extractIssueNumberAsync(monitor, wt.branch, wt.name);
         }
+
+        void this.initResourceConfigAsync(monitor, wt.path);
       }
+    }
+  }
+
+  private async initResourceConfigAsync(
+    monitor: WorktreeMonitor,
+    worktreePath: string
+  ): Promise<void> {
+    try {
+      if (!this.projectRootPath) return;
+      const config = await this.lifecycleService.loadConfig(worktreePath, this.projectRootPath);
+      let resourceConfig = config?.resource;
+      if (config?.resources) {
+        const envKey = monitor.worktreeMode;
+        if (envKey && config.resources[envKey]) {
+          resourceConfig = config.resources[envKey];
+        } else if (config.resources["default"]) {
+          resourceConfig = config.resources["default"];
+        } else {
+          const keys = Object.keys(config.resources);
+          if (keys.length > 0) resourceConfig = config.resources[keys[0]];
+        }
+      }
+      if (!resourceConfig) {
+        const envs = await this.lifecycleService.loadProjectResourceEnvironments(
+          this.projectRootPath
+        );
+        if (envs) {
+          const envKey = monitor.worktreeMode;
+          if (envKey && envKey !== "local" && envs[envKey]) {
+            resourceConfig = envs[envKey];
+          } else {
+            const keys = Object.keys(envs);
+            if (keys.length > 0) resourceConfig = envs[keys[0]];
+          }
+        }
+      }
+      if (!resourceConfig || !monitor.isRunning) return;
+      const vars = this.lifecycleService.buildVariables(
+        worktreePath,
+        this.projectRootPath,
+        monitor.name,
+        monitor.branch
+      );
+      const sub = (cmd: string) => this.lifecycleService.substituteVariables(cmd, vars);
+      monitor.setHasResourceConfig(true);
+      monitor.setHasStatusCommand(!!resourceConfig.status);
+      monitor.setHasPauseCommand(!!resourceConfig.pause?.length);
+      monitor.setHasResumeCommand(!!resourceConfig.resume?.length);
+      monitor.setHasTeardownCommand(!!resourceConfig.teardown?.length);
+      monitor.setHasProvisionCommand(!!resourceConfig.provision?.length);
+      monitor.setResourceProvider(resourceConfig.provider);
+      monitor.setResourceConnectCommand(
+        resourceConfig.connect ? sub(resourceConfig.connect) : undefined
+      );
+      if (resourceConfig.statusInterval) {
+        monitor.setResourcePollInterval(resourceConfig.statusInterval * 1000);
+      }
+      if (monitor.hasInitialStatus) {
+        this.emitUpdate(monitor);
+      }
+    } catch {
+      // Silently ignore — resource config is optional
     }
   }
 
@@ -408,6 +498,7 @@ export class WorkspaceService {
       this.activeWorktreeId = null;
     }
 
+    this.cleanupResourceActionState(worktreeId);
     monitor.stop();
     this.monitors.delete(worktreeId);
 
@@ -564,7 +655,7 @@ export class WorkspaceService {
 
       await ensureNoteFile(absolutePath);
 
-      await this.lifecycleService.copyCanopyDir(rootPath, absolutePath);
+      await this.lifecycleService.copyDaintreeDir(rootPath, absolutePath);
 
       this.listService.invalidateCache(pathResolve(rootPath));
       const updatedWorktrees = await this.listService.list({ forceRefresh: true });
@@ -572,8 +663,13 @@ export class WorkspaceService {
 
       await this.syncMonitors(worktreeList, this.activeWorktreeId, this.mainBranch);
 
-      const createdWorktree = worktreeList.find((wt) => wt.branch === newBranch);
-      const canonicalWorktreeId = createdWorktree?.id || path;
+      const createdWorktree = worktreeList.find(
+        (wt) => wt.path === absolutePath || wt.id === absolutePath || wt.branch === newBranch
+      );
+      if (!createdWorktree) {
+        throw new Error(`Worktree not found after creation: ${absolutePath}`);
+      }
+      const canonicalWorktreeId = createdWorktree.id;
 
       this.sendEvent({
         type: "create-worktree-result",
@@ -582,7 +678,21 @@ export class WorkspaceService {
         worktreeId: canonicalWorktreeId,
       });
 
-      void this.runLifecycleSetup(canonicalWorktreeId, absolutePath, rootPath);
+      // Set worktree mode on the monitor before lifecycle runs
+      if (options.worktreeMode && options.worktreeMode !== "local") {
+        const m = this.monitors.get(canonicalWorktreeId);
+        if (m) {
+          m.setWorktreeMode(options.worktreeMode);
+          m.setWorktreeEnvironmentLabel(options.worktreeMode);
+        }
+      }
+
+      void this.runLifecycleSetup(
+        canonicalWorktreeId,
+        absolutePath,
+        rootPath,
+        options.provisionResource ?? options.worktreeMode === "remote-worker"
+      );
     } catch (error) {
       this.sendEvent({
         type: "create-worktree-result",
@@ -596,21 +706,99 @@ export class WorkspaceService {
   private async runLifecycleSetup(
     worktreeId: string,
     worktreePath: string,
-    projectRootPath: string
+    projectRootPath: string,
+    provisionResource?: boolean,
+    environmentId?: string
   ): Promise<void> {
     const config = await this.lifecycleService.loadConfig(worktreePath, projectRootPath);
-    if (!config?.setup?.length) {
+
+    // Resolve resource config: prefer resources (plural) over resource (singular)
+    let resolvedResource = config?.resource;
+    if (config?.resources) {
+      if (environmentId && config.resources[environmentId]) {
+        resolvedResource = config.resources[environmentId];
+      } else if (config.resources["default"]) {
+        resolvedResource = config.resources["default"];
+      } else {
+        const keys = Object.keys(config.resources);
+        if (keys.length > 0) {
+          resolvedResource = config.resources[keys[0]];
+        }
+      }
+    }
+
+    // Fallback: resolve from project settings resourceEnvironments
+    if (!resolvedResource && this.projectRootPath) {
+      const monitor = this.monitors.get(worktreeId);
+      const envKey = monitor?.worktreeMode;
+      if (envKey && envKey !== "local") {
+        const envs = await this.lifecycleService.loadProjectResourceEnvironments(
+          this.projectRootPath
+        );
+        resolvedResource = envs?.[envKey] ?? undefined;
+      }
+    }
+
+    if (!config?.setup?.length && !(provisionResource && resolvedResource?.provision?.length)) {
+      // Cache resource config even if no setup commands
+      if (resolvedResource) {
+        const m = this.monitors.get(worktreeId);
+        if (m) {
+          const v = this.lifecycleService.buildVariables(
+            worktreePath,
+            projectRootPath,
+            m.name,
+            m.branch
+          );
+          m.setHasResourceConfig(true);
+          m.setHasStatusCommand(!!resolvedResource.status);
+          m.setHasPauseCommand(!!resolvedResource.pause?.length);
+          m.setHasResumeCommand(!!resolvedResource.resume?.length);
+          m.setHasTeardownCommand(!!resolvedResource.teardown?.length);
+          m.setHasProvisionCommand(!!resolvedResource.provision?.length);
+          m.setResourceProvider(resolvedResource.provider);
+          m.setResourceConnectCommand(
+            resolvedResource.connect
+              ? this.lifecycleService.substituteVariables(resolvedResource.connect, v)
+              : undefined
+          );
+          if (resolvedResource.statusInterval) {
+            m.setResourcePollInterval(resolvedResource.statusInterval * 1000);
+          }
+          this.emitUpdate(m);
+        }
+      }
       return;
     }
+
+    if (!config) return;
 
     const monitor = this.monitors.get(worktreeId);
     if (!monitor) {
       return;
     }
 
-    const commands = config.setup;
     const worktreeName = monitor.name;
-    const env = this.lifecycleService.buildEnv(worktreePath, projectRootPath, worktreeName);
+    const vars = this.lifecycleService.buildVariables(
+      worktreePath,
+      projectRootPath,
+      worktreeName,
+      monitor.branch
+    );
+    const sub = (cmd: string) => this.lifecycleService.substituteVariables(cmd, vars);
+    const commands = (config.setup ?? []).map(sub);
+    const env = this.lifecycleService.buildEnv(
+      worktreePath,
+      projectRootPath,
+      worktreeName,
+      monitor.branch,
+      {
+        provider: resolvedResource?.provider,
+        endpoint: monitor.resourceStatus?.endpoint,
+        lastOutput: monitor.resourceStatus?.lastOutput,
+      },
+      this.projectEnvVars
+    );
 
     monitor.setLifecycleStatus({
       phase: "setup",
@@ -658,6 +846,36 @@ export class WorkspaceService {
     if (!result.success) {
       console.warn(`[WorktreeLifecycle] Setup failed for worktree ${worktreeId}:`, result.error);
     }
+
+    if (resolvedResource) {
+      const m = this.monitors.get(worktreeId);
+      if (m) {
+        m.setHasResourceConfig(true);
+        m.setHasStatusCommand(!!resolvedResource.status);
+        m.setHasPauseCommand(!!resolvedResource.pause?.length);
+        m.setHasResumeCommand(!!resolvedResource.resume?.length);
+        m.setHasTeardownCommand(!!resolvedResource.teardown?.length);
+        m.setHasProvisionCommand(!!resolvedResource.provision?.length);
+        m.setResourceProvider(resolvedResource.provider);
+        m.setResourceConnectCommand(
+          resolvedResource.connect ? sub(resolvedResource.connect) : undefined
+        );
+        if (resolvedResource.statusInterval) {
+          m.setResourcePollInterval(resolvedResource.statusInterval * 1000);
+        }
+        this.emitUpdate(m);
+      }
+    }
+
+    // Auto-provision if requested during worktree creation
+    if (
+      result.success &&
+      provisionResource &&
+      resolvedResource?.provision?.length &&
+      this.projectRootPath
+    ) {
+      await this.runResourceAction(`auto-provision-${worktreeId}`, worktreeId, "provision");
+    }
   }
 
   private async runLifecycleTeardown(
@@ -670,12 +888,141 @@ export class WorkspaceService {
     }
 
     const config = await this.lifecycleService.loadConfig(monitor.path, this.projectRootPath);
+
+    // Resolve resource config for teardown
+    let teardownResource = config?.resource;
+    if (config?.resources) {
+      if (config.resources["default"]) {
+        teardownResource = config.resources["default"];
+      } else {
+        const keys = Object.keys(config.resources);
+        if (keys.length > 0) {
+          teardownResource = config.resources[keys[0]];
+        }
+      }
+    }
+
+    // Fallback: resolve from project settings resourceEnvironments
+    if (!teardownResource && this.projectRootPath) {
+      const envKey = monitor.worktreeMode;
+      if (envKey && envKey !== "local") {
+        const envs = await this.lifecycleService.loadProjectResourceEnvironments(
+          this.projectRootPath
+        );
+        teardownResource = envs?.[envKey] ?? undefined;
+      }
+    }
+
+    const hasResourceTeardown = teardownResource?.teardown?.length && monitor.hasResourceConfig;
+    if (!config?.teardown?.length && !hasResourceTeardown) {
+      return;
+    }
+
+    const vars = this.lifecycleService.buildVariables(
+      monitor.path,
+      this.projectRootPath,
+      monitor.name,
+      monitor.branch
+    );
+    const sub = (cmd: string) => this.lifecycleService.substituteVariables(cmd, vars);
+    const env = this.lifecycleService.buildEnv(
+      monitor.path,
+      this.projectRootPath,
+      monitor.name,
+      monitor.branch,
+      {
+        provider: teardownResource?.provider,
+        endpoint: monitor.resourceStatus?.endpoint,
+        lastOutput: monitor.resourceStatus?.lastOutput,
+      },
+      this.projectEnvVars
+    );
+
+    if (hasResourceTeardown) {
+      const resourceTeardownCommands = teardownResource!.teardown!.map(sub);
+
+      monitor.setLifecycleStatus({
+        phase: "resource-teardown",
+        state: "running",
+        commandIndex: 0,
+        totalCommands: resourceTeardownCommands.length,
+        currentCommand: resourceTeardownCommands[0],
+        startedAt: Date.now(),
+      });
+      this.emitUpdate(monitor);
+
+      const resourceStartedAt = monitor.lifecycleStatus?.startedAt ?? Date.now();
+
+      try {
+        const resourceResult = await this.lifecycleService.runCommands(resourceTeardownCommands, {
+          cwd: monitor.path,
+          env,
+          timeoutMs: 300_000,
+          onProgress: (commandIndex, totalCommands, command) => {
+            const m = this.monitors.get(worktreeId);
+            if (m) {
+              m.setLifecycleStatus({
+                phase: "resource-teardown",
+                state: "running",
+                commandIndex,
+                totalCommands,
+                currentCommand: command,
+                startedAt: m.lifecycleStatus?.startedAt ?? resourceStartedAt,
+              });
+              this.emitUpdate(m);
+            }
+          },
+        });
+
+        const m = this.monitors.get(worktreeId);
+        if (m) {
+          m.setLifecycleStatus({
+            phase: "resource-teardown",
+            state: resourceResult.timedOut
+              ? "timed-out"
+              : resourceResult.success
+                ? "success"
+                : "failed",
+            totalCommands: resourceTeardownCommands.length,
+            output: resourceResult.output,
+            error: resourceResult.error,
+            startedAt: resourceStartedAt,
+            completedAt: Date.now(),
+          });
+          this.emitUpdate(m);
+        }
+
+        if (!resourceResult.success) {
+          console.warn(
+            `[WorktreeLifecycle] Resource teardown failed for worktree ${worktreeId} (continuing):`,
+            resourceResult.error
+          );
+        }
+      } catch (err) {
+        const m = this.monitors.get(worktreeId);
+        if (m) {
+          m.setLifecycleStatus({
+            phase: "resource-teardown",
+            state: "failed",
+            totalCommands: resourceTeardownCommands.length,
+            error: (err as Error).message,
+            startedAt: resourceStartedAt,
+            completedAt: Date.now(),
+          });
+          this.emitUpdate(m);
+        }
+        console.warn(
+          `[WorktreeLifecycle] Resource teardown threw for worktree ${worktreeId} (continuing):`,
+          err
+        );
+      }
+    }
+
     if (!config?.teardown?.length) {
       return;
     }
 
-    const commands = config.teardown;
-    const env = this.lifecycleService.buildEnv(monitor.path, this.projectRootPath, monitor.name);
+    const commands = config.teardown.map(sub);
     const timeoutMs = force ? 15_000 : 120_000;
 
     monitor.setLifecycleStatus({
@@ -823,6 +1170,7 @@ export class WorkspaceService {
       // Clean up the monitor immediately after worktree removal succeeds,
       // before attempting branch deletion — so the monitor doesn't linger
       // if branch deletion fails.
+      this.cleanupResourceActionState(worktreeId);
       monitor.stop();
       this.monitors.delete(worktreeId);
 
@@ -1132,12 +1480,18 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }
 
     return this.prService.initialize(this.projectRootPath, () => {
-      const candidates: Array<{ worktreeId: string; branch?: string; issueNumber?: number }> = [];
+      const candidates: Array<{
+        worktreeId: string;
+        branch?: string;
+        issueNumber?: number;
+        isMainWorktree?: boolean;
+      }> = [];
       for (const monitor of this.monitors.values()) {
         candidates.push({
           worktreeId: monitor.id,
           branch: monitor.branch,
           issueNumber: monitor.issueNumber,
+          isMainWorktree: monitor.isMainWorktree,
         });
       }
       return candidates;
@@ -1156,6 +1510,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     this.mainBranch = "main";
     this.git = null;
     this.projectRootPath = null;
+    this.projectEnvVars = {};
 
     clearGitDirCache();
     this.listService.invalidateCache();
@@ -1164,9 +1519,539 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     this.sendEvent({ type: "project-switch-result", requestId, success: true });
   }
 
+  async switchWorktreeEnvironment(
+    requestId: string,
+    worktreeId: string,
+    envKey: string
+  ): Promise<void> {
+    const monitor = this.monitors.get(worktreeId);
+    if (!monitor) {
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "Worktree not found",
+      });
+      return;
+    }
+
+    monitor.setWorktreeMode(envKey);
+    monitor.setWorktreeEnvironmentLabel(envKey);
+
+    try {
+      if (this.projectRootPath) {
+        await this.runLifecycleSetup(worktreeId, monitor.path, this.projectRootPath, false, envKey);
+      }
+    } catch (err) {
+      console.warn(
+        `[WorkspaceService] switchWorktreeEnvironment config resolution failed (non-fatal):`,
+        err
+      );
+    }
+
+    this.emitUpdate(monitor);
+    this.sendEvent({
+      type: "resource-action-result",
+      requestId,
+      success: true,
+    });
+  }
+
+  private getResourceActionQueue(worktreeId: string): PQueue {
+    let queue = this.resourceActionQueues.get(worktreeId);
+    if (!queue) {
+      queue = new PQueue({ concurrency: 1 });
+      this.resourceActionQueues.set(worktreeId, queue);
+    }
+    return queue;
+  }
+
+  private getResourceActionAbortController(worktreeId: string): AbortController {
+    let controller = this.resourceActionAbortControllers.get(worktreeId);
+    if (!controller) {
+      controller = new AbortController();
+      this.resourceActionAbortControllers.set(worktreeId, controller);
+    }
+    return controller;
+  }
+
+  private cleanupResourceActionState(worktreeId: string): void {
+    const controller = this.resourceActionAbortControllers.get(worktreeId);
+    if (controller) {
+      controller.abort();
+      this.resourceActionAbortControllers.delete(worktreeId);
+    }
+    const queue = this.resourceActionQueues.get(worktreeId);
+    if (queue) {
+      queue.clear();
+      this.resourceActionQueues.delete(worktreeId);
+    }
+  }
+
+  async runResourceAction(
+    requestId: string,
+    worktreeId: string,
+    action: "provision" | "teardown" | "resume" | "pause" | "status",
+    environmentId?: string,
+    options?: { origin?: "auto-poll" }
+  ): Promise<{ success: boolean; error?: string; output?: string }> {
+    const monitor = this.monitors.get(worktreeId);
+    if (!monitor) {
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "Worktree not found",
+      });
+      return { success: false, error: "Worktree not found" };
+    }
+
+    if (!this.projectRootPath) {
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "No project root path",
+      });
+      return { success: false, error: "No project root path" };
+    }
+
+    const queue = this.getResourceActionQueue(worktreeId);
+
+    // Auto-poll: skip if any resource action is already in-flight or queued
+    if (options?.origin === "auto-poll" && (queue.pending > 0 || queue.size > 0)) {
+      return { success: true };
+    }
+
+    const controller = this.getResourceActionAbortController(worktreeId);
+
+    const queued = await queue
+      .add(
+        () =>
+          this._executeResourceAction(
+            requestId,
+            worktreeId,
+            action,
+            environmentId,
+            controller.signal
+          ),
+        { signal: controller.signal }
+      )
+      .catch(() => undefined);
+
+    return queued ?? { success: false, error: "Aborted" };
+  }
+
+  private async _executeResourceAction(
+    requestId: string,
+    worktreeId: string,
+    action: "provision" | "teardown" | "resume" | "pause" | "status",
+    environmentId: string | undefined,
+    signal: AbortSignal
+  ): Promise<{ success: boolean; error?: string; output?: string }> {
+    const monitor = this.monitors.get(worktreeId);
+    if (!monitor || !this.projectRootPath) {
+      return { success: false, error: "Worktree not found" };
+    }
+
+    if (signal.aborted) {
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "Aborted",
+      });
+      return { success: false, error: "Aborted" };
+    }
+
+    const config = await this.lifecycleService.loadConfig(monitor.path, this.projectRootPath);
+
+    // Resolve resource config: prefer resources (plural) over resource (singular)
+    let resourceConfig = config?.resource;
+    if (config?.resources) {
+      if (environmentId && config.resources[environmentId]) {
+        resourceConfig = config.resources[environmentId];
+      } else if (config.resources["default"]) {
+        resourceConfig = config.resources["default"];
+      } else {
+        const keys = Object.keys(config.resources);
+        if (keys.length > 0) {
+          resourceConfig = config.resources[keys[0]];
+        }
+      }
+    }
+
+    // Fallback: resolve from project settings resourceEnvironments
+    if (!resourceConfig && this.projectRootPath) {
+      const envKey = monitor.worktreeMode;
+      if (envKey && envKey !== "local") {
+        const envs = await this.lifecycleService.loadProjectResourceEnvironments(
+          this.projectRootPath
+        );
+        resourceConfig = envs?.[envKey] ?? undefined;
+      }
+    }
+
+    if (!resourceConfig) {
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "No resource config found",
+      });
+      return { success: false, error: "No resource config found" };
+    }
+
+    const vars = this.lifecycleService.buildVariables(
+      monitor.path,
+      this.projectRootPath,
+      monitor.name,
+      monitor.branch
+    );
+    const sub = (cmd: string) => this.lifecycleService.substituteVariables(cmd, vars);
+
+    monitor.setHasResourceConfig(true);
+    monitor.setHasStatusCommand(!!resourceConfig.status);
+    monitor.setHasPauseCommand(!!resourceConfig.pause?.length);
+    monitor.setHasResumeCommand(!!resourceConfig.resume?.length);
+    monitor.setHasTeardownCommand(!!resourceConfig.teardown?.length);
+    monitor.setHasProvisionCommand(!!resourceConfig.provision?.length);
+    monitor.setResourceProvider(resourceConfig.provider);
+    monitor.setResourceConnectCommand(
+      resourceConfig.connect ? sub(resourceConfig.connect) : undefined
+    );
+    if (resourceConfig.statusInterval) {
+      monitor.setResourcePollInterval(resourceConfig.statusInterval * 1000);
+    }
+
+    const env = this.lifecycleService.buildEnv(
+      monitor.path,
+      this.projectRootPath,
+      monitor.name,
+      monitor.branch,
+      {
+        provider: resourceConfig.provider,
+        endpoint: monitor.resourceStatus?.endpoint,
+        lastOutput: monitor.resourceStatus?.lastOutput,
+      },
+      this.projectEnvVars
+    );
+
+    // Idempotent provision: route to resume when paused, no-op when already running.
+    let effectiveAction = action;
+    if (action === "provision") {
+      const currentStatus = monitor.resourceStatus?.lastStatus?.toLowerCase();
+      if (
+        currentStatus === "ready" ||
+        currentStatus === "running" ||
+        currentStatus === "healthy" ||
+        currentStatus === "up"
+      ) {
+        console.log(
+          `[WorktreeLifecycle] Provision no-op for worktree ${worktreeId}: already ${currentStatus}`
+        );
+        this.sendEvent({
+          type: "resource-action-result",
+          requestId,
+          success: true,
+          output: `Resource is already ${currentStatus}`,
+        });
+        return { success: true, output: `Resource is already ${currentStatus}` };
+      }
+      if (currentStatus === "paused" || currentStatus === "stopped") {
+        // "stopped" kept here only to gracefully handle a transient read from a CLI
+        // that hasn't switched to "paused" yet; the schema/UI no longer emit it.
+        console.log(
+          `[WorktreeLifecycle] Provision routing to resume for worktree ${worktreeId}: currently ${currentStatus}`
+        );
+        effectiveAction = "resume";
+      }
+      // otherwise (not configured / error / unknown / undefined) fall through to provision.
+    }
+
+    if (action === "status") {
+      if (!resourceConfig.status) {
+        this.sendEvent({
+          type: "resource-action-result",
+          requestId,
+          success: false,
+          error: "No status command configured",
+        });
+        return { success: false, error: "No status command configured" };
+      }
+
+      const statusCmd = sub(resourceConfig.status);
+
+      monitor.setLifecycleStatus({
+        phase: "resource-status",
+        state: "running",
+        commandIndex: 0,
+        totalCommands: 1,
+        currentCommand: statusCmd,
+        startedAt: Date.now(),
+      });
+      this.emitUpdate(monitor);
+
+      const statusTimeoutSec = resourceConfig.timeouts?.status;
+      const statusTimeoutMs = statusTimeoutSec != null ? statusTimeoutSec * 1000 : 120_000;
+      const result = await this.lifecycleService.runCommands([statusCmd], {
+        cwd: monitor.path,
+        env,
+        timeoutMs: statusTimeoutMs,
+        signal,
+        onProgress: () => {},
+      });
+
+      if (result.aborted) {
+        this.sendEvent({
+          type: "resource-action-result",
+          requestId,
+          success: false,
+          error: "Aborted",
+        });
+        return { success: false, error: "Aborted" };
+      }
+
+      // Re-read monitor after await — it may have been removed during the command
+      const statusMonitor = this.monitors.get(worktreeId);
+      if (!statusMonitor) return { success: false, error: "Worktree removed" };
+
+      try {
+        const parsed = JSON.parse(result.output);
+        statusMonitor.setResourceStatus({
+          lastStatus: parsed.status ?? "unhealthy",
+          lastOutput: result.output,
+          lastCheckedAt: Date.now(),
+          endpoint: typeof parsed.endpoint === "string" ? parsed.endpoint : undefined,
+          meta: parsed.meta != null && typeof parsed.meta === "object" ? parsed.meta : undefined,
+        });
+      } catch {
+        // Non-JSON output: if command succeeded (exit 0), treat as "unknown" (neutral) rather
+        // than "unhealthy" — the script may not emit JSON but still indicates a live resource.
+        // Only mark "unhealthy" when the command itself failed (non-zero exit).
+        statusMonitor.setResourceStatus({
+          lastStatus: result.success ? "unknown" : "unhealthy",
+          lastOutput: result.output,
+          lastCheckedAt: Date.now(),
+        });
+      }
+
+      // Re-substitute connect command with endpoint from status
+      const statusEndpoint = statusMonitor.resourceStatus?.endpoint;
+      if (statusEndpoint && resourceConfig.connect && this.projectRootPath) {
+        const varsWithEndpoint = this.lifecycleService.buildVariables(
+          statusMonitor.path,
+          this.projectRootPath,
+          statusMonitor.name,
+          statusMonitor.branch,
+          statusEndpoint
+        );
+        statusMonitor.setResourceConnectCommand(
+          this.lifecycleService.substituteVariables(resourceConfig.connect, varsWithEndpoint)
+        );
+      }
+
+      if (statusEndpoint && statusMonitor.resourceStatus?.lastStatus === "ready") {
+        const resolvedConnect = statusMonitor.resourceConnectCommand;
+        if (resolvedConnect) {
+          await this.generateRemoteWrapper(statusMonitor.path, resolvedConnect, statusEndpoint);
+        }
+      }
+
+      statusMonitor.setLifecycleStatus({
+        phase: "resource-status",
+        state: result.timedOut ? "timed-out" : result.success ? "success" : "failed",
+        totalCommands: 1,
+        output: result.output,
+        error: result.error,
+        startedAt: statusMonitor.lifecycleStatus?.startedAt ?? Date.now(),
+        completedAt: Date.now(),
+      });
+      this.emitUpdate(statusMonitor);
+
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: result.success,
+        output: result.output,
+        error: result.error,
+      });
+      return { success: result.success, output: result.output, error: result.error };
+    }
+
+    const commands = (
+      resourceConfig[effectiveAction as "provision" | "teardown" | "resume" | "pause"] as
+        | string[]
+        | undefined
+    )?.map(sub);
+    if (!commands?.length) {
+      this.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: `No ${effectiveAction} commands configured`,
+      });
+      return { success: false, error: `No ${effectiveAction} commands configured` };
+    }
+
+    const phase = `resource-${effectiveAction}` as const;
+    const DEFAULT_TIMEOUT: Record<string, number> = {
+      provision: 300_000,
+      teardown: 300_000,
+      resume: 120_000,
+      pause: 120_000,
+      status: 120_000,
+    };
+    const configTimeoutSec =
+      resourceConfig.timeouts?.[effectiveAction as keyof typeof resourceConfig.timeouts];
+    const timeoutMs =
+      configTimeoutSec != null
+        ? configTimeoutSec * 1000
+        : (DEFAULT_TIMEOUT[effectiveAction] ?? 120_000);
+
+    monitor.setLifecycleStatus({
+      phase,
+      state: "running",
+      commandIndex: 0,
+      totalCommands: commands.length,
+      currentCommand: commands[0],
+      startedAt: Date.now(),
+    });
+    this.emitUpdate(monitor);
+
+    const startedAt = monitor.lifecycleStatus?.startedAt ?? Date.now();
+
+    const result = await this.lifecycleService.runCommands(commands, {
+      cwd: monitor.path,
+      env,
+      timeoutMs,
+      signal,
+      onProgress: (commandIndex, totalCommands, command) => {
+        const m = this.monitors.get(worktreeId);
+        if (m) {
+          m.setLifecycleStatus({
+            phase,
+            state: "running",
+            commandIndex,
+            totalCommands,
+            currentCommand: command,
+            startedAt: m.lifecycleStatus?.startedAt ?? startedAt,
+          });
+          this.emitUpdate(m);
+        }
+      },
+    });
+
+    if (result.aborted) return { success: false, error: "Aborted" };
+
+    const finalMonitor = this.monitors.get(worktreeId);
+    if (finalMonitor) {
+      finalMonitor.setLifecycleStatus({
+        phase,
+        state: result.timedOut ? "timed-out" : result.success ? "success" : "failed",
+        totalCommands: commands.length,
+        output: result.output,
+        error: result.error,
+        startedAt,
+        completedAt: Date.now(),
+      });
+
+      if (result.success && (effectiveAction === "resume" || effectiveAction === "pause")) {
+        const prevStatus = finalMonitor.resourceStatus;
+        const timestampUpdate: Partial<WorktreeResourceStatus> =
+          effectiveAction === "resume" ? { resumedAt: Date.now() } : { pausedAt: Date.now() };
+        finalMonitor.setResourceStatus({
+          ...prevStatus,
+          ...timestampUpdate,
+        });
+      }
+
+      this.emitUpdate(finalMonitor);
+    }
+
+    if (!result.success) {
+      console.warn(
+        `[WorktreeLifecycle] Resource ${action} failed for worktree ${worktreeId}:`,
+        result.error
+      );
+    }
+
+    this.sendEvent({
+      type: "resource-action-result",
+      requestId,
+      success: result.success,
+      output: result.output,
+      error: result.error,
+    });
+    return { success: result.success, output: result.output, error: result.error };
+  }
+
+  async hasResourceConfig(rootPath: string): Promise<boolean> {
+    if (!this.projectRootPath) {
+      return false;
+    }
+    const config = await this.lifecycleService.loadConfig(rootPath, this.projectRootPath);
+    if (config?.resource || config?.resources) return true;
+    const envs = await this.lifecycleService.loadProjectResourceEnvironments(this.projectRootPath);
+    return envs !== null && Object.keys(envs).length > 0;
+  }
+
+  private async generateRemoteWrapper(
+    worktreePath: string,
+    connectCommand: string,
+    endpoint: string
+  ): Promise<void> {
+    try {
+      const wrapperPath = pathJoin(worktreePath, ".daintree", "daintree-remote");
+      await mkdir(pathJoin(worktreePath, ".daintree"), { recursive: true });
+
+      const scriptContent = `#!/usr/bin/env bash
+# Auto-generated by Daintree - wraps remote compute access
+# Endpoint: ${endpoint}
+set -euo pipefail
+if [ $# -eq 0 ]; then
+  echo "Usage: daintree-remote <command>" >&2
+  exit 1
+fi
+${connectCommand} "$@"
+`;
+
+      await writeFile(wrapperPath, scriptContent, { mode: 0o755 });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn("[WorkspaceService] Failed to generate daintree-remote wrapper:", msg);
+    }
+  }
+
+  private async loadProjectEnvVars(projectRootPath: string): Promise<Record<string, string>> {
+    try {
+      const userDataDir = process.env.DAINTREE_USER_DATA ?? "";
+      const projectId = generateProjectId(projectRootPath);
+      const filePath = settingsFilePath(userDataDir, projectId);
+      if (!filePath) return {};
+      const raw = await readFile(filePath, "utf8");
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      const envVars = (parsed as Record<string, unknown>).environmentVariables;
+      if (!envVars || typeof envVars !== "object" || Array.isArray(envVars)) return {};
+      const result: Record<string, string> = {};
+      for (const [k, v] of Object.entries(envVars as Record<string, unknown>)) {
+        if (typeof k === "string" && typeof v === "string") {
+          result[k] = v;
+        }
+      }
+      return result;
+    } catch {
+      return {};
+    }
+  }
+
   dispose(): void {
     this._shutdownController.abort();
     this.prService.cleanup();
+    for (const id of this.monitors.keys()) {
+      this.cleanupResourceActionState(id);
+    }
     for (const monitor of this.monitors.values()) {
       monitor.stop();
     }

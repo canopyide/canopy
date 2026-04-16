@@ -10,6 +10,7 @@ import { markPerformance } from "./utils/performance.js";
 import { enforceIpcSenderValidation, setupPermissionLockdown } from "./setup/security.js";
 import {
   registerAppProtocol,
+  registerDaintreeFileProtocol,
   registerCanopyFileProtocol,
   setupWebviewCSP,
 } from "./setup/protocols.js";
@@ -80,6 +81,16 @@ protocol.registerSchemesAsPrivileged([
       codeCache: true,
     },
   },
+  {
+    scheme: "daintree-file",
+    privileges: {
+      secure: true,
+      supportFetchAPI: true,
+    },
+  },
+  // canopy-file remains privileged during the 0.7/0.8 migration window so
+  // both the legacy Canopy build and the new Daintree build can resolve
+  // pre-rebrand links and persisted references.
   {
     scheme: "canopy-file",
     privileges: {
@@ -152,13 +163,16 @@ if (!gotTheLock) {
 
   let powerMonitorInitialized = false;
 
-  async function createWindow(initialProjectPath?: string | null): Promise<void> {
+  async function createWindow(
+    initialProjectPath?: string | null,
+    initialProjectId?: string
+  ): Promise<void> {
     const { win, appView, loadRenderer, smokeTestTimer, smokeRendererUnresponsive } =
       setupBrowserWindow(__dirname, {
-        onRecreateWindow: () => createWindow(initialProjectPath),
+        onRecreateWindow: () => createWindow(initialProjectPath, initialProjectId),
         onCreateWindow: (projectPath?: string) => createWindow(projectPath),
         projectPath: initialProjectPath,
-        initialProjectId: lastActiveProjectId ?? undefined,
+        initialProjectId,
       });
     setMainWindow(win);
     const ctx = windowRegistry.register(win, { projectPath: initialProjectPath ?? undefined });
@@ -166,7 +180,7 @@ if (!gotTheLock) {
 
     const pvm = new ProjectViewManager(win, {
       dirname: __dirname,
-      onRecreateWindow: () => createWindow(initialProjectPath),
+      onRecreateWindow: () => createWindow(initialProjectPath, initialProjectId),
       windowRegistry,
       cachedProjectViews:
         store.get("terminalConfig")?.cachedProjectViews ??
@@ -175,7 +189,7 @@ if (!gotTheLock) {
         // originating project view survives a switch into a freshly added
         // project view. Increase the cache only when the e2e harness flag is
         // set so production behavior is unchanged.
-        (process.env.CANOPY_E2E_MODE ? 4 : undefined),
+        (process.env.DAINTREE_E2E_MODE ? 4 : undefined),
       onViewEvicted: (wcId) => {
         getWorkspaceClientRef()?.removeDirectPort(wcId);
         getWorktreePortBrokerRef()?.closePortsForView(wcId);
@@ -224,7 +238,7 @@ if (!gotTheLock) {
       smokeRendererUnresponsive,
       windowRegistry,
       initialProjectPath: initialProjectPath ?? undefined,
-      initialProjectId: lastActiveProjectId ?? undefined,
+      initialProjectId,
       projectViewManager: pvm,
       initialAppView: appView,
     });
@@ -276,9 +290,10 @@ if (!gotTheLock) {
     try {
       setupPermissionLockdown();
       registerAppProtocol(distPath);
+      registerDaintreeFileProtocol();
       registerCanopyFileProtocol();
       setupWebviewCSP();
-      await createWindow();
+      await createWindow(undefined, lastActiveProjectId ?? undefined);
       getCrashLoopGuard().startStabilityTimer();
     } catch (error) {
       console.error("[MAIN] Startup failed:", error);

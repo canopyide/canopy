@@ -37,7 +37,7 @@ const STATE_CONFIG: Record<
   },
   waiting: {
     icon: "?",
-    color: "text-canopy-bg",
+    color: "text-daintree-bg",
     bgColor: "bg-state-waiting",
     glow: "shadow-[0_0_8px_color-mix(in_srgb,var(--color-activity-waiting)_40%,transparent)]",
     pulse: false,
@@ -53,7 +53,7 @@ const STATE_CONFIG: Record<
   },
   exited: {
     icon: "–",
-    color: "text-canopy-text/40",
+    color: "text-daintree-text/40",
     pulse: false,
     label: "exited",
     tooltip: "Process exited",
@@ -132,4 +132,17 @@ export function getDominantAgentState(states: (AgentState | undefined)[]): Agent
   }
 
   return dominant === "idle" ? null : dominant;
+}
+
+export function agentStateDotColor(state: AgentState): string {
+  switch (state) {
+    case "working":
+    case "running":
+    case "directing":
+      return "bg-state-working";
+    case "waiting":
+      return "bg-state-waiting";
+    default:
+      return "bg-daintree-accent";
+  }
 }

@@ -1,5 +1,5 @@
 /**
- * Shared types for Canopy
+ * Shared types for Daintree
  *
  * This module provides a single source of truth for type definitions
  * used across the main process, renderer process, and preload script.
@@ -121,6 +121,7 @@ export type {
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
   AppMetricsSummary,
+  AgentAvailabilityState,
   CliAvailability,
   AgentVersionInfo,
   AgentUpdateSettings,
@@ -152,6 +153,10 @@ export type {
   // Hibernation types
   HibernationConfig,
   HibernationProjectHibernatedPayload,
+  // Idle terminal notification types
+  IdleTerminalNotifyConfig,
+  IdleTerminalNotifyPayload,
+  IdleTerminalProjectEntry,
   // System Sleep types
   SleepPeriod,
   SystemSleepMetrics,
@@ -242,7 +247,7 @@ export type {
   WorktreesConfig,
   GitDisplayConfig,
   // Main config
-  CanopyConfig,
+  DaintreeConfig,
 } from "./config.js";
 
 // Keymap types - keyboard shortcuts
@@ -400,7 +405,7 @@ export type {
   BuilderFieldValidation,
   BuilderField,
   BuilderStep,
-  CanopyCommand,
+  DaintreeCommand,
   CommandManifestEntry,
   CommandExecutePayload,
   CommandGetPayload,

@@ -1,12 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { normalizeAgentSelection } from "../agentSettingsStore";
-import type { AgentSettings, CliAvailability } from "@shared/types";
+import { getEffectiveAgentIds } from "../../../shared/config/agentRegistry";
+import type { AgentSettings } from "@shared/types";
 
 describe("normalizeAgentSelection", () => {
-  const makeSettings = (
-    agents: Record<string, { selected?: boolean; enabled?: boolean }>
-  ): AgentSettings => ({
+  const makeSettings = (agents: Record<string, { pinned?: boolean }>): AgentSettings => ({
     agents: Object.fromEntries(
       Object.entries(agents).map(([id, overrides]) => [
         id,
@@ -15,64 +14,45 @@ describe("normalizeAgentSelection", () => {
     ),
   });
 
-  const availability: CliAvailability = {
-    claude: true,
-    gemini: false,
-    codex: true,
-    opencode: false,
-    cursor: false,
-  } as CliAvailability;
+  it("preserves explicit pinned: true and pinned: false", () => {
+    const settings = makeSettings({
+      claude: { pinned: false },
+      gemini: { pinned: true },
+    });
+    const result = normalizeAgentSelection(settings);
+    expect(result.agents.claude.pinned).toBe(false);
+    expect(result.agents.gemini.pinned).toBe(true);
+  });
 
-  it("fills selected: undefined using CLI availability", () => {
+  it("seeds pinned: true for registered agents with no stored pinned value", () => {
     const settings = makeSettings({
       claude: {},
       gemini: {},
     });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(true);
-    expect(result.agents.gemini.selected).toBe(false);
+    const result = normalizeAgentSelection(settings);
+    expect(result.agents.claude.pinned).toBe(true);
+    expect(result.agents.gemini.pinned).toBe(true);
   });
 
-  it("preserves explicit selected: true and selected: false", () => {
-    const settings = makeSettings({
-      claude: { selected: false },
-      gemini: { selected: true },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(false);
-    expect(result.agents.gemini.selected).toBe(true);
-  });
+  it("creates pinned: true entries for registered agents missing from stored settings", () => {
+    const settings: AgentSettings = { agents: {} };
+    const result = normalizeAgentSelection(settings);
 
-  it("migrates deprecated enabled: false to selected: false", () => {
-    const settings = makeSettings({
-      claude: { enabled: false },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(false);
-  });
-
-  it("does not overwrite selected: false with enabled migration", () => {
-    const settings = makeSettings({
-      claude: { enabled: false, selected: false },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(false);
-  });
-
-  it("does not override explicit selected: true when enabled: false", () => {
-    const settings = makeSettings({
-      claude: { enabled: false, selected: true },
-    });
-    const result = normalizeAgentSelection(settings, availability);
-    expect(result.agents.claude.selected).toBe(true);
+    for (const id of getEffectiveAgentIds()) {
+      expect(result.agents[id]).toEqual({ pinned: true });
+    }
   });
 
   it("returns same reference when no changes are needed", () => {
-    const settings = makeSettings({
-      claude: { selected: true },
-      gemini: { selected: false },
-    });
-    const result = normalizeAgentSelection(settings, availability);
+    const settings: AgentSettings = {
+      agents: Object.fromEntries(
+        getEffectiveAgentIds().map((id) => [
+          id,
+          { customFlags: "", dangerousArgs: "", dangerousEnabled: false, pinned: true },
+        ])
+      ),
+    };
+    const result = normalizeAgentSelection(settings);
     expect(result).toBe(settings);
   });
 });

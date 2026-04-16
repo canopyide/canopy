@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProcessTreeCache, type ProcessInfo } from "../ProcessTreeCache.js";
 
 type CpuSnapshot = { kernelTicks: bigint; userTicks: bigint; wallMs: number };
@@ -6,6 +6,13 @@ type CacheInternals = {
   cache: Map<number, ProcessInfo>;
   childrenMap: Map<number, number[]>;
   cpuSnapshots: Map<string, CpuSnapshot>;
+  isRefreshing: boolean;
+  isWindows: boolean;
+  pollTimer: NodeJS.Timeout | null;
+  disposed: boolean;
+  currentIntervalMs: number;
+  pollIntervalMs: number;
+  refreshCallbacks: Set<() => void>;
 };
 
 function createSeededCache(): ProcessTreeCache {
@@ -266,5 +273,206 @@ describe("Windows CPU delta computation", () => {
     // Different creation dates are tracked independently
     expect(internals.cpuSnapshots.get("42:2023-01-01T00:00:00Z")!.kernelTicks).toBe(50_000_000n);
     expect(internals.cpuSnapshots.get("42:2023-06-01T00:00:00Z")!.kernelTicks).toBe(1_000n);
+  });
+});
+
+describe("poll scheduling and adaptive backoff", () => {
+  let cache: ProcessTreeCache;
+  let internals: CacheInternals;
+  let refreshSpy: ReturnType<typeof vi.fn>;
+
+  // Helper: seed PID set into cache and register a subscriber
+  function seedPids(pids: number[]): void {
+    internals.cache = new Map(
+      pids.map((pid) => [
+        pid,
+        { pid, ppid: 1, comm: "node", command: "node", cpuPercent: 0, rssKb: 1000 },
+      ])
+    );
+  }
+
+  // Stub refreshUnix to resolve with a configurable PID set
+  function stubRefresh(pids: number[]): void {
+    refreshSpy.mockImplementation(async function (this: ProcessTreeCache) {
+      const self = this as unknown as CacheInternals;
+      const newCache = new Map(
+        pids.map((pid) => [
+          pid,
+          {
+            pid,
+            ppid: 1,
+            comm: "node",
+            command: "node",
+            cpuPercent: 0,
+            rssKb: 1000,
+          } as ProcessInfo,
+        ])
+      );
+      // Replicate hasPidSetChanged logic
+      let changed = self.cache.size !== newCache.size;
+      if (!changed) {
+        for (const pid of newCache.keys()) {
+          if (!self.cache.has(pid)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      self.cache = newCache;
+      self.childrenMap = new Map();
+      return changed;
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    cache = new ProcessTreeCache(2500);
+    internals = cache as unknown as CacheInternals;
+    // Force the Unix refresh path so stubbing refreshUnix works on Windows CI too
+    internals.isWindows = false;
+    // Stub refreshUnix so no real `ps` calls happen
+    refreshSpy = vi.fn();
+    // Default stub: returns same PIDs (no change)
+    stubRefresh([1, 2, 3]);
+    (cache as unknown as { refreshUnix: typeof refreshSpy }).refreshUnix = refreshSpy;
+    // Seed initial cache so first refresh sees "no change"
+    seedPids([1, 2, 3]);
+    // Register a subscriber so refresh() doesn't skip
+    cache.onRefresh(() => {});
+  });
+
+  afterEach(() => {
+    cache.stop();
+    vi.useRealTimers();
+  });
+
+  it("uses setTimeout (not setInterval) for scheduling", async () => {
+    cache.start();
+    // Let the initial synchronous refresh() settle (its finally block schedules the first poll)
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    // One pending setTimeout, not an interval
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("advances backoff by 1.5x when PID set is unchanged", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0); // first refresh
+    expect(cache.getCurrentIntervalMs()).toBe(Math.ceil(2500 * 1.5)); // 3750
+
+    await vi.advanceTimersByTimeAsync(3750); // second refresh
+    expect(cache.getCurrentIntervalMs()).toBe(Math.ceil(3750 * 1.5)); // 5625
+  });
+
+  it("resets backoff to base when PID set changes", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0); // first refresh (unchanged → backoff)
+    expect(cache.getCurrentIntervalMs()).toBe(3750);
+
+    // Next refresh will see a different PID set
+    stubRefresh([1, 2, 3, 4]);
+    await vi.advanceTimersByTimeAsync(3750);
+    expect(cache.getCurrentIntervalMs()).toBe(2500); // reset to base
+  });
+
+  it("caps backoff at 15s ceiling", async () => {
+    cache.start();
+    // Advance through many unchanged refreshes until ceiling
+    let interval = 2500;
+    for (let i = 0; i < 20; i++) {
+      await vi.advanceTimersByTimeAsync(i === 0 ? 0 : interval);
+      interval = cache.getCurrentIntervalMs();
+      if (interval >= 15_000) break;
+    }
+    expect(cache.getCurrentIntervalMs()).toBeLessThanOrEqual(15_000);
+    // One more tick to confirm it stays at ceiling
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(cache.getCurrentIntervalMs()).toBe(15_000);
+  });
+
+  it("stop() clears all pending timers", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    cache.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("disposed flag prevents rescheduling after stop()", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0); // first refresh completes
+    const callsAfterStart = refreshSpy.mock.calls.length;
+
+    cache.stop();
+    expect(vi.getTimerCount()).toBe(0);
+    // No further refreshes should fire after stop
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(refreshSpy).toHaveBeenCalledTimes(callsAfterStart);
+  });
+
+  it("setPollInterval resets backoff and reschedules immediately", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0); // first refresh, backoff → 3750
+    expect(cache.getCurrentIntervalMs()).toBe(3750);
+
+    cache.setPollInterval(5000);
+    expect(cache.getCurrentIntervalMs()).toBe(5000);
+    // Timer was rescheduled at 5000ms
+    expect(vi.getTimerCount()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(refreshSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("setPollInterval is no-op when value unchanged", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const timersBefore = vi.getTimerCount();
+    cache.setPollInterval(2500); // same value
+    expect(vi.getTimerCount()).toBe(timersBefore);
+  });
+
+  it("no-subscriber optimization still reschedules timer", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0); // first refresh completes
+    refreshSpy.mockClear();
+
+    // Remove all subscribers so next refresh() takes the early-return path
+    internals.refreshCallbacks.clear();
+    await vi.advanceTimersByTimeAsync(cache.getCurrentIntervalMs());
+    // refresh() should have returned early (no subscribers) but still scheduled next poll
+    expect(internals.pollTimer).not.toBeNull();
+    // refreshUnix should NOT have been called on this tick
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
+
+  it("resets backoff on error", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0); // first refresh (unchanged) → 3750
+    expect(cache.getCurrentIntervalMs()).toBe(3750);
+
+    // Make next refresh throw
+    refreshSpy.mockRejectedValueOnce(new Error("ps failed"));
+    await vi.advanceTimersByTimeAsync(3750);
+    // Error resets to base
+    expect(cache.getCurrentIntervalMs()).toBe(2500);
+    // Still reschedules
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("supports stop → start restart cycle", async () => {
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0);
+    // Advance backoff
+    await vi.advanceTimersByTimeAsync(cache.getCurrentIntervalMs());
+
+    cache.stop();
+    expect(vi.getTimerCount()).toBe(0);
+
+    // Restart — should reset backoff to base
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0);
+    // After first unchanged refresh, should be base * 1.5
+    expect(cache.getCurrentIntervalMs()).toBe(Math.ceil(2500 * 1.5));
   });
 });

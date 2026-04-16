@@ -9,7 +9,7 @@ describe("FileTreeService", () => {
   let service: FileTreeService;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "canopy-file-tree-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-file-tree-"));
     service = new FileTreeService();
   });
 
@@ -42,14 +42,14 @@ describe("FileTreeService", () => {
     expect(result).toEqual([
       expect.objectContaining({
         name: "main.ts",
-        path: path.join("src", "main.ts"),
+        path: "src/main.ts",
         isDirectory: false,
       }),
     ]);
   });
 
   it("blocks dirPath values that resolve through symlinks outside base path", async () => {
-    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "canopy-file-tree-outside-"));
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-file-tree-outside-"));
     await fs.writeFile(path.join(outsideDir, "outside.txt"), "outside");
 
     const linkPath = path.join(tempDir, "external-link");

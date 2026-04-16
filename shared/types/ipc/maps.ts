@@ -75,6 +75,9 @@ import type {
   ProcessMetricEntry,
   HeapStats,
   DiagnosticsInfo,
+  AgentInstallPayload,
+  AgentInstallResult,
+  AgentInstallProgressEvent,
 } from "./system.js";
 import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
@@ -135,6 +138,7 @@ import type {
   TerminalResourceBatchPayload,
 } from "../pty-host.js";
 import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
+import type { IdleTerminalNotifyConfig, IdleTerminalNotifyPayload } from "./idleTerminals.js";
 import type { AgentRegistry, AgentMetadata } from "./agentCapabilities.js";
 import type { AppThemeConfig } from "../appTheme.js";
 import type {
@@ -181,6 +185,8 @@ export interface OnboardingState {
   firstRunToastSeen: boolean;
   newsletterPromptSeen: boolean;
   waitingNudgeSeen: boolean;
+  // TODO(0.9.0): Remove after deleting onboarding:migrate and the renderer
+  // localStorage import path for old Canopy onboarding keys.
   migratedFromLocalStorage: boolean;
   checklist: ChecklistState;
 }
@@ -477,6 +483,11 @@ export interface IpcInvokeMap {
     args: [StartAgentUpdatePayload];
     result: StartAgentUpdateResult;
   };
+  "setup:agent-install": {
+    args: [payload: AgentInstallPayload];
+    result: AgentInstallResult;
+  };
+
   "system:health-check": {
     args: [agentIds?: string[]];
     result: SystemHealthCheckResult;
@@ -1124,6 +1135,24 @@ export interface IpcInvokeMap {
     result: HibernationConfig;
   };
 
+  // Idle terminal notification channels
+  "idle-terminal:get-config": {
+    args: [];
+    result: IdleTerminalNotifyConfig;
+  };
+  "idle-terminal:update-config": {
+    args: [config: Partial<IdleTerminalNotifyConfig>];
+    result: IdleTerminalNotifyConfig;
+  };
+  "idle-terminal:close-project": {
+    args: [projectId: string];
+    result: void;
+  };
+  "idle-terminal:dismiss-project": {
+    args: [projectId: string];
+    result: void;
+  };
+
   // Keybinding channels
   "keybinding:get-overrides": {
     args: [];
@@ -1335,7 +1364,7 @@ export interface IpcInvokeMap {
     result: boolean;
   };
 
-  // Canopy CLI install channels
+  // Daintree CLI install channels
   "cli:install": {
     args: [];
     result: CliInstallStatus;
@@ -1509,6 +1538,8 @@ export interface IpcInvokeMap {
     result: OnboardingState;
   };
   "onboarding:migrate": {
+    // TODO(0.9.0): Remove after deleting the temporary Canopy onboarding
+    // localStorage migration path.
     args: [
       payload: {
         agentSelectionDismissed: boolean;
@@ -1831,6 +1862,9 @@ export interface IpcEventMap {
   "project:updated": Project;
   "project:removed": string;
 
+  // Agent install progress events
+  "setup:agent-install-progress": AgentInstallProgressEvent;
+
   // System events
   "system:wake": SystemWakePayload;
 
@@ -1944,6 +1978,9 @@ export interface IpcEventMap {
 
   // Hibernation events
   "hibernation:project-hibernated": HibernationProjectHibernatedPayload;
+
+  // Idle terminal notification events
+  "idle-terminal:notify": IdleTerminalNotifyPayload;
 
   // App theme events
   "app-theme:system-appearance-changed": { isDark: boolean; schemeId: string };

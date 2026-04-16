@@ -31,3 +31,22 @@ export function getInstallBlocksForCurrentOS(agent: AgentConfig): AgentInstallBl
 
   return null;
 }
+
+export function getDefaultInstallBlock(agent: AgentConfig): AgentInstallBlock | null {
+  const blocks = getInstallBlocksForCurrentOS(agent);
+  return blocks && blocks.length > 0 ? blocks[0] : null;
+}
+
+export function getInstallCommand(block: AgentInstallBlock): string | null {
+  if (!block.commands || block.commands.length === 0) return null;
+  return block.commands.join("\n");
+}
+
+export function isManualOnlyCommand(command: string): boolean {
+  return /\|\s*(bash|sh|zsh)\b/.test(command) || /\|\s*iex\b/.test(command);
+}
+
+export function isBlockExecutable(block: AgentInstallBlock): boolean {
+  if (!block.commands || block.commands.length === 0) return false;
+  return block.commands.every((cmd) => !isManualOnlyCommand(cmd));
+}

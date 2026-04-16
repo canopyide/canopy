@@ -29,17 +29,13 @@ import {
   Rocket,
   RotateCcw,
   StickyNote,
+  Puzzle,
 } from "lucide-react";
-import {
-  ClaudeIcon,
-  GeminiIcon,
-  CodexIcon,
-  OpenCodeIcon,
-  CanopyAgentIcon,
-  CopyTreeIcon,
-} from "@/components/icons";
+import { CopyTreeIcon } from "@/components/icons";
 import { useToolbarPreferencesStore } from "@/store";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
+import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { getAgentConfig } from "@/config/agents";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -49,31 +45,26 @@ import { SettingsSwitchCard } from "./SettingsSwitchCard";
 type ButtonMetadata = { label: string; icon: React.ReactNode; description: string };
 
 const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
-  "agent-setup": {
-    label: "Agent Setup",
-    icon: <CanopyAgentIcon className="h-4 w-4" />,
-    description: "Shown only when no agents are enabled in Agent Settings",
+  "agent-tray": {
+    label: "Agent Tray",
+    icon: <Puzzle className="h-4 w-4" />,
+    description: "Overflow tray for installed-but-unpinned agents and setup links",
   },
-  claude: {
-    label: "Claude Agent",
-    icon: <ClaudeIcon className="h-4 w-4" />,
-    description: "Launch Claude AI agent",
-  },
-  gemini: {
-    label: "Gemini Agent",
-    icon: <GeminiIcon className="h-4 w-4" />,
-    description: "Launch Gemini AI agent",
-  },
-  codex: {
-    label: "Codex Agent",
-    icon: <CodexIcon className="h-4 w-4" />,
-    description: "Launch Codex AI agent",
-  },
-  opencode: {
-    label: "OpenCode Agent",
-    icon: <OpenCodeIcon className="h-4 w-4" />,
-    description: "Launch OpenCode AI agent",
-  },
+  ...Object.fromEntries(
+    BUILT_IN_AGENT_IDS.map((id) => {
+      const cfg = getAgentConfig(id);
+      const Icon = cfg?.icon;
+      const name = cfg?.name ?? id;
+      return [
+        id,
+        {
+          label: `${name} Agent`,
+          icon: Icon ? <Icon className="h-4 w-4" /> : <SquareTerminal className="h-4 w-4" />,
+          description: `Launch ${name} AI agent`,
+        },
+      ];
+    })
+  ),
   terminal: {
     label: "Terminal",
     icon: <SquareTerminal className="h-4 w-4" />,
@@ -88,11 +79,6 @@ const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
     label: "Dev Preview",
     icon: <Monitor className="h-4 w-4" />,
     description: "Open dev preview panel",
-  },
-  "panel-palette": {
-    label: "Panel Palette",
-    icon: <LayoutGrid className="h-4 w-4" />,
-    description: "Open the panel launcher palette",
   },
   "voice-recording": {
     label: "Voice Recording",
@@ -162,21 +148,21 @@ function SortableButtonItem({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-3 rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg/30"
+      className="flex items-center gap-3 p-3 rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30"
     >
       <div
         {...(isVisible ? { ...attributes, ...listeners } : {})}
         className={cn(isVisible ? "cursor-grab active:cursor-grabbing" : "cursor-default")}
       >
         <GripVertical
-          className={cn("h-4 w-4", isVisible ? "text-canopy-text/50" : "text-canopy-text/20")}
+          className={cn("h-4 w-4", isVisible ? "text-daintree-text/50" : "text-daintree-text/20")}
         />
       </div>
       <div className="flex items-center gap-2 flex-1">
-        <div className="text-canopy-text">{metadata.icon}</div>
+        <div className="text-daintree-text">{metadata.icon}</div>
         <div className="flex-1">
-          <div className="text-sm font-medium text-canopy-text">{metadata.label}</div>
-          <div className="text-xs text-canopy-text/50 select-text">{metadata.description}</div>
+          <div className="text-sm font-medium text-daintree-text">{metadata.label}</div>
+          <div className="text-xs text-daintree-text/50 select-text">{metadata.description}</div>
         </div>
       </div>
       <input
@@ -184,7 +170,7 @@ function SortableButtonItem({
         checked={isVisible}
         onChange={() => onToggle(buttonId)}
         aria-label={`Toggle ${metadata.label} visibility`}
-        className="w-4 h-4 rounded border-border-strong bg-canopy-bg text-canopy-accent focus:ring-canopy-accent focus:ring-2"
+        className="w-4 h-4 rounded border-border-strong bg-daintree-bg text-daintree-accent focus:ring-daintree-accent focus:ring-2"
       />
     </div>
   );
@@ -348,7 +334,9 @@ export function ToolbarSettingsTab() {
           />
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-canopy-text block">Default selection</label>
+            <label className="text-sm font-medium text-daintree-text block">
+              Default selection
+            </label>
             <select
               value={launcher.defaultSelection ?? ""}
               onChange={(e) =>
@@ -356,18 +344,19 @@ export function ToolbarSettingsTab() {
                   e.target.value ? (e.target.value as typeof launcher.defaultSelection) : undefined
                 )
               }
-              className="w-full px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-canopy-bg text-canopy-text focus:border-canopy-accent focus:outline-none transition-colors"
+              className="w-full px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-none transition-colors"
             >
               <option value="">None (first available)</option>
               <option value="terminal">Terminal</option>
-              <option value="claude">Claude</option>
-              <option value="gemini">Gemini</option>
-              <option value="codex">Codex</option>
-              <option value="opencode">OpenCode</option>
+              {BUILT_IN_AGENT_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {getAgentConfig(id)?.name ?? id}
+                </option>
+              ))}
               <option value="browser">Browser</option>
               <option value="dev-server">Dev Preview</option>
             </select>
-            <p className="text-xs text-canopy-text/40 select-text">
+            <p className="text-xs text-daintree-text/40 select-text">
               Default option to highlight when opening the launcher palette
             </p>
           </div>
@@ -378,8 +367,8 @@ export function ToolbarSettingsTab() {
         <button
           onClick={reset}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-canopy-border",
-            "text-canopy-text/60 hover:text-canopy-text hover:bg-tint/5 transition-colors"
+            "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-daintree-border",
+            "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/5 transition-colors"
           )}
         >
           <RotateCcw className="w-3.5 h-3.5" />

@@ -5,6 +5,7 @@ import { copyTreeClient, githubClient, systemClient, worktreeClient } from "@/cl
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { DEFAULT_COPYTREE_FORMAT } from "@/lib/copyTreeFormat";
+import { notify } from "@/lib/notify";
 
 export function registerWorktreeActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   // Query action: list all worktrees with metadata
@@ -82,7 +83,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      window.dispatchEvent(new CustomEvent("canopy:refresh-sidebar"));
+      window.dispatchEvent(new CustomEvent("daintree:refresh-sidebar"));
       await Promise.allSettled([
         window.electron.worktreePort.request("refresh"),
         worktreeClient.refreshPullRequests(),
@@ -164,6 +165,11 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
             .boolean()
             .optional()
             .describe("Use an existing branch instead of creating a new one"),
+          provisionResource: z.boolean().optional().describe("Run resource.provision after setup"),
+          worktreeMode: z
+            .string()
+            .optional()
+            .describe('Worktree environment mode ("local" or an environment key)'),
         })
         .describe("Worktree creation options"),
     }),
@@ -812,6 +818,202 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       if (!worktreeId) return false;
       const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
       return typeof worktree?.issueNumber === "number" && worktree.issueNumber > 0;
+    },
+  }));
+
+  actions.set("worktree.resource.provision", () => ({
+    id: "worktree.resource.provision",
+    title: "Provision Resource",
+    description: "Run resource provisioning commands for a worktree",
+    category: "worktree",
+    kind: "command",
+    danger: "confirm",
+    scope: "renderer",
+    argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+    isEnabled: (ctx: ActionContext) => {
+      const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!worktreeId) return false;
+      const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
+      return !!worktree?.hasProvisionCommand;
+    },
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { worktreeId } = (args ?? {}) as { worktreeId?: string };
+      const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!targetWorktreeId) throw new Error("No worktree selected");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "provision");
+      } catch (err) {
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Provision failed",
+          message: (err as Error).message || "Resource provisioning failed",
+        });
+      }
+    },
+  }));
+
+  actions.set("worktree.resource.teardown", () => ({
+    id: "worktree.resource.teardown",
+    title: "Teardown Resource",
+    description: "Run resource teardown commands for a worktree",
+    category: "worktree",
+    kind: "command",
+    danger: "confirm",
+    scope: "renderer",
+    argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+    isEnabled: (ctx: ActionContext) => {
+      const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!worktreeId) return false;
+      const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
+      return !!worktree?.hasTeardownCommand;
+    },
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { worktreeId } = (args ?? {}) as { worktreeId?: string };
+      const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!targetWorktreeId) throw new Error("No worktree selected");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "teardown");
+      } catch (err) {
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Teardown failed",
+          message: (err as Error).message || "Resource teardown failed",
+        });
+      }
+    },
+  }));
+
+  actions.set("worktree.resource.resume", () => ({
+    id: "worktree.resource.resume",
+    title: "Resume Resource",
+    description: "Resume the resource associated with a worktree",
+    category: "worktree",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+    isEnabled: (ctx: ActionContext) => {
+      const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!worktreeId) return false;
+      const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
+      return !!worktree?.hasResumeCommand;
+    },
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { worktreeId } = (args ?? {}) as { worktreeId?: string };
+      const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!targetWorktreeId) throw new Error("No worktree selected");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "resume");
+      } catch (err) {
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Resume failed",
+          message: (err as Error).message || "Resource resume failed",
+        });
+      }
+    },
+  }));
+
+  actions.set("worktree.resource.pause", () => ({
+    id: "worktree.resource.pause",
+    title: "Pause Resource",
+    description: "Pause the resource associated with a worktree",
+    category: "worktree",
+    kind: "command",
+    danger: "confirm",
+    scope: "renderer",
+    argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+    isEnabled: (ctx: ActionContext) => {
+      const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!worktreeId) return false;
+      const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
+      return !!worktree?.hasPauseCommand;
+    },
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { worktreeId } = (args ?? {}) as { worktreeId?: string };
+      const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!targetWorktreeId) throw new Error("No worktree selected");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "pause");
+      } catch (err) {
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Pause failed",
+          message: (err as Error).message || "Resource pause failed",
+        });
+      }
+    },
+  }));
+
+  actions.set("worktree.resource.status", () => ({
+    id: "worktree.resource.status",
+    title: "Check Resource Status",
+    description: "Check the status of the resource associated with a worktree",
+    category: "worktree",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+    isEnabled: (ctx: ActionContext) => {
+      const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!worktreeId) return false;
+      const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
+      return !!worktree?.hasStatusCommand;
+    },
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { worktreeId } = (args ?? {}) as { worktreeId?: string };
+      const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!targetWorktreeId) throw new Error("No worktree selected");
+      try {
+        await worktreeClient.resourceAction(targetWorktreeId, "status");
+      } catch (err) {
+        notify({
+          type: "error",
+          priority: "high",
+          title: "Status check failed",
+          message: (err as Error).message || "Resource status check failed",
+        });
+      }
+    },
+  }));
+
+  actions.set("worktree.resource.connect", () => ({
+    id: "worktree.resource.connect",
+    title: "Connect to Resource",
+    description: "Open a terminal session connected to the worktree's remote resource",
+    category: "worktree",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+    isEnabled: (ctx: ActionContext) => {
+      const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!worktreeId) return false;
+      const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
+      return !!worktree?.resourceConnectCommand;
+    },
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { worktreeId } = (args ?? {}) as { worktreeId?: string };
+      const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+      if (!targetWorktreeId) throw new Error("No worktree selected");
+      const worktree = getCurrentViewStore().getState().worktrees.get(targetWorktreeId);
+      if (!worktree) throw new Error("Worktree not found");
+      const connectCommand = worktree.resourceConnectCommand;
+      if (!connectCommand)
+        throw new Error("No resource connect command configured for this worktree");
+
+      await callbacks.onAddTerminal({
+        type: "terminal",
+        cwd: worktree.path,
+        command: connectCommand,
+        title: `Connect: ${worktree.name}`,
+        location: "grid",
+        worktreeId: targetWorktreeId,
+      });
     },
   }));
 }

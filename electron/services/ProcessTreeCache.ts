@@ -4,6 +4,9 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
+const BACKOFF_MULTIPLIER = 1.5;
+const BACKOFF_CEILING_MS = 15_000;
+
 export interface ProcessInfo {
   pid: number;
   ppid: number;
@@ -14,11 +17,14 @@ export interface ProcessInfo {
 }
 
 type RefreshCallback = () => void;
+type RefreshOutcome = "changed" | "unchanged" | "error";
 
 export class ProcessTreeCache {
   private cache: Map<number, ProcessInfo> = new Map();
   private childrenMap: Map<number, number[]> = new Map();
-  private refreshInterval: NodeJS.Timeout | null = null;
+  private pollTimer: NodeJS.Timeout | null = null;
+  private disposed: boolean = false;
+  private currentIntervalMs: number;
   private isRefreshing: boolean = false;
   private lastRefreshTime: number = 0;
   private isWindows: boolean = process.platform === "win32";
@@ -29,39 +35,69 @@ export class ProcessTreeCache {
     { kernelTicks: bigint; userTicks: bigint; wallMs: number }
   >();
 
-  constructor(private pollIntervalMs: number = 2500) {} // 2.5 seconds (increased from 1s to reduce CPU load)
+  constructor(private pollIntervalMs: number = 2500) {
+    this.currentIntervalMs = pollIntervalMs;
+  }
 
   start(): void {
-    if (this.refreshInterval) {
+    if (this.pollTimer !== null || this.isRefreshing) {
       console.warn("[ProcessTreeCache] Already started");
       return;
     }
 
-    console.log(`[ProcessTreeCache] Starting with ${this.pollIntervalMs}ms poll interval`);
+    this.disposed = false;
+    this.currentIntervalMs = this.pollIntervalMs;
+
+    console.log(`[ProcessTreeCache] Starting with ${this.pollIntervalMs}ms base poll interval`);
 
     this.refresh();
-    this.refreshInterval = setInterval(() => {
-      this.refresh();
-    }, this.pollIntervalMs);
   }
 
   stop(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-      console.log("[ProcessTreeCache] Stopped");
+    this.disposed = true;
+    if (this.pollTimer !== null) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
     }
+    this.currentIntervalMs = this.pollIntervalMs;
+    console.log("[ProcessTreeCache] Stopped");
   }
 
   setPollInterval(ms: number): void {
     if (this.pollIntervalMs === ms) return;
     this.pollIntervalMs = ms;
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = setInterval(() => {
-        this.refresh();
-      }, this.pollIntervalMs);
+    this.currentIntervalMs = ms;
+    if (!this.disposed && this.pollTimer !== null) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+      this.schedulePoll(ms);
     }
+  }
+
+  private schedulePoll(delayMs: number): void {
+    if (this.pollTimer !== null) {
+      clearTimeout(this.pollTimer);
+    }
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = null;
+      if (this.disposed) return;
+      this.refresh();
+    }, delayMs);
+  }
+
+  private resetBackoff(): void {
+    this.currentIntervalMs = this.pollIntervalMs;
+  }
+
+  private advanceBackoff(): void {
+    this.currentIntervalMs = Math.min(
+      Math.ceil(this.currentIntervalMs * BACKOFF_MULTIPLIER),
+      BACKOFF_CEILING_MS
+    );
+  }
+
+  getCurrentIntervalMs(): number {
+    return this.currentIntervalMs;
   }
 
   onRefresh(callback: RefreshCallback): () => void {
@@ -81,6 +117,9 @@ export class ProcessTreeCache {
   async refresh(): Promise<void> {
     // Skip refresh if nobody is listening - saves CPU especially on Windows
     if (this.refreshCallbacks.size === 0) {
+      if (!this.disposed) {
+        this.schedulePoll(this.currentIntervalMs);
+      }
       return;
     }
 
@@ -89,17 +128,18 @@ export class ProcessTreeCache {
     }
 
     this.isRefreshing = true;
+    let outcome: RefreshOutcome = "error";
     try {
       if (this.isWindows) {
-        await this.refreshWindows();
+        outcome = (await this.refreshWindows()) ? "changed" : "unchanged";
       } else {
-        await this.refreshUnix();
+        outcome = (await this.refreshUnix()) ? "changed" : "unchanged";
       }
       this.lastRefreshTime = Date.now();
       this.lastError = null;
     } catch (error) {
       this.lastError = error instanceof Error ? error : new Error(String(error));
-      if (process.env.CANOPY_VERBOSE) {
+      if (process.env.DAINTREE_VERBOSE) {
         console.error("[ProcessTreeCache] Refresh failed:", error);
       }
     } finally {
@@ -113,10 +153,20 @@ export class ProcessTreeCache {
           console.error("[ProcessTreeCache] Refresh callback error:", err);
         }
       }
+
+      // Schedule next poll with adaptive backoff
+      if (!this.disposed) {
+        if (outcome === "changed" || outcome === "error") {
+          this.resetBackoff();
+        } else {
+          this.advanceBackoff();
+        }
+        this.schedulePoll(this.currentIntervalMs);
+      }
     }
   }
 
-  private async refreshUnix(): Promise<void> {
+  private async refreshUnix(): Promise<boolean> {
     // Include %cpu for activity detection
     const { stdout } = await execAsync("ps -eo pid,ppid,%cpu,rss,comm,command", {
       timeout: 5000,
@@ -142,6 +192,8 @@ export class ProcessTreeCache {
       }
     }
 
+    const changed = this.hasPidSetChanged(this.cache, newCache);
+
     this.cache = newCache;
     this.childrenMap = newChildrenMap;
 
@@ -149,6 +201,8 @@ export class ProcessTreeCache {
     for (const children of newChildrenMap.values()) {
       children.sort((a, b) => a - b);
     }
+
+    return changed;
   }
 
   private parseUnixLine(line: string): ProcessInfo | null {
@@ -176,7 +230,7 @@ export class ProcessTreeCache {
     return { pid, ppid, comm, command, cpuPercent, rssKb };
   }
 
-  private async refreshWindows(): Promise<void> {
+  private async refreshWindows(): Promise<boolean> {
     // Use PowerShell's Get-CimInstance with calculated properties to fetch CPU timing fields.
     // KernelModeTime/UserModeTime are cast to [string] to preserve UInt64 precision in JSON.
     // CreationDate uses .ToString('o') for consistent ISO 8601 across PS 5.1 and PS 7.
@@ -198,10 +252,11 @@ export class ProcessTreeCache {
 
     const trimmed = stdout.replace(/^\uFEFF/, "").trim();
     if (!trimmed || trimmed === "null") {
+      const changed = this.cache.size > 0;
       this.cache = new Map();
       this.childrenMap = new Map();
       this.cpuSnapshots.clear();
-      return;
+      return changed;
     }
 
     let result;
@@ -287,6 +342,8 @@ export class ProcessTreeCache {
       }
     }
 
+    const changed = this.hasPidSetChanged(this.cache, newCache);
+
     this.cache = newCache;
     this.childrenMap = newChildrenMap;
 
@@ -294,6 +351,19 @@ export class ProcessTreeCache {
     for (const children of newChildrenMap.values()) {
       children.sort((a, b) => a - b);
     }
+
+    return changed;
+  }
+
+  private hasPidSetChanged(
+    oldCache: Map<number, ProcessInfo>,
+    newCache: Map<number, ProcessInfo>
+  ): boolean {
+    if (oldCache.size !== newCache.size) return true;
+    for (const pid of newCache.keys()) {
+      if (!oldCache.has(pid)) return true;
+    }
+    return false;
   }
 
   getChildren(ppid: number): ProcessInfo[] {

@@ -7,10 +7,18 @@ import { CHANNELS } from "../ipc/channels.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { getCrashRecoveryService } from "./CrashRecoveryService.js";
 import { store } from "../store.js";
+import { PRODUCT_NAME } from "../utils/productBranding.js";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
-const STABLE_FEED_URL = "https://updates.canopyide.com/releases/";
-const NIGHTLY_FEED_URL = "https://updates.canopyide.com/nightly/";
+// The legacy Canopy variant uses its own updater feed and does not ship a
+// nightly channel — nightly falls back to the Canopy stable feed so a user
+// who previously opted into nightly doesn't get stranded.
+const STABLE_FEED_URL = IS_LEGACY_BUILD
+  ? "https://updates.canopyide.com/releases/"
+  : "https://updates.daintree.org/releases/";
+const NIGHTLY_FEED_URL = IS_LEGACY_BUILD
+  ? "https://updates.canopyide.com/releases/"
+  : "https://updates.daintree.org/nightly/";
 const { autoUpdater } = electronUpdater;
 
 class AutoUpdaterService {
@@ -27,12 +35,25 @@ class AutoUpdaterService {
   private downloadedHandler: ((info: UpdateInfo) => void) | null = null;
 
   private configureFeedForChannel(channel: "stable" | "nightly"): void {
+    // The legacy Canopy variant has no nightly channel — pin to stable so the
+    // updater fetches latest-*.yml at the Canopy feed (no nightly URL exists
+    // on the Canopy side).
+    const effectiveChannel: "stable" | "nightly" = IS_LEGACY_BUILD ? "stable" : channel;
+    // URL separation (not channel-name separation) routes stable vs. nightly.
+    // Both feeds serve `latest*.yml` under their respective URL prefixes —
+    // electron-builder 26.x restricts the publish `channel` field to a fixed
+    // enum, so we can't emit a `nightly.yml`. Omitting channel here makes
+    // electron-updater fall back to `latest*.yml` at whichever URL is active.
     autoUpdater.setFeedURL({
       provider: "generic",
-      url: channel === "nightly" ? NIGHTLY_FEED_URL : STABLE_FEED_URL,
-      channel: channel === "nightly" ? "nightly" : "latest",
+      url: effectiveChannel === "nightly" ? NIGHTLY_FEED_URL : STABLE_FEED_URL,
     });
-    autoUpdater.allowDowngrade = true;
+    // Only nightly permits downgrades: a user who opts into the nightly channel
+    // from e.g. 0.6.0 stable needs to be able to receive 0.6.0-nightly.X, which
+    // is semver-lower than the stable they're on. Stable feeds must never
+    // downgrade — a regressed or overwritten latest.yml would otherwise walk
+    // every installed user backwards on the next check.
+    autoUpdater.allowDowngrade = effectiveChannel === "nightly";
   }
 
   private runUpdateCheck(context: "Initial" | "Periodic"): void {
@@ -143,7 +164,7 @@ class AutoUpdaterService {
           broadcastToRenderer(CHANNELS.NOTIFICATION_SHOW_TOAST, {
             type: "info",
             title: "No Updates Available",
-            message: `Canopy ${app.getVersion()} is the latest version.`,
+            message: `${PRODUCT_NAME} ${app.getVersion()} is the latest version.`,
           });
         }
       };

@@ -49,11 +49,10 @@ export function useNewTerminalPalette({
     const registryAgentIds = new Set(getEffectiveAgentIds());
 
     // When settings haven't loaded yet, show all agents (no filter).
-    // When loaded, hide agents explicitly deselected (selected === false).
-    // Agents with selected === undefined (pre-migration) are treated as visible.
+    // When loaded, hide agents that are not pinned.
     const isAgentHidden = (id: string): boolean => {
       if (!agentSettings?.agents) return false;
-      return agentSettings.agents[id]?.selected === false;
+      return agentSettings.agents[id]?.pinned !== true;
     };
 
     const filtered = allOptions.filter(

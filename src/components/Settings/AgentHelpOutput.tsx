@@ -5,6 +5,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { agentHelpClient } from "@/clients";
 import { cliAvailabilityClient } from "@/clients";
 import type { AgentHelpResult } from "@shared/types/ipc/agent";
+import type { AgentAvailabilityState } from "@shared/types";
+import { isAgentInstalled, isAgentMissing } from "../../../shared/utils/agentAvailability";
 
 interface AgentHelpOutputProps {
   agentId: string;
@@ -24,7 +26,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
   const [helpResult, setHelpResult] = useState<AgentHelpResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isCliAvailable, setIsCliAvailable] = useState<boolean | null>(null);
+  const [isCliAvailable, setIsCliAvailable] = useState<AgentAvailabilityState | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
@@ -32,9 +34,9 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
   const checkCliAvailability = useCallback(async () => {
     try {
       const availability = await cliAvailabilityClient.get();
-      return availability[agentId] ?? false;
+      return availability[agentId] ?? "missing";
     } catch {
-      return false;
+      return "missing";
     }
   }, [agentId]);
 
@@ -70,7 +72,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
       const available = await checkCliAvailability();
       setIsCliAvailable(available);
 
-      if (!available) {
+      if (!isAgentInstalled(available)) {
         setIsLoading(false);
         return;
       }
@@ -135,8 +137,8 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
           </div>
         )}
 
-        <div className="relative max-h-80 overflow-auto rounded-[var(--radius-md)] border border-canopy-border bg-canopy-bg">
-          <pre className="p-3 text-xs font-mono text-canopy-text/90 whitespace-pre-wrap break-words select-text">
+        <div className="relative max-h-80 overflow-auto rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
+          <pre className="p-3 text-xs font-mono text-daintree-text/90 whitespace-pre-wrap break-words select-text">
             {cleanStdout}
             {cleanStderr && (
               <>
@@ -146,7 +148,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
             )}
           </pre>
           {helpResult.truncated && (
-            <div className="sticky bottom-0 px-3 py-2 bg-canopy-bg/95 border-t border-canopy-border text-xs text-canopy-text/50">
+            <div className="sticky bottom-0 px-3 py-2 bg-daintree-bg/95 border-t border-daintree-border text-xs text-daintree-text/50">
               Output truncated (exceeded size limit)
             </div>
           )}
@@ -156,23 +158,23 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
   };
 
   return (
-    <div className="space-y-3 pt-4 border-t border-canopy-border">
+    <div className="space-y-3 pt-4 border-t border-daintree-border">
       <div className="flex items-center justify-between">
         <div>
-          <h5 className="text-sm font-medium text-canopy-text">Help Output</h5>
-          <p className="text-xs text-canopy-text/50 select-text">
+          <h5 className="text-sm font-medium text-daintree-text">Help Output</h5>
+          <p className="text-xs text-daintree-text/50 select-text">
             Available CLI flags for {agentName}
           </p>
         </div>
 
-        {isCliAvailable && (
+        {isAgentInstalled(isCliAvailable ?? undefined) && (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="ghost"
               onClick={() => void loadHelp(!!helpResult)}
               disabled={isLoading}
-              className="text-canopy-text/50 hover:text-canopy-text"
+              className="text-daintree-text/50 hover:text-daintree-text"
             >
               <RefreshCw size={14} />
               {helpResult ? "Refresh" : "Load"}
@@ -184,7 +186,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
                 variant="ghost"
                 onClick={() => void handleCopy()}
                 disabled={isLoading}
-                className="text-canopy-text/50 hover:text-canopy-text"
+                className="text-daintree-text/50 hover:text-daintree-text"
               >
                 <Copy size={14} />
                 {isCopied ? "Copied!" : "Copy"}
@@ -196,14 +198,14 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
 
       {isLoading && (
         <div className="flex items-center justify-center py-8">
-          <Spinner size="lg" className="text-canopy-text/40" />
+          <Spinner size="lg" className="text-daintree-text/40" />
         </div>
       )}
 
-      {!isLoading && isCliAvailable === false && (
-        <div className="px-4 py-6 rounded-[var(--radius-md)] border border-canopy-border bg-surface text-center space-y-2">
-          <p className="text-sm text-canopy-text/60">CLI not found</p>
-          <p className="text-xs text-canopy-text/40 select-text">
+      {!isLoading && isAgentMissing(isCliAvailable ?? undefined) && isCliAvailable !== null && (
+        <div className="px-4 py-6 rounded-[var(--radius-md)] border border-daintree-border bg-surface text-center space-y-2">
+          <p className="text-sm text-daintree-text/60">CLI not found</p>
+          <p className="text-xs text-daintree-text/40 select-text">
             {agentName} is not installed or not in your PATH
           </p>
           {usageUrl && (
@@ -211,7 +213,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
               size="sm"
               variant="ghost"
               onClick={() => window.electron.system.openExternal(usageUrl)}
-              className="text-canopy-accent hover:text-canopy-accent/80 mt-2"
+              className="text-daintree-accent hover:text-daintree-accent/80 mt-2"
             >
               Install Instructions
             </Button>

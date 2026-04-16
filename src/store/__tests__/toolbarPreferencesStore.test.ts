@@ -7,7 +7,7 @@ vi.mock("@shared/config/agentIds", () => ({
 
 let useToolbarPreferencesStore: typeof import("../toolbarPreferencesStore").useToolbarPreferencesStore;
 
-const STORAGE_KEY = "canopy-toolbar-preferences";
+const STORAGE_KEY = "daintree-toolbar-preferences";
 
 let storage: Record<string, string> = {};
 
@@ -172,7 +172,7 @@ describe("toolbarPreferencesStore", () => {
     it("restores multiple hidden buttons across both sides", async () => {
       setStoredState({
         layout: {
-          leftButtons: ["terminal", "browser", "panel-palette"],
+          leftButtons: ["terminal", "browser", "dev-server"],
           rightButtons: ["notes", "settings", "copy-tree"],
           hiddenButtons: ["terminal", "notes", "copy-tree"],
         },
@@ -230,7 +230,7 @@ describe("toolbarPreferencesStore", () => {
     it("re-inserts dev-server for persisted state missing it via mergeButtonList", async () => {
       setStoredState({
         layout: {
-          leftButtons: ["terminal", "browser", "panel-palette"],
+          leftButtons: ["terminal", "browser", "notes"],
           rightButtons: ["notes", "settings"],
           hiddenButtons: [],
         },
@@ -241,7 +241,114 @@ describe("toolbarPreferencesStore", () => {
       expect(store.getState().layout.leftButtons).toContain("dev-server");
     });
 
-    it("migrates v0 state through both migrations", async () => {
+    it("v2→v3 renames 'agent-setup' to 'agent-tray' across all button arrays", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-setup", "claude", "terminal"],
+              rightButtons: ["settings"],
+              hiddenButtons: ["agent-setup"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 2,
+        })
+      );
+
+      const store = await loadStore();
+      const { layout } = store.getState();
+      expect(layout.leftButtons).toContain("agent-tray");
+      expect(layout.leftButtons).not.toContain("agent-setup");
+      expect(layout.hiddenButtons).toContain("agent-tray");
+      expect(layout.hiddenButtons).not.toContain("agent-setup");
+      // Position preserved (first) — agent-tray should be at index 0.
+      expect(layout.leftButtons[0]).toBe("agent-tray");
+    });
+
+    it("v2→v3 rename dedupes when both 'agent-setup' and 'agent-tray' coexist", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-setup", "claude", "agent-tray"],
+              rightButtons: [],
+              hiddenButtons: [],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 2,
+        })
+      );
+
+      const store = await loadStore();
+      const trayCount = store
+        .getState()
+        .layout.leftButtons.filter((id) => id === "agent-tray").length;
+      expect(trayCount).toBe(1);
+    });
+
+    it("v2→v3 handles missing layout without throwing", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 2,
+        })
+      );
+
+      const store = await loadStore();
+      // Should hydrate with defaults.
+      expect(store.getState().layout.leftButtons).toContain("agent-tray");
+    });
+
+    it("v3→v4 drops 'panel-palette' from all button arrays", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-tray", "claude", "terminal", "browser", "panel-palette"],
+              rightButtons: ["settings", "panel-palette"],
+              hiddenButtons: ["panel-palette"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 3,
+        })
+      );
+
+      const store = await loadStore();
+      const { layout } = store.getState();
+      expect(layout.leftButtons).not.toContain("panel-palette");
+      expect(layout.rightButtons).not.toContain("panel-palette");
+      expect(layout.hiddenButtons).not.toContain("panel-palette");
+      // Order of remaining items preserved
+      expect(layout.leftButtons).toContain("agent-tray");
+      expect(layout.leftButtons).toContain("terminal");
+      expect(layout.leftButtons).toContain("browser");
+    });
+
+    it("v3→v4 handles missing layout without throwing", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 3,
+        })
+      );
+
+      const store = await loadStore();
+      expect(store.getState().layout.leftButtons).toBeDefined();
+    });
+
+    it("migrates v0 state through all migrations", async () => {
       storageMock.setItem(
         STORAGE_KEY,
         JSON.stringify({

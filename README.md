@@ -1,23 +1,23 @@
-# Canopy
+# Daintree
 
 **A habitat for your AI coding agents.**
 
-Canopy is a desktop environment where multiple AI agents work side by side — isolated, observable, and under your control. Instead of juggling terminal windows and manually wiring context between tools, Canopy gives your agents a stable place to run while you focus on reviewing their work.
+Daintree is a desktop environment where multiple AI agents work side by side — isolated, observable, and under your control. Instead of juggling terminal windows and manually wiring context between tools, Daintree gives your agents a stable place to run while you focus on reviewing their work.
 
-It works with any CLI agent — [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex](https://github.com/openai/codex), [OpenCode](https://github.com/anomalyco/opencode), [Cursor Agent](https://docs.cursor.com/agent) — and stays out of the way.
+It works with any CLI agent — [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex](https://github.com/openai/codex), [OpenCode](https://github.com/anomalyco/opencode), [Cursor Agent](https://docs.cursor.com/agent), [Kiro CLI](https://kiro.dev/docs/cli/chat/) — and stays out of the way.
 
 ---
 
-## Why Canopy
+## Why Daintree
 
-Running AI agents in parallel is becoming the standard workflow. But the tooling around it hasn't caught up. You end up with a dozen terminal tabs, no visibility into what each agent is doing, and no clean way to review or merge the results.
+The way developers work is changing. Running multiple AI coding agents in parallel across git worktrees is becoming the standard workflow, and the developer's role is shifting from writing code to supervising agent fleets: specifying tasks, dispatching agents, monitoring progress, reviewing output, and shipping results. But the tooling hasn't caught up. You end up with a dozen terminal tabs, no visibility into what each agent is doing, and no clean way to review or merge the results.
 
-Canopy solves this by providing:
+Daintree is the **macro-orchestration layer** for this workflow. It handles the infrastructure concerns that agents can't provide for themselves: worktree lifecycle, dev server management, resource governance, cross-agent state aggregation, and human review workflows.
 
 - **Automatic isolation** — Each task gets its own git worktree. Agents never collide.
 - **Visibility at a glance** — See what every agent is doing, which ones need input, and what's changed across all branches.
-- **Review-first workflows** — The bottleneck isn't generation speed, it's reviewing what agents produce. Canopy is built around making that fast.
-- **Zero lock-in** — Your machine, your keys, your choice of agents. Canopy is agent-agnostic by design.
+- **Review-first workflows** — The bottleneck isn't generation speed, it's reviewing what agents produce. Daintree is built around making that fast.
+- **Zero lock-in** — Your machine, your keys, your choice of agents. Daintree is agent-agnostic by design.
 
 ---
 
@@ -25,15 +25,15 @@ Canopy solves this by providing:
 
 ### Worktree Dashboard
 
-View all git worktrees in a single dashboard with real-time status. Canopy auto-detects associated Pull Requests and Issues from branch names, shows commit-based summaries of changes, and manages dev server lifecycles per worktree.
+View all git worktrees in a single dashboard with real-time status. Daintree auto-detects associated Pull Requests and Issues from branch names, shows commit-based summaries of changes, and manages dev server lifecycles per worktree.
 
 ### Agent Orchestration
 
-Run multiple agents in a panel grid. Canopy tracks agent state automatically — `idle`, `working`, `waiting`, `completed`, `failed` — via output analysis. A notification strip alerts you the moment any agent needs human input, so you can walk away and come back when there's something to review.
+Run multiple agents in a panel grid. Daintree tracks agent state automatically — `idle`, `working`, `waiting`, `completed`, `failed` — via output analysis. A notification strip alerts you the moment any agent needs human input, so you can walk away and come back when there's something to review.
 
 ### Context Injection
 
-Inject codebase context into any agent's terminal with a single click. Built on [CopyTree](https://github.com/gregpriday/copytree), Canopy generates structured context in a format optimized for AI consumption. Select specific files or folders, and the context flows directly into the active session.
+Inject codebase context into any agent's terminal with a single click. Built on [CopyTree](https://github.com/gregpriday/copytree), Daintree generates structured context in a format optimized for AI consumption. Select specific files or folders, and the context flows directly into the active session.
 
 ### Multi-Panel Environment
 
@@ -45,7 +45,7 @@ Configurable multi-terminal launch presets. Define a recipe with any combination
 
 ### MCP Server
 
-Canopy exposes all of its actions as tools via the [Model Context Protocol](https://modelcontextprotocol.io/). Any MCP-compatible agent can discover and invoke Canopy actions — creating worktrees, spawning terminals, injecting context, or running git operations — without leaving their session.
+Daintree exposes all of its actions as tools via the [Model Context Protocol](https://modelcontextprotocol.io/). Any MCP-compatible agent can discover and invoke Daintree actions — creating worktrees, spawning terminals, injecting context, or running git operations — without leaving their session.
 
 ### GitHub Integration
 
@@ -53,11 +53,37 @@ Automatic PR and issue detection from branch names. Repository statistics, commi
 
 ### Themes
 
-15 built-in themes with dark and light modes. The theme system supports palette-based color derivation, semantic tokens, terminal color mapping, and color-vision accessibility modes.
+14 built-in themes with dark and light modes. The theme system supports palette-based colour derivation, semantic tokens, terminal colour mapping, and colour-vision accessibility modes.
 
 ### Resource Profiles
 
 Adaptive performance management with three profiles — Performance, Balanced, and Efficiency — that adjust polling intervals, WebGL context limits, and memory pressure thresholds based on system state.
+
+---
+
+## Vision
+
+Daintree exists because the developer's job is changing. The inner loop used to be write, compile, test, iterate. Now it's specify, dispatch, monitor, review, merge. Most of a developer's time goes to writing good specs, reviewing agent output, and unblocking stuck agents. Almost none of it goes to typing code.
+
+This shift creates a real gap in tooling. IDEs are built for writing code. Terminals are built for running commands. Neither is built for supervising a fleet of concurrent agents across isolated worktrees.
+
+That's where Daintree fits. It's the local control plane for this new workflow.
+
+### Where Daintree sits
+
+The AI coding agent space has settled into clear layers. CLI agents (Claude Code, Gemini CLI, Codex, Aider) handle execution. Cloud platforms (Devin, Factory) handle long-running autonomous tasks in remote VMs. IDEs (Cursor, Windsurf, Zed) handle single-agent pair programming tied to one branch.
+
+Daintree occupies the space between these: a local desktop environment for supervising 3 to 10 concurrent CLI agents, each running in its own worktree, with the infrastructure and visibility that terminals can't provide. It's agent-agnostic, cross-platform, and entirely local-first. Your machine, your keys, your code.
+
+### What we're building toward
+
+The core pillars are stable: panel grid, agent state intelligence, worktree orchestration, context injection, review workflows, dev server management. These aren't changing.
+
+What's evolving is how deeply Daintree integrates with the agents it orchestrates. Through MCP (Model Context Protocol), Daintree exposes its entire action system as tools that agents can discover and invoke programmatically. An agent can request a worktree, read the state of sibling panels, subscribe to completion notifications from peers, or pull aggregated diffs, all without the developer manually bridging the gap. This bidirectional integration is Daintree's deepest technical moat.
+
+The other frontier is resource governance. Running 5 to 10 agents, each with its own dev server and terminal, puts real pressure on a developer's machine. Daintree's adaptive resource profile system (Performance, Balanced, Efficiency) already throttles based on memory pressure, event loop lag, and battery state. As agent counts grow, this infrastructure becomes more important, not less.
+
+The goal isn't to become an IDE or a cloud platform. It's to be the best possible local supervision layer for the developer who's managing a small fleet of agents every day, and to stay focused on that.
 
 ---
 
@@ -72,7 +98,7 @@ Adaptive performance management with three profiles — Performance, Balanced, a
 
 ```bash
 git clone https://github.com/canopyide/canopy.git
-cd canopy
+cd daintree
 npm install
 ```
 
@@ -88,14 +114,14 @@ This starts both the Vite renderer and Electron main process.
 
 ### Configure
 
-Canopy works immediately for terminal management. For AI features, open **Settings** (bottom-left sidebar):
+Daintree works immediately for terminal management. For AI features, open **Settings** (bottom-left sidebar):
 
 1. **GitHub Token** — Enables PR/issue detection without rate limits
 2. **Agent Settings** — Configure default models and flags for each agent CLI
 
 ### Install Agent CLIs
 
-Canopy works with any agent you have installed:
+Daintree works with any agent you have installed:
 
 ```bash
 npm install -g @anthropic-ai/claude-code    # Claude Code
@@ -103,20 +129,21 @@ npm install -g @google/gemini-cli           # Gemini CLI
 npm install -g @openai/codex                # Codex CLI
 npm install -g opencode-ai@latest           # OpenCode
 npm install -g @anthropic-ai/cursor-agent   # Cursor Agent
+curl -fsSL https://cli.kiro.dev/install | bash  # Kiro CLI (macOS/Linux)
 ```
 
 ---
 
 ## Architecture
 
-Canopy uses a three-process Electron architecture:
+Daintree uses a three-process Electron architecture:
 
 ```
 Main Process (electron/)            Renderer (src/)
 ├── PTY Management                  ├── React 19 + TypeScript
 ├── Git Operations                  ├── Zustand State Management
 ├── IPC Handlers                    ├── xterm.js Terminal Grid
-└── Utility Processes               └── Action System (264 actions)
+└── Utility Processes               └── Action System (265 actions)
      ├── PTY Host (SharedRingBuffer)
      └── Workspace Host (Worktree Monitor)
 ```
@@ -169,19 +196,19 @@ npm run package:linux # Linux (AppImage, deb)
 ## Project Structure
 
 ```
-canopy/
+daintree/
 ├── electron/                # Main process
 │   ├── main.ts              # Entry point
 │   ├── preload.cts          # IPC bridge (contextBridge, 56 namespaces)
 │   ├── pty-host.ts          # Isolated PTY host process
 │   ├── workspace-host.ts    # Worktree monitoring process
-│   ├── ipc/handlers/        # ~61 IPC handler files
-│   └── services/            # ~90 backend services
+│   ├── ipc/handlers/        # ~107 IPC handler files
+│   └── services/            # ~93 backend services
 │
 ├── src/                     # Renderer (React)
-│   ├── components/          # 39 component directories
-│   ├── store/               # 61 Zustand stores
-│   ├── services/actions/    # 28 action definition files
+│   ├── components/          # 42 component directories
+│   ├── store/               # 59 Zustand stores
+│   ├── services/actions/    # 29 action definition files
 │   ├── hooks/               # 87 React hooks
 │   ├── panels/              # Panel kind modules (5 types)
 │   └── clients/             # IPC client wrappers
@@ -189,7 +216,7 @@ canopy/
 ├── shared/                  # Types and config (main + renderer)
 │   ├── types/               # 35 type files + 21 IPC type files
 │   ├── config/              # Panel, agent, and feature registries
-│   └── theme/               # 15 built-in themes, token system
+│   └── theme/               # 14 built-in themes, token system
 │
 ├── e2e/                     # Playwright E2E tests
 │   ├── core/                # 13 tests — gates releases

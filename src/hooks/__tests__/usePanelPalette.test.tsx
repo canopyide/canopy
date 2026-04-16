@@ -17,7 +17,7 @@ const {
   getEffectiveAgentIdsMock: vi.fn(),
   getEffectiveAgentConfigMock: vi.fn(),
   cliAvailabilityState: {
-    availability: { claude: true, gemini: false } as Record<string, boolean>,
+    availability: { claude: "ready", gemini: "missing" } as Record<string, string>,
     isInitialized: true,
     isLoading: false,
     isRefreshing: false,
@@ -52,10 +52,9 @@ vi.mock("@/store/userAgentRegistryStore", () => ({
 vi.mock("@/store/agentSettingsStore", () => ({
   useAgentSettingsStore: (
     selector: (state: {
-      settings: { agents: Record<string, { selected?: boolean }> } | null;
+      settings: { agents: Record<string, { pinned?: boolean }> } | null;
     }) => unknown
-  ) =>
-    selector({ settings: { agents: { claude: { selected: true }, gemini: { selected: true } } } }),
+  ) => selector({ settings: { agents: { claude: { pinned: true }, gemini: { pinned: true } } } }),
 }));
 
 vi.mock("@/store/cliAvailabilityStore", () => {
@@ -107,7 +106,7 @@ describe("usePanelPalette", () => {
       }
       return undefined;
     });
-    cliAvailabilityState.availability = { claude: true, gemini: false };
+    cliAvailabilityState.availability = { claude: "ready", gemini: "missing" };
     cliAvailabilityState.isInitialized = true;
     cliAvailabilityState.lastCheckedAt = Date.now();
 
@@ -271,7 +270,7 @@ describe("usePanelPalette", () => {
     expect(selected).toBeNull();
     expect(dispatchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "canopy:open-agent-setup-wizard",
+        type: "daintree:open-agent-setup-wizard",
         detail: { returnToPanelPalette: true },
       })
     );
@@ -295,7 +294,7 @@ describe("usePanelPalette", () => {
     expect(selected).toBeNull();
     expect(dispatchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "canopy:open-agent-setup-wizard",
+        type: "daintree:open-agent-setup-wizard",
         detail: { returnToPanelPalette: true },
       })
     );
@@ -305,7 +304,7 @@ describe("usePanelPalette", () => {
   describe("agent availability", () => {
     it("sets installed=true for available agents", () => {
       getEffectiveAgentIdsMock.mockReturnValue(["claude"]);
-      cliAvailabilityState.availability = { claude: true };
+      cliAvailabilityState.availability = { claude: "ready" };
 
       const { result } = renderHook(() => usePanelPalette());
 
@@ -321,7 +320,7 @@ describe("usePanelPalette", () => {
         color: "#4285f4",
         tooltip: "Gemini agent",
       });
-      cliAvailabilityState.availability = { gemini: false };
+      cliAvailabilityState.availability = { gemini: "missing" };
 
       const { result } = renderHook(() => usePanelPalette());
 
@@ -362,7 +361,7 @@ describe("usePanelPalette", () => {
         color: "#4285f4",
         tooltip: "Gemini agent",
       });
-      cliAvailabilityState.availability = { gemini: false };
+      cliAvailabilityState.availability = { gemini: "missing" };
 
       const { result } = renderHook(() => usePanelPalette());
 
@@ -374,7 +373,7 @@ describe("usePanelPalette", () => {
       expect(selected).toBeNull();
       expect(dispatchSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "canopy:open-agent-setup-wizard",
+          type: "daintree:open-agent-setup-wizard",
           detail: { returnToPanelPalette: true },
         })
       );
@@ -383,7 +382,7 @@ describe("usePanelPalette", () => {
 
     it("handleSelect returns option for installed agent", () => {
       getEffectiveAgentIdsMock.mockReturnValue(["claude"]);
-      cliAvailabilityState.availability = { claude: true };
+      cliAvailabilityState.availability = { claude: "ready" };
 
       const { result } = renderHook(() => usePanelPalette());
 

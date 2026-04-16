@@ -36,7 +36,7 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
     // layout momentarily activates and crashes the Electron process.
     await ctx.window.evaluate(() => {
       localStorage.setItem(
-        "canopy-two-pane-split",
+        "daintree-two-pane-split",
         JSON.stringify({
           state: {
             config: { enabled: false, defaultRatio: 0.5, preferPreview: false },
@@ -121,8 +121,10 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
       const requeriedMain = getPanelById(window, mainPanelId);
       await expect(requeriedMain).toBeVisible({ timeout: T_LONG });
 
+      // Terminals hibernate when their worktree is inactive; allow the buffer
+      // to rehydrate on wake before asserting on its contents.
+      await waitForTerminalText(requeriedMain, "MARKER_MAIN_AAA", T_LONG);
       const mainText = await getTerminalText(requeriedMain);
-      expect(mainText).toContain("MARKER_MAIN_AAA");
       expect(mainText).not.toContain("MARKER_FEATURE_BBB");
     });
 
@@ -137,8 +139,8 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
       const requeriedFeature = getPanelById(window, featurePanelId);
       await expect(requeriedFeature).toBeVisible({ timeout: T_LONG });
 
+      await waitForTerminalText(requeriedFeature, "MARKER_FEATURE_BBB", T_LONG);
       const featureText = await getTerminalText(requeriedFeature);
-      expect(featureText).toContain("MARKER_FEATURE_BBB");
       expect(featureText).not.toContain("MARKER_MAIN_AAA");
     });
   });

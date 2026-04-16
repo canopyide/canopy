@@ -1,10 +1,18 @@
 import { execFileSync } from "child_process";
-import type { CliAvailability } from "../../shared/types/ipc.js";
-import { getEffectiveRegistry } from "../../shared/config/agentRegistry.js";
+import { access, constants } from "fs/promises";
+import { join } from "path";
+import { homedir } from "os";
+import type { CliAvailability, AgentAvailabilityState } from "../../shared/types/ipc.js";
+import {
+  getEffectiveRegistry,
+  type AgentConfig,
+  type AgentAuthCheck,
+} from "../../shared/config/agentRegistry.js";
 import { refreshPath } from "../setup/environment.js";
 
 export class CliAvailabilityService {
   private static readonly CHECK_TIMEOUT_MS = 10_000;
+  private static readonly AUTH_CHECK_TIMEOUT_MS = 3_000;
 
   private availability: CliAvailability | null = null;
   private inFlightCheck: Promise<CliAvailability> | null = null;
@@ -27,8 +35,8 @@ export class CliAvailabilityService {
 
         const checksPromise = Promise.allSettled(
           entries.map(async ([id, config]) => {
-            const available = await this.checkCommand(config.command);
-            return [id, available] as [string, boolean];
+            const state = await this.checkAgent(config);
+            return [id, state] as [string, AgentAvailabilityState];
           })
         );
 
@@ -40,7 +48,7 @@ export class CliAvailabilityService {
           );
         });
 
-        let availabilityEntries: [string, boolean][];
+        let availabilityEntries: [string, AgentAvailabilityState][];
         try {
           const results = await Promise.race([checksPromise, timeoutPromise]);
           availabilityEntries = results.map((result, index) => {
@@ -51,12 +59,14 @@ export class CliAvailabilityService {
                 `[CliAvailabilityService] Check failed for ${entries[index][0]}:`,
                 result.reason
               );
-              return [entries[index][0], false] as [string, boolean];
+              return [entries[index][0], "missing"] as [string, AgentAvailabilityState];
             }
           });
         } catch (error) {
           console.warn("[CliAvailabilityService]", error instanceof Error ? error.message : error);
-          availabilityEntries = entries.map(([id]) => [id, false]);
+          availabilityEntries = entries.map(
+            ([id]) => [id, "missing"] as [string, AgentAvailabilityState]
+          );
         } finally {
           if (timeoutHandle) {
             clearTimeout(timeoutHandle);
@@ -89,6 +99,86 @@ export class CliAvailabilityService {
     this.checkId++;
     this.inFlightCheck = null;
     return this.checkAvailability();
+  }
+
+  private async checkAgent(config: AgentConfig): Promise<AgentAvailabilityState> {
+    const binaryFound = await this.checkCommand(config.command);
+    if (!binaryFound) return "missing";
+
+    if (!config.authCheck) return "ready";
+
+    return this.checkAuth(config.name, config.authCheck);
+  }
+
+  private async checkAuth(
+    agentName: string,
+    authCheck: AgentAuthCheck
+  ): Promise<AgentAvailabilityState> {
+    // Shared flag so the checkPromise knows the timeoutPromise already won
+    // the race. Without this, a slow fs.access can later resolve/reject and
+    // emit a misleading "auth check fell through" log for an agent whose
+    // state was actually determined by the timeout branch.
+    let timedOut = false;
+
+    const timeoutPromise = new Promise<AgentAvailabilityState>((resolve) => {
+      setTimeout(() => {
+        timedOut = true;
+        resolve(authCheck.fallback ?? "installed");
+      }, CliAvailabilityService.AUTH_CHECK_TIMEOUT_MS);
+    });
+
+    const checkPromise = (async (): Promise<AgentAvailabilityState> => {
+      const checkedPaths: string[] = [];
+
+      // Check environment variable first (positive signal only)
+      if (authCheck.envVar && process.env[authCheck.envVar]) {
+        return "ready";
+      }
+
+      const home = homedir();
+
+      // Check platform-specific config paths
+      const platform = process.platform as "darwin" | "linux" | "win32";
+      const platformPaths = authCheck.configPaths?.[platform];
+      if (platformPaths) {
+        for (const relPath of platformPaths) {
+          const fullPath = join(home, relPath);
+          checkedPaths.push(fullPath);
+          try {
+            await access(fullPath, constants.R_OK);
+            return "ready";
+          } catch {
+            // File not found, continue
+          }
+        }
+      }
+
+      // Check platform-independent config paths
+      if (authCheck.configPathsAll) {
+        for (const relPath of authCheck.configPathsAll) {
+          const fullPath = join(home, relPath);
+          checkedPaths.push(fullPath);
+          try {
+            await access(fullPath, constants.R_OK);
+            return "ready";
+          } catch {
+            // File not found, continue
+          }
+        }
+      }
+
+      const fallbackState = authCheck.fallback ?? "installed";
+      if (!timedOut) {
+        console.log(
+          `[CliAvailabilityService] ${agentName}: binary found, auth check fell through (checked: ${
+            checkedPaths.join(", ") || "none"
+          }) -> "${fallbackState}"`
+        );
+      }
+      return fallbackState;
+    })();
+
+    return Promise.race([checkPromise, timeoutPromise]);
   }
 
   private async checkCommand(command: string): Promise<boolean> {

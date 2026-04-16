@@ -70,12 +70,12 @@ export const DEFAULT_ROUTING_CONFIG: AgentRoutingConfig = {
 
 export interface AgentSettingsEntry {
   /**
-   * @deprecated Use `selected` instead. Kept for migration compatibility only.
-   * Will be removed in a future release.
+   * Pin state for the toolbar. Opt-out semantics: `undefined` means pinned
+   * (installed agents default to the toolbar), and only explicit `false`
+   * unpins. Use `isAgentPinned()` from `shared/utils/agentPinned.ts` rather
+   * than reading this field directly so the default stays consistent.
    */
-  enabled?: boolean;
-  /** Enable this agent — when false the agent is hidden everywhere and treated as not installed */
-  selected?: boolean;
+  pinned?: boolean;
   customFlags?: string;
   /** Additional args appended when dangerous mode is enabled */
   dangerousArgs?: string;
@@ -124,7 +124,7 @@ export function getAgentSettingsEntry(
 }
 
 export interface GenerateAgentFlagsOptions {
-  /** Absolute path to the clipboard temp directory (e.g. /tmp/canopy-clipboard) */
+  /** Absolute path to the clipboard temp directory (e.g. /tmp/daintree-clipboard) */
   clipboardDirectory?: string;
 }
 
@@ -289,6 +289,15 @@ export function generateAgentCommand(
           parts.push("exec");
         }
         parts.push(escapedPrompt);
+        break;
+
+      case "copilot":
+        // Copilot: -i flag for initial prompt injection (interactive mode)
+        if (interactive) {
+          parts.push("-i", escapedPrompt);
+        } else {
+          parts.push(escapedPrompt);
+        }
         break;
 
       default:

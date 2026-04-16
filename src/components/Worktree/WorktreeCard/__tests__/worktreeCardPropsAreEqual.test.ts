@@ -123,20 +123,20 @@ describe("worktreeCardPropsAreEqual", () => {
   });
 
   it("returns false when agentAvailability values change", () => {
-    const prev = baseProps({ agentAvailability: { claude: true, codex: false } as never });
-    const next = baseProps({ agentAvailability: { claude: true, codex: true } as never });
+    const prev = baseProps({ agentAvailability: { claude: "ready", codex: "missing" } as never });
+    const next = baseProps({ agentAvailability: { claude: "ready", codex: "ready" } as never });
     expect(worktreeCardPropsAreEqual(prev, next)).toBe(false);
   });
 
   it("returns true when agentAvailability has same values (different reference)", () => {
-    const prev = baseProps({ agentAvailability: { claude: true } as never });
-    const next = baseProps({ agentAvailability: { claude: true } as never });
+    const prev = baseProps({ agentAvailability: { claude: "ready" } as never });
+    const next = baseProps({ agentAvailability: { claude: "ready" } as never });
     expect(worktreeCardPropsAreEqual(prev, next)).toBe(true);
   });
 
   it("returns false when agentAvailability key count changes", () => {
-    const prev = baseProps({ agentAvailability: { claude: true } as never });
-    const next = baseProps({ agentAvailability: { claude: true, codex: false } as never });
+    const prev = baseProps({ agentAvailability: { claude: "ready" } as never });
+    const next = baseProps({ agentAvailability: { claude: "ready", codex: "missing" } as never });
     expect(worktreeCardPropsAreEqual(prev, next)).toBe(false);
   });
 

@@ -142,7 +142,7 @@ export class PtyClient extends EventEmitter {
   private activeProjectId: string | null = null;
   private windowProjectContexts = new Map<
     number,
-    { projectId: string | null; mode: "active" | "switch" }
+    { projectId: string | null; projectPath?: string; mode: "active" | "switch" }
   >();
   private shouldResyncProjectContext = false;
   private pendingMessagePorts = new Map<number, MessagePortMain>();
@@ -293,13 +293,13 @@ export class PtyClient extends EventEmitter {
 
     try {
       this.child = utilityProcess.fork(hostPath, [], {
-        serviceName: "canopy-pty-host",
+        serviceName: "daintree-pty-host",
         stdio: "pipe",
         cwd: os.homedir(),
         execArgv: [`--max-old-space-size=${this.config.memoryLimitMb}`],
         env: {
           ...(process.env as Record<string, string>),
-          CANOPY_USER_DATA: app.getPath("userData"),
+          DAINTREE_USER_DATA: app.getPath("userData"),
         },
       });
       console.log(`[PtyClient] Pty Host started with ${this.config.memoryLimitMb}MB memory limit`);
@@ -429,7 +429,7 @@ export class PtyClient extends EventEmitter {
 
     // Handle transport-level events and request/response correlation
     switch (event.type) {
-      case "ready":
+      case "ready": {
         // Ignore late ready events if host is already dead
         if (!this.child) {
           console.warn("[PtyClient] Ignoring late ready event - host is dead");
@@ -447,12 +447,14 @@ export class PtyClient extends EventEmitter {
           this.needsRespawn = false;
           this.respawnPending();
         }
+        const pendingPortWindowIds = new Set(this.pendingMessagePorts.keys());
+        this.flushPendingMessagePorts();
         if (this.shouldResyncProjectContext) {
           this.shouldResyncProjectContext = false;
-          this.syncProjectContext();
+          this.syncProjectContext(pendingPortWindowIds);
         }
-        this.flushPendingMessagePorts();
         break;
+      }
 
       case "data":
         this.emit("data", event.id, event.data);
@@ -748,7 +750,7 @@ export class PtyClient extends EventEmitter {
         try {
           process.kill(pid, "SIGKILL");
         } catch (error) {
-          if (process.env.CANOPY_VERBOSE) {
+          if (process.env.DAINTREE_VERBOSE) {
             console.warn(`[PtyClient] Failed to kill orphaned PTY pid=${pid}:`, error);
           }
         }
@@ -795,7 +797,7 @@ export class PtyClient extends EventEmitter {
 
     try {
       this.child.postMessage({ type: "connect-port", windowId }, [port]);
-      if (process.env.CANOPY_VERBOSE) {
+      if (process.env.DAINTREE_VERBOSE) {
         console.log(`[PtyClient] MessagePort forwarded to Pty Host for window ${windowId}`);
       }
       // Re-send project context for this window (handles page reload case where
@@ -803,9 +805,19 @@ export class PtyClient extends EventEmitter {
       const ctx = this.windowProjectContexts.get(windowId);
       if (ctx) {
         if (ctx.mode === "switch" && ctx.projectId !== null) {
-          this.send({ type: "project-switch", windowId, projectId: ctx.projectId });
+          this.send({
+            type: "project-switch",
+            windowId,
+            projectId: ctx.projectId,
+            ...(ctx.projectPath ? { projectPath: ctx.projectPath } : {}),
+          });
         } else {
-          this.send({ type: "set-active-project", windowId, projectId: ctx.projectId });
+          this.send({
+            type: "set-active-project",
+            windowId,
+            projectId: ctx.projectId,
+            ...(ctx.projectPath ? { projectPath: ctx.projectPath } : {}),
+          });
         }
       }
     } catch (error) {
@@ -966,43 +978,66 @@ export class PtyClient extends EventEmitter {
     return promise.catch(() => ({ state: null }));
   }
 
-  private syncProjectContext(): void {
+  private syncProjectContext(skipWindowIds?: ReadonlySet<number>): void {
     if (!this.child) {
       this.shouldResyncProjectContext = true;
       return;
     }
 
     for (const [windowId, ctx] of this.windowProjectContexts) {
+      if (skipWindowIds?.has(windowId)) {
+        continue;
+      }
       if (ctx.mode === "switch" && ctx.projectId !== null) {
-        this.send({ type: "project-switch", windowId, projectId: ctx.projectId });
+        this.send({
+          type: "project-switch",
+          windowId,
+          projectId: ctx.projectId,
+          ...(ctx.projectPath ? { projectPath: ctx.projectPath } : {}),
+        });
       } else {
-        this.send({ type: "set-active-project", windowId, projectId: ctx.projectId });
+        this.send({
+          type: "set-active-project",
+          windowId,
+          projectId: ctx.projectId,
+          ...(ctx.projectPath ? { projectPath: ctx.projectPath } : {}),
+        });
       }
     }
   }
 
-  setActiveProject(windowId: number, projectId: string | null): void {
+  setActiveProject(windowId: number, projectId: string | null, projectPath?: string): void {
     this.activeProjectId = projectId;
-    this.windowProjectContexts.set(windowId, { projectId, mode: "active" });
+    this.windowProjectContexts.set(windowId, { projectId, projectPath, mode: "active" });
 
     if (!this.child) {
       this.shouldResyncProjectContext = true;
       return;
     }
 
-    this.send({ type: "set-active-project", windowId, projectId });
+    this.send({
+      type: "set-active-project",
+      windowId,
+      projectId,
+      ...(projectPath ? { projectPath } : {}),
+    });
   }
 
-  onProjectSwitch(windowId: number, projectId: string): void {
+  onProjectSwitch(windowId: number, projectId: string, projectPath?: string): void {
     this.activeProjectId = projectId;
-    this.windowProjectContexts.set(windowId, { projectId, mode: "switch" });
+    this.windowProjectContexts.set(windowId, { projectId, projectPath, mode: "switch" });
 
     if (!this.child) {
       this.shouldResyncProjectContext = true;
       return;
     }
 
-    this.send({ type: "project-switch", windowId, projectId });
+    this.send({
+      type: "project-switch",
+      windowId,
+      projectId,
+      ...(projectPath ? { projectPath } : {}),
+    });
   }
 
   async gracefulKill(id: string): Promise<string | null> {

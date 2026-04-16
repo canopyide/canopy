@@ -1,5 +1,5 @@
 // Silence EPIPE errors on stdout/stderr. When the parent terminal is closed
-// (e.g. user quits Terminal.app while Canopy runs), writes to the broken pipe
+// (e.g. user quits Terminal.app while Daintree runs), writes to the broken pipe
 // throw an uncaught EPIPE that would crash the main process. These are harmless.
 for (const stream of [process.stdout, process.stderr]) {
   if (stream && typeof stream.on === "function") {
@@ -24,7 +24,7 @@ export let exposeGc: (() => void) | undefined;
 try {
   nodeV8.setFlagsFromString("--expose_gc");
   exposeGc = vm.runInNewContext("gc") as () => void;
-  (globalThis as Record<string, unknown>).__canopy_gc = exposeGc;
+  (globalThis as Record<string, unknown>).__daintree_gc = exposeGc;
 } catch {
   // GC exposure not available — non-critical
 }
@@ -39,7 +39,124 @@ if (app.isPackaged) {
 // each test run gets its own isolated data directory.
 const hasExplicitUserDataDir = process.argv.some((a) => a.startsWith("--user-data-dir"));
 if (!app.isPackaged && !hasExplicitUserDataDir) {
-  app.setPath("userData", path.join(app.getPath("appData"), "canopy-app-dev"));
+  // Keep dev data separate per variant so `BUILD_VARIANT=canopy npm run dev`
+  // doesn't collide with the default Daintree dev instance.
+  const devDirName = process.env.BUILD_VARIANT === "canopy" ? "canopy-app-dev" : "daintree-dev";
+  app.setPath("userData", path.join(app.getPath("appData"), devDirName));
+}
+
+// TODO(0.9.0): Remove this temporary Canopy -> Daintree userData migration
+// after the 0.8.x upgrade window closes.
+//
+// One-shot rebrand migration on first Daintree launch. The copy goes to a
+// staging directory and is atomically promoted with a rename, so a crash mid-
+// copy leaves us in a recoverable state instead of a half-populated userData.
+// A `.rebrand-migrated` marker skips the flow on subsequent launches.
+//
+// Skipped when --user-data-dir is set (E2E tests) and for the canopy variant
+// (it IS the Canopy user data — migrating would copy it into itself).
+//
+// Design notes:
+//  - Chromium singleton locks, caches, and crashpad state must NOT be copied.
+//    Inheriting SingletonLock that points at a live Canopy PID makes Daintree
+//    fail to launch (it thinks it's a secondary instance and exits).
+//    Crashpad state would re-report Canopy's crashes under Daintree's bundle
+//    id. Caches regenerate, copying them is wasted I/O.
+//  - Pre-rebrand 0.6.x Canopy used a named session partition `persist:canopy-app`;
+//    Daintree uses `persist:daintree`. The Partitions subdir is renamed after
+//    copy so Local Storage / IndexedDB / Cookies carry across.
+//  - If Daintree has a `daintree.db` already, we assume the user has been
+//    running Daintree and skip the copy to avoid clobbering real state.
+//    This handles the failure loop where a previous migration threw mid-copy
+//    and the user accumulated data in the bare userData dir before the retry.
+if (!hasExplicitUserDataDir && process.env.BUILD_VARIANT !== "canopy") {
+  try {
+    const newUserData = app.getPath("userData");
+    const markerPath = path.join(newUserData, ".rebrand-migrated");
+    if (!fs.existsSync(markerPath)) {
+      const appData = app.getPath("appData");
+      const legacyName = app.isPackaged ? "Canopy" : "canopy-app-dev";
+      const legacyUserData = path.join(appData, legacyName);
+      const daintreeDbPath = path.join(newUserData, "daintree.db");
+      const hasExistingDaintreeData = fs.existsSync(daintreeDbPath);
+
+      if (hasExistingDaintreeData) {
+        // Daintree has already been used — never overwrite real user state.
+        // Drop the marker so we don't re-check on every launch.
+        fs.writeFileSync(
+          markerPath,
+          new Date().toISOString() + "\nskipped: daintree.db already present\n"
+        );
+        console.log("[daintree] Skipping userData migration — existing daintree.db found");
+      } else if (fs.existsSync(legacyUserData)) {
+        // Files/dirs produced by Chromium/Electron that must NOT be copied:
+        // singleton locks, caches, crashpad state. See
+        // https://www.electronjs.org/docs/latest/api/app#appgetpathname .
+        const EXCLUDE = new Set([
+          "SingletonLock",
+          "SingletonCookie",
+          "SingletonSocket",
+          "lockfile",
+          "GPUCache",
+          "ShaderCache",
+          "GrShaderCache",
+          "DawnCache",
+          "DawnGraphiteCache",
+          "DawnWebGPUCache",
+          "Code Cache",
+          "Cache",
+          "Crashpad",
+          "Crash Reports",
+          "Network",
+          "blob_storage",
+          "Service Worker",
+        ]);
+        const stagingPath = newUserData + ".migrating";
+        if (fs.existsSync(stagingPath)) {
+          fs.rmSync(stagingPath, { recursive: true, force: true });
+        }
+        fs.cpSync(legacyUserData, stagingPath, {
+          recursive: true,
+          filter: (src) => !EXCLUDE.has(path.basename(src)),
+        });
+        // Rename the SQLite database + WAL/SHM/backup artefacts in staging.
+        for (const suffix of ["", "-wal", "-shm", ".backup"]) {
+          const oldDb = path.join(stagingPath, "canopy.db" + suffix);
+          const newDb = path.join(stagingPath, "daintree.db" + suffix);
+          if (fs.existsSync(oldDb) && !fs.existsSync(newDb)) {
+            fs.renameSync(oldDb, newDb);
+          }
+        }
+        // Pre-rebrand Canopy used `persist:canopy-app` session partition;
+        // rename the directory so Chromium finds carried-over storage under
+        // the new `persist:daintree` partition name.
+        const oldPartition = path.join(stagingPath, "Partitions", "canopy-app");
+        const newPartition = path.join(stagingPath, "Partitions", "daintree");
+        if (fs.existsSync(oldPartition) && !fs.existsSync(newPartition)) {
+          fs.renameSync(oldPartition, newPartition);
+        }
+        // Atomic promotion: remove the bare newUserData (only if it's empty
+        // of user data — we've already guarded on daintree.db above) and
+        // rename staging into place.
+        if (fs.existsSync(newUserData)) {
+          fs.rmSync(newUserData, { recursive: true, force: true });
+        }
+        fs.renameSync(stagingPath, newUserData);
+        fs.writeFileSync(markerPath, new Date().toISOString());
+        console.log(`[daintree] Migrated userData ${legacyUserData} -> ${newUserData}`);
+      } else if (fs.existsSync(newUserData)) {
+        // No legacy dir but new dir already exists (fresh install or already
+        // migrated on a prior version) — drop the marker so we don't re-check.
+        fs.writeFileSync(markerPath, new Date().toISOString());
+      }
+    }
+  } catch (err) {
+    // The marker is intentionally NOT written here. A clean retry on the next
+    // launch is safe because the existing-data guard at the top of this block
+    // protects any user state accumulated between a failed migration and the
+    // next launch.
+    console.warn("[daintree] userData migration failed:", err);
+  }
 }
 
 // GPU crash fallback: disable hardware acceleration before app.whenReady()
@@ -53,7 +170,7 @@ if (gpuHardwareAccelerationDisabled) {
 
 // Handle --reset-data: wipe userData before Chromium acquires file locks
 const shouldResetData =
-  process.argv.includes("--reset-data") || process.env.CANOPY_RESET_DATA === "1";
+  process.argv.includes("--reset-data") || process.env.DAINTREE_RESET_DATA === "1";
 if (shouldResetData) {
   const userDataPath = app.getPath("userData");
   if (fs.existsSync(userDataPath)) {
@@ -284,7 +401,7 @@ if (isSmokeTest) {
 
 app.enableSandbox();
 
-// Prevent macOS keychain prompt ("canopy-app Safe Storage").
+// Prevent macOS keychain prompt ("Daintree Safe Storage").
 // Chromium encrypts cookies/network state via the OS keychain by default.
 // We don't rely on Chromium cookie encryption — all secrets are in electron-store.
 app.commandLine.appendSwitch("use-mock-keychain");

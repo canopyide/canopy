@@ -5,12 +5,15 @@ const fsMock = vi.hoisted(() => ({
   existsSync: vi.fn<(p: string) => boolean>(),
   readdirSync: vi.fn<(p: string) => string[]>(),
   rmSync: vi.fn(),
+  cpSync: vi.fn(),
+  renameSync: vi.fn(),
+  writeFileSync: vi.fn(),
 }));
 
 const electronMock = vi.hoisted(() => ({
   app: {
     isPackaged: false,
-    getPath: vi.fn(() => "/tmp/test-appdata"),
+    getPath: vi.fn<(key?: string) => string>(() => "/tmp/test-appdata"),
     setPath: vi.fn(),
     commandLine: { appendSwitch: vi.fn() },
     enableSandbox: vi.fn(),
@@ -28,10 +31,16 @@ vi.mock("fs", () => ({
     existsSync: fsMock.existsSync,
     readdirSync: fsMock.readdirSync,
     rmSync: fsMock.rmSync,
+    cpSync: fsMock.cpSync,
+    renameSync: fsMock.renameSync,
+    writeFileSync: fsMock.writeFileSync,
   },
   existsSync: fsMock.existsSync,
   readdirSync: fsMock.readdirSync,
   rmSync: fsMock.rmSync,
+  cpSync: fsMock.cpSync,
+  renameSync: fsMock.renameSync,
+  writeFileSync: fsMock.writeFileSync,
 }));
 
 vi.mock("electron", () => electronMock);
@@ -57,7 +66,15 @@ const originalArgv = [...process.argv];
 function getCandidatePaths(): string[] {
   return fsMock.existsSync.mock.calls
     .map((c) => c[0])
-    .filter((p) => !p.includes("gpu-disabled.flag"));
+    .filter(
+      (p) =>
+        !p.includes("gpu-disabled.flag") &&
+        !p.includes(".rebrand-migrated") &&
+        !p.includes("canopy-app-dev") &&
+        !p.includes("daintree-dev") &&
+        !p.endsWith("Canopy") &&
+        !p.endsWith("Daintree")
+    );
 }
 
 describe("V8 flag setup", () => {
@@ -452,17 +469,17 @@ describe("reset-data", () => {
     vi.resetAllMocks();
     Object.defineProperty(process, "platform", { value: "darwin", writable: true });
     process.argv = ["electron", "main.js"];
-    delete process.env.CANOPY_RESET_DATA;
+    delete process.env.DAINTREE_RESET_DATA;
   });
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
     process.argv = originalArgv;
-    delete process.env.CANOPY_RESET_DATA;
+    delete process.env.DAINTREE_RESET_DATA;
   });
 
-  it("wipes userData when CANOPY_RESET_DATA=1 is set", async () => {
-    process.env.CANOPY_RESET_DATA = "1";
+  it("wipes userData when DAINTREE_RESET_DATA=1 is set", async () => {
+    process.env.DAINTREE_RESET_DATA = "1";
     fsMock.existsSync.mockReturnValue(true);
     fsMock.readdirSync.mockReturnValue(["Local Storage", "config.json"]);
 
@@ -505,7 +522,7 @@ describe("reset-data", () => {
   });
 
   it("skips wipe when userData directory does not exist", async () => {
-    process.env.CANOPY_RESET_DATA = "1";
+    process.env.DAINTREE_RESET_DATA = "1";
     fsMock.existsSync.mockImplementation((p: string) => {
       if (p.includes("gpu-disabled.flag")) return false;
       return false; // userData path does not exist
@@ -517,7 +534,7 @@ describe("reset-data", () => {
   });
 
   it("continues wiping other entries when rmSync throws on one", async () => {
-    process.env.CANOPY_RESET_DATA = "1";
+    process.env.DAINTREE_RESET_DATA = "1";
     fsMock.existsSync.mockReturnValue(true);
     fsMock.readdirSync.mockReturnValue(["locked-file", "deletable-file"]);
     fsMock.rmSync
@@ -539,8 +556,8 @@ describe("reset-data", () => {
     });
   });
 
-  it("ignores CANOPY_RESET_DATA values other than '1'", async () => {
-    process.env.CANOPY_RESET_DATA = "true";
+  it("ignores DAINTREE_RESET_DATA values other than '1'", async () => {
+    process.env.DAINTREE_RESET_DATA = "true";
     fsMock.existsSync.mockReturnValue(true);
 
     await import("../environment.js");
@@ -579,5 +596,130 @@ describe("fixPath packaging guard", () => {
     await import("../environment.js");
 
     expect(fixPathMock.default).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Canopy -> Daintree userData migration gating", () => {
+  const originalVariant = process.env.BUILD_VARIANT;
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
+    process.argv = ["electron", "main.js"];
+    electronMock.app.isPackaged = true;
+    electronMock.app.getPath.mockImplementation((key?: string) => {
+      if (key === "userData") return "/tmp/user-data/Daintree";
+      if (key === "appData") return "/tmp/user-data";
+      return "/tmp/test";
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    process.argv = originalArgv;
+    if (originalVariant === undefined) {
+      Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    } else {
+      (process.env as Record<string, string | undefined>).BUILD_VARIANT = originalVariant;
+    }
+  });
+
+  it("runs the migration when BUILD_VARIANT is unset (Daintree default)", async () => {
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    // Legacy Canopy userData exists; new Daintree userData does not (no
+    // daintree.db marker).
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return false;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    // Copy goes into a staging dir first (atomic rename pattern) with a
+    // filter that excludes Chromium singleton/cache/crashpad state.
+    expect(fsMock.cpSync).toHaveBeenCalledWith(
+      path.join("/tmp/user-data", "Canopy"),
+      "/tmp/user-data/Daintree.migrating",
+      expect.objectContaining({
+        recursive: true,
+        filter: expect.any(Function),
+      })
+    );
+    // Staging is atomically promoted into place.
+    expect(fsMock.renameSync).toHaveBeenCalledWith(
+      "/tmp/user-data/Daintree.migrating",
+      "/tmp/user-data/Daintree"
+    );
+  });
+
+  it("skips the migration when Daintree data already exists (daintree.db present)", async () => {
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return true;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    // Must not touch the existing Daintree userData. A previous migration
+    // attempt may have crashed between the copy and the marker write — the
+    // user has since used Daintree and accumulated real state.
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+    expect(fsMock.rmSync).not.toHaveBeenCalled();
+    expect(fsMock.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining(".rebrand-migrated"),
+      expect.stringContaining("skipped: daintree.db already present")
+    );
+  });
+
+  it("excludes Chromium singleton / cache / crashpad state from the copy", async () => {
+    Reflect.deleteProperty(process.env, "BUILD_VARIANT");
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("daintree.db")) return false;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    const cpCall = fsMock.cpSync.mock.calls[0];
+    expect(cpCall).toBeDefined();
+    const filter = cpCall[2].filter as (src: string) => boolean;
+    // Inheriting SingletonLock that points at a live Canopy PID would make
+    // Daintree fail to launch (Chromium treats it as a secondary instance).
+    expect(filter("/tmp/user-data/Canopy/SingletonLock")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/SingletonCookie")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/SingletonSocket")).toBe(false);
+    // Crashpad state would re-report Canopy's old crashes under Daintree's
+    // bundle id.
+    expect(filter("/tmp/user-data/Canopy/Crashpad")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/Crash Reports")).toBe(false);
+    // Caches regenerate — copying wastes I/O.
+    expect(filter("/tmp/user-data/Canopy/GPUCache")).toBe(false);
+    expect(filter("/tmp/user-data/Canopy/Code Cache")).toBe(false);
+    // Real user state is kept.
+    expect(filter("/tmp/user-data/Canopy/canopy.db")).toBe(true);
+    expect(filter("/tmp/user-data/Canopy/Preferences")).toBe(true);
+    expect(filter("/tmp/user-data/Canopy/Local Storage")).toBe(true);
+  });
+
+  it("skips the migration when BUILD_VARIANT=canopy (legacy build)", async () => {
+    (process.env as Record<string, string | undefined>).BUILD_VARIANT = "canopy";
+    fsMock.existsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".rebrand-migrated")) return false;
+      if (p.endsWith("/Canopy") || p.endsWith("\\Canopy")) return true;
+      return false;
+    });
+
+    await import("../environment.js");
+
+    expect(fsMock.cpSync).not.toHaveBeenCalled();
+    expect(fsMock.renameSync).not.toHaveBeenCalled();
   });
 });

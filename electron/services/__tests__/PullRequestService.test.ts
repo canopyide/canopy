@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import type { WorktreeSnapshot } from "../../../shared/types/workspace-host.js";
-import type { CanopyEventMap } from "../events.js";
+import type { DaintreeEventMap } from "../events.js";
 import type { PRCheckCandidate } from "../github/types.js";
 
 function makeWorktreeSnapshot(
@@ -53,7 +53,7 @@ describe("PullRequestService", () => {
     const { pullRequestService } = await import("../PullRequestService.js");
     const { events } = await import("../events.js");
 
-    const detected: CanopyEventMap["sys:pr:detected"][] = [];
+    const detected: DaintreeEventMap["sys:pr:detected"][] = [];
     const unsubscribe = events.on("sys:pr:detected", (payload) => detected.push(payload));
 
     pullRequestService.initialize("/repo");
@@ -135,7 +135,7 @@ describe("PullRequestService", () => {
     const { pullRequestService } = await import("../PullRequestService.js");
     const { events } = await import("../events.js");
 
-    const cleared: CanopyEventMap["sys:pr:cleared"][] = [];
+    const cleared: DaintreeEventMap["sys:pr:cleared"][] = [];
     const unsubscribeCleared = events.on("sys:pr:cleared", (payload) => cleared.push(payload));
 
     pullRequestService.initialize("/repo");
@@ -455,6 +455,108 @@ describe("PullRequestService", () => {
       consecutiveErrors: 1,
     });
 
+    pullRequestService.destroy();
+  });
+
+  it("does not track root worktree even on non-default branch", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({ results: new Map() }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-root", branch: "develop", isMainWorktree: true })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    pullRequestService.destroy();
+  });
+
+  it("evicts root worktree from candidates when isMainWorktree becomes true", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({ results: new Map() }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    // First update without isMainWorktree — gets tracked as candidate
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-root", branch: "develop" })
+    );
+    await pullRequestService.refresh();
+    expect(batchCheckLinkedPRs).toHaveBeenCalledTimes(1);
+    expect(pullRequestService.getStatus().candidateCount).toBe(1);
+
+    // Second update with isMainWorktree: true — evicted from candidates
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-root", branch: "develop", isMainWorktree: true })
+    );
+
+    expect(pullRequestService.getStatus().candidateCount).toBe(0);
+
+    // Subsequent refresh should not check any candidates
+    batchCheckLinkedPRs.mockClear();
+    await pullRequestService.refresh();
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    pullRequestService.destroy();
+  });
+
+  it("tracks non-main worktree on develop branch normally", async () => {
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => ({
+      results: new Map(
+        candidates.map((c) => [
+          c.worktreeId,
+          {
+            issueNumber: c.issueNumber,
+            branchName: c.branchName,
+            pr: {
+              number: 55,
+              title: "Develop PR",
+              url: "https://github.com/o/r/pull/55",
+              state: "open" as const,
+              isDraft: false,
+            },
+          },
+        ])
+      ),
+    }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const detected: DaintreeEventMap["sys:pr:detected"][] = [];
+    const unsubDetected = events.on("sys:pr:detected", (p) => detected.push(p));
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-linked", branch: "develop", isMainWorktree: false })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(batchCheckLinkedPRs).toHaveBeenCalledTimes(1);
+    expect(detected).toHaveLength(1);
+    expect(detected[0]).toMatchObject({ worktreeId: "wt-linked", prNumber: 55 });
+
+    unsubDetected();
     pullRequestService.destroy();
   });
 

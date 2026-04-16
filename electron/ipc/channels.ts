@@ -106,6 +106,9 @@ export const CHANNELS = {
   SYSTEM_GET_AGENT_UPDATE_SETTINGS: "system:get-agent-update-settings",
   SYSTEM_SET_AGENT_UPDATE_SETTINGS: "system:set-agent-update-settings",
   SYSTEM_START_AGENT_UPDATE: "system:start-agent-update",
+  SETUP_AGENT_INSTALL: "setup:agent-install",
+  SETUP_AGENT_INSTALL_PROGRESS: "setup:agent-install-progress",
+
   SYSTEM_HEALTH_CHECK: "system:health-check",
   SYSTEM_HEALTH_CHECK_SPECS: "system:health-check-specs",
   SYSTEM_CHECK_TOOL: "system:check-tool",
@@ -220,6 +223,8 @@ export const CHANNELS = {
   GLOBAL_ADD_RECIPE: "global:add-recipe",
   GLOBAL_UPDATE_RECIPE: "global:update-recipe",
   GLOBAL_DELETE_RECIPE: "global:delete-recipe",
+  GLOBAL_ENV_GET: "global-env:get",
+  GLOBAL_ENV_SET: "global-env:set",
 
   PROJECT_GET_TERMINALS: "project:get-terminals",
   PROJECT_SET_TERMINALS: "project:set-terminals",
@@ -257,6 +262,7 @@ export const CHANNELS = {
   TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS: "terminal-config:set-hybrid-input-auto-focus",
   TERMINAL_CONFIG_SET_COLOR_SCHEME: "terminal-config:set-color-scheme",
   TERMINAL_CONFIG_SET_CUSTOM_SCHEMES: "terminal-config:set-custom-schemes",
+  TERMINAL_CONFIG_SET_RECENT_SCHEME_IDS: "terminal-config:set-recent-scheme-ids",
   TERMINAL_CONFIG_IMPORT_COLOR_SCHEME: "terminal-config:import-color-scheme",
   TERMINAL_CONFIG_SET_SCREEN_READER_MODE: "terminal-config:set-screen-reader-mode",
   TERMINAL_CONFIG_SET_RESOURCE_MONITORING: "terminal-config:set-resource-monitoring",
@@ -305,6 +311,12 @@ export const CHANNELS = {
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
   HIBERNATION_PROJECT_HIBERNATED: "hibernation:project-hibernated",
+
+  IDLE_TERMINAL_GET_CONFIG: "idle-terminal:get-config",
+  IDLE_TERMINAL_UPDATE_CONFIG: "idle-terminal:update-config",
+  IDLE_TERMINAL_CLOSE_PROJECT: "idle-terminal:close-project",
+  IDLE_TERMINAL_DISMISS_PROJECT: "idle-terminal:dismiss-project",
+  IDLE_TERMINAL_NOTIFY: "idle-terminal:notify",
 
   WEBVIEW_SET_LIFECYCLE_STATE: "webview:set-lifecycle-state",
   WEBVIEW_REGISTER_PANEL: "webview:register-panel",
@@ -418,7 +430,7 @@ export const CHANNELS = {
   AGENT_CAPABILITIES_GET_AGENT_METADATA: "agent-capabilities:get-agent-metadata",
   AGENT_CAPABILITIES_IS_AGENT_ENABLED: "agent-capabilities:is-agent-enabled",
 
-  // Canopy CLI install channels
+  // Daintree CLI install channels
   CLI_INSTALL: "cli:install",
   CLI_GET_STATUS: "cli:get-status",
 
@@ -440,6 +452,8 @@ export const CHANNELS = {
   APP_THEME_SET_FOLLOW_SYSTEM: "app-theme:set-follow-system",
   APP_THEME_SET_PREFERRED_DARK_SCHEME: "app-theme:set-preferred-dark-scheme",
   APP_THEME_SET_PREFERRED_LIGHT_SCHEME: "app-theme:set-preferred-light-scheme",
+  APP_THEME_SET_RECENT_SCHEME_IDS: "app-theme:set-recent-scheme-ids",
+  APP_THEME_SET_ACCENT_COLOR_OVERRIDE: "app-theme:set-accent-color-override",
   APP_THEME_SYSTEM_APPEARANCE_CHANGED: "app-theme:system-appearance-changed",
 
   TELEMETRY_GET: "telemetry:get",
@@ -487,6 +501,8 @@ export const CHANNELS = {
 
   // Onboarding channels
   ONBOARDING_GET: "onboarding:get",
+  // TODO(0.9.0): Remove after deleting the temporary Canopy localStorage
+  // onboarding migration path.
   ONBOARDING_MIGRATE: "onboarding:migrate",
   ONBOARDING_SET_STEP: "onboarding:set-step",
   ONBOARDING_COMPLETE: "onboarding:complete",

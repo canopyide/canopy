@@ -5,6 +5,7 @@ import {
   agentSettingsClient,
   appClient,
   hibernationClient,
+  idleTerminalClient,
   terminalConfigClient,
   worktreeConfigClient,
 } from "@/clients";
@@ -219,6 +220,37 @@ export function registerPreferencesActions(
     run: async (args: unknown) => {
       const config = args as { enabled?: boolean; inactiveThresholdHours?: number };
       return await hibernationClient.updateConfig(config);
+    },
+  }));
+
+  actions.set("idleTerminalNotify.getConfig", () => ({
+    id: "idleTerminalNotify.getConfig",
+    title: "Get Idle Terminal Notification Config",
+    description: "Get idle terminal notification configuration",
+    category: "settings",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      return await idleTerminalClient.getConfig();
+    },
+  }));
+
+  actions.set("idleTerminalNotify.updateConfig", () => ({
+    id: "idleTerminalNotify.updateConfig",
+    title: "Update Idle Terminal Notification Config",
+    description: "Update idle terminal notification configuration",
+    category: "settings",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      enabled: z.boolean().optional(),
+      thresholdMinutes: z.number().int().positive().optional(),
+    }),
+    run: async (args: unknown) => {
+      const config = args as { enabled?: boolean; thresholdMinutes?: number };
+      return await idleTerminalClient.updateConfig(config);
     },
   }));
 
@@ -658,7 +690,7 @@ export function registerPreferencesActions(
       }
 
       const helpPrompt =
-        "I need help with Canopy, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
+        "I need help with Daintree, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
 
       const { actionService } = await import("@/services/ActionService");
       const result = await actionService.dispatch<{ terminalId: string | null }>(
@@ -708,7 +740,7 @@ export function registerPreferencesActions(
   actions.set("app.quit", () => ({
     id: "app.quit",
     title: "Quit App",
-    description: "Quit Canopy",
+    description: "Quit Daintree",
     category: "app",
     kind: "command",
     danger: "confirm",
@@ -721,7 +753,7 @@ export function registerPreferencesActions(
   actions.set("app.forceQuit", () => ({
     id: "app.forceQuit",
     title: "Force Quit App",
-    description: "Force quit Canopy immediately (no graceful shutdown)",
+    description: "Force quit Daintree immediately (no graceful shutdown)",
     category: "app",
     kind: "command",
     danger: "confirm",

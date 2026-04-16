@@ -11,9 +11,8 @@ import { useHomeDir } from "@/hooks/app/useHomeDir";
 import type { AgentSettings, CliAvailability } from "@shared/types";
 import { generateAgentCommand, buildAgentLaunchFlags } from "@shared/types";
 import { getAgentConfig, isRegisteredAgent, getAgentDisplayTitle } from "@/config/agents";
-import { normalizeAgentSelection } from "@/store/agentSettingsStore";
 
-const CLIPBOARD_DIR_NAME = "canopy-clipboard";
+const CLIPBOARD_DIR_NAME = "daintree-clipboard";
 
 export interface LaunchAgentOptions {
   location?: AddPanelOptions["location"];
@@ -59,8 +58,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
     ]);
 
     if (isMounted.current && settingsResult.status === "fulfilled" && settingsResult.value) {
-      const currentAvailability = useCliAvailabilityStore.getState().availability;
-      setAgentSettings(normalizeAgentSelection(settingsResult.value, currentAvailability));
+      setAgentSettings(settingsResult.value);
     }
   }, [refreshCliAvailability]);
 
@@ -71,18 +69,31 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       .then(([, settingsResult]) => {
         if (!isMounted.current) return;
         if (settingsResult.status === "fulfilled" && settingsResult.value) {
-          const currentAvailability = useCliAvailabilityStore.getState().availability;
-          setAgentSettings(normalizeAgentSelection(settingsResult.value, currentAvailability));
+          setAgentSettings(settingsResult.value);
         }
       })
       .catch((error) => {
         console.error("Failed to load agent settings:", error);
       });
 
+    // Re-check availability when the window regains focus so that agents
+    // installed or authenticated in the background (e.g. via a terminal
+    // outside Daintree) show up without a manual refresh.
+    const handleFocus = () => {
+      if (!isMounted.current) return;
+      void refreshCliAvailability().catch(() => {});
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleFocus);
+    }
+
     return () => {
       isMounted.current = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleFocus);
+      }
     };
-  }, [initializeCliAvailability]);
+  }, [initializeCliAvailability, refreshCliAvailability]);
 
   const launchAgent = useCallback(
     async (agentId: string, launchOptions?: LaunchAgentOptions): Promise<string | null> => {

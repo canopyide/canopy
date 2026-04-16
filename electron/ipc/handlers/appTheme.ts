@@ -4,7 +4,11 @@ import { promises as fs } from "node:fs";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { parseAppThemeFile } from "../../utils/appThemeImporter.js";
-import { resolveAppTheme, normalizeAppColorScheme } from "../../../shared/theme/index.js";
+import {
+  resolveAppTheme,
+  normalizeAppColorScheme,
+  normalizeAccentHex,
+} from "../../../shared/theme/index.js";
 import { typedSend } from "../utils.js";
 import type {
   AppThemeConfig,
@@ -204,6 +208,45 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
   };
   ipcMain.handle(CHANNELS.APP_THEME_SET_PREFERRED_LIGHT_SCHEME, handleSetPreferredLightScheme);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_THEME_SET_PREFERRED_LIGHT_SCHEME));
+
+  const handleSetRecentSchemeIds = async (_event: Electron.IpcMainInvokeEvent, ids: unknown) => {
+    if (!Array.isArray(ids)) {
+      console.warn("Invalid app theme recentSchemeIds:", ids);
+      return;
+    }
+    const trimmed = ids
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      .map((id) => id.trim());
+    const sanitized = Array.from(new Set(trimmed)).slice(0, 5);
+    const current = getAppThemeConfig();
+    store.set("appTheme", {
+      ...current,
+      recentSchemeIds: sanitized,
+    } satisfies AppThemeConfig);
+  };
+  ipcMain.handle(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS, handleSetRecentSchemeIds);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS));
+
+  const handleSetAccentColorOverride = async (
+    _event: Electron.IpcMainInvokeEvent,
+    color: unknown
+  ) => {
+    let normalized: string | null = null;
+    if (color !== null && color !== undefined) {
+      normalized = normalizeAccentHex(color);
+      if (normalized === null) {
+        console.warn("Invalid accent color override:", color);
+        return;
+      }
+    }
+    const current = getAppThemeConfig();
+    store.set("appTheme", {
+      ...current,
+      accentColorOverride: normalized,
+    } satisfies AppThemeConfig);
+  };
+  ipcMain.handle(CHANNELS.APP_THEME_SET_ACCENT_COLOR_OVERRIDE, handleSetAccentColorOverride);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_THEME_SET_ACCENT_COLOR_OVERRIDE));
 
   // nativeTheme listener for auto-switching
   let appearanceTimer: ReturnType<typeof setTimeout> | null = null;

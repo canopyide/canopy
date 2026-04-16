@@ -496,6 +496,9 @@ const CHANNELS = {
   SYSTEM_GET_AGENT_UPDATE_SETTINGS: "system:get-agent-update-settings",
   SYSTEM_SET_AGENT_UPDATE_SETTINGS: "system:set-agent-update-settings",
   SYSTEM_START_AGENT_UPDATE: "system:start-agent-update",
+  SETUP_AGENT_INSTALL: "setup:agent-install",
+  SETUP_AGENT_INSTALL_PROGRESS: "setup:agent-install-progress",
+
   SYSTEM_HEALTH_CHECK: "system:health-check",
   SYSTEM_HEALTH_CHECK_SPECS: "system:health-check-specs",
   SYSTEM_CHECK_TOOL: "system:check-tool",
@@ -633,6 +636,8 @@ const CHANNELS = {
   GLOBAL_ADD_RECIPE: "global:add-recipe",
   GLOBAL_UPDATE_RECIPE: "global:update-recipe",
   GLOBAL_DELETE_RECIPE: "global:delete-recipe",
+  GLOBAL_ENV_GET: "global-env:get",
+  GLOBAL_ENV_SET: "global-env:set",
   PROJECT_GET_TERMINALS: "project:get-terminals",
   PROJECT_SET_TERMINALS: "project:set-terminals",
   PROJECT_GET_TERMINAL_SIZES: "project:get-terminal-sizes",
@@ -672,6 +677,7 @@ const CHANNELS = {
   TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS: "terminal-config:set-hybrid-input-auto-focus",
   TERMINAL_CONFIG_SET_COLOR_SCHEME: "terminal-config:set-color-scheme",
   TERMINAL_CONFIG_SET_CUSTOM_SCHEMES: "terminal-config:set-custom-schemes",
+  TERMINAL_CONFIG_SET_RECENT_SCHEME_IDS: "terminal-config:set-recent-scheme-ids",
   TERMINAL_CONFIG_IMPORT_COLOR_SCHEME: "terminal-config:import-color-scheme",
   TERMINAL_CONFIG_SET_SCREEN_READER_MODE: "terminal-config:set-screen-reader-mode",
   TERMINAL_CONFIG_SET_RESOURCE_MONITORING: "terminal-config:set-resource-monitoring",
@@ -740,6 +746,13 @@ const CHANNELS = {
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
   HIBERNATION_PROJECT_HIBERNATED: "hibernation:project-hibernated",
+
+  // Idle terminal notification channels
+  IDLE_TERMINAL_GET_CONFIG: "idle-terminal:get-config",
+  IDLE_TERMINAL_UPDATE_CONFIG: "idle-terminal:update-config",
+  IDLE_TERMINAL_CLOSE_PROJECT: "idle-terminal:close-project",
+  IDLE_TERMINAL_DISMISS_PROJECT: "idle-terminal:dismiss-project",
+  IDLE_TERMINAL_NOTIFY: "idle-terminal:notify",
 
   // System Sleep channels
   SYSTEM_SLEEP_GET_METRICS: "system-sleep:get-metrics",
@@ -849,6 +862,8 @@ const CHANNELS = {
   APP_THEME_SET_FOLLOW_SYSTEM: "app-theme:set-follow-system",
   APP_THEME_SET_PREFERRED_DARK_SCHEME: "app-theme:set-preferred-dark-scheme",
   APP_THEME_SET_PREFERRED_LIGHT_SCHEME: "app-theme:set-preferred-light-scheme",
+  APP_THEME_SET_RECENT_SCHEME_IDS: "app-theme:set-recent-scheme-ids",
+  APP_THEME_SET_ACCENT_COLOR_OVERRIDE: "app-theme:set-accent-color-override",
   APP_THEME_SYSTEM_APPEARANCE_CHANGED: "app-theme:system-appearance-changed",
 
   // Telemetry channels
@@ -1380,6 +1395,13 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener(CHANNELS.SYSTEM_WAKE, handler);
     },
 
+    installAgent: (payload: { agentId: string; methodIndex?: number; jobId: string }) =>
+      _unwrappingInvoke(CHANNELS.SETUP_AGENT_INSTALL, payload),
+
+    onAgentInstallProgress: (
+      callback: (event: { jobId: string; chunk: string; stream: "stdout" | "stderr" }) => void
+    ) => _typedOn(CHANNELS.SETUP_AGENT_INSTALL_PROGRESS, callback),
+
     onResourceProfileChanged: (callback: (payload: ResourceProfilePayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: ResourceProfilePayload) =>
         callback(payload);
@@ -1722,6 +1744,13 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.GLOBAL_DELETE_RECIPE, { recipeId }),
   },
 
+  // Global Environment Variables API
+  globalEnv: {
+    get: (): Promise<Record<string, string>> => _unwrappingInvoke(CHANNELS.GLOBAL_ENV_GET),
+    set: (variables: Record<string, string>): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.GLOBAL_ENV_SET, { variables }),
+  },
+
   // Agent Settings API
   agentSettings: {
     get: () => _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_GET),
@@ -1987,6 +2016,9 @@ const api: ElectronAPI = {
     setCustomSchemes: (schemesJson: string) =>
       _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_CUSTOM_SCHEMES, schemesJson),
 
+    setRecentSchemeIds: (ids: string[]) =>
+      _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_SET_RECENT_SCHEME_IDS, ids),
+
     importColorScheme: () => _unwrappingInvoke(CHANNELS.TERMINAL_CONFIG_IMPORT_COLOR_SCHEME),
 
     setScreenReaderMode: (mode: "auto" | "on" | "off") =>
@@ -2129,6 +2161,35 @@ const api: ElectronAPI = {
         timestamp: number;
       }) => void
     ): (() => void) => _typedOn(CHANNELS.HIBERNATION_PROJECT_HIBERNATED, callback),
+  },
+
+  // Idle Terminal Notification API
+  idleTerminals: {
+    getConfig: (): Promise<{ enabled: boolean; thresholdMinutes: number }> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_GET_CONFIG),
+
+    updateConfig: (
+      config: Partial<{ enabled: boolean; thresholdMinutes: number }>
+    ): Promise<{ enabled: boolean; thresholdMinutes: number }> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_UPDATE_CONFIG, config),
+
+    closeProject: (projectId: string): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_CLOSE_PROJECT, projectId),
+
+    dismissProject: (projectId: string): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.IDLE_TERMINAL_DISMISS_PROJECT, projectId),
+
+    onNotify: (
+      callback: (payload: {
+        projects: Array<{
+          projectId: string;
+          projectName: string;
+          terminalCount: number;
+          idleMinutes: number;
+        }>;
+        timestamp: number;
+      }) => void
+    ): (() => void) => _typedOn(CHANNELS.IDLE_TERMINAL_NOTIFY, callback),
   },
 
   // System Sleep API
@@ -2502,6 +2563,12 @@ const api: ElectronAPI = {
     setPreferredLightScheme: (schemeId: string) =>
       _unwrappingInvoke(CHANNELS.APP_THEME_SET_PREFERRED_LIGHT_SCHEME, schemeId),
 
+    setRecentSchemeIds: (ids: string[]) =>
+      _unwrappingInvoke(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS, ids),
+
+    setAccentColorOverride: (color: string | null) =>
+      _unwrappingInvoke(CHANNELS.APP_THEME_SET_ACCENT_COLOR_OVERRIDE, color),
+
     onSystemAppearanceChanged: (
       callback: (payload: { isDark: boolean; schemeId: string }) => void
     ) => _typedOn(CHANNELS.APP_THEME_SYSTEM_APPEARANCE_CHANGED, callback),
@@ -2535,6 +2602,8 @@ const api: ElectronAPI = {
 
   onboarding: {
     get: () => _unwrappingInvoke(CHANNELS.ONBOARDING_GET),
+    // TODO(0.9.0): Remove after deleting the temporary Canopy onboarding
+    // localStorage migration path.
     migrate: (payload: {
       agentSelectionDismissed: boolean;
       agentSetupComplete: boolean;
@@ -2821,17 +2890,27 @@ ipcRenderer.on(CHANNELS.WINDOW_RECLAIM_MEMORY, () => {
 });
 
 // E2E test bridge: expose renderer-side IPC listener introspection in fault mode.
-// Gated by CANOPY_E2E_FAULT_MODE to avoid production surface area.
-if (process.env.CANOPY_E2E_FAULT_MODE === "1") {
-  contextBridge.exposeInMainWorld("__CANOPY_E2E_IPC__", {
+// Gated by DAINTREE_E2E_FAULT_MODE to avoid production surface area.
+if (process.env.DAINTREE_E2E_FAULT_MODE === "1") {
+  contextBridge.exposeInMainWorld("__DAINTREE_E2E_IPC__", {
     getRendererListenerCount: (channel: string) => ipcRenderer.listenerCount(channel),
   });
 }
 
-// Generic e2e-mode flag — set whenever the test harness launches Canopy.
+// Generic e2e-mode flag — set whenever the test harness launches Daintree.
 // Used by the renderer to suppress side effects (like the auto-launched
 // primary agent at the end of onboarding) that would otherwise pollute
 // panel-count assertions in tests.
-if (process.env.CANOPY_E2E_MODE === "1") {
-  contextBridge.exposeInMainWorld("__CANOPY_E2E_MODE__", true);
+if (process.env.DAINTREE_E2E_MODE === "1") {
+  contextBridge.exposeInMainWorld("__DAINTREE_E2E_MODE__", true);
+}
+
+// E2E test bridge: expose the "skip first-run dialogs" flag to the renderer at
+// runtime. This cannot travel through `import.meta.env` because that is baked
+// at Vite build time, and CI builds do not set the var at build time — it is
+// only set when the E2E harness launches Electron. The sandboxed renderer
+// cannot read `process.env` directly, so the preload (which does have a
+// polyfilled `process.env` even under sandbox: true) is the propagation point.
+if (process.env.DAINTREE_E2E_SKIP_FIRST_RUN_DIALOGS === "1") {
+  contextBridge.exposeInMainWorld("__DAINTREE_E2E_SKIP_FIRST_RUN_DIALOGS__", true);
 }

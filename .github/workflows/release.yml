@@ -24,17 +24,31 @@ env:
   NODE_VERSION: "22"
 
 jobs:
-  build:
+  build-daintree:
+    name: Build Daintree (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         os: [macos-14, ubuntu-22.04, windows-latest]
-
+    env:
+      BUILD_VARIANT: daintree
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$PKG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$PKG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
 
       - name: Verify version matches tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -113,7 +127,7 @@ jobs:
             echo "::warning::Skipping macOS notarization (manually disabled)"
             EXTRA_ARGS="-c.mac.notarize=false"
           fi
-          npx electron-builder --publish never -c.buildDependenciesFromSource=true $EXTRA_ARGS
+          npx electron-builder --config electron-builder.config.cjs --publish never -c.buildDependenciesFromSource=true $EXTRA_ARGS
 
       - name: Build
         if: ${{ !startsWith(matrix.os, 'macos') }}
@@ -122,23 +136,24 @@ jobs:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
           npm run build
-          npx electron-builder --publish never
+          npx electron-builder --config electron-builder.config.cjs --publish never
 
       - name: Validate update metadata (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          if [ ! -f "release/latest.yml" ]; then
-            echo "::error::Missing release/latest.yml - Windows auto-update will not work"
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}.yml - Windows auto-update metadata was not generated"
             exit 1
           fi
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}.yml"
 
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
-          if [ ! -f "release/latest-mac.yml" ]; then
-            echo "::error::Missing release/latest-mac.yml - macOS auto-update will not work"
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-mac.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-mac.yml - macOS auto-update metadata was not generated"
             exit 1
           fi
           DMG_COUNT=$(find release -maxdepth 1 -name '*.dmg' | wc -l | tr -d ' ')
@@ -148,21 +163,23 @@ jobs:
             find release -maxdepth 1 \( -name '*.dmg' -o -name '*.zip' \) -exec ls -la {} +
             exit 1
           fi
-          echo "✓ Found $DMG_COUNT DMGs, $ZIP_COUNT ZIPs, and latest-mac.yml"
+          echo "✓ Found $DMG_COUNT DMGs, $ZIP_COUNT ZIPs, and ${UPDATE_METADATA_PREFIX}-mac.yml"
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-mac.yml"
 
       - name: Validate update metadata (Linux)
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
-          if [ ! -f "release/latest-linux.yml" ]; then
-            echo "::error::Missing release/latest-linux.yml - Linux auto-update will not work"
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-linux.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-linux.yml - Linux auto-update metadata was not generated"
             exit 1
           fi
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-linux.yml"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.os }}
+          name: release-daintree-${{ matrix.os }}
           path: |
             release/*.dmg
             release/*.zip
@@ -170,46 +187,225 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.blockmap
-            release/latest*.yml
+            release/*.yml
+          retention-days: 7
+          if-no-files-found: error
+
+  build-canopy:
+    name: Build Canopy legacy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-22.04, windows-latest]
+    env:
+      BUILD_VARIANT: canopy
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$PKG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$PKG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Clean npm cache
+        run: npm cache clean --force
+
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm ci
+        env:
+          npm_config_msvs_version: "2022"
+
+      - name: Install dependencies
+        if: matrix.os != 'windows-latest'
+        run: npm ci
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libarchive-tools \
+            libxss-dev \
+            libsecret-1-dev \
+            libnss3-dev \
+            libnotify-dev \
+            libxkbfile-dev
+
+      - name: Import macOS certificates
+        if: startsWith(matrix.os, 'macos')
+        uses: apple-actions/import-codesign-certs@v6
+        with:
+          p12-file-base64: ${{ secrets.MAC_CERTS }}
+          p12-password: ${{ secrets.MAC_CERTS_PASSWORD }}
+          keychain-password: ${{ secrets.MAC_CERTS_PASSWORD }}
+
+      - name: Prepare Apple API key
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          mkdir -p "$RUNNER_TEMP/apple"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/apple/AuthKey.p8"
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+
+      - name: Build (macOS)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTS }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/apple/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
+          npm_config_build_from_source: "true"
+        run: |
+          npm run build
+          EXTRA_ARGS=""
+          if [ "${{ inputs.skip_notarization }}" = "true" ]; then
+            echo "::warning::Skipping macOS notarization (manually disabled)"
+            EXTRA_ARGS="-c.mac.notarize=false"
+          fi
+          npx electron-builder --config electron-builder.config.cjs --publish never -c.buildDependenciesFromSource=true $EXTRA_ARGS
+
+      - name: Build
+        if: ${{ !startsWith(matrix.os, 'macos') }}
+        shell: bash
+        env:
+          DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
+        run: |
+          npm run build
+          npx electron-builder --config electron-builder.config.cjs --publish never
+
+      - name: Validate update metadata (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}.yml - Windows auto-update metadata was not generated"
+            exit 1
+          fi
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}.yml"
+
+      - name: Validate update metadata (macOS)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-mac.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-mac.yml - macOS auto-update metadata was not generated"
+            exit 1
+          fi
+          DMG_COUNT=$(find release -maxdepth 1 -name '*.dmg' | wc -l | tr -d ' ')
+          ZIP_COUNT=$(find release -maxdepth 1 -name '*.zip' | wc -l | tr -d ' ')
+          if [ "$DMG_COUNT" -ne 3 ] || [ "$ZIP_COUNT" -ne 3 ]; then
+            echo "::error::Expected 3 DMGs and 3 ZIPs, got $DMG_COUNT DMGs and $ZIP_COUNT ZIPs"
+            find release -maxdepth 1 \( -name '*.dmg' -o -name '*.zip' \) -exec ls -la {} +
+            exit 1
+          fi
+          echo "✓ Found $DMG_COUNT DMGs, $ZIP_COUNT ZIPs, and ${UPDATE_METADATA_PREFIX}-mac.yml"
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-mac.yml"
+
+      - name: Validate update metadata (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-linux.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-linux.yml - Linux auto-update metadata was not generated"
+            exit 1
+          fi
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-linux.yml"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-canopy-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.blockmap
+            release/*.yml
           retention-days: 7
           if-no-files-found: error
 
   e2e-core-gate:
-    needs: build
+    needs: build-daintree
     uses: ./.github/workflows/e2e-core.yml
     with:
       platform: non-windows
 
   e2e-online-gate:
-    needs: build
+    needs: build-daintree
     uses: ./.github/workflows/e2e-online.yml
     with:
       platform: non-windows
     secrets: inherit
 
-  publish:
+  publish-daintree:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, e2e-core-gate, e2e-online-gate]
+    needs: [build-daintree, e2e-core-gate, e2e-online-gate]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
 
     steps:
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$TAG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
+
       - name: Download macOS artifacts
         uses: actions/download-artifact@v8
         with:
-          name: release-macos-14
+          name: release-daintree-macos-14
           path: release/
 
       - name: Download Linux artifacts
         uses: actions/download-artifact@v8
         with:
-          name: release-ubuntu-22.04
+          name: release-daintree-ubuntu-22.04
           path: release/
 
       - name: Download Windows artifacts
         uses: actions/download-artifact@v8
         with:
-          name: release-windows-latest
+          name: release-daintree-windows-latest
           path: release/
 
       - name: List release files
@@ -222,7 +418,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
         run: |
           aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
             --endpoint-url "${R2_ENDPOINT}" \
@@ -243,13 +439,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
         run: |
           aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --exclude "*" \
-            --include "latest*.yml" \
+            --include "${UPDATE_METADATA_PREFIX}*.yml" \
             --cache-control "no-cache, no-store, must-revalidate"
 
       - name: Notify website of new release
@@ -258,7 +454,7 @@ jobs:
           WEBSITE_WEBHOOK_SECRET: ${{ secrets.WEBSITE_WEBHOOK_SECRET }}
         run: |
           sleep 1
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://canopyide.com/api/refresh-releases \
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://daintree.org/api/refresh-releases \
             -H "Authorization: Bearer ${WEBSITE_WEBHOOK_SECRET}")
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | sed '$d')
@@ -266,3 +462,83 @@ jobs:
           if [ "$HTTP_CODE" -ne 200 ]; then
             echo "::warning::Website refresh failed (HTTP ${HTTP_CODE})"
           fi
+
+  publish-canopy:
+    if: startsWith(github.ref, 'refs/tags/v')
+    # Intentionally NOT gated on e2e-core-gate / e2e-online-gate — those only
+    # exercise the Daintree variant, so blocking Canopy publish on them couples
+    # two independent release channels. Canopy ships on its own build health.
+    needs: [build-canopy]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$TAG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-canopy-macos-14
+          path: release/
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-canopy-ubuntu-22.04
+          path: release/
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-canopy-windows-latest
+          path: release/
+
+      - name: List release files
+        run: ls -lah release/
+
+      - name: Upload binaries to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.CANOPY_R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "*.dmg" \
+            --include "*.zip" \
+            --include "*.exe" \
+            --include "*.AppImage" \
+            --include "*.deb" \
+            --include "*.blockmap" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Upload metadata to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.CANOPY_R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "${UPDATE_METADATA_PREFIX}*.yml" \
+            --cache-control "no-cache, no-store, must-revalidate"

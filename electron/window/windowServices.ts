@@ -49,6 +49,7 @@ import {
   initializeHibernationService,
   getHibernationService,
 } from "../services/HibernationService.js";
+import { initializeIdleTerminalNotificationService } from "../services/IdleTerminalNotificationService.js";
 import {
   initializeSystemSleepService,
   getSystemSleepService,
@@ -190,6 +191,9 @@ async function initializeDeferredServices(
 
   initializeHibernationService();
   console.log("[MAIN] HibernationService initialized");
+
+  initializeIdleTerminalNotificationService();
+  console.log("[MAIN] IdleTerminalNotificationService initialized");
 
   initializeSystemSleepService();
   console.log("[MAIN] SystemSleepService initialized");
@@ -675,7 +679,10 @@ export async function setupWindowServices(
     createAndDistributePorts(win, ctx);
 
     const currentProjectId = projectStore.getCurrentProjectId();
-    ptyClient!.setActiveProject(win.id, currentProjectId);
+    const currentProjectPath = currentProjectId
+      ? projectStore.getProjectById(currentProjectId)?.path
+      : undefined;
+    ptyClient!.setActiveProject(win.id, currentProjectId, currentProjectPath);
 
     const availabilityStore = initializeAgentAvailabilityStore();
     const agentRouter = initializeAgentRouter(availabilityStore);
@@ -893,7 +900,7 @@ export async function setupWindowServices(
   if (!stopEventLoopLagMonitor) {
     stopEventLoopLagMonitor = startEventLoopLagMonitor();
   }
-  if (process.env.CANOPY_PERF_CAPTURE === "1" && !stopProcessMemoryMonitor) {
+  if (process.env.DAINTREE_PERF_CAPTURE === "1" && !stopProcessMemoryMonitor) {
     stopProcessMemoryMonitor = startProcessMemoryMonitor();
   }
 

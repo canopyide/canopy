@@ -3,18 +3,20 @@ import { projectStore } from "./services/ProjectStore.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { getEffectiveRegistry } from "../shared/config/agentRegistry.js";
 import type { CliAvailabilityService } from "./services/CliAvailabilityService.js";
+import { isAgentInstalled } from "../shared/utils/agentAvailability.js";
 import * as CliInstallService from "./services/CliInstallService.js";
 import { getWindowRegistry, getProjectViewManager } from "./window/windowRef.js";
 import { autoUpdaterService } from "./services/AutoUpdaterService.js";
 import { getPluginMenuItems } from "./services/pluginMenuRegistry.js";
 import { getAppWebContents } from "./window/webContentsRegistry.js";
+import { PRODUCT_NAME, PRODUCT_WEBSITE, PRODUCT_COPYRIGHT_ORG } from "./utils/productBranding.js";
 
 app.setAboutPanelOptions({
-  applicationName: "Canopy",
+  applicationName: PRODUCT_NAME,
   applicationVersion: app.getVersion(),
   version: "Beta",
-  copyright: `© ${new Date().getFullYear()} Canopy Team`,
-  website: "https://github.com/canopyide/canopy",
+  copyright: `© ${new Date().getFullYear()} ${PRODUCT_COPYRIGHT_ORG}`,
+  website: PRODUCT_WEBSITE,
 });
 
 function convertShortcutToAccelerator(shortcut: string): string {
@@ -58,9 +60,7 @@ export function createApplicationMenu(
     const items: Electron.MenuItemConstructorOptions[] = [];
 
     Object.values(getEffectiveRegistry()).forEach((agent) => {
-      const isAvailable = availability?.[agent.id] ?? false;
-
-      if (isAvailable) {
+      if (isAgentInstalled(availability?.[agent.id])) {
         items.push({
           label: `New ${agent.name}`,
           accelerator: agent.shortcut ? convertShortcutToAccelerator(agent.shortcut) : undefined,
@@ -333,7 +333,7 @@ export function createApplicationMenu(
         },
         { type: "separator" },
         {
-          label: "Install Canopy Command Line Tool",
+          label: `Install ${PRODUCT_NAME} Command Line Tool`,
           enabled: process.platform === "darwin" || process.platform === "linux",
           click: async (_item, browserWindow) => {
             const targetWin = getTargetBrowserWindow(browserWindow);
@@ -345,7 +345,7 @@ export function createApplicationMenu(
                   wc.send(CHANNELS.NOTIFICATION_SHOW_TOAST, {
                     type: "success",
                     title: "CLI Installed",
-                    message: `The \`canopy\` command is now available at ${status.path}`,
+                    message: `The \`${PRODUCT_NAME.toLowerCase() === "canopy" ? "canopy-app" : "daintree"}\` command is now available at ${status.path}`,
                   });
                 }
               }
@@ -416,7 +416,7 @@ export function createApplicationMenu(
 
   if (process.platform === "darwin") {
     template.unshift({
-      label: "Canopy",
+      label: "Daintree",
       submenu: [
         { role: "about" },
         ...(app.isPackaged

@@ -45,12 +45,20 @@ export { isNonKeyboardInput } from "./inputUtils";
  * isIntersecting=false, causing xterm to set _isPaused=true and halt rendering.
  * Sub-pixel padding jitter keeps the element in the layout tree throughout.
  */
-function forceXtermReflow(element: HTMLElement): void {
+export function forceXtermReflow(element: HTMLElement): void {
   const prev = element.style.paddingTop;
   element.style.paddingTop = "0.01px";
   void element.offsetHeight;
   element.style.paddingTop = prev;
 }
+
+// Throttle per-terminal reflows to bound layout cost under write bursts while
+// still recovering a paused DOM renderer within one write cadence window.
+const REFLOW_THROTTLE_MS = 250;
+
+// Periodic heartbeat interval — low frequency is enough to recover a paused
+// renderer that has no writes, without costing measurable CPU.
+const REFLOW_HEARTBEAT_MS = 3000;
 
 function canAutoInitializeTerminalIngest(): boolean {
   return (
@@ -82,6 +90,18 @@ class TerminalInstanceService {
   private agentStateController: TerminalAgentStateController;
   private restoreController: TerminalRestoreController;
   private hibernationManager: TerminalHibernationManager;
+  private reflowHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly _onVisibilityChange = (): void => {
+    if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+    for (const managed of this.instances.values()) {
+      this.maybeReflowTerminal(managed);
+    }
+  };
+  private readonly _onWindowFocus = (): void => {
+    for (const managed of this.instances.values()) {
+      this.maybeReflowTerminal(managed);
+    }
+  };
 
   constructor() {
     if (canAutoInitializeTerminalIngest()) {
@@ -122,7 +142,29 @@ class TerminalInstanceService {
       clearDirectingState: (id) => this.agentStateController.clearDirectingState(id),
       onUserInput: (id, data) => this.onUserInput(id, data),
       onEnterPressed: (id) => this.onEnterPressed(id),
+      onWriteParsedReflow: (managed) => this.maybeReflowTerminal(managed),
     });
+
+    // Periodic heartbeat: recovers a DOM-renderer terminal whose
+    // IntersectionObserver has paused rendering, even while no new writes are
+    // arriving. Cheap (~1–5ms per visible non-agent terminal).
+    if (typeof setInterval === "function") {
+      this.reflowHeartbeatTimer = setInterval(() => {
+        for (const managed of this.instances.values()) {
+          this.maybeReflowTerminal(managed);
+        }
+      }, REFLOW_HEARTBEAT_MS);
+    }
+
+    // App-level recovery: reflow visible terminals whenever the window
+    // regains focus or the tab becomes visible. These are the moments a
+    // user is most likely to notice a blank terminal.
+    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+      document.addEventListener("visibilitychange", this._onVisibilityChange);
+    }
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("focus", this._onWindowFocus);
+    }
 
     this.wakeManager = new TerminalWakeManager({
       getInstance: (id) => this.instances.get(id),
@@ -243,6 +285,40 @@ class TerminalInstanceService {
 
   notifyUserInput(id: string, data = ""): void {
     this.onUserInput(id, data);
+  }
+
+  /**
+   * Force an IntersectionObserver reflow on a standard terminal if it's
+   * eligible — used by onWriteParsed, the periodic heartbeat, and
+   * visibility/focus recovery paths. All guards live here so every caller
+   * stays consistent.
+   *
+   * Skips: agent terminals (WebGL, immune), hibernated/invisible/attaching
+   * terminals, alt-buffer (TUI) sessions, and terminals without a rendered
+   * element. Throttled per terminal.
+   */
+  private maybeReflowTerminal(managed: ManagedTerminal): void {
+    if (managed.kind === "agent") return;
+    if (managed.isHibernated) return;
+    if (!managed.isVisible) return;
+    if (managed.isAttaching) return;
+    if (managed.isAltBuffer) return;
+    const element = managed.terminal.element;
+    if (!element) return;
+    // A transiently-detached element can't be unpaused by a reflow, and
+    // stamping lastReflowAt here would throttle away the next legitimate
+    // reflow once it's reattached.
+    if (!element.isConnected) return;
+
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (now - (managed.lastReflowAt ?? 0) < REFLOW_THROTTLE_MS) return;
+    managed.lastReflowAt = now;
+
+    try {
+      forceXtermReflow(element);
+    } catch (err) {
+      logWarn("forceXtermReflow failed", { error: err });
+    }
   }
 
   private onUserInput(id: string, data: string): void {
@@ -688,6 +764,7 @@ class TerminalInstanceService {
       if (managed && !managed.isUserScrolledBack && !managed.isAltBuffer) {
         this.scrollToBottomSafe(managed);
       }
+      this.maybeReflowTerminal(managed);
     });
     listeners.push(() => writeParsedDisposable.dispose());
 
@@ -1282,6 +1359,11 @@ class TerminalInstanceService {
       if (Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0) {
         this.resizeController.sendPtyResize(id, cols, rows);
       }
+      // Clear throttle so any subsequent write triggers an immediate reflow;
+      // settled-strategy agents are WebGL so maybeReflowTerminal itself is a
+      // no-op, but the clear is cheap and keeps the post-wake contract
+      // uniform across paths.
+      managed.lastReflowAt = 0;
       return;
     }
 
@@ -1289,10 +1371,17 @@ class TerminalInstanceService {
     // reflect the current window size rather than pre-hibernation cache.
     // fit() already guards against offscreen/small terminals (returns null).
     const fitResult = this.resizeController.fit(id);
-    if (fitResult) return;
+    if (!fitResult) {
+      // Fallback: fit() returned null (terminal offscreen or container too small).
+      this.resizeController.forceImmediateResize(id);
+    }
 
-    // Fallback: fit() returned null (terminal offscreen or container too small).
-    this.resizeController.forceImmediateResize(id);
+    // Kick the IO unpause path for standard terminals that just woke up —
+    // without this, a renderer that was paused pre-hibernation can stay
+    // blank until the next write or the 3s heartbeat. Throttle is cleared
+    // first so this runs unconditionally.
+    managed.lastReflowAt = 0;
+    this.maybeReflowTerminal(managed);
   }
 
   private getResizeStrategyForTerminal(managed: ManagedTerminal): "default" | "settled" {
@@ -1457,9 +1546,28 @@ class TerminalInstanceService {
       managed.terminal.clearTextureAtlas();
       managed.terminal.refresh(0, managed.terminal.rows - 1);
 
-      this.resizeController.fit(id);
+      try {
+        this.resizeController.fit(id);
+      } catch (error) {
+        logError(`resetRenderer fit failed for ${id}`, error);
+      }
     } catch (error) {
       logError(`resetRenderer failed for ${id}`, error);
+    }
+
+    // Force IO re-evaluation so a DOM-renderer terminal that got stuck
+    // with _isPaused=true actually resumes drawing. Runs independently of
+    // the refresh/fit block so the user-invokable escape hatch works even
+    // when fit() throws. Clear the throttle so any follow-up automatic
+    // reflow (onWriteParsed, heartbeat, focus) fires immediately.
+    const termEl = managed.terminal.element;
+    if (termEl) {
+      try {
+        forceXtermReflow(termEl);
+      } catch (error) {
+        logWarn(`forceXtermReflow failed for ${id}`, { error });
+      }
+      managed.lastReflowAt = 0;
     }
   }
 
@@ -1699,6 +1807,16 @@ class TerminalInstanceService {
 
   dispose(): void {
     this.stopPolling();
+    if (this.reflowHeartbeatTimer !== undefined) {
+      clearInterval(this.reflowHeartbeatTimer);
+      this.reflowHeartbeatTimer = undefined;
+    }
+    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+      document.removeEventListener("visibilitychange", this._onVisibilityChange);
+    }
+    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+      window.removeEventListener("focus", this._onWindowFocus);
+    }
     this.instances.forEach((_, id) => this.destroy(id));
     this.offscreenManager.dispose();
     this.wakeManager.dispose();
@@ -1741,7 +1859,7 @@ export const terminalInstanceService = new TerminalInstanceService();
 // Registered unconditionally but gated at call time — the function is harmless
 // in production and avoids import-time env var timing issues.
 if (typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>).__canopyReadTerminalBuffer = (
+  (window as unknown as Record<string, unknown>).__daintreeReadTerminalBuffer = (
     panelId: string
   ): string => {
     const managed = terminalInstanceService["instances"].get(panelId);
@@ -1755,7 +1873,7 @@ if (typeof window !== "undefined") {
     return lines.join("\n");
   };
 
-  (window as unknown as Record<string, unknown>).__canopySelectTerminalAll = (
+  (window as unknown as Record<string, unknown>).__daintreeSelectTerminalAll = (
     panelId: string
   ): boolean => {
     const managed = terminalInstanceService["instances"].get(panelId);
@@ -1764,7 +1882,7 @@ if (typeof window !== "undefined") {
     return true;
   };
 
-  (window as unknown as Record<string, unknown>).__canopyGetTerminalBufferLength = (
+  (window as unknown as Record<string, unknown>).__daintreeGetTerminalBufferLength = (
     panelId: string
   ): number => {
     const managed = terminalInstanceService["instances"].get(panelId);
@@ -1772,7 +1890,7 @@ if (typeof window !== "undefined") {
     return managed.terminal.buffer.active.length;
   };
 
-  (window as unknown as Record<string, unknown>).__canopyTriggerTerminalLink = (
+  (window as unknown as Record<string, unknown>).__daintreeTriggerTerminalLink = (
     panelId: string,
     url: string
   ): string => {

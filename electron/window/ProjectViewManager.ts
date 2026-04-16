@@ -248,7 +248,7 @@ export class ProjectViewManager {
   }
 
   setCachedViewLimit(n: number): void {
-    this.maxCachedViews = n;
+    this.maxCachedViews = Math.max(1, Math.min(5, n));
     this.evictStaleViews();
   }
 
@@ -342,9 +342,9 @@ export class ProjectViewManager {
   }
 
   private createView(_projectId: string): WebContentsView {
-    const ses = session.fromPartition("persist:canopy-app");
+    const ses = session.fromPartition("persist:daintree");
 
-    // Register app:// and canopy-file:// protocol handlers on this session.
+    // Register app:// and daintree-file:// protocol handlers on this session.
     // protocol.handle() only covers the default session — custom partitions need explicit setup.
     const distPath = getDistPath();
     if (distPath) {
@@ -409,7 +409,7 @@ export class ProjectViewManager {
         const devServerUrl = getDevServerUrl();
         wc.loadURL(`${devServerUrl}?projectId=${encodedId}`).catch(() => {});
       } else {
-        wc.loadURL(`app://canopy/index.html?projectId=${encodedId}`).catch(() => {});
+        wc.loadURL(`app://daintree/index.html?projectId=${encodedId}`).catch(() => {});
       }
     });
   }
@@ -532,7 +532,7 @@ export class ProjectViewManager {
           if (process.env.NODE_ENV === "development") {
             wc.loadURL(`${getDevServerUrl()}/recovery.html?${params}`);
           } else {
-            wc.loadURL(`app://canopy/recovery.html?${params}`);
+            wc.loadURL(`app://daintree/recovery.html?${params}`);
           }
         });
       } else if (details.reason === "oom" && this.onRecreateWindow) {
@@ -598,6 +598,7 @@ export class ProjectViewManager {
 
   private evictStaleViews(): void {
     if (this.views.size <= this.maxCachedViews) return;
+    if (this.activeProjectId === null) return;
 
     const evictable = Array.from(this.views.entries())
       .filter(([id]) => id !== this.activeProjectId)

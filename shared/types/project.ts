@@ -20,7 +20,7 @@ import type { NotificationSettings } from "./ipc/api.js";
  */
 export type ProjectStatus = "active" | "background" | "closed" | "missing";
 
-/** Project (Git repository) managed by Canopy */
+/** Project (Git repository) managed by Daintree */
 export interface Project {
   /** Unique identifier (UUID or path hash) */
   id: string;
@@ -36,9 +36,9 @@ export interface Project {
   color?: string;
   /** Project lifecycle status (defaults to 'closed' for backward compatibility) */
   status?: ProjectStatus;
-  /** Whether a .canopy/project.json was found in the repository root */
-  canopyConfigPresent?: boolean;
-  /** Whether in-repo settings mode is enabled (writes to .canopy/ on update) */
+  /** Whether a .daintree/project.json was found in the repository root */
+  daintreeConfigPresent?: boolean;
+  /** Whether in-repo settings mode is enabled (writes to .daintree/ on update) */
   inRepoSettings?: boolean;
   /** Whether the project is pinned to the top of the project switcher */
   pinned?: boolean;
@@ -245,9 +245,27 @@ export interface CopyTreeSettings {
   alwaysExclude?: string[];
 }
 
+/** Resource environment configuration for remote compute hooks */
+export type ResourceEnvironment = {
+  /** Commands to provision the remote environment */
+  provision?: string[];
+  /** Commands to destroy the remote environment */
+  teardown?: string[];
+  /** Commands to resume a paused environment */
+  resume?: string[];
+  /** Commands to pause the environment without destroying */
+  pause?: string[];
+  /** Single command that outputs JSON with { "status": "<string>" } */
+  status?: string;
+  /** Command to open a shell session (ssh, docker exec, etc.) */
+  connect?: string;
+  /** Lucide icon name for visual identification in the UI */
+  icon?: string;
+};
+
 /** Per-project terminal configuration overrides */
 export interface ProjectTerminalSettings {
-  /** Override shell executable path (machine-local, not stored in .canopy/settings.json) */
+  /** Override shell executable path (machine-local, not stored in .daintree/settings.json) */
   shell?: string;
   /** Override shell arguments (replaces default args when set) */
   shellArgs?: string[];
@@ -318,6 +336,14 @@ export interface ProjectSettings {
   worktreePathPattern?: string;
   /** Per-project terminal configuration overrides */
   terminalSettings?: ProjectTerminalSettings;
-  /** Per-project notification overrides (machine-local, never written to .canopy/settings.json) */
+  /** Per-project notification overrides (machine-local, never written to .daintree/settings.json) */
   notificationOverrides?: Partial<NotificationSettings>;
+  /** @deprecated Use resourceEnvironments instead. Kept for migration only. */
+  resourceEnvironment?: ResourceEnvironment;
+  /** Named resource environment configurations for remote compute hooks */
+  resourceEnvironments?: Record<string, ResourceEnvironment>;
+  /** Name of the currently active resource environment (defaults to "default") */
+  activeResourceEnvironment?: string;
+  /** Default worktree mode for new worktrees ("local" or an environment key from resourceEnvironments) */
+  defaultWorktreeMode?: string;
 }

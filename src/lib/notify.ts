@@ -95,7 +95,7 @@ export function _setQuietUntil(ts: number): void {
 }
 
 /**
- * The single public API for creating any notification in Canopy.
+ * The single public API for creating any notification in Daintree.
  *
  * Every call:
  * 1. Adds a persistent entry to the notification center history
@@ -175,7 +175,7 @@ export function notify(payload: NotifyPayload): string {
 
   if (shouldNative && historyMessage && typeof window !== "undefined") {
     window.electron?.notification?.showNative?.({
-      title: title ?? "Canopy",
+      title: title ?? "Daintree",
       body: historyMessage,
     });
   }
@@ -216,12 +216,22 @@ export function notify(payload: NotifyPayload): string {
         existing.expiresAt = now + windowMs;
         const count = existing.count;
 
-        useNotificationStore.getState().updateNotification(existing.id, {
+        // When the caller provides `buildAction`, it owns the action slot on
+        // coalesce — clear any per-item `actions` array from the initial toast
+        // so stale buttons (e.g. "Close project-1") don't linger after we
+        // collapse multiple notifications together.
+        const patch: Parameters<
+          ReturnType<typeof useNotificationStore.getState>["updateNotification"]
+        >[1] = {
           message: coalesce.buildMessage(count),
           title: coalesce.buildTitle?.(count) ?? title,
           inboxMessage: coalesce.buildInboxMessage?.(count),
           action: coalesce.buildAction?.(count) ?? payload.action,
-        });
+        };
+        if (coalesce.buildAction) {
+          patch.actions = undefined;
+        }
+        useNotificationStore.getState().updateNotification(existing.id, patch);
 
         return existing.id;
       }

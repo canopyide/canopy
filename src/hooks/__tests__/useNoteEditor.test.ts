@@ -308,6 +308,71 @@ describe("useNoteEditor", () => {
     expect(result.current.hasConflict).toBe(true);
   });
 
+  it("flushSave sets lastSelectedNoteId for non-empty content", async () => {
+    const props = defaultProps();
+    const { result } = renderHook(() => useNoteEditor(props));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    act(() => {
+      result.current.handleContentChange("hello world");
+    });
+
+    await act(async () => {
+      await result.current.flushSave();
+    });
+
+    expect(props.setLastSelectedNoteId).toHaveBeenCalledWith("n1");
+  });
+
+  it("flushSave does not set lastSelectedNoteId for whitespace content", async () => {
+    const props = defaultProps();
+    const { result } = renderHook(() => useNoteEditor(props));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    act(() => {
+      result.current.handleContentChange("   ");
+    });
+
+    await act(async () => {
+      await result.current.flushSave();
+    });
+
+    expect(props.setLastSelectedNoteId).not.toHaveBeenCalled();
+  });
+
+  it("flushSave is a no-op after debounce has already fired", async () => {
+    const props = defaultProps();
+    const { result } = renderHook(() => useNoteEditor(props));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    act(() => {
+      result.current.handleContentChange("debounced text");
+    });
+
+    // Let the debounce fire
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    vi.mocked(notesClient.write).mockClear();
+
+    // flushSave should be a no-op since debounce already fired and cleared the ref
+    await act(async () => {
+      await result.current.flushSave();
+    });
+
+    expect(notesClient.write).not.toHaveBeenCalled();
+  });
+
   it("cancels pending save when adding a tag", async () => {
     const { result } = renderHook(() => useNoteEditor(defaultProps()));
 

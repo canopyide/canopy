@@ -75,7 +75,12 @@ export class FileTreeService {
           continue;
         }
 
-        const fileStat = await fs.lstat(absolutePath);
+        let fileStat: Awaited<ReturnType<typeof fs.lstat>>;
+        try {
+          fileStat = await fs.lstat(absolutePath);
+        } catch {
+          continue;
+        }
         const isSymlink = fileStat.isSymbolicLink();
 
         if (isSymlink) {
@@ -95,7 +100,7 @@ export class FileTreeService {
 
         nodes.push({
           name: entry.name,
-          path: relativePath,
+          path: gitRelativePath,
           isDirectory,
           size,
           children: undefined,

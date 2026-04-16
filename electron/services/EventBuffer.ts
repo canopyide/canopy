@@ -1,7 +1,7 @@
 import {
   events,
   ALL_EVENT_TYPES,
-  type CanopyEventMap,
+  type DaintreeEventMap,
   EVENT_META,
   getEventCategory,
 } from "./events.js";
@@ -10,7 +10,7 @@ import type { EventRecord, EventCategory } from "../../shared/types/index.js";
 export type { EventRecord };
 
 export interface FilterOptions {
-  types?: Array<keyof CanopyEventMap>;
+  types?: Array<keyof DaintreeEventMap>;
   category?: EventCategory;
   categories?: EventCategory[];
   worktreeId?: string;
@@ -46,8 +46,33 @@ export class EventBuffer {
     };
   }
 
-  private sanitizePayload(eventType: keyof CanopyEventMap, payload: any): any {
-    const sensitiveEventTypes: Array<keyof CanopyEventMap> = ["agent:output", "task:created"];
+  private cloneValue<T>(value: T): T {
+    if (value === undefined) {
+      return value;
+    }
+
+    try {
+      return structuredClone(value);
+    } catch {
+      if (Array.isArray(value)) {
+        return value.map((item) => this.cloneValue(item)) as T;
+      }
+      if (value && typeof value === "object") {
+        return { ...(value as Record<string, unknown>) } as T;
+      }
+      return value;
+    }
+  }
+
+  private cloneRecord(record: EventRecord): EventRecord {
+    return {
+      ...record,
+      payload: this.cloneValue(record.payload),
+    };
+  }
+
+  private sanitizePayload(eventType: keyof DaintreeEventMap, payload: any): any {
+    const sensitiveEventTypes: Array<keyof DaintreeEventMap> = ["agent:output", "task:created"];
 
     if (!sensitiveEventTypes.includes(eventType)) {
       return payload;
@@ -70,7 +95,7 @@ export class EventBuffer {
     return payload;
   }
 
-  private validatePayload(eventType: keyof CanopyEventMap, payload: any): void {
+  private validatePayload(eventType: keyof DaintreeEventMap, payload: any): void {
     const meta = EVENT_META[eventType];
     if (!meta) {
       return;
@@ -143,11 +168,12 @@ export class EventBuffer {
   }
 
   private push(event: EventRecord): void {
-    this.buffer.push(event);
+    const storedEvent = this.cloneRecord(event);
+    this.buffer.push(storedEvent);
 
     for (const callback of [...this.onRecordCallbacks]) {
       try {
-        callback(event);
+        callback(this.cloneRecord(storedEvent));
       } catch (error) {
         console.error("[EventBuffer] Error in onRecord callback:", error);
       }
@@ -159,7 +185,7 @@ export class EventBuffer {
   }
 
   getAll(): EventRecord[] {
-    return [...this.buffer];
+    return this.buffer.map((event) => this.cloneRecord(event));
   }
 
   getFiltered(options: FilterOptions): EventRecord[] {
@@ -167,7 +193,7 @@ export class EventBuffer {
 
     if (options.types && options.types.length > 0) {
       filtered = filtered.filter((event) =>
-        options.types!.includes(event.type as keyof CanopyEventMap)
+        options.types!.includes(event.type as keyof DaintreeEventMap)
       );
     }
 
@@ -257,7 +283,7 @@ export class EventBuffer {
       });
     }
 
-    return filtered;
+    return filtered.map((event) => this.cloneRecord(event));
   }
 
   clear(): void {
@@ -273,7 +299,9 @@ export class EventBuffer {
   }
 
   getEventsByCategory(category: EventCategory): EventRecord[] {
-    return this.buffer.filter((event) => event.category === category);
+    return this.buffer
+      .filter((event) => event.category === category)
+      .map((event) => this.cloneRecord(event));
   }
 
   getCategoryStats(): Record<EventCategory, number> {

@@ -1,2 +1,2 @@
 export { AgentSetupWizard } from "./AgentSetupWizard";
-export { SystemHealthCheckStep } from "./SystemHealthCheckStep";
+export { AgentCliStep } from "./AgentCliStep";

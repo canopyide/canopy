@@ -30,6 +30,7 @@ export type UsePanelPaletteReturn = UseSearchablePaletteReturn<PanelKindOption> 
 };
 
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
@@ -104,7 +105,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
 
     const isAgentHidden = (agentId: string): boolean => {
       if (!agentSettings?.agents) return false;
-      return agentSettings.agents[agentId]?.selected === false;
+      return agentSettings.agents[agentId]?.pinned !== true;
     };
 
     const agentKinds = getEffectiveAgentIds()
@@ -121,7 +122,9 @@ export function usePanelPalette(): UsePanelPaletteReturn {
           color: agentConfig.color,
           description: displayCombo || agentConfig.shortcut || agentConfig.tooltip,
           category: "agent" as const,
-          installed: isAvailabilityInitialized ? (availability[agentId] ?? false) : undefined,
+          installed: isAvailabilityInitialized
+            ? isAgentInstalled(availability[agentId])
+            : undefined,
         };
       })
       .filter((agent): agent is PanelKindOption => agent !== null);
@@ -149,7 +152,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
         id: `resume:${session.sessionId}`,
         name: `Resume ${agentConfig?.name ?? session.agentId}`,
         iconId: agentConfig?.iconId ?? "terminal",
-        color: agentConfig?.color ?? "var(--color-canopy-text)",
+        color: agentConfig?.color ?? "var(--color-daintree-text)",
         description,
         category: "resume" as const,
         resumeSession: session,
@@ -162,7 +165,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
         id: MORE_AGENTS_PANEL_ID,
         name: "More agents...",
         iconId: "sparkles",
-        color: "var(--color-canopy-text)",
+        color: "var(--color-daintree-text)",
         description: "Set up additional AI agents",
         category: "agent" as const,
       },
@@ -204,7 +207,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
       if (option.id === MORE_AGENTS_PANEL_ID || option.installed === false) {
         close();
         window.dispatchEvent(
-          new CustomEvent("canopy:open-agent-setup-wizard", {
+          new CustomEvent("daintree:open-agent-setup-wizard", {
             detail: { returnToPanelPalette: true },
           })
         );
@@ -224,7 +227,7 @@ export function usePanelPalette(): UsePanelPaletteReturn {
     if (selected.id === MORE_AGENTS_PANEL_ID || selected.installed === false) {
       close();
       window.dispatchEvent(
-        new CustomEvent("canopy:open-agent-setup-wizard", {
+        new CustomEvent("daintree:open-agent-setup-wizard", {
           detail: { returnToPanelPalette: true },
         })
       );

@@ -558,6 +558,54 @@ describe("notify()", () => {
       expect(notification.action?.label).toBe("View all");
     });
 
+    it("clears stale per-item actions on coalesce when buildAction is provided", () => {
+      // Regression: if the initial toast had `actions: [closeProj1, dismissProj1]`
+      // and a second notification coalesced into it, the toaster kept rendering
+      // the stale per-project buttons because the coalesce patch only updated
+      // `action` (singular). When `buildAction` is defined, the caller owns the
+      // action slot and `actions` must be cleared.
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const closeFn = vi.fn();
+      const dismissFn = vi.fn();
+
+      notify({
+        type: "info",
+        message: "proj-1 idle",
+        priority: "high",
+        actions: [
+          { label: "Close Them", onClick: closeFn },
+          { label: "Dismiss", onClick: dismissFn },
+        ],
+        coalesce: {
+          key: "idle-like",
+          windowMs: 30_000,
+          buildMessage: (count) => `${count} projects idle`,
+          buildAction: (count) => (count > 1 ? { label: "View", onClick: vi.fn() } : undefined),
+        },
+      });
+
+      // Same coalesce key — triggers the coalesce path.
+      notify({
+        type: "info",
+        message: "proj-2 idle",
+        priority: "high",
+        actions: [
+          { label: "Close Them", onClick: vi.fn() },
+          { label: "Dismiss", onClick: vi.fn() },
+        ],
+        coalesce: {
+          key: "idle-like",
+          windowMs: 30_000,
+          buildMessage: (count) => `${count} projects idle`,
+          buildAction: (count) => (count > 1 ? { label: "View", onClick: vi.fn() } : undefined),
+        },
+      });
+
+      const notification = useNotificationStore.getState().notifications[0];
+      expect(notification.actions).toBeUndefined();
+      expect(notification.action?.label).toBe("View");
+    });
+
     it("creates fresh toast after coalescing window expires", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
       const realDateNow = Date.now;

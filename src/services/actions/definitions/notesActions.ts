@@ -45,8 +45,12 @@ export function registerNotesActions(actions: ActionRegistry, _callbacks: Action
         | undefined) ?? {};
 
       if (!title) {
-        window.dispatchEvent(new CustomEvent("canopy:open-notes-palette"));
+        window.dispatchEvent(new CustomEvent("daintree:open-notes-palette"));
         return;
+      }
+
+      if (noteScope === "worktree" && (typeof worktreeId !== "string" || !worktreeId)) {
+        throw new Error("worktreeId is required when scope is 'worktree'");
       }
 
       const note = await notesClient.create(title, noteScope ?? "project", worktreeId);
@@ -110,7 +114,7 @@ export function registerNotesActions(actions: ActionRegistry, _callbacks: Action
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      window.dispatchEvent(new CustomEvent("canopy:open-notes-palette"));
+      window.dispatchEvent(new CustomEvent("daintree:open-notes-palette"));
     },
   }));
 
@@ -173,7 +177,7 @@ export function registerNotesActions(actions: ActionRegistry, _callbacks: Action
     run: async (args: unknown) => {
       const { notePath } = args as RevealArgs;
       window.dispatchEvent(
-        new CustomEvent("canopy:open-notes-palette", {
+        new CustomEvent("daintree:open-notes-palette", {
           detail: { highlightNotePath: notePath },
         })
       );

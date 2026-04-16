@@ -125,6 +125,17 @@ export interface AgentModelConfig {
   shortLabel: string;
 }
 
+export interface AgentAuthCheck {
+  /** Platform-specific config file paths to check (relative to os.homedir()) */
+  configPaths?: Partial<Record<"darwin" | "linux" | "win32", string[]>>;
+  /** Platform-independent config file paths (relative to os.homedir()) */
+  configPathsAll?: string[];
+  /** Environment variable that indicates auth when present */
+  envVar?: string;
+  /** Fallback state when binary found but auth check is inconclusive */
+  fallback?: "installed" | "ready";
+}
+
 export interface AgentConfig {
   id: string;
   name: string;
@@ -220,7 +231,7 @@ export interface AgentConfig {
   env?: Record<string, string>;
   /**
    * Resume configuration for restoring a previous agent session.
-   * When present, Canopy can resume a prior session using the stored session ID
+   * When present, Daintree can resume a prior session using the stored session ID
    * instead of starting fresh.
    */
   resume?: {
@@ -232,6 +243,11 @@ export interface AgentConfig {
    * Merged with baseline prerequisites during health checks.
    */
   prerequisites?: PrerequisiteSpec[];
+  /**
+   * Authentication check configuration.
+   * Used by CliAvailabilityService to distinguish "installed" from "ready".
+   */
+  authCheck?: AgentAuthCheck;
 }
 
 export const AGENT_REGISTRY: Record<string, AgentConfig> = {
@@ -278,7 +294,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         ],
       },
       troubleshooting: [
-        "Restart Canopy after installation to update PATH",
+        "Restart Daintree after installation to update PATH",
         "Ensure Node.js and npm are installed first",
         "Verify installation with: claude --version",
         "Run 'claude auth login' to authenticate after installing",
@@ -369,6 +385,13 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     help: {
       args: [],
     },
+    authCheck: {
+      // Claude Code CLI persists auth/session state in ~/.claude.json (the
+      // single file), not ~/.claude/config.json. ANTHROPIC_API_KEY is also a
+      // first-class auth signal supported directly by the CLI.
+      configPathsAll: [".claude.json", ".claude/config.json"],
+      envVar: "ANTHROPIC_API_KEY",
+    },
     prerequisites: [
       {
         tool: "claude",
@@ -420,7 +443,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         ],
       },
       troubleshooting: [
-        "Restart Canopy after installation to update PATH",
+        "Restart Daintree after installation to update PATH",
         "Verify installation with: gemini --version",
         "Run 'gemini auth login' after installing to authenticate",
       ],
@@ -512,6 +535,13 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     help: {
       args: [],
     },
+    authCheck: {
+      // Gemini CLI persists OAuth creds to ~/.gemini/oauth_creds.json on all
+      // platforms (Node CLI using os.homedir()). GEMINI_API_KEY is also a
+      // first-class auth signal supported directly by the CLI.
+      configPathsAll: [".gemini/oauth_creds.json", ".gemini/google_accounts.json"],
+      envVar: "GEMINI_API_KEY",
+    },
     prerequisites: [
       {
         tool: "gemini",
@@ -564,7 +594,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         ],
       },
       troubleshooting: [
-        "Restart Canopy after installation to update PATH",
+        "Restart Daintree after installation to update PATH",
         "Verify installation with: codex --version",
         "Run 'codex auth login' after installing to authenticate",
       ],
@@ -652,6 +682,12 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     help: {
       args: [],
     },
+    authCheck: {
+      // Codex CLI persists auth to ~/.codex/auth.json on all platforms.
+      // OPENAI_API_KEY is also a first-class auth signal for the CLI.
+      configPathsAll: [".codex/auth.json"],
+      envVar: "OPENAI_API_KEY",
+    },
     prerequisites: [
       {
         tool: "codex",
@@ -736,7 +772,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         ],
       },
       troubleshooting: [
-        "Restart Canopy after installation to update PATH",
+        "Restart Daintree after installation to update PATH",
         "Ensure Node.js is installed for npm-based installation",
         "Verify installation with: opencode --version",
         "Run '/connect' in OpenCode to configure LLM provider",
@@ -820,6 +856,18 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     resume: {
       args: (sessionId: string) => ["-s", sessionId],
     },
+    authCheck: {
+      configPaths: {
+        darwin: ["Library/Application Support/opencode/config.json"],
+        linux: [".config/opencode/config.json"],
+        win32: [".config/opencode/config.json"],
+      },
+      // OpenCode is provider-agnostic and accepts provider credentials
+      // directly from env vars (ANTHROPIC_API_KEY / OPENAI_API_KEY), so
+      // either is a sufficient signal that the CLI is usable.
+      configPathsAll: [".local/share/opencode/auth.json"],
+      envVar: "ANTHROPIC_API_KEY",
+    },
     prerequisites: [
       {
         tool: "opencode",
@@ -870,7 +918,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         ],
       },
       troubleshooting: [
-        "Restart Canopy after installation to update PATH",
+        "Restart Daintree after installation to update PATH",
         "Verify installation with: cursor-agent -v",
         "Run 'cursor-agent login' to authenticate after installing",
       ],
@@ -916,6 +964,16 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       maxConcurrent: 2,
       enabled: true,
     },
+    authCheck: {
+      // Cursor may store tokens in OS Keychain on newer versions;
+      // file check is best-effort, default to "installed" if inconclusive.
+      configPaths: {
+        darwin: ["Library/Application Support/Cursor/User/globalStorage/storage.json"],
+        linux: [".config/Cursor/User/globalStorage/storage.json"],
+        win32: ["AppData/Roaming/Cursor/User/globalStorage/storage.json"],
+      },
+      fallback: "installed",
+    },
     prerequisites: [
       {
         tool: "cursor-agent",
@@ -923,6 +981,283 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         versionArgs: ["-v"],
         severity: "fatal",
         installUrl: "https://cursor.com/install",
+      },
+    ],
+  },
+  kiro: {
+    id: "kiro",
+    name: "Kiro",
+    command: "kiro-cli",
+    color: "#7C3AED",
+    iconId: "kiro",
+    supportsContextInjection: true,
+    shortcut: "Cmd/Ctrl+Alt+K",
+    tooltip: "Amazon's AI coding agent",
+    usageUrl: "https://kiro.dev/",
+    version: {
+      args: ["--version"],
+    },
+    update: {
+      other: {
+        curl: "curl -fsSL https://cli.kiro.dev/install | bash",
+      },
+    },
+    install: {
+      docsUrl: "https://kiro.dev/cli/",
+      byOs: {
+        macos: [
+          {
+            label: "curl",
+            commands: ["curl -fsSL https://cli.kiro.dev/install | bash"],
+          },
+        ],
+        linux: [
+          {
+            label: "curl",
+            commands: ["curl -fsSL https://cli.kiro.dev/install | bash"],
+          },
+        ],
+      },
+      troubleshooting: [
+        "Restart Daintree after installation to update PATH",
+        "Verify installation with: kiro-cli --version",
+        "Kiro CLI is only supported on macOS and Linux",
+        "Authenticate after installing via Kiro's login flow",
+      ],
+    },
+    capabilities: {
+      scrollback: 10000,
+      supportsBracketedPaste: true,
+      softNewlineSequence: "\x1b\r",
+      ignoredInputSequences: ["\x1b\r"],
+    },
+    detection: {
+      primaryPatterns: [
+        // @generated:kiro:primaryPatterns:start
+        "[·*✢✳✶✻✽●✼✾⟡◇◆○⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+[^()\\n]{2,80}\\s*\\(esc to interrupt",
+        "esc to interrupt[^)\\n]*\\)?$",
+        "\\(\\d+s\\s*[·•]\\s*esc to interrupt",
+        "[·*✢✳✶✻✽●✼✾⟡◇◆○⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+Thinking",
+        // @generated:kiro:primaryPatterns:end
+      ],
+      fallbackPatterns: [
+        // @generated:kiro:fallbackPatterns:start
+        "[·•●⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+Thinking",
+        "[·•●]\\s+\\w+",
+        // @generated:kiro:fallbackPatterns:end
+      ],
+      bootCompletePatterns: [
+        // @generated:kiro:bootCompletePatterns:start
+        "Jump into building with Kiro",
+        "Use /help for more information and happy coding",
+        "Model: auto",
+        // @generated:kiro:bootCompletePatterns:end
+      ],
+      promptPatterns: ["^\\s*>\\s*"],
+      promptHintPatterns: ["^\\s*>\\s*$"],
+      completionPatterns: [
+        // @generated:kiro:completionPatterns:start
+        "Task\\s+completed",
+        "\\d+\\s+files?\\s+changed",
+        // @generated:kiro:completionPatterns:end
+      ],
+      completionConfidence: 0.9,
+      scanLineCount: 10,
+      primaryConfidence: 0.95,
+      fallbackConfidence: 0.75,
+      promptConfidence: 0.85,
+      debounceMs: 4000,
+    },
+    routing: {
+      capabilities: [
+        "javascript",
+        "typescript",
+        "python",
+        "go",
+        "rust",
+        "react",
+        "node",
+        "debugging",
+        "refactoring",
+        "general-purpose",
+      ],
+      domains: {
+        frontend: 0.8,
+        backend: 0.8,
+        testing: 0.75,
+        refactoring: 0.8,
+        debugging: 0.8,
+        architecture: 0.75,
+      },
+      maxConcurrent: 2,
+      enabled: true,
+    },
+    shutdown: {
+      quitCommand: "/quit",
+      // Kiro uses directory-based sessions; no session ID is emitted on exit.
+      // Pattern intentionally non-matching — graceful quit fires but no ID is captured.
+      sessionIdPattern: "kiro-cli --resume ([\\w-]+)",
+    },
+    resume: {
+      // Kiro's --resume is directory-based and requires no session ID argument.
+      args: (_sessionId: string) => ["--resume"],
+    },
+    help: {
+      args: [],
+    },
+    authCheck: {
+      // AWS SSO users authenticate via `kiro-cli login` (optionally with
+      // --use-device-flow for headless/SSH), which writes a Kiro-specific
+      // token cache to ~/.aws/sso/cache/kiro-auth-token.json. Probe that
+      // file so SSO-authenticated users reach "ready" instead of "installed".
+      // Non-SSO Kiro auth is managed via the OS keychain and internal state
+      // directories (e.g. ~/Library/Application Support/kiro-cli/ on macOS,
+      // ~/.local/share/kiro-cli/ on Linux), which we cannot reliably probe —
+      // those users fall back to "installed", mirroring Cursor.
+      configPathsAll: [".aws/sso/cache/kiro-auth-token.json"],
+      fallback: "installed",
+    },
+    prerequisites: [
+      {
+        tool: "kiro-cli",
+        label: "Kiro CLI",
+        versionArgs: ["--version"],
+        severity: "fatal",
+        installUrl: "https://kiro.dev/cli/",
+      },
+    ],
+  },
+  copilot: {
+    id: "copilot",
+    name: "GitHub Copilot",
+    command: "copilot",
+    color: "#8957e5",
+    iconId: "copilot",
+    supportsContextInjection: true,
+    shortcut: "Cmd/Ctrl+Alt+H",
+    tooltip: "GitHub's AI coding agent",
+    usageUrl: "https://github.com/features/copilot",
+    contextWindow: 160_000,
+    models: [
+      { id: "claude-sonnet-4.6", name: "Claude Sonnet 4.6", shortLabel: "Sonnet 4.6" },
+      { id: "claude-opus-4.6", name: "Claude Opus 4.6", shortLabel: "Opus 4.6" },
+      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", shortLabel: "Haiku 4.5" },
+      { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5", shortLabel: "Sonnet 4.5" },
+      { id: "claude-opus-4.5", name: "Claude Opus 4.5", shortLabel: "Opus 4.5" },
+      { id: "gpt-5.4", name: "GPT-5.4", shortLabel: "GPT-5.4" },
+      { id: "gpt-5.3-codex", name: "GPT-5.3 Codex", shortLabel: "GPT-5.3" },
+      { id: "gpt-5.2", name: "GPT-5.2", shortLabel: "GPT-5.2" },
+      { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", shortLabel: "5.4 Mini" },
+      { id: "gpt-5-mini", name: "GPT-5 Mini", shortLabel: "5 Mini" },
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", shortLabel: "Gem 2.5 Pro" },
+      { id: "gemini-3-pro-preview", name: "Gemini 3 Pro", shortLabel: "Gem 3 Pro" },
+      { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro", shortLabel: "Gem 3.1 Pro" },
+    ],
+    version: {
+      args: ["--version"],
+      npmPackage: "@github/copilot",
+      githubRepo: "github/copilot-cli",
+      releaseNotesUrl: "https://github.com/github/copilot-cli/releases",
+    },
+    update: {
+      npm: "npm install -g @github/copilot@latest",
+    },
+    install: {
+      docsUrl: "https://github.com/github/copilot-cli#readme",
+      byOs: {
+        macos: [
+          {
+            label: "npm",
+            commands: ["npm install -g @github/copilot"],
+          },
+        ],
+        linux: [
+          {
+            label: "npm",
+            commands: ["npm install -g @github/copilot"],
+          },
+        ],
+        windows: [
+          {
+            label: "npm",
+            commands: ["npm install -g @github/copilot"],
+          },
+        ],
+      },
+      troubleshooting: [
+        "Restart Daintree after installation to update PATH",
+        "Verify installation with: copilot --version",
+        "Run 'copilot login' to authenticate after installing",
+      ],
+    },
+    capabilities: {
+      scrollback: 10000,
+      blockMouseReporting: true,
+      resizeStrategy: "settled",
+      supportsBracketedPaste: true,
+    },
+    detection: {
+      primaryPatterns: ["\\(Esc to cancel\\)", "[∙∘○◎◉]\\s+.+\\(Esc to cancel\\)"],
+      fallbackPatterns: ["[∙∘○◎◉]\\s+\\w"],
+      bootCompletePatterns: ["Loading environment:"],
+      promptPatterns: ["^\\s*>\\s*$", "^\\s*>\\s"],
+      promptHintPatterns: ["^\\s*>\\s*$"],
+      scanLineCount: 10,
+      primaryConfidence: 0.95,
+      fallbackConfidence: 0.75,
+      promptConfidence: 0.85,
+      debounceMs: 4000,
+    },
+    routing: {
+      capabilities: [
+        "javascript",
+        "typescript",
+        "python",
+        "go",
+        "rust",
+        "react",
+        "node",
+        "github",
+        "general-purpose",
+      ],
+      domains: {
+        frontend: 0.8,
+        backend: 0.8,
+        testing: 0.75,
+        refactoring: 0.8,
+        debugging: 0.8,
+        architecture: 0.75,
+      },
+      maxConcurrent: 2,
+      enabled: true,
+    },
+    shutdown: {
+      quitCommand: "/exit",
+      sessionIdPattern: "copilot --resume=([\\w-]+)",
+    },
+    resume: {
+      args: (sessionId: string) => ["--resume=" + sessionId],
+    },
+    authCheck: {
+      // GitHub Copilot CLI primarily stores auth in the OS keychain
+      // (macOS Keychain under "copilot-cli", Linux libsecret/GNOME Keyring).
+      // ~/.copilot/config.json is written as a fallback when the keychain
+      // is unavailable (headless Linux, CI). We intentionally do NOT probe
+      // ~/.config/gh/hosts.yml — that file is populated by any `gh auth login`
+      // for general GitHub CLI use, not specifically Copilot, so presence
+      // does not imply a Copilot subscription or active auth. The
+      // "installed" fallback covers the macOS keychain case where no
+      // filesystem token exists.
+      configPathsAll: [".copilot/config.json"],
+      fallback: "installed",
+    },
+    prerequisites: [
+      {
+        tool: "copilot",
+        label: "GitHub Copilot CLI",
+        versionArgs: ["--version"],
+        severity: "fatal",
+        installUrl: "https://github.com/github/copilot-cli",
       },
     ],
   },

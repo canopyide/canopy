@@ -15,10 +15,10 @@ import {
   Globe,
   Monitor,
   Bell,
-  LayoutGrid,
   Ellipsis,
   GitBranch,
   StickyNote,
+  Plug,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { CopyTreeIcon, McpServerIcon } from "@/components/icons";
@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { shortcutHintStore } from "@/store/shortcutHintStore";
 import { isMac, isLinux, createTooltipWithShortcut } from "@/lib/platform";
 import { AgentButton } from "./AgentButton";
-import { AgentSetupButton } from "./AgentSetupButton";
+import { AgentTrayButton } from "./AgentTrayButton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -42,12 +42,15 @@ import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 import { useProjectStore } from "@/store/projectStore";
 import { usePreferencesStore, useToolbarPreferencesStore, useVoiceRecordingStore } from "@/store";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import type { ToolbarButtonId, AnyToolbarButtonId } from "@/../../shared/types/toolbar";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import type { CliAvailability, AgentSettings } from "@shared/types";
+import { isAgentInstalled } from "../../../shared/utils/agentAvailability";
+import { isAgentPinned } from "../../../shared/utils/agentPinned";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { ProjectSwitcherPalette } from "@/components/Project/ProjectSwitcherPalette";
@@ -60,25 +63,27 @@ import { ToolbarSettingsButton } from "./ToolbarSettingsButton";
 import { ToolbarProblemsButton } from "./ToolbarProblemsButton";
 import { ToolbarPortalButton } from "./ToolbarPortalButton";
 
-import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
+import { getAgentConfig } from "@/config/agents";
 
 const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
-  "agent-setup",
+  "agent-tray",
   ...(BUILT_IN_AGENT_IDS as unknown as ToolbarButtonId[]),
 ]);
 
-const OVERFLOW_MENU_META: Partial<
-  Record<AnyToolbarButtonId, { label: string; icon: React.ComponentType<{ className?: string }> }>
-> = {
-  claude: { label: "Claude", icon: SquareTerminal },
-  gemini: { label: "Gemini", icon: SquareTerminal },
-  codex: { label: "Codex", icon: SquareTerminal },
-  opencode: { label: "OpenCode", icon: SquareTerminal },
-  cursor: { label: "Cursor", icon: SquareTerminal },
+type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
+
+export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> = {
+  ...(Object.fromEntries(
+    BUILT_IN_AGENT_IDS.map((id) => [
+      id,
+      { label: getAgentConfig(id)?.name ?? id, icon: SquareTerminal },
+    ])
+  ) as unknown as Record<BuiltInAgentId, OverflowMenuMeta>),
+  "agent-tray": { label: "Agent Tray", icon: Plug },
   terminal: { label: "Terminal", icon: SquareTerminal },
   browser: { label: "Browser", icon: Globe },
   "dev-server": { label: "Dev Preview", icon: Monitor },
-  "panel-palette": { label: "Panel Palette", icon: LayoutGrid },
   "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
   "notification-center": { label: "Notifications", icon: Bell },
   notes: { label: "Notes", icon: StickyNote },
@@ -138,6 +143,12 @@ export function Toolbar({
   const showDeveloperTools = usePreferencesStore((state) => state.showDeveloperTools);
   const notificationsEnabled = useNotificationSettingsStore((s) => s.enabled);
   const toolbarLayout = useToolbarPreferencesStore((state) => state.layout);
+  // Live subscription so pin/unpin toggles from the AgentTrayButton immediately
+  // update per-agent toolbar button visibility. The `agentSettings` prop is
+  // sourced from `useAgentLauncher()`'s local useState which does not react to
+  // store mutations, so we prefer the store value when available.
+  const liveAgentSettings = useAgentSettingsStore((s) => s.settings);
+  const effectiveAgentSettings = liveAgentSettings ?? agentSettings;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [treeCopied, setTreeCopied] = useState(false);
@@ -311,13 +322,7 @@ export function Toolbar({
     [getToolbarItems, syncToolbarTabStops]
   );
 
-  const hasAnySelectedAgent = useMemo(() => {
-    if (!agentSettings) return true;
-    const agents = agentSettings.agents ?? {};
-    return BUILT_IN_AGENT_IDS.some((id) => agents[id]?.selected !== false);
-  }, [agentSettings]);
-
-  const toolbarIconButtonClass = "toolbar-icon-button text-canopy-text transition-colors";
+  const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors";
   const toolbarDividerClass = "toolbar-divider w-px h-5 mx-1";
 
   const { buttonIds: pluginButtonIds, configs: pluginConfigs } = usePluginToolbarButtons();
@@ -354,65 +359,34 @@ export function Toolbar({
         ),
         isAvailable: true,
       },
-      "agent-setup": {
-        render: () => <AgentSetupButton key="agent-setup" data-toolbar-item="" />,
-        isAvailable: !hasAnySelectedAgent,
-      },
-      claude: {
+      "agent-tray": {
         render: () => (
-          <AgentButton
-            key="claude"
-            type="claude"
-            availability={agentAvailability?.claude}
+          <AgentTrayButton
+            key="agent-tray"
+            agentAvailability={agentAvailability}
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings != null && agentSettings.agents?.claude?.selected !== false,
+        isAvailable: true,
       },
-      gemini: {
-        render: () => (
-          <AgentButton
-            key="gemini"
-            type="gemini"
-            availability={agentAvailability?.gemini}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.gemini?.selected !== false,
-      },
-      codex: {
-        render: () => (
-          <AgentButton
-            key="codex"
-            type="codex"
-            availability={agentAvailability?.codex}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.codex?.selected !== false,
-      },
-      opencode: {
-        render: () => (
-          <AgentButton
-            key="opencode"
-            type="opencode"
-            availability={agentAvailability?.opencode}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.opencode?.selected !== false,
-      },
-      cursor: {
-        render: () => (
-          <AgentButton
-            key="cursor"
-            type="cursor"
-            availability={agentAvailability?.cursor}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: agentSettings != null && agentSettings.agents?.cursor?.selected !== false,
-      },
+      ...Object.fromEntries(
+        BUILT_IN_AGENT_IDS.map((id) => [
+          id,
+          {
+            render: () => (
+              <AgentButton
+                key={id}
+                type={id}
+                availability={agentAvailability?.[id]}
+                data-toolbar-item=""
+              />
+            ),
+            isAvailable:
+              isAgentInstalled(agentAvailability?.[id]) &&
+              isAgentPinned(effectiveAgentSettings?.agents?.[id]),
+          },
+        ])
+      ),
       terminal: {
         render: () => (
           <ToolbarLauncherButton
@@ -458,17 +432,6 @@ export function Toolbar({
           </TooltipProvider>
         ),
         isAvailable: !!currentProject,
-      },
-      "panel-palette": {
-        render: () => (
-          <ToolbarLauncherButton
-            key="panel-palette"
-            type="panel-palette"
-            onLaunchAgent={onLaunchAgent}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: true,
       },
       "voice-recording": {
         render: () => <VoiceRecordingToolbarButton key="voice-recording" data-toolbar-item="" />,
@@ -528,7 +491,7 @@ export function Toolbar({
                   disabled={isCopyingTree || !activeWorktree}
                   className={cn(
                     "toolbar-icon-button transition-colors",
-                    treeCopied ? "text-status-success bg-status-success/10" : "text-canopy-text",
+                    treeCopied ? "text-status-success bg-status-success/10" : "text-daintree-text",
                     isCopyingTree && "cursor-wait opacity-70",
                     !activeWorktree && "opacity-50"
                   )}
@@ -622,8 +585,7 @@ export function Toolbar({
       isFocusMode,
       onToggleFocusMode,
       agentAvailability,
-      agentSettings,
-      hasAnySelectedAgent,
+      effectiveAgentSettings,
       onLaunchAgent,
       sidebarShortcut,
       notesShortcut,
@@ -776,18 +738,11 @@ export function Toolbar({
 
   const overflowActions = useMemo<Partial<Record<AnyToolbarButtonId, () => void>>>(
     () => ({
-      claude: () => onLaunchAgent("claude"),
-      gemini: () => onLaunchAgent("gemini"),
-      codex: () => onLaunchAgent("codex"),
-      opencode: () => onLaunchAgent("opencode"),
-      cursor: () => onLaunchAgent("cursor"),
+      ...Object.fromEntries(BUILT_IN_AGENT_IDS.map((id) => [id, () => onLaunchAgent(id)])),
       terminal: () => onLaunchAgent("terminal"),
       browser: () => onLaunchAgent("browser"),
       "dev-server": () => {
         void actionService.dispatch("devServer.start", undefined, { source: "user" });
-      },
-      "panel-palette": () => {
-        void actionService.dispatch("panel.palette", undefined, { source: "user" });
       },
       "notification-center": () => {
         useUIStore.getState().toggleNotificationCenter();
@@ -980,7 +935,7 @@ export function Toolbar({
                   <span className="text-base leading-none shrink-0" aria-label="Project emoji">
                     {currentProject.emoji}
                   </span>
-                  <span className="min-w-0 truncate text-xs font-semibold tracking-wide text-canopy-text">
+                  <span className="min-w-0 truncate text-xs font-semibold tracking-wide text-daintree-text">
                     {currentProject.name}
                   </span>
                   {branchName && (
@@ -996,10 +951,10 @@ export function Toolbar({
                 </>
               ) : (
                 <>
-                  <span className="text-xs font-medium text-canopy-text tracking-wide truncate min-w-0">
-                    Canopy
+                  <span className="text-xs font-medium text-daintree-text tracking-wide truncate min-w-0">
+                    Daintree
                   </span>
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-canopy-accent/20 text-canopy-accent shrink-0">
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-daintree-accent/20 text-daintree-accent shrink-0">
                     Beta
                   </span>
                   <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />

@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import {
   ChevronRight,
   CircleDot,
@@ -28,13 +29,37 @@ import {
   FileText,
   GitBranch,
   GitPullRequest,
+  Cloud,
   MoreHorizontal,
+  RefreshCw,
   Sprout,
   Pin,
+  Server,
+  Container,
+  Cpu,
+  Globe,
+  Rocket,
+  Database,
+  Terminal as TerminalIcon,
+  Box,
+  Layers,
 } from "lucide-react";
 import type { AggregateCounts } from "./MainWorktreeSummaryRows";
 import { useIssueTooltip, usePRTooltip } from "@/hooks/useGitHubTooltip";
 import { IssueTooltipContent, PRTooltipContent, TooltipLoading } from "./GitHubTooltipContent";
+
+const ENVIRONMENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  Server,
+  Cloud,
+  Container,
+  Cpu,
+  Globe,
+  Rocket,
+  Database,
+  Terminal: TerminalIcon,
+  Box,
+  Layers,
+};
 
 const DROPDOWN_COMPONENTS: WorktreeMenuComponents = {
   Item: DropdownMenuItem,
@@ -53,6 +78,7 @@ interface IssueBadgeProps {
   onOpen?: () => void;
   isHeadline?: boolean;
   isActive?: boolean;
+  underlineOnHover?: boolean;
 }
 
 const IssueBadge = memo(function IssueBadge({
@@ -62,6 +88,7 @@ const IssueBadge = memo(function IssueBadge({
   onOpen,
   isHeadline,
   isActive,
+  underlineOnHover,
 }: IssueBadgeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { data, loading, error, fetchTooltip, reset } = useIssueTooltip(worktreePath, issueNumber);
@@ -87,7 +114,7 @@ const IssueBadge = memo(function IssueBadge({
             if (isActive) onOpen?.();
           }}
           className={cn(
-            "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0",
+            "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
             isHeadline ? "text-[13px]" : "text-xs"
           )}
           aria-disabled={!isActive || undefined}
@@ -103,7 +130,8 @@ const IssueBadge = memo(function IssueBadge({
           />
           <span
             className={cn(
-              "truncate flex-1 min-w-0 hover:underline",
+              "truncate flex-1 min-w-0",
+              underlineOnHover && "hover:underline",
               isHeadline
                 ? isActive
                   ? "text-text-primary font-medium"
@@ -137,6 +165,7 @@ interface PRBadgeProps {
   worktreePath: string;
   onOpen?: () => void;
   isActive?: boolean;
+  underlineOnHover?: boolean;
 }
 
 const PRBadge = memo(function PRBadge({
@@ -146,6 +175,7 @@ const PRBadge = memo(function PRBadge({
   worktreePath,
   onOpen,
   isActive,
+  underlineOnHover,
 }: PRBadgeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { data, loading, error, fetchTooltip, reset } = usePRTooltip(worktreePath, prNumber);
@@ -179,7 +209,7 @@ const PRBadge = memo(function PRBadge({
           onClick={() => {
             if (isActive) onOpen?.();
           }}
-          className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0"
+          className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0"
           aria-disabled={!isActive || undefined}
           aria-label={`Open ${prStateLabel} pull request #${prNumber} on GitHub`}
         >
@@ -187,7 +217,9 @@ const PRBadge = memo(function PRBadge({
             <CornerDownRight className="w-3 h-3 text-text-muted shrink-0" aria-hidden="true" />
           )}
           <GitPullRequest className={cn("w-3 h-3 shrink-0", prStateColor)} aria-hidden="true" />
-          <span className={cn("font-mono hover:underline", prStateColor)}>#{prNumber}</span>
+          <span className={cn("font-mono", underlineOnHover && "hover:underline", prStateColor)}>
+            #{prNumber}
+          </span>
         </button>
       </TooltipTrigger>
       <TooltipContent side="right" align="start" className="p-3">
@@ -208,6 +240,7 @@ const PRBadge = memo(function PRBadge({
 export interface WorktreeHeaderProps {
   worktree: WorktreeState;
   isActive: boolean;
+  variant?: "sidebar" | "grid";
   isMuted?: boolean;
   isMainWorktree: boolean;
   isMainOnStandardBranch?: boolean;
@@ -220,6 +253,14 @@ export interface WorktreeHeaderProps {
   sessionStates?: Record<AgentState, number>;
   sessionTotal?: number;
   aggregateCounts?: AggregateCounts;
+  environmentIcon?: string;
+  isLifecycleRunning?: boolean;
+  resourceStatusLabel?: string;
+  resourceStatusColor?: "green" | "yellow" | "red" | "neutral";
+  resourceLastOutput?: string;
+  resourceEndpoint?: string;
+  resourceLastCheckedAt?: number;
+  onCheckResourceStatus?: () => void;
   badges: {
     onOpenIssue?: () => void;
     onOpenPR?: () => void;
@@ -268,12 +309,24 @@ export interface WorktreeHeaderProps {
     onDeleteWorktree?: () => void;
     onRevertAgentChanges?: () => void;
     hasSnapshot?: boolean;
+    hasResourceConfig?: boolean;
+    worktreeMode?: string;
+    resourceEnvironmentKeys?: string[];
+    onSwitchEnvironment?: (envKey: string) => void;
+    resourceStatus?: string;
+    onResourceProvision?: () => void;
+    onResourceResume?: () => void;
+    onResourcePause?: () => void;
+    onResourceConnect?: () => void;
+    onResourceStatus?: () => void;
+    onResourceTeardown?: () => void;
   };
 }
 
 export function WorktreeHeader({
   worktree,
   isActive,
+  variant = "sidebar",
   isMuted,
   isMainWorktree,
   isMainOnStandardBranch,
@@ -286,6 +339,14 @@ export function WorktreeHeader({
   sessionStates,
   sessionTotal,
   aggregateCounts,
+  environmentIcon,
+  isLifecycleRunning,
+  resourceStatusLabel,
+  resourceStatusColor,
+  resourceLastOutput,
+  resourceEndpoint,
+  resourceLastCheckedAt,
+  onCheckResourceStatus,
   badges,
   menu,
 }: WorktreeHeaderProps) {
@@ -303,6 +364,10 @@ export function WorktreeHeader({
 
   const hasIssueTitle = !!(worktree.issueNumber && worktree.issueTitle);
   const hasPlanFile = Boolean(worktree.hasPlanFile);
+  // In sidebar variant, badges only become actionable when the card is selected,
+  // so the hover underline is misleading on unselected cards. Grid variant has no
+  // such two-step ambiguity, so preserve its always-on hover affordance.
+  const underlineOnHover = variant !== "sidebar" || isActive;
   const hasUpstreamDelta =
     (worktree.aheadCount !== undefined && worktree.aheadCount > 0) ||
     (worktree.behindCount !== undefined && worktree.behindCount > 0);
@@ -327,16 +392,121 @@ export function WorktreeHeader({
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isMainWorktree && (
             <Sprout
-              className="w-3.5 h-3.5 text-canopy-text/60 shrink-0 pointer-events-none"
+              className="w-3.5 h-3.5 text-daintree-text/60 shrink-0 pointer-events-none"
               aria-hidden="true"
             />
           )}
           {isPinned && !isMainWorktree && (
             <Pin
-              className="w-3 h-3 text-canopy-text/40 shrink-0 pointer-events-none"
+              className="w-3 h-3 text-daintree-text/40 shrink-0 pointer-events-none"
               aria-label="Pinned"
             />
           )}
+          {((worktree.worktreeMode && worktree.worktreeMode !== "local") ||
+            resourceStatusLabel ||
+            isLifecycleRunning) &&
+            (() => {
+              const EnvironmentIcon =
+                (environmentIcon && ENVIRONMENT_ICONS[environmentIcon]) || Cloud;
+              const iconClass = cn(
+                "w-3 h-3 shrink-0",
+                isLifecycleRunning
+                  ? "animate-pulse text-daintree-accent"
+                  : resourceStatusColor === "green"
+                    ? "text-terminal-bright-green"
+                    : resourceStatusColor === "yellow"
+                      ? "text-status-warning"
+                      : resourceStatusColor === "red"
+                        ? "text-status-error"
+                        : resourceStatusColor === "neutral" || resourceStatusLabel
+                          ? "text-daintree-accent/70"
+                          : "text-daintree-text/30"
+              );
+              const hasDetails =
+                resourceStatusLabel ||
+                resourceLastOutput ||
+                resourceEndpoint ||
+                resourceLastCheckedAt;
+              if (!hasDetails && !onCheckResourceStatus) {
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <EnvironmentIcon
+                        className={cn(iconClass, "pointer-events-none")}
+                        aria-label={`${worktree.worktreeMode} environment`}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{worktree.worktreeMode}</TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent"
+                      aria-label={`${worktree.worktreeMode} environment status`}
+                    >
+                      <EnvironmentIcon className={iconClass} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="start" className="w-72 p-3 text-xs">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="font-semibold text-text-primary">
+                        {worktree.worktreeMode}
+                      </span>
+                      {resourceStatusLabel && (
+                        <span
+                          className={cn(
+                            "font-medium",
+                            resourceStatusColor === "green" && "text-status-success",
+                            resourceStatusColor === "yellow" && "text-status-warning",
+                            resourceStatusColor === "red" && "text-status-error",
+                            (!resourceStatusColor || resourceStatusColor === "neutral") &&
+                              "text-text-muted"
+                          )}
+                        >
+                          {resourceStatusLabel}
+                        </span>
+                      )}
+                    </div>
+                    {resourceEndpoint && (
+                      <div className="mb-2 font-mono text-[11px] text-text-secondary break-all">
+                        {resourceEndpoint}
+                      </div>
+                    )}
+                    {resourceLastOutput && (
+                      <pre className="mb-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-surface-panel-elevated p-2 font-mono text-[11px] text-text-secondary">
+                        {resourceLastOutput.trim()}
+                      </pre>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      {resourceLastCheckedAt ? (
+                        <span className="text-text-muted">
+                          checked{" "}
+                          {new Date(resourceLastCheckedAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                      {onCheckResourceStatus && (
+                        <button
+                          onClick={onCheckResourceStatus}
+                          className="flex items-center gap-1 text-text-muted hover:text-text-primary transition-colors"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Check Status
+                        </button>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              );
+            })()}
           {hasIssueTitle ? (
             <IssueBadge
               issueNumber={worktree.issueNumber!}
@@ -345,6 +515,7 @@ export function WorktreeHeader({
               onOpen={badges.onOpenIssue}
               isHeadline
               isActive={isActive}
+              underlineOnHover={underlineOnHover}
             />
           ) : isMainStandardLayout ? (
             <span
@@ -424,7 +595,7 @@ export function WorktreeHeader({
           {canCollapse && (
             <button
               onClick={onToggleCollapse}
-              className="sidebar-action-button p-1.5 text-canopy-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+              className="sidebar-action-button p-1.5 text-daintree-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
               aria-expanded={!isCollapsed}
               aria-controls={isCollapsed ? undefined : contentId}
               aria-label={isCollapsed ? "Expand card" : "Collapse card"}
@@ -444,7 +615,7 @@ export function WorktreeHeader({
                 <DropdownMenuTrigger asChild>
                   <button
                     onClick={(e) => e.stopPropagation()}
-                    className="sidebar-action-button p-1.5 text-canopy-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                    className="sidebar-action-button p-1.5 text-daintree-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
                     aria-label="More actions"
                     data-testid="worktree-actions-menu"
                   >
@@ -502,6 +673,17 @@ export function WorktreeHeader({
                 onDeleteWorktree={menu.onDeleteWorktree}
                 onRevertAgentChanges={menu.onRevertAgentChanges}
                 hasSnapshot={menu.hasSnapshot}
+                hasResourceConfig={menu.hasResourceConfig}
+                worktreeMode={menu.worktreeMode}
+                resourceEnvironmentKeys={menu.resourceEnvironmentKeys}
+                onSwitchEnvironment={menu.onSwitchEnvironment}
+                resourceStatus={menu.resourceStatus}
+                onResourceProvision={menu.onResourceProvision}
+                onResourceResume={menu.onResourceResume}
+                onResourcePause={menu.onResourcePause}
+                onResourceConnect={menu.onResourceConnect}
+                onResourceStatus={menu.onResourceStatus}
+                onResourceTeardown={menu.onResourceTeardown}
               />
             </DropdownMenuContent>
           </DropdownMenu>
@@ -559,7 +741,7 @@ export function WorktreeHeader({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
-                    className="flex items-center gap-1.5 text-[10px] text-canopy-text/50"
+                    className="flex items-center gap-1.5 text-[10px] text-daintree-text/50"
                     data-testid="aggregate-worktree-row"
                   >
                     <span className="flex items-center gap-0.5">
@@ -627,6 +809,7 @@ export function WorktreeHeader({
                 worktreePath={worktree.path}
                 onOpen={badges.onOpenIssue}
                 isActive={isActive}
+                underlineOnHover={underlineOnHover}
               />
             )}
             {worktree.prNumber && worktree.prState !== "closed" && (
@@ -637,6 +820,7 @@ export function WorktreeHeader({
                 worktreePath={worktree.path}
                 onOpen={badges.onOpenPR}
                 isActive={isActive}
+                underlineOnHover={underlineOnHover}
               />
             )}
             {hasUpstreamDelta && (
@@ -687,12 +871,14 @@ export function WorktreeHeader({
                 onClick={() => {
                   if (isActive) badges.onOpenPlan?.();
                 }}
-                className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors text-canopy-text/70 hover:text-canopy-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors text-daintree-text/70 hover:text-daintree-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
                 aria-disabled={!isActive || undefined}
                 aria-label="View agent plan file"
               >
-                <FileText className="w-3 h-3 shrink-0 text-canopy-accent/70" aria-hidden="true" />
-                <span className="font-mono hover:underline">{worktree.planFilePath ?? "Plan"}</span>
+                <FileText className="w-3 h-3 shrink-0 text-daintree-accent/70" aria-hidden="true" />
+                <span className={cn("font-mono", underlineOnHover && "hover:underline")}>
+                  {worktree.planFilePath ?? "Plan"}
+                </span>
               </button>
             )}
           </div>

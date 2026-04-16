@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import { BUILT_IN_APP_SCHEMES, DEFAULT_APP_SCHEME_ID } from "@/config/appColorSchemes";
-import { resolveAppTheme, type AppColorScheme } from "@shared/theme";
+import { applyAccentOverrideToScheme, resolveAppTheme, type AppColorScheme } from "@shared/theme";
 import type { ColorVisionMode } from "@shared/types";
 import { applyAppThemeToRoot, applyColorVisionMode } from "@/theme/applyAppTheme";
+
+const RECENT_SCHEMES_LIMIT = 5;
 
 interface AppThemeState {
   selectedSchemeId: string;
@@ -11,7 +13,22 @@ interface AppThemeState {
   followSystem: boolean;
   preferredDarkSchemeId: string;
   preferredLightSchemeId: string;
+  recentSchemeIds: string[];
+  accentColorOverride: string | null;
   setSelectedSchemeId: (id: string) => void;
+  /**
+   * Updates Zustand state for a deliberate scheme selection (selectedSchemeId
+   * + recentSchemeIds LRU) WITHOUT touching the DOM. The caller is responsible
+   * for invoking `injectSchemeToDOM` separately — this split exists so the DOM
+   * mutation can be wrapped in a View Transition (see `runThemeReveal`).
+   */
+  commitSchemeSelection: (id: string) => void;
+  /**
+   * Like setSelectedSchemeId, but does NOT update recentSchemeIds. Used for
+   * OS-driven follow-system changes and startup hydration, where the change
+   * does not reflect direct user intent.
+   */
+  setSelectedSchemeIdSilent: (id: string) => void;
   addCustomScheme: (scheme: AppColorScheme) => void;
   removeCustomScheme: (id: string) => void;
   injectTheme: (scheme: AppColorScheme) => void;
@@ -19,12 +36,19 @@ interface AppThemeState {
   setFollowSystem: (enabled: boolean) => void;
   setPreferredDarkSchemeId: (id: string) => void;
   setPreferredLightSchemeId: (id: string) => void;
+  setRecentSchemeIds: (ids: string[]) => void;
+  setAccentColorOverride: (color: string | null) => void;
 }
 
 function injectSchemeToDOM(scheme: AppColorScheme): void {
-  applyAppThemeToRoot(document.documentElement, scheme);
+  // Read accent override + CVD from the store on every injection so the
+  // modal-close revert, follow-system switch, unmount cleanup, and hover
+  // preview paths all pick up the current user overrides without each
+  // callsite having to reapply them.
+  const { colorVisionMode, accentColorOverride } = useAppThemeStore.getState();
+  const effective = applyAccentOverrideToScheme(scheme, accentColorOverride);
+  applyAppThemeToRoot(document.documentElement, effective);
   // Reapply CVD overrides after theme injection so they aren't overwritten
-  const { colorVisionMode } = useAppThemeStore.getState();
   if (colorVisionMode !== "default") {
     applyColorVisionMode(document.documentElement, colorVisionMode);
   }
@@ -37,8 +61,35 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
   followSystem: false,
   preferredDarkSchemeId: "daintree",
   preferredLightSchemeId: "bondi",
+  recentSchemeIds: [],
+  accentColorOverride: null,
 
   setSelectedSchemeId: (id) => {
+    const { customSchemes } = useAppThemeStore.getState();
+    const scheme = resolveAppTheme(id, customSchemes);
+    set((state) => ({
+      selectedSchemeId: scheme.id,
+      recentSchemeIds: [scheme.id, ...state.recentSchemeIds.filter((x) => x !== scheme.id)].slice(
+        0,
+        RECENT_SCHEMES_LIMIT
+      ),
+    }));
+    injectSchemeToDOM(scheme);
+  },
+
+  commitSchemeSelection: (id) => {
+    const { customSchemes } = useAppThemeStore.getState();
+    const scheme = resolveAppTheme(id, customSchemes);
+    set((state) => ({
+      selectedSchemeId: scheme.id,
+      recentSchemeIds: [scheme.id, ...state.recentSchemeIds.filter((x) => x !== scheme.id)].slice(
+        0,
+        RECENT_SCHEMES_LIMIT
+      ),
+    }));
+  },
+
+  setSelectedSchemeIdSilent: (id) => {
     const { customSchemes } = useAppThemeStore.getState();
     const scheme = resolveAppTheme(id, customSchemes);
     set({ selectedSchemeId: scheme.id });
@@ -56,6 +107,7 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
     set((state) => ({
       customSchemes: state.customSchemes.filter((s) => s.id !== id),
       selectedSchemeId: needsFallback ? DEFAULT_APP_SCHEME_ID : state.selectedSchemeId,
+      recentSchemeIds: state.recentSchemeIds.filter((x) => x !== id),
     }));
     if (needsFallback) {
       const defaultScheme = BUILT_IN_APP_SCHEMES.find((s) => s.id === DEFAULT_APP_SCHEME_ID)!;
@@ -75,6 +127,17 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
   setFollowSystem: (enabled) => set({ followSystem: enabled }),
   setPreferredDarkSchemeId: (id) => set({ preferredDarkSchemeId: id }),
   setPreferredLightSchemeId: (id) => set({ preferredLightSchemeId: id }),
+  setRecentSchemeIds: (ids) =>
+    set({ recentSchemeIds: Array.from(new Set(ids)).slice(0, RECENT_SCHEMES_LIMIT) }),
+
+  setAccentColorOverride: (color) => {
+    set({ accentColorOverride: color });
+    // Re-inject the currently active scheme so the override (or its removal)
+    // takes effect immediately via the single injectSchemeToDOM pipeline.
+    const { selectedSchemeId, customSchemes } = useAppThemeStore.getState();
+    const scheme = resolveAppTheme(selectedSchemeId, customSchemes);
+    injectSchemeToDOM(scheme);
+  },
 }));
 
 export { injectSchemeToDOM };

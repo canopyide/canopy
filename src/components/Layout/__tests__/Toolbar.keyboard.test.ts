@@ -90,13 +90,20 @@ describe("Toolbar keyboard navigation — issue #2814", () => {
 
   describe("Sub-component integration", () => {
     it("passes data-toolbar-item to AgentButton components", () => {
+      // After the dynamic registry refactor (issue #5070), AgentButton is
+      // rendered once inside a BUILT_IN_AGENT_IDS.map(...), so a single
+      // <AgentButton ... data-toolbar-item="" /> site is expected.
       const agentButtonMatches = source.match(/<AgentButton[\s\S]*?data-toolbar-item=""/g);
       expect(agentButtonMatches).not.toBeNull();
-      expect(agentButtonMatches!.length).toBeGreaterThanOrEqual(4);
+      expect(agentButtonMatches!.length).toBeGreaterThanOrEqual(1);
+      // And that single site must be inside a map over BUILT_IN_AGENT_IDS
+      expect(source).toMatch(
+        /BUILT_IN_AGENT_IDS\.map[\s\S]*?<AgentButton[\s\S]*?data-toolbar-item=""/
+      );
     });
 
-    it("passes data-toolbar-item to AgentSetupButton", () => {
-      expect(source).toMatch(/<AgentSetupButton[\s\S]*?data-toolbar-item=""/);
+    it("passes data-toolbar-item to AgentTrayButton", () => {
+      expect(source).toMatch(/<AgentTrayButton[\s\S]*?data-toolbar-item=""/);
     });
 
     it("passes data-toolbar-item to VoiceRecordingToolbarButton", () => {

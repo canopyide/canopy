@@ -16,9 +16,10 @@ export function useTerminalConfig() {
   const setFontFamily = useTerminalFontStore((state) => state.setFontFamily);
 
   const selectedSchemeId = useTerminalColorSchemeStore((state) => state.selectedSchemeId);
+  const previewSchemeId = useTerminalColorSchemeStore((state) => state.previewSchemeId);
   const customSchemes = useTerminalColorSchemeStore((state) => state.customSchemes);
-  const setSelectedSchemeId = useTerminalColorSchemeStore((state) => state.setSelectedSchemeId);
   const addCustomScheme = useTerminalColorSchemeStore((state) => state.addCustomScheme);
+  const setRecentSchemeIds = useTerminalColorSchemeStore((state) => state.setRecentSchemeIds);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +35,8 @@ export function useTerminalConfig() {
           setFontFamily(config.fontFamily);
         }
         if (typeof config.colorSchemeId === "string" && config.colorSchemeId.trim()) {
-          setSelectedSchemeId(config.colorSchemeId);
+          // Hydrate directly to avoid polluting the recently-used list on startup
+          useTerminalColorSchemeStore.setState({ selectedSchemeId: config.colorSchemeId.trim() });
         }
         if (typeof config.customSchemes === "string" && config.customSchemes.trim()) {
           try {
@@ -48,6 +50,13 @@ export function useTerminalConfig() {
             // ignore malformed custom schemes
           }
         }
+        if (Array.isArray(config.recentSchemeIds)) {
+          const sanitized = config.recentSchemeIds
+            .filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0)
+            .map((id) => id.trim())
+            .slice(0, 5);
+          setRecentSchemeIds(sanitized);
+        }
       })
       .catch((error) => {
         console.error("Failed to load terminal config:", error);
@@ -56,7 +65,7 @@ export function useTerminalConfig() {
     return () => {
       cancelled = true;
     };
-  }, [setFontSize, setFontFamily, setSelectedSchemeId, addCustomScheme]);
+  }, [setFontSize, setFontFamily, addCustomScheme, setRecentSchemeIds]);
 
   const screenReaderEnabled = useScreenReaderStore((s) => s.resolvedScreenReaderEnabled());
 
@@ -97,10 +106,11 @@ export function useTerminalConfig() {
     });
     // customSchemes in deps ensures re-run when a custom scheme is added/changed
     // colorVisionMode in deps ensures terminal ANSI colors update when CVD mode changes
-    // appThemeId in deps ensures terminal updates when app theme changes while "canopy" is selected
+    // appThemeId in deps ensures terminal updates when app theme changes while "daintree" is selected
     // screenReaderEnabled in deps ensures terminals update when screen reader mode changes
   }, [
     selectedSchemeId,
+    previewSchemeId,
     customSchemes,
     fontSize,
     fontFamily,

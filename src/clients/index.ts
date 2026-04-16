@@ -11,6 +11,7 @@ export { eventInspectorClient } from "./eventInspectorClient";
 export { filesClient } from "./filesClient";
 export { githubClient } from "./githubClient";
 export { hibernationClient } from "./hibernationClient";
+export { idleTerminalClient } from "./idleTerminalClient";
 export { logsClient } from "./logsClient";
 export { projectClient, invalidateCurrentCache } from "./projectClient";
 export { slashCommandsClient } from "./slashCommandsClient";

@@ -22,8 +22,10 @@ import { soundService } from "../../services/SoundService.js";
 import { checkRateLimit, waitForRateLimitSlot } from "../utils.js";
 
 const WORKTREE_RATE_LIMIT_KEY = "worktreeCreate";
-const WORKTREE_RATE_LIMIT_MAX = 2;
-const WORKTREE_RATE_LIMIT_WINDOW_MS = 2_000;
+// Strict-interval leaky bucket: one worktree creation released every 6s.
+// Prior sliding-window approach (2 per 2s) released both slots simultaneously
+// when the window rolled, producing a feast/famine burst pattern. See #5098.
+const WORKTREE_RATE_LIMIT_INTERVAL_MS = 6_000;
 import { resolveWorktreePattern } from "../../utils/worktreePattern.js";
 import { taskWorktreeService } from "../../services/TaskWorktreeService.js";
 
@@ -88,11 +90,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       options: { baseBranch: string; newBranch: string; path: string; fromRemote?: boolean };
     }
   ): Promise<string> => {
-    await waitForRateLimitSlot(
-      WORKTREE_RATE_LIMIT_KEY,
-      WORKTREE_RATE_LIMIT_MAX,
-      WORKTREE_RATE_LIMIT_WINDOW_MS
-    );
+    await waitForRateLimitSlot(WORKTREE_RATE_LIMIT_KEY, WORKTREE_RATE_LIMIT_INTERVAL_MS);
     if (!deps.worktreeService) {
       throw new Error("Workspace client not initialized");
     }
@@ -335,7 +333,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("[Git] Failed to get file diff via WorkspaceClient:", errorMessage);
-      throw new Error(`Failed to get file diff: ${errorMessage}`);
+      throw new Error(`Failed to get file diff: ${errorMessage}`, { cause: error });
     }
   };
   ipcMain.handle(CHANNELS.GIT_GET_FILE_DIFF, handleGitGetFileDiff);
@@ -438,11 +436,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     event: Electron.IpcMainInvokeEvent,
     payload: CreateForTaskPayload
   ): Promise<WorktreeState> => {
-    await waitForRateLimitSlot(
-      WORKTREE_RATE_LIMIT_KEY,
-      WORKTREE_RATE_LIMIT_MAX,
-      WORKTREE_RATE_LIMIT_WINDOW_MS
-    );
+    await waitForRateLimitSlot(WORKTREE_RATE_LIMIT_KEY, WORKTREE_RATE_LIMIT_INTERVAL_MS);
     if (!deps.worktreeService) {
       throw new Error("Workspace client not initialized");
     }

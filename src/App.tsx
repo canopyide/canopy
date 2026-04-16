@@ -21,6 +21,7 @@ import {
   useReEntrySummary,
 } from "./hooks";
 import { useHibernationNotifications } from "./hooks/useHibernationNotifications";
+import { useIdleTerminalNotifications } from "./hooks/useIdleTerminalNotifications";
 import { useDiskSpaceWarnings } from "./hooks/useDiskSpaceWarnings";
 import { useActionRegistry } from "./hooks/useActionRegistry";
 import { useUpdateListener } from "./hooks/useUpdateListener";
@@ -38,6 +39,7 @@ import { removeStartupSkeleton } from "./utils/removeStartupSkeleton";
 import { useCrashRecoveryGate } from "./hooks/app/useCrashRecoveryGate";
 import { CrashRecoveryDialog } from "./components/Recovery/CrashRecoveryDialog";
 import { SafeModeBanner } from "./components/Recovery/SafeModeBanner";
+import { LegacyMigrationBar } from "./components/LegacyMigration/LegacyMigrationBar";
 import {
   useAppHydration,
   useProjectSwitchRehydration,
@@ -91,6 +93,7 @@ import { BulkCommandPalette } from "./components/BulkCommandCenter";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { PanelLimitConfirmDialog } from "./components/Terminal/PanelLimitConfirmDialog";
 import { NotesPalette } from "./components/Notes";
+import { ThemePalette } from "./components/ThemePalette";
 
 function preloadSettingsDialog() {
   return import("./components/Settings/SettingsDialog");
@@ -117,6 +120,8 @@ import {
   usePaletteStore,
   useNotificationSettingsStore,
 } from "./store";
+import { isAgentReady } from "../shared/utils/agentAvailability";
+import { isAgentPinned } from "../shared/utils/agentPinned";
 import { useShallow } from "zustand/react/shallow";
 import { useMacroFocusStore } from "./store/macroFocusStore";
 import { useSafeModeStore } from "./store/safeModeStore";
@@ -134,19 +139,20 @@ import { SidebarContent, preloadNewWorktreeDialog, E2EFaultInjector } from "./co
 function App() {
   useErrors();
   useHibernationNotifications();
+  useIdleTerminalNotifications();
   useDiskSpaceWarnings();
   useUnloadCleanup();
   useResourceProfile();
 
   useEffect(() => {
-    window.__CANOPY_E2E_ERROR_STORE__ = () =>
+    window.__DAINTREE_E2E_ERROR_STORE__ = () =>
       useErrorStore.getState().errors.map((e) => ({
         id: e.id,
         source: e.source,
         message: e.message,
         fromPreviousSession: e.fromPreviousSession,
       }));
-    window.__CANOPY_E2E_ADD_ERROR__ = (message: string) => {
+    window.__DAINTREE_E2E_ADD_ERROR__ = (message: string) => {
       useErrorStore.getState().addError({
         type: "unknown",
         message,
@@ -154,13 +160,13 @@ function App() {
         source: "e2e-test",
       });
     };
-    window.__CANOPY_E2E_CLEAR_ERRORS__ = () => {
+    window.__DAINTREE_E2E_CLEAR_ERRORS__ = () => {
       useErrorStore.getState().clearAll();
     };
     return () => {
-      delete window.__CANOPY_E2E_ERROR_STORE__;
-      delete window.__CANOPY_E2E_ADD_ERROR__;
-      delete window.__CANOPY_E2E_CLEAR_ERRORS__;
+      delete window.__DAINTREE_E2E_ERROR_STORE__;
+      delete window.__DAINTREE_E2E_ADD_ERROR__;
+      delete window.__DAINTREE_E2E_CLEAR_ERRORS__;
     };
   }, []);
 
@@ -183,7 +189,7 @@ function App() {
   const hasAnySelectedAgent = useMemo(() => {
     if (agentSettings === null) return null;
     const agents = agentSettings.agents ?? {};
-    return BUILT_IN_AGENT_IDS.some((id) => agents[id]?.selected !== false);
+    return BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agents[id]));
   }, [agentSettings]);
 
   useTerminalConfig();
@@ -216,6 +222,7 @@ function App() {
   const onboardingWizardOpen = useProjectStore((state) => state.onboardingWizardOpen);
   const onboardingProjectId = useProjectStore((state) => state.onboardingProjectId);
   const closeOnboardingWizard = useProjectStore((state) => state.closeOnboardingWizard);
+  const switchProject = useProjectStore((state) => state.switchProject);
 
   const createFolderDialogOpen = useProjectStore((state) => state.createFolderDialogOpen);
   const closeCreateFolderDialog = useProjectStore((state) => state.closeCreateFolderDialog);
@@ -251,6 +258,7 @@ function App() {
   }, [isSettingsOpen]);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const isNotesPaletteOpen = usePaletteStore((state) => state.activePaletteId === "notes");
+  const isThemePaletteOpen = usePaletteStore((state) => state.activePaletteId === "theme");
   const {
     isWorktreeOverviewOpen,
     toggleWorktreeOverview,
@@ -310,33 +318,47 @@ function App() {
     [launchAgent]
   );
 
-  const handleWizardFinish = useCallback(() => {
-    // In e2e mode, skip the automatic primary-agent launch — it leaves an
-    // extra panel in the grid that breaks panel-count assertions in tests
-    // that expect a clean post-onboarding state. The behaviour is locally
-    // observable only when an agent CLI (e.g., Claude) is installed, so
-    // tests pass on CI but fail on dev machines without this guard.
-    if (typeof window !== "undefined" && window.__CANOPY_E2E_MODE__) {
-      return;
-    }
+  const handleWizardFinish = useCallback(
+    (finishedProjectId: string) => {
+      // Switch to the newly-onboarded project. Opening the wizard on the
+      // current view (rather than pre-switching) avoids stranding it in a
+      // throttled background view; we complete the switch here instead.
+      if (finishedProjectId && finishedProjectId !== currentProject?.id) {
+        void switchProject(finishedProjectId);
+      }
 
-    const defaultAgent = useAgentPreferencesStore.getState().defaultAgent;
-    const selected = agentSettings?.agents
-      ? Object.entries(agentSettings.agents)
-          .filter(([, entry]) => entry.selected === true)
-          .map(([id]) => id)
-      : [];
-    const primaryAgent = defaultAgent ?? selected[0];
+      // In e2e mode, skip the automatic primary-agent launch — it leaves an
+      // extra panel in the grid that breaks panel-count assertions in tests
+      // that expect a clean post-onboarding state. The behaviour is locally
+      // observable only when an agent CLI (e.g., Claude) is installed, so
+      // tests pass on CI but fail on dev machines without this guard.
+      if (typeof window !== "undefined" && window.__DAINTREE_E2E_MODE__) {
+        return;
+      }
 
-    if (primaryAgent && availability[primaryAgent]) {
-      launchAgent(primaryAgent, {
-        worktreeId: activeWorktreeId ?? undefined,
-      }).catch(() => {});
-    }
-  }, [launchAgent, activeWorktreeId, availability, agentSettings]);
+      const defaultAgent = useAgentPreferencesStore.getState().defaultAgent;
+      const selected = agentSettings?.agents
+        ? Object.entries(agentSettings.agents)
+            .filter(([, entry]) => isAgentPinned(entry))
+            .map(([id]) => id)
+        : [];
+      const primaryAgent = defaultAgent ?? selected[0];
+
+      if (primaryAgent && isAgentReady(availability[primaryAgent])) {
+        launchAgent(primaryAgent, {
+          worktreeId: activeWorktreeId ?? undefined,
+        }).catch(() => {});
+      }
+    },
+    [launchAgent, activeWorktreeId, availability, agentSettings, switchProject, currentProject?.id]
+  );
 
   const closeNotesPalette = useCallback(() => {
     usePaletteStore.getState().closePalette("notes");
+  }, []);
+
+  const closeThemePalette = useCallback(() => {
+    usePaletteStore.getState().closePalette("theme");
   }, []);
 
   const overviewWorktreeActions = useWorktreeActions({ launchAgent });
@@ -359,7 +381,7 @@ function App() {
       }
     }
     terminalInstanceService.suppressResizesDuringLayoutTransition(gridIds, SIDEBAR_TOGGLE_LOCK_MS);
-    window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
+    window.dispatchEvent(new CustomEvent("daintree:toggle-focus-mode"));
   }, []);
 
   useActionRegistry({
@@ -383,6 +405,9 @@ function App() {
       return launchAgent(agentId, options);
     },
     onInject: inject,
+    onAddTerminal: async (options) => {
+      await usePanelStore.getState().addPanel(options);
+    },
     getDefaultCwd: () => defaultTerminalCwd,
     getActiveWorktreeId: () => activeWorktree?.id,
     getWorktrees: () => worktrees,
@@ -422,8 +447,8 @@ function App() {
 
   if (!isElectronAvailable()) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-canopy-bg">
-        <div className="text-canopy-text/60 text-sm">
+      <div className="h-screen w-screen flex items-center justify-center bg-daintree-bg">
+        <div className="text-daintree-text/60 text-sm">
           Electron API not available - please run in Electron
         </div>
       </div>
@@ -432,7 +457,7 @@ function App() {
 
   if (crashState.status === "pending") {
     return (
-      <div className="h-screen w-screen bg-canopy-bg">
+      <div className="h-screen w-screen bg-daintree-bg">
         <CrashRecoveryDialog
           crash={crashState.crash}
           config={crashState.config}
@@ -444,13 +469,17 @@ function App() {
   }
 
   if (!crashResolved || !isStateLoaded) {
-    return <div className="h-screen w-screen bg-canopy-bg" />;
+    return <div className="h-screen w-screen bg-daintree-bg" />;
   }
 
   return (
     <ErrorBoundary variant="fullscreen" componentName="App">
       <E2EFaultInjector />
       {isSafeMode && <SafeModeBanner />}
+      {/* Legacy Canopy build: permanent, non-dismissible migration bar pinned
+          to the bottom of the window. In Daintree builds the constant is
+          false and tree-shaking removes this branch entirely. */}
+      {IS_LEGACY_BUILD && <LegacyMigrationBar />}
       <DndProvider>
         <VoiceRecordingAnnouncer />
         <AccessibilityAnnouncer />
@@ -660,6 +689,8 @@ function App() {
       />
 
       <NotesPalette isOpen={isNotesPaletteOpen} onClose={closeNotesPalette} />
+
+      <ThemePalette isOpen={isThemePaletteOpen} onClose={closeThemePalette} />
 
       <ActionPalette
         isOpen={actionPalette.isOpen}

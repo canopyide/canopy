@@ -8,6 +8,7 @@ import {
 import type { AgentVersionInfo } from "../../shared/types/ipc/system.js";
 import type { AgentId } from "../../shared/types/agent.js";
 import { CliAvailabilityService } from "./CliAvailabilityService.js";
+import { isAgentInstalled } from "../../shared/utils/agentAvailability.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -130,8 +131,7 @@ export class AgentVersionService {
     }
 
     const availability = await this.cliAvailabilityService.checkAvailability();
-    const isAvailable = availability[agentId];
-    if (!isAvailable) {
+    if (!isAgentInstalled(availability[agentId])) {
       return {
         agentId,
         installedVersion: null,
@@ -273,7 +273,7 @@ export class AgentVersionService {
           signal: controller.signal,
           headers: {
             Accept: "application/vnd.github.v3+json",
-            "User-Agent": "Canopy-Electron",
+            "User-Agent": "Daintree-Electron",
           },
         });
 

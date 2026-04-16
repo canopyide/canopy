@@ -20,7 +20,7 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
   let ctx: AppContext | null = null;
 
   test.beforeAll(async () => {
-    userDataDir = mkdtempSync(path.join(tmpdir(), "canopy-e2e-persist-layout-"));
+    userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-persist-layout-"));
     fixtureDir = createFixtureRepo({ name: "persist-layout" });
   });
 
@@ -110,7 +110,7 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
   let ctx: AppContext | null = null;
 
   test.beforeAll(async () => {
-    userDataDir = mkdtempSync(path.join(tmpdir(), "canopy-e2e-persist-global-"));
+    userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-persist-global-"));
   });
 
   test.afterAll(async () => {
@@ -223,11 +223,14 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
     const notifCheckbox2 = w2.locator(SEL.settings.notifCompletedCheckbox);
     await expect(notifCheckbox2).toBeChecked({ timeout: T_SHORT });
 
-    // Verify keybinding override persisted
+    // Verify keybinding override persisted. Scope the heading assertion to
+    // the settings dialog — the WelcomeScreen renders its own h3 with the
+    // same text behind the dialog, which otherwise trips Playwright's
+    // strict-mode uniqueness check.
     await w2.locator(`${SEL.settings.navSidebar} button`, { hasText: "Keyboard" }).click();
-    await expect(w2.locator("h3", { hasText: "Keyboard Shortcuts" })).toBeVisible({
-      timeout: T_SHORT,
-    });
+    await expect(
+      w2.getByRole("dialog").getByRole("heading", { name: "Keyboard Shortcuts" })
+    ).toBeVisible({ timeout: T_SHORT });
 
     const searchInput2 = w2.locator(SEL.settings.shortcutsSearchInput);
     await searchInput2.fill("Open settings");

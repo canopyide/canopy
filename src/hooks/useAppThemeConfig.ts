@@ -1,19 +1,20 @@
 import { useEffect } from "react";
 import { useAppThemeStore } from "@/store/appThemeStore";
 import { appThemeClient } from "@/clients/appThemeClient";
-import { normalizeAppColorScheme } from "@shared/theme";
+import { normalizeAccentHex, normalizeAppColorScheme } from "@shared/theme";
 import type { AppColorScheme } from "@shared/types/appTheme";
 import type { ColorVisionMode } from "@shared/types";
 
 const VALID_COLOR_VISION_MODES: ColorVisionMode[] = ["default", "red-green", "blue-yellow"];
 
 export function useAppThemeConfig() {
-  const setSelectedSchemeId = useAppThemeStore((state) => state.setSelectedSchemeId);
+  const setSelectedSchemeIdSilent = useAppThemeStore((state) => state.setSelectedSchemeIdSilent);
   const addCustomScheme = useAppThemeStore((state) => state.addCustomScheme);
   const setColorVisionMode = useAppThemeStore((state) => state.setColorVisionMode);
   const setFollowSystem = useAppThemeStore((state) => state.setFollowSystem);
   const setPreferredDarkSchemeId = useAppThemeStore((state) => state.setPreferredDarkSchemeId);
   const setPreferredLightSchemeId = useAppThemeStore((state) => state.setPreferredLightSchemeId);
+  const setRecentSchemeIds = useAppThemeStore((state) => state.setRecentSchemeIds);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,8 +37,25 @@ export function useAppThemeConfig() {
           }
         }
 
+        // Seed accent override before scheme injection so the first injection
+        // already reflects the persisted override. Use the raw Zustand setter
+        // (not setAccentColorOverride) to avoid a redundant DOM inject — the
+        // subsequent setSelectedSchemeIdSilent call below performs it once.
+        const normalizedAccent = normalizeAccentHex(config.accentColorOverride);
+        if (normalizedAccent || config.accentColorOverride === null) {
+          useAppThemeStore.setState({ accentColorOverride: normalizedAccent });
+        }
+
         if (typeof config.colorSchemeId === "string" && config.colorSchemeId.trim()) {
-          setSelectedSchemeId(config.colorSchemeId.trim());
+          setSelectedSchemeIdSilent(config.colorSchemeId.trim());
+        }
+
+        if (Array.isArray(config.recentSchemeIds)) {
+          const sanitized = config.recentSchemeIds
+            .filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0)
+            .map((id) => id.trim())
+            .slice(0, 5);
+          setRecentSchemeIds(sanitized);
         }
 
         if (
@@ -71,17 +89,19 @@ export function useAppThemeConfig() {
       cancelled = true;
     };
   }, [
-    setSelectedSchemeId,
+    setSelectedSchemeIdSilent,
     addCustomScheme,
     setColorVisionMode,
     setFollowSystem,
     setPreferredDarkSchemeId,
     setPreferredLightSchemeId,
+    setRecentSchemeIds,
   ]);
 
   useEffect(() => {
     return window.electron.appTheme.onSystemAppearanceChanged(({ schemeId }) => {
-      setSelectedSchemeId(schemeId);
+      // OS-driven follow-system changes must not populate the recently-used list
+      setSelectedSchemeIdSilent(schemeId);
     });
-  }, [setSelectedSchemeId]);
+  }, [setSelectedSchemeIdSilent]);
 }

@@ -466,7 +466,7 @@ describe("AutoUpdaterService", () => {
   describe("Windows portable guard", () => {
     it("registers only channel-preference IPC handlers on Windows portable", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-      process.env.PORTABLE_EXECUTABLE_FILE = "C:\\portable\\canopy.exe";
+      process.env.PORTABLE_EXECUTABLE_FILE = "C:\\portable\\daintree.exe";
 
       autoUpdaterService.initialize();
 
@@ -483,23 +483,28 @@ describe("AutoUpdaterService", () => {
       storeMock.get.mockReturnValue(undefined);
       autoUpdaterService.initialize();
 
+      // No `channel` field: stable and nightly both serve latest.yml under
+      // their respective URL prefixes (URL separation, not channel separation).
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
-        url: "https://updates.canopyide.com/releases/",
-        channel: "latest",
+        url: "https://updates.daintree.org/releases/",
       });
-      expect(autoUpdaterMock.allowDowngrade).toBe(true);
+      // Stable channel must never silently downgrade — a regressed latest.yml
+      // would otherwise walk installed users backwards.
+      expect(autoUpdaterMock.allowDowngrade).toBe(false);
     });
 
-    it("uses nightly URL when stored channel is nightly", () => {
+    it("uses nightly URL and enables allowDowngrade when stored channel is nightly", () => {
       storeMock.get.mockReturnValue("nightly");
       autoUpdaterService.initialize();
 
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
-        url: "https://updates.canopyide.com/nightly/",
-        channel: "nightly",
+        url: "https://updates.daintree.org/nightly/",
       });
+      // Nightly permits downgrade so a stable user opting in can receive
+      // semver-lower nightly builds of the same base version.
+      expect(autoUpdaterMock.allowDowngrade).toBe(true);
     });
 
     it("calls setFeedURL before initial update check", () => {
@@ -534,8 +539,7 @@ describe("AutoUpdaterService", () => {
       expect(storeMock.set).toHaveBeenCalledWith("updateChannel", "nightly");
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: "generic",
-        url: "https://updates.canopyide.com/nightly/",
-        channel: "nightly",
+        url: "https://updates.daintree.org/nightly/",
       });
     });
 

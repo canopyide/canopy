@@ -99,6 +99,7 @@ import type {
 } from "./github.js";
 import type { TerminalConfig } from "./config.js";
 import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
+import type { IdleTerminalNotifyConfig, IdleTerminalNotifyPayload } from "./idleTerminals.js";
 import type { SystemSleepMetrics } from "./systemSleep.js";
 import type { KeyAction } from "../keymap.js";
 
@@ -326,6 +327,14 @@ export interface ElectronAPI {
     getProcessMetrics(): Promise<import("./system.js").ProcessMetricEntry[]>;
     getHeapStats(): Promise<import("./system.js").HeapStats>;
     getDiagnosticsInfo(): Promise<import("./system.js").DiagnosticsInfo>;
+    installAgent(payload: {
+      agentId: string;
+      methodIndex?: number;
+      jobId: string;
+    }): Promise<import("./system.js").AgentInstallResult>;
+    onAgentInstallProgress(
+      callback: (event: import("./system.js").AgentInstallProgressEvent) => void
+    ): () => void;
     onWake(callback: (data: SystemWakePayload) => void): () => void;
     onResourceProfileChanged(callback: (payload: ResourceProfilePayload) => void): () => void;
   };
@@ -507,13 +516,13 @@ export interface ElectronAPI {
     readClaudeMd(projectId: string): Promise<string | null>;
     writeClaudeMd(projectId: string, content: string): Promise<void>;
     /**
-     * Enable in-repo settings mode: writes current identity and settings to .canopy/,
+     * Enable in-repo settings mode: writes current identity and settings to .daintree/,
      * then sets project.inRepoSettings = true.
      */
     enableInRepoSettings(projectId: string): Promise<Project>;
     /**
      * Disable in-repo settings mode: clears project.inRepoSettings flag.
-     * Does NOT delete .canopy/ files.
+     * Does NOT delete .daintree/ files.
      */
     disableInRepoSettings(projectId: string): Promise<Project>;
     /**
@@ -538,6 +547,10 @@ export interface ElectronAPI {
       updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
     ): Promise<void>;
     deleteRecipe(recipeId: string): Promise<void>;
+  };
+  globalEnv: {
+    get(): Promise<Record<string, string>>;
+    set(variables: Record<string, string>): Promise<void>;
   };
   agentSettings: {
     get(): Promise<AgentSettings>;
@@ -748,6 +761,7 @@ export interface ElectronAPI {
     setHybridInputAutoFocus(enabled: boolean): Promise<void>;
     setColorScheme(schemeId: string): Promise<void>;
     setCustomSchemes(schemesJson: string): Promise<void>;
+    setRecentSchemeIds(ids: string[]): Promise<void>;
     importColorScheme(): Promise<
       | {
           ok: true;
@@ -848,6 +862,13 @@ export interface ElectronAPI {
     onProjectHibernated(
       callback: (payload: HibernationProjectHibernatedPayload) => void
     ): () => void;
+  };
+  idleTerminals: {
+    getConfig(): Promise<IdleTerminalNotifyConfig>;
+    updateConfig(config: Partial<IdleTerminalNotifyConfig>): Promise<IdleTerminalNotifyConfig>;
+    closeProject(projectId: string): Promise<void>;
+    dismissProject(projectId: string): Promise<void>;
+    onNotify(callback: (payload: IdleTerminalNotifyPayload) => void): () => void;
   };
   systemSleep: {
     /** Get metrics about system sleep tracking */
@@ -1067,6 +1088,8 @@ export interface ElectronAPI {
     setFollowSystem(enabled: boolean): Promise<void>;
     setPreferredDarkScheme(schemeId: string): Promise<void>;
     setPreferredLightScheme(schemeId: string): Promise<void>;
+    setRecentSchemeIds(ids: string[]): Promise<void>;
+    setAccentColorOverride(color: string | null): Promise<void>;
     onSystemAppearanceChanged(
       callback: (payload: { isDark: boolean; schemeId: string }) => void
     ): () => void;
@@ -1096,6 +1119,8 @@ export interface ElectronAPI {
   };
   onboarding: {
     get(): Promise<OnboardingState>;
+    // TODO(0.9.0): Remove after deleting the temporary Canopy onboarding
+    // localStorage migration path.
     migrate(payload: {
       agentSelectionDismissed: boolean;
       agentSetupComplete: boolean;

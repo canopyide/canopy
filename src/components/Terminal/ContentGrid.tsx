@@ -13,6 +13,8 @@ import {
   type TerminalInstance,
 } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
+import { isAgentPinned } from "../../../shared/utils/agentPinned";
 import { GridPanel } from "./GridPanel";
 import { GridTabGroup } from "./GridTabGroup";
 import { GridNotificationBar } from "./GridNotificationBar";
@@ -27,7 +29,7 @@ import {
   SortableGridPlaceholder,
 } from "@/components/DragDrop";
 import { AlertTriangle, Settings } from "lucide-react";
-import { CanopyIcon } from "@/components/icons";
+import { DaintreeIcon } from "@/components/icons";
 import { ProjectPulseCard } from "@/components/Pulse";
 import { Kbd } from "@/components/ui/Kbd";
 import { svgToDataUrl, sanitizeSvg } from "@/lib/svg";
@@ -196,7 +198,10 @@ function RotatingTip() {
 
   const filteredTips = useMemo(
     () =>
-      TIPS.filter((tip) => !tip.requiredAgents || tip.requiredAgents.some((a) => availability[a])),
+      TIPS.filter(
+        (tip) =>
+          !tip.requiredAgents || tip.requiredAgents.some((a) => isAgentReady(availability[a]))
+      ),
     [availability]
   );
 
@@ -206,12 +211,12 @@ function RotatingTip() {
 
   return (
     <div className="flex flex-col items-center gap-2 animate-in fade-in duration-300">
-      <p className="text-xs text-canopy-text/70 text-center">Tip: {tip.message}</p>
+      <p className="text-xs text-daintree-text/70 text-center">Tip: {tip.message}</p>
       {tip.actionId && tip.actionLabel && (
         <button
           type="button"
           onClick={() => void actionService.dispatch(tip.actionId!, undefined, { source: "user" })}
-          className="text-xs text-canopy-accent hover:text-canopy-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50 rounded px-1"
+          className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent/50 rounded px-1"
         >
           {tip.actionLabel}
         </button>
@@ -252,7 +257,7 @@ function EmptyState({
 
   const handleOpenProjectSettings = () => {
     window.dispatchEvent(
-      new CustomEvent("canopy:open-settings-tab", {
+      new CustomEvent("daintree:open-settings-tab", {
         detail: { tab: "project:general" },
       })
     );
@@ -267,7 +272,7 @@ function EmptyState({
               (() => {
                 const sanitized = sanitizeSvg(projectIconSvg);
                 if (!sanitized.ok) {
-                  return <CanopyIcon className="h-28 w-28 text-tint/65" />;
+                  return <DaintreeIcon className="h-28 w-28 text-tint/65" />;
                 }
                 return (
                   <img
@@ -278,24 +283,24 @@ function EmptyState({
                 );
               })()
             ) : (
-              <CanopyIcon className="h-28 w-28 text-tint/65" />
+              <DaintreeIcon className="h-28 w-28 text-tint/65" />
             )}
             {hasActiveWorktree && (
               <button
                 type="button"
                 onClick={handleOpenProjectSettings}
-                className="absolute -bottom-1 -right-1 p-1.5 bg-canopy-sidebar border border-canopy-border rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-canopy-bg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
+                className="absolute -bottom-1 -right-1 p-1.5 bg-daintree-sidebar border border-daintree-border rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-daintree-bg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
                 aria-label="Change project icon"
               >
-                <Settings className="h-3 w-3 text-canopy-text/70" />
+                <Settings className="h-3 w-3 text-daintree-text/70" />
               </button>
             )}
           </div>
-          <h3 className="text-2xl font-semibold text-canopy-text tracking-tight mb-3">
-            {activeWorktreeName || "Canopy"}
+          <h3 className="text-2xl font-semibold text-daintree-text tracking-tight mb-3">
+            {activeWorktreeName || "Daintree"}
           </h3>
           {!activeWorktreeName && (
-            <p className="text-sm text-canopy-text/60 max-w-md leading-relaxed font-medium">
+            <p className="text-sm text-daintree-text/60 max-w-md leading-relaxed font-medium">
               A habitat for your AI agents.
             </p>
           )}
@@ -331,10 +336,10 @@ function EmptyState({
             <button
               type="button"
               onClick={handleOpenHelp}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent/50"
             >
-              <div className="w-0 h-0 border-t-[2.5px] border-t-transparent border-l-[5px] border-l-canopy-text/50 border-b-[2.5px] border-b-transparent group-hover:border-l-canopy-text/70 transition-colors" />
-              <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">
+              <div className="w-0 h-0 border-t-[2.5px] border-t-transparent border-l-[5px] border-l-daintree-text/50 border-b-[2.5px] border-b-transparent group-hover:border-l-daintree-text/70 transition-colors" />
+              <span className="text-xs text-daintree-text/50 group-hover:text-daintree-text/70 transition-colors">
                 View documentation
               </span>
             </button>
@@ -392,7 +397,7 @@ export function ContentGrid({
     if (!gridAgentSettings?.agents) return undefined;
     return new Set(
       Object.entries(gridAgentSettings.agents)
-        .filter(([, entry]) => entry.selected !== false)
+        .filter(([, entry]) => isAgentPinned(entry))
         .map(([id]) => id)
     );
   }, [gridAgentSettings]);
@@ -647,7 +652,7 @@ export function ContentGrid({
       .map((id) => {
         const agentConfig = getEffectiveAgentConfig(id);
         const canLaunch =
-          id === "terminal" ? true : !agentAvailability || agentAvailability[id] === true;
+          id === "terminal" ? true : !agentAvailability || isAgentReady(agentAvailability[id]);
         return { id, name: agentConfig?.name ?? id, canLaunch };
       });
   }, [agentAvailability, gridSelectedAgentIds]);
@@ -887,8 +892,8 @@ export function ContentGrid({
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
-              "h-full flex flex-col bg-canopy-bg outline-none",
-              "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-canopy-accent/60 data-[macro-focus=true]:ring-inset",
+              "h-full flex flex-col bg-daintree-bg outline-none",
+              "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
               className
             )}
           >
@@ -920,8 +925,8 @@ export function ContentGrid({
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
-              "h-full flex flex-col bg-canopy-bg outline-none",
-              "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-canopy-accent/60 data-[macro-focus=true]:ring-inset",
+              "h-full flex flex-col bg-daintree-bg outline-none",
+              "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
               className
             )}
           >
@@ -955,7 +960,7 @@ export function ContentGrid({
         onKeyDown={handleGridRegionKeyDown}
         className={cn(
           "h-full flex flex-col outline-none",
-          "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-canopy-accent/60 data-[macro-focus=true]:ring-inset",
+          "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
           className
         )}
       >
@@ -967,7 +972,7 @@ export function ContentGrid({
               ref={combinedGridRef}
               className={cn(
                 "relative flex-1 min-h-0",
-                isOver && "ring-2 ring-canopy-accent/30 ring-inset"
+                isOver && "ring-2 ring-daintree-accent/30 ring-inset"
               )}
             >
               <TwoPaneSplitLayout
@@ -998,7 +1003,7 @@ export function ContentGrid({
       onKeyDown={handleGridRegionKeyDown}
       className={cn(
         "h-full flex flex-col outline-none",
-        "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-canopy-accent/60 data-[macro-focus=true]:ring-inset",
+        "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
         className
       )}
     >
@@ -1012,7 +1017,7 @@ export function ContentGrid({
                 ref={combinedGridRef}
                 className={cn(
                   "h-full bg-noise p-1",
-                  isOver && "ring-2 ring-canopy-accent/30 ring-inset"
+                  isOver && "ring-2 ring-daintree-accent/30 ring-inset"
                 )}
                 style={{
                   display: "grid",

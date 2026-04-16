@@ -40,6 +40,11 @@ export interface StoreSchema {
     enabled: boolean;
     inactiveThresholdHours: number;
   };
+  idleTerminalNotify: {
+    enabled: boolean;
+    thresholdMinutes: number;
+  };
+  idleTerminalDismissals: Record<string, number>;
   appState: {
     activeWorktreeId?: string;
     sidebarWidth: number;
@@ -127,6 +132,7 @@ export interface StoreSchema {
     overrides: Record<string, string[]>;
   };
   projectEnv: Record<string, string>;
+  globalEnvironmentVariables: Record<string, string>;
   appAgentConfig: AppAgentConfig;
   windowStates: Record<
     string,
@@ -180,6 +186,8 @@ export interface StoreSchema {
     firstRunToastSeen: boolean;
     newsletterPromptSeen: boolean;
     waitingNudgeSeen: boolean;
+    // TODO(0.9.0): Remove after deleting onboarding:migrate and the renderer
+    // localStorage import path for old Canopy onboarding keys.
     migratedFromLocalStorage: boolean;
     checklist: {
       dismissed: boolean;
@@ -218,6 +226,11 @@ const storeOptions = {
       enabled: false,
       inactiveThresholdHours: 24,
     },
+    idleTerminalNotify: {
+      enabled: true,
+      thresholdMinutes: 60,
+    },
+    idleTerminalDismissals: {},
     appState: {
       sidebarWidth: 350,
       focusMode: false,
@@ -255,6 +268,7 @@ const storeOptions = {
       overrides: {},
     },
     projectEnv: {},
+    globalEnvironmentVariables: {},
     appAgentConfig: DEFAULT_APP_AGENT_CONFIG,
     windowStates: {},
     worktreeIssueMap: {},
@@ -314,7 +328,7 @@ const storeOptions = {
     shortcutHintCounts: {},
     updateChannel: "stable" as const,
   },
-  cwd: process.env.CANOPY_USER_DATA,
+  cwd: process.env.DAINTREE_USER_DATA,
 };
 
 function getElectronUserDataPath(): string | undefined {

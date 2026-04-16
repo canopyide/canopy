@@ -24,8 +24,8 @@ if (!process.parentPort) {
   throw new Error("[WorkspaceHost] Must run in UtilityProcess context");
 }
 
-if (process.env.CANOPY_USER_DATA) {
-  initializeLogger(process.env.CANOPY_USER_DATA);
+if (process.env.DAINTREE_USER_DATA) {
+  initializeLogger(process.env.DAINTREE_USER_DATA);
 }
 
 const port = process.parentPort as unknown as MessagePort;
@@ -124,6 +124,38 @@ async function handleWorktreePortRequest(
         const { pullRequestService } = await import("./services/PullRequestService.js");
         await pullRequestService.refresh();
         result = { ok: true };
+        break;
+      }
+
+      case "resource-action": {
+        const requestId = `port-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const actionResult = await workspaceService.runResourceAction(
+          requestId,
+          payload.worktreeId as string,
+          payload.action as "provision" | "teardown" | "resume" | "pause" | "status"
+        );
+        if (!actionResult.success) {
+          rPort.postMessage({ id, error: actionResult.error ?? "Resource action failed" });
+          return;
+        }
+        result = { ok: true };
+        break;
+      }
+
+      case "switch-worktree-environment": {
+        const requestId = `port-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await workspaceService.switchWorktreeEnvironment(
+          requestId,
+          payload.worktreeId as string,
+          payload.envKey as string
+        );
+        result = { ok: true };
+        break;
+      }
+
+      case "has-resource-config": {
+        const hasConfig = await workspaceService.hasResourceConfig(payload.rootPath as string);
+        result = { hasConfig };
         break;
       }
 
@@ -239,7 +271,11 @@ port.on("message", async (rawMsg: any) => {
 
     switch (request.type) {
       case "load-project":
-        await workspaceService.loadProject(request.requestId, request.rootPath);
+        await workspaceService.loadProject(
+          request.requestId,
+          request.rootPath,
+          request.globalEnvVars
+        );
         break;
 
       case "sync":

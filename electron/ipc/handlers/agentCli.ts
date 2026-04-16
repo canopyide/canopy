@@ -1,6 +1,13 @@
 import { ipcMain } from "electron";
 import { CHANNELS } from "../channels.js";
 import { getAgentIds } from "../../../shared/config/agentRegistry.js";
+import type {
+  AgentAvailabilityState,
+  AgentInstallPayload,
+} from "../../../shared/types/ipc/system.js";
+import { sendToRenderer } from "../utils.js";
+import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
+import { runAgentInstall } from "../../services/AgentInstallService.js";
 import type { HandlerDependencies } from "../types.js";
 
 export function registerAgentCliHandlers(deps: HandlerDependencies): () => void {
@@ -10,7 +17,9 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
   const handleSystemGetCliAvailability = async () => {
     if (!cliAvailabilityService) {
       console.warn("[IPC] CliAvailabilityService not available");
-      return Object.fromEntries(getAgentIds().map((id) => [id, false]));
+      return Object.fromEntries(
+        getAgentIds().map((id) => [id, "missing" as AgentAvailabilityState])
+      );
     }
 
     const cached = cliAvailabilityService.getAvailability();
@@ -26,7 +35,9 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
   const handleSystemRefreshCliAvailability = async () => {
     if (!cliAvailabilityService) {
       console.warn("[IPC] CliAvailabilityService not available");
-      return Object.fromEntries(getAgentIds().map((id) => [id, false]));
+      return Object.fromEntries(
+        getAgentIds().map((id) => [id, "missing" as AgentAvailabilityState])
+      );
     }
 
     return await cliAvailabilityService.refresh();
@@ -145,6 +156,31 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
   };
   ipcMain.handle(CHANNELS.SYSTEM_CHECK_TOOL, handleSystemCheckTool);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_CHECK_TOOL));
+
+  const handleSetupAgentInstall = async (
+    event: Electron.IpcMainInvokeEvent,
+    payload: AgentInstallPayload
+  ) => {
+    const senderWindow = getWindowForWebContents(event.sender);
+
+    if (
+      !payload ||
+      !payload.agentId ||
+      typeof payload.agentId !== "string" ||
+      !payload.jobId ||
+      typeof payload.jobId !== "string"
+    ) {
+      throw new Error("Invalid AgentInstallPayload");
+    }
+
+    return await runAgentInstall(payload, (progressEvent) => {
+      if (senderWindow) {
+        sendToRenderer(senderWindow, CHANNELS.SETUP_AGENT_INSTALL_PROGRESS, progressEvent);
+      }
+    });
+  };
+  ipcMain.handle(CHANNELS.SETUP_AGENT_INSTALL, handleSetupAgentInstall);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.SETUP_AGENT_INSTALL));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

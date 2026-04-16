@@ -1,31 +1,32 @@
 import { create } from "zustand";
-import type { AgentSettings, AgentSettingsEntry, CliAvailability } from "@shared/types";
+import type { AgentSettings, AgentSettingsEntry } from "@shared/types";
 import { agentSettingsClient } from "@/clients";
 import { DEFAULT_AGENT_SETTINGS } from "@shared/types";
 import { getEffectiveAgentIds } from "../../shared/config/agentRegistry";
+import { isAgentPinned } from "../../shared/utils/agentPinned";
 
 /**
- * In-memory normalization: fills `selected: undefined` entries using CLI availability
- * and migrates deprecated `enabled: false` to `selected: false`.
- * Does NOT persist — persistent migration is handled by `migrateAgentSelection`.
+ * In-memory normalization: seeds `pinned: true` for any registered agent that
+ * is either missing from stored settings or has no explicit `pinned` value.
+ * Does NOT persist. New/installed agents default to pinned so they surface in
+ * the toolbar until the user explicitly unpins them.
  */
-export function normalizeAgentSelection(
-  settings: AgentSettings,
-  availability: CliAvailability
-): AgentSettings {
+export function normalizeAgentSelection(settings: AgentSettings): AgentSettings {
   const registeredIds = getEffectiveAgentIds();
   let changed = false;
   const agents = { ...settings.agents };
 
   for (const id of registeredIds) {
     const entry = agents[id];
-    if (!entry) continue;
 
-    if (entry.enabled === false && entry.selected === undefined) {
-      agents[id] = { ...entry, selected: false };
+    if (!entry) {
+      agents[id] = { pinned: true };
       changed = true;
-    } else if (entry.selected === undefined) {
-      agents[id] = { ...entry, selected: availability[id] === true };
+      continue;
+    }
+
+    if (entry.pinned === undefined) {
+      agents[id] = { ...entry, pinned: true };
       changed = true;
     }
   }
@@ -44,7 +45,7 @@ interface AgentSettingsActions {
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   updateAgent: (agentId: string, updates: Partial<AgentSettingsEntry>) => Promise<void>;
-  setAgentSelected: (agentId: string, selected: boolean) => Promise<void>;
+  setAgentPinned: (agentId: string, pinned: boolean) => Promise<void>;
   reset: (agentId?: string) => Promise<void>;
 }
 
@@ -66,7 +67,8 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
       try {
         set({ isLoading: true, error: null });
 
-        const settings = (await agentSettingsClient.get()) ?? DEFAULT_AGENT_SETTINGS;
+        const raw = (await agentSettingsClient.get()) ?? DEFAULT_AGENT_SETTINGS;
+        const settings = normalizeAgentSelection(raw);
         set({ settings, isLoading: false, isInitialized: true });
       } catch (e) {
         set({
@@ -83,7 +85,8 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
   refresh: async () => {
     set({ error: null });
     try {
-      const settings = (await agentSettingsClient.get()) ?? DEFAULT_AGENT_SETTINGS;
+      const raw = (await agentSettingsClient.get()) ?? DEFAULT_AGENT_SETTINGS;
+      const settings = normalizeAgentSelection(raw);
       set({ settings });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : "Failed to refresh agent settings" });
@@ -94,7 +97,8 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
   updateAgent: async (agentId: string, updates: Partial<AgentSettingsEntry>) => {
     set({ error: null });
     try {
-      const settings = await agentSettingsClient.set(agentId, updates);
+      const raw = await agentSettingsClient.set(agentId, updates);
+      const settings = normalizeAgentSelection(raw);
       set({ settings });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : `Failed to update ${agentId} settings` });
@@ -102,14 +106,15 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
     }
   },
 
-  setAgentSelected: async (agentId: string, selected: boolean) => {
-    return get().updateAgent(agentId, { selected });
+  setAgentPinned: async (agentId: string, pinned: boolean) => {
+    return get().updateAgent(agentId, { pinned });
   },
 
   reset: async (agentId?: string) => {
     set({ error: null });
     try {
-      const settings = await agentSettingsClient.reset(agentId);
+      const raw = await agentSettingsClient.reset(agentId);
+      const settings = normalizeAgentSelection(raw);
       set({ settings });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : "Failed to reset agent settings" });
@@ -118,78 +123,16 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
   },
 }));
 
-let migrationPromise: Promise<void> | null = null;
-
-/**
- * Migrate agents that have no `selected` field by defaulting to
- * `true` when the CLI is installed, `false` otherwise.
- * Only touches agents whose `selected` is strictly `undefined`.
- * Covers both stored agent entries and agents newly added to the registry.
- *
- * Also migrates the deprecated `enabled` field: if `enabled === false` and
- * `selected` is not already `false`, sets `selected = false` to preserve user
- * intent, then clears `enabled`.
- *
- * Idempotent — subsequent calls are no-ops when all agents already have `selected` set.
- */
-export async function migrateAgentSelection(availability: CliAvailability): Promise<void> {
-  // Prevent concurrent executions
-  if (migrationPromise) return migrationPromise;
-
-  const { settings } = useAgentSettingsStore.getState();
-  if (!settings?.agents) return;
-
-  const registeredIds = getEffectiveAgentIds();
-  const agentsNeedingMigration = registeredIds.filter(
-    (agentId) => settings.agents[agentId]?.selected === undefined
-  );
-
-  // Find agents with deprecated `enabled === false` that need migration
-  const agentsNeedingEnabledMigration = registeredIds.filter((agentId) => {
-    const entry = settings.agents[agentId];
-    return entry?.enabled === false && entry?.selected !== false;
-  });
-
-  if (agentsNeedingMigration.length === 0 && agentsNeedingEnabledMigration.length === 0) return;
-
-  migrationPromise = (async () => {
-    try {
-      // First: migrate agents without `selected` (existing migration)
-      for (const agentId of agentsNeedingMigration) {
-        const selected = availability[agentId] === true;
-        await agentSettingsClient.set(agentId, { selected });
-      }
-
-      // Second: migrate deprecated `enabled` → `selected`
-      // Runs after the above to avoid clobbering freshly-seeded values
-      for (const agentId of agentsNeedingEnabledMigration) {
-        await agentSettingsClient.set(agentId, { selected: false, enabled: undefined });
-      }
-
-      // Re-read the full settings after all updates
-      const updated = await agentSettingsClient.get();
-      if (updated) {
-        useAgentSettingsStore.setState({ settings: updated });
-      }
-    } finally {
-      migrationPromise = null;
-    }
-  })();
-
-  return migrationPromise;
-}
-
-export function getSelectedAgents(): string[] {
+export function getPinnedAgents(): string[] {
   const settings = useAgentSettingsStore.getState().settings;
   if (!settings?.agents) return [];
   return Object.entries(settings.agents)
-    .filter(([, entry]) => entry.selected !== false)
+    .filter(([, entry]) => isAgentPinned(entry))
     .map(([id]) => id);
 }
 
 export function cleanupAgentSettingsStore() {
   initPromise = null;
-  migrationPromise = null;
   useAgentSettingsStore.setState({
     settings: DEFAULT_AGENT_SETTINGS,
     isLoading: true,

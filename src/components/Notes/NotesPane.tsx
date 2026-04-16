@@ -16,10 +16,14 @@ import { EditorView } from "@codemirror/view";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { notesClient, type NoteMetadata } from "@/clients/notesClient";
-import { canopyTheme } from "./editorTheme";
+import { useProjectStore } from "@/store/projectStore";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
+import { VoiceInputButton } from "@/components/Terminal/VoiceInputButton";
+import { daintreeTheme } from "./editorTheme";
 import { notesTypographyExtension } from "./codeBlockExtension";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { MarkdownToolbar } from "./MarkdownToolbar";
+import { useNoteVoiceInput } from "./useNoteVoiceInput";
 
 export interface NotesPaneProps extends BasePanelProps {
   notePath: string;
@@ -35,6 +39,7 @@ export function NotesPane({
   noteId: _noteId,
   scope: _scope,
   createdAt: _createdAt,
+  worktreeId,
   isFocused,
   isMaximized = false,
   location = "grid",
@@ -65,6 +70,19 @@ export function NotesPane({
   const editorViewRef = useRef<EditorView | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const isSyncingRef = useRef(false);
+
+  const currentProject = useProjectStore((s) => s.currentProject);
+  const panelWorktree = useWorktreeStore((s) =>
+    worktreeId ? s.worktrees.get(worktreeId) : undefined
+  );
+
+  useNoteVoiceInput(id, editorViewRef);
+
+  useEffect(() => {
+    if (viewMode === "preview") {
+      editorViewRef.current = null;
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -242,7 +260,7 @@ export function NotesPane({
   }, [viewMode, editorMountKey]);
 
   const handleCopyPath = useCallback(async () => {
-    const addressablePath = `@.canopy/notes/${notePath}`;
+    const addressablePath = `@.daintree/notes/${notePath}`;
     try {
       await navigator.clipboard.writeText(addressablePath);
       setCopied(true);
@@ -257,7 +275,7 @@ export function NotesPane({
   const headerActions = useMemo(
     () => (
       <div className="flex items-center gap-1">
-        <div className="flex items-center rounded-[var(--radius-sm)] border border-canopy-border/50 overflow-hidden mr-1">
+        <div className="flex items-center rounded-[var(--radius-sm)] border border-daintree-border/50 overflow-hidden mr-1">
           {(
             [
               { mode: "edit" as const, icon: PenLine, label: "Edit" },
@@ -270,8 +288,8 @@ export function NotesPane({
               onClick={() => setViewMode(mode)}
               className={`px-1.5 py-1 text-xs transition-colors ${
                 viewMode === mode
-                  ? "bg-canopy-text/10 text-canopy-text"
-                  : "text-canopy-text/40 hover:text-canopy-text/70 hover:bg-canopy-text/5"
+                  ? "bg-daintree-text/10 text-daintree-text"
+                  : "text-daintree-text/40 hover:text-daintree-text/70 hover:bg-daintree-text/5"
               }`}
               aria-label={label}
               aria-pressed={viewMode === mode}
@@ -285,7 +303,7 @@ export function NotesPane({
             <TooltipTrigger asChild>
               <button
                 onClick={handleCopyPath}
-                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-canopy-text/10 text-canopy-text/60 hover:text-canopy-text transition-colors"
+                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-daintree-text/10 text-daintree-text/60 hover:text-daintree-text transition-colors"
                 aria-label="Copy addressable path"
               >
                 {copied ? (
@@ -309,6 +327,7 @@ export function NotesPane({
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       EditorView.lineWrapping,
       notesTypographyExtension(),
+      EditorView.theme({ ".cm-content": { paddingBottom: "52px" } }),
     ],
     []
   );
@@ -364,13 +383,13 @@ export function NotesPane({
             <MarkdownPreview content={content} className="flex-1" />
           ) : viewMode === "split" ? (
             <div className="flex flex-1 min-h-0 overflow-hidden">
-              <div className="flex-1 flex flex-col min-h-0 border-r border-canopy-border">
+              <div className="flex-1 flex flex-col min-h-0 border-r border-daintree-border">
                 {!hasConflict && <MarkdownToolbar editorViewRef={editorViewRef} />}
-                <div className="flex-1 overflow-hidden bg-canopy-bg text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-canopy-text/30 [&_.cm-placeholder]:italic">
+                <div className="relative flex-1 overflow-hidden bg-daintree-bg text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-daintree-text/30 [&_.cm-placeholder]:italic">
                   <CodeMirror
                     value={content}
                     height="100%"
-                    theme={canopyTheme}
+                    theme={daintreeTheme}
                     extensions={extensions}
                     onChange={handleContentChange}
                     onCreateEditor={(view) => {
@@ -387,6 +406,22 @@ export function NotesPane({
                     className="h-full"
                     placeholder="Start writing your notes..."
                   />
+                  {!hasConflict && (
+                    <div className="absolute bottom-3 right-3 z-10">
+                      <VoiceInputButton
+                        panelId={id}
+                        panelTitle={title}
+                        projectId={currentProject?.id}
+                        projectName={currentProject?.name}
+                        worktreeId={worktreeId}
+                        worktreeLabel={
+                          panelWorktree?.isMainWorktree
+                            ? panelWorktree?.name
+                            : panelWorktree?.branch || panelWorktree?.name
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
               <MarkdownPreview ref={previewRef} content={content} className="flex-1" />
@@ -394,11 +429,11 @@ export function NotesPane({
           ) : (
             <div className="flex-1 flex flex-col min-h-0">
               {!hasConflict && <MarkdownToolbar editorViewRef={editorViewRef} />}
-              <div className="flex-1 overflow-hidden bg-canopy-bg text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-canopy-text/30 [&_.cm-placeholder]:italic">
+              <div className="relative flex-1 overflow-hidden bg-daintree-bg text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-daintree-text/30 [&_.cm-placeholder]:italic">
                 <CodeMirror
                   value={content}
                   height="100%"
-                  theme={canopyTheme}
+                  theme={daintreeTheme}
                   extensions={extensions}
                   onChange={handleContentChange}
                   onCreateEditor={(view) => {
@@ -414,6 +449,22 @@ export function NotesPane({
                   className="h-full"
                   placeholder="Start writing your notes..."
                 />
+                {!hasConflict && (
+                  <div className="absolute bottom-3 right-3 z-10">
+                    <VoiceInputButton
+                      panelId={id}
+                      panelTitle={title}
+                      projectId={currentProject?.id}
+                      projectName={currentProject?.name}
+                      worktreeId={worktreeId}
+                      worktreeLabel={
+                        panelWorktree?.isMainWorktree
+                          ? panelWorktree?.name
+                          : panelWorktree?.branch || panelWorktree?.name
+                      }
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}

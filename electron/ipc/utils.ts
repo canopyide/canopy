@@ -58,8 +58,20 @@ interface RateLimitState {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
+interface LeakyBucketWaiter {
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+interface LeakyBucketState {
+  nextAvailableMs: number;
+  pendingCount: number;
+  waiters: Set<LeakyBucketWaiter>;
+}
+
 const MAX_QUEUE_DEPTH = 50;
 const rateLimitQueues = new Map<string, RateLimitState>();
+const leakyBucketQueues = new Map<string, LeakyBucketState>();
 
 let restoreQuota = 0;
 let restoreQuotaTimer: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +102,15 @@ function getOrCreateState(key: string): RateLimitState {
   return state;
 }
 
+function getOrCreateLeakyState(key: string): LeakyBucketState {
+  let state = leakyBucketQueues.get(key);
+  if (!state) {
+    state = { nextAvailableMs: 0, pendingCount: 0, waiters: new Set() };
+    leakyBucketQueues.set(key, state);
+  }
+  return state;
+}
+
 function drainQueue(state: RateLimitState, maxCalls: number, windowMs: number): void {
   const now = Date.now();
   state.timestamps = state.timestamps.filter((t) => now - t < windowMs);
@@ -115,7 +136,79 @@ function scheduleDrain(state: RateLimitState, maxCalls: number, windowMs: number
   }, delay);
 }
 
+/**
+ * Reserve a rate-limit slot and wait until it is ready.
+ *
+ * Two modes:
+ *
+ * 1. `waitForRateLimitSlot(key, intervalMs)` — **strict-interval leaky bucket.**
+ *    Guarantees at most one caller is released every `intervalMs` milliseconds.
+ *    Concurrent callers claim sequential slots synchronously at call time, so
+ *    a burst of N `Promise.all` callers is released steadily at
+ *    `intervalMs` spacing rather than in batches. Use this for operations that
+ *    must be serialised with a smooth cadence (e.g. git worktree creation).
+ *
+ * 2. `waitForRateLimitSlot(key, maxCalls, windowMs)` — **sliding window.**
+ *    Up to `maxCalls` callers may run within any `windowMs` window; excess
+ *    callers queue and drain as the window rolls forward. Used by batch-
+ *    tolerant callers (e.g. terminal spawn) that accept bursts but need an
+ *    overall cap.
+ */
+export async function waitForRateLimitSlot(key: string, intervalMs: number): Promise<void>;
 export async function waitForRateLimitSlot(
+  key: string,
+  maxCalls: number,
+  windowMs: number
+): Promise<void>;
+export async function waitForRateLimitSlot(
+  key: string,
+  maxCallsOrInterval: number,
+  windowMs?: number
+): Promise<void> {
+  if (windowMs === undefined) {
+    return waitForLeakyBucketSlot(key, maxCallsOrInterval);
+  }
+  return waitForSlidingWindowSlot(key, maxCallsOrInterval, windowMs);
+}
+
+async function waitForLeakyBucketSlot(key: string, intervalMs: number): Promise<void> {
+  if (intervalMs <= 0) return;
+
+  const state = getOrCreateLeakyState(key);
+
+  if (state.pendingCount >= MAX_QUEUE_DEPTH) {
+    throw new Error("Spawn queue full");
+  }
+
+  // Synchronous slot reservation — MUST happen before any await so that
+  // concurrent callers each claim a unique sequential slot. If this advance
+  // happened after an await, two simultaneous callers could both read the
+  // same `nextAvailableMs` and end up scheduled for the same instant.
+  const now = Date.now();
+  const slotMs = Math.max(now, state.nextAvailableMs);
+  state.nextAvailableMs = slotMs + intervalMs;
+  const waitMs = slotMs - now;
+
+  if (waitMs <= 0) return;
+
+  state.pendingCount++;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const waiter: LeakyBucketWaiter = {
+        reject,
+        timer: setTimeout(() => {
+          state.waiters.delete(waiter);
+          resolve();
+        }, waitMs),
+      };
+      state.waiters.add(waiter);
+    });
+  } finally {
+    state.pendingCount--;
+  }
+}
+
+async function waitForSlidingWindowSlot(
   key: string,
   maxCalls: number,
   windowMs: number
@@ -151,6 +244,18 @@ export function drainRateLimitQueues(): void {
     }
   }
   rateLimitQueues.clear();
+  // Cancel all in-flight leaky-bucket waiters. Matching the sliding-window
+  // semantics is important: without this, waiters resume after drain and
+  // their callers proceed past the await into real work (e.g. creating
+  // worktrees) during shutdown, racing workspace-client teardown.
+  for (const [, state] of leakyBucketQueues) {
+    for (const waiter of state.waiters) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error("App is shutting down"));
+    }
+    state.waiters.clear();
+  }
+  leakyBucketQueues.clear();
 }
 
 export function _resetRateLimitQueuesForTest(): void {
@@ -163,8 +268,8 @@ export function _resetRateLimitQueuesForTest(): void {
   }
 }
 
-if (process.env.CANOPY_E2E_FAULT_MODE === "1") {
-  (globalThis as Record<string, unknown>).__canopyResetRateLimits = _resetRateLimitQueuesForTest;
+if (process.env.DAINTREE_E2E_FAULT_MODE === "1") {
+  (globalThis as Record<string, unknown>).__daintreeResetRateLimits = _resetRateLimitQueuesForTest;
 }
 
 export function sendToRenderer(

@@ -53,7 +53,7 @@ export class WorkspaceHostProcess extends EventEmitter {
       .basename(projectPath)
       .replace(/[^a-zA-Z0-9_-]/g, "-")
       .slice(0, 40);
-    this.serviceName = `canopy-workspace-host:${safeName}`;
+    this.serviceName = `daintree-workspace-host:${safeName}`;
 
     this.readyPromise = new Promise((resolve, reject) => {
       this.readyResolve = resolve;
@@ -276,7 +276,7 @@ export class WorkspaceHostProcess extends EventEmitter {
         cwd: os.homedir(),
         env: {
           ...(process.env as Record<string, string>),
-          CANOPY_USER_DATA: app.getPath("userData"),
+          DAINTREE_USER_DATA: app.getPath("userData"),
         },
       });
     } catch (error) {
@@ -480,8 +480,12 @@ export class WorkspaceHostProcess extends EventEmitter {
         break;
 
       case "list-branches-result":
+      case "get-recent-branches-result":
       case "get-file-diff-result":
       case "file-tree-result":
+      case "resource-action-result":
+      case "has-resource-config-result":
+      case "update-monitor-config-result":
         this.handleRequestResult(this.toResult(event));
         break;
 
