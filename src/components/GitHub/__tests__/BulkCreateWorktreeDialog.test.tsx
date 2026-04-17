@@ -1317,7 +1317,10 @@ describe("BulkCreateWorktreeDialog", () => {
       "claude",
       { flags: [] },
       "claude",
-      expect.objectContaining({ clipboardDirectory: "/tmp/daintree-clipboard" })
+      expect.objectContaining({
+        clipboardDirectory: "/tmp/daintree-clipboard",
+        modelId: "claude-opus-4-7",
+      })
     );
 
     const agentCall = mockAddPanel.mock.calls.find((c) => c[0].kind === "agent");

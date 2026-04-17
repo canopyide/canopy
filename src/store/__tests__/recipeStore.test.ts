@@ -224,6 +224,73 @@ describe("recipeStore", () => {
       expect(persistedRecipe?.terminals?.[0]?.agentModelId).toBeUndefined();
       expect(persistedRecipe?.terminals?.[0]?.agentLaunchFlags).toBeUndefined();
     });
+
+    it("strips agentModelId and agentLaunchFlags when persisting a global recipe update", async () => {
+      useRecipeStore.setState({
+        globalRecipes: [
+          {
+            id: "global-agent",
+            name: "Global Agent",
+            terminals: [{ type: "terminal", title: "Shell", env: {} }],
+            createdAt: 1000,
+          },
+        ],
+        projectRecipes: [],
+        inRepoRecipes: [],
+        recipes: [
+          {
+            id: "global-agent",
+            name: "Global Agent",
+            terminals: [{ type: "terminal", title: "Shell", env: {} }],
+            createdAt: 1000,
+          },
+        ],
+        currentProjectId: "project-1",
+      });
+
+      await useRecipeStore.getState().updateRecipe("global-agent", {
+        terminals: [
+          {
+            type: "claude",
+            title: "Agent",
+            env: {},
+            agentModelId: "claude-opus-4-7",
+            agentLaunchFlags: ["--resume", "xyz"],
+          },
+        ],
+      });
+
+      expect(globalUpdateRecipeMock).toHaveBeenCalledTimes(1);
+      const persistedUpdates = globalUpdateRecipeMock.mock.calls[0]?.[1];
+      expect(persistedUpdates?.terminals?.[0]?.agentModelId).toBeUndefined();
+      expect(persistedUpdates?.terminals?.[0]?.agentLaunchFlags).toBeUndefined();
+    });
+
+    it("drops session-override fields from recipes loaded from disk (defense-in-depth)", async () => {
+      const contaminatedRecipe = {
+        id: "inrepo-contaminated",
+        name: "Contaminated",
+        terminals: [
+          {
+            type: "claude" as const,
+            title: "Agent",
+            env: {},
+            agentModelId: "claude-opus-4-7",
+            agentLaunchFlags: ["--resume", "old"],
+          },
+        ],
+        createdAt: 1000,
+      };
+      globalGetRecipesMock.mockResolvedValueOnce([]);
+      getRecipesMock.mockResolvedValueOnce([]);
+      getInRepoRecipesMock.mockResolvedValueOnce([contaminatedRecipe]);
+
+      await useRecipeStore.getState().loadRecipes("project-1");
+
+      const loaded = useRecipeStore.getState().inRepoRecipes[0];
+      expect(loaded?.terminals[0]?.agentModelId).toBeUndefined();
+      expect(loaded?.terminals[0]?.agentLaunchFlags).toBeUndefined();
+    });
   });
 
   it("sanitizes agent commands on update before persisting", async () => {
