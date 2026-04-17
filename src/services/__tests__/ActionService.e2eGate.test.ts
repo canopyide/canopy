@@ -84,4 +84,27 @@ describe("ActionService window.__daintreeDispatchAction gate", () => {
 
     expect(typeof fakeWindow.__daintreeDispatchAction).toBe("function");
   });
+
+  it("forwards actionId, args, and options to actionService.dispatch", async () => {
+    const fakeWindow: Record<string, unknown> = { __DAINTREE_E2E_MODE__: true };
+    restore = setWindow(fakeWindow);
+
+    vi.resetModules();
+    const mod = await import("../ActionService");
+    const spy = vi.spyOn(mod.actionService, "dispatch").mockResolvedValue(undefined);
+
+    const hook = fakeWindow.__daintreeDispatchAction as (
+      actionId: string,
+      args?: unknown,
+      options?: { source?: string; confirmed?: boolean }
+    ) => unknown;
+    hook("actions.list", { foo: 1 }, { source: "agent", confirmed: true });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(
+      "actions.list",
+      { foo: 1 },
+      { source: "agent", confirmed: true }
+    );
+  });
 });
