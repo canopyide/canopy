@@ -585,6 +585,7 @@ export const CHANNELS = {
   DEMO_CAPTURE_START: "demo:capture-start",
   DEMO_CAPTURE_STOP: "demo:capture-stop",
   DEMO_CAPTURE_CHUNK: "demo:capture-chunk",
+  DEMO_CAPTURE_STARTED: "demo:capture-started",
   DEMO_CAPTURE_FINISHED: "demo:capture-finished",
 
   // Plugin channels

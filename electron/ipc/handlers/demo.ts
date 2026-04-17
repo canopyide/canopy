@@ -229,11 +229,15 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     outputPath: string;
     fps: number;
     fileStream: fs.WriteStream;
+    started: boolean;
     stopping: boolean;
     finalized: boolean;
     finalizePromise: Promise<DemoStopCaptureResult>;
     resolveFinalizeWith: (result: DemoStopCaptureResult) => void;
     rejectFinalizeWith: (err: Error) => void;
+    startedPromise: Promise<void>;
+    resolveStartedWith: () => void;
+    rejectStartedWith: (err: Error) => void;
     safetyTimer: ReturnType<typeof setTimeout> | null;
     finalizeTimer: ReturnType<typeof setTimeout> | null;
     chunkListener: (
@@ -241,7 +245,11 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
       msg: { captureId: string } | undefined,
       ...rest: unknown[]
     ) => void;
-    finishListener: (event: Electron.IpcMainEvent, msg: { captureId: string }) => void;
+    startedListener: (event: Electron.IpcMainEvent, msg: { captureId: string }) => void;
+    finishListener: (
+      event: Electron.IpcMainEvent,
+      msg: { captureId: string; error?: string }
+    ) => void;
     sessionRef: Electron.Session | null;
     handlerRegistered: boolean;
   }
@@ -267,6 +275,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
 
   function clearCaptureListeners(session: CaptureSession): void {
     ipcMain.removeListener(CHANNELS.DEMO_CAPTURE_CHUNK, session.chunkListener);
+    ipcMain.removeListener(CHANNELS.DEMO_CAPTURE_STARTED, session.startedListener);
     ipcMain.removeListener(CHANNELS.DEMO_CAPTURE_FINISHED, session.finishListener);
   }
 
@@ -302,6 +311,12 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     if (captureSession === session) {
       captureSession = null;
     }
+    // If the renderer never acknowledged the start but we finalized cleanly,
+    // resolve the startedPromise so handleStartCapture doesn't hang.
+    if (!session.started) {
+      session.started = true;
+      session.resolveStartedWith();
+    }
     session.resolveFinalizeWith(result);
   }
 
@@ -314,8 +329,21 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     if (!session.fileStream.destroyed) {
       session.fileStream.destroy();
     }
+    // Best-effort unlink of the zero-byte or partial output file so failed
+    // captures don't leave misleading artifacts on disk.
+    try {
+      if (fs.existsSync(session.outputPath)) {
+        fs.unlinkSync(session.outputPath);
+      }
+    } catch {
+      // Ignore — output file may have already been cleaned up.
+    }
     if (captureSession === session) {
       captureSession = null;
+    }
+    if (!session.started) {
+      session.started = true;
+      session.rejectStartedWith(err);
     }
     session.rejectFinalizeWith(err);
   }
@@ -375,6 +403,14 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     // awaiters still observe the rejection through their own .then/.catch.
     finalizePromise.catch(() => {});
 
+    let resolveStartedWith!: () => void;
+    let rejectStartedWith!: (err: Error) => void;
+    const startedPromise = new Promise<void>((resolve, reject) => {
+      resolveStartedWith = resolve;
+      rejectStartedWith = reject;
+    });
+    startedPromise.catch(() => {});
+
     const chunkListener = (
       _event: Electron.IpcMainEvent,
       msg: { captureId: string } | undefined,
@@ -394,15 +430,30 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
       session.fileStream.write(Buffer.from(transferred));
     };
 
-    const finishListener = (_event: Electron.IpcMainEvent, msg: { captureId: string }): void => {
+    const startedListener = (_event: Electron.IpcMainEvent, msg: { captureId: string }): void => {
       const session = captureSession;
       if (!session || session.finalized) return;
       if (!msg || msg.captureId !== session.captureId) return;
+      if (session.started) return;
+      session.started = true;
+      session.resolveStartedWith();
+    };
+
+    const finishListener = (
+      _event: Electron.IpcMainEvent,
+      msg: { captureId: string; error?: string }
+    ): void => {
+      const session = captureSession;
+      if (!session || session.finalized) return;
+      if (!msg || msg.captureId !== session.captureId) return;
+      if (msg.error) {
+        // Renderer-side failure (getDisplayMedia rejected, unsupported mime,
+        // mid-recording encoder error, etc.) — propagate as rejection.
+        failCaptureSession(session, new Error(`Capture failed in renderer: ${msg.error}`));
+        return;
+      }
       // End the stream and resolve once it flushes. 'error' rejects; 'finish'
       // resolves with the frameCount-stub (MediaRecorder has no frame count).
-      session.fileStream.once("error", (err) => {
-        failCaptureSession(session, err);
-      });
       session.fileStream.once("finish", () => {
         finalizeCaptureSession(session, {
           outputPath: session.outputPath,
@@ -417,14 +468,19 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
       outputPath,
       fps,
       fileStream,
+      started: false,
       stopping: false,
       finalized: false,
       finalizePromise,
       resolveFinalizeWith,
       rejectFinalizeWith,
+      startedPromise,
+      resolveStartedWith,
+      rejectStartedWith,
       safetyTimer: null,
       finalizeTimer: null,
       chunkListener,
+      startedListener,
       finishListener,
       sessionRef: rendererSession,
       handlerRegistered: false,
@@ -437,6 +493,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     });
 
     ipcMain.on(CHANNELS.DEMO_CAPTURE_CHUNK, chunkListener);
+    ipcMain.on(CHANNELS.DEMO_CAPTURE_STARTED, startedListener);
     ipcMain.on(CHANNELS.DEMO_CAPTURE_FINISHED, finishListener);
 
     // Auto-approve getDisplayMedia by pointing it at the requesting frame.
@@ -473,6 +530,16 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     if (!sendToApp(CHANNELS.DEMO_CAPTURE_START, { captureId, fps })) {
       failCaptureSession(session, new Error("No window available to start capture"));
       throw new Error("No window available to start capture");
+    }
+
+    // Wait for the renderer to actually begin recording before returning.
+    // Without this, callers can start running scenes against a capture that
+    // hasn't yet engaged (bottom few frames truncated) or against a failed
+    // capture that will only surface when stopCapture throws.
+    try {
+      await session.startedPromise;
+    } catch (err) {
+      throw err instanceof Error ? err : new Error(String(err));
     }
 
     return { outputPath };

@@ -42,6 +42,8 @@ vi.mock("fs", () => ({
   readdirSync: fsMocks.readdirSync,
   mkdirSync: fsMocks.mkdirSync,
   createWriteStream: fsMocks.createWriteStream,
+  existsSync: vi.fn(() => false),
+  unlinkSync: vi.fn(),
 }));
 
 let mockProc: EventEmitter & {
@@ -594,14 +596,32 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     return null;
   }
 
+  // Invoke demo:start-capture and simulate the renderer acking with
+  // DEMO_CAPTURE_STARTED so handleStartCapture's awaited startedPromise
+  // resolves.
+  async function startCaptureAndAck(
+    deps: HandlerDependencies,
+    payload: { fps?: number; outputPath: string }
+  ): Promise<{ result: { outputPath: string }; captureId: string }> {
+    const handler = getHandler("demo:start-capture");
+    const promise = handler({}, payload) as Promise<{ outputPath: string }>;
+    // Listeners are registered synchronously before the await; find them now.
+    const startedListener = getIpcListener("demo:capture-started")!;
+    const send = deps.mainWindow!.webContents.send as ReturnType<typeof vi.fn>;
+    const startCall = send.mock.calls.find(([ch]) => ch === "demo:capture-start")!;
+    const { captureId } = startCall[1] as { captureId: string };
+    startedListener({}, { captureId });
+    const result = await promise;
+    return { result, captureId };
+  }
+
   it("startCapture creates output dir, opens write stream, and signals renderer", async () => {
     const fsMod = await import("fs");
     const setDisplayHandler = vi.fn();
     const deps = makeDeps(true, setDisplayHandler);
     const cleanup = registerDemoHandlers(deps);
 
-    const handler = getHandler("demo:start-capture");
-    const result = (await handler({}, defaultPayload)) as { outputPath: string };
+    const { result } = await startCaptureAndAck(deps, defaultPayload);
 
     expect(result.outputPath).toBe("/tmp/capture/out.webm");
     expect(fsMod.mkdirSync).toHaveBeenCalledWith("/tmp/capture", { recursive: true });
@@ -622,8 +642,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const deps = makeDeps(true, setDisplayHandler);
     const cleanup = registerDemoHandlers(deps);
 
-    const handler = getHandler("demo:start-capture");
-    await handler({}, defaultPayload);
+    await startCaptureAndAck(deps, defaultPayload);
 
     const handlerFn = setDisplayHandler.mock.calls[0]![0] as (
       request: { frame: unknown },
@@ -642,9 +661,56 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const deps = makeDeps(true);
     const cleanup = registerDemoHandlers(deps);
 
+    await startCaptureAndAck(deps, defaultPayload);
     const handler = getHandler("demo:start-capture");
-    await handler({}, defaultPayload);
     await expect(handler({}, defaultPayload)).rejects.toThrow("Capture already in progress");
+
+    cleanup();
+  });
+
+  it("startCapture awaits DEMO_CAPTURE_STARTED before resolving", async () => {
+    const deps = makeDeps(true);
+    const cleanup = registerDemoHandlers(deps);
+
+    const handler = getHandler("demo:start-capture");
+    const startPromise = handler({}, defaultPayload) as Promise<{ outputPath: string }>;
+
+    // Confirm handler is still pending because renderer hasn't acked yet.
+    let settled = false;
+    void startPromise.then(
+      () => (settled = true),
+      () => (settled = true)
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    expect(settled).toBe(false);
+
+    // Simulate DEMO_CAPTURE_STARTED from renderer.
+    const startedListener = getIpcListener("demo:capture-started")!;
+    const send = deps.mainWindow!.webContents.send as ReturnType<typeof vi.fn>;
+    const startCall = send.mock.calls.find(([ch]) => ch === "demo:capture-start")!;
+    const { captureId } = startCall[1] as { captureId: string };
+    startedListener({}, { captureId });
+
+    const result = await startPromise;
+    expect(result.outputPath).toBe("/tmp/capture/out.webm");
+
+    cleanup();
+  });
+
+  it("startCapture rejects when renderer sends DEMO_CAPTURE_FINISHED with error before started", async () => {
+    const deps = makeDeps(true);
+    const cleanup = registerDemoHandlers(deps);
+
+    const handler = getHandler("demo:start-capture");
+    const startPromise = handler({}, defaultPayload) as Promise<unknown>;
+
+    const finishListener = getIpcListener("demo:capture-finished")!;
+    const send = deps.mainWindow!.webContents.send as ReturnType<typeof vi.fn>;
+    const startCall = send.mock.calls.find(([ch]) => ch === "demo:capture-start")!;
+    const { captureId } = startCall[1] as { captureId: string };
+    finishListener({}, { captureId, error: "NotAllowedError" });
+
+    await expect(startPromise).rejects.toThrow(/Capture failed in renderer.*NotAllowedError/);
 
     cleanup();
   });
@@ -653,12 +719,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const deps = makeDeps(true);
     const cleanup = registerDemoHandlers(deps);
 
-    const handler = getHandler("demo:start-capture");
-    await handler({}, defaultPayload);
-
-    const send = deps.mainWindow!.webContents.send as ReturnType<typeof vi.fn>;
-    const startCall = send.mock.calls.find(([ch]) => ch === "demo:capture-start")!;
-    const { captureId } = startCall[1] as { captureId: string };
+    const { captureId } = await startCaptureAndAck(deps, defaultPayload);
 
     const chunkListener = getIpcListener("demo:capture-chunk")!;
     const data = new Uint8Array([1, 2, 3, 4]).buffer;
@@ -678,8 +739,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const deps = makeDeps(true);
     const cleanup = registerDemoHandlers(deps);
 
-    const handler = getHandler("demo:start-capture");
-    await handler({}, defaultPayload);
+    await startCaptureAndAck(deps, defaultPayload);
 
     const chunkListener = getIpcListener("demo:capture-chunk")!;
     chunkListener({}, { captureId: "not-matching" }, new Uint8Array([9]).buffer);
@@ -693,12 +753,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const deps = makeDeps(true);
     const cleanup = registerDemoHandlers(deps);
 
-    const handler = getHandler("demo:start-capture");
-    await handler({}, defaultPayload);
-
-    const send = deps.mainWindow!.webContents.send as ReturnType<typeof vi.fn>;
-    const startCall = send.mock.calls.find(([ch]) => ch === "demo:capture-start")!;
-    const { captureId } = startCall[1] as { captureId: string };
+    const { captureId } = await startCaptureAndAck(deps, defaultPayload);
 
     const chunkListener = getIpcListener("demo:capture-chunk")!;
     chunkListener({}, { captureId });
@@ -713,13 +768,9 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const deps = makeDeps(true);
     const cleanup = registerDemoHandlers(deps);
 
-    const startHandler = getHandler("demo:start-capture");
-    await startHandler({}, defaultPayload);
+    const { captureId } = await startCaptureAndAck(deps, defaultPayload);
 
     const send = deps.mainWindow!.webContents.send as ReturnType<typeof vi.fn>;
-    const startCall = send.mock.calls.find(([ch]) => ch === "demo:capture-start")!;
-    const { captureId } = startCall[1] as { captureId: string };
-
     const stopHandler = getHandler("demo:stop-capture");
     const stopPromise = stopHandler({}) as Promise<{
       outputPath: string;
@@ -743,7 +794,6 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const finishListener = getIpcListener("demo:capture-finished")!;
     finishListener({}, { captureId });
 
-    // Now the write stream's .end() was called; its 'finish' microtask resolves the promise.
     expect(fsMocks.state.last!.end).toHaveBeenCalled();
 
     const result = await stopPromise;
@@ -753,12 +803,32 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     cleanup();
   });
 
+  it("stopCapture rejects and unlinks output when renderer reports error", async () => {
+    const fsMod = await import("fs");
+    (fsMod.existsSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+
+    const deps = makeDeps(true);
+    const cleanup = registerDemoHandlers(deps);
+
+    const { captureId } = await startCaptureAndAck(deps, defaultPayload);
+
+    const stopHandler = getHandler("demo:stop-capture");
+    const stopPromise = stopHandler({}) as Promise<unknown>;
+
+    const finishListener = getIpcListener("demo:capture-finished")!;
+    finishListener({}, { captureId, error: "encoder failed" });
+
+    await expect(stopPromise).rejects.toThrow(/encoder failed/);
+    expect(fsMod.unlinkSync).toHaveBeenCalledWith("/tmp/capture/out.webm");
+
+    cleanup();
+  });
+
   it("finish listener ignores stale captureId", async () => {
     const deps = makeDeps(true);
     const cleanup = registerDemoHandlers(deps);
 
-    const startHandler = getHandler("demo:start-capture");
-    await startHandler({}, defaultPayload);
+    await startCaptureAndAck(deps, defaultPayload);
 
     const finishListener = getIpcListener("demo:capture-finished")!;
     finishListener({}, { captureId: "wrong" });
@@ -791,8 +861,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     };
     expect(before).toEqual({ active: false, frameCount: 0, outputPath: null });
 
-    const startHandler = getHandler("demo:start-capture");
-    await startHandler({}, defaultPayload);
+    await startCaptureAndAck(deps, defaultPayload);
 
     const during = (await statusHandler({})) as {
       active: boolean;
@@ -811,8 +880,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     const deps = makeDeps(true, setDisplayHandler);
     const cleanup = registerDemoHandlers(deps);
 
-    const startHandler = getHandler("demo:start-capture");
-    await startHandler({}, defaultPayload);
+    await startCaptureAndAck(deps, defaultPayload);
 
     cleanup();
 
@@ -827,13 +895,12 @@ describe("frame capture pipeline (MediaRecorder)", () => {
       const deps = makeDeps(true);
       const cleanup = registerDemoHandlers(deps);
 
-      const startHandler = getHandler("demo:start-capture");
-      await startHandler({}, defaultPayload);
+      // startCaptureAndAck uses sync listeners — safe under fake timers.
+      await startCaptureAndAck(deps, defaultPayload);
 
       const send = deps.mainWindow!.webContents.send as ReturnType<typeof vi.fn>;
       const stopCallsBefore = send.mock.calls.filter(([ch]) => ch === "demo:capture-stop").length;
 
-      // Fast-forward past the 10-minute max.
       vi.advanceTimersByTime(10 * 60 * 1000 + 10);
 
       const stopCallsAfter = send.mock.calls.filter(([ch]) => ch === "demo:capture-stop").length;
@@ -851,13 +918,11 @@ describe("frame capture pipeline (MediaRecorder)", () => {
       const deps = makeDeps(true);
       const cleanup = registerDemoHandlers(deps);
 
-      const startHandler = getHandler("demo:start-capture");
-      await startHandler({}, defaultPayload);
+      await startCaptureAndAck(deps, defaultPayload);
 
       const stopHandler = getHandler("demo:stop-capture");
       const stopPromise = stopHandler({}) as Promise<unknown>;
 
-      // Renderer never sends DEMO_CAPTURE_FINISHED.
       vi.advanceTimersByTime(30 * 1000 + 10);
 
       await expect(stopPromise).rejects.toThrow("Capture finalize timed out");

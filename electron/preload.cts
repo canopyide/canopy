@@ -2823,8 +2823,11 @@ const api: ElectronAPI = {
             // would double the peak memory during recording.
             ipcRenderer.postMessage(CHANNELS.DEMO_CAPTURE_CHUNK, { captureId }, [buffer]);
           },
-          sendCaptureFinished: (captureId: string): void => {
-            ipcRenderer.send(CHANNELS.DEMO_CAPTURE_FINISHED, { captureId });
+          sendCaptureStarted: (captureId: string): void => {
+            ipcRenderer.send(CHANNELS.DEMO_CAPTURE_STARTED, { captureId });
+          },
+          sendCaptureFinished: (captureId: string, error?: string): void => {
+            ipcRenderer.send(CHANNELS.DEMO_CAPTURE_FINISHED, { captureId, error });
           },
           onCaptureStart: (
             callback: (payload: { captureId: string; fps: number }) => void

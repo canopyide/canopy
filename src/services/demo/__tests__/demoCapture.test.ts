@@ -63,6 +63,7 @@ function flushMicrotasks(): Promise<void> {
 
 interface DemoApi {
   sendCaptureChunk: ReturnType<typeof vi.fn>;
+  sendCaptureStarted: ReturnType<typeof vi.fn>;
   sendCaptureFinished: ReturnType<typeof vi.fn>;
   onCaptureStart: ReturnType<typeof vi.fn>;
   onCaptureStop: ReturnType<typeof vi.fn>;
@@ -77,6 +78,7 @@ function createDemoApi(): {
   let stopHandler: ((payload: { captureId: string }) => void) | null = null;
   const demo: DemoApi = {
     sendCaptureChunk: vi.fn(),
+    sendCaptureStarted: vi.fn(),
     sendCaptureFinished: vi.fn(),
     onCaptureStart: vi.fn((cb) => {
       startHandler = cb;
@@ -234,7 +236,10 @@ describe("initDemoCapture", () => {
     await flushMicrotasks();
     await flushMicrotasks();
 
-    expect(demo.sendCaptureFinished).toHaveBeenCalledWith("cap-err");
+    expect(demo.sendCaptureFinished).toHaveBeenCalledWith(
+      "cap-err",
+      expect.stringContaining("NotAllowedError")
+    );
     errorSpy.mockRestore();
 
     cleanup();
@@ -254,7 +259,10 @@ describe("initDemoCapture", () => {
     await flushMicrotasks();
 
     expect(getDisplayMedia).not.toHaveBeenCalled();
-    expect(demo.sendCaptureFinished).toHaveBeenCalledWith("cap-nope");
+    expect(demo.sendCaptureFinished).toHaveBeenCalledWith(
+      "cap-nope",
+      expect.stringContaining("unsupported mime type")
+    );
     errorSpy.mockRestore();
 
     cleanup();
@@ -276,6 +284,98 @@ describe("initDemoCapture", () => {
 
     expect(MockMediaRecorder.instances).toHaveLength(1);
     warnSpy.mockRestore();
+
+    cleanup();
+  });
+
+  it("final chunk is flushed to main before onstop → sendCaptureFinished (async arrayBuffer)", async () => {
+    vi.resetModules();
+    const { demo, triggerStart, triggerStop } = createDemoApi();
+    // @ts-expect-error -- inject demo api
+    window.electron = { demo };
+    const { initDemoCapture } = await import("../demoCapture");
+    const cleanup = initDemoCapture();
+
+    triggerStart({ captureId: "cap-async", fps: 30 });
+    await flushMicrotasks();
+
+    const recorder = MockMediaRecorder.instances[0]!;
+
+    // Deferred blob.arrayBuffer() — simulates real async browser behavior.
+    let resolveBuf!: (value: ArrayBuffer) => void;
+    const finalBuffer = new Uint8Array([7, 7, 7, 7]).buffer;
+    const slowPromise = new Promise<ArrayBuffer>((resolve) => {
+      resolveBuf = resolve;
+    });
+
+    // Emit a chunk whose arrayBuffer() resolves only later.
+    recorder.ondataavailable!({
+      data: {
+        size: 4,
+        arrayBuffer: () => slowPromise,
+      },
+    });
+
+    // Immediately stop (W3C: stop() fires final ondataavailable then onstop).
+    triggerStop({ captureId: "cap-async" });
+
+    // onstop has fired (mock is synchronous) but finalizeRecording awaits the
+    // pending arrayBuffer — sendCaptureFinished must NOT have been called yet.
+    await flushMicrotasks();
+    expect(demo.sendCaptureFinished).not.toHaveBeenCalled();
+    expect(demo.sendCaptureChunk).not.toHaveBeenCalled();
+
+    // Now the slow arrayBuffer resolves — chunk delivery then finished ack.
+    resolveBuf(finalBuffer);
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(demo.sendCaptureChunk).toHaveBeenCalledWith("cap-async", finalBuffer);
+    expect(demo.sendCaptureFinished).toHaveBeenCalledWith("cap-async");
+    // Chunk must arrive before finished.
+    const chunkOrder = demo.sendCaptureChunk.mock.invocationCallOrder[0]!;
+    const finishedOrder = demo.sendCaptureFinished.mock.invocationCallOrder[0]!;
+    expect(chunkOrder).toBeLessThan(finishedOrder);
+
+    cleanup();
+  });
+
+  it("stop during pending getDisplayMedia tears down stream without constructing recorder", async () => {
+    vi.resetModules();
+    let resolveDisplay!: (value: MediaStream) => void;
+    const deferredStream = new MockMediaStream();
+    const deferred = new Promise<MediaStream>((resolve) => {
+      resolveDisplay = resolve;
+    });
+    getDisplayMedia.mockReset();
+    getDisplayMedia.mockReturnValueOnce(deferred);
+
+    const { demo, triggerStart, triggerStop } = createDemoApi();
+    // @ts-expect-error -- inject demo api
+    window.electron = { demo };
+    const { initDemoCapture } = await import("../demoCapture");
+    const cleanup = initDemoCapture();
+
+    triggerStart({ captureId: "cap-race", fps: 30 });
+    await flushMicrotasks();
+
+    // Stop arrives before getDisplayMedia resolves.
+    triggerStop({ captureId: "cap-race" });
+
+    // Idempotent ack from stop — main can finalize.
+    expect(demo.sendCaptureFinished).toHaveBeenCalledWith("cap-race");
+
+    // Now getDisplayMedia resolves — no MediaRecorder should be constructed
+    // and the obtained stream must be torn down.
+    resolveDisplay(deferredStream as unknown as MediaStream);
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(MockMediaRecorder.instances).toHaveLength(0);
+    const [track] = deferredStream.getTracks();
+    expect(track!.stop).toHaveBeenCalled();
+    // Should NOT double-ack.
+    expect(demo.sendCaptureFinished).toHaveBeenCalledTimes(1);
 
     cleanup();
   });
