@@ -191,7 +191,7 @@ describe("agentSettingsStore adversarial", () => {
     expect(state.settings?.agents.codex?.pinned).toBe(false);
   });
 
-  it("initialize seeds pinned:false for agents without explicit values (opt-in model #5109)", async () => {
+  it("initialize synthesizes pinned from availability for pre-existing entries (upgrader path)", async () => {
     registryMock.getEffectiveAgentIds.mockReturnValue(["claude", "codex"]);
     setAvailability({ claude: "ready", codex: "missing" }, true);
     clientMock.get.mockResolvedValue({
@@ -204,9 +204,10 @@ describe("agentSettingsStore adversarial", () => {
     await useAgentSettingsStore.getState().initialize();
 
     const state = useAgentSettingsStore.getState();
-    // Opt-in model: availability no longer auto-synthesizes pinned:true.
-    // Users must explicitly pin agents via the welcome card or tray.
-    expect(state.settings?.agents.claude?.pinned).toBe(false);
+    // Existing entries (upgraders from 0.7.x) preserve the implicit pin:
+    // installed/ready → true, missing → false. Only agents without any
+    // persisted entry default to pinned:false under the new opt-in model.
+    expect(state.settings?.agents.claude?.pinned).toBe(true);
     expect(state.settings?.agents.codex?.pinned).toBe(false);
   });
 

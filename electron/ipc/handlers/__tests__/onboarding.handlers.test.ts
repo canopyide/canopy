@@ -98,18 +98,23 @@ describe("registerOnboardingHandlers — discovery IPC", () => {
     );
   });
 
-  it("markAgentsSeen is idempotent when called with the same ids twice", () => {
+  it("markAgentsSeen is idempotent and skips the persist when already seen", () => {
+    registerOnboardingHandlers();
+    seedOnboarding({ seenAgentIds: ["claude"] });
+    const mark = getHandler("onboarding:mark-agents-seen");
+    storeMock.set.mockClear();
+    const result = mark(null, ["claude"]) as { seenAgentIds: string[] };
+    expect(result.seenAgentIds).toEqual(["claude"]);
+    expect(storeMock.set).not.toHaveBeenCalled();
+  });
+
+  it("markAgentsSeen with empty payload does not write to the store", () => {
     registerOnboardingHandlers();
     seedOnboarding({ seenAgentIds: [] });
     const mark = getHandler("onboarding:mark-agents-seen");
-    mark(null, ["claude"]);
-    // Reload simulated state so the handler sees the new persisted value.
-    storeMock._data["onboarding"] = {
-      ...(storeMock._data["onboarding"] as Record<string, unknown>),
-      seenAgentIds: ["claude"],
-    };
-    const result = mark(null, ["claude"]) as { seenAgentIds: string[] };
-    expect(result.seenAgentIds).toEqual(["claude"]);
+    storeMock.set.mockClear();
+    mark(null, []);
+    expect(storeMock.set).not.toHaveBeenCalled();
   });
 
   it("markAgentsSeen ignores non-array payloads and non-string ids", () => {

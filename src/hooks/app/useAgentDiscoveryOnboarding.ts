@@ -1,80 +1,124 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
+import { create } from "zustand";
 import type { OnboardingState } from "@shared/types";
 import { isElectronAvailable } from "@/hooks/useElectron";
 
-interface AgentDiscoveryOnboarding {
+interface AgentDiscoveryState {
   loaded: boolean;
   seenAgentIds: string[];
   welcomeCardDismissed: boolean;
+}
+
+const useAgentDiscoveryStore = create<AgentDiscoveryState>(() => ({
+  loaded: false,
+  seenAgentIds: [],
+  welcomeCardDismissed: false,
+}));
+
+let hydrating: Promise<void> | null = null;
+
+async function hydrate(): Promise<void> {
+  if (useAgentDiscoveryStore.getState().loaded) return;
+  if (hydrating) return hydrating;
+
+  hydrating = (async () => {
+    if (!isElectronAvailable()) {
+      useAgentDiscoveryStore.setState({ loaded: true });
+      return;
+    }
+    const api = window.electron?.onboarding;
+    if (!api?.get) {
+      useAgentDiscoveryStore.setState({ loaded: true });
+      return;
+    }
+    try {
+      const state: OnboardingState = await api.get();
+      useAgentDiscoveryStore.setState({
+        loaded: true,
+        seenAgentIds: Array.isArray(state.seenAgentIds) ? state.seenAgentIds : [],
+        welcomeCardDismissed: state.welcomeCardDismissed === true,
+      });
+    } catch {
+      useAgentDiscoveryStore.setState({ loaded: true });
+    }
+  })();
+
+  try {
+    await hydrating;
+  } finally {
+    hydrating = null;
+  }
+}
+
+export async function markAgentsSeen(agentIds: string[]): Promise<void> {
+  if (agentIds.length === 0) return;
+  useAgentDiscoveryStore.setState((s) => {
+    const merged = new Set(s.seenAgentIds);
+    let changed = false;
+    for (const id of agentIds) {
+      if (!merged.has(id)) {
+        merged.add(id);
+        changed = true;
+      }
+    }
+    return changed ? { ...s, seenAgentIds: Array.from(merged) } : s;
+  });
+  const api = window.electron?.onboarding;
+  if (!api?.markAgentsSeen) return;
+  try {
+    await api.markAgentsSeen(agentIds);
+  } catch {
+    // Best-effort; optimistic local state stands.
+  }
+}
+
+export async function dismissWelcomeCard(): Promise<void> {
+  if (useAgentDiscoveryStore.getState().welcomeCardDismissed) return;
+  useAgentDiscoveryStore.setState({ welcomeCardDismissed: true });
+  const api = window.electron?.onboarding;
+  if (!api?.dismissWelcomeCard) return;
+  try {
+    await api.dismissWelcomeCard();
+  } catch {
+    // Best-effort; optimistic local state stands.
+  }
+}
+
+interface AgentDiscoveryOnboarding extends AgentDiscoveryState {
   markAgentsSeen: (agentIds: string[]) => Promise<void>;
   dismissWelcomeCard: () => Promise<void>;
 }
 
 /**
- * Reads the discovery-related onboarding fields once on mount and exposes
- * optimistic mutations. Local state updates before the IPC round-trip so the
- * welcome card and tray badge clear immediately when the user acts, avoiding
- * a visible flicker while the main process acknowledges the write.
+ * Reads the discovery-related onboarding fields from a shared Zustand store
+ * and exposes optimistic mutations. Hydration fires once on first mount and
+ * is shared across all subscribers — critical for keeping the welcome card
+ * (`WelcomeScreen`) and the tray badge (`AgentTrayButton`) in sync within a
+ * session; see review on #5111.
  */
 export function useAgentDiscoveryOnboarding(): AgentDiscoveryOnboarding {
-  const [seenAgentIds, setSeenAgentIds] = useState<string[]>([]);
-  const [welcomeCardDismissed, setWelcomeCardDismissed] = useState<boolean>(false);
-  const [loaded, setLoaded] = useState(false);
+  const loaded = useAgentDiscoveryStore((s) => s.loaded);
+  const seenAgentIds = useAgentDiscoveryStore((s) => s.seenAgentIds);
+  const welcomeCardDismissed = useAgentDiscoveryStore((s) => s.welcomeCardDismissed);
 
   useEffect(() => {
-    if (!isElectronAvailable()) {
-      setLoaded(true);
-      return;
-    }
-    let disposed = false;
-    const api = window.electron?.onboarding;
-    if (!api?.get) {
-      setLoaded(true);
-      return;
-    }
-    api
-      .get()
-      .then((state: OnboardingState) => {
-        if (disposed) return;
-        setSeenAgentIds(Array.isArray(state.seenAgentIds) ? state.seenAgentIds : []);
-        setWelcomeCardDismissed(state.welcomeCardDismissed === true);
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (disposed) return;
-        setLoaded(true);
-      });
-    return () => {
-      disposed = true;
-    };
+    void hydrate();
   }, []);
 
-  const markAgentsSeen = useCallback(async (agentIds: string[]) => {
-    if (agentIds.length === 0) return;
-    setSeenAgentIds((prev) => {
-      const merged = new Set(prev);
-      for (const id of agentIds) merged.add(id);
-      return Array.from(merged);
-    });
-    const api = window.electron?.onboarding;
-    if (!api?.markAgentsSeen) return;
-    try {
-      await api.markAgentsSeen(agentIds);
-    } catch {
-      // best-effort — local optimistic state stands; next reload will reconcile.
-    }
-  }, []);
+  return {
+    loaded,
+    seenAgentIds,
+    welcomeCardDismissed,
+    markAgentsSeen,
+    dismissWelcomeCard,
+  };
+}
 
-  const dismissWelcomeCard = useCallback(async () => {
-    setWelcomeCardDismissed(true);
-    const api = window.electron?.onboarding;
-    if (!api?.dismissWelcomeCard) return;
-    try {
-      await api.dismissWelcomeCard();
-    } catch {
-      // best-effort — local optimistic state stands; next reload will reconcile.
-    }
-  }, []);
-
-  return { loaded, seenAgentIds, welcomeCardDismissed, markAgentsSeen, dismissWelcomeCard };
+export function resetAgentDiscoveryStoreForTests(): void {
+  hydrating = null;
+  useAgentDiscoveryStore.setState({
+    loaded: false,
+    seenAgentIds: [],
+    welcomeCardDismissed: false,
+  });
 }

@@ -4,20 +4,31 @@ import { agentSettingsClient } from "@/clients";
 import { DEFAULT_AGENT_SETTINGS } from "@shared/types";
 import { getEffectiveAgentIds } from "../../shared/config/agentRegistry";
 import { isAgentPinned } from "../../shared/utils/agentPinned";
+import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 import { useCliAvailabilityStore } from "./cliAvailabilityStore";
 
 /**
- * In-memory normalization: seeds `pinned: false` for any registered agent
- * missing an explicit value, once real availability data has landed. This
- * keeps the toolbar empty until the user deliberately pins (opt-in model —
- * see #5109). Before real data (`hasRealData === false`) the flag stays
- * absent so the renderer can re-run normalization once the first probe
- * completes. Explicit `pinned: true` / `pinned: false` values from the
- * persisted store are always preserved. Does NOT persist.
+ * In-memory normalization with two distinct paths:
+ *
+ *  - No entry at all for a registered agent → seed `pinned: false` (opt-in
+ *    default — see #5109 and the welcome card in #5111). Fresh installs
+ *    show an empty toolbar until the user pins via the welcome card or
+ *    the tray.
+ *  - Entry exists but `pinned` is undefined → synthesize from current
+ *    availability (installed/ready → true, missing → false). This
+ *    preserves the implicit pin for 0.7.x upgraders who already have
+ *    agent-settings entries from prior sessions — otherwise their
+ *    toolbar would collapse and the AgentSetupWizard would auto-open on
+ *    every launch (see #5158 and review on #5111).
+ *
+ * Before real data (`hasRealData === false`) the flag stays absent so
+ * the renderer can re-run normalization once the first probe completes.
+ * Explicit `pinned: true` / `pinned: false` values from the persisted
+ * store are always preserved. Does NOT persist.
  */
 export function normalizeAgentSelection(
   settings: AgentSettings,
-  _availability?: CliAvailability | null,
+  availability?: CliAvailability | null,
   hasRealData: boolean = false
 ): AgentSettings {
   const registeredIds = getEffectiveAgentIds();
@@ -36,7 +47,7 @@ export function normalizeAgentSelection(
     }
 
     if (entry.pinned === undefined && hasRealData) {
-      agents[id] = { ...entry, pinned: false };
+      agents[id] = { ...entry, pinned: isAgentInstalled(availability?.[id]) };
       changed = true;
     }
   }

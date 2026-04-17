@@ -575,16 +575,36 @@ describe("WelcomeScreen", () => {
       expect(dismissWelcomeCardMock).toHaveBeenCalled();
     });
 
-    it("does not pin agents when the Not now link is clicked but still dismisses", () => {
+    it("does not pin agents when the Not now link is clicked but still dismisses", async () => {
       cliAvailabilityState.hasRealData = true;
       cliAvailabilityState.availability = { claude: "ready" };
       agentSettingsState.settings = { agents: {} };
       render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
 
-      fireEvent.click(screen.getByText("Not now"));
+      await act(async () => {
+        fireEvent.click(screen.getByText("Not now"));
+      });
       expect(setAgentPinnedMock).not.toHaveBeenCalled();
       expect(markAgentsSeenMock).toHaveBeenCalled();
       expect(dismissWelcomeCardMock).toHaveBeenCalled();
+    });
+
+    it("keeps the card visible and surfaces an error if any pin fails", async () => {
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
+      agentSettingsState.settings = { agents: {} };
+      setAgentPinnedMock.mockImplementationOnce(() => Promise.reject(new Error("IPC down")));
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("welcome-card-pin-all"));
+      });
+
+      // First call rejected — card should stay visible with an inline error,
+      // and dismiss should NOT have been called.
+      expect(screen.getByTestId("welcome-card-pin-error")).toBeTruthy();
+      expect(dismissWelcomeCardMock).not.toHaveBeenCalled();
+      expect(markAgentsSeenMock).not.toHaveBeenCalled();
     });
   });
 });

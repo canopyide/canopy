@@ -195,18 +195,32 @@ export function AgentTrayButton({
     return BUILT_IN_AGENT_IDS.filter((id) => isAgentReady(agentAvailability?.[id]));
   }, [agentAvailability]);
 
-  // While the first-run welcome card is still waiting to be acknowledged we
-  // suppress the tray discovery badge for the initial cohort so both
-  // affordances don't fire for the same agents. Day-N discovery activates
-  // once the card is dismissed.
+  const hasNoPinnedAgents = useMemo(() => {
+    if (!agentSettings?.agents) return true;
+    return !BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agentSettings.agents?.[id]));
+  }, [agentSettings]);
+
+  // While the first-run welcome card is actually being rendered, suppress
+  // the tray discovery badge so the card and badge don't both fire for the
+  // same agents. Critically, this is gated on whether the card would render
+  // right now — not whether the dismiss flag is false — so a user who pins
+  // via the tray/settings (which leaves `welcomeCardDismissed: false`)
+  // still gets Day-N discovery for agents installed later.
+  const welcomeCardRenderable =
+    onboardingLoaded &&
+    hasRealData &&
+    !welcomeCardDismissed &&
+    readyAgentIds.length > 0 &&
+    hasNoPinnedAgents;
+
   const newAgentIds = useMemo<ReadonlySet<string>>(() => {
-    if (!onboardingLoaded || !welcomeCardDismissed) return new Set<string>();
+    if (!onboardingLoaded || welcomeCardRenderable) return new Set<string>();
     const set = new Set<string>();
     for (const id of readyAgentIds) {
       if (!seenAgentIds.includes(id)) set.add(id);
     }
     return set;
-  }, [onboardingLoaded, welcomeCardDismissed, readyAgentIds, seenAgentIds]);
+  }, [onboardingLoaded, welcomeCardRenderable, readyAgentIds, seenAgentIds]);
 
   const showDiscoveryBadge = newAgentIds.size > 0;
 

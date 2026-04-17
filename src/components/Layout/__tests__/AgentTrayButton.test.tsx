@@ -662,7 +662,7 @@ describe("AgentTrayButton", () => {
     expect(queryByTestId("agent-tray-new-pill-gemini")).toBeNull();
   });
 
-  it("suppresses the discovery badge while the welcome card has not been dismissed", () => {
+  it("suppresses the discovery badge while the welcome card is actually renderable", () => {
     const availability = { claude: "ready" } as unknown as CliAvailability;
     mockSettings = settingsWith({});
     mockWelcomeCardDismissed = false;
@@ -671,6 +671,24 @@ describe("AgentTrayButton", () => {
     const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
     expect(queryByTestId("agent-tray-discovery-badge")).toBeNull();
     expect(queryByTestId("agent-tray-new-pill-claude")).toBeNull();
+  });
+
+  it("shows the discovery badge when a pinned agent exists even if welcomeCardDismissed is false", () => {
+    // Regression: users who pin via Settings or elsewhere never flip
+    // `welcomeCardDismissed`. The badge used to stay permanently suppressed
+    // for those users. Suppression must gate on whether the card would
+    // actually render, not on the dismiss flag in isolation.
+    const availability = {
+      claude: "ready",
+      gemini: "ready",
+    } as unknown as CliAvailability;
+    mockSettings = settingsWith({ claude: { pinned: true } });
+    mockWelcomeCardDismissed = false;
+    mockSeenAgentIds = ["claude"];
+
+    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(queryByTestId("agent-tray-discovery-badge")).toBeTruthy();
+    expect(queryByTestId("agent-tray-new-pill-gemini")).toBeTruthy();
   });
 
   it("hides the discovery badge once all ready agents are in seenAgentIds", () => {

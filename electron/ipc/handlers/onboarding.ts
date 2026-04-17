@@ -196,8 +196,17 @@ export function registerOnboardingHandlers(): () => void {
       ? (payload as unknown[]).filter((id): id is string => typeof id === "string")
       : [];
     const state = getOnboardingState();
-    const merged = Array.from(new Set([...state.seenAgentIds, ...incoming]));
-    const updated: OnboardingState = { ...state, seenAgentIds: merged };
+    if (incoming.length === 0) return state;
+    const existing = new Set(state.seenAgentIds);
+    let changed = false;
+    for (const id of incoming) {
+      if (!existing.has(id)) {
+        existing.add(id);
+        changed = true;
+      }
+    }
+    if (!changed) return state;
+    const updated: OnboardingState = { ...state, seenAgentIds: Array.from(existing) };
     store.set("onboarding", updated);
     return updated;
   });

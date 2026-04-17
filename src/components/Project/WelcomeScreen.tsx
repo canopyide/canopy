@@ -254,15 +254,22 @@ function AgentWelcomeCard() {
   if (welcomeCardDismissed) return null;
   if (readyAgentIds.length === 0 || !hasNoPinnedAgents) return null;
 
+  const [pinError, setPinError] = useState(false);
+
   const handlePinAll = async () => {
     if (busy) return;
     setBusy(true);
+    setPinError(false);
     try {
-      await Promise.all(
-        readyAgentIds
-          .filter((id) => !isAgentPinned(agentSettings?.agents?.[id]))
-          .map((id) => setAgentPinned(id, true).catch(() => {}))
-      );
+      const targets = readyAgentIds.filter((id) => !isAgentPinned(agentSettings?.agents?.[id]));
+      const results = await Promise.allSettled(targets.map((id) => setAgentPinned(id, true)));
+      const allOk = results.every((r) => r.status === "fulfilled");
+      if (!allOk) {
+        // Keep the card visible so the user can retry; surface an inline
+        // error instead of silently dropping their "Pin all" click.
+        setPinError(true);
+        return;
+      }
       await markAgentsSeen(readyAgentIds);
       await dismissWelcomeCard();
     } finally {
@@ -271,8 +278,13 @@ function AgentWelcomeCard() {
   };
 
   const handleDismiss = () => {
-    void markAgentsSeen(readyAgentIds);
-    void dismissWelcomeCard();
+    // Await seen-before-dismiss so a crash or quit between the two IPCs
+    // can't leave `welcomeCardDismissed: true` + `seenAgentIds: []` —
+    // which would mark every ready agent as "new" on next launch.
+    void (async () => {
+      await markAgentsSeen(readyAgentIds);
+      await dismissWelcomeCard();
+    })();
   };
 
   return (
@@ -331,6 +343,15 @@ function AgentWelcomeCard() {
                 Not now
               </button>
             </div>
+            {pinError && (
+              <p
+                role="alert"
+                data-testid="welcome-card-pin-error"
+                className="mt-2 text-xs text-red-400"
+              >
+                Couldn&apos;t pin all agents. Please try again.
+              </p>
+            )}
           </div>
         </div>
       </div>

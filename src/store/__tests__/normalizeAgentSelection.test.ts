@@ -33,36 +33,39 @@ describe("normalizeAgentSelection", () => {
     expect(result.agents.gemini.pinned).toBe(true);
   });
 
-  it("seeds pinned: false for installed agents when hasRealData is true (opt-in model #5109)", () => {
+  it("synthesizes pinned:true for installed agents with an existing entry (upgrader path)", () => {
+    // Upgrader: entry exists from prior sessions but was persisted without
+    // a `pinned` field. Preserve the implicit pin so their toolbar doesn't
+    // collapse on upgrade.
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "installed" });
     const result = normalizeAgentSelection(settings, availability, true);
-    expect(result.agents.claude.pinned).toBe(false);
+    expect(result.agents.claude.pinned).toBe(true);
   });
 
-  it("seeds pinned: false for ready agents when hasRealData is true (opt-in model #5109)", () => {
+  it("synthesizes pinned:true for ready agents with an existing entry (upgrader path)", () => {
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "ready" });
     const result = normalizeAgentSelection(settings, availability, true);
-    expect(result.agents.claude.pinned).toBe(false);
+    expect(result.agents.claude.pinned).toBe(true);
   });
 
-  it("seeds pinned: false for missing agents when hasRealData is true (issue #5158)", () => {
+  it("synthesizes pinned:false for missing agents with an existing entry (issue #5158)", () => {
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "missing" });
     const result = normalizeAgentSelection(settings, availability, true);
     expect(result.agents.claude.pinned).toBe(false);
   });
 
-  it("creates pinned:false entries for every agent when store is empty and hasRealData is true", () => {
+  it("creates pinned:false entries for every agent when store is empty (fresh-install opt-in)", () => {
+    // Fresh install: no entries in the persisted store. Opt-in model means
+    // nothing is pinned until the user acts (welcome card, tray, etc).
     const settings: AgentSettings = { agents: {} };
     const allIds = getEffectiveAgentIds();
     const [firstInstalled] = allIds;
     const availability = availabilityFor({ [firstInstalled]: "installed" });
     const result = normalizeAgentSelection(settings, availability, true);
 
-    // Opt-in model: availability no longer seeds pinned:true automatically.
-    // Users pin explicitly via the welcome card or tray.
     for (const id of allIds) {
       expect(result.agents[id]).toEqual({ pinned: false });
     }
