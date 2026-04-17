@@ -66,7 +66,11 @@ export function useUpdateListener(suppressToasts = false): void {
         inboxMessage: `Version ${version} is downloading. ${AVAILABLE_HINT}`,
         priority: "high",
         duration: 0,
-        onDismiss: () => window.electron?.update?.notifyDismiss?.(version),
+        onDismiss: () => {
+          void window.electron?.update
+            ?.notifyDismiss?.(version)
+            ?.catch((err) => console.error("[useUpdateListener] notifyDismiss failed:", err));
+        },
       });
       toastIdRef.current = id || null;
       versionRef.current = id ? version : null;
@@ -97,7 +101,11 @@ export function useUpdateListener(suppressToasts = false): void {
         duration: 0,
         // Forwarded to main only when the user explicitly closes the toast —
         // MAX_VISIBLE_TOASTS eviction and programmatic dismissals bypass this.
-        onDismiss: () => window.electron?.update?.notifyDismiss?.(version),
+        onDismiss: () => {
+          void window.electron?.update
+            ?.notifyDismiss?.(version)
+            ?.catch((err) => console.error("[useUpdateListener] notifyDismiss failed:", err));
+        },
       });
       toastIdRef.current = id || null;
       versionRef.current = id ? version : null;
