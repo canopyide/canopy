@@ -544,9 +544,8 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
         }
 
         const isAgent = isAgentRecipeType(terminal.type);
-        let command = terminal.command?.trim() || "";
+        let terminalId: string | null;
 
-        // For agent terminals, build command with settings/flags and optional initial prompt
         if (isAgent) {
           const agentConfig = getAgentConfig(terminal.type);
           const baseCommand = agentConfig?.command || terminal.type;
@@ -559,23 +558,32 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             ? replaceRecipeVariables(rawPrompt, resolvedContext)
             : undefined;
           const entry = agentSettings?.agents?.[terminal.type] ?? {};
-          command = generateAgentCommand(baseCommand, entry, terminal.type, {
+          const command = generateAgentCommand(baseCommand, entry, terminal.type, {
             initialPrompt,
             clipboardDirectory,
             recipeArgs: terminal.args?.trim() || undefined,
           });
+          terminalId = await terminalStore.addPanel({
+            kind: "agent",
+            agentId: terminal.type,
+            command,
+            title: terminal.title,
+            cwd: worktreePath,
+            worktreeId: worktreeId,
+            env: terminal.env,
+            exitBehavior: terminal.exitBehavior,
+          });
+        } else {
+          terminalId = await terminalStore.addPanel({
+            kind: "terminal",
+            title: terminal.title,
+            cwd: worktreePath,
+            command: terminal.command?.trim() || "",
+            worktreeId: worktreeId,
+            env: terminal.env,
+            exitBehavior: terminal.exitBehavior,
+          });
         }
-
-        const terminalId = await terminalStore.addPanel({
-          kind: isAgent ? "agent" : "terminal",
-          agentId: isAgent ? terminal.type : undefined,
-          title: terminal.title,
-          cwd: worktreePath,
-          command,
-          worktreeId: worktreeId,
-          env: terminal.env,
-          exitBehavior: terminal.exitBehavior,
-        });
         if (terminalId) {
           results.spawned.push({ index, terminalId });
         } else {

@@ -54,6 +54,10 @@ export interface TerminalPanelOptions extends AddPanelOptionsBase {
 /** Options for creating an agent panel */
 export interface AgentPanelOptions extends AddPanelOptionsBase {
   kind: "agent";
+  /** Agent ID (e.g., "claude", "gemini") — required for agent panels to prevent bare-shell spawns */
+  agentId: string;
+  /** Launch command — required for agent panels to prevent bare-shell spawns */
+  command: string;
 }
 
 /** Options for creating a browser panel */
@@ -105,16 +109,24 @@ export interface DevPreviewPanelOptions extends AddPanelOptionsBase {
   devPreviewConsoleOpen?: boolean;
 }
 
-/** Options for extension-provided panel kinds */
+/**
+ * Options for extension-provided panel kinds.
+ *
+ * NOTE: intentionally excluded from the `AddPanelOptions` union below. Including
+ * `kind: string & {}` as a union member defeats discriminated-union narrowing
+ * for built-in kinds (any literal string satisfies `string & {}`, so TypeScript
+ * silently picks this variant and skips the stricter built-in shapes). Extensions
+ * that need to spawn panels with a custom kind should widen via an explicit cast
+ * at their integration boundary.
+ */
 export interface ExtensionPanelOptions extends AddPanelOptionsBase {
   kind: string & {};
 }
 
-/** Discriminated union of all panel creation option types */
+/** Discriminated union of all built-in panel creation option types */
 export type AddPanelOptions =
   | TerminalPanelOptions
   | AgentPanelOptions
   | BrowserPanelOptions
   | NotesPanelOptions
-  | DevPreviewPanelOptions
-  | ExtensionPanelOptions;
+  | DevPreviewPanelOptions;

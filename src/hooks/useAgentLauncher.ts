@@ -186,18 +186,33 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
           ? getAgentDisplayTitle(agentId, launchOptions.modelId)
           : (agentConfig?.name ?? "Terminal");
 
-      const options: AddPanelOptions = {
-        kind: isAgent ? "agent" : "terminal",
-        type: isAgent ? (agentId as any) : "terminal",
-        agentId: isAgent ? agentId : undefined,
-        title,
-        cwd,
-        worktreeId: targetWorktreeId || undefined,
-        command,
-        location: launchOptions?.location,
-        agentLaunchFlags: launchFlags,
-        agentModelId: launchOptions?.modelId,
-      };
+      if (isAgent && !command) {
+        console.error(`Cannot launch ${agentId} agent: command could not be generated`);
+        return null;
+      }
+
+      const options: AddPanelOptions = isAgent
+        ? {
+            kind: "agent",
+            type: agentId as any,
+            agentId,
+            command: command as string,
+            title,
+            cwd,
+            worktreeId: targetWorktreeId || undefined,
+            location: launchOptions?.location,
+            agentLaunchFlags: launchFlags,
+            agentModelId: launchOptions?.modelId,
+          }
+        : {
+            kind: "terminal",
+            type: "terminal",
+            title,
+            cwd,
+            worktreeId: targetWorktreeId || undefined,
+            command,
+            location: launchOptions?.location,
+          };
 
       try {
         const terminalId = await addPanel(options);

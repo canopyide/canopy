@@ -126,7 +126,7 @@ import { isAgentPinned } from "../shared/utils/agentPinned";
 import { useShallow } from "zustand/react/shallow";
 import { useMacroFocusStore } from "./store/macroFocusStore";
 import { useSafeModeStore } from "./store/safeModeStore";
-import type { PanelKind } from "./types";
+import type { BuiltInPanelKind } from "./types";
 import type { TerminalType } from "@shared/types";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { actionService } from "./services/ActionService";
@@ -610,7 +610,7 @@ function App() {
             }
           } else {
             addPanel({
-              kind: result.id as PanelKind,
+              kind: result.id as Exclude<BuiltInPanelKind, "agent">,
               cwd: defaultTerminalCwd,
               worktreeId: activeWorktreeId ?? undefined,
               location: "grid",
@@ -648,7 +648,7 @@ function App() {
             }
           } else {
             addPanel({
-              kind: selected.id as PanelKind,
+              kind: selected.id as Exclude<BuiltInPanelKind, "agent">,
               cwd: defaultTerminalCwd,
               worktreeId: activeWorktreeId ?? undefined,
               location: "grid",
