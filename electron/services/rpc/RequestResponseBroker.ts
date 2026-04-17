@@ -189,7 +189,7 @@ function normalizeRegisterArg(arg?: number | RegisterOptions): {
   method?: string;
   timeoutMs?: number;
 } {
-  if (arg === undefined) return {};
+  if (arg == null) return {};
   if (typeof arg === "number") return { timeoutMs: arg };
   return { method: arg.method, timeoutMs: arg.timeoutMs };
 }
