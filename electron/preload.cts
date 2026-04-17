@@ -988,6 +988,11 @@ const CHANNELS = {
   DEMO_EXEC_WAIT_FOR_IDLE: "demo:exec-wait-for-idle",
   DEMO_ENCODE: "demo:encode",
   DEMO_ENCODE_PROGRESS: "demo:encode:progress",
+  DEMO_CAPTURE_START: "demo:capture-start",
+  DEMO_CAPTURE_STOP: "demo:capture-stop",
+  DEMO_CAPTURE_CHUNK: "demo:capture-chunk",
+  DEMO_CAPTURE_STARTED: "demo:capture-started",
+  DEMO_CAPTURE_FINISHED: "demo:capture-finished",
 
   // Plugin channels
   PLUGIN_LIST: "plugin:list",
@@ -2819,9 +2824,12 @@ const api: ElectronAPI = {
           stopCapture: () => _unwrappingInvoke(CHANNELS.DEMO_STOP_CAPTURE),
           getCaptureStatus: () => _unwrappingInvoke(CHANNELS.DEMO_GET_CAPTURE_STATUS),
           sendCaptureChunk: (captureId: string, buffer: ArrayBuffer): void => {
-            // postMessage transfers the ArrayBuffer zero-copy; structured clone
-            // would double the peak memory during recording.
-            ipcRenderer.postMessage(CHANNELS.DEMO_CAPTURE_CHUNK, { captureId }, [buffer]);
+            // Structured clone copies the buffer. With a 1s timeslice, chunks
+            // are ~100-500KB so the copy cost is trivial. (Electron's
+            // postMessage transfer list only accepts MessagePort — not
+            // ArrayBuffer — so true zero-copy would require a dedicated
+            // MessageChannel, which is unnecessary overhead for 1Hz chunks.)
+            ipcRenderer.send(CHANNELS.DEMO_CAPTURE_CHUNK, { captureId, buffer });
           },
           sendCaptureStarted: (captureId: string): void => {
             ipcRenderer.send(CHANNELS.DEMO_CAPTURE_STARTED, { captureId });

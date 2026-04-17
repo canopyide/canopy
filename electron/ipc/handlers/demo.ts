@@ -242,8 +242,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     finalizeTimer: ReturnType<typeof setTimeout> | null;
     chunkListener: (
       event: Electron.IpcMainEvent,
-      msg: { captureId: string } | undefined,
-      ...rest: unknown[]
+      msg: { captureId: string; buffer?: ArrayBuffer } | undefined
     ) => void;
     startedListener: (event: Electron.IpcMainEvent, msg: { captureId: string }) => void;
     finishListener: (
@@ -413,21 +412,18 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
 
     const chunkListener = (
       _event: Electron.IpcMainEvent,
-      msg: { captureId: string } | undefined,
-      ...rest: unknown[]
+      msg: { captureId: string; buffer?: ArrayBuffer } | undefined
     ): void => {
       const session = captureSession;
       if (!session || session.finalized) return;
       if (!msg || msg.captureId !== session.captureId) return;
-      // When using ipcRenderer.postMessage the transferred ArrayBuffer
-      // arrives as an additional argument after the message payload.
-      const transferred = rest.find((arg) => arg instanceof ArrayBuffer) as ArrayBuffer | undefined;
-      if (!transferred || transferred.byteLength === 0) return;
+      const buffer = msg.buffer;
+      if (!buffer || buffer.byteLength === 0) return;
       if (session.fileStream.destroyed) return;
       // Buffer.from(arrayBuffer) returns a view, not a copy — safe because the
       // chunk originated on the browser heap (blob.arrayBuffer()), not from a
       // Node.js slab. See PR #4639.
-      session.fileStream.write(Buffer.from(transferred));
+      session.fileStream.write(Buffer.from(buffer));
     };
 
     const startedListener = (_event: Electron.IpcMainEvent, msg: { captureId: string }): void => {

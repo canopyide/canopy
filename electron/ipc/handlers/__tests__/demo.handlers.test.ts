@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "events";
 
 const ipcMainMock = vi.hoisted(() => ({
@@ -723,10 +723,11 @@ describe("frame capture pipeline (MediaRecorder)", () => {
 
     const chunkListener = getIpcListener("demo:capture-chunk")!;
     const data = new Uint8Array([1, 2, 3, 4]).buffer;
-    chunkListener({}, { captureId }, data);
+    chunkListener({}, { captureId, buffer: data });
 
     expect(fsMocks.state.last!.write).toHaveBeenCalledTimes(1);
-    const written = fsMocks.state.last!.write.mock.calls[0]![0] as Buffer;
+    const writeCalls = fsMocks.state.last!.write.mock.calls as unknown as Array<[Buffer]>;
+    const written = writeCalls[0]![0];
     expect(Buffer.isBuffer(written)).toBe(true);
     expect(written.length).toBe(4);
     expect(written[0]).toBe(1);
@@ -742,7 +743,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
     await startCaptureAndAck(deps, defaultPayload);
 
     const chunkListener = getIpcListener("demo:capture-chunk")!;
-    chunkListener({}, { captureId: "not-matching" }, new Uint8Array([9]).buffer);
+    chunkListener({}, { captureId: "not-matching", buffer: new Uint8Array([9]).buffer });
 
     expect(fsMocks.state.last!.write).not.toHaveBeenCalled();
 
@@ -757,7 +758,7 @@ describe("frame capture pipeline (MediaRecorder)", () => {
 
     const chunkListener = getIpcListener("demo:capture-chunk")!;
     chunkListener({}, { captureId });
-    chunkListener({}, { captureId }, new ArrayBuffer(0));
+    chunkListener({}, { captureId, buffer: new ArrayBuffer(0) });
 
     expect(fsMocks.state.last!.write).not.toHaveBeenCalled();
 
