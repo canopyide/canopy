@@ -76,10 +76,7 @@ describe("applyStaggerQueueCap", () => {
   });
 
   it("drops the oldest entry and returns true when the queue is at the cap", () => {
-    const queue = Array.from(
-      { length: MAX_STAGGER_QUEUE_LENGTH },
-      (_, i) => (): number => i
-    );
+    const queue = Array.from({ length: MAX_STAGGER_QUEUE_LENGTH }, (_, i) => (): number => i);
     const originalFirst = queue[0];
     const originalSecond = queue[1];
 
@@ -92,10 +89,7 @@ describe("applyStaggerQueueCap", () => {
   });
 
   it("drops the oldest each call when invoked repeatedly past the cap", () => {
-    const queue = Array.from(
-      { length: MAX_STAGGER_QUEUE_LENGTH + 5 },
-      (_, i) => (): number => i
-    );
+    const queue = Array.from({ length: MAX_STAGGER_QUEUE_LENGTH + 5 }, (_, i) => (): number => i);
     const firstThree = queue.slice(0, 3);
 
     applyStaggerQueueCap(queue);
@@ -194,10 +188,7 @@ describe("useWatchedPanelNotifications", () => {
 
     act(() => {
       fireUpdate(
-        buildState(
-          [{ id: "p1", agentState: targetState, location: "grid", title }],
-          ["p1"]
-        )
+        buildState([{ id: "p1", agentState: targetState, location: "grid", title }], ["p1"])
       );
     });
     act(() => {

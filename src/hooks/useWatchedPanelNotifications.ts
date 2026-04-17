@@ -61,9 +61,7 @@ export function useWatchedPanelNotifications(): void {
     function enqueueNotification(fn: () => void): void {
       if (applyStaggerQueueCap(staggerQueue) && !hasWarnedOverflow) {
         hasWarnedOverflow = true;
-        console.warn(
-          "[WatchedPanel] stagger queue overflow: dropping oldest notification"
-        );
+        console.warn("[WatchedPanel] stagger queue overflow: dropping oldest notification");
       }
       staggerQueue.push(fn);
       if (!staggerTimer) {
