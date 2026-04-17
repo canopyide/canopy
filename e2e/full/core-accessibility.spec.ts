@@ -17,6 +17,8 @@ function buildAxeScanner(page: import("@playwright/test").Page) {
     new AxeBuilder({ page })
       .setLegacyMode(true) // Required for Electron — default mode uses Target.createTarget which Electron doesn't support
       // axe WCAG tags are non-hierarchical; retain 2.0 tags alongside 2.1/2.2 tags.
+      // Note: in axe-core 4.11 the only 2.2 AA rule (target-size) is disabled by default
+      // and would need .enableRules(["target-size"]) to fire.
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
       .disableRules([
         // aria-command-name: Radix UI renders div[role="button"] without accessible names
