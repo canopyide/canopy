@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import path from "node:path";
+import { resolveNextMajorVersion } from "../utils/resolveNextVersion.js";
 import type { PtyClient } from "./PtyClient.js";
 import { UrlDetector } from "./UrlDetector.js";
 import type {
@@ -19,6 +20,7 @@ import { markPerformance } from "../utils/performance.js";
 interface DevPreviewSession extends DevPreviewSessionState {
   cwd: string;
   devCommand: string;
+  turbopackEnabled: boolean;
   env?: Record<string, string>;
   buffer: string;
   lastErrorKey: string | null;
@@ -88,7 +90,22 @@ const NEXT_DEV_DIRECT_RE = /\bnext\s+dev\b/;
 const TURBOPACK_FLAG_RE = /--turbo(?:pack)?\b/;
 const PKG_SCRIPT_RE = /^(?:npm\s+run|pnpm(?:\s+run)?|yarn(?:\s+run)?|bun(?:\s+run)?)\s+(\S+)$/;
 
-export async function normalizeNextjsDevCommand(command: string, cwd: string): Promise<string> {
+function stripTurbopackFlag(command: string): string {
+  return command
+    .replace(/\s+--\s+--turbo(?:pack)?\b/, "") // " -- --turbopack" (pkg manager form)
+    .replace(/\s+--turbo(?:pack)?\b/, "") // " --turbopack" (direct form)
+    .trim();
+}
+
+export async function normalizeNextjsDevCommand(
+  command: string,
+  cwd: string,
+  turbopackEnabled = true
+): Promise<string> {
+  if (!turbopackEnabled) return stripTurbopackFlag(command);
+  const nextMajor = await resolveNextMajorVersion(cwd);
+  if (nextMajor === null || nextMajor < 15) return stripTurbopackFlag(command);
+
   if (TURBOPACK_FLAG_RE.test(command)) return command;
 
   if (NEXT_DEV_DIRECT_RE.test(command)) {
@@ -179,6 +196,7 @@ export class DevPreviewSessionService {
       session.cwd = request.cwd;
       session.worktreeId = request.worktreeId;
       session.devCommand = request.devCommand;
+      session.turbopackEnabled = request.turbopackEnabled ?? true;
       if (envChanged) {
         session.env = cloneEnv(request.env);
       }
@@ -426,6 +444,7 @@ export class DevPreviewSessionService {
       updatedAt: Date.now(),
       cwd: "",
       devCommand: "",
+      turbopackEnabled: true,
       env: undefined,
       buffer: "",
       lastErrorKey: null,
@@ -616,7 +635,7 @@ export class DevPreviewSessionService {
       }, 100);
     };
 
-    void normalizeNextjsDevCommand(trimmedCommand, session.cwd)
+    void normalizeNextjsDevCommand(trimmedCommand, session.cwd, session.turbopackEnabled)
       .then((normalizedCommand) => {
         submitCommand(normalizedCommand);
       })

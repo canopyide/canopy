@@ -75,4 +75,21 @@ describe("findDevServerCandidate", () => {
       expect(candidate?.command).toBe("npm run dev");
     });
   });
+
+  describe("turbopackEnabled toggle gating", () => {
+    it("injects by default (turbopackEnabled defaults to true)", () => {
+      const runners = [runner("dev", "npm run dev", "next dev")];
+      expect(findDevServerCandidate(runners)?.command).toBe("npm run dev -- --turbopack");
+    });
+
+    it("does NOT inject when turbopackEnabled is false", () => {
+      const runners = [runner("dev", "npm run dev", "next dev")];
+      expect(findDevServerCandidate(runners, false)?.command).toBe("npm run dev");
+    });
+
+    it("does NOT inject when turbopackEnabled is false for bun runner", () => {
+      const runners = [runner("dev", "bun run dev", "next dev")];
+      expect(findDevServerCandidate(runners, false)?.command).toBe("bun run dev");
+    });
+  });
 });

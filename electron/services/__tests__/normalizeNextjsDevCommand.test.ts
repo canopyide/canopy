@@ -8,10 +8,17 @@ vi.mock("node:fs/promises", () => ({
   readFile: (...args: unknown[]) => mockReadFile(...(args as [string, string])),
 }));
 
+const mockResolveNextMajorVersion = vi.fn<() => Promise<number | null>>();
+
+vi.mock("../../utils/resolveNextVersion.js", () => ({
+  resolveNextMajorVersion: (...args: unknown[]) => mockResolveNextMajorVersion(...(args as [])),
+}));
+
 import { beforeEach } from "vitest";
 
 beforeEach(() => {
   mockReadFile.mockReset();
+  mockResolveNextMajorVersion.mockResolvedValue(15);
 });
 
 function mockPkg(scripts: Record<string, string>): void {
@@ -129,6 +136,70 @@ describe("normalizeNextjsDevCommand", () => {
     it("leaves arbitrary commands unchanged", async () => {
       expect(await normalizeNextjsDevCommand("python manage.py runserver", CWD)).toBe(
         "python manage.py runserver"
+      );
+    });
+  });
+
+  describe("version gating", () => {
+    it("skips injection when Next.js major is 14", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(14);
+      mockPkg({ dev: "next dev" });
+      expect(await normalizeNextjsDevCommand("npm run dev", CWD)).toBe("npm run dev");
+    });
+
+    it("skips injection when version is null", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(null);
+      expect(await normalizeNextjsDevCommand("next dev", CWD)).toBe("next dev");
+    });
+
+    it("injects when Next.js major is 15", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(15);
+      expect(await normalizeNextjsDevCommand("next dev", CWD)).toBe("next dev --turbopack");
+    });
+
+    it("skips injection when turbopackEnabled is false", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(15);
+      expect(await normalizeNextjsDevCommand("next dev", CWD, false)).toBe("next dev");
+    });
+  });
+
+  describe("adversarial: renderer pre-injection for old Next.js versions (Bug 3)", () => {
+    // The renderer (findDevServerCandidate) has no version awareness and injects
+    // --turbopack for any Next.js project when turbopackEnabled=true. If that
+    // pre-injected command reaches normalizeNextjsDevCommand on a v14 project,
+    // the main process must strip the flag — not silently pass it through.
+
+    it("strips pre-injected --turbopack from 'next dev --turbopack' when version is 14", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(14);
+      expect(await normalizeNextjsDevCommand("next dev --turbopack", CWD)).toBe("next dev");
+    });
+
+    it("strips pre-injected -- --turbopack from pkg manager command when version is 14", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(14);
+      expect(await normalizeNextjsDevCommand("npm run dev -- --turbopack", CWD)).toBe(
+        "npm run dev"
+      );
+    });
+
+    it("strips pre-injected --turbopack from bun command when version is 14", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(14);
+      expect(await normalizeNextjsDevCommand("bun run dev --turbopack", CWD)).toBe("bun run dev");
+    });
+
+    it("strips --turbopack when version is null (unknown = safe default)", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(null);
+      expect(await normalizeNextjsDevCommand("next dev --turbopack", CWD)).toBe("next dev");
+    });
+
+    it("strips --turbopack when turbopackEnabled is false, regardless of version", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(15);
+      expect(await normalizeNextjsDevCommand("next dev --turbopack", CWD, false)).toBe("next dev");
+    });
+
+    it("strips -- --turbopack when turbopackEnabled is false", async () => {
+      mockResolveNextMajorVersion.mockResolvedValue(15);
+      expect(await normalizeNextjsDevCommand("npm run dev -- --turbopack", CWD, false)).toBe(
+        "npm run dev"
       );
     });
   });
