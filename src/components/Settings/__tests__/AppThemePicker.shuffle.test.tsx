@@ -53,6 +53,7 @@ vi.mock("@/config/appColorSchemes", () => {
     id,
     name,
     type: "dark" as const,
+    heroImage: `/themes/${id}.webp`,
     tokens: {
       "--daintree-accent": accent,
       "--daintree-success": "#0f0",
@@ -162,5 +163,51 @@ describe("AppThemePicker shuffle button", () => {
     const ids = commitSchemeSelection.mock.calls.map((call: unknown[]) => call[0] as string);
     expect(ids.every((id) => id !== "theme-a")).toBe(true);
     expect(new Set(ids).size).toBe(2);
+  });
+});
+
+describe("AppThemePicker image loading attributes", () => {
+  beforeEach(() => {
+    Object.assign(storeState, {
+      selectedSchemeId: "theme-a",
+      customSchemes: [],
+      recentSchemeIds: [],
+      followSystem: false,
+      preferredDarkSchemeId: "theme-a",
+      preferredLightSchemeId: "theme-a",
+      setSelectedSchemeId: vi.fn(),
+      commitSchemeSelection: vi.fn(),
+      setSelectedSchemeIdSilent: vi.fn(),
+      injectTheme: vi.fn(),
+      setFollowSystem: vi.fn(),
+      setPreferredDarkSchemeId: vi.fn(),
+      setPreferredLightSchemeId: vi.fn(),
+      setRecentSchemeIds: vi.fn(),
+      addCustomScheme: vi.fn(),
+      accentColorOverride: null,
+      setAccentColorOverride: vi.fn(),
+    });
+  });
+
+  it("marks row thumbnail images as lazy-loaded with intrinsic dimensions", () => {
+    const { container } = render(<AppThemePicker />);
+    const thumbs = container.querySelectorAll<HTMLImageElement>(
+      "img[src*='/themes/thumb/']"
+    );
+    expect(thumbs.length).toBe(3);
+    thumbs.forEach((img) => {
+      expect(img.getAttribute("loading")).toBe("lazy");
+      expect(img.getAttribute("width")).toBe("80");
+      expect(img.getAttribute("height")).toBe("80");
+    });
+  });
+
+  it("leaves the selected hero preview image eager-loading", () => {
+    const { container } = render(<AppThemePicker />);
+    const heroImgs = container.querySelectorAll<HTMLImageElement>(
+      "img[src='/themes/theme-a.webp']"
+    );
+    expect(heroImgs.length).toBe(1);
+    expect(heroImgs[0].getAttribute("loading")).not.toBe("lazy");
   });
 });

@@ -100,6 +100,9 @@ function ThemeRow({
         <img
           src={scheme.heroImage.replace("/themes/", "/themes/thumb/")}
           alt=""
+          width={80}
+          height={80}
+          loading="lazy"
           className="w-10 h-10 rounded-sm shrink-0 object-cover"
         />
       ) : (
