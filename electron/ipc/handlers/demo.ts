@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import { getAppWebContents } from "../../window/webContentsRegistry.js";
+import { typedHandle, typedHandleWithContext } from "../utils.js";
 import type {
   DemoMoveToPayload,
   DemoMoveToSelectorPayload,
@@ -17,6 +18,9 @@ import type {
   DemoStartCaptureResult,
   DemoStopCaptureResult,
   DemoCaptureStatus,
+  DemoEncodePayload,
+  DemoEncodeProgressEvent,
+  DemoEncodeResult,
   DemoEncodePreset,
   DemoScrollPayload,
   DemoDragPayload,
@@ -76,17 +80,11 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     });
   }
 
-  const handleMoveTo = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoMoveToPayload
-  ): Promise<void> => {
+  const handleMoveTo = async (payload: DemoMoveToPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO, payload);
   };
 
-  const handleMoveToSelector = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoMoveToSelectorPayload
-  ): Promise<void> => {
+  const handleMoveToSelector = async (payload: DemoMoveToSelectorPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO_SELECTOR, payload);
   };
 
@@ -94,10 +92,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_CLICK);
   };
 
-  const handleType = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoTypePayload
-  ): Promise<void> => {
+  const handleType = async (payload: DemoTypePayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_TYPE, payload);
   };
 
@@ -116,10 +111,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     };
   };
 
-  const handleWaitForSelector = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoWaitForSelectorPayload
-  ): Promise<void> => {
+  const handleWaitForSelector = async (payload: DemoWaitForSelectorPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_WAIT_FOR_SELECTOR, payload);
   };
 
@@ -131,38 +123,23 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_RESUME);
   };
 
-  const handleSleep = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoSleepPayload
-  ): Promise<void> => {
+  const handleSleep = async (payload: DemoSleepPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SLEEP, payload);
   };
 
-  const handleScroll = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoScrollPayload
-  ): Promise<void> => {
+  const handleScroll = async (payload: DemoScrollPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SCROLL, payload);
   };
 
-  const handleDrag = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoDragPayload
-  ): Promise<void> => {
+  const handleDrag = async (payload: DemoDragPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DRAG, payload);
   };
 
-  const handlePressKey = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoPressKeyPayload
-  ): Promise<void> => {
+  const handlePressKey = async (payload: DemoPressKeyPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_PRESS_KEY, payload);
   };
 
-  const handleSpotlight = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoSpotlightPayload
-  ): Promise<void> => {
+  const handleSpotlight = async (payload: DemoSpotlightPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SPOTLIGHT, payload);
   };
 
@@ -170,26 +147,17 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DISMISS_SPOTLIGHT);
   };
 
-  const handleAnnotate = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoAnnotatePayload
-  ): Promise<DemoAnnotateResult> => {
+  const handleAnnotate = async (payload: DemoAnnotatePayload): Promise<DemoAnnotateResult> => {
     const id = payload.id ?? randomBytes(8).toString("hex");
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_ANNOTATE, { ...payload, id });
     return { id };
   };
 
-  const handleDismissAnnotation = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoDismissAnnotationPayload
-  ): Promise<void> => {
+  const handleDismissAnnotation = async (payload: DemoDismissAnnotationPayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DISMISS_ANNOTATION, payload);
   };
 
-  const handleWaitForIdle = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: DemoWaitForIdlePayload
-  ): Promise<void> => {
+  const handleWaitForIdle = async (payload: DemoWaitForIdlePayload): Promise<void> => {
     await sendCommandAndAwait(CHANNELS.DEMO_EXEC_WAIT_FOR_IDLE, payload);
   };
 
@@ -280,7 +248,6 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
   }
 
   const handleStartCapture = async (
-    _event: Electron.IpcMainInvokeEvent,
     payload: DemoStartCapturePayload
   ): Promise<DemoStartCaptureResult> => {
     if (captureSession) {
@@ -487,51 +454,220 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     },
   };
 
-  ipcMain.handle(CHANNELS.DEMO_MOVE_TO, handleMoveTo);
-  ipcMain.handle(CHANNELS.DEMO_MOVE_TO_SELECTOR, handleMoveToSelector);
-  ipcMain.handle(CHANNELS.DEMO_CLICK, handleClick);
-  ipcMain.handle(CHANNELS.DEMO_SCREENSHOT, handleScreenshot);
-  ipcMain.handle(CHANNELS.DEMO_TYPE, handleType);
-  ipcMain.handle(CHANNELS.DEMO_WAIT_FOR_SELECTOR, handleWaitForSelector);
-  ipcMain.handle(CHANNELS.DEMO_PAUSE, handlePause);
-  ipcMain.handle(CHANNELS.DEMO_RESUME, handleResume);
-  ipcMain.handle(CHANNELS.DEMO_SLEEP, handleSleep);
-  ipcMain.handle(CHANNELS.DEMO_SCROLL, handleScroll);
-  ipcMain.handle(CHANNELS.DEMO_DRAG, handleDrag);
-  ipcMain.handle(CHANNELS.DEMO_PRESS_KEY, handlePressKey);
-  ipcMain.handle(CHANNELS.DEMO_SPOTLIGHT, handleSpotlight);
-  ipcMain.handle(CHANNELS.DEMO_DISMISS_SPOTLIGHT, handleDismissSpotlight);
-  ipcMain.handle(CHANNELS.DEMO_ANNOTATE, handleAnnotate);
-  ipcMain.handle(CHANNELS.DEMO_DISMISS_ANNOTATION, handleDismissAnnotation);
-  ipcMain.handle(CHANNELS.DEMO_WAIT_FOR_IDLE, handleWaitForIdle);
-  ipcMain.handle(CHANNELS.DEMO_START_CAPTURE, handleStartCapture);
-  ipcMain.handle(CHANNELS.DEMO_STOP_CAPTURE, handleStopCapture);
-  ipcMain.handle(CHANNELS.DEMO_GET_CAPTURE_STATUS, handleGetCaptureStatus);
+  // --- Encode presets for offline re-encode (PNG files from disk) ---
+
+  const ENCODE_PRESETS = {
+    "youtube-4k": {
+      outputOptions: [
+        "-vf",
+        "scale=3840:2160:flags=lanczos",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "high444",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv444p",
+        "-preset",
+        "slow",
+        "-g",
+        "15",
+        "-bf",
+        "2",
+        "-movflags",
+        "+faststart",
+        "-an",
+      ],
+    },
+    "youtube-1080p": {
+      outputOptions: [
+        "-vf",
+        "scale=1920:1080:flags=lanczos",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "high444",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv444p",
+        "-preset",
+        "slow",
+        "-g",
+        "15",
+        "-bf",
+        "2",
+        "-movflags",
+        "+faststart",
+        "-an",
+      ],
+    },
+    "web-webm": {
+      outputOptions: [
+        "-c:v",
+        "libvpx-vp9",
+        "-crf",
+        "20",
+        "-b:v",
+        "0",
+        "-deadline",
+        "good",
+        "-cpu-used",
+        "1",
+        "-row-mt",
+        "1",
+        "-pix_fmt",
+        "yuv444p",
+        "-an",
+      ],
+    },
+  } as const;
+
+  let activeEncode: { kill: () => void } | null = null;
+
+  const handleEncode = async (
+    ctx: import("../types.js").IpcContext,
+    payload: DemoEncodePayload
+  ): Promise<DemoEncodeResult> => {
+    if (activeEncode) {
+      throw new Error("An encode is already in progress");
+    }
+
+    const ffmpegBin = resolveFfmpegPath();
+    const { framesDir, outputPath, preset, fps = 30 } = payload;
+    const presetConfig = ENCODE_PRESETS[preset];
+
+    const framePattern = /^frame-\d{6}\.png$/;
+    const pngFiles = fs
+      .readdirSync(framesDir)
+      .filter((f) => framePattern.test(f))
+      .sort();
+    if (pngFiles.length === 0) {
+      throw new Error(`No PNG frames matching frame-NNNNNN.png found in ${framesDir}`);
+    }
+    const totalFrames = pngFiles.length;
+
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+    const startTime = Date.now();
+    const inputPattern = path.join(framesDir, "frame-%06d.png");
+
+    const args = [
+      "-y",
+      "-framerate",
+      String(fps),
+      "-i",
+      inputPattern,
+      ...presetConfig.outputOptions,
+      "-progress",
+      "pipe:1",
+      "-nostats",
+      outputPath,
+    ];
+
+    return new Promise<DemoEncodeResult>((resolve, reject) => {
+      const proc: ChildProcess = spawn(ffmpegBin, args, { stdio: ["ignore", "pipe", "pipe"] });
+
+      activeEncode = {
+        kill: () => {
+          proc.kill("SIGKILL");
+        },
+      };
+
+      let stdoutBuffer = "";
+      let currentFrame = 0;
+      let currentFps = 0;
+
+      proc.stdout?.on("data", (chunk: Buffer) => {
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split("\n");
+        stdoutBuffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const eqIdx = line.indexOf("=");
+          if (eqIdx === -1) continue;
+          const key = line.slice(0, eqIdx).trim();
+          const value = line.slice(eqIdx + 1).trim();
+
+          if (key === "frame") {
+            currentFrame = parseInt(value, 10) || 0;
+          } else if (key === "fps") {
+            currentFps = parseFloat(value) || 0;
+          } else if (key === "progress") {
+            if (currentFrame > 0 && !ctx.event.sender.isDestroyed()) {
+              const percentComplete = Math.min((currentFrame / totalFrames) * 100, 100);
+              const etaSeconds = currentFps > 0 ? (totalFrames - currentFrame) / currentFps : 0;
+
+              const progressEvent: DemoEncodeProgressEvent = {
+                frame: currentFrame,
+                fps: currentFps,
+                percentComplete: Math.round(percentComplete * 100) / 100,
+                etaSeconds: Math.round(etaSeconds * 10) / 10,
+              };
+              ctx.event.sender.send(CHANNELS.DEMO_ENCODE_PROGRESS, progressEvent);
+            }
+          }
+        }
+      });
+
+      let stderrOutput = "";
+      proc.stderr?.on("data", (chunk: Buffer) => {
+        stderrOutput += chunk.toString();
+      });
+
+      proc.on("error", (err: Error) => {
+        activeEncode = null;
+        reject(new Error(`Encode failed: ${err.message}`));
+      });
+
+      proc.on("close", (code) => {
+        activeEncode = null;
+        if (code === 0) {
+          resolve({ outputPath, durationMs: Date.now() - startTime });
+        } else {
+          const lastLines = stderrOutput.trim().split("\n").slice(-3).join("\n");
+          reject(new Error(`ffmpeg exited with code ${code}: ${lastLines}`));
+        }
+      });
+    });
+  };
+
+  const cleanups: Array<() => void> = [
+    typedHandle(CHANNELS.DEMO_MOVE_TO, handleMoveTo),
+    typedHandle(CHANNELS.DEMO_MOVE_TO_SELECTOR, handleMoveToSelector),
+    typedHandle(CHANNELS.DEMO_CLICK, handleClick),
+    typedHandle(CHANNELS.DEMO_SCREENSHOT, handleScreenshot),
+    typedHandle(CHANNELS.DEMO_TYPE, handleType),
+    typedHandle(CHANNELS.DEMO_WAIT_FOR_SELECTOR, handleWaitForSelector),
+    typedHandle(CHANNELS.DEMO_PAUSE, handlePause),
+    typedHandle(CHANNELS.DEMO_RESUME, handleResume),
+    typedHandle(CHANNELS.DEMO_SLEEP, handleSleep),
+    typedHandle(CHANNELS.DEMO_SCROLL, handleScroll),
+    typedHandle(CHANNELS.DEMO_DRAG, handleDrag),
+    typedHandle(CHANNELS.DEMO_PRESS_KEY, handlePressKey),
+    typedHandle(CHANNELS.DEMO_SPOTLIGHT, handleSpotlight),
+    typedHandle(CHANNELS.DEMO_DISMISS_SPOTLIGHT, handleDismissSpotlight),
+    typedHandle(CHANNELS.DEMO_ANNOTATE, handleAnnotate),
+    typedHandle(CHANNELS.DEMO_DISMISS_ANNOTATION, handleDismissAnnotation),
+    typedHandle(CHANNELS.DEMO_WAIT_FOR_IDLE, handleWaitForIdle),
+    typedHandle(CHANNELS.DEMO_START_CAPTURE, handleStartCapture),
+    typedHandle(CHANNELS.DEMO_STOP_CAPTURE, handleStopCapture),
+    typedHandle(CHANNELS.DEMO_GET_CAPTURE_STATUS, handleGetCaptureStatus),
+    typedHandleWithContext(CHANNELS.DEMO_ENCODE, handleEncode),
+  ];
 
   return () => {
     if (captureSession) {
       stopCaptureSession();
       captureSession?.ffmpegProc.kill("SIGKILL");
     }
-    ipcMain.removeHandler(CHANNELS.DEMO_MOVE_TO);
-    ipcMain.removeHandler(CHANNELS.DEMO_MOVE_TO_SELECTOR);
-    ipcMain.removeHandler(CHANNELS.DEMO_CLICK);
-    ipcMain.removeHandler(CHANNELS.DEMO_SCREENSHOT);
-    ipcMain.removeHandler(CHANNELS.DEMO_TYPE);
-    ipcMain.removeHandler(CHANNELS.DEMO_WAIT_FOR_SELECTOR);
-    ipcMain.removeHandler(CHANNELS.DEMO_PAUSE);
-    ipcMain.removeHandler(CHANNELS.DEMO_RESUME);
-    ipcMain.removeHandler(CHANNELS.DEMO_SLEEP);
-    ipcMain.removeHandler(CHANNELS.DEMO_SCROLL);
-    ipcMain.removeHandler(CHANNELS.DEMO_DRAG);
-    ipcMain.removeHandler(CHANNELS.DEMO_PRESS_KEY);
-    ipcMain.removeHandler(CHANNELS.DEMO_SPOTLIGHT);
-    ipcMain.removeHandler(CHANNELS.DEMO_DISMISS_SPOTLIGHT);
-    ipcMain.removeHandler(CHANNELS.DEMO_ANNOTATE);
-    ipcMain.removeHandler(CHANNELS.DEMO_DISMISS_ANNOTATION);
-    ipcMain.removeHandler(CHANNELS.DEMO_WAIT_FOR_IDLE);
-    ipcMain.removeHandler(CHANNELS.DEMO_START_CAPTURE);
-    ipcMain.removeHandler(CHANNELS.DEMO_STOP_CAPTURE);
-    ipcMain.removeHandler(CHANNELS.DEMO_GET_CAPTURE_STATUS);
+    for (const cleanup of cleanups) {
+      cleanup();
+    }
+    if (activeEncode) {
+      activeEncode.kill();
+      activeEncode = null;
+    }
   };
 }
