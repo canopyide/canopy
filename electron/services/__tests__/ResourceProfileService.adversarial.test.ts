@@ -23,9 +23,12 @@ vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
 }));
 
+import os from "os";
 import { app, powerMonitor } from "electron";
 import { broadcastToRenderer } from "../../ipc/utils.js";
 import { ResourceProfileService, type ResourceProfileDeps } from "../ResourceProfileService.js";
+
+const EIGHT_GB = 8 * 1024 * 1024 * 1024;
 
 const mockGetAppMetrics = app.getAppMetrics as Mock;
 const mockIsOnBatteryPower = powerMonitor.isOnBatteryPower as unknown as Mock;
@@ -109,12 +112,16 @@ describe("ResourceProfileService adversarial", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    // Pin total RAM so MB-based test values cross the intended threshold bands
+    // regardless of the CI host's actual memory.
+    vi.spyOn(os, "totalmem").mockReturnValue(EIGHT_GB);
     mockGetAppMetrics.mockReturnValue([]);
     mockIsOnBatteryPower.mockReturnValue(false);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("does not thrash profiles when pressure oscillates around the hysteresis boundary", () => {
