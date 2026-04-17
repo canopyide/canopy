@@ -10,6 +10,8 @@ import { migration009 } from "./009-per-project-window-state.js";
 import { migration010 } from "./010-add-working-pulse-setting.js";
 import { migration011 } from "./011-minimal-soundscape-defaults.js";
 import { migration012 } from "./012-default-pin-agents.js";
+import { migration013 } from "./013-cleanup-phantom-pins.js";
+import { migration014 } from "./014-consolidate-telemetry-consent.js";
 
 export const migrations: Migration[] = [
   migration002,
@@ -23,4 +25,6 @@ export const migrations: Migration[] = [
   migration010,
   migration011,
   migration012,
+  migration013,
+  migration014,
 ];

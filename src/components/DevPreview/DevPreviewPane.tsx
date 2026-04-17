@@ -206,6 +206,7 @@ export function DevPreviewPane({
     cwd,
     worktreeId,
     env: projectEnv,
+    turbopackEnabled: projectSettings?.turbopackEnabled ?? true,
   });
 
   const webviewPartition = useMemo(() => {
@@ -425,7 +426,10 @@ export function DevPreviewPane({
     setIsAutoDetecting(true);
     try {
       const freshRunners = await projectClient.detectRunners(currentProjectId);
-      const candidate = findDevServerCandidate(freshRunners);
+      const candidate = findDevServerCandidate(
+        freshRunners,
+        projectSettings?.turbopackEnabled ?? true
+      );
 
       if (!candidate) {
         return;
@@ -449,7 +453,7 @@ export function DevPreviewPane({
         setIsAutoDetecting(false);
       }
     }
-  }, [currentProjectId, isAutoDetecting, saveSettings]);
+  }, [currentProjectId, isAutoDetecting, saveSettings, projectSettings?.turbopackEnabled]);
 
   const handleOpenSettings = useCallback(() => {
     void actionService.dispatch("project.settings.open", undefined, { source: "user" });
@@ -836,27 +840,35 @@ export function DevPreviewPane({
                   </h3>
                   <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
                     No dev server command is configured for this project.
-                    {allDetectedRunners && findDevServerCandidate(allDetectedRunners)
+                    {allDetectedRunners &&
+                    findDevServerCandidate(
+                      allDetectedRunners,
+                      projectSettings?.turbopackEnabled ?? true
+                    )
                       ? " We found a script in your package.json that looks like a dev server."
                       : " Configure one to preview your application."}
                   </p>
                   <div className="flex flex-col items-center gap-2">
-                    {allDetectedRunners && findDevServerCandidate(allDetectedRunners) && (
-                      <Button
-                        onClick={handleAutoDetect}
-                        disabled={isAutoDetecting || isSettingsLoading}
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1.5 px-2.5 py-1.5 group text-daintree-accent/70 hover:text-daintree-accent"
-                      >
-                        <WandSparkles className="h-3.5 w-3.5" />
-                        <span className="text-xs">
-                          {isAutoDetecting
-                            ? "Detecting..."
-                            : `Use \`${findDevServerCandidate(allDetectedRunners)?.command}\``}
-                        </span>
-                      </Button>
-                    )}
+                    {allDetectedRunners &&
+                      findDevServerCandidate(
+                        allDetectedRunners,
+                        projectSettings?.turbopackEnabled ?? true
+                      ) && (
+                        <Button
+                          onClick={handleAutoDetect}
+                          disabled={isAutoDetecting || isSettingsLoading}
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 px-2.5 py-1.5 group text-daintree-accent/70 hover:text-daintree-accent"
+                        >
+                          <WandSparkles className="h-3.5 w-3.5" />
+                          <span className="text-xs">
+                            {isAutoDetecting
+                              ? "Detecting..."
+                              : `Use \`${findDevServerCandidate(allDetectedRunners, projectSettings?.turbopackEnabled ?? true)?.command}\``}
+                          </span>
+                        </Button>
+                      )}
                     <Button
                       onClick={handleOpenSettings}
                       variant="ghost"

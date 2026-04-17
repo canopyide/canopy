@@ -26,8 +26,6 @@ export interface TerminalSpawnOptions {
   type?: TerminalType;
   /** Display title for the terminal */
   title?: string;
-  /** Associated worktree ID */
-  worktreeId?: string;
   /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string;
   /** Whether to restore previous session content (default: true). Set to false on restart. */
@@ -142,7 +140,6 @@ export interface BackendTerminalInfo {
   agentId?: AgentId;
   title?: string;
   cwd: string;
-  worktreeId?: string;
   agentState?: AgentState;
   lastStateChange?: number;
   spawnedAt: number;
@@ -170,7 +167,6 @@ export interface TerminalReconnectResult {
   agentId?: AgentId;
   title?: string;
   cwd?: string;
-  worktreeId?: string;
   agentState?: AgentState;
   lastStateChange?: number;
   spawnedAt?: number;
@@ -191,7 +187,6 @@ export interface TerminalInfoPayload {
   title?: string;
   cwd: string;
   shell?: string;
-  worktreeId?: string;
   agentState?: AgentState;
   spawnedAt: number;
   lastInputTime: number;
@@ -221,6 +216,12 @@ export interface TerminalInfoPayload {
   ptyForegroundProcess?: string;
   /** TTY device path (e.g., /dev/ttys004) */
   ptyTty?: string;
+  /** Resolved argv passed to pty.spawn() at launch time */
+  spawnArgs?: string[];
+  /** Process-level flags captured at launch time (agent terminals only) */
+  agentLaunchFlags?: string[];
+  /** Model ID selected at launch time (agent terminals only) */
+  agentModelId?: string;
   /** Exit code when terminal has exited */
   exitCode?: number;
 }

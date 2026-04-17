@@ -11,6 +11,10 @@ const mockGetDefaultPath = vi.fn();
 const mockListBranches = vi.fn();
 const mockFetchPRBranch = vi.fn();
 const mockAssignIssue = vi.fn();
+const mockAgentSettingsGet = vi.fn();
+const mockSystemGetTmpDir = vi.fn();
+const mockGetAgentConfig = vi.fn();
+const mockGenerateAgentCommand = vi.fn();
 
 vi.mock("@/clients", () => ({
   worktreeClient: {
@@ -23,15 +27,35 @@ vi.mock("@/clients", () => ({
   githubClient: {
     assignIssue: (...args: unknown[]) => mockAssignIssue(...args),
   },
+  agentSettingsClient: {
+    get: (...args: unknown[]) => mockAgentSettingsGet(...args),
+  },
+  systemClient: {
+    getTmpDir: (...args: unknown[]) => mockSystemGetTmpDir(...args),
+  },
 }));
 
+vi.mock("@/config/agents", () => ({
+  getAgentConfig: (...args: unknown[]) => mockGetAgentConfig(...args),
+}));
+
+vi.mock("@shared/types", async (importActual) => {
+  const actual = await importActual<typeof import("@shared/types")>();
+  return {
+    ...actual,
+    generateAgentCommand: (...args: unknown[]) => mockGenerateAgentCommand(...args),
+  };
+});
+
 const mockRunRecipeWithResults = vi.fn();
+const mockGenerateRecipeFromActiveTerminals = vi.fn();
 vi.mock("@/store/recipeStore", () => ({
   useRecipeStore: Object.assign(() => ({ recipes: [] }), {
     getState: () => ({
       runRecipeWithResults: mockRunRecipeWithResults,
       getRecipeById: () => null,
-      generateRecipeFromActiveTerminals: () => [],
+      generateRecipeFromActiveTerminals: (...args: unknown[]) =>
+        mockGenerateRecipeFromActiveTerminals(...args),
     }),
   }),
 }));
@@ -113,12 +137,13 @@ vi.mock("@/store/worktreeStore", () => ({
 }));
 
 let mockTerminals: Array<{ id: string; exitCode?: number }> = [];
+const mockAddPanel = vi.fn();
 vi.mock("@/store/panelStore", () => ({
   usePanelStore: {
     getState: () => ({
       panelsById: Object.fromEntries(mockTerminals.map((t) => [t.id, t])),
       panelIds: mockTerminals.map((t) => t.id),
-      addPanel: vi.fn().mockResolvedValue("clone-terminal-id"),
+      addPanel: (...args: unknown[]) => mockAddPanel(...args),
     }),
   },
 }));
@@ -237,6 +262,12 @@ beforeEach(() => {
   setupWorktreeCreateMocks();
   mockTerminals = [];
   mockSelectedRecipeId = null;
+  mockAddPanel.mockResolvedValue("clone-terminal-id");
+  mockAgentSettingsGet.mockResolvedValue({ agents: {} });
+  mockSystemGetTmpDir.mockResolvedValue("/tmp");
+  mockGetAgentConfig.mockReturnValue({ command: "claude" });
+  mockGenerateAgentCommand.mockReturnValue("claude --fresh");
+  mockGenerateRecipeFromActiveTerminals.mockReturnValue([]);
 });
 
 afterEach(() => {
@@ -277,19 +308,13 @@ describe("BulkCreateWorktreeDialog", () => {
       screen.getByTestId("bulk-create-confirm-button").click();
     });
 
-    // Both concurrency slots fill immediately (concurrency = 2) — the
+    // All three concurrency slots fill immediately (concurrency = 3) — the
     // backend leaky-bucket rate limiter drives the real cadence.
-    expect(mockWorktreeCreate).toHaveBeenCalledTimes(2);
-
-    // Resolve first to free a concurrency slot so the third task starts
-    await act(async () => {
-      resolvers[0]?.("wt-1");
-      await vi.advanceTimersByTimeAsync(0);
-    });
     expect(mockWorktreeCreate).toHaveBeenCalledTimes(3);
 
-    // Resolve remaining
+    // Resolve all
     await act(async () => {
+      resolvers[0]?.("wt-1");
       resolvers[1]?.("wt-2");
       resolvers[2]?.("wt-3");
       await vi.advanceTimersByTimeAsync(0);
@@ -316,8 +341,8 @@ describe("BulkCreateWorktreeDialog", () => {
       screen.getByTestId("bulk-create-confirm-button").click();
     });
 
-    // Should show "Creating worktree..." label for the two items that started
-    // immediately under concurrency = 2.
+    // Should show "Creating worktree..." labels for the items that started
+    // immediately under concurrency = 3.
     expect(screen.getAllByText("Creating worktree\u2026").length).toBeGreaterThanOrEqual(1);
 
     // Resolve all
@@ -979,16 +1004,22 @@ describe("BulkCreateWorktreeDialog", () => {
     );
 
     const onClose = vi.fn();
-    render(<BulkCreateWorktreeDialog {...defaultProps} onClose={onClose} />);
+    // Use 4 items so that with concurrency=3 at least one item stays queued,
+    // letting us verify the queue-clearing + stale-handler cancel semantics.
+    const props = {
+      ...defaultProps,
+      selectedIssues: [makeIssue(1), makeIssue(2), makeIssue(3), makeIssue(4)],
+    };
+    render(<BulkCreateWorktreeDialog {...props} onClose={onClose} />);
 
     await act(async () => {
       screen.getByTestId("bulk-create-confirm-button").click();
     });
 
-    // Items 1 and 2 both start immediately under concurrency = 2; item 3
-    // is still queued. Cancel before any resolve so the queue is cleared
-    // and item 3 never starts.
-    expect(mockWorktreeCreate).toHaveBeenCalledTimes(2);
+    // Items 1-3 start immediately under concurrency = 3; item 4 is still
+    // queued. Cancel before any resolve so the queue is cleared and item 4
+    // never starts.
+    expect(mockWorktreeCreate).toHaveBeenCalledTimes(3);
 
     // Close the dialog before remaining items finish
     await act(async () => {
@@ -1000,15 +1031,16 @@ describe("BulkCreateWorktreeDialog", () => {
 
     expect(onClose).toHaveBeenCalled();
 
-    // Resolving the in-flight items after cancel must not trigger item 3 —
+    // Resolving the in-flight items after cancel must not trigger item 4 —
     // runIdRef has been bumped so the stale handlers exit early.
     await act(async () => {
       resolvers[0]?.("wt-1");
       resolvers[1]?.("wt-2");
+      resolvers[2]?.("wt-3");
       await vi.advanceTimersByTimeAsync(1000);
     });
 
-    expect(mockWorktreeCreate).toHaveBeenCalledTimes(2);
+    expect(mockWorktreeCreate).toHaveBeenCalledTimes(3);
     expect(screen.queryByTestId("bulk-create-done-button")).toBeNull();
   });
 
@@ -1027,7 +1059,7 @@ describe("BulkCreateWorktreeDialog", () => {
       screen.getByTestId("bulk-create-confirm-button").click();
     });
 
-    // Advance to let the first two items start (concurrency = 2)
+    // Advance to let all three items start (concurrency = 3)
     await advanceTimersGradually(400);
 
     // Resolve the first item
@@ -1078,6 +1110,143 @@ describe("BulkCreateWorktreeDialog", () => {
     worktreeDataHolder.map = cleanMap;
   });
 
+  it("runs pre-queries once per batch before any worktree creates", async () => {
+    const createResolvers: Array<(value: string) => void> = [];
+    mockWorktreeCreate.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          createResolvers.push(resolve);
+        })
+    );
+
+    render(<BulkCreateWorktreeDialog {...defaultProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    // With 3 issues, pre-query runs getAvailableBranch + getDefaultPath once each
+    // per item BEFORE any worktree.create call. After the button click and
+    // microtask flush, all pre-queries have completed and all three concurrency
+    // slots have filled — but no further pre-query IPC should fire.
+    expect(mockGetAvailableBranch).toHaveBeenCalledTimes(3);
+    expect(mockGetDefaultPath).toHaveBeenCalledTimes(3);
+
+    // The queue has started worktree.create for all 3 items (concurrency=3)
+    expect(mockWorktreeCreate).toHaveBeenCalledTimes(3);
+
+    // Resolve all creates and advance
+    await act(async () => {
+      createResolvers[0]?.("wt-1");
+      createResolvers[1]?.("wt-2");
+      createResolvers[2]?.("wt-3");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await advanceTimersGradually(1000);
+
+    // Pre-query call counts must not have grown — confirming the per-item
+    // queue bodies read from the precomputed map, not fresh IPC calls.
+    expect(mockGetAvailableBranch).toHaveBeenCalledTimes(3);
+    expect(mockGetDefaultPath).toHaveBeenCalledTimes(3);
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+  });
+
+  it("suffixes colliding branch names during pre-query", async () => {
+    // findAvailableBranchName is a pure snapshot read — if two items
+    // independently resolve to the same branch name (e.g., backend returned
+    // identical result before any creates happened), the client-side
+    // `assignedBranches` set must add `-2`, `-3`, ... to prevent a real
+    // collision at create time. Force the scenario by returning a constant
+    // branch name from the mock for both items.
+    mockGetAvailableBranch.mockResolvedValue("feature/shared-branch");
+    mockGetDefaultPath.mockImplementation((_root: string, branch: string) =>
+      Promise.resolve(`/worktrees/${branch}`)
+    );
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1), makeIssue(2)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText(/2 of 2 created/)).toBeTruthy();
+
+    const createCalls = mockWorktreeCreate.mock.calls;
+    expect(createCalls.length).toBe(2);
+    const createdBranches = createCalls.map((c) => c[0].newBranch).sort();
+    // First item keeps the base name; second gets a client-side `-2` suffix.
+    expect(createdBranches).toEqual(["feature/shared-branch", "feature/shared-branch-2"]);
+    // getDefaultPath was called with the post-suffix branch name for item 2.
+    const pathCalls = mockGetDefaultPath.mock.calls.map((c) => c[1]);
+    expect(pathCalls).toContain("feature/shared-branch-2");
+  });
+
+  it("does not dispatch stale ITEM_FAILED when cancelled during pre-query", async () => {
+    // Defer getAvailableBranch so we can cancel while the pre-query is
+    // pending. After cancel, the deferred rejection must not pollute the
+    // reducer with a stale ITEM_FAILED row.
+    let rejectPrequery: ((err: Error) => void) | null = null;
+    mockGetAvailableBranch.mockImplementation(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectPrequery = reject;
+        })
+    );
+
+    const onClose = vi.fn();
+    render(<BulkCreateWorktreeDialog {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    // Cancel while pre-query is still pending.
+    await act(async () => {
+      const buttons = screen.getAllByRole("button");
+      const cancelBtn = buttons.find((b) => b.textContent === "Cancel");
+      cancelBtn?.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Reject the pending pre-query after the cancel has bumped runIdRef.
+    await act(async () => {
+      rejectPrequery?.(new Error("IPC failure after cancel"));
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(onClose).toHaveBeenCalled();
+    // No stale dispatches — the done button never appears, no error rows
+    // bleed into the closed dialog, and no worktree.create was triggered.
+    expect(screen.queryByTestId("bulk-create-done-button")).toBeNull();
+    expect(mockWorktreeCreate).not.toHaveBeenCalled();
+  });
+
+  it("dispatches ITEM_FAILED and skips item when pre-query rejects", async () => {
+    let availableBranchCalls = 0;
+    mockGetAvailableBranch.mockImplementation((_root: string, branch: string) => {
+      availableBranchCalls++;
+      if (availableBranchCalls === 2) {
+        return Promise.reject(new Error("Branch name is invalid"));
+      }
+      return Promise.resolve(branch);
+    });
+
+    render(<BulkCreateWorktreeDialog {...defaultProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText("Branch name is invalid")).toBeTruthy();
+    expect(screen.getByText(/2 of 3 created/)).toBeTruthy();
+    expect(screen.getByText(/1 failed/)).toBeTruthy();
+    // The failed item never reached worktree.create.
+    expect(mockWorktreeCreate).toHaveBeenCalledTimes(2);
+  });
+
   it("does not flash empty state when Done is clicked", async () => {
     const onComplete = vi.fn();
     const onClose = vi.fn();
@@ -1101,6 +1270,124 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
     expect(onComplete).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("clone layout generates command for agent panels and preserves plain terminal commands", async () => {
+    mockSelectedRecipeId = "__clone_layout__";
+    mockGenerateRecipeFromActiveTerminals.mockReturnValue([
+      {
+        type: "claude",
+        title: "Agent",
+        exitBehavior: "stay",
+        command: "claude --resume stale-session",
+      },
+      {
+        type: "terminal",
+        title: "Shell",
+        exitBehavior: "close",
+        command: "npm test",
+      },
+      {
+        type: "dev-preview",
+        title: "Preview",
+        exitBehavior: "close",
+        devCommand: "npm run dev",
+      },
+    ]);
+    mockAgentSettingsGet.mockResolvedValue({ agents: { claude: { flags: [] } } });
+    mockSystemGetTmpDir.mockResolvedValue("/tmp");
+    mockGetAgentConfig.mockReturnValue({ command: "claude" });
+    mockGenerateAgentCommand.mockReturnValue("claude --fresh-generated");
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+
+    // Agent command is regenerated from current settings, not the stale one
+    // captured at recipe-generation time.
+    expect(mockGenerateAgentCommand).toHaveBeenCalledWith(
+      "claude",
+      { flags: [] },
+      "claude",
+      expect.objectContaining({ clipboardDirectory: "/tmp/daintree-clipboard" })
+    );
+
+    const agentCall = mockAddPanel.mock.calls.find((c) => c[0].kind === "agent");
+    expect(agentCall).toBeDefined();
+    expect(agentCall?.[0].command).toBe("claude --fresh-generated");
+    expect(agentCall?.[0].agentId).toBe("claude");
+    expect(agentCall?.[0].command).not.toContain("stale-session");
+
+    // Plain terminal command is passed through verbatim (it's a user-authored
+    // shell command, not a path-scoped agent invocation).
+    const terminalCall = mockAddPanel.mock.calls.find((c) => c[0].kind === "terminal");
+    expect(terminalCall).toBeDefined();
+    expect(terminalCall?.[0].command).toBe("npm test");
+
+    // Dev-preview carries devCommand, not command.
+    const devPreviewCall = mockAddPanel.mock.calls.find((c) => c[0].kind === "dev-preview");
+    expect(devPreviewCall).toBeDefined();
+    expect(devPreviewCall?.[0].devCommand).toBe("npm run dev");
+  });
+
+  it("clone layout degrades gracefully when agent settings IPC fails", async () => {
+    mockSelectedRecipeId = "__clone_layout__";
+    mockGenerateRecipeFromActiveTerminals.mockReturnValue([
+      { type: "claude", title: "Agent", exitBehavior: "stay" },
+    ]);
+    mockAgentSettingsGet.mockRejectedValue(new Error("IPC timeout"));
+    mockGetAgentConfig.mockReturnValue({ command: "claude" });
+    mockGenerateAgentCommand.mockReturnValue("claude --default");
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    // Worktree still created — failed IPC is non-fatal.
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+
+    // Agent command was still generated (with an empty settings entry).
+    expect(mockGenerateAgentCommand).toHaveBeenCalledWith(
+      "claude",
+      {},
+      "claude",
+      expect.objectContaining({ clipboardDirectory: undefined })
+    );
+    const agentCall = mockAddPanel.mock.calls.find((c) => c[0].kind === "agent");
+    expect(agentCall?.[0].command).toBe("claude --default");
+  });
+
+  it("clone layout skips agent-settings prefetch when no agent panels present", async () => {
+    mockSelectedRecipeId = "__clone_layout__";
+    mockGenerateRecipeFromActiveTerminals.mockReturnValue([
+      { type: "terminal", title: "Shell", exitBehavior: "close", command: "ls" },
+    ]);
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    // No agent panels → prefetch is skipped entirely.
+    expect(mockAgentSettingsGet).not.toHaveBeenCalled();
+    expect(mockGenerateAgentCommand).not.toHaveBeenCalled();
+
+    const terminalCall = mockAddPanel.mock.calls.find((c) => c[0].kind === "terminal");
+    expect(terminalCall?.[0].command).toBe("ls");
   });
 });
 
@@ -1213,6 +1500,51 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
     const createCalls = mockWorktreeCreate.mock.calls;
     expect(createCalls[0][0].useExistingBranch).toBe(true);
     expect(createCalls[0][0].fromRemote).toBe(false);
+  });
+
+  it("calls listBranches once per batch, not once per PR", async () => {
+    mockListBranches.mockResolvedValue([
+      { name: "main", current: true, remote: false },
+      { name: "origin/feature/pr-10", current: false, remote: true },
+      { name: "origin/feature/pr-20", current: false, remote: true },
+      { name: "origin/feature/pr-30", current: false, remote: true },
+    ]);
+
+    render(<BulkCreateWorktreeDialog {...prProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+    // Single shared snapshot hoisted before the queue, not one per item.
+    expect(mockListBranches).toHaveBeenCalledTimes(1);
+    expect(mockWorktreeCreate).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails all PRs when shared listBranches snapshot rejects", async () => {
+    const { notify: mockNotify } = await import("@/lib/notify");
+    mockListBranches.mockRejectedValueOnce(new Error("git ls-remote failed"));
+
+    render(<BulkCreateWorktreeDialog {...prProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText(/0 of 3 created/)).toBeTruthy();
+    expect(screen.getByText(/3 failed/)).toBeTruthy();
+    expect(screen.getAllByText(/git ls-remote failed/).length).toBeGreaterThanOrEqual(1);
+    expect(mockWorktreeCreate).not.toHaveBeenCalled();
+    expect(mockFetchPRBranch).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        message: "0 created, 3 failed",
+      })
+    );
   });
 
   it("fails when branch cannot be fetched from remote", async () => {

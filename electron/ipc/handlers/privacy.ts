@@ -2,10 +2,13 @@ import { ipcMain, app, shell, session } from "electron";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import {
+  closeTelemetry,
   getTelemetryLevel,
+  hasTelemetryPromptBeenShown,
   setTelemetryLevel,
   type TelemetryLevel,
 } from "../../services/TelemetryService.js";
+import { typedBroadcast } from "../utils.js";
 
 const VALID_LEVELS: TelemetryLevel[] = ["off", "errors", "full"];
 const VALID_RETENTION = [7, 30, 90, 0] as const;
@@ -23,6 +26,10 @@ export function registerPrivacyHandlers(): () => void {
   ipcMain.handle(CHANNELS.PRIVACY_SET_TELEMETRY_LEVEL, async (_event, level: unknown) => {
     if (typeof level !== "string" || !VALID_LEVELS.includes(level as TelemetryLevel)) return;
     await setTelemetryLevel(level as TelemetryLevel);
+    typedBroadcast("privacy:telemetry-consent-changed", {
+      level: level as TelemetryLevel,
+      hasSeenPrompt: hasTelemetryPromptBeenShown(),
+    });
   });
   cleanups.push(() => ipcMain.removeHandler(CHANNELS.PRIVACY_SET_TELEMETRY_LEVEL));
 
@@ -34,6 +41,7 @@ export function registerPrivacyHandlers(): () => void {
       return;
     const privacy = store.get("privacy") ?? {
       telemetryLevel: "off" as const,
+      hasSeenPrompt: false,
       logRetentionDays: 30 as const,
     };
     store.set("privacy", { ...privacy, logRetentionDays: days as 7 | 30 | 90 | 0 });
@@ -51,8 +59,9 @@ export function registerPrivacyHandlers(): () => void {
   });
   cleanups.push(() => ipcMain.removeHandler(CHANNELS.PRIVACY_CLEAR_CACHE));
 
-  ipcMain.handle(CHANNELS.PRIVACY_RESET_ALL_DATA, () => {
+  ipcMain.handle(CHANNELS.PRIVACY_RESET_ALL_DATA, async () => {
     app.relaunch({ args: process.argv.slice(1).concat(["--reset-data"]) });
+    await closeTelemetry();
     app.exit(0);
   });
   cleanups.push(() => ipcMain.removeHandler(CHANNELS.PRIVACY_RESET_ALL_DATA));

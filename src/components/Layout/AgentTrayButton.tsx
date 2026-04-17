@@ -1,6 +1,8 @@
 import {
+  useEffect,
   useMemo,
   useRef,
+  useState,
   type ComponentType,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -21,6 +23,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { getAgentConfig, type AgentIconProps } from "@/config/agents";
 import { actionService } from "@/services/ActionService";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useKeybindingDisplay } from "@/hooks";
@@ -85,12 +88,69 @@ export function AgentTrayButton({
   const agentSettings = useAgentSettingsStore((s) => s.settings);
   const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
 
+  const refreshAvailability = useCliAvailabilityStore((s) => s.refresh);
+  const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
+
   const panelsById = usePanelStore((s) => s.panelsById);
   const panelIds = usePanelStore((s) => s.panelIds);
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
-  const isAvailabilityLoading = agentAvailability === undefined;
+  // Before the first real availability result lands we can't distinguish
+  // "all agents missing" from "still detecting", so we show a spinner.
+  const isAvailabilityLoading = agentAvailability === undefined || !hasRealData;
   const lastPinActionAt = useRef(0);
+
+  // Radix Tooltip reopens whenever the trigger receives focus, including
+  // programmatic focus restoration from DropdownMenu's onCloseAutoFocus. Gate
+  // the Tooltip via controlled state and suppress open=true for one tick
+  // after the dropdown closes so the refocused button doesn't flash the
+  // tooltip back into view. See issue #5153.
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const isRestoringFocusRef = useRef(false);
+  const restoreFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-probe on view visibility changes (Electron LRU reactivation, tab
+  // switches). The window-focus trigger is handled once globally in
+  // useAgentLauncher; both paths share the 30s throttle in the store.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let disposed = false;
+    const handleVisibility = () => {
+      if (disposed) return;
+      if (document.visibilityState !== "visible") return;
+      void refreshAvailability().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [refreshAvailability]);
+
+  useEffect(() => {
+    return () => {
+      if (restoreFocusTimerRef.current != null) {
+        clearTimeout(restoreFocusTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleTooltipOpenChange = (open: boolean) => {
+    if (open && isRestoringFocusRef.current) return;
+    setTooltipOpen(open);
+  };
+
+  const suppressTooltipDuringFocusRestore = () => {
+    setTooltipOpen(false);
+    isRestoringFocusRef.current = true;
+    if (restoreFocusTimerRef.current != null) {
+      clearTimeout(restoreFocusTimerRef.current);
+    }
+    restoreFocusTimerRef.current = setTimeout(() => {
+      isRestoringFocusRef.current = false;
+      restoreFocusTimerRef.current = null;
+    }, 0);
+  };
 
   const agentDominantStates = useMemo(() => {
     const statesPerAgent = new Map<string, (AgentState | undefined)[]>();
@@ -117,9 +177,10 @@ export function AgentTrayButton({
     return result;
   }, [panelsById, panelIds, activeWorktreeId]);
 
-  const { launchable, needsSetup } = useMemo(() => {
+  const { launchable, needsSetup, fallbackSetup } = useMemo(() => {
     const launchable: AgentRow[] = [];
     const needsSetup: AgentRow[] = [];
+    const fallbackSetup: AgentRow[] = [];
 
     for (const id of BUILT_IN_AGENT_IDS) {
       const pinned = isAgentPinned(agentSettings?.agents?.[id]);
@@ -130,12 +191,18 @@ export function AgentTrayButton({
       const state = agentAvailability?.[id];
       if (isAgentReady(state)) {
         launchable.push(row);
-      } else if (isAgentInstalled(state) || state !== undefined) {
+      } else if (isAgentInstalled(state)) {
+        // "installed" means the CLI is on PATH but not fully authenticated
+        // or configured yet. These belong in "Also Available" with a setup
+        // badge. Missing agents do NOT get promoted here.
         needsSetup.push(row);
       }
+      // Always build a fallback row so we can offer discovery when
+      // nothing is installed on this machine.
+      fallbackSetup.push(row);
     }
 
-    return { launchable, needsSetup };
+    return { launchable, needsSetup, fallbackSetup };
   }, [agentAvailability, agentSettings, agentDominantStates]);
 
   const handleLaunch = (row: AgentRow) => {
@@ -152,6 +219,17 @@ export function AgentTrayButton({
 
   const handleCustomizeToolbar = () => {
     void actionService.dispatch("app.settings.openTab", { tab: "toolbar" }, { source: "user" });
+  };
+
+  const handleManageAgents = () => {
+    void actionService.dispatch("app.settings.openTab", { tab: "agents" }, { source: "user" });
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    setTooltipOpen(false);
+    if (!open) return;
+    // Fire-and-forget: the store throttle absorbs rapid reopens.
+    void refreshAvailability().catch(() => {});
   };
 
   const togglePin = (row: AgentRow) => {
@@ -174,11 +252,15 @@ export function AgentTrayButton({
   };
 
   const hasAnyContent = launchable.length > 0 || needsSetup.length > 0;
+  // Show every built-in with a Setup badge if nothing is installed — discovery
+  // over an unhelpful "No agents available" dead end. Only kicks in once real
+  // availability data has landed.
+  const showFallback = !isAvailabilityLoading && !hasAnyContent && fallbackSetup.length > 0;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={handleOpenChange}>
       <TooltipProvider>
-        <Tooltip>
+        <Tooltip open={tooltipOpen} onOpenChange={handleTooltipOpenChange}>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
@@ -199,16 +281,13 @@ export function AgentTrayButton({
         align="start"
         sideOffset={4}
         className="min-w-[16rem]"
-        onCloseAutoFocus={(e) => {
-          if ((e as unknown as PointerEvent).detail > 0) e.preventDefault();
+        onCloseAutoFocus={() => {
+          suppressTooltipDuringFocusRestore();
         }}
       >
-        {!hasAnyContent &&
-          (isAvailabilityLoading ? (
-            <div className="px-2.5 py-1.5 text-xs text-daintree-text/60">Checking agents…</div>
-          ) : (
-            <div className="px-2.5 py-1.5 text-xs text-daintree-text/60">No agents available</div>
-          ))}
+        {isAvailabilityLoading && (
+          <div className="px-2.5 py-1.5 text-xs text-daintree-text/60">Checking agents…</div>
+        )}
 
         {launchable.length > 0 && (
           <>
@@ -248,7 +327,33 @@ export function AgentTrayButton({
           </>
         )}
 
-        {hasAnyContent && <DropdownMenuSeparator />}
+        {showFallback && (
+          <>
+            <DropdownMenuLabel>Available Agents</DropdownMenuLabel>
+            {fallbackSetup.map((row) => (
+              <DropdownMenuItem
+                key={`fallback-${row.id}`}
+                onSelect={() => handleSetup(row.id)}
+                className="group h-7"
+                data-testid={`agent-tray-fallback-${row.id}`}
+              >
+                <span className="mr-2 inline-flex h-4 w-4 items-center justify-center grayscale opacity-50">
+                  <row.Icon brandColor={getBrandColorHex(row.id)} />
+                </span>
+                <span className="flex-1 text-daintree-text/70">{row.name}</span>
+                <span className="ml-2 shrink-0 rounded border border-daintree-text/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-daintree-text/50">
+                  Setup
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+
+        {(hasAnyContent || showFallback) && <DropdownMenuSeparator />}
+        <DropdownMenuItem onSelect={handleManageAgents} className="h-7">
+          <Settings2 className="mr-2 h-3.5 w-3.5 opacity-60" />
+          Manage Agents…
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={handleCustomizeToolbar} className="h-7">
           <Settings2 className="mr-2 h-3.5 w-3.5 opacity-60" />
           Customize Toolbar…

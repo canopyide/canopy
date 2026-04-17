@@ -26,7 +26,6 @@ export interface TerminalPublicState {
   type?: TerminalType;
   agentId?: AgentId;
   title?: string;
-  worktreeId?: string;
   spawnedAt: number;
   wasKilled?: boolean;
   isExited?: boolean;
@@ -52,6 +51,8 @@ export interface TerminalPublicState {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time for per-panel model selection */
   agentModelId?: string;
+  /** Resolved argv passed to pty.spawn() at launch time (for diagnostics) */
+  spawnArgs?: string[];
   /** Exit code from the PTY process (set on clean exit) */
   exitCode?: number;
 }
@@ -116,7 +117,6 @@ export interface TerminalSnapshot {
   lastCheckTime: number;
   kind?: PanelKind;
   type?: TerminalType;
-  worktreeId?: string;
   agentId?: AgentId;
   agentState?: AgentState;
   lastStateChange?: number;

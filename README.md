@@ -2,6 +2,8 @@
 
 **A habitat for your AI coding agents.**
 
+> **Previously known as Canopy.** Same project, new name, new home at [daintree.org](https://daintree.org).
+
 Daintree is a desktop environment where multiple AI agents work side by side — isolated, observable, and under your control. Instead of juggling terminal windows and manually wiring context between tools, Daintree gives your agents a stable place to run while you focus on reviewing their work.
 
 It works with any CLI agent — [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex](https://github.com/openai/codex), [OpenCode](https://github.com/anomalyco/opencode), [Cursor Agent](https://docs.cursor.com/agent), [Kiro CLI](https://kiro.dev/docs/cli/chat/) — and stays out of the way.
@@ -97,7 +99,7 @@ The goal isn't to become an IDE or a cloud platform. It's to be the best possibl
 ### Install
 
 ```bash
-git clone https://github.com/canopyide/canopy.git
+git clone https://github.com/daintreehq/daintree.git
 cd daintree
 npm install
 ```

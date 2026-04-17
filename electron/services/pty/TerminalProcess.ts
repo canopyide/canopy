@@ -257,7 +257,7 @@ export class TerminalProcess {
     spawnContext: SpawnContext,
     ptyProcess: pty.IPty
   ) {
-    const { shell, isAgentTerminal, agentId } = spawnContext;
+    const { shell, args: spawnArgs, isAgentTerminal, agentId } = spawnContext;
     const spawnedAt = Date.now();
 
     this.isAgentTerminal = isAgentTerminal;
@@ -283,7 +283,6 @@ export class TerminalProcess {
       kind: options.kind,
       type: options.type,
       title: options.title,
-      worktreeId: options.worktreeId,
       agentId,
       spawnedAt,
       agentState: this.isAgentTerminal ? "idle" : undefined,
@@ -302,6 +301,7 @@ export class TerminalProcess {
       analysisEnabled: this.isAgentTerminal,
       agentLaunchFlags: options.agentLaunchFlags,
       agentModelId: options.agentModelId,
+      spawnArgs,
     };
 
     // NOTE: The headless responder is intentionally NOT installed for agent
@@ -365,7 +365,6 @@ export class TerminalProcess {
         agentId,
         terminalId: id,
         type: options.type,
-        worktreeId: options.worktreeId,
         timestamp: spawnedAt,
       };
 
@@ -435,7 +434,6 @@ export class TerminalProcess {
       type: t.type,
       agentId: t.agentId,
       title: t.title,
-      worktreeId: t.worktreeId,
       spawnedAt: t.spawnedAt,
       wasKilled: t.wasKilled,
       isExited: t.isExited,
@@ -454,6 +452,7 @@ export class TerminalProcess {
       agentSessionId: t.agentSessionId,
       agentLaunchFlags: t.agentLaunchFlags,
       agentModelId: t.agentModelId,
+      spawnArgs: t.spawnArgs,
       exitCode: t.exitCode,
     };
   }
@@ -928,7 +927,6 @@ export class TerminalProcess {
       lastOutputTime: terminal.lastOutputTime,
       lastCheckTime: terminal.lastCheckTime,
       type: terminal.type,
-      worktreeId: terminal.worktreeId,
       agentId: terminal.agentId,
       agentState: terminal.agentState,
       lastStateChange: terminal.lastStateChange,
@@ -1246,7 +1244,6 @@ export class TerminalProcess {
             timestamp: Date.now(),
             traceId: terminal.traceId,
             terminalId: this.id,
-            worktreeId: this.options.worktreeId,
           });
         }
       }
@@ -1408,7 +1405,6 @@ export class TerminalProcess {
         type,
         confidence: 1.0,
         timestamp: Date.now(),
-        worktreeId: this.options.worktreeId,
         lastCommand,
       });
     }

@@ -151,4 +151,36 @@ describe("ProjectSettingsManager caching", () => {
       vi.useRealTimers();
     }
   });
+
+  it("round-trips turbopackEnabled=false through save/load", async () => {
+    await manager.saveProjectSettings(projectId, {
+      runCommands: [],
+      turbopackEnabled: false,
+    });
+
+    // Advance past cache TTL so we actually hit disk on read.
+    const freshManager = new ProjectSettingsManager(tempDir, createMockStore());
+    const loaded = await freshManager.getProjectSettings(projectId);
+    expect(loaded.turbopackEnabled).toBe(false);
+  });
+
+  it("treats missing turbopackEnabled as undefined (default-on at read sites)", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(settingsPath, JSON.stringify({ runCommands: [] }), "utf-8");
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.turbopackEnabled).toBeUndefined();
+  });
+
+  it("rejects non-boolean turbopackEnabled in the settings file", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [], turbopackEnabled: "yes" }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.turbopackEnabled).toBeUndefined();
+  });
 });

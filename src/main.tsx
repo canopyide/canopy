@@ -11,7 +11,9 @@ import "./index.css";
 import { applyDefaultAppTheme } from "./theme/applyAppTheme";
 import { ensureTerminalFontLoaded } from "./config/terminalFont";
 import { initStoreOrchestrator } from "./store/rendererStoreOrchestrator";
+import { useAgentSettingsStore } from "./store/agentSettingsStore";
 import { registerRendererGlobalErrorHandlers } from "./utils/rendererGlobalErrorHandlers";
+import { initRendererSentry } from "./utils/rendererSentry";
 import { renderBootstrapError } from "./utils/renderBootstrapError";
 import {
   onCaughtError,
@@ -24,6 +26,8 @@ let cleanupGlobalErrorHandlers: (() => void) | undefined;
 let cleanupOrchestrator: (() => void) | undefined;
 
 async function bootstrap() {
+  await initRendererSentry();
+
   cleanupGlobalErrorHandlers = registerRendererGlobalErrorHandlers();
 
   applyDefaultAppTheme(document.documentElement);
@@ -35,6 +39,13 @@ async function bootstrap() {
   }
 
   cleanupOrchestrator = initStoreOrchestrator();
+
+  // Kick off the agent-settings store so `App.tsx`, `Toolbar`, and the tray
+  // all read from a normalized snapshot on cold boot. The install-aware
+  // default-pin path in `normalizeAgentSelection` depends on this running —
+  // without it the store stays null and the orchestrator's availability
+  // subscription never gets a chance to reconcile (see issue #5158).
+  void useAgentSettingsStore.getState().initialize();
 
   await ensureTerminalFontLoaded();
 
@@ -56,6 +67,15 @@ async function bootstrap() {
 
 bootstrap().catch((error: unknown) => {
   console.error("Bootstrap failed:", error);
+
+  void (async () => {
+    try {
+      const { captureException } = await import("@sentry/electron/renderer");
+      captureException(error);
+    } catch {
+      // Sentry may not have initialized yet
+    }
+  })();
 
   try {
     const errObj =

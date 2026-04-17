@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import path from "node:path";
+import { resolveNextMajorVersion } from "../utils/resolveNextVersion.js";
 import type { PtyClient } from "./PtyClient.js";
 import { UrlDetector } from "./UrlDetector.js";
 import type {
@@ -19,6 +20,7 @@ import { markPerformance } from "../utils/performance.js";
 interface DevPreviewSession extends DevPreviewSessionState {
   cwd: string;
   devCommand: string;
+  turbopackEnabled: boolean;
   env?: Record<string, string>;
   buffer: string;
   lastErrorKey: string | null;
@@ -87,9 +89,28 @@ function getInvalidCommandMessage(command: string): string | null {
 const NEXT_DEV_DIRECT_RE = /\bnext\s+dev\b/;
 const TURBOPACK_FLAG_RE = /--turbo(?:pack)?\b/;
 const PKG_SCRIPT_RE = /^(?:npm\s+run|pnpm(?:\s+run)?|yarn(?:\s+run)?|bun(?:\s+run)?)\s+(\S+)$/;
+// Compound/piped/commented commands can't be safely rewritten — appending
+// --turbopack to `next dev && echo done` attaches the flag to echo, not next.
+const SHELL_CONTROL_RE = /[;&|#]|<|>|\$\(/;
 
-export async function normalizeNextjsDevCommand(command: string, cwd: string): Promise<string> {
+function stripTurbopackFlag(command: string): string {
+  return command
+    .replace(/\s+--\s+--turbo(?:pack)?\b/, "") // " -- --turbopack" (pkg manager form)
+    .replace(/\s+--turbo(?:pack)?\b/, "") // " --turbopack" (direct form)
+    .trim();
+}
+
+export async function normalizeNextjsDevCommand(
+  command: string,
+  cwd: string,
+  turbopackEnabled = true
+): Promise<string> {
+  if (!turbopackEnabled) return stripTurbopackFlag(command);
+  const nextMajor = await resolveNextMajorVersion(cwd);
+  if (nextMajor === null || nextMajor < 15) return stripTurbopackFlag(command);
+
   if (TURBOPACK_FLAG_RE.test(command)) return command;
+  if (SHELL_CONTROL_RE.test(command)) return command;
 
   if (NEXT_DEV_DIRECT_RE.test(command)) {
     return `${command} --turbopack`;
@@ -170,15 +191,18 @@ export class DevPreviewSessionService {
     await this.runLocked(key, async () => {
       const session = this.getOrCreateSession(request.projectId, request.panelId);
       const envChanged = !envEquals(session.env, request.env);
+      const nextTurbopackEnabled = request.turbopackEnabled ?? true;
       const configChanged =
         session.cwd !== request.cwd ||
         session.worktreeId !== request.worktreeId ||
         session.devCommand !== request.devCommand ||
+        session.turbopackEnabled !== nextTurbopackEnabled ||
         envChanged;
 
       session.cwd = request.cwd;
       session.worktreeId = request.worktreeId;
       session.devCommand = request.devCommand;
+      session.turbopackEnabled = nextTurbopackEnabled;
       if (envChanged) {
         session.env = cloneEnv(request.env);
       }
@@ -385,6 +409,9 @@ export class DevPreviewSessionService {
         }
       }
     }
+    if (request.turbopackEnabled !== undefined && typeof request.turbopackEnabled !== "boolean") {
+      throw new Error("turbopackEnabled must be a boolean if provided");
+    }
   }
 
   private validateSessionRequest(request: DevPreviewSessionRequest): void {
@@ -426,6 +453,7 @@ export class DevPreviewSessionService {
       updatedAt: Date.now(),
       cwd: "",
       devCommand: "",
+      turbopackEnabled: true,
       env: undefined,
       buffer: "",
       lastErrorKey: null,
@@ -578,7 +606,6 @@ export class DevPreviewSessionService {
         projectId: session.projectId,
         kind: "dev-preview",
         cwd: session.cwd,
-        worktreeId: session.worktreeId,
         cols: 80,
         rows: 30,
         restore: false,
@@ -617,7 +644,7 @@ export class DevPreviewSessionService {
       }, 100);
     };
 
-    void normalizeNextjsDevCommand(trimmedCommand, session.cwd)
+    void normalizeNextjsDevCommand(trimmedCommand, session.cwd, session.turbopackEnabled)
       .then((normalizedCommand) => {
         submitCommand(normalizedCommand);
       })
@@ -890,7 +917,6 @@ export class DevPreviewSessionService {
         projectId: session.projectId,
         kind: "dev-preview",
         cwd: session.cwd,
-        worktreeId: session.worktreeId,
         cols: 80,
         rows: 30,
         restore: false,

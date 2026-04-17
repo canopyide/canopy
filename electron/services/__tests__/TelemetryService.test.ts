@@ -3,10 +3,11 @@ import os from "os";
 
 const sentryInitMock = vi.hoisted(() => vi.fn());
 const captureEventMock = vi.hoisted(() => vi.fn(() => "mock-event-id"));
+const sentryCloseMock = vi.hoisted(() => vi.fn(() => Promise.resolve(true)));
 
 const storeMock = vi.hoisted(() => {
   const data: Record<string, unknown> = {
-    telemetry: { enabled: false, hasSeenPrompt: false },
+    privacy: { telemetryLevel: "off", hasSeenPrompt: false, logRetentionDays: 30 },
   };
   return {
     get: vi.fn((key: string) => data[key]),
@@ -26,6 +27,7 @@ vi.mock("electron", () => ({
 vi.mock("@sentry/electron/main", () => ({
   init: sentryInitMock,
   captureEvent: captureEventMock,
+  close: sentryCloseMock,
 }));
 
 import {
@@ -33,11 +35,27 @@ import {
   initializeTelemetry,
   isTelemetryEnabled,
   setTelemetryEnabled,
+  setTelemetryLevel,
+  getTelemetryLevel,
   hasTelemetryPromptBeenShown,
   markTelemetryPromptShown,
   trackEvent,
   _getPreConsentBufferLength,
 } from "../TelemetryService.js";
+
+function setPrivacy(patch: {
+  telemetryLevel?: "off" | "errors" | "full";
+  hasSeenPrompt?: boolean;
+}) {
+  storeMock._data.privacy = {
+    telemetryLevel: "off",
+    hasSeenPrompt: false,
+    logRetentionDays: 30,
+    ...(storeMock._data.privacy as Record<string, unknown>),
+    ...patch,
+  };
+  storeMock.get.mockImplementation((key: string) => storeMock._data[key]);
+}
 
 describe("sanitizePath", () => {
   it("redacts macOS home dir username", () => {
@@ -72,102 +90,150 @@ describe("sanitizePath", () => {
   });
 });
 
-describe("isTelemetryEnabled", () => {
+describe("getTelemetryLevel", () => {
   beforeEach(() => {
-    storeMock.get.mockImplementation((key: string) => {
-      if (key === "telemetry") return { enabled: false, hasSeenPrompt: false };
-      return undefined;
-    });
     vi.clearAllMocks();
-    storeMock.get.mockImplementation((key: string) => {
-      if (key === "telemetry") return { enabled: false, hasSeenPrompt: false };
-      return undefined;
-    });
+    setPrivacy({ telemetryLevel: "off" });
   });
 
-  it("returns false when disabled", () => {
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+  it("returns the stored privacy.telemetryLevel", () => {
+    setPrivacy({ telemetryLevel: "errors" });
+    expect(getTelemetryLevel()).toBe("errors");
+  });
+
+  it("returns 'off' when privacy is missing", () => {
+    storeMock.get.mockReturnValue(undefined);
+    expect(getTelemetryLevel()).toBe("off");
+  });
+
+  it("does NOT write to the store on read (no lazy migration)", () => {
+    storeMock.get.mockReturnValue(undefined);
+    getTelemetryLevel();
+    expect(storeMock.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("isTelemetryEnabled", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns false when level is 'off'", () => {
+    setPrivacy({ telemetryLevel: "off" });
     expect(isTelemetryEnabled()).toBe(false);
   });
 
-  it("returns true when enabled", () => {
-    storeMock.get.mockReturnValue({ enabled: true, hasSeenPrompt: true });
+  it("returns true when level is 'errors'", () => {
+    setPrivacy({ telemetryLevel: "errors" });
     expect(isTelemetryEnabled()).toBe(true);
   });
 
-  it("returns false when telemetry key is undefined", () => {
+  it("returns true when level is 'full'", () => {
+    setPrivacy({ telemetryLevel: "full" });
+    expect(isTelemetryEnabled()).toBe(true);
+  });
+
+  it("returns false when privacy is undefined", () => {
     storeMock.get.mockReturnValue(undefined);
     expect(isTelemetryEnabled()).toBe(false);
   });
 });
 
-describe("setTelemetryEnabled", () => {
+describe("setTelemetryLevel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
   });
 
-  it("stores enabled=true", async () => {
+  it("writes telemetryLevel to privacy without touching any legacy telemetry key", async () => {
+    await setTelemetryLevel("errors");
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "privacy",
+      expect.objectContaining({ telemetryLevel: "errors" })
+    );
+    for (const call of storeMock.set.mock.calls) {
+      expect(call[0]).not.toBe("telemetry");
+    }
+  });
+
+  it("preserves hasSeenPrompt when writing telemetryLevel", async () => {
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: true });
+    await setTelemetryLevel("full");
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "privacy",
+      expect.objectContaining({ telemetryLevel: "full", hasSeenPrompt: true })
+    );
+  });
+});
+
+describe("setTelemetryEnabled (compat shim)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setPrivacy({ telemetryLevel: "off" });
+  });
+
+  it("maps true to 'errors'", async () => {
     await setTelemetryEnabled(true);
-    expect(storeMock.set).toHaveBeenCalledWith("telemetry", {
-      enabled: true,
-      hasSeenPrompt: false,
-    });
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "privacy",
+      expect.objectContaining({ telemetryLevel: "errors" })
+    );
   });
 
-  it("stores enabled=false", async () => {
-    storeMock.get.mockReturnValue({ enabled: true, hasSeenPrompt: true });
+  it("maps false to 'off'", async () => {
+    setPrivacy({ telemetryLevel: "errors" });
     await setTelemetryEnabled(false);
-    expect(storeMock.set).toHaveBeenCalledWith("telemetry", {
-      enabled: false,
-      hasSeenPrompt: true,
-    });
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "privacy",
+      expect.objectContaining({ telemetryLevel: "off" })
+    );
   });
 });
 
 describe("hasTelemetryPromptBeenShown", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reads privacy.hasSeenPrompt", () => {
+    setPrivacy({ hasSeenPrompt: true });
+    expect(hasTelemetryPromptBeenShown()).toBe(true);
+  });
+
   it("returns false when not shown", () => {
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+    setPrivacy({ hasSeenPrompt: false });
     expect(hasTelemetryPromptBeenShown()).toBe(false);
   });
 
-  it("returns true when shown", () => {
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: true });
-    expect(hasTelemetryPromptBeenShown()).toBe(true);
+  it("returns false when privacy is missing", () => {
+    storeMock.get.mockReturnValue(undefined);
+    expect(hasTelemetryPromptBeenShown()).toBe(false);
   });
 });
 
 describe("markTelemetryPromptShown", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
   });
 
-  it("sets hasSeenPrompt to true", () => {
+  it("writes hasSeenPrompt=true on the privacy object (not telemetry)", () => {
     markTelemetryPromptShown();
-    expect(storeMock.set).toHaveBeenCalledWith("telemetry", {
-      enabled: false,
-      hasSeenPrompt: true,
-    });
-  });
-});
-
-describe("sanitizeEvent (via beforeSend logic)", () => {
-  it("sanitizes stack frame filenames", () => {
-    const filename = "/Users/johndoe/projects/daintree/electron/main.ts";
-    expect(sanitizePath(filename)).toBe("/Users/USER/projects/daintree/electron/main.ts");
-  });
-
-  it("sanitizes error message text containing paths", () => {
-    const msg = "ENOENT: no such file or directory, open '/Users/alice/code/app/config.json'";
-    expect(sanitizePath(msg)).toBe(
-      "ENOENT: no such file or directory, open '/Users/USER/code/app/config.json'"
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "privacy",
+      expect.objectContaining({ hasSeenPrompt: true })
     );
+    for (const call of storeMock.set.mock.calls) {
+      expect(call[0]).not.toBe("telemetry");
+    }
   });
 
-  it("sanitizes Windows-style forward-slash paths", () => {
-    expect(sanitizePath("C:/Users/bob/AppData/Roaming/daintree/log.txt")).toBe(
-      "C:/Users/USER/AppData/Roaming/daintree/log.txt"
+  it("preserves telemetryLevel and other privacy fields", () => {
+    setPrivacy({ telemetryLevel: "full", hasSeenPrompt: false });
+    markTelemetryPromptShown();
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "privacy",
+      expect.objectContaining({ telemetryLevel: "full", hasSeenPrompt: true })
     );
   });
 });
@@ -178,54 +244,65 @@ describe("initializeTelemetry", () => {
     sentryInitMock.mockReset();
   });
 
-  it("does not call Sentry.init when telemetry is disabled", async () => {
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+  it("does not call Sentry.init when telemetry level is 'off'", async () => {
+    setPrivacy({ telemetryLevel: "off" });
     await initializeTelemetry();
     expect(sentryInitMock).not.toHaveBeenCalled();
   });
 
   it("does not call Sentry.init when DSN is empty", async () => {
-    storeMock.get.mockReturnValue({ enabled: true, hasSeenPrompt: true });
+    setPrivacy({ telemetryLevel: "errors" });
     const original = process.env.SENTRY_DSN;
     process.env.SENTRY_DSN = "";
     await initializeTelemetry();
     expect(sentryInitMock).not.toHaveBeenCalled();
     process.env.SENTRY_DSN = original;
   });
+
+  // Covers both #5259 (sampleRate must be absent so SDK defaults to 100% capture)
+  // and #5262 (init gates on privacy.telemetryLevel, not a legacy telemetry key).
+  it("initializes via privacy.telemetryLevel without setting sampleRate", async () => {
+    setPrivacy({ telemetryLevel: "errors" });
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+    await initializeTelemetry();
+    expect(sentryInitMock).toHaveBeenCalledTimes(1);
+    const options = sentryInitMock.mock.calls[0][0] as Record<string, unknown>;
+    // sampleRate must not be set at all — the SDK default is 1.0 (100%
+    // capture) and any value < 1 silently drops that fraction of crash
+    // reports. Fail closed so reintroduction at any value is caught. See #5255.
+    expect(options).not.toHaveProperty("sampleRate");
+    process.env.SENTRY_DSN = original;
+  });
 });
 
 describe("trackEvent", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     captureEventMock.mockClear();
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
-    // Clear the buffer by disabling telemetry
-    // (preConsentBuffer.length = 0 happens inside setTelemetryEnabled(false))
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
+    await setTelemetryEnabled(false); // clears buffer
   });
 
-  it("buffers events before consent is decided", async () => {
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+  it("buffers events before consent is decided", () => {
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
     trackEvent("onboarding_step_viewed", { step: "telemetry" });
     expect(_getPreConsentBufferLength()).toBeGreaterThan(0);
     expect(captureEventMock).not.toHaveBeenCalled();
   });
 
   it("drops events when consent was explicitly denied", async () => {
-    // Clear buffer first
-    await setTelemetryEnabled(false);
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: true });
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: true });
     const before = _getPreConsentBufferLength();
     trackEvent("onboarding_step_viewed", { step: "telemetry" });
     expect(_getPreConsentBufferLength()).toBe(before);
     expect(captureEventMock).not.toHaveBeenCalled();
   });
 
-  it("sends directly when telemetry is enabled and Sentry is initialized", async () => {
+  it("sends directly when telemetry is at 'full' and Sentry is initialized", async () => {
     const original = process.env.SENTRY_DSN;
     process.env.SENTRY_DSN = "https://test@sentry.io/123";
-    storeMock._data.telemetry = { enabled: true, hasSeenPrompt: true };
-    storeMock._data.privacy = { telemetryLevel: "full", logRetentionDays: 30 };
-    storeMock.get.mockImplementation((key: string) => storeMock._data[key]);
+    setPrivacy({ telemetryLevel: "full", hasSeenPrompt: true });
     await initializeTelemetry();
     captureEventMock.mockClear();
 
@@ -242,21 +319,20 @@ describe("trackEvent", () => {
 
   it("does not write buffer contents to the store", () => {
     storeMock.set.mockClear();
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
     trackEvent("onboarding_step_viewed", { step: "telemetry" });
     trackEvent("onboarding_step_viewed", { step: "agentSelection" });
-    // store.set should NOT have been called with any buffer data
     for (const call of storeMock.set.mock.calls) {
       expect(call[0]).not.toContain("buffer");
     }
   });
 });
 
-describe("setTelemetryEnabled with buffer", () => {
+describe("setTelemetryLevel with buffer", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     captureEventMock.mockClear();
-    // Clean buffer
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
     await setTelemetryEnabled(false);
   });
 
@@ -264,14 +340,13 @@ describe("setTelemetryEnabled with buffer", () => {
     const original = process.env.SENTRY_DSN;
     process.env.SENTRY_DSN = "https://test@sentry.io/123";
 
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
     trackEvent("onboarding_step_viewed", { step: "telemetry" });
     trackEvent("onboarding_step_viewed", { step: "agentSelection" });
 
-    // Now enable — this should flush
-    storeMock.get.mockReturnValue({ enabled: true, hasSeenPrompt: true });
+    setPrivacy({ telemetryLevel: "full", hasSeenPrompt: true });
     captureEventMock.mockClear();
-    await setTelemetryEnabled(true);
+    await setTelemetryLevel("full");
 
     expect(captureEventMock).toHaveBeenCalledTimes(2);
     expect(_getPreConsentBufferLength()).toBe(0);
@@ -280,24 +355,132 @@ describe("setTelemetryEnabled with buffer", () => {
   });
 
   it("discards buffer when consent denied", async () => {
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
     trackEvent("onboarding_step_viewed", { step: "telemetry" });
     expect(_getPreConsentBufferLength()).toBeGreaterThan(0);
 
-    await setTelemetryEnabled(false);
+    await setTelemetryLevel("off");
     expect(_getPreConsentBufferLength()).toBe(0);
     expect(captureEventMock).not.toHaveBeenCalled();
   });
 
+  it("drops (does NOT flush) the buffer at 'errors' level", async () => {
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
+    trackEvent("onboarding_step_viewed", { step: "telemetry" });
+    trackEvent("onboarding_step_viewed", { step: "agentSelection" });
+    expect(_getPreConsentBufferLength()).toBe(2);
+
+    setPrivacy({ telemetryLevel: "errors", hasSeenPrompt: true });
+    captureEventMock.mockClear();
+    await setTelemetryLevel("errors");
+
+    // "errors" permits crash reports only — analytics events must NOT be replayed.
+    expect(captureEventMock).not.toHaveBeenCalled();
+    expect(_getPreConsentBufferLength()).toBe(0);
+
+    process.env.SENTRY_DSN = original;
+  });
+
   it("respects buffer cap", async () => {
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
-    // Clear buffer
-    await setTelemetryEnabled(false);
-    storeMock.get.mockReturnValue({ enabled: false, hasSeenPrompt: false });
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
+    await setTelemetryLevel("off");
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
 
     for (let i = 0; i < 110; i++) {
       trackEvent("onboarding_step_viewed", { step: "telemetry", i });
     }
     expect(_getPreConsentBufferLength()).toBe(100);
+  });
+});
+
+describe("closeTelemetry", () => {
+  // Use isolated module instances so each test starts with a clean `initialized` flag.
+  async function loadFreshModule() {
+    vi.resetModules();
+    return await import("../TelemetryService.js");
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sentryCloseMock.mockReset();
+    sentryCloseMock.mockResolvedValue(true);
+  });
+
+  it("is a no-op when telemetry was never initialized", async () => {
+    const mod = await loadFreshModule();
+    await mod.closeTelemetry();
+    expect(sentryCloseMock).not.toHaveBeenCalled();
+  });
+
+  it("calls Sentry.close(2000) after init", async () => {
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+    storeMock._data.telemetry = { enabled: true, hasSeenPrompt: true };
+    storeMock._data.privacy = { telemetryLevel: "errors", logRetentionDays: 30 };
+    storeMock.get.mockImplementation((key: string) => storeMock._data[key]);
+
+    const mod = await loadFreshModule();
+    await mod.initializeTelemetry();
+    await mod.closeTelemetry();
+
+    expect(sentryCloseMock).toHaveBeenCalledTimes(1);
+    expect(sentryCloseMock).toHaveBeenCalledWith(2000);
+
+    process.env.SENTRY_DSN = original;
+  });
+
+  it("swallows rejection from Sentry.close", async () => {
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+    storeMock._data.telemetry = { enabled: true, hasSeenPrompt: true };
+    storeMock._data.privacy = { telemetryLevel: "errors", logRetentionDays: 30 };
+    storeMock.get.mockImplementation((key: string) => storeMock._data[key]);
+
+    const mod = await loadFreshModule();
+    await mod.initializeTelemetry();
+    sentryCloseMock.mockRejectedValueOnce(new Error("transport exploded"));
+
+    await expect(mod.closeTelemetry()).resolves.toBeUndefined();
+
+    process.env.SENTRY_DSN = original;
+  });
+
+  it("is idempotent — second call is a no-op", async () => {
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+    storeMock._data.telemetry = { enabled: true, hasSeenPrompt: true };
+    storeMock._data.privacy = { telemetryLevel: "errors", logRetentionDays: 30 };
+    storeMock.get.mockImplementation((key: string) => storeMock._data[key]);
+
+    const mod = await loadFreshModule();
+    await mod.initializeTelemetry();
+    await mod.closeTelemetry();
+    expect(sentryCloseMock).toHaveBeenCalledTimes(1);
+
+    await mod.closeTelemetry();
+    expect(sentryCloseMock).toHaveBeenCalledTimes(1);
+
+    process.env.SENTRY_DSN = original;
+  });
+
+  it("stops capturing new events after close", async () => {
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+    storeMock._data.telemetry = { enabled: true, hasSeenPrompt: true };
+    storeMock._data.privacy = { telemetryLevel: "full", logRetentionDays: 30 };
+    storeMock.get.mockImplementation((key: string) => storeMock._data[key]);
+
+    const mod = await loadFreshModule();
+    await mod.initializeTelemetry();
+    captureEventMock.mockClear();
+
+    await mod.closeTelemetry();
+    mod.trackEvent("post_close_event", {});
+    expect(captureEventMock).not.toHaveBeenCalled();
+
+    process.env.SENTRY_DSN = original;
   });
 });

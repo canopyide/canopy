@@ -801,5 +801,58 @@ describe("projectSettingsDirty", () => {
 
       expect(areSnapshotsEqual(snapshotA, snapshotB)).toBe(true);
     });
+
+    it("should detect changed turbopackEnabled", () => {
+      const snapshotA = createProjectSettingsSnapshot(
+        "Project",
+        "🌲",
+        "npm run dev",
+        undefined,
+        [],
+        [],
+        [],
+        undefined,
+        [],
+        {},
+        "none",
+        "",
+        undefined,
+        undefined,
+        "",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+      const snapshotB = createProjectSettingsSnapshot(
+        "Project",
+        "🌲",
+        "npm run dev",
+        undefined,
+        [],
+        [],
+        [],
+        undefined,
+        [],
+        {},
+        "none",
+        "",
+        undefined,
+        undefined,
+        "",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false
+      );
+
+      expect(areSnapshotsEqual(snapshotA, snapshotB)).toBe(false);
+    });
   });
 });

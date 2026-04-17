@@ -3,6 +3,7 @@ import { ErrorFallback, type ErrorFallbackProps } from "./ErrorFallback";
 import { useErrorStore } from "@/store/errorStore";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
+import { captureRendererException } from "@/utils/rendererSentry";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -51,6 +52,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     });
 
     const correlationId = crypto.randomUUID();
+
+    captureRendererException(error, {
+      tags: {
+        source: "react-error-boundary",
+        component: componentName ?? "ErrorBoundary",
+      },
+      contexts: { react: { componentStack } },
+      extra: { correlationId, ...(context ?? {}) },
+    });
 
     let incidentId: string | null = null;
     try {
@@ -131,7 +141,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         `**Component Stack:**\n\`\`\`\n${errorInfo?.componentStack || "No component stack"}\n\`\`\``
     );
 
-    const issueUrl = `https://github.com/canopyide/canopy/issues/new?title=${encodeURIComponent(`Component Error: ${error?.message || "Unknown"}`)}&body=${issueBody}`;
+    const issueUrl = `https://github.com/daintreehq/daintree/issues/new?title=${encodeURIComponent(`Component Error: ${error?.message || "Unknown"}`)}&body=${issueBody}`;
 
     if (window.electron?.system?.openExternal) {
       actionService

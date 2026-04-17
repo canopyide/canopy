@@ -343,7 +343,7 @@ export class PtyManager extends EventEmitter {
             await persistAgentSession({
               sessionId,
               agentId: info.agentId,
-              worktreeId: info.worktreeId ?? null,
+              worktreeId: null,
               title: info.title ?? null,
               projectId: info.projectId ?? null,
               agentLaunchFlags: info.agentLaunchFlags,
@@ -489,7 +489,6 @@ export class PtyManager extends EventEmitter {
       title: terminalInfo.title,
       cwd: terminalInfo.cwd,
       shell: terminalInfo.shell,
-      worktreeId: terminalInfo.worktreeId,
       agentState: terminalInfo.agentState,
       spawnedAt: terminalInfo.spawnedAt,
       lastInputTime: terminalInfo.lastInputTime,
@@ -509,6 +508,9 @@ export class PtyManager extends EventEmitter {
       ptyRows: ptyProcess?.rows,
       ptyForegroundProcess: ptyProcess?.process,
       ptyTty: ptyProcess ? this.resolveTtyPath(ptyProcess.pid) : undefined,
+      spawnArgs: terminalInfo.spawnArgs,
+      agentLaunchFlags: terminalInfo.agentLaunchFlags,
+      agentModelId: terminalInfo.agentModelId,
       exitCode: terminalInfo.exitCode,
     };
   }

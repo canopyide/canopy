@@ -10,7 +10,11 @@ Electron 41, React 19, Vite 8, TypeScript, Tailwind CSS v4, Zustand 5, node-pty,
 
 ## Repo
 
-Public repo: `canopyide/canopy` — https://github.com/canopyide/canopy
+Public repo: `daintreehq/daintree` — https://github.com/daintreehq/daintree
+
+## Policy
+
+**Agent Config Boundary:** Never modify user-owned agent configuration (`~/.claude/settings.json`, `~/.gemini/`, user hooks, agent-native settings files). This includes additive CLI injection like Claude's `--settings` flag—adding hooks or config still changes the user's session behavior in ways they haven't opted into. If a capability requires altering user agent config, it's out of scope. Use passive observation instead (output parsing, OSC title sniffing, process-tree state). Precedent: issue #4100.
 
 ## Project Structure
 

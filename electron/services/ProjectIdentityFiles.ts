@@ -126,6 +126,7 @@ export class ProjectIdentityFiles {
       runCommands?: RunCommand[];
       devServerCommand?: string;
       devServerLoadTimeout?: number;
+      turbopackEnabled?: boolean;
       copyTreeSettings?: CopyTreeSettings;
       excludedPaths?: string[];
 
@@ -140,6 +141,8 @@ export class ProjectIdentityFiles {
     if (settings.runCommands?.length) payload.runCommands = settings.runCommands;
     if (settings.devServerCommand) payload.devServerCommand = settings.devServerCommand;
     if (settings.devServerLoadTimeout) payload.devServerLoadTimeout = settings.devServerLoadTimeout;
+    if (typeof settings.turbopackEnabled === "boolean")
+      payload.turbopackEnabled = settings.turbopackEnabled;
     if (settings.copyTreeSettings) payload.copyTreeSettings = settings.copyTreeSettings;
     if (settings.excludedPaths?.length) payload.excludedPaths = settings.excludedPaths;
 

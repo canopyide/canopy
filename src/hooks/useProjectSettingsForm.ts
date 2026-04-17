@@ -48,6 +48,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
   );
   const [devServerCommand, setDevServerCommand] = useState<string>("");
   const [devServerLoadTimeout, setDevServerLoadTimeout] = useState<number | undefined>(undefined);
+  const [turbopackEnabled, setTurbopackEnabled] = useState<boolean>(true);
   const [commandOverrides, setCommandOverrides] = useState<CommandOverride[]>([]);
   const [copyTreeSettings, setCopyTreeSettings] = useState<CopyTreeSettings>({});
   const [branchPrefixMode, setBranchPrefixMode] = useState<"none" | "username" | "custom">("none");
@@ -116,7 +117,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       projectColor,
       resourceEnvironments,
       activeResourceEnvironment,
-      defaultWorktreeMode
+      defaultWorktreeMode,
+      turbopackEnabled
     );
   }, [
     projectName,
@@ -141,6 +143,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     resourceEnvironments,
     activeResourceEnvironment,
     defaultWorktreeMode,
+    turbopackEnabled,
   ]);
   currentProjectSnapshotRef.current = currentProjectSnapshot;
 
@@ -160,6 +163,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       setDefaultWorktreeRecipeId(undefined);
       setDevServerCommand("");
       setDevServerLoadTimeout(undefined);
+      setTurbopackEnabled(true);
       setCommandOverrides([]);
       setCopyTreeSettings({});
       setProjectAutoSaveError(null);
@@ -195,6 +199,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     const initialDefaultWorktreeRecipeId = projectSettings.defaultWorktreeRecipeId;
     const initialDevServerCommand = projectSettings.devServerCommand || "";
     const initialDevServerLoadTimeout = projectSettings.devServerLoadTimeout;
+    const initialTurbopackEnabled = projectSettings.turbopackEnabled ?? true;
     const initialCommandOverrides = projectSettings.commandOverrides || [];
     const initialCopyTreeSettings = projectSettings.copyTreeSettings || {};
     const initialBranchPrefixMode = projectSettings.branchPrefixMode ?? "none";
@@ -233,6 +238,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     setDefaultWorktreeRecipeId(initialDefaultWorktreeRecipeId);
     setDevServerCommand(initialDevServerCommand);
     setDevServerLoadTimeout(initialDevServerLoadTimeout);
+    setTurbopackEnabled(initialTurbopackEnabled);
     setCommandOverrides(initialCommandOverrides);
     setCopyTreeSettings(initialCopyTreeSettings);
     setBranchPrefixMode(initialBranchPrefixMode);
@@ -273,7 +279,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       currentProject.color,
       initialResourceEnvironments,
       initialActiveResourceEnvironment,
-      initialDefaultWorktreeMode
+      initialDefaultWorktreeMode,
+      initialTurbopackEnabled
     );
     setProjectIsInitialized(true);
   }, [projectSettings, isOpen, projectIsInitialized, currentProject, projectIsLoading, projectId]);
@@ -359,6 +366,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
         defaultWorktreeRecipeId,
         devServerCommand: devServerCommand.trim() || undefined,
         devServerLoadTimeout,
+        turbopackEnabled: turbopackEnabled === true ? undefined : false,
         commandOverrides: commandOverrides.length > 0 ? commandOverrides : undefined,
         copyTreeSettings: hasCopyTreeSettings ? sanitizedCopyTreeSettings : undefined,
         branchPrefixMode: effectivePrefixMode !== "none" ? effectivePrefixMode : undefined,
@@ -441,6 +449,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     setDevServerCommand,
     devServerLoadTimeout,
     setDevServerLoadTimeout,
+    turbopackEnabled,
+    setTurbopackEnabled,
     commandOverrides,
     setCommandOverrides,
     copyTreeSettings,

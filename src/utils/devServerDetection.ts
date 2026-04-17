@@ -4,10 +4,12 @@ const DEV_SCRIPT_PRIORITY = ["dev", "start", "serve"];
 
 const NEXT_DEV_RE = /\bnext\s+dev\b/;
 const TURBOPACK_FLAG_RE = /--turbo(?:pack)?\b/;
+const SHELL_CONTROL_RE = /[;&|#]|<|>|\$\(/;
 
-function applyNextjsTurbopack(runner: RunCommand): RunCommand {
+function applyNextjsTurbopack(runner: RunCommand, turbopackEnabled = true): RunCommand {
+  if (!turbopackEnabled) return runner;
   const desc = runner.description ?? "";
-  if (!NEXT_DEV_RE.test(desc) || TURBOPACK_FLAG_RE.test(desc)) {
+  if (!NEXT_DEV_RE.test(desc) || TURBOPACK_FLAG_RE.test(desc) || SHELL_CONTROL_RE.test(desc)) {
     return runner;
   }
   const sep = runner.command.trimStart().startsWith("bun ") ? " " : " -- ";
@@ -15,7 +17,8 @@ function applyNextjsTurbopack(runner: RunCommand): RunCommand {
 }
 
 export function findDevServerCandidate(
-  allDetectedRunners: RunCommand[] | undefined
+  allDetectedRunners: RunCommand[] | undefined,
+  turbopackEnabled = true
 ): RunCommand | undefined {
   if (!allDetectedRunners) {
     return undefined;
@@ -25,5 +28,5 @@ export function findDevServerCandidate(
     allDetectedRunners.find((runner) => runner.name === name)
   ).find((runner) => runner !== undefined);
 
-  return candidate ? applyNextjsTurbopack(candidate) : undefined;
+  return candidate ? applyNextjsTurbopack(candidate, turbopackEnabled) : undefined;
 }
