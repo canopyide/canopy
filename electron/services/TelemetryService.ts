@@ -120,9 +120,14 @@ export async function setTelemetryLevel(level: TelemetryLevel): Promise<void> {
   const privacy = store.get("privacy") ?? DEFAULT_PRIVACY;
   store.set("privacy", { ...privacy, telemetryLevel: level });
 
-  if (level !== "off") {
+  if (level === "full") {
     await initializeTelemetry();
     flushPreConsentBuffer();
+  } else if (level === "errors") {
+    // Errors-only consent covers crash reports, not analytics — drop any
+    // buffered onboarding analytics rather than replaying them to Sentry.
+    preConsentBuffer.length = 0;
+    await initializeTelemetry();
   } else {
     preConsentBuffer.length = 0;
   }

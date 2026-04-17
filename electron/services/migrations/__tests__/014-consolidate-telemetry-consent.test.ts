@@ -122,6 +122,18 @@ describe("migration014 — consolidate telemetry consent", () => {
     );
   });
 
+  it("does not regress privacy='full' when legacy telemetry.enabled=false", () => {
+    const store = makeStoreMock({
+      telemetry: { enabled: false, hasSeenPrompt: true },
+      privacy: { telemetryLevel: "full", hasSeenPrompt: true, logRetentionDays: 30 },
+    });
+    migration014.up(store);
+    expect(store.set).toHaveBeenCalledWith(
+      "privacy",
+      expect.objectContaining({ telemetryLevel: "full", hasSeenPrompt: true })
+    );
+  });
+
   it("preserves unrelated privacy fields (logRetentionDays)", () => {
     const store = makeStoreMock({
       telemetry: { enabled: true, hasSeenPrompt: true },

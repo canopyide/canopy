@@ -370,6 +370,26 @@ describe("setTelemetryLevel with buffer", () => {
     expect(captureEventMock).not.toHaveBeenCalled();
   });
 
+  it("drops (does NOT flush) the buffer at 'errors' level", async () => {
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+
+    setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
+    trackEvent("onboarding_step_viewed", { step: "telemetry" });
+    trackEvent("onboarding_step_viewed", { step: "agentSelection" });
+    expect(_getPreConsentBufferLength()).toBe(2);
+
+    setPrivacy({ telemetryLevel: "errors", hasSeenPrompt: true });
+    captureEventMock.mockClear();
+    await setTelemetryLevel("errors");
+
+    // "errors" permits crash reports only — analytics events must NOT be replayed.
+    expect(captureEventMock).not.toHaveBeenCalled();
+    expect(_getPreConsentBufferLength()).toBe(0);
+
+    process.env.SENTRY_DSN = original;
+  });
+
   it("respects buffer cap", async () => {
     setPrivacy({ telemetryLevel: "off", hasSeenPrompt: false });
     await setTelemetryLevel("off");
