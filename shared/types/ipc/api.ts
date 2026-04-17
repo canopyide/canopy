@@ -1273,6 +1273,7 @@ export interface ElectronAPI {
         item: import("../plugin.js").MenuItemContribution;
       }>
     >;
+    validateActionIds(actionIds: string[]): Promise<void>;
   };
   crashRecovery: {
     getPending(): Promise<import("./crashRecovery.js").PendingCrash | null>;

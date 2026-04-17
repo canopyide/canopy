@@ -10,8 +10,11 @@ import { isTrustedRendererUrl } from "../../../shared/utils/trustedRenderer.js";
 import type { LoadedPluginInfo, PluginIpcHandler } from "../../../shared/types/plugin.js";
 import type { ToolbarButtonConfig } from "../../../shared/config/toolbarButtonRegistry.js";
 
+let hasValidatedActionIds = false;
+
 export function registerPluginHandlers(): () => void {
   const handlers: Array<() => void> = [];
+  hasValidatedActionIds = false;
 
   const handleList = async (): Promise<LoadedPluginInfo[]> => {
     return pluginService.listPlugins();
@@ -25,6 +28,35 @@ export function registerPluginHandlers(): () => void {
 
   const handleMenuItems = async () => {
     return getPluginMenuItems();
+  };
+
+  const handleValidateActionIds = async (
+    _event: Electron.IpcMainInvokeEvent,
+    actionIds: unknown
+  ): Promise<void> => {
+    if (hasValidatedActionIds) return;
+    if (!Array.isArray(actionIds)) return;
+    hasValidatedActionIds = true;
+
+    const knownIds = new Set(actionIds.filter((id): id is string => typeof id === "string"));
+
+    for (const id of getPluginToolbarButtonIds()) {
+      const config = getToolbarButtonConfig(id);
+      if (!config) continue;
+      if (!knownIds.has(config.actionId)) {
+        console.warn(
+          `[Plugin] Unknown actionId "${config.actionId}" on toolbar button "${config.id}" (plugin: ${config.pluginId})`
+        );
+      }
+    }
+
+    for (const { pluginId, item } of getPluginMenuItems()) {
+      if (!knownIds.has(item.actionId)) {
+        console.warn(
+          `[Plugin] Unknown actionId "${item.actionId}" on menu item "${item.label}" (plugin: ${pluginId})`
+        );
+      }
+    }
   };
 
   ipcMain.handle(CHANNELS.PLUGIN_LIST, handleList);
@@ -47,6 +79,9 @@ export function registerPluginHandlers(): () => void {
 
   ipcMain.handle(CHANNELS.PLUGIN_MENU_ITEMS, handleMenuItems);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PLUGIN_MENU_ITEMS));
+
+  ipcMain.handle(CHANNELS.PLUGIN_VALIDATE_ACTION_IDS, handleValidateActionIds);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PLUGIN_VALIDATE_ACTION_IDS));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

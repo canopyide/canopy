@@ -20,6 +20,7 @@ export type { ActionCallbacks };
  */
 export function useActionRegistry(options: ActionCallbacks): void {
   const registeredRef = useRef(false);
+  const validatedRef = useRef(false);
   const callbacksRef = useRef<ActionCallbacks>(options);
 
   // Always keep the ref updated with latest callbacks
@@ -94,5 +95,14 @@ export function useActionRegistry(options: ActionCallbacks): void {
     });
 
     registeredRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!registeredRef.current) return;
+    if (validatedRef.current) return;
+    validatedRef.current = true;
+    void window.electron.plugin
+      .validateActionIds(actionService.list().map((entry) => entry.id))
+      .catch(() => {});
   }, []);
 }

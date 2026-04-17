@@ -14,6 +14,18 @@ vi.mock("../../../services/PluginService.js", () => ({
   },
 }));
 
+const mockGetPluginToolbarButtonIds = vi.fn();
+const mockGetToolbarButtonConfig = vi.fn();
+vi.mock("../../../../shared/config/toolbarButtonRegistry.js", () => ({
+  getPluginToolbarButtonIds: (...args: unknown[]) => mockGetPluginToolbarButtonIds(...args),
+  getToolbarButtonConfig: (...args: unknown[]) => mockGetToolbarButtonConfig(...args),
+}));
+
+const mockGetPluginMenuItems = vi.fn();
+vi.mock("../../../services/pluginMenuRegistry.js", () => ({
+  getPluginMenuItems: (...args: unknown[]) => mockGetPluginMenuItems(...args),
+}));
+
 const mockIpcMainHandle = vi.fn();
 const mockIpcMainRemoveHandler = vi.fn();
 vi.mock("electron", () => ({
@@ -27,16 +39,23 @@ import { registerPluginHandlers, registerPluginHandler, removePluginHandlers } f
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetPluginToolbarButtonIds.mockReturnValue([]);
+  mockGetToolbarButtonConfig.mockReturnValue(undefined);
+  mockGetPluginMenuItems.mockReturnValue([]);
 });
 
 describe("registerPluginHandlers", () => {
-  it("registers handlers for PLUGIN_LIST, PLUGIN_INVOKE, PLUGIN_TOOLBAR_BUTTONS, and PLUGIN_MENU_ITEMS", () => {
+  it("registers handlers for PLUGIN_LIST, PLUGIN_INVOKE, PLUGIN_TOOLBAR_BUTTONS, PLUGIN_MENU_ITEMS, and PLUGIN_VALIDATE_ACTION_IDS", () => {
     registerPluginHandlers();
-    expect(mockIpcMainHandle).toHaveBeenCalledTimes(4);
+    expect(mockIpcMainHandle).toHaveBeenCalledTimes(5);
     expect(mockIpcMainHandle).toHaveBeenCalledWith("plugin:list", expect.any(Function));
     expect(mockIpcMainHandle).toHaveBeenCalledWith("plugin:invoke", expect.any(Function));
     expect(mockIpcMainHandle).toHaveBeenCalledWith("plugin:toolbar-buttons", expect.any(Function));
     expect(mockIpcMainHandle).toHaveBeenCalledWith("plugin:menu-items", expect.any(Function));
+    expect(mockIpcMainHandle).toHaveBeenCalledWith(
+      "plugin:validate-action-ids",
+      expect.any(Function)
+    );
   });
 
   it("cleanup removes all handlers", () => {
@@ -46,6 +65,7 @@ describe("registerPluginHandlers", () => {
     expect(mockIpcMainRemoveHandler).toHaveBeenCalledWith("plugin:invoke");
     expect(mockIpcMainRemoveHandler).toHaveBeenCalledWith("plugin:toolbar-buttons");
     expect(mockIpcMainRemoveHandler).toHaveBeenCalledWith("plugin:menu-items");
+    expect(mockIpcMainRemoveHandler).toHaveBeenCalledWith("plugin:validate-action-ids");
   });
 
   it("PLUGIN_LIST handler delegates to pluginService.listPlugins", async () => {
@@ -113,6 +133,191 @@ describe("registerPluginHandlers", () => {
       "plugin:invoke rejected: untrusted sender"
     );
     expect(mockDispatchHandler).not.toHaveBeenCalled();
+  });
+});
+
+describe("PLUGIN_VALIDATE_ACTION_IDS handler", () => {
+  function getValidateHandler() {
+    registerPluginHandlers();
+    return mockIpcMainHandle.mock.calls.find(
+      (c: unknown[]) => c[0] === "plugin:validate-action-ids"
+    )![1] as (event: unknown, actionIds: string[]) => Promise<void>;
+  }
+
+  it("does nothing when there are no plugin contributions", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await handler({}, ["action.a", "action.b"]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not warn when every toolbar button actionId is known", async () => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.my.button"]);
+    mockGetToolbarButtonConfig.mockReturnValue({
+      id: "plugin.my.button",
+      label: "My Button",
+      iconId: "icon",
+      actionId: "action.known",
+      priority: 3,
+      pluginId: "my-plugin",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await handler({}, ["action.known", "action.other"]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("warns with the exact message when a toolbar button actionId is unknown", async () => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.my.button"]);
+    mockGetToolbarButtonConfig.mockReturnValue({
+      id: "plugin.my.button",
+      label: "My Button",
+      iconId: "icon",
+      actionId: "action.missing",
+      priority: 3,
+      pluginId: "my-plugin",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await handler({}, ["action.known"]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      '[Plugin] Unknown actionId "action.missing" on toolbar button "plugin.my.button" (plugin: my-plugin)'
+    );
+    warn.mockRestore();
+  });
+
+  it("warns with the exact message when a menu item actionId is unknown", async () => {
+    mockGetPluginMenuItems.mockReturnValue([
+      {
+        pluginId: "my-plugin",
+        item: {
+          label: "Do Thing",
+          actionId: "action.missing",
+          location: "view",
+        },
+      },
+    ]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await handler({}, ["action.known"]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      '[Plugin] Unknown actionId "action.missing" on menu item "Do Thing" (plugin: my-plugin)'
+    );
+    warn.mockRestore();
+  });
+
+  it("warns only for unknown actionIds when contributions are mixed", async () => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.a", "plugin.b"]);
+    mockGetToolbarButtonConfig.mockImplementation((id: string) => {
+      if (id === "plugin.a") {
+        return {
+          id: "plugin.a",
+          label: "A",
+          iconId: "i",
+          actionId: "action.ok",
+          priority: 3,
+          pluginId: "p1",
+        };
+      }
+      return {
+        id: "plugin.b",
+        label: "B",
+        iconId: "i",
+        actionId: "action.bad",
+        priority: 3,
+        pluginId: "p2",
+      };
+    });
+    mockGetPluginMenuItems.mockReturnValue([
+      {
+        pluginId: "p3",
+        item: { label: "Menu OK", actionId: "action.ok", location: "view" },
+      },
+      {
+        pluginId: "p4",
+        item: { label: "Menu Bad", actionId: "action.bad2", location: "view" },
+      },
+    ]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await handler({}, ["action.ok"]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    const messages = warn.mock.calls.map((c) => c[0] as string).join("\n");
+    expect(messages).toContain("action.bad");
+    expect(messages).toContain("action.bad2");
+    expect(messages).not.toContain("action.ok");
+    warn.mockRestore();
+  });
+
+  it("skips toolbar button ids with no config", async () => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.orphan"]);
+    mockGetToolbarButtonConfig.mockReturnValue(undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await expect(handler({}, [])).resolves.toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("resolves without throwing when warnings are emitted", async () => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.a"]);
+    mockGetToolbarButtonConfig.mockReturnValue({
+      id: "plugin.a",
+      label: "A",
+      iconId: "i",
+      actionId: "action.missing",
+      priority: 3,
+      pluginId: "p1",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await expect(handler({}, [])).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it.each<[string, unknown]>([
+    ["null", null],
+    ["undefined", undefined],
+    ["string", "action.a"],
+    ["object", { a: 1 }],
+  ])("does not warn when payload is a non-array (%s)", async (_label, payload) => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.a"]);
+    mockGetToolbarButtonConfig.mockReturnValue({
+      id: "plugin.a",
+      label: "A",
+      iconId: "i",
+      actionId: "action.missing",
+      priority: 3,
+      pluginId: "p1",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await expect(handler({}, payload as unknown as string[])).resolves.toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("only validates once per handler lifecycle so multi-window callers don't double-log", async () => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.a"]);
+    mockGetToolbarButtonConfig.mockReturnValue({
+      id: "plugin.a",
+      label: "A",
+      iconId: "i",
+      actionId: "action.missing",
+      priority: 3,
+      pluginId: "p1",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await handler({}, []);
+    await handler({}, []);
+    await handler({}, []);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
 
