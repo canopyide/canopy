@@ -13,8 +13,7 @@ import {
   type TerminalInstance,
 } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
-import { isAgentReady } from "../../../shared/utils/agentAvailability";
-import { isAgentPinned } from "../../../shared/utils/agentPinned";
+import { isAgentInstalled, isAgentReady } from "../../../shared/utils/agentAvailability";
 import { GridPanel } from "./GridPanel";
 import { GridTabGroup } from "./GridTabGroup";
 import { GridNotificationBar } from "./GridNotificationBar";
@@ -58,7 +57,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { RecipeRunner } from "./RecipeRunner/RecipeRunner";
-import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { getEffectiveAgentIds, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
 import type { BuiltInAgentId } from "@shared/config/agentIds";
@@ -390,17 +388,14 @@ export function ContentGrid({
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const showProjectPulse = usePreferencesStore((state) => state.showProjectPulse);
   const currentProject = useProjectStore((state) => state.currentProject);
-  const gridAgentSettings = useAgentSettingsStore((state) => state.settings);
-
-  // undefined = no filter (settings not loaded or pre-migration); Set = loaded, filter to non-hidden
+  // undefined = no filter (availability not yet known); Set = filter to installed agents only.
+  // Pin state intentionally does NOT gate this menu — unpinning from the toolbar must not
+  // remove an installed agent from the grid launch menu. Launch-enablement (ready vs.
+  // installed-but-not-ready) is still gated per-row via `canLaunch` below.
   const gridSelectedAgentIds = useMemo((): Set<string> | undefined => {
-    if (!gridAgentSettings?.agents) return undefined;
-    return new Set(
-      Object.entries(gridAgentSettings.agents)
-        .filter(([, entry]) => isAgentPinned(entry))
-        .map(([id]) => id)
-    );
-  }, [gridAgentSettings]);
+    if (!agentAvailability) return undefined;
+    return new Set(getEffectiveAgentIds().filter((id) => isAgentInstalled(agentAvailability[id])));
+  }, [agentAvailability]);
   const isProjectSwitching = false;
   const { projectIconSvg } = useProjectBranding(currentProject?.id);
   const { worktreeMap } = useWorktrees();

@@ -115,7 +115,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     setupElectron();
   });
 
-  it("renders only installed, pinned agents (hides uninstalled)", async () => {
+  it("renders all installed agents (hides uninstalled)", async () => {
     setupDispatchMock(
       {
         claude: "ready",
@@ -141,7 +141,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     expect(screen.getAllByText("Ready")).toHaveLength(2);
   });
 
-  it("hides unpinned agents", async () => {
+  it("shows installed agents regardless of pin state (issue #5117)", async () => {
     setupDispatchMock(
       { claude: "ready", gemini: "ready", codex: "ready", opencode: "missing", cursor: "missing" },
       {
@@ -155,7 +155,8 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
       expect(screen.getByText("Claude")).toBeTruthy();
     });
 
-    expect(screen.queryByText("Gemini")).toBeNull();
+    // Gemini is installed but unpinned — it MUST appear in System Status.
+    expect(screen.getByText("Gemini")).toBeTruthy();
     expect(screen.getByText("Codex")).toBeTruthy();
   });
 
@@ -198,7 +199,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     });
   });
 
-  it("hides summary when all agents installed and pinned", async () => {
+  it("hides summary when all agents are installed", async () => {
     setupDispatchMock(
       { claude: "ready", gemini: "ready", codex: "ready", opencode: "ready", cursor: "ready" },
       {
