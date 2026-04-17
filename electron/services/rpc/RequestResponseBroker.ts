@@ -5,6 +5,23 @@
  * supporting timeouts and automatic cleanup. Used by PtyClient and WorkspaceClient.
  */
 
+/**
+ * Discriminator for broker clear reasons so callers can distinguish a
+ * transient host exit (retry may be appropriate) from a terminal app shutdown.
+ */
+export type BrokerErrorCode = "HOST_EXITED" | "APP_SHUTDOWN";
+
+export class BrokerError extends Error {
+  constructor(
+    public readonly code: BrokerErrorCode,
+    message?: string
+  ) {
+    super(message ?? code);
+    this.name = this.constructor.name;
+    Error.captureStackTrace?.(this, this.constructor);
+  }
+}
+
 export interface PendingRequest<T = unknown> {
   resolve: (value: T) => void;
   reject: (error: Error) => void;
@@ -181,7 +198,7 @@ export class RequestResponseBroker {
    * Dispose of the broker, rejecting all pending requests.
    */
   dispose(): void {
-    this.clear(new Error("Broker disposed"));
+    this.clear(new BrokerError("APP_SHUTDOWN", "Broker disposed"));
   }
 }
 
