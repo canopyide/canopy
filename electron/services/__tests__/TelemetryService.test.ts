@@ -259,7 +259,9 @@ describe("initializeTelemetry", () => {
     process.env.SENTRY_DSN = original;
   });
 
-  it("does not drop error events via sampleRate when initialized", async () => {
+  // Covers both #5259 (sampleRate must be absent so SDK defaults to 100% capture)
+  // and #5262 (init gates on privacy.telemetryLevel, not a legacy telemetry key).
+  it("initializes via privacy.telemetryLevel without setting sampleRate", async () => {
     setPrivacy({ telemetryLevel: "errors" });
     const original = process.env.SENTRY_DSN;
     process.env.SENTRY_DSN = "https://test@sentry.io/123";
@@ -270,16 +272,6 @@ describe("initializeTelemetry", () => {
     // capture) and any value < 1 silently drops that fraction of crash
     // reports. Fail closed so reintroduction at any value is caught. See #5255.
     expect(options).not.toHaveProperty("sampleRate");
-    process.env.SENTRY_DSN = original;
-  });
-
-  it("gates on privacy.telemetryLevel, not any legacy telemetry.enabled field", async () => {
-    // Simulate a privacy-opted-in user where a legacy `telemetry` key is absent.
-    setPrivacy({ telemetryLevel: "errors" });
-    const original = process.env.SENTRY_DSN;
-    process.env.SENTRY_DSN = "https://test@sentry.io/123";
-    await initializeTelemetry();
-    expect(sentryInitMock).toHaveBeenCalled();
     process.env.SENTRY_DSN = original;
   });
 });

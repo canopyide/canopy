@@ -113,10 +113,10 @@ describe("registerPrivacyHandlers", () => {
     telemetryServiceMock.hasTelemetryPromptBeenShown.mockReturnValue(true);
     registerPrivacyHandlers();
 
-    const [, handler] =
-      ipcMainMock.handle.mock.calls.find(([ch]) => ch === "privacy:set-telemetry-level") ?? [];
+    const handler = ipcMainMock._handlers.get("privacy:set-telemetry-level");
+    expect(handler).toBeDefined();
 
-    await handler(null, "errors");
+    await handler!(null, "errors");
 
     expect(telemetryServiceMock.setTelemetryLevel).toHaveBeenCalledWith("errors");
     expect(utilsMock.typedBroadcast).toHaveBeenCalledWith("privacy:telemetry-consent-changed", {
@@ -128,11 +128,11 @@ describe("registerPrivacyHandlers", () => {
   it("PRIVACY_SET_TELEMETRY_LEVEL ignores invalid values and does not broadcast", async () => {
     registerPrivacyHandlers();
 
-    const [, handler] =
-      ipcMainMock.handle.mock.calls.find(([ch]) => ch === "privacy:set-telemetry-level") ?? [];
+    const handler = ipcMainMock._handlers.get("privacy:set-telemetry-level");
+    expect(handler).toBeDefined();
 
-    await handler(null, "nonsense");
-    await handler(null, 42);
+    await handler!(null, "nonsense");
+    await handler!(null, 42);
 
     expect(telemetryServiceMock.setTelemetryLevel).not.toHaveBeenCalled();
     expect(utilsMock.typedBroadcast).not.toHaveBeenCalled();
