@@ -1389,6 +1389,130 @@ describe("BulkCreateWorktreeDialog", () => {
     const terminalCall = mockAddPanel.mock.calls.find((c) => c[0].kind === "terminal");
     expect(terminalCall?.[0].command).toBe("ls");
   });
+
+  it("clone layout continues spawning and surfaces failure when addPanel throws mid-loop", async () => {
+    mockSelectedRecipeId = "__clone_layout__";
+    mockGenerateRecipeFromActiveTerminals.mockReturnValue([
+      { type: "terminal", title: "A", exitBehavior: "close", command: "cmd-a" },
+      { type: "terminal", title: "B", exitBehavior: "close", command: "cmd-b" },
+      { type: "terminal", title: "C", exitBehavior: "close", command: "cmd-c" },
+    ]);
+    mockAddPanel
+      .mockResolvedValueOnce("panel-a")
+      .mockRejectedValueOnce(new Error("spawn failed"))
+      .mockResolvedValueOnce("panel-c");
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    // Loop continued past the throw — all three terminals attempted.
+    expect(mockAddPanel).toHaveBeenCalledTimes(3);
+
+    // Item is surfaced as failed, not silently succeeded.
+    expect(screen.queryByText(/1 of 1 created/)).toBeNull();
+    expect(screen.getByText(/0 of 1 created/)).toBeTruthy();
+    expect(screen.getByText(/1 failed/)).toBeTruthy();
+    expect(screen.getByTestId("bulk-create-retry-button")).toBeTruthy();
+  });
+
+  it("clone layout treats addPanel returning null as a per-terminal failure", async () => {
+    mockSelectedRecipeId = "__clone_layout__";
+    mockGenerateRecipeFromActiveTerminals.mockReturnValue([
+      { type: "terminal", title: "A", exitBehavior: "close", command: "cmd-a" },
+      { type: "terminal", title: "B", exitBehavior: "close", command: "cmd-b" },
+    ]);
+    mockAddPanel.mockResolvedValueOnce("panel-a").mockResolvedValueOnce(null);
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(mockAddPanel).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/1 of 1 created/)).toBeNull();
+    expect(screen.getByText(/1 failed/)).toBeTruthy();
+    expect(screen.getByTestId("bulk-create-retry-button")).toBeTruthy();
+  });
+
+  it("clone layout retry re-enters clone branch after partial failure", async () => {
+    mockSelectedRecipeId = "__clone_layout__";
+    mockGenerateRecipeFromActiveTerminals.mockReturnValue([
+      { type: "terminal", title: "A", exitBehavior: "close", command: "cmd-a" },
+      { type: "terminal", title: "B", exitBehavior: "close", command: "cmd-b" },
+    ]);
+    // First run: second terminal throws. Retry run: both succeed.
+    mockAddPanel
+      .mockResolvedValueOnce("panel-a1")
+      .mockRejectedValueOnce(new Error("spawn failed"))
+      .mockResolvedValueOnce("panel-a2")
+      .mockResolvedValueOnce("panel-b2");
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText(/1 failed/)).toBeTruthy();
+    expect(mockAddPanel).toHaveBeenCalledTimes(2);
+
+    // Retry: cloneComplete must have stayed false, so the branch re-enters.
+    await act(async () => {
+      screen.getByTestId("bulk-create-retry-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(mockAddPanel).toHaveBeenCalledTimes(4);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/1 failed/)).toBeNull();
+  });
+
+  it("clone layout retry re-enters clone branch after verification failure", async () => {
+    mockSelectedRecipeId = "__clone_layout__";
+    mockGenerateRecipeFromActiveTerminals.mockReturnValue([
+      { type: "terminal", title: "A", exitBehavior: "close", command: "cmd-a" },
+    ]);
+    // First run spawns successfully but terminal crashes post-batch.
+    mockAddPanel.mockResolvedValueOnce("panel-crash");
+    mockTerminals = [{ id: "panel-crash", exitCode: 1 }];
+
+    const props = { ...defaultProps, selectedIssues: [makeIssue(1)] };
+    render(<BulkCreateWorktreeDialog {...props} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    // Verification caught the crash and marked the item failed.
+    expect(screen.getByText(/terminal\(s\) crashed/)).toBeTruthy();
+    expect(screen.getByTestId("bulk-create-retry-button")).toBeTruthy();
+    expect(mockAddPanel).toHaveBeenCalledTimes(1);
+
+    // Retry: healthy terminal this time. cloneComplete must have been reset so
+    // the clone branch re-runs; otherwise the retry silently marks succeeded
+    // with zero spawn attempts.
+    mockAddPanel.mockResolvedValueOnce("panel-healthy");
+    mockTerminals = [{ id: "panel-healthy", exitCode: undefined }];
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-retry-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(mockAddPanel).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+  });
 });
 
 describe("BulkCreateWorktreeDialog — PR mode", () => {
