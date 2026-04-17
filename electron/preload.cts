@@ -2133,8 +2133,13 @@ const api: ElectronAPI = {
     getState: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
       _unwrappingInvoke(CHANNELS.DEV_PREVIEW_GET_STATE, request) as Promise<DevPreviewSessionState>,
 
-    getByWorktree: (request: DevPreviewGetByWorktreeRequest): Promise<DevPreviewSessionState | null> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE, request) as Promise<DevPreviewSessionState | null>,
+    getByWorktree: (
+      request: DevPreviewGetByWorktreeRequest
+    ): Promise<DevPreviewSessionState | null> =>
+      _unwrappingInvoke(
+        CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE,
+        request
+      ) as Promise<DevPreviewSessionState | null>,
 
     onStateChanged: (callback: (payload: DevPreviewStateChangedPayload) => void) =>
       _typedOn(CHANNELS.DEV_PREVIEW_STATE_CHANGED, callback),

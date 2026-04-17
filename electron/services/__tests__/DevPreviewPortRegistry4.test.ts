@@ -125,7 +125,10 @@ describe("DevPreviewSessionService — worktreeToSession map invariants (adversa
     broadcasts = [];
     onStateChanged = vi.fn((state: DevPreviewSessionState) => broadcasts.push(state));
     ptyClient = createPtyClientMock();
-    service = new DevPreviewSessionService(ptyClient as unknown as PtyClient, onStateChanged);
+    service = new DevPreviewSessionService(
+      ptyClient as unknown as PtyClient,
+      onStateChanged as unknown as (state: DevPreviewSessionState) => void
+    );
     mockHttpOk();
   });
 

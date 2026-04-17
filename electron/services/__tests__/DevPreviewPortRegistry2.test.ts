@@ -129,7 +129,10 @@ describe("DevPreviewSessionService — stale assignedUrl broadcasts & map cleanu
     broadcasts = [];
     onStateChanged = vi.fn((state: DevPreviewSessionState) => broadcasts.push(state));
     ptyClient = createPtyClientMock();
-    service = new DevPreviewSessionService(ptyClient as unknown as PtyClient, onStateChanged);
+    service = new DevPreviewSessionService(
+      ptyClient as unknown as PtyClient,
+      onStateChanged as unknown as (state: DevPreviewSessionState) => void
+    );
     mockHttpResponse(200);
   });
 
@@ -209,7 +212,7 @@ describe("DevPreviewSessionService — stale assignedUrl broadcasts & map cleanu
     // in worktreeToSession, a re-ensure with a different panel would not register wt-1 → new key.
     const newService = new DevPreviewSessionService(
       ptyClient as unknown as PtyClient,
-      onStateChanged
+      onStateChanged as unknown as (state: DevPreviewSessionState) => void
     );
     try {
       await newService.ensure({ ...base, panelId: "panel-2", worktreeId: "wt-1" });

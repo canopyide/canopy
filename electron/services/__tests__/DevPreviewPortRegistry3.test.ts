@@ -156,7 +156,10 @@ describe("DevPreviewSessionService — assignedUrl must be null in every error b
     broadcasts = [];
     onStateChanged = vi.fn((state: DevPreviewSessionState) => broadcasts.push(state));
     ptyClient = createPtyClientMock();
-    service = new DevPreviewSessionService(ptyClient as unknown as PtyClient, onStateChanged);
+    service = new DevPreviewSessionService(
+      ptyClient as unknown as PtyClient,
+      onStateChanged as unknown as (state: DevPreviewSessionState) => void
+    );
     mockHttpOk();
   });
 
@@ -284,7 +287,10 @@ describe("DevPreviewSessionService — assignedUrl must be null in every error b
     // Rebuild service under fake timers so Date.now() is controlled.
     service.dispose();
     broadcasts.length = 0;
-    service = new DevPreviewSessionService(ptyClient as unknown as PtyClient, onStateChanged);
+    service = new DevPreviewSessionService(
+      ptyClient as unknown as PtyClient,
+      onStateChanged as unknown as (state: DevPreviewSessionState) => void
+    );
 
     mockHttpConnectionRefused();
 

@@ -145,7 +145,10 @@ describe("DevPreviewSessionService — port registry (adversarial)", () => {
     _nextPort = 3100;
     onStateChanged = vi.fn();
     ptyClient = createPtyClientMock();
-    service = new DevPreviewSessionService(ptyClient as unknown as PtyClient, onStateChanged);
+    service = new DevPreviewSessionService(
+      ptyClient as unknown as PtyClient,
+      onStateChanged as unknown as (state: DevPreviewSessionState) => void
+    );
     mockHttpResponse(200);
   });
 
