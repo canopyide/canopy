@@ -61,6 +61,25 @@ export async function initRendererSentry(): Promise<void> {
   });
 }
 
+export interface CaptureOptions {
+  tags?: Record<string, string>;
+  contexts?: Record<string, Record<string, unknown>>;
+  extra?: Record<string, unknown>;
+}
+
+/** Report an exception to Sentry. Safe to call from UI components — wraps
+ * the renderer SDK so components don't import from the restricted
+ * `@sentry/electron/renderer` module directly.
+ */
+export function captureRendererException(error: unknown, options?: CaptureOptions): void {
+  try {
+    const err = error instanceof Error ? error : new Error(String(error));
+    Sentry.captureException(err, options);
+  } catch (sentryError) {
+    console.error("[Renderer] Failed to report error to Sentry:", sentryError);
+  }
+}
+
 export function updateRendererSentryConsent(level: ConsentLevel, hasSeenPrompt: boolean): void {
   consentState = { level, hasSeenPrompt };
 }
