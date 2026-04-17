@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RequestResponseBroker } from "../RequestResponseBroker.js";
+import { BrokerError, RequestResponseBroker } from "../RequestResponseBroker.js";
 
 describe("RequestResponseBroker", () => {
   beforeEach(() => {
@@ -114,12 +114,14 @@ describe("RequestResponseBroker", () => {
     expect(broker.size).toBe(0);
   });
 
-  it("dispose rejects pending requests with broker disposed error", async () => {
+  it("dispose rejects pending requests with typed APP_SHUTDOWN BrokerError", async () => {
     const broker = new RequestResponseBroker();
     const p = broker.register("a");
     broker.dispose();
 
     await expect(p).rejects.toThrow("Broker disposed");
+    await expect(p).rejects.toBeInstanceOf(BrokerError);
+    await expect(p).rejects.toMatchObject({ code: "APP_SHUTDOWN" });
     expect(broker.size).toBe(0);
   });
 
@@ -155,5 +157,25 @@ describe("RequestResponseBroker", () => {
 
     vi.advanceTimersByTime(11);
     await expect(promise).rejects.toThrow("Request timeout: req-opts-invalid");
+  });
+
+  it("clear(BrokerError HOST_EXITED) tags all pending rejections with the code", async () => {
+    const broker = new RequestResponseBroker();
+    const p1 = broker.register("a");
+    const p2 = broker.register("b");
+
+    broker.clear(new BrokerError("HOST_EXITED", "Pty host exited"));
+
+    await expect(p1).rejects.toBeInstanceOf(BrokerError);
+    await expect(p1).rejects.toMatchObject({ code: "HOST_EXITED" });
+    await expect(p2).rejects.toMatchObject({ code: "HOST_EXITED" });
+    expect(broker.size).toBe(0);
+  });
+
+  it("BrokerError defaults message to the code when none provided", () => {
+    const err = new BrokerError("HOST_EXITED");
+    expect(err.message).toBe("HOST_EXITED");
+    expect(err.name).toBe("BrokerError");
+    expect(err).toBeInstanceOf(Error);
   });
 });

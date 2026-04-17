@@ -33,7 +33,7 @@ import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { logInfo, logWarn } from "../utils/logger.js";
 import { getTrashedPidTracker } from "./TrashedPidTracker.js";
-import { RequestResponseBroker } from "./rpc/index.js";
+import { RequestResponseBroker, BrokerError } from "./rpc/index.js";
 import { bridgePtyEvent } from "./pty/PtyEventsBridge.js";
 import type {
   PtyHostRequest,
@@ -363,7 +363,7 @@ export class PtyClient extends EventEmitter {
 
       this.cleanupOrphanedPtys(crashType);
 
-      this.broker.clear(new Error("Pty host restarted"));
+      this.broker.clear(new BrokerError("HOST_EXITED", "Pty host exited"));
       this.shouldResyncProjectContext = true;
 
       // Emit crash payload with classification for downstream consumers
@@ -1024,7 +1024,12 @@ export class PtyClient extends EventEmitter {
       timeoutMs: PTY_TIMEOUTS["graceful-kill"],
     });
     this.send({ type: "graceful-kill", id, requestId });
-    return promise.catch(() => {
+    return promise.catch((error: unknown) => {
+      // Broker-cleared rejections (host exit, app shutdown) mean the host is
+      // already gone — sending another kill would only mutate local state.
+      if (error instanceof BrokerError) {
+        return null;
+      }
       this.kill(id, "graceful-kill-timeout");
       return null;
     });

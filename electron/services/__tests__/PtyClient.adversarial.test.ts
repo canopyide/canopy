@@ -274,6 +274,52 @@ describe("PtyClient adversarial", () => {
     });
   });
 
+  it("GRACEFUL_KILL_SKIPS_KILL_WHEN_BROKER_CLEARED_BY_HOST_EXIT", async () => {
+    const client = createReadyClient();
+    shared.forkMock.mockReturnValue(createMockChild());
+
+    const promise = client.gracefulKill("t1");
+
+    const postedRequest = mockChild.postMessage.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string })?.type === "graceful-kill"
+    );
+    expect(postedRequest).toBeDefined();
+
+    shared.tracker.removeTrashed.mockClear();
+    mockChild.emit("exit", 1);
+
+    await expect(promise).resolves.toBeNull();
+
+    // this.kill() would call getTrashedPidTracker().removeTrashed(id) — it must
+    // not fire when the broker clear carries a BrokerError reason.
+    expect(shared.tracker.removeTrashed).not.toHaveBeenCalled();
+  });
+
+  it("GRACEFUL_KILL_CALLS_KILL_ON_TIMEOUT_WHEN_HOST_STILL_ALIVE", async () => {
+    const client = createReadyClient();
+
+    const promise = client.gracefulKill("t1");
+    shared.tracker.removeTrashed.mockClear();
+    mockChild.postMessage.mockClear();
+
+    vi.advanceTimersByTime(6000);
+
+    await expect(promise).resolves.toBeNull();
+
+    // On timeout (non-BrokerError rejection), gracefulKill must still send
+    // a kill message and remove the trashed PID.
+    expect(shared.tracker.removeTrashed).toHaveBeenCalledWith("t1");
+    const killCall = mockChild.postMessage.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string })?.type === "kill"
+    );
+    expect(killCall).toBeDefined();
+    expect(killCall?.[0]).toMatchObject({
+      type: "kill",
+      id: "t1",
+      reason: "graceful-kill-timeout",
+    });
+  });
+
   it("HOST_RESTART_CLEARS_MIGRATED_REQUESTS_TO_SENTINELS", async () => {
     const client = createReadyClient();
 
