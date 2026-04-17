@@ -1114,12 +1114,15 @@ export function BulkCreateWorktreeDialog({
       );
       if (toRetry.length === 0) return;
 
-      // Reset terminal tracking for retried items so verification doesn't use stale data
+      // Reset terminal tracking for retried items so verification doesn't use stale data.
+      // cloneComplete is also cleared so retry re-enters the clone branch — otherwise a
+      // post-success verification failure silently short-circuits to ITEM_SUCCEEDED.
       for (const issueNumber of failedIssueNumbers) {
         const tracked = batchTrackingRef.current.get(issueNumber);
         if (tracked) {
           tracked.spawnedTerminalIds = [];
           tracked.failedTerminalIndices = [];
+          tracked.cloneComplete = false;
         }
       }
 
