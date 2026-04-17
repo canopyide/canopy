@@ -11,6 +11,7 @@ export interface ProjectSettingsSnapshot {
   emoji: string;
   devServerCommand: string;
   devServerLoadTimeout: number | undefined;
+  turbopackEnabled: boolean;
   projectIconSvg: string | undefined;
   excludedPaths: string[];
   environmentVariables: Record<string, string>;
@@ -74,7 +75,8 @@ export function createProjectSettingsSnapshot(
   color: string | undefined = undefined,
   resourceEnvironments: Record<string, ResourceEnvironment> | undefined = undefined,
   activeResourceEnvironment: string | undefined = undefined,
-  defaultWorktreeMode: string | undefined = undefined
+  defaultWorktreeMode: string | undefined = undefined,
+  turbopackEnabled: boolean = true
 ): ProjectSettingsSnapshot {
   const envVarRecord: Record<string, string> = {};
   const seenKeys = new Map<string, number>();
@@ -142,6 +144,7 @@ export function createProjectSettingsSnapshot(
     emoji,
     devServerCommand: devServerCommand.trim(),
     devServerLoadTimeout,
+    turbopackEnabled,
     projectIconSvg,
     excludedPaths: sanitizedPaths,
     environmentVariables: sortedEnvVars,
@@ -213,6 +216,7 @@ export function areSnapshotsEqual(a: ProjectSettingsSnapshot, b: ProjectSettings
   if (a.color !== b.color) return false;
   if (a.devServerCommand !== b.devServerCommand) return false;
   if (a.devServerLoadTimeout !== b.devServerLoadTimeout) return false;
+  if (a.turbopackEnabled !== b.turbopackEnabled) return false;
   if (a.projectIconSvg !== b.projectIconSvg) return false;
   if (a.defaultWorktreeRecipeId !== b.defaultWorktreeRecipeId) return false;
 

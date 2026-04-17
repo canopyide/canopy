@@ -57,6 +57,7 @@ function buildEnsureConfigKey(params: {
   worktreeId?: string;
   devCommand: string;
   envSignature: string;
+  turbopackEnabled?: boolean;
 }): string {
   return [
     params.projectId,
@@ -65,6 +66,7 @@ function buildEnsureConfigKey(params: {
     params.worktreeId ?? "",
     params.devCommand.trim(),
     params.envSignature,
+    (params.turbopackEnabled ?? true) ? "turbo:on" : "turbo:off",
   ].join("|");
 }
 
@@ -249,6 +251,7 @@ export function useDevServer({
       worktreeId: latest.worktreeId,
       devCommand: latest.devCommand,
       envSignature: serializeEnv(latest.env),
+      turbopackEnabled: latest.turbopackEnabled,
     });
     await ensureLatestConfig(configKey);
   }, [applyInvokeError, ensureLatestConfig]);
@@ -312,7 +315,7 @@ export function useDevServer({
   useEffect(() => {
     requestVersionRef.current += 1;
     autoRecoveryAttemptsRef.current = { starting: 0 };
-  }, [panelId, currentProjectId, cwd, worktreeId, devCommand, envSignature]);
+  }, [panelId, currentProjectId, cwd, worktreeId, devCommand, envSignature, turbopackEnabled]);
 
   useEffect(() => {
     if (!currentProjectId) {
@@ -396,6 +399,7 @@ export function useDevServer({
       worktreeId,
       devCommand,
       envSignature,
+      turbopackEnabled,
     });
 
     if (lastEnsureConfigRef.current === configKey) return;
@@ -410,7 +414,16 @@ export function useDevServer({
     }
 
     void ensureLatestConfig(configKey);
-  }, [panelId, currentProjectId, cwd, worktreeId, devCommand, envSignature, ensureLatestConfig]);
+  }, [
+    panelId,
+    currentProjectId,
+    cwd,
+    worktreeId,
+    devCommand,
+    envSignature,
+    turbopackEnabled,
+    ensureLatestConfig,
+  ]);
 
   useEffect(() => {
     if (status !== "starting") {

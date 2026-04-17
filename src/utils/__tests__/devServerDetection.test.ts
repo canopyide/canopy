@@ -92,4 +92,26 @@ describe("findDevServerCandidate", () => {
       expect(findDevServerCandidate(runners, false)?.command).toBe("bun run dev");
     });
   });
+
+  describe("compound/shell commands", () => {
+    it("does NOT inject for scripts with &&", () => {
+      const runners = [runner("dev", "npm run dev", "next dev && echo done")];
+      expect(findDevServerCandidate(runners)?.command).toBe("npm run dev");
+    });
+
+    it("does NOT inject for scripts with ;", () => {
+      const runners = [runner("dev", "npm run dev", "next dev; echo ready")];
+      expect(findDevServerCandidate(runners)?.command).toBe("npm run dev");
+    });
+
+    it("does NOT inject for scripts with #", () => {
+      const runners = [runner("dev", "npm run dev", "next dev # note")];
+      expect(findDevServerCandidate(runners)?.command).toBe("npm run dev");
+    });
+
+    it("does NOT inject for scripts with |", () => {
+      const runners = [runner("dev", "npm run dev", "next dev | tee log")];
+      expect(findDevServerCandidate(runners)?.command).toBe("npm run dev");
+    });
+  });
 });

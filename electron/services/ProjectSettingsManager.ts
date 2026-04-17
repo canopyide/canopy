@@ -171,6 +171,8 @@ export class ProjectSettingsManager {
           parsed.devServerLoadTimeout <= 120
             ? parsed.devServerLoadTimeout
             : undefined,
+        turbopackEnabled:
+          typeof parsed.turbopackEnabled === "boolean" ? parsed.turbopackEnabled : undefined,
         copyTreeSettings:
           parsed.copyTreeSettings && typeof parsed.copyTreeSettings === "object"
             ? parsed.copyTreeSettings
@@ -304,6 +306,8 @@ export class ProjectSettingsManager {
         settings.devServerLoadTimeout <= 120
           ? settings.devServerLoadTimeout
           : undefined,
+      turbopackEnabled:
+        typeof settings.turbopackEnabled === "boolean" ? settings.turbopackEnabled : undefined,
       terminalSettings: parseTerminalSettings(settings.terminalSettings),
       notificationOverrides: parseNotificationOverrides(settings.notificationOverrides),
     };

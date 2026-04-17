@@ -117,7 +117,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       projectColor,
       resourceEnvironments,
       activeResourceEnvironment,
-      defaultWorktreeMode
+      defaultWorktreeMode,
+      turbopackEnabled
     );
   }, [
     projectName,
@@ -142,6 +143,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     resourceEnvironments,
     activeResourceEnvironment,
     defaultWorktreeMode,
+    turbopackEnabled,
   ]);
   currentProjectSnapshotRef.current = currentProjectSnapshot;
 
@@ -277,7 +279,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       currentProject.color,
       initialResourceEnvironments,
       initialActiveResourceEnvironment,
-      initialDefaultWorktreeMode
+      initialDefaultWorktreeMode,
+      initialTurbopackEnabled
     );
     setProjectIsInitialized(true);
   }, [projectSettings, isOpen, projectIsInitialized, currentProject, projectIsLoading, projectId]);

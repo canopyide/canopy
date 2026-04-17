@@ -27,6 +27,5 @@ export async function resolveNextMajorVersion(cwd: string): Promise<number | nul
     // fall through to null
   }
 
-  console.debug("[resolveNextVersion] Could not resolve Next.js version for", cwd);
   return null;
 }

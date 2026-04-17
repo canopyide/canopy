@@ -56,6 +56,26 @@ describe("normalizeNextjsDevCommand", () => {
     it("does NOT double-add if --turbo already present", async () => {
       expect(await normalizeNextjsDevCommand("next dev --turbo", CWD)).toBe("next dev --turbo");
     });
+
+    it("leaves compound && command unchanged — cannot safely append", async () => {
+      expect(await normalizeNextjsDevCommand("next dev && echo done", CWD)).toBe(
+        "next dev && echo done"
+      );
+    });
+
+    it("leaves sequenced ; command unchanged", async () => {
+      expect(await normalizeNextjsDevCommand("next dev; echo ready", CWD)).toBe(
+        "next dev; echo ready"
+      );
+    });
+
+    it("leaves commented command unchanged", async () => {
+      expect(await normalizeNextjsDevCommand("next dev # default", CWD)).toBe("next dev # default");
+    });
+
+    it("leaves piped command unchanged", async () => {
+      expect(await normalizeNextjsDevCommand("next dev | tee log", CWD)).toBe("next dev | tee log");
+    });
   });
 
   describe("package manager script commands", () => {

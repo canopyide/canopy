@@ -229,6 +229,47 @@ describe("DevPreviewSessionService", () => {
     expect(ptyClient.spawn).toHaveBeenCalledTimes(2);
   });
 
+  it("restarts terminal when turbopackEnabled toggles", async () => {
+    const first = await service.ensure({
+      ...baseRequest,
+      turbopackEnabled: true,
+    });
+    const second = await service.ensure({
+      ...baseRequest,
+      turbopackEnabled: false,
+    });
+
+    expect(first.terminalId).toBeTruthy();
+    expect(second.terminalId).toBeTruthy();
+    expect(second.terminalId).not.toBe(first.terminalId);
+    expect(ptyClient.kill).toHaveBeenCalledWith(first.terminalId, "dev-preview:config-change");
+    expect(ptyClient.spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("reuses terminal when turbopackEnabled stays the same across ensures", async () => {
+    const first = await service.ensure({
+      ...baseRequest,
+      turbopackEnabled: false,
+    });
+    const second = await service.ensure({
+      ...baseRequest,
+      turbopackEnabled: false,
+    });
+
+    expect(second.terminalId).toBe(first.terminalId);
+    expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects non-boolean turbopackEnabled in ensure request", async () => {
+    await expect(
+      service.ensure({
+        ...baseRequest,
+        // @ts-expect-error — intentional runtime violation to cover the guard
+        turbopackEnabled: "yes",
+      })
+    ).rejects.toThrow(/turbopackEnabled/);
+  });
+
   it("restarts terminal when worktree changes", async () => {
     const first = await service.ensure({
       ...baseRequest,

@@ -89,6 +89,9 @@ function getInvalidCommandMessage(command: string): string | null {
 const NEXT_DEV_DIRECT_RE = /\bnext\s+dev\b/;
 const TURBOPACK_FLAG_RE = /--turbo(?:pack)?\b/;
 const PKG_SCRIPT_RE = /^(?:npm\s+run|pnpm(?:\s+run)?|yarn(?:\s+run)?|bun(?:\s+run)?)\s+(\S+)$/;
+// Compound/piped/commented commands can't be safely rewritten — appending
+// --turbopack to `next dev && echo done` attaches the flag to echo, not next.
+const SHELL_CONTROL_RE = /[;&|#]|<|>|\$\(/;
 
 function stripTurbopackFlag(command: string): string {
   return command
@@ -107,6 +110,7 @@ export async function normalizeNextjsDevCommand(
   if (nextMajor === null || nextMajor < 15) return stripTurbopackFlag(command);
 
   if (TURBOPACK_FLAG_RE.test(command)) return command;
+  if (SHELL_CONTROL_RE.test(command)) return command;
 
   if (NEXT_DEV_DIRECT_RE.test(command)) {
     return `${command} --turbopack`;
@@ -187,16 +191,18 @@ export class DevPreviewSessionService {
     await this.runLocked(key, async () => {
       const session = this.getOrCreateSession(request.projectId, request.panelId);
       const envChanged = !envEquals(session.env, request.env);
+      const nextTurbopackEnabled = request.turbopackEnabled ?? true;
       const configChanged =
         session.cwd !== request.cwd ||
         session.worktreeId !== request.worktreeId ||
         session.devCommand !== request.devCommand ||
+        session.turbopackEnabled !== nextTurbopackEnabled ||
         envChanged;
 
       session.cwd = request.cwd;
       session.worktreeId = request.worktreeId;
       session.devCommand = request.devCommand;
-      session.turbopackEnabled = request.turbopackEnabled ?? true;
+      session.turbopackEnabled = nextTurbopackEnabled;
       if (envChanged) {
         session.env = cloneEnv(request.env);
       }
@@ -402,6 +408,9 @@ export class DevPreviewSessionService {
           throw new Error("env values must be strings");
         }
       }
+    }
+    if (request.turbopackEnabled !== undefined && typeof request.turbopackEnabled !== "boolean") {
+      throw new Error("turbopackEnabled must be a boolean if provided");
     }
   }
 
