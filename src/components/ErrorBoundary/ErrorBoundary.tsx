@@ -1,4 +1,5 @@
 import React, { Component, type ReactNode } from "react";
+import * as Sentry from "@sentry/electron/renderer";
 import { ErrorFallback, type ErrorFallbackProps } from "./ErrorFallback";
 import { useErrorStore } from "@/store/errorStore";
 import { actionService } from "@/services/ActionService";
@@ -51,6 +52,19 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     });
 
     const correlationId = crypto.randomUUID();
+
+    try {
+      Sentry.captureException(error, {
+        tags: {
+          source: "react-error-boundary",
+          component: componentName ?? "ErrorBoundary",
+        },
+        contexts: { react: { componentStack } },
+        extra: { correlationId, ...(context ?? {}) },
+      });
+    } catch (sentryError) {
+      console.error("Failed to report error to Sentry:", sentryError);
+    }
 
     let incidentId: string | null = null;
     try {
