@@ -11,7 +11,7 @@ export interface Migration {
 export class MigrationRunner {
   constructor(private store: Store<StoreSchema>) {}
 
-  private backupStore(): string | null {
+  private backupStore(fromVersion: number): string | null {
     try {
       const storePath = this.store.path;
       if (!fs.existsSync(storePath)) {
@@ -19,7 +19,7 @@ export class MigrationRunner {
       }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const backupPath = `${storePath}.backup-${timestamp}`;
+      const backupPath = `${storePath}.backup-v${fromVersion}-${timestamp}`;
       fs.copyFileSync(storePath, backupPath);
       console.log(`[Migrations] Created backup at ${backupPath}`);
       return backupPath;
@@ -44,10 +44,15 @@ export class MigrationRunner {
     const maxKnownVersion = Math.max(...migrations.map((m) => m.version), 0);
 
     if (current > maxKnownVersion) {
-      throw new Error(
-        `Store schema version (${current}) is newer than application supports (${maxKnownVersion}). ` +
-          `Please upgrade the application or reset your data directory.`
+      // Downgrade: on-disk store was written by a newer build than this binary
+      // knows. We rely on additive-only schema design — unknown keys are ignored
+      // by electron-store (no strict JSON schema), and we preserve the higher
+      // _schemaVersion so a later upgrade resumes from the correct point.
+      console.warn(
+        `[Migrations] Store schema v${current} is ahead of this binary (max known v${maxKnownVersion}). ` +
+          `Continuing in compatibility mode — unknown keys will be ignored, _schemaVersion preserved.`
       );
+      return;
     }
 
     const pending = migrations.filter((m) => m.version > current);
@@ -58,7 +63,7 @@ export class MigrationRunner {
 
     console.log(`[Migrations] Running ${pending.length} pending migration(s)...`);
 
-    const backupPath = this.backupStore();
+    const backupPath = this.backupStore(current);
     if (backupPath) {
       console.log(`[Migrations] Store backed up, can restore from: ${backupPath}`);
     }

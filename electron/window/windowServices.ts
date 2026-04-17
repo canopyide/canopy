@@ -281,27 +281,20 @@ export async function setupWindowServices(
     globalServicesInitialized = true;
     markPerformance(PERF_MARKS.SERVICE_INIT_START);
 
-    // Store migrations
+    // Store migrations — never fatal. A newer-than-known store is handled
+    // gracefully inside MigrationRunner (compatibility mode). A genuine
+    // migration exception is logged but does not block app launch — the
+    // pre-migration backup file preserves the user's prior state, and we
+    // prefer a running app on partially-migrated data over a dead app.
     console.log("[MAIN] Running store migrations...");
     try {
       const migrationRunner = new MigrationRunner(store);
       await migrationRunner.runMigrations(migrations);
       console.log("[MAIN] Store migrations completed");
-      markPerformance(PERF_MARKS.SERVICE_INIT_MIGRATIONS_DONE);
     } catch (error) {
-      console.error("[MAIN] Store migration failed:", error);
-      const message = error instanceof Error ? error.message : String(error);
-      dialog
-        .showMessageBox(win, {
-          type: "error",
-          title: "Migration Failed",
-          message: `Failed to migrate application data:\n\n${message}\n\nThe application will now exit. Please check the logs for details.`,
-          buttons: ["OK"],
-        })
-        .then(() => app.exit(1))
-        .catch(() => app.exit(1));
-      return;
+      console.error("[MAIN] Store migration failed — continuing without blocking launch:", error);
     }
+    markPerformance(PERF_MARKS.SERVICE_INIT_MIGRATIONS_DONE);
 
     // Initialize Sentry after migrations — reads privacy.telemetryLevel,
     // which is guaranteed populated by migration014.
