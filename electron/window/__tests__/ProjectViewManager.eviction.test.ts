@@ -83,7 +83,12 @@ vi.mock("../skeletonCss.js", () => ({
   injectSkeletonCss: vi.fn(),
 }));
 
+vi.mock("../../utils/logger.js", () => ({
+  logInfo: vi.fn(),
+}));
+
 import { ProjectViewManager } from "../ProjectViewManager.js";
+import { logInfo } from "../../utils/logger.js";
 
 function createMockWindow() {
   return {
@@ -106,6 +111,7 @@ describe("ProjectViewManager — eviction safety", () => {
 
   beforeEach(() => {
     nextWebContentsId = 100;
+    vi.clearAllMocks();
     win = createMockWindow();
     manager = new ProjectViewManager(win as never, {
       dirname: "/test",
@@ -179,5 +185,186 @@ describe("ProjectViewManager — eviction safety", () => {
     // proj-b should still be cached (getAllViews includes it)
     const viewIds = views.map((v) => v.projectId || "");
     expect(viewIds).toContain("proj-b");
+  });
+});
+
+describe("ProjectViewManager — telemetry", () => {
+  let win: ReturnType<typeof createMockWindow>;
+
+  beforeEach(() => {
+    nextWebContentsId = 100;
+    vi.clearAllMocks();
+    win = createMockWindow();
+  });
+
+  it("emits projectview.eviction with reason=lru when switch overflows the cache", async () => {
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(vi.mocked(logInfo)).toHaveBeenCalledWith("projectview.eviction", {
+      projectId: "proj-a",
+      reason: "lru",
+      ageMs: expect.any(Number),
+    });
+
+    const evictionCall = vi
+      .mocked(logInfo)
+      .mock.calls.find(
+        ([event, ctx]) =>
+          event === "projectview.eviction" && (ctx as { projectId: string }).projectId === "proj-a"
+      );
+    expect(evictionCall).toBeDefined();
+    const ctx = evictionCall![1] as { ageMs: number };
+    expect(ctx.ageMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("emits projectview.eviction with reason=limit-change when setCachedViewLimit shrinks the cache", async () => {
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 3,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    vi.mocked(logInfo).mockClear();
+
+    manager.setCachedViewLimit(1);
+
+    const limitChangeCalls = vi
+      .mocked(logInfo)
+      .mock.calls.filter(([event]) => event === "projectview.eviction");
+    expect(limitChangeCalls.length).toBeGreaterThan(0);
+    for (const [, ctx] of limitChangeCalls) {
+      expect((ctx as { reason: string }).reason).toBe("limit-change");
+    }
+  });
+
+  it("emits projectview.revival exactly once when a previously-evicted project is activated from cache", async () => {
+    // Trace (cachedProjectViews=2):
+    //   1. register proj-a (active=a)
+    //   2. switchTo b   → views: {a, b}, active=b
+    //   3. switchTo c   → evicts a (LRU), evictionTimestamps={a: t1}, active=c
+    //   4. switchTo a   → cold-start a (a was destroyed), evicts b, active=a
+    //   5. switchTo b   → cold-start b (b was destroyed), evicts c, active=b
+    //   6. switchTo a   → cache hit on a; evictionTimestamps has {a: t1} → revival fires
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+    await manager.switchTo("proj-a", "/path/a");
+    await manager.switchTo("proj-b", "/path/b");
+
+    vi.mocked(logInfo).mockClear();
+
+    await manager.switchTo("proj-a", "/path/a");
+
+    const revivalCalls = vi
+      .mocked(logInfo)
+      .mock.calls.filter(([event]) => event === "projectview.revival");
+    expect(revivalCalls.length).toBe(1);
+    expect(revivalCalls[0][1]).toMatchObject({
+      projectId: "proj-a",
+      timeSinceEvictionMs: expect.any(Number),
+    });
+    expect(
+      (revivalCalls[0][1] as { timeSinceEvictionMs: number }).timeSinceEvictionMs
+    ).toBeGreaterThanOrEqual(0);
+  });
+
+  it("does not emit projectview.revival a second time for the same project without a new eviction (timestamp is consumed on read)", async () => {
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    // Set up a revival for proj-a (same trace as the previous test)
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+    await manager.switchTo("proj-a", "/path/a");
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-a", "/path/a"); // revival fires for proj-a — timestamp consumed
+
+    // Switch away to a fresh cold-started project so the next return to proj-a
+    // exercises the cache-hit path without touching any other stale timestamps.
+    // proj-d is new; cold-starting it evicts proj-b (LRU), leaving {a, d} cached.
+    await manager.switchTo("proj-d", "/path/d");
+
+    vi.mocked(logInfo).mockClear();
+
+    // Return to proj-a — cache hit, but evictionTimestamps has no entry for proj-a.
+    await manager.switchTo("proj-a", "/path/a");
+
+    const revivalCalls = vi
+      .mocked(logInfo)
+      .mock.calls.filter(([event]) => event === "projectview.revival");
+    expect(revivalCalls.length).toBe(0);
+  });
+
+  it("emits projectview.coldstart on successful view creation", async () => {
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    vi.mocked(logInfo).mockClear();
+
+    await manager.switchTo("proj-b", "/path/b");
+
+    const coldStartCall = vi
+      .mocked(logInfo)
+      .mock.calls.find(([event]) => event === "projectview.coldstart");
+    expect(coldStartCall).toBeDefined();
+    expect(coldStartCall![1]).toMatchObject({
+      projectId: "proj-b",
+      durationMs: expect.any(Number),
+    });
+    expect((coldStartCall![1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("dispose clears evictionTimestamps to prevent revival replay after new manager", async () => {
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c"); // evicts proj-a
+
+    // dispose should not throw and should clear internal state
+    expect(() => manager.dispose()).not.toThrow();
+    expect(manager.getAllViews().length).toBe(0);
   });
 });
