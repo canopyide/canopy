@@ -218,4 +218,72 @@ describe("PtyClient watchdog", () => {
     expect(crashListener).toHaveBeenCalledTimes(1);
     expect(killSpy).not.toHaveBeenCalled();
   });
+
+  it("PID_CLEARED_MID_FLIGHT_SKIPS_KILL", () => {
+    // Complementary to MISSING_PID: the host starts with a valid pid, receives
+    // heartbeats, then loses its pid right before the 4th tick. The watchdog
+    // reads child.pid fresh each tick, so it should still emit crash details
+    // but skip the signal.
+    const client = createReadyClient({ healthCheckIntervalMs: 100 });
+    const crashListener = vi.fn();
+    client.on("host-crash-details", crashListener);
+
+    vi.advanceTimersByTime(300);
+    mockChild.pid = undefined;
+    vi.advanceTimersByTime(100);
+
+    expect(crashListener).toHaveBeenCalledTimes(1);
+    expect(killSpy).not.toHaveBeenCalled();
+  });
+
+  it("STEADY_STATE_PONGS_NEVER_KILL", () => {
+    // Happy path: host answers every health-check with a pong. Over many ticks,
+    // the watchdog must never fire and the counter must never cross the
+    // threshold. This is the most common runtime state — a regression that
+    // started force-killing healthy hosts would be catastrophic.
+    const client = createReadyClient({ healthCheckIntervalMs: 100 });
+    const priv = client as unknown as WatchdogPrivate;
+    const crashListener = vi.fn();
+    client.on("host-crash-details", crashListener);
+
+    for (let i = 0; i < 20; i++) {
+      vi.advanceTimersByTime(100);
+      mockChild.emit("message", { type: "pong" });
+    }
+
+    expect(killSpy).not.toHaveBeenCalled();
+    expect(crashListener).not.toHaveBeenCalled();
+    expect(priv.missedHeartbeats).toBe(0);
+    const healthChecks = mockChild.postMessage.mock.calls.filter(
+      (call: unknown[]) => (call[0] as { type?: string })?.type === "health-check"
+    );
+    expect(healthChecks).toHaveLength(20);
+  });
+
+  it("HANDSHAKE_TIMEOUT_FALLBACK_RESETS_COUNTER", () => {
+    // Alternate re-entry path: resume without a pong arriving. After the 5s
+    // fallback timeout fires, startHealthCheckInterval() is called via the
+    // timeout branch (PtyClient.ts:1325-1332) instead of the pong branch.
+    // Either way, missedHeartbeats must be reset.
+    const client = createReadyClient({ healthCheckIntervalMs: 100 });
+    const priv = client as unknown as WatchdogPrivate;
+
+    vi.advanceTimersByTime(200);
+    expect(priv.missedHeartbeats).toBe(2);
+
+    client.pauseHealthCheck();
+    client.resumeHealthCheck();
+    expect(priv.isWaitingForHandshake).toBe(true);
+
+    // No pong: handshake timeout (5000ms) fires and falls back to
+    // startHealthCheckInterval() which resets the counter.
+    vi.advanceTimersByTime(5000);
+    expect(priv.isWaitingForHandshake).toBe(false);
+    expect(priv.missedHeartbeats).toBe(0);
+
+    vi.advanceTimersByTime(300);
+    expect(killSpy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(100);
+    expect(killSpy).toHaveBeenCalledTimes(1);
+  });
 });
