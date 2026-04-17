@@ -108,6 +108,12 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             if (thisGen !== generation) return;
           }
 
+          // If the host crashed during the associations fetch (a separate IPC
+          // that port-close cannot reject), skip applySnapshot so it does not
+          // spuriously clear the Reconnecting… indicator.  The next onReady
+          // cycle will deliver fresh data.
+          if (!worktreePort.isReady()) return;
+
           store.getState().applySnapshot(states, store.getState().nextVersion());
         })
         .catch((err: Error) => {
@@ -266,6 +272,28 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
       fetchInitialState();
     }
     cleanups.push(worktreePort.onReady(fetchInitialState));
+
+    // Surface a "Reconnecting…" state the moment the workspace host dies, so
+    // the UI doesn't appear frozen while we wait (up to 2–4s) for the
+    // replacement port.  Cleared by applySnapshot when the new port returns
+    // data — this avoids flashing the indicator during normal port replacement
+    // where a new port arrives within milliseconds.
+    cleanups.push(
+      worktreePort.onDisconnected(() => {
+        store.getState().setReconnecting(true);
+      })
+    );
+
+    // If the host exhausts its restart budget, no replacement port will
+    // arrive — transition to a terminal error state instead of leaving the
+    // spinner stuck indefinitely.
+    cleanups.push(
+      worktreePort.onFatalDisconnect(() => {
+        const state = store.getState();
+        state.setReconnecting(false);
+        state.setError("Workspace host crashed and could not recover. Please restart Daintree.");
+      })
+    );
 
     // Snapshot-on-wake: when a cached view is reactivated (addChildView),
     // Chromium fires visibilitychange. Request a fresh snapshot to rehydrate
