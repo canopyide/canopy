@@ -27,6 +27,7 @@ const mockListBranches = vi.fn();
 const mockFetchPRBranch = vi.fn();
 const mockGetRecentBranches = vi.fn();
 
+const mockAgentSettingsGet = vi.fn().mockResolvedValue({ agents: {} });
 vi.mock("@/clients", () => ({
   worktreeClient: {
     getAvailableBranch: (...args: unknown[]) => mockGetAvailableBranch(...args),
@@ -39,10 +40,24 @@ vi.mock("@/clients", () => ({
   githubClient: {
     assignIssue: vi.fn(),
   },
+  agentSettingsClient: {
+    get: (...args: unknown[]) => mockAgentSettingsGet(...args),
+  },
 }));
 
 vi.mock("@/clients/systemClient", () => ({
-  systemClient: { openExternal: vi.fn() },
+  systemClient: {
+    openExternal: vi.fn(),
+    getTmpDir: vi.fn().mockResolvedValue("/tmp"),
+  },
+}));
+
+vi.mock("@/config/agents", () => ({
+  getAgentConfig: (id: string) =>
+    id === "claude"
+      ? { command: "claude", name: "Claude", tooltip: "", color: "#000", iconId: "agent" }
+      : undefined,
+  isRegisteredAgent: (id: string) => id === "claude",
 }));
 
 const mockAddTerminal = vi.fn().mockResolvedValue("new-terminal-id");

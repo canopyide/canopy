@@ -84,7 +84,11 @@ describe("panelKindRegistry createDefaults (co-located)", () => {
 
   it("agent factory returns empty object (PTY path handles fields)", () => {
     const config = getPanelKindConfig("agent")!;
-    const result = config.createDefaults!({ kind: "agent" } as AddPanelOptions);
+    const result = config.createDefaults!({
+      kind: "agent",
+      agentId: "claude",
+      command: "claude",
+    } as AddPanelOptions);
     expect(Object.keys(result)).toHaveLength(0);
   });
 });

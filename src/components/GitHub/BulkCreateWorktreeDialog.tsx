@@ -816,30 +816,34 @@ export function BulkCreateWorktreeDialog({
                         exitBehavior: t.exitBehavior,
                         devCommand: t.devCommand?.trim() || undefined,
                       });
-                    } else {
-                      let command: string | undefined;
-                      if (isAgent) {
-                        const agentConfig = getAgentConfig(t.type);
-                        const baseCommand = agentConfig?.command || t.type;
-                        const entry = cloneAgentSettings?.agents?.[t.type] ?? {};
-                        command = generateAgentCommand(baseCommand, entry, t.type, {
-                          clipboardDirectory: cloneClipboardDirectory,
-                          modelId: t.agentModelId,
-                        });
-                      } else {
-                        command = t.command?.trim() || undefined;
-                      }
+                    } else if (isAgent) {
+                      const agentConfig = getAgentConfig(t.type);
+                      const baseCommand = agentConfig?.command || t.type;
+                      const entry = cloneAgentSettings?.agents?.[t.type] ?? {};
+                      const command = generateAgentCommand(baseCommand, entry, t.type, {
+                        clipboardDirectory: cloneClipboardDirectory,
+                        modelId: t.agentModelId,
+                      });
 
                       panelId = await usePanelStore.getState().addPanel({
-                        kind: isAgent ? "agent" : "terminal",
-                        agentId: isAgent ? t.type : undefined,
+                        kind: "agent",
+                        agentId: t.type,
+                        command,
                         title: t.title,
                         cwd: worktreePath,
                         worktreeId,
                         exitBehavior: t.exitBehavior,
-                        command,
-                        agentModelId: isAgent ? t.agentModelId : undefined,
-                        agentLaunchFlags: isAgent ? t.agentLaunchFlags : undefined,
+                        agentModelId: t.agentModelId,
+                        agentLaunchFlags: t.agentLaunchFlags,
+                      });
+                    } else {
+                      panelId = await usePanelStore.getState().addPanel({
+                        kind: "terminal",
+                        title: t.title,
+                        cwd: worktreePath,
+                        worktreeId,
+                        exitBehavior: t.exitBehavior,
+                        command: t.command?.trim() || undefined,
                       });
                     }
 

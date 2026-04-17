@@ -46,7 +46,7 @@ function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance 
 }
 
 describe("buildPanelSnapshotOptions", () => {
-  let buildPanelSnapshotOptions: (panel: TerminalInstance) => AddPanelOptions;
+  let buildPanelSnapshotOptions: (panel: TerminalInstance) => AddPanelOptions | null;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -77,20 +77,20 @@ describe("buildPanelSnapshotOptions", () => {
       command: "bash",
     });
     // agentLaunchFlags should be a new array (deep copy)
-    expect(result.agentLaunchFlags).toEqual(["--flag"]);
-    expect(result.agentLaunchFlags).not.toBe(panel.agentLaunchFlags);
+    expect(result!.agentLaunchFlags).toEqual(["--flag"]);
+    expect(result!.agentLaunchFlags).not.toBe(panel.agentLaunchFlags);
   });
 
   it("does not include title in the snapshot", () => {
     const panel = makePanel({ title: "My Terminal" });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.title).toBeUndefined();
+    expect(result!.title).toBeUndefined();
   });
 
   it("does not include location in the snapshot", () => {
     const panel = makePanel({ location: "dock" });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.location).toBeUndefined();
+    expect(result!.location).toBeUndefined();
   });
 
   it("includes kind-specific fields for browser panels", () => {
@@ -111,15 +111,51 @@ describe("buildPanelSnapshotOptions", () => {
       agentLaunchFlags: ["--verbose"],
     });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.agentId).toBe("claude");
-    expect(result.agentModelId).toBe("opus");
-    expect(result.agentLaunchFlags).toEqual(["--verbose"]);
+    expect(result!.agentId).toBe("claude");
+    expect(result!.agentModelId).toBe("opus");
+    expect(result!.agentLaunchFlags).toEqual(["--verbose"]);
   });
 
   it("handles undefined agentLaunchFlags", () => {
     const panel = makePanel({ agentLaunchFlags: undefined });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.agentLaunchFlags).toBeUndefined();
+    expect(result!.agentLaunchFlags).toBeUndefined();
+  });
+
+  it("returns null for broken agent panels (missing command)", () => {
+    const panel = makePanel({
+      kind: "agent",
+      agentId: "claude",
+      command: undefined,
+    });
+    expect(buildPanelSnapshotOptions(panel)).toBeNull();
+  });
+
+  it("returns null for broken agent panels (missing agentId)", () => {
+    const panel = makePanel({
+      kind: "agent",
+      agentId: undefined,
+      command: "claude --flag",
+    });
+    expect(buildPanelSnapshotOptions(panel)).toBeNull();
+  });
+
+  it("returns a valid agent snapshot when command and agentId are present", () => {
+    const panel = makePanel({
+      kind: "agent",
+      agentId: "claude",
+      command: "claude --flag",
+      agentModelId: "opus",
+      agentLaunchFlags: ["--verbose"],
+    });
+    const result = buildPanelSnapshotOptions(panel);
+    expect(result).toMatchObject({
+      kind: "agent",
+      agentId: "claude",
+      command: "claude --flag",
+      agentModelId: "opus",
+      agentLaunchFlags: ["--verbose"],
+    });
   });
 });
 
@@ -249,5 +285,32 @@ describe("panelDuplicationService", () => {
     const panel = makePanel({ cwd: undefined });
     const result = await buildPanelDuplicateOptions(panel, "grid");
     expect(result.cwd).toBe("");
+  });
+
+  it("throws when duplicating agent panel with missing command", async () => {
+    const { agentSettingsClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("settings unavailable")
+    );
+
+    const panel = makePanel({
+      kind: "agent",
+      agentId: "unknown-agent",
+      command: undefined,
+    });
+    await expect(buildPanelDuplicateOptions(panel, "grid")).rejects.toThrow(
+      /Cannot duplicate agent panel.*command/
+    );
+  });
+
+  it("throws when duplicating agent panel with missing agentId", async () => {
+    const panel = makePanel({
+      kind: "agent",
+      agentId: undefined,
+      command: "claude --flag",
+    });
+    await expect(buildPanelDuplicateOptions(panel, "grid")).rejects.toThrow(
+      /Cannot duplicate agent panel.*agentId/
+    );
   });
 });
