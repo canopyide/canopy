@@ -176,7 +176,7 @@ export class AgentStateService {
       timestamp: terminal.lastStateChange,
       traceId: terminal.traceId,
       terminalId: terminal.id,
-      worktreeId: terminal.worktreeId,
+      cwd: terminal.cwd,
       trigger: inferredTrigger,
       confidence: inferredConfidence,
       ...(newState === "waiting" && waitingReason ? { waitingReason } : {}),
