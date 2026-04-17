@@ -67,6 +67,8 @@ function createResilientStorage(baseStorage: StateStorage | undefined): StateSto
     getItem: (name) => {
       const collectPerf = shouldCollectPersistencePerf();
       const startedAt = collectPerf ? perfNow() : 0;
+      const storage: "localStorage" | "memory" =
+        activeStorage === memoryStorage ? "memory" : "localStorage";
       try {
         const value = activeStorage.getItem(name);
         if (collectPerf && !(value instanceof Promise)) {
@@ -75,6 +77,7 @@ function createResilientStorage(baseStorage: StateStorage | undefined): StateSto
             payloadBytes: estimateStringBytes(value),
             durationMs: Number((perfNow() - startedAt).toFixed(3)),
             ok: true,
+            storage,
           });
         }
         return value;
@@ -85,6 +88,7 @@ function createResilientStorage(baseStorage: StateStorage | undefined): StateSto
             payloadBytes: null,
             durationMs: Number((perfNow() - startedAt).toFixed(3)),
             ok: false,
+            storage,
           });
         }
         return switchToMemoryStorage().getItem(name);
@@ -94,6 +98,8 @@ function createResilientStorage(baseStorage: StateStorage | undefined): StateSto
       const collectPerf = shouldCollectPersistencePerf();
       const startedAt = collectPerf ? perfNow() : 0;
       const payloadBytes = collectPerf ? estimateStringBytes(value) : null;
+      const storage: "localStorage" | "memory" =
+        activeStorage === memoryStorage ? "memory" : "localStorage";
       try {
         activeStorage.setItem(name, value);
         if (collectPerf) {
@@ -102,6 +108,7 @@ function createResilientStorage(baseStorage: StateStorage | undefined): StateSto
             payloadBytes,
             durationMs: Number((perfNow() - startedAt).toFixed(3)),
             ok: true,
+            storage,
           });
         }
       } catch {
@@ -111,6 +118,7 @@ function createResilientStorage(baseStorage: StateStorage | undefined): StateSto
             payloadBytes,
             durationMs: Number((perfNow() - startedAt).toFixed(3)),
             ok: false,
+            storage,
           });
         }
         switchToMemoryStorage().setItem(name, value);

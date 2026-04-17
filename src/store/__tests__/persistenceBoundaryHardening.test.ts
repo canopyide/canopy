@@ -296,32 +296,36 @@ describe("persistence boundary hardening", () => {
     expect(matching).toBeDefined();
   });
 
-  it("createResilientStorage emits a set mark with ok:true on successful write", async () => {
+  it("createResilientStorage emits a set mark with ok:true and storage:'localStorage' on successful write", async () => {
     installLocalStorage(createStorageMock());
     const marks = seedPerfMarks();
 
     const { createSafeJSONStorage } = await import("../persistence/safeStorage");
     const storage = createSafeJSONStorage<{ value: number }>();
 
-    storage.setItem("tel-set-key", { state: { value: 42 }, version: 1 });
+    const payload = { state: { value: 42 }, version: 1 };
+    storage.setItem("tel-set-key", payload);
 
     const setMarks = marks.filter((m) => m.mark === "persistence_localstorage_set");
     expect(setMarks).toHaveLength(1);
     const meta = setMarks[0]?.meta ?? {};
     expect(meta.key).toBe("tel-set-key");
     expect(meta.ok).toBe(true);
+    expect(meta.storage).toBe("localStorage");
+    expect(meta.payloadBytes).toBe(new TextEncoder().encode(JSON.stringify(payload)).length);
     expect(typeof meta.durationMs).toBe("number");
-    expect(typeof meta.payloadBytes).toBe("number");
-    expect((meta.payloadBytes as number) > 0).toBe(true);
+    expect(Number.isFinite(meta.durationMs as number)).toBe(true);
+    expect((meta.durationMs as number) >= 0).toBe(true);
   });
 
-  it("createResilientStorage emits a get mark with ok:true on successful read", async () => {
+  it("createResilientStorage emits a get mark with ok:true and storage:'localStorage' on successful read", async () => {
     installLocalStorage(createStorageMock());
     const marks = seedPerfMarks();
 
     const { createSafeJSONStorage } = await import("../persistence/safeStorage");
     const storage = createSafeJSONStorage<{ value: number }>();
-    storage.setItem("tel-get-key", { state: { value: 1 }, version: 1 });
+    const payload = { state: { value: 1 }, version: 1 };
+    storage.setItem("tel-get-key", payload);
     marks.length = 0;
 
     storage.getItem("tel-get-key");
@@ -331,12 +335,14 @@ describe("persistence boundary hardening", () => {
     const meta = getMarks[0]?.meta ?? {};
     expect(meta.key).toBe("tel-get-key");
     expect(meta.ok).toBe(true);
+    expect(meta.storage).toBe("localStorage");
+    expect(meta.payloadBytes).toBe(new TextEncoder().encode(JSON.stringify(payload)).length);
     expect(typeof meta.durationMs).toBe("number");
-    expect(typeof meta.payloadBytes).toBe("number");
-    expect((meta.payloadBytes as number) > 0).toBe(true);
+    expect(Number.isFinite(meta.durationMs as number)).toBe(true);
+    expect((meta.durationMs as number) >= 0).toBe(true);
   });
 
-  it("createResilientStorage emits a set mark with ok:false when localStorage.setItem throws", async () => {
+  it("createResilientStorage emits a set mark with ok:false and storage:'localStorage' when the localStorage write throws", async () => {
     installLocalStorage(
       createStorageMock({
         setItem: () => {
@@ -358,15 +364,18 @@ describe("persistence boundary hardening", () => {
     const meta = setMarks[0]?.meta ?? {};
     expect(meta.key).toBe("tel-fail-key");
     expect(meta.ok).toBe(false);
+    expect(meta.storage).toBe("localStorage");
     expect(typeof meta.durationMs).toBe("number");
+    expect(Number.isFinite(meta.durationMs as number)).toBe(true);
   });
 
-  it("createResilientStorage emits a get mark with ok:false when localStorage.getItem throws", async () => {
+  it("createResilientStorage emits a get mark with ok:false and storage:'localStorage' when the localStorage read throws", async () => {
+    const throwingGetItem = vi.fn(() => {
+      throw new Error("SecurityError");
+    });
     installLocalStorage(
       createStorageMock({
-        getItem: () => {
-          throw new Error("SecurityError");
-        },
+        getItem: throwingGetItem,
       })
     );
     const marks = seedPerfMarks();
@@ -377,12 +386,49 @@ describe("persistence boundary hardening", () => {
     expect(() => storage.getItem("tel-err-key")).not.toThrow();
 
     const getMarks = marks.filter((m) => m.mark === "persistence_localstorage_get");
-    expect(getMarks.length).toBeGreaterThanOrEqual(1);
-    const failing = getMarks.find((m) => m.meta?.ok === false);
-    expect(failing).toBeDefined();
-    expect(failing?.meta?.key).toBe("tel-err-key");
-    expect(typeof failing?.meta?.durationMs).toBe("number");
-    expect(failing?.meta?.payloadBytes).toBeNull();
+    expect(getMarks).toHaveLength(1);
+    const meta = getMarks[0]?.meta ?? {};
+    expect(meta.key).toBe("tel-err-key");
+    expect(meta.ok).toBe(false);
+    expect(meta.storage).toBe("localStorage");
+    expect(meta.payloadBytes).toBeNull();
+    expect(typeof meta.durationMs).toBe("number");
+    expect(Number.isFinite(meta.durationMs as number)).toBe(true);
+  });
+
+  it("createResilientStorage flips storage to 'memory' and stops hitting broken localStorage after fallback", async () => {
+    const throwingSetItem = vi.fn(() => {
+      throw new Error("QuotaExceededError");
+    });
+    installLocalStorage(
+      createStorageMock({
+        setItem: throwingSetItem,
+      })
+    );
+    const marks = seedPerfMarks();
+
+    const { createSafeJSONStorage } = await import("../persistence/safeStorage");
+    const storage = createSafeJSONStorage<{ value: number }>();
+
+    storage.setItem("fallback-key", { state: { value: 1 }, version: 1 });
+    storage.setItem("fallback-key-2", { state: { value: 2 }, version: 1 });
+
+    const setMarks = marks.filter((m) => m.mark === "persistence_localstorage_set");
+    expect(setMarks).toHaveLength(2);
+    expect(setMarks[0]?.meta?.storage).toBe("localStorage");
+    expect(setMarks[0]?.meta?.ok).toBe(false);
+    expect(setMarks[1]?.meta?.storage).toBe("memory");
+    expect(setMarks[1]?.meta?.ok).toBe(true);
+
+    // Broken localStorage.setItem must only be called once — fallback sticks
+    expect(throwingSetItem).toHaveBeenCalledTimes(1);
+
+    // Subsequent reads of the in-memory value also emit storage:'memory'
+    storage.getItem("fallback-key");
+    const getMarks = marks.filter((m) => m.mark === "persistence_localstorage_get");
+    expect(getMarks).toHaveLength(1);
+    expect(getMarks[0]?.meta?.storage).toBe("memory");
+    expect(getMarks[0]?.meta?.ok).toBe(true);
   });
 
   it("createResilientStorage emits no marks when DAINTREE_PERF_MARKS is absent and capture is disabled", async () => {
