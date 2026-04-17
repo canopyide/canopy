@@ -104,7 +104,7 @@ export function parseCast(filePath: string): ParsedCast {
   try {
     header = JSON.parse(lines[0]);
   } catch (error) {
-    throw new Error(`Cast header is not valid JSON in ${filePath}: ${(error as Error).message}`);
+    throw new Error(`Cast header is not valid JSON in ${filePath}`, { cause: error });
   }
 
   const version = header.version;
@@ -131,7 +131,7 @@ export function parseCast(filePath: string): ParsedCast {
     try {
       row = JSON.parse(line);
     } catch (error) {
-      throw new Error(`Malformed event row at ${filePath}:${i + 1}: ${(error as Error).message}`);
+      throw new Error(`Malformed event row at ${filePath}:${i + 1}`, { cause: error });
     }
     if (!Array.isArray(row) || row.length < 3) {
       throw new Error(`Event row must be a 3-tuple at ${filePath}:${i + 1}`);
