@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { PrivacyDataTab } from "../PrivacyDataTab";
 import { ANALYTICS_EVENTS } from "@shared/config/telemetry";
@@ -151,12 +151,11 @@ describe("PrivacyDataTab", () => {
   it("renders telemetry disclosure listing all allowlisted analytics events", async () => {
     render(<PrivacyDataTab activeSubtab="telemetry" onSubtabChange={vi.fn()} />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/What's collected at each level/i)).toBeTruthy();
-    });
+    const heading = await waitFor(() => screen.getByText(/What's collected at each level/i));
 
+    const disclosure = heading.parentElement as HTMLElement;
     for (const name of ANALYTICS_EVENTS) {
-      expect(screen.getByText(name)).toBeTruthy();
+      expect(within(disclosure).getByText(name)).toBeTruthy();
     }
   });
 
