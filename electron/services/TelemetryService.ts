@@ -57,6 +57,9 @@ function sanitizeEvent(event: SentryEvent): SentryEvent | null {
 
 let initialized = false;
 let captureEventFn: ((event: SentryEvent) => string) | null = null;
+let sentryModule: typeof import("@sentry/electron/main") | null = null;
+
+const SENTRY_CLOSE_TIMEOUT_MS = 2000;
 
 interface BufferedEvent {
   event: string;
@@ -94,6 +97,7 @@ export async function initializeTelemetry(): Promise<void> {
       },
     });
     captureEventFn = sentry.captureEvent;
+    sentryModule = sentry;
     initialized = true;
   } catch (err) {
     console.warn("[Telemetry] Failed to initialize Sentry:", err);
@@ -186,4 +190,20 @@ export function markTelemetryPromptShown(): void {
 
 export function _getPreConsentBufferLength(): number {
   return preConsentBuffer.length;
+}
+
+// Drain buffered Sentry events before process exit. Safe to call when telemetry
+// was never initialized (no-op) and idempotent. Never throws — telemetry failure
+// must never block app exit.
+export async function closeTelemetry(): Promise<void> {
+  if (!initialized || !sentryModule) return;
+  const mod = sentryModule;
+  initialized = false;
+  captureEventFn = null;
+  sentryModule = null;
+  try {
+    await mod.close(SENTRY_CLOSE_TIMEOUT_MS);
+  } catch {
+    // never block exit on telemetry failure
+  }
 }

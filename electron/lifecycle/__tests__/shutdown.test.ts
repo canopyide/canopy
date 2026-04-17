@@ -104,6 +104,12 @@ const closeSharedDbMock = vi.hoisted(() => ({
 
 vi.mock("../../services/persistence/db.js", () => closeSharedDbMock);
 
+const closeTelemetryMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
+vi.mock("../../services/TelemetryService.js", () => ({
+  closeTelemetry: closeTelemetryMock,
+}));
+
 const isSmokeTestMock = vi.hoisted(() => ({ value: false }));
 
 vi.mock("../../setup/environment.js", () => ({
@@ -340,6 +346,57 @@ describe("registerShutdownHandler", () => {
         expect.any(Error)
       );
       warnSpy.mockRestore();
+    });
+  });
+
+  describe("Sentry telemetry flush before exit", () => {
+    afterEach(() => {
+      appMock.exit.mockReset();
+      mcpServerMock.stop.mockReset();
+      mcpServerMock.stop.mockReturnValue(Promise.resolve());
+      closeTelemetryMock.mockReset();
+      closeTelemetryMock.mockResolvedValue(undefined);
+    });
+
+    it("calls closeTelemetry before app.exit(0) on clean shutdown", async () => {
+      const callOrder: string[] = [];
+      closeTelemetryMock.mockImplementation(async () => {
+        callOrder.push("closeTelemetry");
+      });
+      appMock.exit.mockImplementation(() => {
+        callOrder.push("exit");
+      });
+
+      const { beforeQuitCb } = await setup({});
+      await beforeQuitCb(makeEvent());
+
+      await vi.waitFor(() => {
+        expect(appMock.exit).toHaveBeenCalledWith(0);
+      });
+
+      expect(callOrder).toEqual(["closeTelemetry", "exit"]);
+    });
+
+    it("calls closeTelemetry before app.exit(1) on cleanup error", async () => {
+      mcpServerMock.stop.mockReturnValue(Promise.reject(new Error("MCP stop failed")));
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const callOrder: string[] = [];
+      closeTelemetryMock.mockImplementation(async () => {
+        callOrder.push("closeTelemetry");
+      });
+      appMock.exit.mockImplementation(() => {
+        callOrder.push("exit");
+      });
+
+      const { beforeQuitCb } = await setup({});
+      await beforeQuitCb(makeEvent());
+
+      await vi.waitFor(() => {
+        expect(appMock.exit).toHaveBeenCalledWith(1);
+      });
+
+      expect(callOrder).toEqual(["closeTelemetry", "exit"]);
+      consoleSpy.mockRestore();
     });
   });
 
