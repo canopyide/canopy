@@ -74,5 +74,5 @@ export const useAgentPreferencesStore = create<AgentPreferencesState>()(
 registerPersistedStore({
   storeId: "agentPreferencesStore",
   store: useAgentPreferencesStore,
-  persistedStateType: "AgentPreferences",
+  persistedStateType: "{ defaultAgent: DefaultAgentId | undefined }",
 });

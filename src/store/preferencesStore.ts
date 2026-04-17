@@ -85,5 +85,6 @@ export const usePreferencesStore = create<PreferencesState>()(
 registerPersistedStore({
   storeId: "preferencesStore",
   store: usePreferencesStore,
-  persistedStateType: "PreferencesState",
+  persistedStateType:
+    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
 });

@@ -156,5 +156,6 @@ export const useTwoPaneSplitStore = create<TwoPaneSplitState>()(
 registerPersistedStore({
   storeId: "twoPaneSplitStore",
   store: useTwoPaneSplitStore,
-  persistedStateType: "TwoPaneSplitState",
+  persistedStateType:
+    "{ config: TwoPaneSplitConfig; ratioByWorktreeId: Record<string, WorktreeRatioEntry> }",
 });

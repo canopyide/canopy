@@ -250,5 +250,6 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
 registerPersistedStore({
   storeId: "toolbarPreferencesStore",
   store: useToolbarPreferencesStore,
-  persistedStateType: "ToolbarPreferences",
+  persistedStateType:
+    "{ layout: ToolbarPreferences['layout']; launcher: Pick<ToolbarPreferences['launcher'], 'alwaysShowDevServer' | 'defaultSelection'> }",
 });
