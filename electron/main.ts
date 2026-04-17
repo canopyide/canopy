@@ -3,7 +3,6 @@ import "./setup/environment.js";
 
 import { app, BrowserWindow, crashReporter, protocol } from "electron";
 import { registerGlobalErrorHandlers } from "./setup/globalErrorHandlers.js";
-import os from "node:os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PERF_MARKS } from "../shared/perf/marks.js";
@@ -26,7 +25,7 @@ import {
 } from "./window/windowRef.js";
 import { WindowRegistry } from "./window/WindowRegistry.js";
 import { ProjectViewManager } from "./window/ProjectViewManager.js";
-import { computeDefaultCachedViews } from "./utils/cachedProjectViews.js";
+import { effectiveCachedProjectViews } from "./utils/cachedProjectViews.js";
 import { setupBrowserWindow } from "./window/createWindow.js";
 import { distributePortsToView } from "./window/portDistribution.js";
 import {
@@ -179,15 +178,13 @@ if (!gotTheLock) {
       dirname: __dirname,
       onRecreateWindow: () => createWindow(initialProjectPath, initialProjectId),
       windowRegistry,
-      cachedProjectViews:
-        store.get("terminalConfig")?.cachedProjectViews ??
-        // E2E tests add and switch projects rapidly. Keeping more than one
-        // cached view alive is required so the wizard rendered in the
-        // originating project view survives a switch into a freshly added
-        // project view. Increase the cache only when the e2e harness flag is
-        // set so production behavior is unchanged. Otherwise auto-size the
-        // default from system RAM so higher-memory machines cache more views.
-        (process.env.DAINTREE_E2E_MODE ? 4 : computeDefaultCachedViews(os.totalmem())),
+      // Resolve to the same value the IPC handler returns so the main-process
+      // LRU cap and the renderer's Settings view agree on first boot. Invalid
+      // persisted values fall through to the E2E override or RAM-based default
+      // instead of leaking into ProjectViewManager.
+      cachedProjectViews: effectiveCachedProjectViews(
+        store.get("terminalConfig")?.cachedProjectViews
+      ),
       onViewEvicted: (wcId) => {
         getWorkspaceClientRef()?.removeDirectPort(wcId);
         getWorktreePortBrokerRef()?.closePortsForView(wcId);

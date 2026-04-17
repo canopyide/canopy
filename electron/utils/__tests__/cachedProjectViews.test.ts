@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { computeDefaultCachedViews, isValidCachedProjectViews } from "../cachedProjectViews.js";
+import {
+  computeDefaultCachedViews,
+  effectiveCachedProjectViews,
+  isValidCachedProjectViews,
+} from "../cachedProjectViews.js";
 
 const GIB = 1024 ** 3;
 
@@ -55,5 +59,68 @@ describe("isValidCachedProjectViews", () => {
     expect(isValidCachedProjectViews("3")).toBe(false);
     expect(isValidCachedProjectViews(null)).toBe(false);
     expect(isValidCachedProjectViews(undefined)).toBe(false);
+  });
+});
+
+describe("effectiveCachedProjectViews", () => {
+  const mem = (gib: number) => gib * GIB;
+
+  it("preserves a valid stored preference regardless of RAM or E2E mode", () => {
+    expect(effectiveCachedProjectViews(2, { totalMemBytes: mem(128), isE2E: true })).toBe(2);
+    expect(effectiveCachedProjectViews(5, { totalMemBytes: mem(8), isE2E: false })).toBe(5);
+    expect(effectiveCachedProjectViews(1, { totalMemBytes: mem(64), isE2E: true })).toBe(1);
+  });
+
+  it("returns the E2E override when no valid preference is stored", () => {
+    expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(8), isE2E: true })).toBe(4);
+    expect(effectiveCachedProjectViews(null, { totalMemBytes: mem(128), isE2E: true })).toBe(4);
+    expect(effectiveCachedProjectViews("bogus", { totalMemBytes: mem(8), isE2E: true })).toBe(4);
+  });
+
+  it("derives from RAM when no preference and not in E2E mode", () => {
+    expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(8), isE2E: false })).toBe(1);
+    expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(32), isE2E: false })).toBe(
+      2
+    );
+    expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(64), isE2E: false })).toBe(
+      3
+    );
+  });
+
+  it("treats corrupted stored values as absent and falls back", () => {
+    const ramDefault64 = { totalMemBytes: mem(64), isE2E: false };
+    expect(effectiveCachedProjectViews("bogus", ramDefault64)).toBe(3);
+    expect(effectiveCachedProjectViews(99, ramDefault64)).toBe(3);
+    expect(effectiveCachedProjectViews(0, ramDefault64)).toBe(3);
+    expect(effectiveCachedProjectViews(-1, ramDefault64)).toBe(3);
+    expect(effectiveCachedProjectViews(2.5, ramDefault64)).toBe(3);
+    expect(effectiveCachedProjectViews(Number.NaN, ramDefault64)).toBe(3);
+    expect(effectiveCachedProjectViews({ v: 2 }, ramDefault64)).toBe(3);
+  });
+
+  it("honors the E2E override when stored value is invalid", () => {
+    expect(effectiveCachedProjectViews(99, { totalMemBytes: mem(64), isE2E: true })).toBe(4);
+    expect(effectiveCachedProjectViews("bogus", { totalMemBytes: mem(8), isE2E: true })).toBe(4);
+    expect(effectiveCachedProjectViews(0, { totalMemBytes: mem(128), isE2E: true })).toBe(4);
+  });
+
+  it("reads DAINTREE_E2E_MODE from the environment when isE2E is not provided", () => {
+    const prev = process.env.DAINTREE_E2E_MODE;
+    try {
+      process.env.DAINTREE_E2E_MODE = "1";
+      expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(8) })).toBe(4);
+      process.env.DAINTREE_E2E_MODE = "0";
+      expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(8) })).toBe(1);
+      process.env.DAINTREE_E2E_MODE = "false";
+      expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(8) })).toBe(1);
+      delete process.env.DAINTREE_E2E_MODE;
+      expect(effectiveCachedProjectViews(undefined, { totalMemBytes: mem(8) })).toBe(1);
+    } finally {
+      if (prev === undefined) {
+        delete process.env.DAINTREE_E2E_MODE;
+      } else {
+        process.env.DAINTREE_E2E_MODE = prev;
+      }
+    }
   });
 });

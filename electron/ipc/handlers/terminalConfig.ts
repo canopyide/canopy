@@ -1,13 +1,9 @@
 import { ipcMain, dialog, BrowserWindow } from "electron";
-import os from "node:os";
 import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { parseColorSchemeFile } from "../../utils/colorSchemeImporter.js";
-import {
-  computeDefaultCachedViews,
-  isValidCachedProjectViews,
-} from "../../utils/cachedProjectViews.js";
+import { effectiveCachedProjectViews } from "../../utils/cachedProjectViews.js";
 import type { HandlerDependencies } from "../types.js";
 
 function getTerminalConfigObject(): Record<string, unknown> {
@@ -16,12 +12,6 @@ function getTerminalConfigObject(): Record<string, unknown> {
     return config as Record<string, unknown>;
   }
   return {};
-}
-
-function effectiveCachedProjectViews(stored: unknown): number {
-  if (isValidCachedProjectViews(stored)) return stored;
-  if (process.env.DAINTREE_E2E_MODE) return 4;
-  return computeDefaultCachedViews(os.totalmem());
 }
 
 export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () => void {

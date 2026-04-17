@@ -334,22 +334,30 @@ describe("terminalConfig handlers", () => {
     expect(storeState.data.terminalConfig).toMatchObject({ cachedProjectViews: 5 });
   });
 
-  it("setCachedProjectViews rejects out-of-range values", async () => {
-    registerTerminalConfigHandlers();
+  it("setCachedProjectViews rejects out-of-range values without mutating store or pvm", async () => {
+    const mockPvm = { setCachedViewLimit: vi.fn() };
+    registerTerminalConfigHandlers({ projectViewManager: mockPvm } as never);
     const handler = getHandler(CHANNELS.TERMINAL_CONFIG_SET_CACHED_PROJECT_VIEWS);
 
     await expect(handler({}, 0)).rejects.toThrow("Invalid cachedProjectViews value");
     await expect(handler({}, 6)).rejects.toThrow("Invalid cachedProjectViews value");
     await expect(handler({}, -1)).rejects.toThrow("Invalid cachedProjectViews value");
+
+    expect(storeMock.set).not.toHaveBeenCalled();
+    expect(mockPvm.setCachedViewLimit).not.toHaveBeenCalled();
   });
 
-  it("setCachedProjectViews rejects non-integer and non-finite values", async () => {
-    registerTerminalConfigHandlers();
+  it("setCachedProjectViews rejects non-integer and non-finite values without side effects", async () => {
+    const mockPvm = { setCachedViewLimit: vi.fn() };
+    registerTerminalConfigHandlers({ projectViewManager: mockPvm } as never);
     const handler = getHandler(CHANNELS.TERMINAL_CONFIG_SET_CACHED_PROJECT_VIEWS);
 
     await expect(handler({}, 1.5)).rejects.toThrow("Invalid cachedProjectViews value");
     await expect(handler({}, Number.NaN)).rejects.toThrow("Invalid cachedProjectViews value");
     await expect(handler({}, Infinity)).rejects.toThrow("Invalid cachedProjectViews value");
+
+    expect(storeMock.set).not.toHaveBeenCalled();
+    expect(mockPvm.setCachedViewLimit).not.toHaveBeenCalled();
   });
 
   it("setCachedProjectViews calls projectViewManager.setCachedViewLimit", async () => {
