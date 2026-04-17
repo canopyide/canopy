@@ -39,13 +39,20 @@ vi.mock("../../utils/gitUtils.js", () => ({
 
 let mockWatcherStartResult = false;
 let capturedOnWatcherFailed: (() => void) | undefined;
+let capturedOnInotifyLimitReached: (() => void) | undefined;
 let capturedWatcherOptions: Record<string, unknown> | undefined;
 
 vi.mock("../../utils/gitFileWatcher.js", () => {
   return {
     GitFileWatcher: class {
-      constructor(opts: { onWatcherFailed?: () => void } & Record<string, unknown>) {
+      constructor(
+        opts: {
+          onWatcherFailed?: () => void;
+          onInotifyLimitReached?: () => void;
+        } & Record<string, unknown>
+      ) {
         capturedOnWatcherFailed = opts.onWatcherFailed;
+        capturedOnInotifyLimitReached = opts.onInotifyLimitReached;
         capturedWatcherOptions = opts;
       }
       start() {
@@ -111,6 +118,7 @@ describe("WorktreeMonitor", () => {
     vi.clearAllMocks();
     mockWatcherStartResult = false;
     capturedOnWatcherFailed = undefined;
+    capturedOnInotifyLimitReached = undefined;
     capturedWatcherOptions = undefined;
   });
 
@@ -476,6 +484,29 @@ describe("WorktreeMonitor", () => {
       // After retry interval, watcher should restart
       await vi.advanceTimersByTimeAsync(30_000);
       expect(monitor.hasWatcher).toBe(true);
+
+      monitor.stop();
+    });
+
+    it("forwards inotify-limit signal to callbacks with the worktree id", async () => {
+      mockWatcherStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const onInotifyLimitReached = vi.fn();
+      const callbacks = makeCallbacks({ onInotifyLimitReached });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      expect(capturedOnInotifyLimitReached).toBeDefined();
+      capturedOnInotifyLimitReached?.();
+      expect(onInotifyLimitReached).toHaveBeenCalledWith(TEST_WORKTREE.id);
+      expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
 
       monitor.stop();
     });

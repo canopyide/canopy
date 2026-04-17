@@ -11,12 +11,13 @@ export function useMainProcessToastListener(): void {
         ? {
             label: payload.action.label,
             onClick: () => {
-              if (payload.action!.ipcChannel === "update:check-for-updates") {
+              const { ipcChannel, data } = payload.action!;
+              if (ipcChannel === "update:check-for-updates") {
                 window.electron.update.checkForUpdates();
+              } else if (ipcChannel === "clipboard:write-text") {
+                void window.electron.clipboard.writeText(data ?? "");
               } else {
-                console.warn(
-                  `[MainProcessToast] Unknown IPC channel for action: ${payload.action!.ipcChannel}`
-                );
+                console.warn(`[MainProcessToast] Unknown IPC channel for action: ${ipcChannel}`);
               }
             },
           }
