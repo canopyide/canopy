@@ -523,7 +523,9 @@ export function BulkCreateWorktreeDialog({
       if (toCreate.some((p) => p.mode === "pr")) {
         try {
           sharedBranches = await worktreeClient.listBranches(rootPath);
+          if (runIdRef.current !== currentRunId) return;
         } catch (err) {
+          if (runIdRef.current !== currentRunId) return;
           const errorMsg = normalizeError(err);
           for (const planned of toCreate) {
             if (planned.mode !== "pr") continue;
@@ -568,6 +570,7 @@ export function BulkCreateWorktreeDialog({
 
         try {
           let branch = await worktreeClient.getAvailableBranch(rootPath, planned.branchName);
+          if (runIdRef.current !== currentRunId) return;
           if (assignedBranches.has(branch)) {
             let n = 2;
             while (assignedBranches.has(`${branch}-${n}`)) n++;
@@ -575,8 +578,10 @@ export function BulkCreateWorktreeDialog({
           }
           assignedBranches.add(branch);
           const path = await worktreeClient.getDefaultPath(rootPath, branch);
+          if (runIdRef.current !== currentRunId) return;
           precomputed.set(planned.item.number, { branch, path });
         } catch (err) {
+          if (runIdRef.current !== currentRunId) return;
           prequeryFailed.add(planned.item.number);
           failedItems.add(planned.item.number);
           dispatchProgress({

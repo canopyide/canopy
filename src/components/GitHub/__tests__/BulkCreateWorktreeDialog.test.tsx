@@ -1154,6 +1154,46 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(pathCalls).toContain("feature/shared-branch-2");
   });
 
+  it("does not dispatch stale ITEM_FAILED when cancelled during pre-query", async () => {
+    // Defer getAvailableBranch so we can cancel while the pre-query is
+    // pending. After cancel, the deferred rejection must not pollute the
+    // reducer with a stale ITEM_FAILED row.
+    let rejectPrequery: ((err: Error) => void) | null = null;
+    mockGetAvailableBranch.mockImplementation(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectPrequery = reject;
+        })
+    );
+
+    const onClose = vi.fn();
+    render(<BulkCreateWorktreeDialog {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    // Cancel while pre-query is still pending.
+    await act(async () => {
+      const buttons = screen.getAllByRole("button");
+      const cancelBtn = buttons.find((b) => b.textContent === "Cancel");
+      cancelBtn?.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Reject the pending pre-query after the cancel has bumped runIdRef.
+    await act(async () => {
+      rejectPrequery?.(new Error("IPC failure after cancel"));
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(onClose).toHaveBeenCalled();
+    // No stale dispatches — the done button never appears, no error rows
+    // bleed into the closed dialog, and no worktree.create was triggered.
+    expect(screen.queryByTestId("bulk-create-done-button")).toBeNull();
+    expect(mockWorktreeCreate).not.toHaveBeenCalled();
+  });
+
   it("dispatches ITEM_FAILED and skips item when pre-query rejects", async () => {
     let availableBranchCalls = 0;
     mockGetAvailableBranch.mockImplementation((_root: string, branch: string) => {
@@ -1334,6 +1374,30 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
     // Single shared snapshot hoisted before the queue, not one per item.
     expect(mockListBranches).toHaveBeenCalledTimes(1);
     expect(mockWorktreeCreate).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails all PRs when shared listBranches snapshot rejects", async () => {
+    const { notify: mockNotify } = await import("@/lib/notify");
+    mockListBranches.mockRejectedValueOnce(new Error("git ls-remote failed"));
+
+    render(<BulkCreateWorktreeDialog {...prProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+
+    expect(screen.getByText(/0 of 3 created/)).toBeTruthy();
+    expect(screen.getByText(/3 failed/)).toBeTruthy();
+    expect(screen.getAllByText(/git ls-remote failed/).length).toBeGreaterThanOrEqual(1);
+    expect(mockWorktreeCreate).not.toHaveBeenCalled();
+    expect(mockFetchPRBranch).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        message: "0 created, 3 failed",
+      })
+    );
   });
 
   it("fails when branch cannot be fetched from remote", async () => {
