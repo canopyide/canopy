@@ -43,6 +43,20 @@ interface TerminalInfoShape {
   outputBuffer: string;
   semanticBuffer: string[];
   restartCount: number;
+  shell?: string;
+  title?: string;
+  worktreeId?: string;
+  agentState?: string;
+  lastInputTime?: number;
+  lastOutputTime?: number;
+  lastStateChange?: number;
+  detectedAgentType?: string;
+  analysisEnabled?: boolean;
+  exitCode?: number;
+  spawnArgs?: string[];
+  agentLaunchFlags?: string[];
+  agentModelId?: string;
+  ptyProcess?: MockPtyProcess;
 }
 
 class MockTerminalProcess {
@@ -57,6 +71,8 @@ class MockTerminalProcess {
   setActivityMonitorTier = vi.fn();
   startProcessDetector = vi.fn();
   dispose = vi.fn();
+  getActivityTier = vi.fn(() => "active" as const);
+  getResizeStrategy = vi.fn(() => "default" as const);
 
   constructor(
     id: string,
@@ -84,6 +100,9 @@ class MockTerminalProcess {
       outputBuffer: "",
       semanticBuffer: [],
       restartCount: 0,
+      lastInputTime: 0,
+      lastOutputTime: 0,
+      ptyProcess,
     };
     shared.created.push(this);
   }
@@ -383,6 +402,47 @@ describe("PtyManager adversarial", () => {
       0.37,
       spawnedAt
     );
+  });
+
+  it("GET_TERMINAL_INFO_FORWARDS_SPAWN_AND_AGENT_FIELDS", () => {
+    const manager = new PtyManager();
+
+    manager.spawn(
+      "agent-1",
+      spawnOptions({ kind: "agent", type: "claude", agentId: "agent-1", projectId: "project-a" })
+    );
+
+    const created = shared.created[0]!;
+    created.info.shell = "/usr/local/bin/claude";
+    created.info.spawnArgs = ["--dangerously-skip-permissions", "--model", "claude-opus-4-7"];
+    created.info.agentLaunchFlags = ["--dangerously-skip-permissions"];
+    created.info.agentModelId = "claude-opus-4-7";
+
+    const payload = manager.getTerminalInfo("agent-1");
+
+    expect(payload).not.toBeNull();
+    expect(payload!.shell).toBe("/usr/local/bin/claude");
+    expect(payload!.spawnArgs).toEqual([
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-opus-4-7",
+    ]);
+    expect(payload!.agentLaunchFlags).toEqual(["--dangerously-skip-permissions"]);
+    expect(payload!.agentModelId).toBe("claude-opus-4-7");
+    expect(payload!.isAgentTerminal).toBe(true);
+  });
+
+  it("GET_TERMINAL_INFO_LEAVES_OPTIONAL_FIELDS_UNDEFINED_FOR_PLAIN_TERMINAL", () => {
+    const manager = new PtyManager();
+
+    manager.spawn("term-1", spawnOptions({ projectId: "project-a" }));
+
+    const payload = manager.getTerminalInfo("term-1");
+
+    expect(payload).not.toBeNull();
+    expect(payload!.spawnArgs).toBeUndefined();
+    expect(payload!.agentLaunchFlags).toBeUndefined();
+    expect(payload!.agentModelId).toBeUndefined();
   });
 
   it("DISPOSE_EMITS_AGENT_KILLED_ONLY_FOR_AGENTS", () => {
