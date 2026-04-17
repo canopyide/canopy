@@ -799,13 +799,16 @@ export function BulkCreateWorktreeDialog({
                   type: "ITEM_TERMINALS_SPAWNING",
                   issueNumber: itemNumber,
                 });
-                try {
-                  for (const t of cloneTerminals) {
+                const spawnedIds: string[] = [];
+                const failedIndices: number[] = [];
+                for (const [index, t] of cloneTerminals.entries()) {
+                  try {
                     const isDevPreview = t.type === "dev-preview";
                     const isAgent = !isDevPreview && t.type !== "terminal";
 
+                    let panelId: string | null;
                     if (isDevPreview) {
-                      await usePanelStore.getState().addPanel({
+                      panelId = await usePanelStore.getState().addPanel({
                         kind: "dev-preview",
                         title: t.title,
                         cwd: worktreePath,
@@ -813,42 +816,67 @@ export function BulkCreateWorktreeDialog({
                         exitBehavior: t.exitBehavior,
                         devCommand: t.devCommand?.trim() || undefined,
                       });
-                      continue;
-                    }
-
-                    let command: string | undefined;
-                    if (isAgent) {
-                      const agentConfig = getAgentConfig(t.type);
-                      const baseCommand = agentConfig?.command || t.type;
-                      const entry = cloneAgentSettings?.agents?.[t.type] ?? {};
-                      command = generateAgentCommand(baseCommand, entry, t.type, {
-                        clipboardDirectory: cloneClipboardDirectory,
-                      });
                     } else {
-                      command = t.command?.trim() || undefined;
+                      let command: string | undefined;
+                      if (isAgent) {
+                        const agentConfig = getAgentConfig(t.type);
+                        const baseCommand = agentConfig?.command || t.type;
+                        const entry = cloneAgentSettings?.agents?.[t.type] ?? {};
+                        command = generateAgentCommand(baseCommand, entry, t.type, {
+                          clipboardDirectory: cloneClipboardDirectory,
+                        });
+                      } else {
+                        command = t.command?.trim() || undefined;
+                      }
+
+                      panelId = await usePanelStore.getState().addPanel({
+                        kind: isAgent ? "agent" : "terminal",
+                        agentId: isAgent ? t.type : undefined,
+                        title: t.title,
+                        cwd: worktreePath,
+                        worktreeId,
+                        exitBehavior: t.exitBehavior,
+                        command,
+                      });
                     }
 
-                    await usePanelStore.getState().addPanel({
-                      kind: isAgent ? "agent" : "terminal",
-                      agentId: isAgent ? t.type : undefined,
-                      title: t.title,
-                      cwd: worktreePath,
-                      worktreeId,
-                      exitBehavior: t.exitBehavior,
-                      command,
-                    });
+                    if (panelId != null) {
+                      spawnedIds.push(panelId);
+                    } else {
+                      failedIndices.push(index);
+                    }
+                  } catch {
+                    failedIndices.push(index);
                   }
-                  const updatedTracked = tracking.get(itemNumber);
-                  if (updatedTracked) updatedTracked.cloneComplete = true;
-                } catch {
-                  // Clone is best-effort; worktree was created
+                }
+                const updatedTracked = tracking.get(itemNumber);
+                if (updatedTracked) {
+                  updatedTracked.spawnedTerminalIds = [
+                    ...updatedTracked.spawnedTerminalIds,
+                    ...spawnedIds,
+                  ];
+                  updatedTracked.failedTerminalIndices = failedIndices;
+                  updatedTracked.cloneComplete = failedIndices.length === 0;
                 }
                 dispatchProgress({
                   type: "ITEM_TERMINALS_RESULT",
                   issueNumber: itemNumber,
-                  spawnedTerminalIds: [],
-                  failedTerminalIndices: [],
+                  spawnedTerminalIds: spawnedIds,
+                  failedTerminalIndices: failedIndices,
                 });
+
+                if (failedIndices.length > 0) {
+                  const errorMsg = `${failedIndices.length} terminal(s) failed to spawn`;
+                  failedItems.add(itemNumber);
+                  dispatchProgress({
+                    type: "ITEM_FAILED",
+                    issueNumber: itemNumber,
+                    error: errorMsg,
+                    attempts: attempt,
+                    failedStep: "terminals",
+                  });
+                  return;
+                }
               } else if (
                 selectedRecipeId &&
                 selectedRecipeId !== CLONE_LAYOUT_ID &&
