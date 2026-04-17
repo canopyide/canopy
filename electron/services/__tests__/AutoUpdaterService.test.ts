@@ -734,6 +734,7 @@ describe("AutoUpdaterService", () => {
       broadcastMock.mockClear();
 
       autoUpdaterService.dispose();
+      primeStore({}); // no persisted dismissal carries across
       autoUpdaterService.initialize();
 
       const nextAvailableHandler = (autoUpdaterMock.on as Mock).mock.calls
@@ -741,7 +742,48 @@ describe("AutoUpdaterService", () => {
         .at(-1)![1];
       nextAvailableHandler({ version: "1.1.0" });
 
+      const availableCalls = broadcastMock.mock.calls.filter(
+        ([channel]) => channel === CHANNELS.UPDATE_AVAILABLE
+      );
+      expect(availableCalls).toHaveLength(1);
+      expect(availableCalls[0][1]).toEqual({ version: "1.1.0" });
+    });
+
+    it("broadcasts at exactly 24h boundary (cooldown window is >=, not >)", () => {
+      primeStore({
+        dismissedUpdateVersion: "1.1.0",
+        dismissedUpdateAt: Date.now() - 24 * 60 * 60 * 1000,
+      });
+
+      availableHandler({ version: "1.1.0" });
+
       expect(broadcastMock).toHaveBeenCalledWith(CHANNELS.UPDATE_AVAILABLE, { version: "1.1.0" });
+    });
+
+    it("treats corrupt dismissedUpdateAt (NaN) as missing and clears the record", () => {
+      primeStore({
+        dismissedUpdateVersion: "1.1.0",
+        dismissedUpdateAt: Number.NaN,
+      });
+
+      availableHandler({ version: "1.1.0" });
+
+      expect(broadcastMock).toHaveBeenCalledWith(CHANNELS.UPDATE_AVAILABLE, { version: "1.1.0" });
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+      expect(storeState.dismissedUpdateAt).toBeUndefined();
+    });
+
+    it("treats a future-dated dismissedUpdateAt (clock skew) as expired and rebroadcasts", () => {
+      primeStore({
+        dismissedUpdateVersion: "1.1.0",
+        dismissedUpdateAt: Date.now() + 60 * 60 * 1000, // 1h in the future
+      });
+
+      availableHandler({ version: "1.1.0" });
+
+      expect(broadcastMock).toHaveBeenCalledWith(CHANNELS.UPDATE_AVAILABLE, { version: "1.1.0" });
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+      expect(storeState.dismissedUpdateAt).toBeUndefined();
     });
 
     it("dispose removes the UPDATE_DISMISS_TOAST handler", () => {

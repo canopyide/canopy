@@ -66,6 +66,7 @@ export function useUpdateListener(suppressToasts = false): void {
         inboxMessage: `Version ${version} is downloading. ${AVAILABLE_HINT}`,
         priority: "high",
         duration: 0,
+        onDismiss: () => window.electron?.update?.notifyDismiss?.(version),
       });
       toastIdRef.current = id || null;
       versionRef.current = id ? version : null;
@@ -75,8 +76,6 @@ export function useUpdateListener(suppressToasts = false): void {
   useEffect(() => {
     if (!window.electron?.update) return;
 
-    let disposed = false;
-
     const cleanupAvailable = window.electron.update.onUpdateAvailable((info) => {
       if (suppressRef.current) {
         pendingUpdateRef.current = { version: info.version, downloaded: false };
@@ -84,20 +83,24 @@ export function useUpdateListener(suppressToasts = false): void {
       }
       // Dedup: if the same-version toast is still live, don't stack a duplicate.
       // A different version always shows a fresh toast (supersedes the old one
-      // via the notification-store's MAX_VISIBLE_TOASTS eviction).
+      // via the notification store's MAX_VISIBLE_TOASTS eviction).
       if (versionRef.current === info.version && isToastLive(toastIdRef.current)) {
         return;
       }
+      const version = info.version;
       const id = notify({
         type: "info",
         title: "Update Available",
-        message: `Version ${info.version} is downloading...`,
-        inboxMessage: `Version ${info.version} is downloading. ${AVAILABLE_HINT}`,
+        message: `Version ${version} is downloading...`,
+        inboxMessage: `Version ${version} is downloading. ${AVAILABLE_HINT}`,
         priority: "high",
         duration: 0,
+        // Forwarded to main only when the user explicitly closes the toast —
+        // MAX_VISIBLE_TOASTS eviction and programmatic dismissals bypass this.
+        onDismiss: () => window.electron?.update?.notifyDismiss?.(version),
       });
       toastIdRef.current = id || null;
-      versionRef.current = id ? info.version : null;
+      versionRef.current = id ? version : null;
     });
 
     const cleanupProgress = window.electron.update.onDownloadProgress((info) => {
@@ -115,6 +118,9 @@ export function useUpdateListener(suppressToasts = false): void {
         return;
       }
       if (toastIdRef.current && isToastLive(toastIdRef.current)) {
+        // Stage transition: clear the Available-stage onDismiss so dismissing
+        // the Update Ready toast does not start the 24h Available cooldown.
+        // The user still needs to be re-reminded about the pending install.
         useNotificationStore.getState().updateNotification(toastIdRef.current, {
           type: "success",
           title: "Update Ready",
@@ -122,6 +128,7 @@ export function useUpdateListener(suppressToasts = false): void {
           inboxMessage: `Version ${info.version} ready to install`,
           duration: 0,
           dismissed: false,
+          onDismiss: undefined,
           action: {
             label: "Restart to Update",
             onClick: () => window.electron?.update?.quitAndInstall(),
@@ -148,31 +155,10 @@ export function useUpdateListener(suppressToasts = false): void {
       versionRef.current = info.version;
     });
 
-    // Detect when the user dismisses the live Update-Available toast and
-    // forward that signal to main so the 24h cooldown starts. Kept inside
-    // this effect so cleanup is atomic (lesson #4958), guarded with a
-    // `disposed` flag for async-safe teardown (lesson #4754), and reads
-    // both refs fresh inside the callback (lesson #5087).
-    const unsubscribe = useNotificationStore.subscribe((state) => {
-      if (disposed) return;
-      const id = toastIdRef.current;
-      const version = versionRef.current;
-      if (!id || !version) return;
-      const current = state.notifications.find((n) => n.id === id);
-      if (!current || !current.dismissed) return;
-      // Clear tracking first so the same dismissal cannot fire twice (the
-      // store may emit additional change events before unsubscribe runs).
-      toastIdRef.current = null;
-      versionRef.current = null;
-      void window.electron?.update?.notifyDismiss?.(version);
-    });
-
     return () => {
-      disposed = true;
       cleanupAvailable();
       cleanupProgress();
       cleanupDownloaded();
-      unsubscribe();
     };
   }, []);
 }

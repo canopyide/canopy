@@ -47,7 +47,17 @@ class AutoUpdaterService {
 
     const dismissedVersion = store.get("dismissedUpdateVersion");
     const dismissedAt = store.get("dismissedUpdateAt");
-    if (typeof dismissedVersion !== "string" || typeof dismissedAt !== "number") {
+    if (
+      typeof dismissedVersion !== "string" ||
+      typeof dismissedAt !== "number" ||
+      !Number.isFinite(dismissedAt)
+    ) {
+      // Corrupt record (e.g., NaN/Infinity from a future writer or hand-edited
+      // config) — clear it and fall through so the user still sees updates.
+      if (typeof dismissedVersion === "string" || typeof dismissedAt === "number") {
+        store.delete("dismissedUpdateVersion");
+        store.delete("dismissedUpdateAt");
+      }
       return false;
     }
 

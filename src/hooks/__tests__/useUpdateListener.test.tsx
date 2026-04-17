@@ -7,33 +7,43 @@ import type { NotifyPayload } from "@/lib/notify";
 interface MockNotification {
   id: string;
   dismissed?: boolean;
+  onDismiss?: () => void;
 }
 
-const notifyMock = vi.fn<(payload: NotifyPayload) => string>().mockReturnValue("toast-1");
+const notifyMock = vi.fn<(payload: NotifyPayload) => string>();
 
 vi.mock("@/lib/notify", () => ({
   notify: (...args: [NotifyPayload]) => notifyMock(...args),
 }));
 
 const updateNotificationMock = vi.fn();
-const addNotificationMock = vi.fn().mockReturnValue("fresh-toast");
+const addNotificationMock = vi.fn();
 
 const storeState: { notifications: MockNotification[] } = { notifications: [] };
-const subscribers = new Set<(state: typeof storeState) => void>();
 
-function setMockNotifications(next: MockNotification[]): void {
-  storeState.notifications = next;
-  for (const cb of subscribers) cb(storeState);
+function addMockNotification(payload: { id: string; onDismiss?: () => void }): void {
+  storeState.notifications = [
+    ...storeState.notifications,
+    { id: payload.id, dismissed: false, onDismiss: payload.onDismiss },
+  ];
 }
 
-function addMockNotification(id: string): void {
-  setMockNotifications([...storeState.notifications, { id, dismissed: false }]);
-}
-
-function dismissMockNotification(id: string): void {
-  setMockNotifications(
-    storeState.notifications.map((n) => (n.id === id ? { ...n, dismissed: true } : n))
+function patchMockNotification(id: string, patch: Partial<MockNotification>): void {
+  storeState.notifications = storeState.notifications.map((n) =>
+    n.id === id ? { ...n, ...patch } : n
   );
+}
+
+/** Simulate the user clicking the Toast's close button. */
+function userDismiss(id: string): void {
+  const n = storeState.notifications.find((x) => x.id === id);
+  n?.onDismiss?.();
+  patchMockNotification(id, { dismissed: true });
+}
+
+/** Simulate MAX_VISIBLE_TOASTS auto-eviction (marks dismissed WITHOUT calling onDismiss). */
+function evictMockNotification(id: string): void {
+  patchMockNotification(id, { dismissed: true });
 }
 
 vi.mock("@/store/notificationStore", () => ({
@@ -43,12 +53,6 @@ vi.mock("@/store/notificationStore", () => ({
       addNotification: addNotificationMock,
       notifications: storeState.notifications,
     }),
-    subscribe: (listener: (state: typeof storeState) => void) => {
-      subscribers.add(listener);
-      return () => {
-        subscribers.delete(listener);
-      };
-    },
   }),
 }));
 
@@ -65,31 +69,35 @@ const cleanupProgress = vi.fn();
 const cleanupDownloaded = vi.fn();
 const notifyDismissMock = vi.fn().mockResolvedValue(undefined);
 
+let toastCounter = 0;
+
 describe("useUpdateListener", () => {
   beforeEach(() => {
     capturedAvailable = null;
     capturedProgress = null;
     capturedDownloaded = null;
+    toastCounter = 0;
+    storeState.notifications = [];
     cleanupAvailable.mockClear();
     cleanupProgress.mockClear();
     cleanupDownloaded.mockClear();
-    notifyMock.mockClear().mockImplementation(() => {
-      // Default: each notify() call registers a new notification so dedup
-      // checks against the store find a live entry. Returns a unique-ish id
-      // per call so consecutive notifies don't collide.
-      const id = `toast-${storeState.notifications.length + 1}`;
-      addMockNotification(id);
+    notifyMock.mockClear().mockImplementation((payload) => {
+      const id = `toast-${++toastCounter}`;
+      addMockNotification({ id, onDismiss: payload.onDismiss });
       return id;
     });
-    updateNotificationMock.mockClear();
-    addNotificationMock.mockClear().mockImplementation(() => {
-      const id = `fresh-toast-${storeState.notifications.length + 1}`;
-      addMockNotification(id);
+    updateNotificationMock.mockClear().mockImplementation((id, patch) => {
+      patchMockNotification(id, patch as Partial<MockNotification>);
+    });
+    addNotificationMock.mockClear().mockImplementation((payload) => {
+      const id = `fresh-toast-${++toastCounter}`;
+      addMockNotification({
+        id,
+        onDismiss: (payload as { onDismiss?: () => void }).onDismiss,
+      });
       return id;
     });
     notifyDismissMock.mockClear();
-    subscribers.clear();
-    storeState.notifications = [];
 
     window.electron = {
       update: {
@@ -177,7 +185,6 @@ describe("useUpdateListener", () => {
         inboxMessage: "Downloading update: 43%",
       })
     );
-    // message should be a ReactNode (the DownloadProgress component)
     const patch = updateNotificationMock.mock.calls[0][1];
     expect(typeof patch.message).not.toBe("string");
   });
@@ -205,7 +212,6 @@ describe("useUpdateListener", () => {
       })
     );
 
-    // Clicking the action should call quitAndInstall
     const patch = updateNotificationMock.mock.calls[0][1];
     patch.action!.onClick();
     expect(window.electron.update.quitAndInstall).toHaveBeenCalledTimes(1);
@@ -259,7 +265,6 @@ describe("useUpdateListener", () => {
   it("handles downloaded before available (no prior toast)", () => {
     renderHook(() => useUpdateListener());
 
-    // Skip calling available, go straight to downloaded
     act(() => {
       capturedDownloaded!({ version: "3.0.0" });
     });
@@ -284,7 +289,6 @@ describe("useUpdateListener", () => {
     act(() => {
       capturedAvailable!({ version: "2.5.0" });
     });
-    // Second IPC event for the same live version must not create a new toast.
     expect(notifyMock).toHaveBeenCalledTimes(1);
   });
 
@@ -310,22 +314,17 @@ describe("useUpdateListener", () => {
     });
     const firstId = notifyMock.mock.results[0].value as string;
 
-    // User dismisses the toast — which also fires our dismiss subscriber.
     act(() => {
-      dismissMockNotification(firstId);
+      userDismiss(firstId);
     });
 
-    // Main fires again (e.g., on the next periodic poll). Renderer should
-    // show a fresh toast since the prior one is no longer live — the
-    // 24h cooldown against same-version re-notification is enforced in
-    // main, not the renderer.
     act(() => {
       capturedAvailable!({ version: "2.5.0" });
     });
     expect(notifyMock).toHaveBeenCalledTimes(2);
   });
 
-  it("calls notifyDismiss on main when the tracked toast is dismissed", () => {
+  it("calls notifyDismiss on main when the user closes the tracked Available toast", () => {
     renderHook(() => useUpdateListener());
 
     act(() => {
@@ -334,14 +333,14 @@ describe("useUpdateListener", () => {
     const toastId = notifyMock.mock.results[0].value as string;
 
     act(() => {
-      dismissMockNotification(toastId);
+      userDismiss(toastId);
     });
 
     expect(notifyDismissMock).toHaveBeenCalledTimes(1);
     expect(notifyDismissMock).toHaveBeenCalledWith("2.5.0");
   });
 
-  it("does not call notifyDismiss twice when the store emits further changes after dismiss", () => {
+  it("does not call notifyDismiss when MAX_VISIBLE_TOASTS evicts the toast", () => {
     renderHook(() => useUpdateListener());
 
     act(() => {
@@ -349,31 +348,38 @@ describe("useUpdateListener", () => {
     });
     const toastId = notifyMock.mock.results[0].value as string;
 
+    // Eviction marks dismissed: true WITHOUT running the Toast's handleDismiss,
+    // so onDismiss must not fire — the user didn't actually dismiss this.
     act(() => {
-      dismissMockNotification(toastId);
+      evictMockNotification(toastId);
     });
-    expect(notifyDismissMock).toHaveBeenCalledTimes(1);
 
-    // A subsequent unrelated store change (e.g., another notification added)
-    // must not re-fire the dismiss handler for the already-dismissed toast.
-    act(() => {
-      addMockNotification("unrelated");
-    });
-    expect(notifyDismissMock).toHaveBeenCalledTimes(1);
+    expect(notifyDismissMock).not.toHaveBeenCalled();
   });
 
-  it("does not call notifyDismiss after unmount", () => {
-    const { unmount } = renderHook(() => useUpdateListener());
+  it("does not call notifyDismiss when the user dismisses the Update Ready (Downloaded) toast", () => {
+    renderHook(() => useUpdateListener());
 
     act(() => {
       capturedAvailable!({ version: "2.5.0" });
     });
     const toastId = notifyMock.mock.results[0].value as string;
 
-    unmount();
+    // Stage transition: Available → Downloaded (in-place). The hook must
+    // clear onDismiss so dismissing the Update Ready toast does not start the
+    // 24h cooldown (user still wants to be reminded about the pending install).
+    act(() => {
+      capturedDownloaded!({ version: "2.5.0" });
+    });
+
+    // Confirm the hook explicitly cleared the onDismiss in the update patch.
+    const downloadedPatch = updateNotificationMock.mock.calls.find(
+      (call) => call[1]?.title === "Update Ready"
+    )?.[1];
+    expect(downloadedPatch).toMatchObject({ onDismiss: undefined });
 
     act(() => {
-      dismissMockNotification(toastId);
+      userDismiss(toastId);
     });
 
     expect(notifyDismissMock).not.toHaveBeenCalled();
@@ -387,13 +393,11 @@ describe("useUpdateListener", () => {
     });
     const firstId = notifyMock.mock.results[0].value as string;
 
-    // User dismisses the Available toast.
     act(() => {
-      dismissMockNotification(firstId);
+      userDismiss(firstId);
     });
+    expect(notifyDismissMock).toHaveBeenCalledTimes(1);
 
-    // Download finishes — Downloaded-stage toast must not be swallowed by
-    // the Available-stage dismissal.
     act(() => {
       capturedDownloaded!({ version: "2.5.0" });
     });
