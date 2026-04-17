@@ -107,7 +107,7 @@ function InfoListRow({ label, items }: InfoListRowProps) {
         {items.map((item, i) => (
           <code
             key={`${i}-${item}`}
-            className="bg-daintree-surface border border-daintree-border font-mono text-xs px-1.5 py-0.5 rounded select-text break-all"
+            className="bg-daintree-bg/50 border border-daintree-border font-mono text-xs px-1.5 py-0.5 rounded select-text break-all"
           >
             {item}
           </code>
