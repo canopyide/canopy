@@ -144,13 +144,10 @@ class TerminalRegistryController {
       const { fontSize, fontFamily, performanceMode } = appearance;
 
       // Project-level scrollback override applies to non-agent terminals only
-      const baseScrollback =
-        kind !== "agent" && appearance.projectScrollback
-          ? appearance.projectScrollback
-          : appearance.scrollbackLines;
+      const projectScrollback = kind !== "agent" ? appearance.projectScrollback : undefined;
       const effectiveScrollback = performanceMode
         ? PERFORMANCE_MODE_SCROLLBACK
-        : getScrollbackForType(type, baseScrollback);
+        : getScrollbackForType(type, projectScrollback ?? appearance.scrollbackLines);
 
       const terminalOptions = getXtermOptions({
         fontSize,

@@ -111,6 +111,12 @@ describe("useTerminalAppearance", () => {
       useScreenReaderStore.getState().setOsAccessibilityEnabled(true);
     });
     expect(result.current.screenReaderMode).toBe(true);
+
+    // Explicit "off" must override OS accessibility
+    act(() => {
+      useScreenReaderStore.getState().setScreenReaderMode("off");
+    });
+    expect(result.current.screenReaderMode).toBe(false);
   });
 
   it("reflects project-level scrollback override when present", () => {
