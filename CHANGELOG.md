@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.7.1] - 2026-04-17
+
+### Features
+
+- Gate `--turbopack` injection on Next.js 15+ with a per-project settings toggle (#5154)
+- Terminal Info dialog now shows spawn command, arguments, and agent metadata (#5169)
+- Raise bulk worktree creation concurrency from 2 to 3 (#5163)
+- Privacy & Data settings disclose the specific telemetry fields collected at each level (#5258)
+
+### Bug Fixes
+
+- Capture renderer-side errors via `@sentry/electron/renderer` so crashes reach Sentry (#5256)
+- Consolidate telemetry consent into a single `privacy.*` store field, fixing stale-consent drift (#5257)
+- Flush Sentry events before `app.exit` so queued crash reports are not lost (#5254)
+- Stop dropping 90% of Sentry crash reports — sampleRate now fails closed (#5255)
+- Generate the agent command when cloning a panel layout (#5179)
+- Raise per-renderer tile memory cap and clean up GPU flag switches (#5180)
+- Worktree cycle actions walk the sidebar-rendered order (#5170)
+- Refresh sidebar immediately after saving a GitHub token (#5166)
+- Suppress agent-tray tooltip from reappearing after its dropdown closes (#5153)
+- Default-pin agents based on CLI install state instead of an opt-out list (#5158)
+- Agent tray hides uninstalled agents and refreshes mid-session (#5157)
+- Rebrand migration runs when an empty `daintree.db` is already present (#5156)
+
+### Performance
+
+- Eliminate bottlenecks in the worktree creation critical path (#5161)
+- Batch pre-queries in the bulk worktree creation dialog (#5162)
+
+### Other Changes
+
+- Treat panel `worktreeId` as renderer-owned layout state (#5139)
+- Update repo references from `canopyide/canopy` to `daintreehq/daintree`; add Canopy rename notice to README
+- Release workflow gates publish jobs on unit tests and wires `SENTRY_DSN`
+
+---
+
 ## [0.7.0] - 2026-04-16
 
 ### Features

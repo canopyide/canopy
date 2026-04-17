@@ -124,7 +124,9 @@ test.describe.serial("Core: Settings Pages Load", () => {
     });
 
     // Telemetry subtab (default) - verify telemetry options
-    await expect(window.locator("text=No data is collected")).toBeVisible({ timeout: T_SHORT });
+    await expect(window.locator("text=No data is collected").first()).toBeVisible({
+      timeout: T_SHORT,
+    });
 
     // Switch to Data & Storage subtab
     await window
