@@ -664,4 +664,60 @@ describe("engines.daintree compatibility gate", () => {
     expect(service.listPlugins()).toHaveLength(1);
     expect(broadcastToRendererMock).not.toHaveBeenCalled();
   });
+
+  it("rejects whitespace-only range strings at the schema layer", async () => {
+    await writePlugin("whitespace-range", {
+      name: "whitespace-range",
+      version: "1.0.0",
+      engines: { daintree: "   " },
+    });
+
+    const service = new PluginService(tmpDir, "0.7.5");
+    await service.initialize();
+
+    expect(service.listPlugins()).toEqual([]);
+    expect(broadcastToRendererMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an app prerelease that is below a non-prerelease range's lower bound", async () => {
+    await writePlugin("prerelease-too-early", {
+      name: "prerelease-too-early",
+      version: "1.0.0",
+      engines: { daintree: ">=0.7.0" },
+    });
+
+    const service = new PluginService(tmpDir, "0.7.0-rc.1");
+    await service.initialize();
+
+    expect(service.listPlugins()).toEqual([]);
+    expect(broadcastToRendererMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts an exact-version range when the app matches precisely", async () => {
+    await writePlugin("exact-match", {
+      name: "exact-match",
+      version: "1.0.0",
+      engines: { daintree: "0.7.5" },
+    });
+
+    const service = new PluginService(tmpDir, "0.7.5");
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+    expect(broadcastToRendererMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an exact-version range when the app does not match", async () => {
+    await writePlugin("exact-mismatch", {
+      name: "exact-mismatch",
+      version: "1.0.0",
+      engines: { daintree: "0.7.5" },
+    });
+
+    const service = new PluginService(tmpDir, "0.7.4");
+    await service.initialize();
+
+    expect(service.listPlugins()).toEqual([]);
+    expect(broadcastToRendererMock).toHaveBeenCalledTimes(1);
+  });
 });

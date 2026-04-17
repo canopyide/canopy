@@ -48,6 +48,7 @@ export const PluginManifestSchema = z.object({
     .object({
       daintree: z
         .string()
+        .trim()
         .min(1)
         .refine((val) => semver.validRange(val) !== null, {
           message: "engines.daintree must be a valid semver range",
