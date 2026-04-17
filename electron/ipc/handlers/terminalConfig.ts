@@ -3,6 +3,7 @@ import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { parseColorSchemeFile } from "../../utils/colorSchemeImporter.js";
+import { effectiveCachedProjectViews } from "../../utils/cachedProjectViews.js";
 import type { HandlerDependencies } from "../types.js";
 
 function getTerminalConfigObject(): Record<string, unknown> {
@@ -17,7 +18,11 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
   const handlers: Array<() => void> = [];
 
   const handleTerminalConfigGet = async () => {
-    return getTerminalConfigObject();
+    const config = getTerminalConfigObject();
+    return {
+      ...config,
+      cachedProjectViews: effectiveCachedProjectViews(config.cachedProjectViews),
+    };
   };
   ipcMain.handle(CHANNELS.TERMINAL_CONFIG_GET, handleTerminalConfigGet);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_GET));

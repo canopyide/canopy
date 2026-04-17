@@ -25,6 +25,7 @@ import {
 } from "./window/windowRef.js";
 import { WindowRegistry } from "./window/WindowRegistry.js";
 import { ProjectViewManager } from "./window/ProjectViewManager.js";
+import { effectiveCachedProjectViews } from "./utils/cachedProjectViews.js";
 import { setupBrowserWindow } from "./window/createWindow.js";
 import { distributePortsToView } from "./window/portDistribution.js";
 import {
@@ -177,14 +178,13 @@ if (!gotTheLock) {
       dirname: __dirname,
       onRecreateWindow: () => createWindow(initialProjectPath, initialProjectId),
       windowRegistry,
-      cachedProjectViews:
-        store.get("terminalConfig")?.cachedProjectViews ??
-        // E2E tests add and switch projects rapidly. Keeping more than one
-        // cached view alive is required so the wizard rendered in the
-        // originating project view survives a switch into a freshly added
-        // project view. Increase the cache only when the e2e harness flag is
-        // set so production behavior is unchanged.
-        (process.env.DAINTREE_E2E_MODE ? 4 : undefined),
+      // Resolve to the same value the IPC handler returns so the main-process
+      // LRU cap and the renderer's Settings view agree on first boot. Invalid
+      // persisted values fall through to the E2E override or RAM-based default
+      // instead of leaking into ProjectViewManager.
+      cachedProjectViews: effectiveCachedProjectViews(
+        store.get("terminalConfig")?.cachedProjectViews
+      ),
       onViewEvicted: (wcId) => {
         getWorkspaceClientRef()?.removeDirectPort(wcId);
         getWorktreePortBrokerRef()?.closePortsForView(wcId);
