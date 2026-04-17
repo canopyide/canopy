@@ -202,7 +202,9 @@ export function registerTerminalInputActions(
     argsSchema: z.object({ terminalId: z.string() }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId: string };
-      const { useFleetArmingStore } = await import("@/store/fleetArmingStore");
+      const terminal = usePanelStore.getState().panelsById[terminalId];
+      const { useFleetArmingStore, isFleetArmEligible } = await import("@/store/fleetArmingStore");
+      if (!isFleetArmEligible(terminal)) return;
       useFleetArmingStore.getState().armId(terminalId);
     },
   }));

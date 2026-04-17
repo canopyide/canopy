@@ -162,6 +162,7 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
 
           <button
             type="button"
+            data-drag-handle
             className="cursor-grab rounded text-text-muted transition-colors hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 active:cursor-grabbing"
             aria-label="Drag to move terminal"
             {...(listeners as React.HTMLAttributes<HTMLElement>)}
@@ -240,7 +241,17 @@ export function WorktreeTerminalSection({
     [onTerminalSelect]
   );
 
-  const marqueeStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  // Marquee starts potential on pointerdown (no capture yet). We only upgrade
+  // to an active marquee — and take pointer capture — after the pointer has
+  // moved past a small threshold. This way a plain click on a tile still
+  // fires its onClick handler, while drag-to-select activates cleanly.
+  const MARQUEE_THRESHOLD_PX = 4;
+  const marqueeStartRef = useRef<{
+    x: number;
+    y: number;
+    pointerId: number;
+    active: boolean;
+  } | null>(null);
   const tileRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [marqueeBox, setMarqueeBox] = useState<MarqueeBox | null>(null);
@@ -261,10 +272,14 @@ export function WorktreeTerminalSection({
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       const target = e.target as Element;
-      if (target.closest("[data-sortable-tile]")) return;
-      if (target.closest("button")) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
-      marqueeStartRef.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+      // dnd-kit owns the drag handle — don't shadow its pointer events.
+      if (target.closest("[data-drag-handle]")) return;
+      marqueeStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        pointerId: e.pointerId,
+        active: false,
+      };
       snapshotRects();
     },
     [snapshotRects]
@@ -273,15 +288,23 @@ export function WorktreeTerminalSection({
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const start = marqueeStartRef.current;
     if (!start) return;
+    const dx = Math.abs(e.clientX - start.x);
+    const dy = Math.abs(e.clientY - start.y);
+    if (!start.active) {
+      if (dx < MARQUEE_THRESHOLD_PX && dy < MARQUEE_THRESHOLD_PX) return;
+      start.active = true;
+      try {
+        e.currentTarget.setPointerCapture(start.pointerId);
+      } catch {
+        // capture may fail if pointer already released
+      }
+    }
     const container = scrollRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const x = Math.min(start.x, e.clientX) - rect.left + container.scrollLeft;
     const y = Math.min(start.y, e.clientY) - rect.top + container.scrollTop;
-    const w = Math.abs(e.clientX - start.x);
-    const h = Math.abs(e.clientY - start.y);
-    if (w < 2 && h < 2) return;
-    setMarqueeBox({ x, y, w, h });
+    setMarqueeBox({ x, y, w: dx, h: dy });
   }, []);
 
   const commitMarquee = useCallback(
@@ -314,12 +337,14 @@ export function WorktreeTerminalSection({
     (e: React.PointerEvent<HTMLDivElement>) => {
       const start = marqueeStartRef.current;
       if (!start) return;
-      try {
-        e.currentTarget.releasePointerCapture(start.pointerId);
-      } catch {
-        // capture may already be released
+      if (start.active) {
+        try {
+          e.currentTarget.releasePointerCapture(start.pointerId);
+        } catch {
+          // capture may already be released
+        }
+        commitMarquee(e.clientX, e.clientY);
       }
-      commitMarquee(e.clientX, e.clientY);
       marqueeStartRef.current = null;
       setMarqueeBox(null);
     },
@@ -329,10 +354,12 @@ export function WorktreeTerminalSection({
   const handlePointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const start = marqueeStartRef.current;
     if (!start) return;
-    try {
-      e.currentTarget.releasePointerCapture(start.pointerId);
-    } catch {
-      // ignore
+    if (start.active) {
+      try {
+        e.currentTarget.releasePointerCapture(start.pointerId);
+      } catch {
+        // ignore
+      }
     }
     marqueeStartRef.current = null;
     setMarqueeBox(null);

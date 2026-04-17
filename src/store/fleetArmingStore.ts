@@ -184,17 +184,20 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
       set((s) => {
         const nextArmed = new Set(s.armedIds);
         const nextOrder = [...s.armOrder];
+        let lastAdded: string | null = null;
         for (const id of ids) {
           if (!nextArmed.has(id)) {
             nextArmed.add(id);
             nextOrder.push(id);
+            lastAdded = id;
           }
         }
+        if (lastAdded === null) return {};
         return {
           armedIds: nextArmed,
           armOrder: nextOrder,
           armOrderById: rebuildOrderById(nextOrder),
-          lastArmedId: ids[ids.length - 1] ?? s.lastArmedId,
+          lastArmedId: lastAdded,
         };
       });
     } else {
@@ -253,43 +256,64 @@ setFleetArmingClear(() => {
 
 /**
  * Module-scope subscription: when panels are removed, relocated to trash/background,
- * or become ineligible, prune them from the armed set. This is a store-lifetime
- * subscription — it exists once per module instance (once per WebContentsView).
+ * or become ineligible, prune them from the armed set.
+ *
+ * HMR and test re-imports would otherwise stack subscribers on every module
+ * reload. We store registration state on `globalThis` so a subsequent module
+ * instance reuses the existing subscription but drives the *current* store —
+ * mirroring the pattern in `projectStore.ts`.
  */
-if (typeof usePanelStore.subscribe === "function") {
-  let lastSnapshot: {
-    ids: string[];
-    panelsById: Record<string, TerminalInstance>;
-  } = {
-    ids: usePanelStore.getState().panelIds,
-    panelsById: usePanelStore.getState().panelsById,
+interface FleetArmingSubscriptionState {
+  registered: boolean;
+  lastSnapshot: { ids: string[]; panelsById: Record<string, TerminalInstance> } | null;
+}
+
+const FLEET_ARMING_SUBSCRIPTION_KEY = "__daintreeFleetArmingSubscription";
+
+function getFleetArmingSubscriptionState(): FleetArmingSubscriptionState {
+  const target = globalThis as typeof globalThis & {
+    [FLEET_ARMING_SUBSCRIPTION_KEY]?: FleetArmingSubscriptionState;
   };
+  const existing = target[FLEET_ARMING_SUBSCRIPTION_KEY];
+  if (existing) return existing;
+  const created: FleetArmingSubscriptionState = { registered: false, lastSnapshot: null };
+  target[FLEET_ARMING_SUBSCRIPTION_KEY] = created;
+  return created;
+}
 
-  usePanelStore.subscribe((state) => {
-    const prev = lastSnapshot;
-    const currentIds = state.panelIds;
-    const currentById = state.panelsById;
+if (typeof usePanelStore.subscribe === "function") {
+  const subState = getFleetArmingSubscriptionState();
+  if (!subState.registered) {
+    subState.registered = true;
+    subState.lastSnapshot = {
+      ids: usePanelStore.getState().panelIds,
+      panelsById: usePanelStore.getState().panelsById,
+    };
 
-    // Fast path: if neither the ids array nor panelsById reference changed, skip.
-    if (currentIds === prev.ids && currentById === prev.panelsById) return;
+    usePanelStore.subscribe((state) => {
+      const prev = subState.lastSnapshot;
+      const currentIds = state.panelIds;
+      const currentById = state.panelsById;
 
-    lastSnapshot = { ids: currentIds, panelsById: currentById };
+      if (prev && currentIds === prev.ids && currentById === prev.panelsById) return;
 
-    const armed = useFleetArmingStore.getState().armedIds;
-    if (armed.size === 0) return;
+      subState.lastSnapshot = { ids: currentIds, panelsById: currentById };
 
-    const validIds = new Set<string>();
-    for (const id of currentIds) {
-      const t = currentById[id];
-      if (isFleetArmEligible(t)) validIds.add(id);
-    }
+      const armed = useFleetArmingStore.getState().armedIds;
+      if (armed.size === 0) return;
 
-    // Only call prune if at least one armed id is now invalid.
-    for (const id of armed) {
-      if (!validIds.has(id)) {
-        useFleetArmingStore.getState().prune(validIds);
-        return;
+      const validIds = new Set<string>();
+      for (const id of currentIds) {
+        const t = currentById[id];
+        if (isFleetArmEligible(t)) validIds.add(id);
       }
-    }
-  });
+
+      for (const id of armed) {
+        if (!validIds.has(id)) {
+          useFleetArmingStore.getState().prune(validIds);
+          return;
+        }
+      }
+    });
+  }
 }

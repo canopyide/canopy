@@ -206,6 +206,16 @@ describe("fleetArmingStore", () => {
       expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["t1", "t2", "t3"]);
     });
 
+    it("extend=true preserves lastArmedId when all matches are already armed", () => {
+      // Arm t3 (waiting) as anchor, then arm both working matches
+      useFleetArmingStore.getState().armId("t3");
+      useFleetArmingStore.getState().armByState("working", "current", true);
+      // lastArmedId moved to t2 (last newly added). Extend again with all
+      // matches already armed — anchor must not slide.
+      useFleetArmingStore.getState().armByState("working", "current", true);
+      expect(useFleetArmingStore.getState().lastArmedId).toBe("t2");
+    });
+
     it("excludes trash/background/hasPty=false panels", () => {
       seedPanels([
         makeAgentTerminal("t1", { agentState: "working" }),

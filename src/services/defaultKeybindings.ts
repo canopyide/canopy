@@ -341,6 +341,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Arm all eligible agents in the current worktree",
     category: "Terminal",
   },
+  {
+    actionId: "terminal.bulkCommand",
+    combo: "Cmd+Alt+Shift+B",
+    scope: "global",
+    priority: 0,
+    description: "Open Bulk Operations",
+    category: "Terminal",
+  },
   // Directional terminal navigation (Ghostty-style: Cmd+Option+Arrow)
   {
     actionId: "terminal.focusUp",

@@ -59,7 +59,6 @@ export function SortableWorktreeTerminal({
       className={cn(isDragging && "opacity-40")}
       role="listitem"
       aria-roledescription="sortable item"
-      data-sortable-tile={terminal.id}
       {...filteredAttributes}
     >
       {typeof children === "function" ? (
