@@ -54,8 +54,25 @@ function createStorageMock(overrides: Partial<StorageMock> = {}): StorageMock {
   };
 }
 
+type PerfMarkRecord = {
+  mark: string;
+  meta?: Record<string, unknown>;
+};
+
+function seedPerfMarks(): PerfMarkRecord[] {
+  const buffer: PerfMarkRecord[] = [];
+  (window as Window & typeof globalThis).__DAINTREE_PERF_MARKS__ =
+    buffer as unknown as typeof window.__DAINTREE_PERF_MARKS__;
+  return buffer;
+}
+
+function clearPerfMarks(): void {
+  delete (window as Window & typeof globalThis).__DAINTREE_PERF_MARKS__;
+}
+
 afterEach(() => {
   restoreLocalStorage();
+  clearPerfMarks();
   vi.resetModules();
   vi.restoreAllMocks();
 });
@@ -277,5 +294,106 @@ describe("persistence boundary hardening", () => {
       (call) => (call[1] as Record<string, unknown> | undefined)?.store === "cliAvailabilityStore"
     );
     expect(matching).toBeDefined();
+  });
+
+  it("createResilientStorage emits a set mark with ok:true on successful write", async () => {
+    installLocalStorage(createStorageMock());
+    const marks = seedPerfMarks();
+
+    const { createSafeJSONStorage } = await import("../persistence/safeStorage");
+    const storage = createSafeJSONStorage<{ value: number }>();
+
+    storage.setItem("tel-set-key", { state: { value: 42 }, version: 1 });
+
+    const setMarks = marks.filter((m) => m.mark === "persistence_localstorage_set");
+    expect(setMarks).toHaveLength(1);
+    const meta = setMarks[0]?.meta ?? {};
+    expect(meta.key).toBe("tel-set-key");
+    expect(meta.ok).toBe(true);
+    expect(typeof meta.durationMs).toBe("number");
+    expect(typeof meta.payloadBytes).toBe("number");
+    expect((meta.payloadBytes as number) > 0).toBe(true);
+  });
+
+  it("createResilientStorage emits a get mark with ok:true on successful read", async () => {
+    installLocalStorage(createStorageMock());
+    const marks = seedPerfMarks();
+
+    const { createSafeJSONStorage } = await import("../persistence/safeStorage");
+    const storage = createSafeJSONStorage<{ value: number }>();
+    storage.setItem("tel-get-key", { state: { value: 1 }, version: 1 });
+    marks.length = 0;
+
+    storage.getItem("tel-get-key");
+
+    const getMarks = marks.filter((m) => m.mark === "persistence_localstorage_get");
+    expect(getMarks).toHaveLength(1);
+    const meta = getMarks[0]?.meta ?? {};
+    expect(meta.key).toBe("tel-get-key");
+    expect(meta.ok).toBe(true);
+    expect(typeof meta.durationMs).toBe("number");
+    expect(typeof meta.payloadBytes).toBe("number");
+    expect((meta.payloadBytes as number) > 0).toBe(true);
+  });
+
+  it("createResilientStorage emits a set mark with ok:false when localStorage.setItem throws", async () => {
+    installLocalStorage(
+      createStorageMock({
+        setItem: () => {
+          throw new Error("QuotaExceededError");
+        },
+      })
+    );
+    const marks = seedPerfMarks();
+
+    const { createSafeJSONStorage } = await import("../persistence/safeStorage");
+    const storage = createSafeJSONStorage<{ value: number }>();
+
+    expect(() => {
+      storage.setItem("tel-fail-key", { state: { value: 9 }, version: 1 });
+    }).not.toThrow();
+
+    const setMarks = marks.filter((m) => m.mark === "persistence_localstorage_set");
+    expect(setMarks).toHaveLength(1);
+    const meta = setMarks[0]?.meta ?? {};
+    expect(meta.key).toBe("tel-fail-key");
+    expect(meta.ok).toBe(false);
+    expect(typeof meta.durationMs).toBe("number");
+  });
+
+  it("createResilientStorage emits a get mark with ok:false when localStorage.getItem throws", async () => {
+    installLocalStorage(
+      createStorageMock({
+        getItem: () => {
+          throw new Error("SecurityError");
+        },
+      })
+    );
+    const marks = seedPerfMarks();
+
+    const { createSafeJSONStorage } = await import("../persistence/safeStorage");
+    const storage = createSafeJSONStorage<{ value: number }>();
+
+    expect(() => storage.getItem("tel-err-key")).not.toThrow();
+
+    const getMarks = marks.filter((m) => m.mark === "persistence_localstorage_get");
+    expect(getMarks.length).toBeGreaterThanOrEqual(1);
+    const failing = getMarks.find((m) => m.meta?.ok === false);
+    expect(failing).toBeDefined();
+    expect(failing?.meta?.key).toBe("tel-err-key");
+    expect(typeof failing?.meta?.durationMs).toBe("number");
+    expect(failing?.meta?.payloadBytes).toBeNull();
+  });
+
+  it("createResilientStorage emits no marks when DAINTREE_PERF_MARKS is absent and capture is disabled", async () => {
+    installLocalStorage(createStorageMock());
+
+    const { createSafeJSONStorage } = await import("../persistence/safeStorage");
+    const storage = createSafeJSONStorage<{ value: number }>();
+
+    storage.setItem("no-mark-key", { state: { value: 5 }, version: 1 });
+    storage.getItem("no-mark-key");
+
+    expect((window as Window & typeof globalThis).__DAINTREE_PERF_MARKS__).toBeUndefined();
   });
 });
