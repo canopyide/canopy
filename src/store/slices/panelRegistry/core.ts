@@ -56,17 +56,25 @@ async function resolveProjectStore() {
 type Set = PanelRegistryStoreApi["setState"];
 type Get = PanelRegistryStoreApi["getState"];
 
-interface HydrationBatchEntry {
-  terminal: TerminalInstance;
-  /** Reconnect entries preserve existing runtime fields (agentState, exitBehavior, …) during merge. */
-  isReconnect: boolean;
-}
-
-// Module-level singleton: hydration runs sequentially (guarded by `isCurrent()` checks),
-// so at most one batch is active at a time. The token identity prevents a late flush from
-// a cancelled hydration from colliding with a fresh batch started by the new hydration.
-let activeHydrationBatch: { token: HydrationBatchToken; entries: HydrationBatchEntry[] } | null =
-  null;
+/**
+ * Hydration batch state. Each restore phase runs inside begin/flush, and during
+ * that window `addPanel` commits the per-panel `panelsById` entry immediately
+ * (so IPC event listeners that look panels up by id always find them) but defers
+ * the `panelIds` append. Flush applies a single `panelIds` update per phase —
+ * which is the high-fanout subscription that the worktree dashboard, dock, and
+ * grid subscribe to. Net: a phase of N panels triggers 1 `panelIds` render
+ * instead of N, while never leaving spawned panels invisible to event handlers.
+ *
+ * Singleton: hydration is guarded by `isCurrent()` so at most one batch is active
+ * at a time. `HydrationBatchToken` protects against stale flushes from cancelled
+ * hydrations colliding with a fresh batch started by the superseding hydration.
+ */
+let activeHydrationBatch: {
+  token: HydrationBatchToken;
+  /** Ids pending append to `panelIds`; deduplicated via `seenIds`. */
+  pendingIds: string[];
+  seenIds: Set<string>;
+} | null = null;
 
 /**
  * Exposed so higher-level `addPanel` wrappers (e.g. the focus-setting wrapper in
@@ -77,9 +85,12 @@ export function isHydrationBatchActive(): boolean {
   return activeHydrationBatch !== null;
 }
 
-function collectForBatch(entry: HydrationBatchEntry): void {
+/** Record a new panel id for append to `panelIds` at flush time. Dedup-safe. */
+function collectPanelIdForBatch(id: string): void {
   if (activeHydrationBatch === null) return;
-  activeHydrationBatch.entries.push(entry);
+  if (activeHydrationBatch.seenIds.has(id)) return;
+  activeHydrationBatch.seenIds.add(id);
+  activeHydrationBatch.pendingIds.push(id);
 }
 
 function countNonTrashTerminals(state: PanelRegistrySlice): number {
@@ -130,46 +141,28 @@ export const createCorePanelActions = (
     // A leftover batch from a cancelled hydration is discarded — we prioritize the
     // fresh hydration and never flush stale panels into the store.
     const token: HydrationBatchToken = Symbol("hydration-batch");
-    activeHydrationBatch = { token, entries: [] };
+    activeHydrationBatch = { token, pendingIds: [], seenIds: new Set() };
     return token;
   },
 
   flushHydrationBatch: (token) => {
     // Token mismatch means the batch was superseded or already flushed — ignore.
     if (activeHydrationBatch === null || activeHydrationBatch.token !== token) return;
-    const entries = activeHydrationBatch.entries;
+    const pendingIds = activeHydrationBatch.pendingIds;
     activeHydrationBatch = null;
-    if (entries.length === 0) return;
 
     set((state) => {
-      const newById = { ...state.panelsById };
-      let newIds = state.panelIds;
-      let idsChanged = false;
-      for (const { terminal, isReconnect } of entries) {
-        const existing = newById[terminal.id];
-        if (existing) {
-          // Matches the single-panel reconnect merge in addPanel's PTY path: keep the
-          // existing runtime fields when the restored snapshot has them unset.
-          newById[terminal.id] = isReconnect
-            ? {
-                ...terminal,
-                agentState: terminal.agentState ?? existing.agentState,
-                lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
-                exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
-                extensionState: terminal.extensionState ?? existing.extensionState,
-              }
-            : terminal;
-        } else {
-          newById[terminal.id] = terminal;
-          if (!idsChanged) {
-            newIds = [...newIds];
-            idsChanged = true;
-          }
-          newIds.push(terminal.id);
-        }
-      }
-      saveNormalized(newById, newIds);
-      return idsChanged ? { panelsById: newById, panelIds: newIds } : { panelsById: newById };
+      // `panelsById` was already updated per panel during the batch, so this
+      // final `set` only reveals `panelIds` to subscribers and persists once.
+      // Filter: reconnect ids are already in `panelIds`, and a failed addPanel
+      // might have been collected but never landed in `panelsById`.
+      const existing = new Set(state.panelIds);
+      const additions = pendingIds.filter(
+        (id) => !existing.has(id) && state.panelsById[id] !== undefined
+      );
+      const newIds = additions.length > 0 ? [...state.panelIds, ...additions] : state.panelIds;
+      saveNormalized(state.panelsById, newIds);
+      return additions.length > 0 ? { panelIds: newIds } : {};
     });
   },
 
@@ -266,7 +259,15 @@ export const createCorePanelActions = (
       };
 
       if (isHydrationBatchActive()) {
-        collectForBatch({ terminal, isReconnect: false });
+        // Batched path: commit `panelsById` immediately (event listeners can find
+        // the panel by id) and defer the `panelIds` append + persist to flush.
+        set((state) => {
+          if (state.panelsById[id]) {
+            logDebug("[TerminalStore] Panel already exists, updating instead of adding", { id });
+          }
+          return { panelsById: { ...state.panelsById, [id]: terminal } };
+        });
+        collectPanelIdForBatch(id);
       } else {
         set((state) => {
           const existing = state.panelsById[id];
@@ -420,6 +421,96 @@ export const createCorePanelActions = (
         });
       }
 
+      const isAgent = kind === "agent";
+      const isReconnect = !!options.existingId;
+
+      // For reconnects, use the backend's state directly - don't default to "working".
+      // For new spawns, start with "working" in UI to show spinner immediately during boot.
+      const agentState = isReconnect
+        ? options.agentState
+        : (options.agentState ?? (isAgent ? "working" : undefined));
+      const lastStateChange = isReconnect
+        ? options.lastStateChange
+        : (options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined));
+
+      const terminal: TerminalInstance = {
+        id,
+        kind,
+        type: legacyType,
+        agentId,
+        title,
+        worktreeId: options.worktreeId,
+        cwd: options.cwd ?? "",
+        cols: 80,
+        rows: 24,
+        agentState,
+        lastStateChange,
+        location,
+        command: options.command,
+        // Initialize grid terminals as visible to avoid initial under-throttling
+        // IntersectionObserver will update this once mounted
+        isVisible: location === "grid" ? true : false,
+        runtimeStatus,
+        isInputLocked: options.isInputLocked,
+        exitBehavior: options.exitBehavior,
+        agentSessionId: options.agentSessionId,
+        agentLaunchFlags: options.agentLaunchFlags,
+        agentModelId: options.agentModelId,
+        extensionState: options.extensionState,
+        spawnedBy: options.spawnedBy,
+        startedAt: Date.now(),
+      };
+
+      // Commit the panel to `panelsById` BEFORE prewarm so IPC event listeners
+      // (onAgentStateChanged, onExit, onAgentDetected, activity flushes, etc.)
+      // that look panels up by id always find the entry — even during the
+      // spawn/prewarm window of concurrent panels in the same hydration batch.
+      // Prewarm is synchronous so any React render from this `set` runs after
+      // the managed terminal instance is created.
+      if (isHydrationBatchActive()) {
+        // Batched path: commit `panelsById` immediately; defer `panelIds` append.
+        set((state) => {
+          const existing = state.panelsById[id];
+          const preservedTerminal =
+            existing && isReconnect
+              ? {
+                  ...terminal,
+                  agentState: terminal.agentState ?? existing.agentState,
+                  lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
+                  exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
+                  extensionState: terminal.extensionState ?? existing.extensionState,
+                }
+              : terminal;
+          return { panelsById: { ...state.panelsById, [id]: preservedTerminal } };
+        });
+        collectPanelIdForBatch(id);
+      } else {
+        set((state) => {
+          const existing = state.panelsById[id];
+          if (existing) {
+            // Update existing terminal in place (reconnection case or double hydration)
+            logDebug("[TerminalStore] Terminal already exists, updating instead of adding", { id });
+            // Preserve existing agentState/lastStateChange/exitBehavior if new values are undefined
+            const preservedTerminal = isReconnect
+              ? {
+                  ...terminal,
+                  agentState: terminal.agentState ?? existing.agentState,
+                  lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
+                  exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
+                  extensionState: terminal.extensionState ?? existing.extensionState,
+                }
+              : terminal;
+            const newById = { ...state.panelsById, [id]: preservedTerminal };
+            saveNormalized(newById, state.panelIds);
+            return { panelsById: newById };
+          }
+          const newById = { ...state.panelsById, [id]: terminal };
+          const newIds = [...state.panelIds, id];
+          saveNormalized(newById, newIds);
+          return { panelsById: newById, panelIds: newIds };
+        });
+      }
+
       // Prewarm renderer-side xterm immediately so we never drop startup output/ANSI while hidden.
       // For docked terminals, also open + fit offscreen so the PTY starts with correct dimensions.
       try {
@@ -491,75 +582,6 @@ export const createCorePanelActions = (
         }
       } catch (error) {
         logWarn("[TerminalStore] Failed to prewarm terminal", { id, error });
-      }
-
-      const isAgent = kind === "agent";
-      const isReconnect = !!options.existingId;
-
-      // For reconnects, use the backend's state directly - don't default to "working".
-      // For new spawns, start with "working" in UI to show spinner immediately during boot.
-      const agentState = isReconnect
-        ? options.agentState
-        : (options.agentState ?? (isAgent ? "working" : undefined));
-      const lastStateChange = isReconnect
-        ? options.lastStateChange
-        : (options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined));
-
-      const terminal: TerminalInstance = {
-        id,
-        kind,
-        type: legacyType,
-        agentId,
-        title,
-        worktreeId: options.worktreeId,
-        cwd: options.cwd ?? "",
-        cols: 80,
-        rows: 24,
-        agentState,
-        lastStateChange,
-        location,
-        command: options.command,
-        // Initialize grid terminals as visible to avoid initial under-throttling
-        // IntersectionObserver will update this once mounted
-        isVisible: location === "grid" ? true : false,
-        runtimeStatus,
-        isInputLocked: options.isInputLocked,
-        exitBehavior: options.exitBehavior,
-        agentSessionId: options.agentSessionId,
-        agentLaunchFlags: options.agentLaunchFlags,
-        agentModelId: options.agentModelId,
-        extensionState: options.extensionState,
-        spawnedBy: options.spawnedBy,
-        startedAt: Date.now(),
-      };
-
-      if (isHydrationBatchActive()) {
-        collectForBatch({ terminal, isReconnect });
-      } else {
-        set((state) => {
-          const existing = state.panelsById[id];
-          if (existing) {
-            // Update existing terminal in place (reconnection case or double hydration)
-            logDebug("[TerminalStore] Terminal already exists, updating instead of adding", { id });
-            // Preserve existing agentState/lastStateChange/exitBehavior if new values are undefined
-            const preservedTerminal = isReconnect
-              ? {
-                  ...terminal,
-                  agentState: terminal.agentState ?? existing.agentState,
-                  lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
-                  exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
-                  extensionState: terminal.extensionState ?? existing.extensionState,
-                }
-              : terminal;
-            const newById = { ...state.panelsById, [id]: preservedTerminal };
-            saveNormalized(newById, state.panelIds);
-            return { panelsById: newById };
-          }
-          const newById = { ...state.panelsById, [id]: terminal };
-          const newIds = [...state.panelIds, id];
-          saveNormalized(newById, newIds);
-          return { panelsById: newById, panelIds: newIds };
-        });
       }
 
       // Determine if terminal should start backgrounded:

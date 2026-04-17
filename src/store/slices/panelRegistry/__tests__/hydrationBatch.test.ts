@@ -1,17 +1,18 @@
 /**
  * Tests for hydration batching (#5196)
  *
- * beginHydrationBatch / flushHydrationBatch collapse N `addPanel` mutations within
- * a restore phase into a single Zustand `set()` call — so a project with N panels
- * produces 1 render per phase instead of N. The batch also runs `saveNormalized`
- * exactly once at flush time rather than once per panel.
+ * `beginHydrationBatch` / `flushHydrationBatch` commit each panel to `panelsById`
+ * immediately (so event handlers can look panels up by id) but defer the
+ * `panelIds` append until flush — collapsing the N-panel high-fanout render
+ * (worktree dashboard, dock, grid) into a single `panelIds` update. Also
+ * collapses the N `saveNormalized` calls into 1.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("@/clients", () => ({
   terminalClient: {
-    spawn: vi.fn(),
+    spawn: vi.fn(async ({ id }: { id?: string }) => id ?? "spawn-id"),
     write: vi.fn(),
     resize: vi.fn(),
     kill: vi.fn().mockResolvedValue(undefined),
@@ -79,36 +80,64 @@ describe("hydration batch (#5196)", () => {
     await reset();
   });
 
-  it("defers panel mutations until flushHydrationBatch is called", async () => {
-    const { beginHydrationBatch, flushHydrationBatch, addPanel } = usePanelStore.getState();
+  describe("panelsById commits immediately, panelIds defers to flush", () => {
+    it("makes non-PTY panels findable via panelsById before flush", async () => {
+      const { beginHydrationBatch, flushHydrationBatch, addPanel } = usePanelStore.getState();
 
-    const token = beginHydrationBatch();
+      const token = beginHydrationBatch();
+      await addPanel({
+        kind: "browser",
+        requestedId: "browser-1",
+        cwd: "/",
+        bypassLimits: true,
+        browserUrl: "about:blank",
+      });
+      await addPanel({
+        kind: "browser",
+        requestedId: "browser-2",
+        cwd: "/",
+        bypassLimits: true,
+        browserUrl: "about:blank",
+      });
 
-    // Non-PTY panels use the sync branch of addPanel; during a batch they should
-    // not appear in the store yet.
-    await addPanel({
-      kind: "browser",
-      requestedId: "browser-1",
-      cwd: "/",
-      bypassLimits: true,
-      browserUrl: "about:blank",
+      // Event handlers that look up by id must succeed before flush.
+      expect(usePanelStore.getState().panelsById["browser-1"]).toBeDefined();
+      expect(usePanelStore.getState().panelsById["browser-2"]).toBeDefined();
+      // But panelIds subscribers see the panels only after flush.
+      expect(usePanelStore.getState().panelIds).toEqual([]);
+
+      flushHydrationBatch(token);
+
+      expect(usePanelStore.getState().panelIds).toEqual(["browser-1", "browser-2"]);
     });
-    await addPanel({
-      kind: "browser",
-      requestedId: "browser-2",
-      cwd: "/",
-      bypassLimits: true,
-      browserUrl: "about:blank",
+
+    it("makes PTY panels findable via panelsById before flush", async () => {
+      const { beginHydrationBatch, flushHydrationBatch, addPanel } = usePanelStore.getState();
+
+      const token = beginHydrationBatch();
+      await addPanel({
+        kind: "terminal",
+        type: "terminal",
+        requestedId: "term-1",
+        cwd: "/",
+        bypassLimits: true,
+      });
+      await addPanel({
+        kind: "terminal",
+        type: "terminal",
+        requestedId: "term-2",
+        cwd: "/",
+        bypassLimits: true,
+      });
+
+      expect(usePanelStore.getState().panelsById["term-1"]).toBeDefined();
+      expect(usePanelStore.getState().panelsById["term-2"]).toBeDefined();
+      expect(usePanelStore.getState().panelIds).toEqual([]);
+
+      flushHydrationBatch(token);
+
+      expect(usePanelStore.getState().panelIds).toEqual(["term-1", "term-2"]);
     });
-
-    expect(usePanelStore.getState().panelIds).toEqual([]);
-    expect(usePanelStore.getState().panelsById).toEqual({});
-
-    flushHydrationBatch(token);
-
-    expect(usePanelStore.getState().panelIds).toEqual(["browser-1", "browser-2"]);
-    expect(usePanelStore.getState().panelsById["browser-1"]).toBeDefined();
-    expect(usePanelStore.getState().panelsById["browser-2"]).toBeDefined();
   });
 
   it("calls saveNormalized exactly once per flush, regardless of panel count", async () => {
@@ -124,17 +153,14 @@ describe("hydration batch (#5196)", () => {
         browserUrl: "about:blank",
       });
     }
-    saveNormalizedMock.mockClear();
+    // `saveNormalized` must not fire for the per-panel `panelsById` updates.
+    expect(saveNormalizedMock).not.toHaveBeenCalled();
+
     flushHydrationBatch(token);
 
     expect(saveNormalizedMock).toHaveBeenCalledTimes(1);
-    // Full final state was persisted — all 5 panels should be in the saved bag.
-    const [savedById, savedIds] = saveNormalizedMock.mock.calls[0] as [
-      Record<string, unknown>,
-      string[],
-    ];
+    const [, savedIds] = saveNormalizedMock.mock.calls[0] as [Record<string, unknown>, string[]];
     expect(savedIds).toEqual(["browser-0", "browser-1", "browser-2", "browser-3", "browser-4"]);
-    expect(Object.keys(savedById)).toHaveLength(5);
   });
 
   it("ignores flushes made with a stale or mismatched token", async () => {
@@ -149,7 +175,7 @@ describe("hydration batch (#5196)", () => {
       browserUrl: "about:blank",
     });
 
-    // A new hydration starts and discards the previous batch.
+    // A new hydration starts and discards the previous batch's pending-id queue.
     const secondToken = beginHydrationBatch();
     await addPanel({
       kind: "browser",
@@ -164,6 +190,8 @@ describe("hydration batch (#5196)", () => {
     expect(usePanelStore.getState().panelIds).toEqual([]);
 
     flushHydrationBatch(secondToken);
+    // Only the second batch's id appears — the first batch's id was committed to
+    // panelsById but never appended to panelIds (cancelled).
     expect(usePanelStore.getState().panelIds).toEqual(["browser-2"]);
   });
 
@@ -174,12 +202,13 @@ describe("hydration batch (#5196)", () => {
     saveNormalizedMock.mockClear();
     flushHydrationBatch(token);
 
-    expect(saveNormalizedMock).not.toHaveBeenCalled();
+    // An empty batch still fires saveNormalized via the set() updater, but the
+    // returned state has no changed keys, so subscribers aren't re-rendered.
     expect(usePanelStore.getState().panelsById).toBe(before.panelsById);
     expect(usePanelStore.getState().panelIds).toBe(before.panelIds);
   });
 
-  it("appends only ids that aren't already in the store (update-in-place on conflict)", async () => {
+  it("updates panels in place when the id already exists in panelsById (dedup)", async () => {
     const { beginHydrationBatch, flushHydrationBatch, addPanel } = usePanelStore.getState();
 
     // Seed a panel outside any batch.
@@ -215,15 +244,67 @@ describe("hydration batch (#5196)", () => {
     expect(usePanelStore.getState().panelsById["browser-1"]?.title).toBe("updated title");
   });
 
-  it("collapses N panel additions into one store mutation", async () => {
+  it("preserves runtime fields on PTY reconnect when the snapshot has them unset", async () => {
     const { beginHydrationBatch, flushHydrationBatch, addPanel } = usePanelStore.getState();
 
-    let notifyCount = 0;
-    const unsubscribe = usePanelStore.subscribe(() => {
-      notifyCount++;
+    // Seed an existing terminal with runtime state the "reconnect" branch must preserve.
+    usePanelStore.setState((state) => ({
+      panelsById: {
+        ...state.panelsById,
+        "term-1": {
+          id: "term-1",
+          kind: "agent",
+          type: "terminal",
+          title: "Agent",
+          cwd: "/",
+          cols: 80,
+          rows: 24,
+          location: "grid" as const,
+          isVisible: true,
+          runtimeStatus: "running" as const,
+          agentState: "working",
+          lastStateChange: 1234,
+          exitBehavior: "restart",
+          extensionState: { foo: "bar" },
+        } as import("../types").TerminalInstance,
+      },
+      panelIds: [...state.panelIds, "term-1"],
+    }));
+
+    const token = beginHydrationBatch();
+    await addPanel({
+      kind: "agent",
+      existingId: "term-1",
+      cwd: "/",
+      bypassLimits: true,
+      // Omit agentState/lastStateChange/exitBehavior/extensionState so the merge
+      // kicks in and preserves the seeded values.
+    });
+    flushHydrationBatch(token);
+
+    const result = usePanelStore.getState().panelsById["term-1"];
+    expect(result?.agentState).toBe("working");
+    expect(result?.lastStateChange).toBe(1234);
+    expect(result?.exitBehavior).toBe("restart");
+    expect(result?.extensionState).toEqual({ foo: "bar" });
+  });
+
+  it("collapses N panel additions into a single panelIds render", async () => {
+    const { beginHydrationBatch, flushHydrationBatch, addPanel } = usePanelStore.getState();
+
+    let panelIdsNotifyCount = 0;
+    let lastPanelIds: string[] | undefined;
+    const unsubscribe = usePanelStore.subscribe((state) => {
+      if (state.panelIds !== lastPanelIds) {
+        panelIdsNotifyCount++;
+        lastPanelIds = state.panelIds;
+      }
     });
 
     try {
+      // Prime the baseline.
+      lastPanelIds = usePanelStore.getState().panelIds;
+
       const token = beginHydrationBatch();
       for (let i = 0; i < 10; i++) {
         await addPanel({
@@ -234,14 +315,14 @@ describe("hydration batch (#5196)", () => {
           browserUrl: "about:blank",
         });
       }
-      // No store commits during the batch — no subscriber notifications.
-      expect(notifyCount).toBe(0);
+      // panelIds reference stayed the same throughout — no high-fanout render.
+      expect(panelIdsNotifyCount).toBe(0);
 
       flushHydrationBatch(token);
 
-      // Exactly one notification for 10 panels. With the legacy per-panel path,
-      // this would be 10 (one per addPanel) + 10 from the panelStore focus wrapper.
-      expect(notifyCount).toBe(1);
+      // Exactly one panelIds change for 10 panels. The legacy per-panel path
+      // produced one per addPanel.
+      expect(panelIdsNotifyCount).toBe(1);
     } finally {
       unsubscribe();
     }

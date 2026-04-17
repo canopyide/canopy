@@ -50,6 +50,27 @@ export function useAppHydration(enabled = true) {
           beginHydrationBatch,
           flushHydrationBatch,
         });
+
+        // Pick an initial focused panel now that hydration is done. The legacy
+        // path set focus opportunistically inside `panelStore.addPanel` on every
+        // grid panel, ending on whichever was added last. The batched path skips
+        // that set (it would defeat the batch), so `focusedId` would otherwise be
+        // null after hydration — breaking any action keyed off the focused panel.
+        const panelState = usePanelStore.getState();
+        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+        if (panelState.focusedId === null && panelState.panelIds.length > 0) {
+          const firstGridPanelId = panelState.panelIds.find((panelId) => {
+            const panel = panelState.panelsById[panelId];
+            return (
+              panel &&
+              panel.location === "grid" &&
+              (panel.worktreeId ?? null) === (activeWorktreeId ?? null)
+            );
+          });
+          if (firstGridPanelId) {
+            panelState.setFocused(firstGridPanelId);
+          }
+        }
       } catch (error) {
         console.error("Failed to restore app state:", error);
       } finally {
