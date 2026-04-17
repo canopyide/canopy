@@ -155,11 +155,6 @@ export function initStoreOrchestrator(): () => void {
     )
   );
 
-  // Registered last so reverse-order disposal cancels the pending debounce
-  // BEFORE store subscriptions unwind — matching the previous explicit
-  // `debouncedPersistMruList.cancel()` call at the top of destroy.
-  disposables.add(toDisposable(() => debouncedPersistMruList.cancel()));
-
   cleanupFn = () => {
     disposables.dispose();
     cleanupFn = null;
@@ -169,5 +164,10 @@ export function initStoreOrchestrator(): () => void {
 }
 
 export function destroyStoreOrchestrator(): void {
+  // Kept out of the DisposableStore on purpose: only `destroyStoreOrchestrator`
+  // cancels the pending debounce. HMR teardown (`import.meta.hot.dispose` in
+  // `main.tsx`) calls the cleanup fn directly and intentionally does NOT cancel,
+  // matching pre-refactor behavior.
+  debouncedPersistMruList.cancel();
   cleanupFn?.();
 }
