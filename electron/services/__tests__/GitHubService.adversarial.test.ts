@@ -275,6 +275,66 @@ describe("GitHubService adversarial", () => {
     );
   });
 
+  it("LISTISSUES_SEARCH_OMITTED_SORTORDER_USES_CREATED_DESC", async () => {
+    shared.graphqlClient.mockResolvedValueOnce({
+      search: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    });
+
+    await github.listIssues({ cwd: "/repo", search: "label:bug" });
+
+    const searchQuery = shared.graphqlClient.mock.calls[0]?.[1]?.searchQuery as string;
+    expect(searchQuery).toContain("sort:created-desc");
+    expect(searchQuery).not.toContain("sort:updated-desc");
+  });
+
+  it("LISTISSUES_SEARCH_CREATED_SORTORDER_USES_CREATED_DESC", async () => {
+    shared.graphqlClient.mockResolvedValueOnce({
+      search: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    });
+
+    await github.listIssues({ cwd: "/repo", search: "label:bug", sortOrder: "created" });
+
+    const searchQuery = shared.graphqlClient.mock.calls[0]?.[1]?.searchQuery as string;
+    expect(searchQuery).toContain("sort:created-desc");
+    expect(searchQuery).not.toContain("sort:updated-desc");
+  });
+
+  it("LISTISSUES_SEARCH_UPDATED_SORTORDER_USES_UPDATED_DESC", async () => {
+    shared.graphqlClient.mockResolvedValueOnce({
+      search: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    });
+
+    await github.listIssues({ cwd: "/repo", search: "label:bug", sortOrder: "updated" });
+
+    const searchQuery = shared.graphqlClient.mock.calls[0]?.[1]?.searchQuery as string;
+    expect(searchQuery).toContain("sort:updated-desc");
+    expect(searchQuery).not.toContain("sort:created-desc");
+  });
+
+  it("LISTPRS_SEARCH_OMITTED_SORTORDER_USES_CREATED_DESC", async () => {
+    shared.graphqlClient.mockResolvedValueOnce({
+      search: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    });
+
+    await github.listPullRequests({ cwd: "/repo", search: "label:bug" });
+
+    const searchQuery = shared.graphqlClient.mock.calls[0]?.[1]?.searchQuery as string;
+    expect(searchQuery).toContain("sort:created-desc");
+    expect(searchQuery).not.toContain("sort:updated-desc");
+  });
+
+  it("LISTPRS_SEARCH_UPDATED_SORTORDER_USES_UPDATED_DESC", async () => {
+    shared.graphqlClient.mockResolvedValueOnce({
+      search: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    });
+
+    await github.listPullRequests({ cwd: "/repo", search: "label:bug", sortOrder: "updated" });
+
+    const searchQuery = shared.graphqlClient.mock.calls[0]?.[1]?.searchQuery as string;
+    expect(searchQuery).toContain("sort:updated-desc");
+    expect(searchQuery).not.toContain("sort:created-desc");
+  });
+
   it("NULLABLE_MISSING_FIELDS_SAFE_DEFAULTS", async () => {
     shared.graphqlClient
       .mockResolvedValueOnce({
