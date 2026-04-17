@@ -279,8 +279,26 @@ describe("WorkspaceService adversarial", () => {
       }
     }
 
-    // Guard against accidentally drifting onto the fromRemote=true --track
-    // path, which still writes to .git/config and reintroduces lock contention.
-    expect(mockSimpleGit.raw).toHaveBeenCalledWith(expect.arrayContaining(["--no-track"]));
+    // Each result must bind to a distinct requestId — rules out duplicated /
+    // misrouted success events silently satisfying the count check above.
+    const requestIds = new Set(resultEvents.map((e) => e.requestId));
+    expect(requestIds.size).toBe(10);
+    for (let i = 0; i < 10; i++) {
+      expect(requestIds.has(`req-stress-${i}`)).toBe(true);
+    }
+
+    // Guard against drifting onto the fromRemote=true --track path, which
+    // still writes to .git/config and reintroduces lock contention. Inspect
+    // every `worktree add` argv so a partial drift (9 of 10 on --no-track)
+    // still fails, unlike an `arrayContaining` smoke check.
+    const worktreeAddCalls = mockSimpleGit.raw.mock.calls.filter(
+      (call): call is [string[]] =>
+        Array.isArray(call[0]) && call[0][0] === "worktree" && call[0][1] === "add"
+    );
+    expect(worktreeAddCalls).toHaveLength(10);
+    for (const [argv] of worktreeAddCalls) {
+      expect(argv).toContain("--no-track");
+      expect(argv).not.toContain("--track");
+    }
   });
 });
