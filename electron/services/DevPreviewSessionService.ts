@@ -367,6 +367,7 @@ export class DevPreviewSessionService {
             this.updateSession(session, {
               status: "stopped",
               url: null,
+              assignedUrl: null,
               error: null,
               terminalId: null,
               isRestarting: false,
@@ -378,6 +379,7 @@ export class DevPreviewSessionService {
             this.updateSession(session, {
               status: "error",
               url: null,
+              assignedUrl: null,
               error: { type: "unknown", message: `Failed to stop dev preview: ${message}` },
               terminalId: null,
               isRestarting: false,
@@ -406,6 +408,7 @@ export class DevPreviewSessionService {
             this.updateSession(session, {
               status: "stopped",
               url: null,
+              assignedUrl: null,
               error: null,
               terminalId: null,
               isRestarting: false,
