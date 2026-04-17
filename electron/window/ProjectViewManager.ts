@@ -7,6 +7,7 @@
 
 import { BrowserWindow, WebContentsView, session } from "electron";
 import path from "path";
+import { performance } from "node:perf_hooks";
 import {
   registerWebContents,
   registerAppView,
@@ -21,6 +22,7 @@ import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { notifyError } from "../ipc/errorHandlers.js";
+import { logInfo } from "../utils/logger.js";
 import { injectSkeletonCss } from "./skeletonCss.js";
 
 const GC_DELAY_MS = 100;
@@ -29,6 +31,8 @@ const CRASH_LOOP_WINDOW_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
 
 type ViewState = "loading" | "active" | "cached";
+
+type EvictionReason = "lru" | "pressure" | "limit-change";
 
 interface ViewEntry {
   view: WebContentsView;
@@ -64,6 +68,7 @@ export class ProjectViewManager {
   private windowRegistry?: import("./WindowRegistry.js").WindowRegistry;
   private switchChain: Promise<void> = Promise.resolve();
   private resizeHandler: (() => void) | null = null;
+  private evictionTimestamps = new Map<string, number>();
 
   constructor(win: BrowserWindow, opts: ProjectViewManagerOptions) {
     this.win = win;
@@ -154,6 +159,21 @@ export class ProjectViewManager {
     // Try to activate cached view
     const cached = this.views.get(projectId);
     if (cached && !cached.view.webContents.isDestroyed()) {
+      // "revival" measures time since this projectId was last evicted — not time
+      // since the current cached view (a cold-started successor) was last active.
+      // Eviction destroys the original view, so any cache hit for a previously-
+      // evicted projectId necessarily hits a later cold-started entry. The
+      // timestamp persists across the cold-start so cache-pressure signals stay
+      // observable at the project level. Consumed on read to fire only once per
+      // eviction → return cycle.
+      const evictedAt = this.evictionTimestamps.get(projectId);
+      if (evictedAt !== undefined) {
+        logInfo("projectview.revival", {
+          projectId,
+          timeSinceEvictionMs: Date.now() - evictedAt,
+        });
+        this.evictionTimestamps.delete(projectId);
+      }
       this.activateView(cached);
       return { view: cached.view, isNew: false };
     }
@@ -163,6 +183,7 @@ export class ProjectViewManager {
       this.cleanupEntry(projectId);
     }
 
+    const coldStartAt = performance.now();
     const view = this.createView(projectId);
     const entry: ViewEntry = {
       view,
@@ -194,6 +215,10 @@ export class ProjectViewManager {
     try {
       // Load the renderer with projectId context
       await this.loadView(view, projectId);
+      logInfo("projectview.coldstart", {
+        projectId,
+        durationMs: Math.round(performance.now() - coldStartAt),
+      });
     } catch (loadError) {
       // Rollback: clean up the failed new view
       this.cleanupEntry(projectId);
@@ -221,7 +246,7 @@ export class ProjectViewManager {
     }
 
     // Evict LRU views if over limit
-    this.evictStaleViews();
+    this.evictStaleViews("lru");
 
     return { view, isNew: true };
   }
@@ -250,7 +275,7 @@ export class ProjectViewManager {
   setCachedViewLimit(n: number): void {
     const safe = Number.isFinite(n) ? n : 1;
     this.maxCachedViews = Math.max(1, Math.min(5, safe));
-    this.evictStaleViews();
+    this.evictStaleViews("limit-change");
   }
 
   destroyView(projectId: string): void {
@@ -280,6 +305,7 @@ export class ProjectViewManager {
     }
     this.views.clear();
     this.webContentsToProject.clear();
+    this.evictionTimestamps.clear();
     this.activeProjectId = null;
   }
 
@@ -597,7 +623,7 @@ export class ProjectViewManager {
     this.views.delete(projectId);
   }
 
-  private evictStaleViews(): void {
+  private evictStaleViews(reason: EvictionReason): void {
     if (this.views.size <= this.maxCachedViews) return;
     if (this.activeProjectId === null) return;
 
@@ -606,8 +632,10 @@ export class ProjectViewManager {
       .sort(([, a], [, b]) => a.lastUsed - b.lastUsed);
 
     while (this.views.size > this.maxCachedViews && evictable.length > 0) {
-      const [projectId] = evictable.shift()!;
-      console.log(`[ProjectViewManager] Evicting cached view for project: ${projectId}`);
+      const [projectId, entry] = evictable.shift()!;
+      const ageMs = Date.now() - entry.lastUsed;
+      logInfo("projectview.eviction", { projectId, reason, ageMs });
+      this.evictionTimestamps.set(projectId, Date.now());
       this.cleanupEntry(projectId);
     }
   }
