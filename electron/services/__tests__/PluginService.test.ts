@@ -963,8 +963,9 @@ describe("deprecated renderer field", () => {
     await service.initialize();
 
     expect(service.listPlugins()).toHaveLength(1);
-    const rendererWarns = warnSpy.mock.calls.filter((call) =>
-      call[0]?.includes("uses deprecated 'renderer' field")
+    const rendererWarns = warnSpy.mock.calls.filter(
+      (call: unknown[]) =>
+        typeof call[0] === "string" && call[0].includes("uses deprecated 'renderer' field")
     );
     expect(rendererWarns).toHaveLength(1);
   });
