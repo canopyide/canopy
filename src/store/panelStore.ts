@@ -196,7 +196,10 @@ export const usePanelStore = create<PanelGridState>()((set, get, api) => {
       const state = get();
       const terminalToTrash = state.panelsById[id];
       if (terminalToTrash && terminalToTrash.location !== "trash") {
-        set({ lastClosedConfig: buildPanelSnapshotOptions(terminalToTrash) });
+        const snapshot = buildPanelSnapshotOptions(terminalToTrash);
+        if (snapshot !== null) {
+          set({ lastClosedConfig: snapshot });
+        }
       }
 
       registrySlice.trashPanel(id);
@@ -246,7 +249,10 @@ export const usePanelStore = create<PanelGridState>()((set, get, api) => {
         group && panelIdsInGroup.includes(state.focusedId ?? "") ? state.focusedId! : panelId;
       const snapshotSource = state.panelsById[snapshotSourceId];
       if (snapshotSource && snapshotSource.location !== "trash") {
-        set({ lastClosedConfig: buildPanelSnapshotOptions(snapshotSource) });
+        const snapshot = buildPanelSnapshotOptions(snapshotSource);
+        if (snapshot !== null) {
+          set({ lastClosedConfig: snapshot });
+        }
       }
 
       registrySlice.trashPanelGroup(panelId);

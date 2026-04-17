@@ -69,26 +69,17 @@ function buildDevPreviewOptions(panel: TerminalInstance) {
  * Does not include location — callers inject it at use time.
  *
  * Called synchronously from `trashPanel` / `trashPanelGroup` — must not throw.
- * If an agent panel has missing `command` or `agentId` (stale historical data),
- * falls back to a terminal-kind snapshot so reopen doesn't break.
+ * Returns `null` for broken agent panels (missing `command` or `agentId`).
+ * Callers should treat `null` as "don't overwrite lastClosedConfig". Returning
+ * a terminal-kind fallback is unsafe: `addPanel` re-derives `kind: "agent"`
+ * from `agentId` on reopen (core.ts), resurrecting the #5211 bare-shell bug.
  */
-export function buildPanelSnapshotOptions(panel: TerminalInstance): AddPanelOptions {
+export function buildPanelSnapshotOptions(panel: TerminalInstance): AddPanelOptions | null {
   const kind = panel.kind ?? "terminal";
 
   if (kind === "agent") {
     if (!panel.agentId || !panel.command) {
-      return {
-        kind: "terminal",
-        type: panel.type,
-        agentId: panel.agentId,
-        cwd: panel.cwd || "",
-        worktreeId: panel.worktreeId,
-        exitBehavior: panel.exitBehavior,
-        isInputLocked: panel.isInputLocked,
-        agentModelId: panel.agentModelId,
-        agentLaunchFlags: panel.agentLaunchFlags ? [...panel.agentLaunchFlags] : undefined,
-        command: panel.command,
-      };
+      return null;
     }
     return {
       kind: "agent",
