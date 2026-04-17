@@ -1,7 +1,11 @@
 import type { PanelLocation } from "@/types";
 import type { PanelRegistryStoreApi, PanelRegistrySlice } from "./types";
 import { terminalClient, agentSettingsClient, projectClient, systemClient } from "@/clients";
-import { generateAgentCommand, buildResumeCommand } from "@shared/types";
+import {
+  generateAgentCommand,
+  buildResumeCommand,
+  buildLaunchCommandFromFlags,
+} from "@shared/types";
 import type { AgentState } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
@@ -211,20 +215,37 @@ export const createRestartActions = (
 
       if (commandToRun === currentTerminal.command) {
         const persistedFlags = currentTerminal.agentLaunchFlags;
-        if (persistedFlags && persistedFlags.length > 0) {
-          const agentConfig = getAgentConfig(effectiveAgentId);
-          const baseCommand = agentConfig?.command || effectiveAgentId;
-          commandToRun = [baseCommand, ...persistedFlags].join(" ");
+        const hasPersistedFlags = Boolean(persistedFlags && persistedFlags.length > 0);
+        const agentConfig = getAgentConfig(effectiveAgentId);
+        const baseCommand = agentConfig?.command || effectiveAgentId;
+
+        if (hasPersistedFlags && effectiveAgentId !== "gemini") {
+          // Sync fast path: non-Gemini agents have no runtime-dynamic flag
+          // injection, so the persisted flags are the complete command.
+          commandToRun = buildLaunchCommandFromFlags(
+            baseCommand,
+            effectiveAgentId,
+            persistedFlags as string[]
+          );
         } else {
+          // Async path: either Gemini (needs clipboard directory re-injection)
+          // or no persisted flags (needs settings-derived fallback).
           try {
             const [agentSettings, tmpDir] = await Promise.all([
               agentSettingsClient.get(),
               systemClient.getTmpDir().catch(() => ""),
             ]);
-            if (agentSettings) {
-              const agentConfig = getAgentConfig(effectiveAgentId);
-              const baseCommand = agentConfig?.command || effectiveAgentId;
-              const clipboardDirectory = tmpDir ? `${tmpDir}/daintree-clipboard` : undefined;
+            const clipboardDirectory = tmpDir ? `${tmpDir}/daintree-clipboard` : undefined;
+            if (hasPersistedFlags) {
+              const entry = agentSettings?.agents?.[effectiveAgentId];
+              const shareClipboardDirectory = entry?.shareClipboardDirectory as boolean | undefined;
+              commandToRun = buildLaunchCommandFromFlags(
+                baseCommand,
+                effectiveAgentId,
+                persistedFlags as string[],
+                { clipboardDirectory, shareClipboardDirectory }
+              );
+            } else if (agentSettings) {
               commandToRun = generateAgentCommand(
                 baseCommand,
                 agentSettings.agents?.[effectiveAgentId] ?? {},

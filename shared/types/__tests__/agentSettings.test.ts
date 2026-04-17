@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildResumeCommand,
   buildAgentLaunchFlags,
+  buildLaunchCommandFromFlags,
   generateAgentCommand,
 } from "../agentSettings.js";
 
@@ -267,5 +268,85 @@ describe("generateAgentCommand with recipeArgs", () => {
     const recipeIdx = cmd.indexOf("--recipe-flag");
     const promptIdx = cmd.indexOf("Do the thing");
     expect(recipeIdx).toBeLessThan(promptIdx);
+  });
+});
+
+describe("buildLaunchCommandFromFlags", () => {
+  it("joins flag-style tokens raw", () => {
+    const cmd = buildLaunchCommandFromFlags("claude", "claude", [
+      "--dangerously-skip-permissions",
+      "--yolo",
+    ]);
+    expect(cmd).toBe("claude --dangerously-skip-permissions --yolo");
+  });
+
+  it("escapes non-flag positional tokens (e.g. model IDs, file paths)", () => {
+    const cmd = buildLaunchCommandFromFlags("claude", "claude", ["--model", "claude-opus-4-7"]);
+    // `--model` is flag-style (raw); `claude-opus-4-7` is positional (escaped).
+    expect(cmd).toBe("claude --model 'claude-opus-4-7'");
+  });
+
+  it("quotes tokens containing shell metacharacters to prevent injection", () => {
+    // A user customFlag like `--log /tmp/a;b.log` would split on `;` if not quoted.
+    const cmd = buildLaunchCommandFromFlags("claude", "claude", ["--log", "/tmp/a;b.log"]);
+    expect(cmd).toBe("claude --log '/tmp/a;b.log'");
+  });
+
+  it("escapes embedded single quotes in positional tokens", () => {
+    const cmd = buildLaunchCommandFromFlags("claude", "claude", ["--msg", "it's fine"]);
+    // POSIX single-quote escape: close, escape the quote, reopen.
+    expect(cmd).toBe("claude --msg 'it'\\''s fine'");
+  });
+
+  it("appends --include-directories for Gemini when clipboardDirectory is provided", () => {
+    const cmd = buildLaunchCommandFromFlags("gemini", "gemini", ["--yolo"], {
+      clipboardDirectory: "/tmp/daintree-clipboard",
+    });
+    expect(cmd).toContain("--yolo");
+    expect(cmd).toContain("--include-directories");
+    expect(cmd).toContain("/tmp/daintree-clipboard");
+  });
+
+  it("does not inject --include-directories for non-Gemini agents", () => {
+    const cmd = buildLaunchCommandFromFlags("claude", "claude", ["--yolo"], {
+      clipboardDirectory: "/tmp/daintree-clipboard",
+    });
+    expect(cmd).not.toContain("--include-directories");
+  });
+
+  it("skips --include-directories for Gemini when shareClipboardDirectory is false", () => {
+    const cmd = buildLaunchCommandFromFlags("gemini", "gemini", ["--yolo"], {
+      clipboardDirectory: "/tmp/daintree-clipboard",
+      shareClipboardDirectory: false,
+    });
+    expect(cmd).not.toContain("--include-directories");
+  });
+
+  it("skips --include-directories for Gemini when clipboardDirectory is missing", () => {
+    const cmd = buildLaunchCommandFromFlags("gemini", "gemini", ["--yolo"]);
+    expect(cmd).not.toContain("--include-directories");
+  });
+
+  it("deduplicates --include-directories when the same directory is already persisted", () => {
+    const cmd = buildLaunchCommandFromFlags(
+      "gemini",
+      "gemini",
+      ["--yolo", "--include-directories", "/tmp/daintree-clipboard"],
+      { clipboardDirectory: "/tmp/daintree-clipboard" }
+    );
+    const matches = cmd.match(/--include-directories/g) ?? [];
+    expect(matches).toHaveLength(1);
+  });
+
+  it("handles empty flag arrays safely", () => {
+    expect(buildLaunchCommandFromFlags("claude", "claude", [])).toBe("claude");
+  });
+
+  it("does not mutate the input flags array", () => {
+    const flags = ["--yolo"];
+    buildLaunchCommandFromFlags("gemini", "gemini", flags, {
+      clipboardDirectory: "/tmp/daintree-clipboard",
+    });
+    expect(flags).toEqual(["--yolo"]);
   });
 });

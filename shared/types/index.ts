@@ -270,6 +270,7 @@ export {
   generateAgentCommand,
   buildAgentLaunchFlags,
   buildResumeCommand,
+  buildLaunchCommandFromFlags,
 } from "./agentSettings.js";
 
 // User agent registry types - user-defined agent configuration

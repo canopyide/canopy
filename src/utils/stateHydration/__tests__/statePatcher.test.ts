@@ -18,12 +18,16 @@ const generateAgentCommandMock = vi.fn(
   (base: string, _settings: unknown, _id: string, _opts: unknown): string => `${base} --generated`
 );
 
-vi.mock("@shared/types", () => ({
-  generateAgentCommand: (...args: unknown[]) =>
-    generateAgentCommandMock(...(args as [string, unknown, string, unknown])),
-  buildResumeCommand: (...args: unknown[]) =>
-    buildResumeCommandMock(...(args as [string, string, string[]?])),
-}));
+vi.mock("@shared/types", async () => {
+  const actual = await vi.importActual<typeof import("@shared/types")>("@shared/types");
+  return {
+    ...actual,
+    generateAgentCommand: (...args: unknown[]) =>
+      generateAgentCommandMock(...(args as [string, unknown, string, unknown])),
+    buildResumeCommand: (...args: unknown[]) =>
+      buildResumeCommandMock(...(args as [string, string, string[]?])),
+  };
+});
 
 const {
   inferKind,
@@ -38,13 +42,14 @@ const {
 } = await import("../statePatcher");
 
 beforeEach(() => {
+  buildResumeCommandMock.mockReset();
   buildResumeCommandMock.mockImplementation(
     (agentId: string, sessionId: string) => `${agentId} --resume ${sessionId}`
   );
+  generateAgentCommandMock.mockReset();
   generateAgentCommandMock.mockImplementation(
     (base: string, _settings: unknown, _id: string, _opts: unknown) => `${base} --generated`
   );
-  generateAgentCommandMock.mockClear();
 });
 
 describe("inferKind", () => {
@@ -468,7 +473,8 @@ describe("buildArgsForRespawn", () => {
       false,
       "/tmp/clip"
     );
-    expect(result.command).toBe("claude --dangerously-skip-permissions --model claude-opus-4-7");
+    // `--...` flags pass through raw; the positional `claude-opus-4-7` is escaped.
+    expect(result.command).toBe("claude --dangerously-skip-permissions --model 'claude-opus-4-7'");
     expect(generateAgentCommandMock).not.toHaveBeenCalled();
   });
 
@@ -513,6 +519,69 @@ describe("buildArgsForRespawn", () => {
     );
     expect(result.command).toBe("claude --dangerously-skip-permissions");
     expect(generateAgentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("shell-escapes non-flag tokens in persisted agentLaunchFlags (defends against metachars)", () => {
+    // Simulates a user customFlag like `--log /tmp/a;b.log` persisted at launch time.
+    // The `/tmp/a;b.log` positional must be quoted so the shell doesn't split on `;`.
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: ["--log", "/tmp/a;b.log"],
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.command).toBe("claude --log '/tmp/a;b.log'");
+    expect(generateAgentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("re-injects --include-directories for Gemini on respawn (runtime-dynamic, excluded at capture)", () => {
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "gemini",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: ["--yolo"],
+      },
+      "agent",
+      "/p",
+      { agents: { gemini: {} } },
+      false,
+      "/tmp/daintree-clipboard"
+    );
+    expect(result.command).toContain("--yolo");
+    expect(result.command).toContain("--include-directories");
+    expect(result.command).toContain("/tmp/daintree-clipboard");
+    expect(generateAgentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("respects shareClipboardDirectory=false for Gemini on respawn", () => {
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "gemini",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: ["--yolo"],
+      },
+      "agent",
+      "/p",
+      { agents: { gemini: { shareClipboardDirectory: false } } },
+      false,
+      "/tmp/daintree-clipboard"
+    );
+    expect(result.command).not.toContain("--include-directories");
   });
 });
 
