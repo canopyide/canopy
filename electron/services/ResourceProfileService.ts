@@ -1,3 +1,4 @@
+import os from "os";
 import { app, powerMonitor } from "electron";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
@@ -16,8 +17,13 @@ const DOWNGRADE_HOLD_MS = 30_000;
 const UPGRADE_HOLD_MS = 60_000;
 const WARMUP_TICKS = 2;
 
-const MEMORY_THRESHOLD_HIGH_MB = 1200;
-const MEMORY_THRESHOLD_LOW_MB = 600;
+// Memory-pressure thresholds scale with device RAM so machines with very
+// different physical memory behave sensibly. On an 8 GB machine these
+// fractions evaluate to ~1229 MB / ~655 MB, preserving the originally-tuned
+// behavior; on a 64 GB machine they scale up to ~9830 MB / ~5243 MB, which
+// stops false "efficiency" drops when the app has plenty of headroom.
+const HIGH_FRACTION = 0.15;
+const LOW_FRACTION = 0.08;
 const WORKTREE_COUNT_HIGH = 8;
 
 export interface ResourceProfileDeps {
@@ -34,8 +40,14 @@ export class ResourceProfileService {
   private tickCount = 0;
   private disposed = false;
   private cachedWorktreeCount = 0;
+  private readonly memoryThresholdHighMb: number;
+  private readonly memoryThresholdLowMb: number;
 
-  constructor(private deps: ResourceProfileDeps) {}
+  constructor(private deps: ResourceProfileDeps) {
+    const totalRamMb = os.totalmem() / 1024 / 1024;
+    this.memoryThresholdHighMb = totalRamMb * HIGH_FRACTION;
+    this.memoryThresholdLowMb = totalRamMb * LOW_FRACTION;
+  }
 
   setWorktreeCount(count: number): void {
     this.cachedWorktreeCount = count;
@@ -117,9 +129,9 @@ export class ResourceProfileService {
         totalPrivateMb += (proc.memory.privateBytes ?? proc.memory.workingSetSize) / 1024;
       }
 
-      if (totalPrivateMb > MEMORY_THRESHOLD_HIGH_MB) {
+      if (totalPrivateMb > this.memoryThresholdHighMb) {
         pressureScore += 2;
-      } else if (totalPrivateMb > MEMORY_THRESHOLD_LOW_MB) {
+      } else if (totalPrivateMb > this.memoryThresholdLowMb) {
         pressureScore += 1;
       }
     } catch {

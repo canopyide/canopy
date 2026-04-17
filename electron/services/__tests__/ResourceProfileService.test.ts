@@ -24,10 +24,13 @@ vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
 }));
 
+import os from "os";
 import { app, powerMonitor } from "electron";
 import { broadcastToRenderer } from "../../ipc/utils.js";
 import { ResourceProfileService, type ResourceProfileDeps } from "../ResourceProfileService.js";
 import { RESOURCE_PROFILE_CONFIGS } from "../../../shared/types/resourceProfile.js";
+
+const EIGHT_GB = 8 * 1024 * 1024 * 1024;
 
 const mockGetAppMetrics = app.getAppMetrics as Mock;
 const mockIsOnBatteryPower = powerMonitor.isOnBatteryPower as unknown as Mock;
@@ -83,12 +86,16 @@ describe("ResourceProfileService", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    // Pin total RAM so threshold-crossing tests behave identically across CI hosts.
+    // 8 GB yields ~1229 MB HIGH / ~655 MB LOW, matching the originally-tuned constants.
+    vi.spyOn(os, "totalmem").mockReturnValue(EIGHT_GB);
     mockGetAppMetrics.mockReturnValue([]);
     mockIsOnBatteryPower.mockReturnValue(false);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("starts in balanced profile", () => {
@@ -288,6 +295,46 @@ describe("ResourceProfileService", () => {
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("efficiency");
+
+    service.stop();
+  });
+
+  it("scales thresholds up on high-RAM devices so 1.3 GB usage is not pressure", () => {
+    // 64 GB Mac: HIGH threshold = 9830 MB, LOW = 5243 MB.
+    // 1300 MB of privateBytes should contribute zero pressure, letting the
+    // service upgrade to "performance" instead of dropping to "efficiency".
+    vi.spyOn(os, "totalmem").mockReturnValue(64 * 1024 * 1024 * 1024);
+
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
+    mockIsOnBatteryPower.mockReturnValue(false);
+
+    // Warmup (2 ticks = 60s) + first real eval (30s) + 60s upgrade hold (2 ticks)
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("performance");
+
+    service.stop();
+  });
+
+  it("scales thresholds down on low-RAM devices so 500 MB usage is detected", () => {
+    // 4 GB machine: HIGH = 614 MB, LOW = 328 MB.
+    // 500 MB of privateBytes crosses the LOW band (score 1), preventing the
+    // service from upgrading to "performance" — it correctly stays "balanced".
+    vi.spyOn(os, "totalmem").mockReturnValue(4 * 1024 * 1024 * 1024);
+
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 500)]);
+    mockIsOnBatteryPower.mockReturnValue(false);
+
+    // Warmup + full upgrade hold — enough time to transition if score were 0.
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("balanced");
 
     service.stop();
   });
