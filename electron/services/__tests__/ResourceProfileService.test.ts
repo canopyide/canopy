@@ -321,18 +321,20 @@ describe("ResourceProfileService", () => {
 
   it("scales thresholds down on low-RAM devices so 500 MB usage is detected", () => {
     // 4 GB machine: HIGH = 614 MB, LOW = 328 MB.
-    // 500 MB of privateBytes crosses the LOW band (score 1), preventing the
-    // service from upgrading to "performance" — it correctly stays "balanced".
+    // 500 MB of privateBytes must score LOW (+1), not HIGH (+2). To discriminate,
+    // pair with 10 worktrees (+1). LOW + worktrees = 2 → balanced;
+    // HIGH + worktrees = 3 → efficiency. The "balanced" assertion only passes
+    // if the 500 MB reading was scored as LOW.
     vi.spyOn(os, "totalmem").mockReturnValue(4 * 1024 * 1024 * 1024);
 
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    service.setWorktreeCount(10);
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 500)]);
     mockIsOnBatteryPower.mockReturnValue(false);
 
-    // Warmup + full upgrade hold — enough time to transition if score were 0.
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("balanced");
 
