@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import type React from "react";
+import { useShallow } from "zustand/react/shallow";
 import { usePortalStore } from "@/store";
 import { cn } from "@/lib/utils";
 import { PortalToolbar } from "./PortalToolbar";
@@ -23,7 +24,17 @@ import {
 import { getElementBoundsAsDip } from "@/lib/portalBounds";
 
 export function PortalDock() {
-  const { width, activeTabId, tabs, links, setWidth, setOpen, defaultNewTabUrl } = usePortalStore();
+  const { width, activeTabId, tabs, links, setWidth, setOpen, defaultNewTabUrl } = usePortalStore(
+    useShallow((s) => ({
+      width: s.width,
+      activeTabId: s.activeTabId,
+      tabs: s.tabs,
+      links: s.links,
+      setWidth: s.setWidth,
+      setOpen: s.setOpen,
+      defaultNewTabUrl: s.defaultNewTabUrl,
+    }))
+  );
   const contentRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);

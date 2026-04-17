@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useNotificationStore, type Notification } from "@/store/notificationStore";
 
@@ -54,8 +55,8 @@ export interface GridNotificationBarProps {
 }
 
 export function GridNotificationBar({ className }: GridNotificationBarProps) {
-  const notification = useNotificationStore((state) =>
-    state.notifications.find((item) => item.placement === "grid-bar")
+  const notification = useNotificationStore(
+    useShallow((state) => state.notifications.find((item) => item.placement === "grid-bar"))
   );
   const removeNotification = useNotificationStore((state) => state.removeNotification);
 
