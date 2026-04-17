@@ -348,6 +348,86 @@ describe("toolbarPreferencesStore", () => {
       expect(store.getState().layout.leftButtons).toBeDefined();
     });
 
+    it("v4→v5 strips built-in agent IDs from hiddenButtons", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-tray", "claude", "gemini", "terminal"],
+              rightButtons: ["settings"],
+              hiddenButtons: ["claude", "notes", "gemini"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 4,
+        })
+      );
+
+      const store = await loadStore();
+      const { layout } = store.getState();
+      // Agent IDs stripped; non-agent entries preserved.
+      expect(layout.hiddenButtons).toEqual(["notes"]);
+      // Ordering arrays untouched.
+      expect(layout.leftButtons).toContain("claude");
+      expect(layout.leftButtons).toContain("gemini");
+    });
+
+    it("v4→v5 strips every built-in agent ID including rarer ones", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-tray", "terminal"],
+              rightButtons: ["settings"],
+              hiddenButtons: ["claude", "gemini", "codex", "opencode", "cursor", "notes"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 4,
+        })
+      );
+
+      const store = await loadStore();
+      expect(store.getState().layout.hiddenButtons).toEqual(["notes"]);
+    });
+
+    it("v4→v5 leaves hiddenButtons untouched when no agent IDs are present", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["agent-tray", "terminal"],
+              rightButtons: ["settings"],
+              hiddenButtons: ["notes", "copy-tree"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 4,
+        })
+      );
+
+      const store = await loadStore();
+      expect(store.getState().layout.hiddenButtons).toEqual(["notes", "copy-tree"]);
+    });
+
+    it("v4→v5 handles missing layout without throwing", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 4,
+        })
+      );
+
+      const store = await loadStore();
+      expect(store.getState().layout.leftButtons).toBeDefined();
+    });
+
     it("migrates v0 state through all migrations", async () => {
       storageMock.setItem(
         STORAGE_KEY,
