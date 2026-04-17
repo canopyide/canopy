@@ -242,6 +242,7 @@ export class DevPreviewSessionService {
         envChanged;
 
       session.cwd = request.cwd;
+      const prevWorktreeId = session.worktreeId;
       session.worktreeId = request.worktreeId;
       session.devCommand = request.devCommand;
       session.turbopackEnabled = nextTurbopackEnabled;
@@ -249,6 +250,9 @@ export class DevPreviewSessionService {
         session.env = cloneEnv(request.env);
       }
 
+      if (prevWorktreeId && prevWorktreeId !== session.worktreeId) {
+        this.worktreeToSession.delete(prevWorktreeId);
+      }
       if (session.worktreeId) {
         const key = createSessionKey(session.projectId, session.panelId);
         this.worktreeToSession.set(session.worktreeId, key);
@@ -661,7 +665,7 @@ export class DevPreviewSessionService {
     this.portRegistry.set(sessionKey, port);
     const assignedUrl = `http://localhost:${port}`;
 
-    const spawnEnv: Record<string, string> = { PORT: String(port), ...session.env };
+    const spawnEnv: Record<string, string> = { ...session.env, PORT: String(port) };
 
     session.buffer = "";
     session.lastErrorKey = null;
@@ -927,6 +931,7 @@ export class DevPreviewSessionService {
       this.updateSession(session, {
         status: "error",
         url: null,
+        assignedUrl: null,
         error: {
           type: "missing-dependencies",
           message: `Dependency installation failed (exit code ${exitCode})`,
@@ -952,6 +957,7 @@ export class DevPreviewSessionService {
       this.updateSession(session, {
         status: "error",
         url: null,
+        assignedUrl: null,
         error,
         terminalId: null,
         isRestarting: false,
@@ -962,6 +968,7 @@ export class DevPreviewSessionService {
     this.updateSession(session, {
       status: "stopped",
       url: null,
+      assignedUrl: null,
       error: null,
       terminalId: null,
       isRestarting: false,
