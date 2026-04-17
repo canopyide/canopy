@@ -6,6 +6,7 @@ import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { DEFAULT_COPYTREE_FORMAT } from "@/lib/copyTreeFormat";
 import { notify } from "@/lib/notify";
+import { getVisibleWorktreesForCycling } from "@/lib/worktreeCyclingOrder";
 
 export function registerWorktreeActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   // Query action: list all worktrees with metadata
@@ -281,9 +282,9 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      const worktrees = callbacks.getWorktrees();
-      if (worktrees.length === 0) return;
       const activeWorktreeId = callbacks.getActiveWorktreeId();
+      const worktrees = getVisibleWorktreesForCycling(activeWorktreeId);
+      if (worktrees.length === 0) return;
       const currentIndex = activeWorktreeId
         ? worktrees.findIndex((w) => w.id === activeWorktreeId)
         : -1;
@@ -301,9 +302,9 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      const worktrees = callbacks.getWorktrees();
-      if (worktrees.length === 0) return;
       const activeWorktreeId = callbacks.getActiveWorktreeId();
+      const worktrees = getVisibleWorktreesForCycling(activeWorktreeId);
+      if (worktrees.length === 0) return;
       const currentIndex = activeWorktreeId
         ? worktrees.findIndex((w) => w.id === activeWorktreeId)
         : -1;
@@ -325,7 +326,8 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     argsSchema: z.object({ index: z.number().int().min(1).max(9) }),
     run: async (args: unknown) => {
       const { index } = args as { index: number };
-      const worktrees = callbacks.getWorktrees();
+      const activeWorktreeId = callbacks.getActiveWorktreeId();
+      const worktrees = getVisibleWorktreesForCycling(activeWorktreeId);
       if (worktrees.length >= index) {
         useWorktreeSelectionStore.getState().selectWorktree(worktrees[index - 1].id);
       }
@@ -344,7 +346,8 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       danger: "safe",
       scope: "renderer",
       run: async () => {
-        const worktrees = callbacks.getWorktrees();
+        const activeWorktreeId = callbacks.getActiveWorktreeId();
+        const worktrees = getVisibleWorktreesForCycling(activeWorktreeId);
         if (worktrees.length >= index) {
           useWorktreeSelectionStore.getState().selectWorktree(worktrees[index - 1].id);
         }
@@ -353,9 +356,9 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
   }
 
   const selectWorktreeByOffset = (offset: number) => {
-    const worktrees = callbacks.getWorktrees();
-    if (worktrees.length === 0) return;
     const activeWorktreeId = callbacks.getActiveWorktreeId();
+    const worktrees = getVisibleWorktreesForCycling(activeWorktreeId);
+    if (worktrees.length === 0) return;
     const currentIndex = activeWorktreeId
       ? worktrees.findIndex((w) => w.id === activeWorktreeId)
       : -1;
@@ -426,7 +429,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      const worktrees = callbacks.getWorktrees();
+      const worktrees = getVisibleWorktreesForCycling(callbacks.getActiveWorktreeId());
       if (worktrees.length === 0) return;
       useWorktreeSelectionStore.getState().selectWorktree(worktrees[0].id);
     },
@@ -441,7 +444,7 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      const worktrees = callbacks.getWorktrees();
+      const worktrees = getVisibleWorktreesForCycling(callbacks.getActiveWorktreeId());
       if (worktrees.length === 0) return;
       useWorktreeSelectionStore.getState().selectWorktree(worktrees[worktrees.length - 1].id);
     },
