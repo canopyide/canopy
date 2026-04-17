@@ -1030,9 +1030,7 @@ export function ContentGrid({
                     : `grid-template-columns ${GRID_TRANSITION_DURATION_MS}ms ease-out`,
                   overflowY: "auto",
                 }}
-                role="grid"
                 id="panel-grid"
-                aria-label="Panel grid"
                 data-grid-container="true"
               >
                 {isEmpty && !showPlaceholder ? (
