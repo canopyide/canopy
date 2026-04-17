@@ -166,17 +166,32 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
     };
   }, [isOpen, terminalId]);
 
+  const showAgentSection = (info: TerminalInfoPayload): boolean =>
+    !!(
+      info.isAgentTerminal ||
+      info.agentId ||
+      info.detectedAgentType ||
+      (info.agentLaunchFlags && info.agentLaunchFlags.length > 0) ||
+      info.agentModelId
+    );
+
+  const formatArgsForClipboard = (args: string[] | undefined): string => {
+    if (args === undefined) return "N/A";
+    if (args.length === 0) return "(none)";
+    return args.join(" ");
+  };
+
   const copyToClipboard = async () => {
     if (!info) return;
 
-    const agentSection = info.isAgentTerminal
+    const agentSection = showAgentSection(info)
       ? `
 
 Agent:
-  Agent ID: ${info.agentId || "N/A"}
-  Detected Agent: ${info.detectedAgentType || "N/A"}
-  Launch Flags: ${info.agentLaunchFlags && info.agentLaunchFlags.length > 0 ? info.agentLaunchFlags.join(" ") : "N/A"}
-  Model: ${info.agentModelId || "N/A"}`
+  Agent ID: ${info.agentId ?? "N/A"}
+  Detected Agent: ${info.detectedAgentType ?? "N/A"}
+  Launch Flags: ${formatArgsForClipboard(info.agentLaunchFlags)}
+  Model: ${info.agentModelId ?? "N/A"}`
       : "";
 
     const diagnosticInfo = `Terminal Diagnostic Information
@@ -193,7 +208,7 @@ Session Metadata:
 
 Spawn Command:
   Shell: ${info.shell || "N/A"}
-  Args: ${info.spawnArgs && info.spawnArgs.length > 0 ? info.spawnArgs.join(" ") : "N/A"}${agentSection}
+  Args: ${formatArgsForClipboard(info.spawnArgs)}${agentSection}
 
 Terminal Classification:
   Agent Terminal: ${info.isAgentTerminal ? "Yes" : "No"}
@@ -273,11 +288,7 @@ Performance & Diagnostics:
               <InfoListRow label="Args" items={info.spawnArgs} />
             </InfoSection>
 
-            {(info.isAgentTerminal ||
-              info.agentId ||
-              info.detectedAgentType ||
-              (info.agentLaunchFlags && info.agentLaunchFlags.length > 0) ||
-              info.agentModelId) && (
+            {showAgentSection(info) && (
               <InfoSection title="Agent">
                 {info.agentId && <InfoRow label="Agent ID" value={info.agentId} />}
                 {info.detectedAgentType && (

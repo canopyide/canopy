@@ -79,7 +79,7 @@ class MockTerminalProcess {
     options: SpawnOptionsShape,
     callbacks: TerminalCallbacks,
     _deps: unknown,
-    _spawnContext: unknown,
+    spawnContext: { shell?: string; args?: string[] } | undefined,
     ptyProcess: MockPtyProcess
   ) {
     this.id = id;
@@ -103,6 +103,8 @@ class MockTerminalProcess {
       lastInputTime: 0,
       lastOutputTime: 0,
       ptyProcess,
+      shell: spawnContext?.shell,
+      spawnArgs: spawnContext?.args,
     };
     shared.created.push(this);
   }
@@ -405,6 +407,13 @@ describe("PtyManager adversarial", () => {
   });
 
   it("GET_TERMINAL_INFO_FORWARDS_SPAWN_AND_AGENT_FIELDS", () => {
+    shared.computeSpawnContext.mockReturnValueOnce({
+      env: {},
+      shell: "/usr/local/bin/claude",
+      args: ["--dangerously-skip-permissions", "--model", "claude-opus-4-7"],
+      isAgentTerminal: true,
+    });
+
     const manager = new PtyManager();
 
     manager.spawn(
@@ -413,8 +422,6 @@ describe("PtyManager adversarial", () => {
     );
 
     const created = shared.created[0]!;
-    created.info.shell = "/usr/local/bin/claude";
-    created.info.spawnArgs = ["--dangerously-skip-permissions", "--model", "claude-opus-4-7"];
     created.info.agentLaunchFlags = ["--dangerously-skip-permissions"];
     created.info.agentModelId = "claude-opus-4-7";
 
@@ -432,7 +439,7 @@ describe("PtyManager adversarial", () => {
     expect(payload!.isAgentTerminal).toBe(true);
   });
 
-  it("GET_TERMINAL_INFO_LEAVES_OPTIONAL_FIELDS_UNDEFINED_FOR_PLAIN_TERMINAL", () => {
+  it("GET_TERMINAL_INFO_FORWARDS_DEFAULT_SHELL_ARGS_FOR_PLAIN_TERMINAL", () => {
     const manager = new PtyManager();
 
     manager.spawn("term-1", spawnOptions({ projectId: "project-a" }));
@@ -440,7 +447,10 @@ describe("PtyManager adversarial", () => {
     const payload = manager.getTerminalInfo("term-1");
 
     expect(payload).not.toBeNull();
-    expect(payload!.spawnArgs).toBeUndefined();
+    // Default mock spawn context returns args: ["-l"] — the production
+    // TerminalProcess always populates spawnArgs from spawnContext.args.
+    expect(payload!.spawnArgs).toEqual(["-l"]);
+    expect(payload!.shell).toBe("/bin/zsh");
     expect(payload!.agentLaunchFlags).toBeUndefined();
     expect(payload!.agentModelId).toBeUndefined();
   });

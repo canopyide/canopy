@@ -296,6 +296,53 @@ describe("TerminalInfoDialog", () => {
     expect(clipboardText).toContain("Model: claude-opus-4-7");
   });
 
+  it("includes Agent section when only detectedAgentType is set on a non-agent terminal", async () => {
+    const payload = makePayload({
+      isAgentTerminal: false,
+      detectedAgentType: "claude",
+    });
+    dispatchMock.mockResolvedValue({ ok: true, result: payload });
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+    render(<TerminalInfoDialog isOpen={true} onClose={vi.fn()} terminalId="test-id" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Copy to Clipboard")).toBeTruthy();
+    });
+
+    // UI shows the Agent section
+    expect(screen.getByText("Agent")).toBeTruthy();
+    expect(screen.getByText("Detected Agent:")).toBeTruthy();
+
+    // Clipboard also includes the Agent section — UI and clipboard guards must agree
+    fireEvent.click(screen.getByText("Copy to Clipboard"));
+    const clipboardText = writeTextMock.mock.calls[0][0] as string;
+    expect(clipboardText).toContain("Agent:");
+    expect(clipboardText).toContain("Detected Agent: claude");
+  });
+
+  it("renders empty spawnArgs as (none) in clipboard and omits the Args row in UI", async () => {
+    const payload = makePayload({ spawnArgs: [] });
+    dispatchMock.mockResolvedValue({ ok: true, result: payload });
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+    render(<TerminalInfoDialog isOpen={true} onClose={vi.fn()} terminalId="test-id" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Copy to Clipboard")).toBeTruthy();
+    });
+
+    // UI omits the row entirely (matches InfoListRow convention)
+    expect(screen.queryByText("Args:")).toBeNull();
+
+    fireEvent.click(screen.getByText("Copy to Clipboard"));
+    const clipboardText = writeTextMock.mock.calls[0][0] as string;
+    expect(clipboardText).toContain("Args: (none)");
+    expect(clipboardText).not.toContain("Args: N/A");
+  });
+
   it("omits Agent section from clipboard for non-agent terminals", async () => {
     const payload = makePayload({ isAgentTerminal: false, spawnArgs: ["-l"] });
     dispatchMock.mockResolvedValue({ ok: true, result: payload });
