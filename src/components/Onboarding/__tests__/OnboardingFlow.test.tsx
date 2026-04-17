@@ -14,6 +14,8 @@ const defaultOnboardingState: OnboardingState = {
   firstRunToastSeen: false,
   newsletterPromptSeen: false,
   waitingNudgeSeen: false,
+  seenAgentIds: [],
+  welcomeCardDismissed: false,
   checklist: {
     dismissed: false,
     celebrationShown: false,

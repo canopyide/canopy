@@ -19,6 +19,22 @@ let mockActiveWorktreeId: string | null = null;
 let mockHasRealData = true;
 let mockActionMruList: string[] = [];
 
+const markAgentsSeenMock = vi.fn().mockResolvedValue(undefined);
+const dismissWelcomeCardMock = vi.fn().mockResolvedValue(undefined);
+let mockSeenAgentIds: string[] = [];
+let mockWelcomeCardDismissed = true;
+let mockOnboardingLoaded = true;
+
+vi.mock("@/hooks/app/useAgentDiscoveryOnboarding", () => ({
+  useAgentDiscoveryOnboarding: () => ({
+    loaded: mockOnboardingLoaded,
+    seenAgentIds: mockSeenAgentIds,
+    welcomeCardDismissed: mockWelcomeCardDismissed,
+    markAgentsSeen: markAgentsSeenMock,
+    dismissWelcomeCard: dismissWelcomeCardMock,
+  }),
+}));
+
 vi.mock("@/services/ActionService", () => ({
   actionService: { dispatch: (...args: unknown[]) => dispatchMock(...args) },
 }));
@@ -203,6 +219,11 @@ describe("AgentTrayButton", () => {
     mockActiveWorktreeId = null;
     mockHasRealData = true;
     mockActionMruList = [];
+    markAgentsSeenMock.mockClear();
+    dismissWelcomeCardMock.mockClear();
+    mockSeenAgentIds = [];
+    mockWelcomeCardDismissed = true;
+    mockOnboardingLoaded = true;
   });
 
   afterEach(() => {
@@ -622,6 +643,92 @@ describe("AgentTrayButton", () => {
     const preventDefault = vi.fn();
     closeAutoFocusSpy!({ preventDefault });
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  // --- Discovery badge (#5111) ---
+
+  it("shows a discovery badge dot when a ready agent has not been seen", () => {
+    const availability = {
+      claude: "ready",
+      gemini: "ready",
+    } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+    mockWelcomeCardDismissed = true;
+    mockSeenAgentIds = ["gemini"];
+
+    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(queryByTestId("agent-tray-discovery-badge")).toBeTruthy();
+    expect(queryByTestId("agent-tray-new-pill-claude")).toBeTruthy();
+    expect(queryByTestId("agent-tray-new-pill-gemini")).toBeNull();
+  });
+
+  it("suppresses the discovery badge while the welcome card is actually renderable", () => {
+    const availability = { claude: "ready" } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+    mockWelcomeCardDismissed = false;
+    mockSeenAgentIds = [];
+
+    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(queryByTestId("agent-tray-discovery-badge")).toBeNull();
+    expect(queryByTestId("agent-tray-new-pill-claude")).toBeNull();
+  });
+
+  it("shows the discovery badge when a pinned agent exists even if welcomeCardDismissed is false", () => {
+    // Regression: users who pin via Settings or elsewhere never flip
+    // `welcomeCardDismissed`. The badge used to stay permanently suppressed
+    // for those users. Suppression must gate on whether the card would
+    // actually render, not on the dismiss flag in isolation.
+    const availability = {
+      claude: "ready",
+      gemini: "ready",
+    } as unknown as CliAvailability;
+    mockSettings = settingsWith({ claude: { pinned: true } });
+    mockWelcomeCardDismissed = false;
+    mockSeenAgentIds = ["claude"];
+
+    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(queryByTestId("agent-tray-discovery-badge")).toBeTruthy();
+    expect(queryByTestId("agent-tray-new-pill-gemini")).toBeTruthy();
+  });
+
+  it("hides the discovery badge once all ready agents are in seenAgentIds", () => {
+    const availability = { claude: "ready", gemini: "ready" } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+    mockWelcomeCardDismissed = true;
+    mockSeenAgentIds = ["claude", "gemini"];
+
+    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(queryByTestId("agent-tray-discovery-badge")).toBeNull();
+  });
+
+  it("calls markAgentsSeen with all ready agent ids on tray open", () => {
+    const availability = { claude: "ready", gemini: "ready" } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+    mockWelcomeCardDismissed = true;
+    mockSeenAgentIds = [];
+
+    render(<AgentTrayButton agentAvailability={availability} />);
+    expect(openChangeSpy).toBeTruthy();
+    markAgentsSeenMock.mockClear();
+
+    openChangeSpy!(true);
+    expect(markAgentsSeenMock).toHaveBeenCalledTimes(1);
+    const [ids] = markAgentsSeenMock.mock.calls[0] as [string[]];
+    expect(ids.sort()).toEqual(["claude", "gemini"]);
+  });
+
+  it("does not call markAgentsSeen when no agents are ready on tray open", () => {
+    const availability = {
+      claude: "missing",
+      gemini: "missing",
+    } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+
+    render(<AgentTrayButton agentAvailability={availability} />);
+    markAgentsSeenMock.mockClear();
+
+    openChangeSpy!(true);
+    expect(markAgentsSeenMock).not.toHaveBeenCalled();
   });
 
   it("ignores panels from other worktrees for session detection", () => {

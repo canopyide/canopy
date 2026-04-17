@@ -8,15 +8,23 @@ import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 import { useCliAvailabilityStore } from "./cliAvailabilityStore";
 
 /**
- * In-memory normalization: seeds `pinned` for any registered agent missing an
- * explicit value, using the current CLI availability snapshot as the source of
- * truth. Installed/ready agents default to `pinned: true` so they surface in
- * the toolbar; missing agents default to `pinned: false` so uninstalled CLIs
- * never phantom-pin (see issue #5158). When availability data has not yet
- * loaded (`hasRealData === false`), the pinned flag stays absent — the
- * renderer orchestrator re-runs normalization once real availability arrives.
- * Explicit `pinned: true` / `pinned: false` values from the persisted store
- * are always preserved. Does NOT persist.
+ * In-memory normalization with two distinct paths:
+ *
+ *  - No entry at all for a registered agent → seed `pinned: false` (opt-in
+ *    default — see #5109 and the welcome card in #5111). Fresh installs
+ *    show an empty toolbar until the user pins via the welcome card or
+ *    the tray.
+ *  - Entry exists but `pinned` is undefined → synthesize from current
+ *    availability (installed/ready → true, missing → false). This
+ *    preserves the implicit pin for 0.7.x upgraders who already have
+ *    agent-settings entries from prior sessions — otherwise their
+ *    toolbar would collapse and the AgentSetupWizard would auto-open on
+ *    every launch (see #5158 and review on #5111).
+ *
+ * Before real data (`hasRealData === false`) the flag stays absent so
+ * the renderer can re-run normalization once the first probe completes.
+ * Explicit `pinned: true` / `pinned: false` values from the persisted
+ * store are always preserved. Does NOT persist.
  */
 export function normalizeAgentSelection(
   settings: AgentSettings,
@@ -32,7 +40,7 @@ export function normalizeAgentSelection(
 
     if (!entry) {
       if (hasRealData) {
-        agents[id] = { pinned: isAgentInstalled(availability?.[id]) };
+        agents[id] = { pinned: false };
         changed = true;
       }
       continue;

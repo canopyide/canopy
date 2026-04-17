@@ -1143,6 +1143,8 @@ export interface ElectronAPI {
     markToastSeen(): Promise<void>;
     markNewsletterSeen(): Promise<void>;
     markWaitingNudgeSeen(): Promise<void>;
+    markAgentsSeen(agentIds: string[]): Promise<OnboardingState>;
+    dismissWelcomeCard(): Promise<OnboardingState>;
     getChecklist(): Promise<ChecklistState>;
     dismissChecklist(): Promise<void>;
     markChecklistItem(item: ChecklistItemId): Promise<void>;
