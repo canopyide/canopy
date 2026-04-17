@@ -408,7 +408,7 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
     // 3. Click inside the document to give the browser keyboard focus to a
     // real node, then poll `document.hasFocus()` and retry a few times if
     // the document isn't claiming focus yet.
-    const grid = newWindow.locator('[role="grid"][aria-label="Panel grid"]').first();
+    const grid = newWindow.locator('[data-grid-container="true"]').first();
     const clickTarget = (await grid.isVisible({ timeout: 2_000 }).catch(() => false))
       ? grid
       : newWindow.locator("body");

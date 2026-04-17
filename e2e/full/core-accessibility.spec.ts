@@ -24,12 +24,6 @@ function buildAxeScanner(page: import("@playwright/test").Page) {
       // canvas content also triggers false positives. Fires across the entire app, so
       // .exclude() on individual selectors is impractical.
       "color-contrast",
-      // aria-required-children: xterm.js terminal grid uses ARIA roles that don't satisfy
-      // required-children constraints. Third-party DOM structure, not fixable.
-      "aria-required-children",
-      // nested-interactive: xterm.js nests interactive elements within its DOM tree.
-      // Third-party DOM structure, not fixable.
-      "nested-interactive",
     ]);
 }
 
