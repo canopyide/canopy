@@ -191,9 +191,7 @@ describe("AppThemePicker image loading attributes", () => {
 
   it("marks row thumbnail images as lazy-loaded with intrinsic dimensions", () => {
     const { container } = render(<AppThemePicker />);
-    const thumbs = container.querySelectorAll<HTMLImageElement>(
-      "img[src*='/themes/thumb/']"
-    );
+    const thumbs = container.querySelectorAll<HTMLImageElement>("img[src*='/themes/thumb/']");
     expect(thumbs.length).toBe(3);
     thumbs.forEach((img) => {
       expect(img.getAttribute("loading")).toBe("lazy");
