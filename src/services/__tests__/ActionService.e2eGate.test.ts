@@ -91,7 +91,9 @@ describe("ActionService window.__daintreeDispatchAction gate", () => {
 
     vi.resetModules();
     const mod = await import("../ActionService");
-    const spy = vi.spyOn(mod.actionService, "dispatch").mockResolvedValue(undefined);
+    const spy = vi
+      .spyOn(mod.actionService, "dispatch")
+      .mockResolvedValue({ ok: true, result: undefined });
 
     const hook = fakeWindow.__daintreeDispatchAction as (
       actionId: string,
