@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorktreeState } from "@/types";
 
-const { getEffectiveAgentIdsMock, getLaunchOptionsMock, cliAvailabilityState } = vi.hoisted(() => ({
+const {
+  dispatchMock,
+  addPanelMock,
+  getEffectiveAgentIdsMock,
+  getLaunchOptionsMock,
+  cliAvailabilityState,
+} = vi.hoisted(() => ({
+  dispatchMock: vi.fn(),
+  addPanelMock: vi.fn(),
   getEffectiveAgentIdsMock: vi.fn(),
   getLaunchOptionsMock: vi.fn(),
   cliAvailabilityState: {
@@ -28,14 +37,14 @@ vi.mock("@/components/TerminalPalette/launchOptions", () => ({
 
 vi.mock("@/store", () => ({
   useWorktreeSelectionStore: (selector: (state: { activeWorktreeId: string | null }) => unknown) =>
-    selector({ activeWorktreeId: null }),
-  usePanelStore: (selector: (state: { addPanel: typeof vi.fn }) => unknown) =>
-    selector({ addPanel: vi.fn() }),
+    selector({ activeWorktreeId: "wt-1" }),
+  usePanelStore: (selector: (state: { addPanel: typeof addPanelMock }) => unknown) =>
+    selector({ addPanel: addPanelMock }),
 }));
 
 vi.mock("@/store/projectStore", () => ({
-  useProjectStore: (selector: (state: { currentProject: null }) => unknown) =>
-    selector({ currentProject: null }),
+  useProjectStore: (selector: (state: { currentProject: { path: string } | null }) => unknown) =>
+    selector({ currentProject: { path: "/repo" } }),
 }));
 
 vi.mock("@/store/cliAvailabilityStore", () => {
@@ -46,26 +55,49 @@ vi.mock("@/store/cliAvailabilityStore", () => {
 });
 
 vi.mock("@/services/ActionService", () => ({
-  actionService: { dispatch: vi.fn() },
+  actionService: { dispatch: dispatchMock },
 }));
 
-import { useNewTerminalPalette } from "../useNewTerminalPalette";
+import { useNewTerminalPalette, MORE_AGENTS_TERMINAL_ID } from "../useNewTerminalPalette";
 
-function makeOption(id: string) {
+function makeOption(id: string, overrides: { type?: string; kind?: string } = {}) {
   return {
     id,
-    type: id,
+    type: overrides.type ?? id,
+    kind: overrides.kind,
     label: id,
     description: `${id} description`,
     icon: null,
   };
 }
 
+function makeWorktreeMap(): Map<string, WorktreeState> {
+  const map = new Map<string, WorktreeState>();
+  map.set("wt-1", {
+    id: "wt-1",
+    worktreeId: "wt-1",
+    path: "/repo/wt-1",
+    name: "wt-1",
+    branch: "main",
+    isCurrent: false,
+    isMainWorktree: false,
+    worktreeChanges: null,
+    lastActivityTimestamp: null,
+  });
+  return map;
+}
+
 describe("useNewTerminalPalette", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     cliAvailabilityState.isInitialized = true;
-    cliAvailabilityState.availability = {};
+    cliAvailabilityState.availability = {
+      claude: "ready",
+      gemini: "ready",
+      codex: "ready",
+    };
 
     getEffectiveAgentIdsMock.mockReturnValue(["claude", "gemini", "codex"]);
     getLaunchOptionsMock.mockReturnValue([
@@ -73,15 +105,17 @@ describe("useNewTerminalPalette", () => {
       makeOption("gemini"),
       makeOption("codex"),
       makeOption("terminal"),
-      makeOption("browser"),
+      makeOption("browser", { type: "terminal", kind: "browser" }),
     ]);
+
+    dispatchMock.mockResolvedValue({ ok: true, result: { terminalId: "term-1" } });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   function render() {
     return renderHook(() =>
       useNewTerminalPalette({
-        launchAgent: vi.fn().mockResolvedValue(null),
-        worktreeMap: new Map(),
+        worktreeMap: makeWorktreeMap(),
       })
     );
   }
@@ -128,11 +162,94 @@ describe("useNewTerminalPalette", () => {
   });
 
   it("always includes the more-agents entry at the end", () => {
-    cliAvailabilityState.availability = { claude: "ready", gemini: "ready", codex: "ready" };
-
     const { result } = render();
 
     const ids = result.current.results.map((opt) => opt.id);
     expect(ids[ids.length - 1]).toBe("more-agents");
+  });
+
+  it("dispatches agent.launch through the ActionService when an agent option is selected", async () => {
+    const { result } = render();
+    const option = result.current.results.find((r) => r.id === "claude");
+    expect(option).toBeDefined();
+
+    await act(async () => {
+      await result.current.handleSelect(option!);
+    });
+
+    expect(dispatchMock).toHaveBeenCalledWith(
+      "agent.launch",
+      {
+        agentId: "claude",
+        worktreeId: "wt-1",
+        cwd: "/repo/wt-1",
+        location: "grid",
+      },
+      { source: "user" }
+    );
+    expect(addPanelMock).not.toHaveBeenCalled();
+  });
+
+  it("adds a browser panel without dispatching agent.launch for the browser option", async () => {
+    addPanelMock.mockResolvedValueOnce("term-browser");
+    const { result } = render();
+    const option = result.current.results.find((r) => r.kind === "browser");
+    expect(option).toBeDefined();
+
+    await act(async () => {
+      await result.current.handleSelect(option!);
+    });
+
+    expect(addPanelMock).toHaveBeenCalledWith({
+      kind: "browser",
+      cwd: "/repo/wt-1",
+      worktreeId: "wt-1",
+      location: "grid",
+    });
+    expect(dispatchMock).not.toHaveBeenCalledWith(
+      "agent.launch",
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it("opens the agents settings tab for MORE_AGENTS_TERMINAL_ID and does not dispatch agent.launch", async () => {
+    const { result } = render();
+    const option = result.current.results.find((r) => r.id === MORE_AGENTS_TERMINAL_ID);
+    expect(option).toBeDefined();
+
+    await act(async () => {
+      await result.current.handleSelect(option!);
+    });
+
+    expect(dispatchMock).toHaveBeenCalledWith(
+      "app.settings.openTab",
+      { tab: "agents" },
+      { source: "user" }
+    );
+    expect(dispatchMock).not.toHaveBeenCalledWith(
+      "agent.launch",
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it("logs an error and still closes when agent.launch dispatch fails", async () => {
+    dispatchMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "NOT_FOUND", message: "Action not found" },
+    });
+
+    const { result } = render();
+    const option = result.current.results.find((r) => r.id === "claude");
+
+    await act(async () => {
+      await result.current.handleSelect(option!);
+    });
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Failed to launch claude terminal:",
+      expect.objectContaining({ message: "Action not found" })
+    );
   });
 });
