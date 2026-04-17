@@ -35,6 +35,8 @@ function getOnboardingState(): OnboardingState {
       firstRunToastSeen: true,
       newsletterPromptSeen: true,
       waitingNudgeSeen: true,
+      seenAgentIds: [],
+      welcomeCardDismissed: true,
       migratedFromLocalStorage: true,
       checklist: {
         dismissed: true,
@@ -58,6 +60,8 @@ function getOnboardingState(): OnboardingState {
       firstRunToastSeen: false,
       newsletterPromptSeen: false,
       waitingNudgeSeen: false,
+      seenAgentIds: [],
+      welcomeCardDismissed: false,
       migratedFromLocalStorage: false,
       checklist: DEFAULT_CHECKLIST,
     };
@@ -67,6 +71,10 @@ function getOnboardingState(): OnboardingState {
   return {
     ...raw,
     agentSetupIds: Array.isArray(raw.agentSetupIds) ? raw.agentSetupIds : [],
+    seenAgentIds: Array.isArray(raw.seenAgentIds)
+      ? (raw.seenAgentIds as string[]).filter((id) => typeof id === "string")
+      : [],
+    welcomeCardDismissed: raw.welcomeCardDismissed === true,
     checklist: {
       ...DEFAULT_CHECKLIST,
       ...checklist,
@@ -182,6 +190,26 @@ export function registerOnboardingHandlers(): () => void {
     });
   });
   cleanups.push(() => ipcMain.removeHandler(CHANNELS.ONBOARDING_MARK_WAITING_NUDGE_SEEN));
+
+  ipcMain.handle(CHANNELS.ONBOARDING_MARK_AGENTS_SEEN, (_event, payload: unknown) => {
+    const incoming = Array.isArray(payload)
+      ? (payload as unknown[]).filter((id): id is string => typeof id === "string")
+      : [];
+    const state = getOnboardingState();
+    const merged = Array.from(new Set([...state.seenAgentIds, ...incoming]));
+    const updated: OnboardingState = { ...state, seenAgentIds: merged };
+    store.set("onboarding", updated);
+    return updated;
+  });
+  cleanups.push(() => ipcMain.removeHandler(CHANNELS.ONBOARDING_MARK_AGENTS_SEEN));
+
+  ipcMain.handle(CHANNELS.ONBOARDING_DISMISS_WELCOME_CARD, () => {
+    const state = getOnboardingState();
+    const updated: OnboardingState = { ...state, welcomeCardDismissed: true };
+    store.set("onboarding", updated);
+    return updated;
+  });
+  cleanups.push(() => ipcMain.removeHandler(CHANNELS.ONBOARDING_DISMISS_WELCOME_CARD));
 
   ipcMain.handle(CHANNELS.ONBOARDING_CHECKLIST_GET, () => getChecklistState());
   cleanups.push(() => ipcMain.removeHandler(CHANNELS.ONBOARDING_CHECKLIST_GET));

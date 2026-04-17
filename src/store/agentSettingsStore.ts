@@ -4,23 +4,20 @@ import { agentSettingsClient } from "@/clients";
 import { DEFAULT_AGENT_SETTINGS } from "@shared/types";
 import { getEffectiveAgentIds } from "../../shared/config/agentRegistry";
 import { isAgentPinned } from "../../shared/utils/agentPinned";
-import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 import { useCliAvailabilityStore } from "./cliAvailabilityStore";
 
 /**
- * In-memory normalization: seeds `pinned` for any registered agent missing an
- * explicit value, using the current CLI availability snapshot as the source of
- * truth. Installed/ready agents default to `pinned: true` so they surface in
- * the toolbar; missing agents default to `pinned: false` so uninstalled CLIs
- * never phantom-pin (see issue #5158). When availability data has not yet
- * loaded (`hasRealData === false`), the pinned flag stays absent — the
- * renderer orchestrator re-runs normalization once real availability arrives.
- * Explicit `pinned: true` / `pinned: false` values from the persisted store
- * are always preserved. Does NOT persist.
+ * In-memory normalization: seeds `pinned: false` for any registered agent
+ * missing an explicit value, once real availability data has landed. This
+ * keeps the toolbar empty until the user deliberately pins (opt-in model —
+ * see #5109). Before real data (`hasRealData === false`) the flag stays
+ * absent so the renderer can re-run normalization once the first probe
+ * completes. Explicit `pinned: true` / `pinned: false` values from the
+ * persisted store are always preserved. Does NOT persist.
  */
 export function normalizeAgentSelection(
   settings: AgentSettings,
-  availability?: CliAvailability | null,
+  _availability?: CliAvailability | null,
   hasRealData: boolean = false
 ): AgentSettings {
   const registeredIds = getEffectiveAgentIds();
@@ -32,14 +29,14 @@ export function normalizeAgentSelection(
 
     if (!entry) {
       if (hasRealData) {
-        agents[id] = { pinned: isAgentInstalled(availability?.[id]) };
+        agents[id] = { pinned: false };
         changed = true;
       }
       continue;
     }
 
     if (entry.pinned === undefined && hasRealData) {
-      agents[id] = { ...entry, pinned: isAgentInstalled(availability?.[id]) };
+      agents[id] = { ...entry, pinned: false };
       changed = true;
     }
   }

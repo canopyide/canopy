@@ -29,6 +29,7 @@ import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useShallow } from "zustand/react/shallow";
 import { useKeybindingDisplay } from "@/hooks";
+import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import type { CliAvailability, AgentState } from "@shared/types";
 import { isAgentReady, isAgentInstalled } from "../../../shared/utils/agentAvailability";
@@ -50,6 +51,7 @@ type AgentRow = {
   Icon: ComponentType<AgentIconProps>;
   pinned: boolean;
   dominantState: AgentState | null;
+  isNew: boolean;
 };
 
 const ACTIVE_AGENT_STATES: ReadonlySet<AgentState | undefined> = new Set<AgentState | undefined>([
@@ -63,11 +65,12 @@ const ACTIVE_AGENT_STATES: ReadonlySet<AgentState | undefined> = new Set<AgentSt
 function buildAgentRow(
   id: BuiltInAgentId,
   pinned: boolean,
-  dominantState: AgentState | null
+  dominantState: AgentState | null,
+  isNew: boolean
 ): AgentRow | null {
   const config = getAgentConfig(id);
   if (!config) return null;
-  return { id, name: config.name, Icon: config.icon, pinned, dominantState };
+  return { id, name: config.name, Icon: config.icon, pinned, dominantState, isNew };
 }
 
 function RunningDot({ state }: { state: AgentState | null }) {
@@ -94,6 +97,13 @@ export function AgentTrayButton({
 
   const refreshAvailability = useCliAvailabilityStore((s) => s.refresh);
   const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
+
+  const {
+    loaded: onboardingLoaded,
+    seenAgentIds,
+    welcomeCardDismissed,
+    markAgentsSeen,
+  } = useAgentDiscoveryOnboarding();
 
   const panelsById = usePanelStore(useShallow((s) => s.panelsById));
   const panelIds = usePanelStore(useShallow((s) => s.panelIds));
@@ -181,6 +191,25 @@ export function AgentTrayButton({
     return result;
   }, [panelsById, panelIds, activeWorktreeId]);
 
+  const readyAgentIds = useMemo(() => {
+    return BUILT_IN_AGENT_IDS.filter((id) => isAgentReady(agentAvailability?.[id]));
+  }, [agentAvailability]);
+
+  // While the first-run welcome card is still waiting to be acknowledged we
+  // suppress the tray discovery badge for the initial cohort so both
+  // affordances don't fire for the same agents. Day-N discovery activates
+  // once the card is dismissed.
+  const newAgentIds = useMemo<ReadonlySet<string>>(() => {
+    if (!onboardingLoaded || !welcomeCardDismissed) return new Set<string>();
+    const set = new Set<string>();
+    for (const id of readyAgentIds) {
+      if (!seenAgentIds.includes(id)) set.add(id);
+    }
+    return set;
+  }, [onboardingLoaded, welcomeCardDismissed, readyAgentIds, seenAgentIds]);
+
+  const showDiscoveryBadge = newAgentIds.size > 0;
+
   const { launchable, needsSetup, fallbackSetup } = useMemo(() => {
     const launchable: AgentRow[] = [];
     const needsSetup: AgentRow[] = [];
@@ -189,7 +218,7 @@ export function AgentTrayButton({
     for (const id of BUILT_IN_AGENT_IDS) {
       const pinned = isAgentPinned(agentSettings?.agents?.[id]);
       const dominant = agentDominantStates.get(id) ?? null;
-      const row = buildAgentRow(id, pinned, dominant);
+      const row = buildAgentRow(id, pinned, dominant, newAgentIds.has(id));
       if (!row) continue;
 
       const state = agentAvailability?.[id];
@@ -223,7 +252,7 @@ export function AgentTrayButton({
     });
 
     return { launchable, needsSetup, fallbackSetup };
-  }, [agentAvailability, agentSettings, agentDominantStates, actionMruList]);
+  }, [agentAvailability, agentSettings, agentDominantStates, actionMruList, newAgentIds]);
 
   const handleLaunch = (row: AgentRow) => {
     void actionService.dispatch("agent.launch", { agentId: row.id }, { source: "user" });
@@ -250,6 +279,9 @@ export function AgentTrayButton({
     if (!open) return;
     // Fire-and-forget: the store throttle absorbs rapid reopens.
     void refreshAvailability().catch(() => {});
+    if (readyAgentIds.length > 0) {
+      void markAgentsSeen(readyAgentIds);
+    }
   };
 
   const togglePin = (row: AgentRow) => {
@@ -288,9 +320,18 @@ export function AgentTrayButton({
                 size="icon"
                 data-toolbar-item={dataToolbarItem}
                 className="toolbar-agent-button text-daintree-text hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] focus-visible:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] transition-colors"
-                aria-label="Agent tray"
+                aria-label={showDiscoveryBadge ? "Agent tray — new agents detected" : "Agent tray"}
               >
-                <Plug />
+                <span className="relative inline-flex items-center justify-center">
+                  <Plug />
+                  {showDiscoveryBadge && (
+                    <span
+                      data-testid="agent-tray-discovery-badge"
+                      className="absolute top-0 right-0 size-1.5 rounded-full bg-sky-400 ring-1 ring-daintree-sidebar"
+                      aria-hidden="true"
+                    />
+                  )}
+                </span>
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
@@ -411,6 +452,15 @@ function LaunchRow({
       </span>
 
       <span className="flex-1">{row.name}</span>
+
+      {row.isNew && (
+        <span
+          data-testid={`agent-tray-new-pill-${row.id}`}
+          className="ml-2 shrink-0 rounded border border-sky-400/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300"
+        >
+          New
+        </span>
+      )}
 
       {displayCombo && <DropdownMenuShortcut>{displayCombo}</DropdownMenuShortcut>}
 

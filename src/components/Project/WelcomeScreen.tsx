@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   FolderOpen,
   FolderPlus,
@@ -8,16 +8,26 @@ import {
   Newspaper,
   ExternalLink,
   GitBranch,
+  X,
+  Plug,
+  Pin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DaintreeIcon } from "@/components/icons";
 import { useProjectStore } from "@/store/projectStore";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
-import { getProjectGradient } from "@/lib/colorUtils";
+import { getProjectGradient, getBrandColorHex } from "@/lib/colorUtils";
 import { formatTimeAgo } from "@/utils/timeAgo";
 import { CHECKLIST_ITEMS } from "@/components/Onboarding/checklistItems";
+import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
+import { getAgentConfig } from "@/config/agents";
+import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
+import { isAgentReady } from "../../../shared/utils/agentAvailability";
+import { isAgentPinned } from "../../../shared/utils/agentPinned";
 import type { GettingStartedChecklistState } from "@/hooks/app/useGettingStartedChecklist";
 
 interface WelcomeScreenProps {
@@ -55,6 +65,8 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
   const progressTotal = 4; // 3 real items + endowed "Install Daintree"
   const progressDone = 1 + completedCount; // endowed item always complete
 
+  const welcomeCard = <AgentWelcomeCard />;
+
   return (
     <div className="flex flex-col items-center h-full w-full overflow-y-auto animate-in fade-in duration-500">
       <div className="max-w-2xl w-full flex flex-col items-center px-8 py-12 gap-10">
@@ -73,6 +85,7 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
         {hasProjects ? (
           <>
             <RecentProjects projects={recentProjects} onSelect={switchProject} />
+            {welcomeCard}
             {showChecklist && (
               <InlineChecklist
                 checklist={checklist}
@@ -83,6 +96,7 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
           </>
         ) : (
           <>
+            {welcomeCard}
             {showChecklist && (
               <InlineChecklist
                 checklist={checklist}
@@ -212,6 +226,113 @@ function RecentProjects({
             </span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function AgentWelcomeCard() {
+  const agentSettings = useAgentSettingsStore((s) => s.settings);
+  const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
+  const availability = useCliAvailabilityStore((s) => s.availability);
+  const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
+  const { loaded, welcomeCardDismissed, markAgentsSeen, dismissWelcomeCard } =
+    useAgentDiscoveryOnboarding();
+
+  const [busy, setBusy] = useState(false);
+
+  const readyAgentIds = useMemo<BuiltInAgentId[]>(() => {
+    return BUILT_IN_AGENT_IDS.filter((id) => isAgentReady(availability?.[id]));
+  }, [availability]);
+
+  const hasNoPinnedAgents = useMemo(() => {
+    if (!agentSettings?.agents) return true;
+    return !BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agentSettings.agents[id]));
+  }, [agentSettings]);
+
+  if (!hasRealData || !loaded) return null;
+  if (welcomeCardDismissed) return null;
+  if (readyAgentIds.length === 0 || !hasNoPinnedAgents) return null;
+
+  const handlePinAll = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await Promise.all(
+        readyAgentIds
+          .filter((id) => !isAgentPinned(agentSettings?.agents?.[id]))
+          .map((id) => setAgentPinned(id, true).catch(() => {}))
+      );
+      await markAgentsSeen(readyAgentIds);
+      await dismissWelcomeCard();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDismiss = () => {
+    void markAgentsSeen(readyAgentIds);
+    void dismissWelcomeCard();
+  };
+
+  return (
+    <div className="w-full">
+      <div className="relative w-full rounded-[var(--radius-md)] border border-daintree-border/60 bg-daintree-sidebar/40 px-4 py-3.5">
+        <button
+          type="button"
+          onClick={handleDismiss}
+          aria-label="Dismiss welcome card"
+          className="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded-sm text-daintree-text/40 transition-colors hover:bg-overlay-emphasis hover:text-daintree-text/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+        <div className="flex items-start gap-3 pr-6">
+          <Plug className="h-4 w-4 text-daintree-accent mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-daintree-text/90">
+              We detected your installed agents
+            </h3>
+            <p className="text-xs text-daintree-text/60 mt-1 leading-relaxed">
+              Pin them to your toolbar for one-click launching.
+            </p>
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {readyAgentIds.map((id) => {
+                const config = getAgentConfig(id);
+                if (!config) return null;
+                const Icon = config.icon;
+                return (
+                  <li
+                    key={id}
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] border border-daintree-border/60 bg-daintree-bg/40 px-2 py-1 text-xs text-daintree-text/80"
+                  >
+                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
+                      <Icon brandColor={getBrandColorHex(id)} />
+                    </span>
+                    {config.name}
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-4 flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => void handlePinAll()}
+                disabled={busy}
+                data-testid="welcome-card-pin-all"
+              >
+                <Pin className="h-3.5 w-3.5" />
+                Pin all to toolbar
+              </Button>
+              <button
+                type="button"
+                onClick={handleDismiss}
+                className="text-xs text-daintree-text/50 hover:text-daintree-text/80 transition-colors"
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

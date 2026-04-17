@@ -33,40 +33,38 @@ describe("normalizeAgentSelection", () => {
     expect(result.agents.gemini.pinned).toBe(true);
   });
 
-  it("synthesizes pinned: true for installed agents when hasRealData is true", () => {
+  it("seeds pinned: false for installed agents when hasRealData is true (opt-in model #5109)", () => {
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "installed" });
     const result = normalizeAgentSelection(settings, availability, true);
-    expect(result.agents.claude.pinned).toBe(true);
+    expect(result.agents.claude.pinned).toBe(false);
   });
 
-  it("synthesizes pinned: true for ready agents when hasRealData is true", () => {
+  it("seeds pinned: false for ready agents when hasRealData is true (opt-in model #5109)", () => {
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "ready" });
     const result = normalizeAgentSelection(settings, availability, true);
-    expect(result.agents.claude.pinned).toBe(true);
+    expect(result.agents.claude.pinned).toBe(false);
   });
 
-  it("synthesizes pinned: false for missing agents when hasRealData is true (issue #5158)", () => {
+  it("seeds pinned: false for missing agents when hasRealData is true (issue #5158)", () => {
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "missing" });
     const result = normalizeAgentSelection(settings, availability, true);
     expect(result.agents.claude.pinned).toBe(false);
   });
 
-  it("creates entries only for installed agents when store is empty and hasRealData is true", () => {
+  it("creates pinned:false entries for every agent when store is empty and hasRealData is true", () => {
     const settings: AgentSettings = { agents: {} };
     const allIds = getEffectiveAgentIds();
     const [firstInstalled] = allIds;
     const availability = availabilityFor({ [firstInstalled]: "installed" });
     const result = normalizeAgentSelection(settings, availability, true);
 
+    // Opt-in model: availability no longer seeds pinned:true automatically.
+    // Users pin explicitly via the welcome card or tray.
     for (const id of allIds) {
-      if (id === firstInstalled) {
-        expect(result.agents[id]).toEqual({ pinned: true });
-      } else {
-        expect(result.agents[id]).toEqual({ pinned: false });
-      }
+      expect(result.agents[id]).toEqual({ pinned: false });
     }
   });
 

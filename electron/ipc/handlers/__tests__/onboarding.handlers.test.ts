@@ -1,0 +1,153 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const ipcMainMock = vi.hoisted(() => ({
+  handle: vi.fn(),
+  removeHandler: vi.fn(),
+}));
+
+vi.mock("electron", () => ({ ipcMain: ipcMainMock }));
+
+const storeMock = vi.hoisted(() => {
+  const data: Record<string, unknown> = {};
+  return {
+    get: vi.fn((key: string) => data[key]),
+    set: vi.fn((key: string, value: unknown) => {
+      data[key] = value;
+    }),
+    _data: data,
+  };
+});
+
+vi.mock("../../../store.js", () => ({ store: storeMock }));
+
+import { registerOnboardingHandlers } from "../onboarding.js";
+
+function getHandler(channel: string) {
+  return ipcMainMock.handle.mock.calls.find((c: unknown[]) => c[0] === channel)![1] as (
+    _e: unknown,
+    ...args: unknown[]
+  ) => unknown;
+}
+
+function seedOnboarding(partial: Record<string, unknown> = {}) {
+  storeMock._data["onboarding"] = {
+    schemaVersion: 1,
+    completed: false,
+    currentStep: null,
+    agentSetupIds: [],
+    firstRunToastSeen: false,
+    newsletterPromptSeen: false,
+    waitingNudgeSeen: false,
+    migratedFromLocalStorage: false,
+    checklist: {
+      dismissed: false,
+      celebrationShown: false,
+      items: {
+        openedProject: false,
+        launchedAgent: false,
+        createdWorktree: false,
+        subscribedNewsletter: false,
+      },
+    },
+    ...partial,
+  };
+}
+
+describe("registerOnboardingHandlers — discovery IPC", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    for (const key of Object.keys(storeMock._data)) {
+      delete storeMock._data[key];
+    }
+  });
+
+  it("get normalizes missing seenAgentIds and welcomeCardDismissed to defaults", () => {
+    registerOnboardingHandlers();
+    // Raw store is missing the new fields entirely (pre-existing state).
+    seedOnboarding({});
+    const get = getHandler("onboarding:get");
+    const state = get(null) as {
+      seenAgentIds: string[];
+      welcomeCardDismissed: boolean;
+    };
+    expect(state.seenAgentIds).toEqual([]);
+    expect(state.welcomeCardDismissed).toBe(false);
+  });
+
+  it("get filters out non-string values from seenAgentIds", () => {
+    registerOnboardingHandlers();
+    seedOnboarding({ seenAgentIds: ["claude", 42, null, "codex"] });
+    const get = getHandler("onboarding:get");
+    const state = get(null) as { seenAgentIds: string[] };
+    expect(state.seenAgentIds).toEqual(["claude", "codex"]);
+  });
+
+  it("markAgentsSeen adds new ids, dedupes against existing seen set", () => {
+    registerOnboardingHandlers();
+    seedOnboarding({ seenAgentIds: ["claude"] });
+    const mark = getHandler("onboarding:mark-agents-seen");
+    const result = mark(null, ["codex", "claude", "gemini"]) as {
+      seenAgentIds: string[];
+    };
+    expect(result.seenAgentIds.sort()).toEqual(["claude", "codex", "gemini"]);
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "onboarding",
+      expect.objectContaining({
+        seenAgentIds: expect.arrayContaining(["claude", "codex", "gemini"]),
+      })
+    );
+  });
+
+  it("markAgentsSeen is idempotent when called with the same ids twice", () => {
+    registerOnboardingHandlers();
+    seedOnboarding({ seenAgentIds: [] });
+    const mark = getHandler("onboarding:mark-agents-seen");
+    mark(null, ["claude"]);
+    // Reload simulated state so the handler sees the new persisted value.
+    storeMock._data["onboarding"] = {
+      ...(storeMock._data["onboarding"] as Record<string, unknown>),
+      seenAgentIds: ["claude"],
+    };
+    const result = mark(null, ["claude"]) as { seenAgentIds: string[] };
+    expect(result.seenAgentIds).toEqual(["claude"]);
+  });
+
+  it("markAgentsSeen ignores non-array payloads and non-string ids", () => {
+    registerOnboardingHandlers();
+    seedOnboarding({ seenAgentIds: [] });
+    const mark = getHandler("onboarding:mark-agents-seen");
+
+    const resultA = mark(null, "not-an-array") as { seenAgentIds: string[] };
+    expect(resultA.seenAgentIds).toEqual([]);
+
+    const resultB = mark(null, [42, null, "claude"]) as { seenAgentIds: string[] };
+    expect(resultB.seenAgentIds).toEqual(["claude"]);
+  });
+
+  it("dismissWelcomeCard flips the flag and returns the updated state", () => {
+    registerOnboardingHandlers();
+    seedOnboarding({ welcomeCardDismissed: false });
+    const dismiss = getHandler("onboarding:dismiss-welcome-card");
+    const result = dismiss(null) as { welcomeCardDismissed: boolean };
+    expect(result.welcomeCardDismissed).toBe(true);
+    expect(storeMock.set).toHaveBeenCalledWith(
+      "onboarding",
+      expect.objectContaining({ welcomeCardDismissed: true })
+    );
+  });
+
+  it("dismissWelcomeCard is idempotent once dismissed", () => {
+    registerOnboardingHandlers();
+    seedOnboarding({ welcomeCardDismissed: true });
+    const dismiss = getHandler("onboarding:dismiss-welcome-card");
+    const result = dismiss(null) as { welcomeCardDismissed: boolean };
+    expect(result.welcomeCardDismissed).toBe(true);
+  });
+
+  it("cleanup removes both discovery handlers", () => {
+    const cleanup = registerOnboardingHandlers();
+    cleanup();
+    expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("onboarding:mark-agents-seen");
+    expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("onboarding:dismiss-welcome-card");
+  });
+});
