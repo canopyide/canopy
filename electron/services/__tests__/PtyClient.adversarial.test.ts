@@ -2,14 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { EventEmitter } from "events";
 import type { PtyHostSpawnOptions, SpawnResult } from "../../../shared/types/pty-host.js";
 
-const shared = vi.hoisted(() => ({
-  forkMock: vi.fn(),
-  tracker: {
-    removeTrashed: vi.fn(),
-    persistTrashed: vi.fn(),
-    clearAll: vi.fn(),
-  },
-}));
+const shared = vi.hoisted(() => {
+  const { EventEmitter } = require("events") as typeof import("events");
+  const appEmitter = new EventEmitter();
+  const appMock = Object.assign(appEmitter, {
+    getPath: vi.fn().mockReturnValue("/mock/user/data"),
+  });
+  return {
+    forkMock: vi.fn(),
+    tracker: {
+      removeTrashed: vi.fn(),
+      persistTrashed: vi.fn(),
+      clearAll: vi.fn(),
+    },
+    appMock,
+  };
+});
 
 vi.mock("electron", () => ({
   utilityProcess: {
@@ -17,9 +25,7 @@ vi.mock("electron", () => ({
   },
   UtilityProcess: EventEmitter,
   MessagePortMain: class {},
-  app: {
-    getPath: vi.fn().mockReturnValue("/mock/user/data"),
-  },
+  app: shared.appMock,
 }));
 
 vi.mock("../TrashedPidTracker.js", () => ({
@@ -73,6 +79,7 @@ describe("PtyClient adversarial", () => {
     vi.useFakeTimers();
     vi.resetModules();
     vi.clearAllMocks();
+    shared.appMock.removeAllListeners();
     mockChild = createMockChild();
     shared.forkMock.mockReturnValue(mockChild);
 
@@ -370,6 +377,180 @@ describe("PtyClient adversarial", () => {
     await expect(allSnapshotsPromise).resolves.toEqual([]);
     await expect(transitionPromise).resolves.toBe(false);
     await expect(serializedPromise).resolves.toBeNull();
+  });
+
+  describe("child-process-gone crash routing", () => {
+    function emitGone(
+      details: Partial<{
+        type: string;
+        reason: string;
+        exitCode: number;
+        name: string;
+        serviceName: string;
+      }> = {}
+    ): void {
+      shared.appMock.emit(
+        "child-process-gone",
+        {},
+        {
+          type: "Utility",
+          reason: "crashed",
+          exitCode: 1,
+          name: "daintree-pty-host",
+          serviceName: "daintree-pty-host",
+          ...details,
+        }
+      );
+    }
+
+    function captureCrash(client: import("../PtyClient.js").PtyClient): {
+      payloads: Array<{ code: number | null; signal: string | null; crashType: string }>;
+    } {
+      const payloads: Array<{ code: number | null; signal: string | null; crashType: string }> = [];
+      client.on(
+        "host-crash-details",
+        (payload: { code: number | null; signal: string | null; crashType: string }) => {
+          payloads.push(payload);
+        }
+      );
+      return { payloads };
+    }
+
+    it("GONE_BEFORE_EXIT_ROUTES_AUTHORITATIVE_REASON", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      emitGone({ reason: "oom", exitCode: 0 });
+      mockChild.emit("exit", 0);
+      vi.advanceTimersByTime(1);
+
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0].crashType).toBe("OUT_OF_MEMORY");
+    });
+
+    it("EXIT_BEFORE_GONE_ORDERING_RACE", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      // Reverse order: exit first (incorrect code 0), gone arrives after.
+      mockChild.emit("exit", 0);
+      emitGone({ reason: "oom", exitCode: 0 });
+      vi.advanceTimersByTime(1);
+
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0].crashType).toBe("OUT_OF_MEMORY");
+    });
+
+    it("NO_GONE_EVENT_FALLS_BACK_TO_EXIT_CODE_HEURISTIC", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      mockChild.emit("exit", 137);
+      vi.advanceTimersByTime(1);
+
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0].crashType).toBe("OUT_OF_MEMORY");
+      expect(payloads[0].code).toBe(137);
+    });
+
+    it("GONE_WRONG_TYPE_IGNORED", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      emitGone({ type: "GPU", reason: "oom" });
+      mockChild.emit("exit", 0);
+      vi.advanceTimersByTime(1);
+
+      // exit code 0 + no authoritative reason → CLEAN_EXIT → nothing emitted
+      expect(payloads).toHaveLength(0);
+    });
+
+    it("GONE_WRONG_NAME_IGNORED", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      emitGone({ name: "some-other-host", reason: "oom" });
+      mockChild.emit("exit", 0);
+      vi.advanceTimersByTime(1);
+
+      expect(payloads).toHaveLength(0);
+    });
+
+    it("STARTHOST_CLEARS_STALE_GONE_BEFORE_NEW_HOST", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+      const restartedChild = createMockChild();
+      restartedChild.pid = 999;
+      shared.forkMock.mockReturnValue(restartedChild);
+
+      // First crash cycle — gone arrives, then exit consumes it.
+      emitGone({ reason: "oom" });
+      mockChild.emit("exit", 0);
+      vi.advanceTimersByTime(1);
+      expect(payloads[payloads.length - 1].crashType).toBe("OUT_OF_MEMORY");
+
+      // Advance past the restart delay so startHost() runs (defensive reset).
+      vi.advanceTimersByTime(10000);
+      restartedChild.emit("message", { type: "ready" });
+
+      // New host exits cleanly with no gone event. If the prior gone reason
+      // had leaked, this would be misclassified as OUT_OF_MEMORY.
+      restartedChild.emit("exit", 0);
+      vi.advanceTimersByTime(1);
+
+      // Only one crash payload total — the new host's clean exit emits nothing.
+      expect(payloads).toHaveLength(1);
+    });
+
+    it("DISPOSE_DEREGISTERS_APP_LISTENER", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      expect(shared.appMock.listenerCount("child-process-gone")).toBe(1);
+      client.dispose();
+      expect(shared.appMock.listenerCount("child-process-gone")).toBe(0);
+
+      // Post-dispose gone event must not emit anything.
+      emitGone({ reason: "oom" });
+      vi.advanceTimersByTime(1);
+      expect(payloads).toHaveLength(0);
+    });
+
+    it("MEMORY_EVICTION_MAPS_TO_OOM", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      emitGone({ reason: "memory-eviction" });
+      mockChild.emit("exit", 0);
+      vi.advanceTimersByTime(1);
+
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0].crashType).toBe("OUT_OF_MEMORY");
+    });
+
+    it("UNKNOWN_REASON_MAPS_TO_UNKNOWN_CRASH", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      emitGone({ reason: "something-new-from-electron-42" });
+      mockChild.emit("exit", 0);
+      vi.advanceTimersByTime(1);
+
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0].crashType).toBe("UNKNOWN_CRASH");
+    });
+
+    it("KILLED_REASON_MAPS_TO_SIGNAL_TERMINATED", () => {
+      const client = createReadyClient();
+      const { payloads } = captureCrash(client);
+
+      emitGone({ reason: "killed" });
+      mockChild.emit("exit", 143);
+      vi.advanceTimersByTime(1);
+
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0].crashType).toBe("SIGNAL_TERMINATED");
+    });
   });
 
   it("DISPOSE_RESOLVES_ORPHANED_PENDING_OPS", async () => {

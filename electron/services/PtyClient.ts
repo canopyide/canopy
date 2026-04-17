@@ -112,6 +112,29 @@ const PTY_TIMEOUTS = {
 } as const satisfies Record<string, number>;
 
 /**
+ * Map an authoritative `child-process-gone` reason (Electron 37+) to our CrashType.
+ * Used when `app.on("child-process-gone")` fires for the PTY host — the reason
+ * string is more reliable than the exit code heuristic in `classifyCrash()`.
+ */
+function mapGoneReasonToCrashType(reason: string): CrashType {
+  switch (reason) {
+    case "oom":
+    case "memory-eviction":
+      return "OUT_OF_MEMORY";
+    case "killed":
+      return "SIGNAL_TERMINATED";
+    case "clean-exit":
+      return "CLEAN_EXIT";
+    case "crashed":
+    case "abnormal-exit":
+    case "launch-failed":
+    case "integrity-failure":
+    default:
+      return "UNKNOWN_CRASH";
+  }
+}
+
+/**
  * Classify crash type based on exit code and signal.
  * Exit codes 137 (128+9=SIGKILL) and 134 (128+6=SIGABRT) often indicate OOM.
  */
@@ -196,6 +219,18 @@ export class PtyClient extends EventEmitter {
   private hostStdoutBuffer = "";
   private hostStderrBuffer = "";
 
+  /**
+   * Authoritative crash reason captured from `app.on("child-process-gone")`.
+   * Consumed by the next `exit` handler via `setImmediate` deferral, since
+   * Electron 37-41 has a documented race where `exit` often fires before
+   * `child-process-gone` for utility-process crashes.
+   */
+  private pendingChildProcessGoneReason: { reason: string; exitCode: number } | null = null;
+  /** Stored handler reference so dispose() can deregister via app.off(). */
+  private childProcessGoneHandler:
+    | ((event: Electron.Event, details: Electron.Details) => void)
+    | null = null;
+
   constructor(config: PtyClientConfig = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -211,7 +246,29 @@ export class PtyClient extends EventEmitter {
     // that affects all platforms. Use IPC fallback for terminal I/O.
     console.log("[PtyClient] Using IPC mode (SharedArrayBuffer not supported in UtilityProcess)");
 
+    this.registerChildProcessGoneListener();
     this.startHost();
+  }
+
+  /**
+   * Register a single app-level listener for `child-process-gone`, scoped to
+   * our PTY host by `type === "Utility"` and `name === "daintree-pty-host"`.
+   * The handler only records the authoritative reason; the `exit` handler
+   * consumes it via `setImmediate` deferral to handle the Electron 37-41 race
+   * where `exit` can fire before `child-process-gone`.
+   */
+  private registerChildProcessGoneListener(): void {
+    if (this.childProcessGoneHandler) return;
+    const handler = (_event: Electron.Event, details: Electron.Details): void => {
+      if (this.isDisposed) return;
+      if (details.type !== "Utility" || details.name !== "daintree-pty-host") return;
+      this.pendingChildProcessGoneReason = {
+        reason: details.reason,
+        exitCode: details.exitCode,
+      };
+    };
+    this.childProcessGoneHandler = handler;
+    app.on("child-process-gone", handler);
   }
 
   private forwardHostOutput(kind: "stdout" | "stderr", chunk: Buffer): void {
@@ -294,6 +351,12 @@ export class PtyClient extends EventEmitter {
       this.restartTimer = null;
     }
 
+    // Defensive: clear any stale crash reason from a prior host cycle. Under
+    // normal flow the `exit` handler's setImmediate consumes this, but a missed
+    // exit event (or out-of-band listener fire) would otherwise leak into the
+    // next crash.
+    this.pendingChildProcessGoneReason = null;
+
     // Reset initialization state for restart
     this.isInitialized = false;
     this.readyPromise = new Promise((resolve, reject) => {
@@ -339,12 +402,7 @@ export class PtyClient extends EventEmitter {
       this.flushHostOutputBuffers();
       // Note: UtilityProcess exit event doesn't provide signal, but we can infer from code
       const signal = code !== null && code > 128 ? `SIG${code - 128}` : null;
-      const crashType = classifyCrash(code, signal);
-
-      console.error(
-        `[PtyClient] Pty Host exited with code ${code}` +
-          (crashType !== "CLEAN_EXIT" ? ` (${crashType})` : "")
-      );
+      const fallbackCrashType = classifyCrash(code, signal);
 
       // Clear health check
       if (this.healthCheckInterval) {
@@ -358,7 +416,8 @@ export class PtyClient extends EventEmitter {
       this.child = null; // Prevent posting to dead process
 
       if (this.isDisposed) {
-        // Expected shutdown
+        // Expected shutdown - drop any buffered reason so it can't leak.
+        this.pendingChildProcessGoneReason = null;
         return;
       }
 
@@ -374,37 +433,61 @@ export class PtyClient extends EventEmitter {
       this.broker.clear(new BrokerError("HOST_EXITED", "Pty host exited"));
       this.shouldResyncProjectContext = true;
 
-      // Emit crash payload with classification for downstream consumers
-      if (crashType !== "CLEAN_EXIT") {
-        const crashPayload: HostCrashPayload = {
-          code,
-          signal,
-          crashType,
-          timestamp: Date.now(),
-        };
-        this.emit("host-crash-details", crashPayload);
-      }
+      // Electron 37-41 race: `exit` often fires before `child-process-gone`
+      // for utility-process crashes. Defer crash classification by one event
+      // loop tick so the authoritative reason can arrive; fall back to the
+      // exit-code heuristic when no reason was captured in time.
+      setImmediate(() => {
+        if (this.isDisposed) {
+          this.pendingChildProcessGoneReason = null;
+          return;
+        }
 
-      // Try to restart
-      if (this.restartAttempts < this.config.maxRestartAttempts) {
-        this.restartAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.restartAttempts), 10000);
-        console.log(
-          `[PtyClient] Restarting Host in ${delay}ms (attempt ${this.restartAttempts}/${this.config.maxRestartAttempts})`
+        const gone = this.pendingChildProcessGoneReason;
+        this.pendingChildProcessGoneReason = null;
+        const crashType: CrashType = gone
+          ? mapGoneReasonToCrashType(gone.reason)
+          : fallbackCrashType;
+
+        console.error(
+          `[PtyClient] Pty Host exited with code ${code}` +
+            (crashType !== "CLEAN_EXIT" ? ` (${crashType})` : "")
         );
 
-        if (this.restartTimer) {
-          clearTimeout(this.restartTimer);
+        this.cleanupOrphanedPtys(crashType);
+
+        // Emit crash payload with classification for downstream consumers
+        if (crashType !== "CLEAN_EXIT") {
+          const crashPayload: HostCrashPayload = {
+            code,
+            signal,
+            crashType,
+            timestamp: Date.now(),
+          };
+          this.emit("host-crash-details", crashPayload);
         }
-        this.restartTimer = setTimeout(() => {
-          this.restartTimer = null;
-          this.needsRespawn = true;
-          this.startHost();
-        }, delay);
-      } else {
-        console.error("[PtyClient] Max restart attempts reached, giving up");
-        this.emit("host-crash", code);
-      }
+
+        // Try to restart
+        if (this.restartAttempts < this.config.maxRestartAttempts) {
+          this.restartAttempts++;
+          const delay = Math.min(1000 * Math.pow(2, this.restartAttempts), 10000);
+          console.log(
+            `[PtyClient] Restarting Host in ${delay}ms (attempt ${this.restartAttempts}/${this.config.maxRestartAttempts})`
+          );
+
+          if (this.restartTimer) {
+            clearTimeout(this.restartTimer);
+          }
+          this.restartTimer = setTimeout(() => {
+            this.restartTimer = null;
+            this.needsRespawn = true;
+            this.startHost();
+          }, delay);
+        } else {
+          console.error("[PtyClient] Max restart attempts reached, giving up");
+          this.emit("host-crash", code);
+        }
+      });
     });
 
     // Start health check with watchdog (only if not paused by system sleep)
@@ -1446,6 +1529,12 @@ export class PtyClient extends EventEmitter {
         }
       }, 1000);
     }
+
+    if (this.childProcessGoneHandler) {
+      app.off("child-process-gone", this.childProcessGoneHandler);
+      this.childProcessGoneHandler = null;
+    }
+    this.pendingChildProcessGoneReason = null;
 
     // Clean up all pending requests via broker (rejects pending promises with
     // "Broker disposed"; callers convert to sentinel values via .catch()).
