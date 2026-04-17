@@ -4,7 +4,6 @@ import {
   getMoreAgentsOption,
   type LaunchOption,
 } from "@/components/TerminalPalette/launchOptions";
-import type { LaunchAgentOptions } from "./useAgentLauncher";
 import { useWorktreeSelectionStore, usePanelStore } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
@@ -15,7 +14,6 @@ import { getEffectiveAgentIds } from "@shared/config/agentRegistry";
 import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 
 interface UseNewTerminalPaletteProps {
-  launchAgent: (type: string, options?: LaunchAgentOptions) => Promise<string | null>;
   worktreeMap: Map<string, WorktreeState>;
 }
 
@@ -37,7 +35,6 @@ function filterLaunchOptions(items: LaunchOption[], query: string): LaunchOption
 export const MORE_AGENTS_TERMINAL_ID = "more-agents";
 
 export function useNewTerminalPalette({
-  launchAgent,
   worktreeMap,
 }: UseNewTerminalPaletteProps): UseNewTerminalPaletteReturn {
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
@@ -97,17 +94,25 @@ export function useNewTerminalPalette({
           return;
         }
 
-        await launchAgent(option.type, {
-          worktreeId: targetWorktreeId || undefined,
-          cwd,
-          location: "grid",
-        });
+        const result = await actionService.dispatch(
+          "agent.launch",
+          {
+            agentId: option.type,
+            worktreeId: targetWorktreeId || undefined,
+            cwd,
+            location: "grid",
+          },
+          { source: "user" }
+        );
+        if (!result.ok) {
+          console.error(`Failed to launch ${option.type} terminal:`, result.error);
+        }
         close();
       } catch (error) {
         console.error(`Failed to launch ${option.type} terminal:`, error);
       }
     },
-    [activeWorktreeId, worktreeMap, currentProject, launchAgent, addPanel, close]
+    [activeWorktreeId, worktreeMap, currentProject, addPanel, close]
   );
 
   const confirmSelection = useCallback(() => {

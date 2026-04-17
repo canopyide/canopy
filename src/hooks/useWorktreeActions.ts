@@ -100,7 +100,6 @@ export async function copyContextWithFeedback(
 
 export interface UseWorktreeActionsOptions {
   onOpenRecipeEditor?: (worktreeId: string, initialTerminals?: RecipeTerminal[]) => void;
-  launchAgent?: (agentId: string, options: { worktreeId: string; location: "grid" }) => void;
 }
 
 export interface WorktreeActions {
@@ -114,7 +113,6 @@ export interface WorktreeActions {
 
 export function useWorktreeActions({
   onOpenRecipeEditor,
-  launchAgent,
 }: UseWorktreeActionsOptions = {}): WorktreeActions {
   const addError = useErrorStore((state) => state.addError);
 
@@ -222,12 +220,13 @@ export function useWorktreeActions({
     [addError, onOpenRecipeEditor]
   );
 
-  const handleLaunchAgent = useCallback(
-    (worktreeId: string, agentId: string) => {
-      launchAgent?.(agentId, { worktreeId, location: "grid" });
-    },
-    [launchAgent]
-  );
+  const handleLaunchAgent = useCallback((worktreeId: string, agentId: string) => {
+    void actionService.dispatch(
+      "agent.launch",
+      { agentId, worktreeId, location: "grid" },
+      { source: "user" }
+    );
+  }, []);
 
   return useMemo(
     () => ({

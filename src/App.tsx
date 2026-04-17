@@ -209,7 +209,7 @@ function App() {
   const { findNearest, findByIndex, findDockByIndex, getCurrentLocation } = useGridNavigation();
 
   const { worktrees, worktreeMap } = useWorktrees();
-  const newTerminalPalette = useNewTerminalPalette({ launchAgent, worktreeMap });
+  const newTerminalPalette = useNewTerminalPalette({ worktreeMap });
   const panelPalette = usePanelPalette();
   const projectSwitcherPalette = useProjectSwitcherPalette();
   const actionPalette = useActionPalette();
@@ -364,7 +364,7 @@ function App() {
     usePaletteStore.getState().closePalette("theme");
   }, []);
 
-  const overviewWorktreeActions = useWorktreeActions({ launchAgent });
+  const overviewWorktreeActions = useWorktreeActions();
 
   useAppEventListeners();
 

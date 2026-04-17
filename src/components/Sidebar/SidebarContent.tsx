@@ -295,7 +295,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const [isRefreshing, startRefreshTransition] = useTransition();
   const currentProject = useProjectStore((state) => state.currentProject);
   useProjectSettings();
-  const { launchAgent, availability, agentSettings } = useAgentLauncher();
+  const { availability, agentSettings } = useAgentLauncher();
   const {
     activeWorktreeId,
     focusedWorktreeId,
@@ -772,7 +772,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const worktreeActions = useWorktreeActions({
     onOpenRecipeEditor: handleOpenRecipeEditor,
-    launchAgent,
   });
 
   const handleCloseRecipeEditor = useCallback(() => {
