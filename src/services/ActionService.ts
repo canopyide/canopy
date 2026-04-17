@@ -281,10 +281,11 @@ export class ActionService {
 export const actionService = new ActionService();
 
 // Expose dispatch function for E2E tests (WebGL renderer has no DOM-level action API).
-// Registered unconditionally but gated at call time — the function is harmless
-// in production and avoids import-time env var timing issues.
-if (typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>).__daintreeDispatchAction = (
+// Gated on the preload-injected __DAINTREE_E2E_MODE__ flag so the global is never
+// attached in production sessions — the flag is only exposed when the Electron
+// process was launched with DAINTREE_E2E_MODE=1 (set exclusively by e2e/helpers/launch.ts).
+if (typeof window !== "undefined" && window.__DAINTREE_E2E_MODE__ === true) {
+  window.__daintreeDispatchAction = (
     actionId: string,
     args?: unknown,
     options?: { source?: string; confirmed?: boolean }
