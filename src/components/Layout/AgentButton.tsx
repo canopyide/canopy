@@ -24,6 +24,7 @@ import { isAgentReady, isAgentInstalled } from "../../../shared/utils/agentAvail
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { useShallow } from "zustand/react/shallow";
 import {
   getDominantAgentState,
   agentStateDotColor,
@@ -54,8 +55,8 @@ export function AgentButton({
   const { worktrees } = useWorktrees();
   const displayCombo = useKeybindingDisplay(`agent.${type}`);
 
-  const panelsById = usePanelStore((s) => s.panelsById);
-  const panelIds = usePanelStore((s) => s.panelIds);
+  const panelsById = usePanelStore(useShallow((s) => s.panelsById));
+  const panelIds = usePanelStore(useShallow((s) => s.panelIds));
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
   const activeSession = useMemo(() => {

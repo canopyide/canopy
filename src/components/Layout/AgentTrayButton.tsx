@@ -27,6 +27,7 @@ import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { useShallow } from "zustand/react/shallow";
 import { useKeybindingDisplay } from "@/hooks";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import type { CliAvailability, AgentState } from "@shared/types";
@@ -94,8 +95,8 @@ export function AgentTrayButton({
   const refreshAvailability = useCliAvailabilityStore((s) => s.refresh);
   const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
 
-  const panelsById = usePanelStore((s) => s.panelsById);
-  const panelIds = usePanelStore((s) => s.panelIds);
+  const panelsById = usePanelStore(useShallow((s) => s.panelsById));
+  const panelIds = usePanelStore(useShallow((s) => s.panelIds));
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
   // Before the first real availability result lands we can't distinguish
