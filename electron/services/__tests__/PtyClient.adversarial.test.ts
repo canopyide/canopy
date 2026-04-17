@@ -489,9 +489,7 @@ describe("PtyClient adversarial", () => {
         (call[0] as { id?: string })?.id === "t-0"
     );
     expect(updatedSpawns).toHaveLength(1);
-    expect(
-      (updatedSpawns[0][0] as { options: PtyHostSpawnOptions }).options.cwd
-    ).toBe("/updated");
+    expect((updatedSpawns[0][0] as { options: PtyHostSpawnOptions }).options.cwd).toBe("/updated");
   });
 
   it("RESPAWN_AFTER_CRASH_DOES_NOT_EXCEED_CAP", () => {
