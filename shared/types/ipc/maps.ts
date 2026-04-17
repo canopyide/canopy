@@ -1304,6 +1304,10 @@ export interface IpcInvokeMap {
       item: import("../plugin.js").MenuItemContribution;
     }>;
   };
+  "plugin:validate-action-ids": {
+    args: [actionIds: string[]];
+    result: void;
+  };
 
   // Dev Preview channels
   "dev-preview:ensure": {

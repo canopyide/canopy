@@ -27,6 +27,31 @@ export function registerPluginHandlers(): () => void {
     return getPluginMenuItems();
   };
 
+  const handleValidateActionIds = async (
+    _event: Electron.IpcMainInvokeEvent,
+    actionIds: string[]
+  ): Promise<void> => {
+    const knownIds = new Set(actionIds);
+
+    for (const id of getPluginToolbarButtonIds()) {
+      const config = getToolbarButtonConfig(id);
+      if (!config) continue;
+      if (!knownIds.has(config.actionId)) {
+        console.warn(
+          `[Plugin] Unknown actionId "${config.actionId}" on toolbar button "${config.id}" (plugin: ${config.pluginId})`
+        );
+      }
+    }
+
+    for (const { pluginId, item } of getPluginMenuItems()) {
+      if (!knownIds.has(item.actionId)) {
+        console.warn(
+          `[Plugin] Unknown actionId "${item.actionId}" on menu item "${item.label}" (plugin: ${pluginId})`
+        );
+      }
+    }
+  };
+
   ipcMain.handle(CHANNELS.PLUGIN_LIST, handleList);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PLUGIN_LIST));
 
@@ -47,6 +72,9 @@ export function registerPluginHandlers(): () => void {
 
   ipcMain.handle(CHANNELS.PLUGIN_MENU_ITEMS, handleMenuItems);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PLUGIN_MENU_ITEMS));
+
+  ipcMain.handle(CHANNELS.PLUGIN_VALIDATE_ACTION_IDS, handleValidateActionIds);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PLUGIN_VALIDATE_ACTION_IDS));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

@@ -588,6 +588,7 @@ export const CHANNELS = {
   PLUGIN_INVOKE: "plugin:invoke",
   PLUGIN_TOOLBAR_BUTTONS: "plugin:toolbar-buttons",
   PLUGIN_MENU_ITEMS: "plugin:menu-items",
+  PLUGIN_VALIDATE_ACTION_IDS: "plugin:validate-action-ids",
 
   RESOURCE_PROFILE_CHANGED: "resource:profile-changed",
 

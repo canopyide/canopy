@@ -1094,6 +1094,7 @@ const CHANNELS = {
   PLUGIN_INVOKE: "plugin:invoke",
   PLUGIN_TOOLBAR_BUTTONS: "plugin:toolbar-buttons",
   PLUGIN_MENU_ITEMS: "plugin:menu-items",
+  PLUGIN_VALIDATE_ACTION_IDS: "plugin:validate-action-ids",
 
   RESOURCE_PROFILE_CHANGED: "resource:profile-changed",
 
@@ -2861,6 +2862,8 @@ const api: ElectronAPI = {
 
     toolbarButtons: () => _unwrappingInvoke(CHANNELS.PLUGIN_TOOLBAR_BUTTONS),
     menuItems: () => _unwrappingInvoke(CHANNELS.PLUGIN_MENU_ITEMS),
+    validateActionIds: (actionIds: string[]) =>
+      _unwrappingInvoke(CHANNELS.PLUGIN_VALIDATE_ACTION_IDS, actionIds),
   },
 
   crashRecovery: {

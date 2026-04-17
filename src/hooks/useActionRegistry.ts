@@ -95,4 +95,11 @@ export function useActionRegistry(options: ActionCallbacks): void {
 
     registeredRef.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!registeredRef.current) return;
+    void window.electron.plugin
+      .validateActionIds(actionService.list().map((entry) => entry.id))
+      .catch(() => {});
+  }, []);
 }
