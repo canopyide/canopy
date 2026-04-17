@@ -302,9 +302,8 @@ describe("buildLaunchCommandFromFlags", () => {
     const cmd = buildLaunchCommandFromFlags("gemini", "gemini", ["--yolo"], {
       clipboardDirectory: "/tmp/daintree-clipboard",
     });
-    expect(cmd).toContain("--yolo");
-    expect(cmd).toContain("--include-directories");
-    expect(cmd).toContain("/tmp/daintree-clipboard");
+    // Exact assertion locks flag/value pairing and ordering.
+    expect(cmd).toBe("gemini --yolo --include-directories '/tmp/daintree-clipboard'");
   });
 
   it("does not inject --include-directories for non-Gemini agents", () => {
@@ -334,8 +333,24 @@ describe("buildLaunchCommandFromFlags", () => {
       ["--yolo", "--include-directories", "/tmp/daintree-clipboard"],
       { clipboardDirectory: "/tmp/daintree-clipboard" }
     );
-    const matches = cmd.match(/--include-directories/g) ?? [];
-    expect(matches).toHaveLength(1);
+    // Count exact flag-token occurrences, not substring matches.
+    const tokens = cmd.split(/\s+/).filter((t) => t === "--include-directories");
+    expect(tokens).toHaveLength(1);
+  });
+
+  it("does NOT dedup when persisted flags reference a different directory", () => {
+    // Persisted `--include-directories /old/path` should be preserved, AND the
+    // runtime clipboard dir should still be appended — each serves a distinct purpose.
+    const cmd = buildLaunchCommandFromFlags(
+      "gemini",
+      "gemini",
+      ["--include-directories", "/user/chosen/dir"],
+      { clipboardDirectory: "/tmp/daintree-clipboard" }
+    );
+    expect(cmd).toContain("/user/chosen/dir");
+    expect(cmd).toContain("/tmp/daintree-clipboard");
+    const tokens = cmd.split(/\s+/).filter((t) => t === "--include-directories");
+    expect(tokens).toHaveLength(2);
   });
 
   it("handles empty flag arrays safely", () => {

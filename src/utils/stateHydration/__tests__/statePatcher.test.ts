@@ -559,9 +559,8 @@ describe("buildArgsForRespawn", () => {
       false,
       "/tmp/daintree-clipboard"
     );
-    expect(result.command).toContain("--yolo");
-    expect(result.command).toContain("--include-directories");
-    expect(result.command).toContain("/tmp/daintree-clipboard");
+    // Exact assertion locks flag/value pairing and ordering.
+    expect(result.command).toBe("gemini --yolo --include-directories '/tmp/daintree-clipboard'");
     expect(generateAgentCommandMock).not.toHaveBeenCalled();
   });
 
