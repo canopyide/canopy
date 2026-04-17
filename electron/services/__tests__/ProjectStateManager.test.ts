@@ -147,6 +147,31 @@ describe("ProjectStateManager telemetry", () => {
     expect(meta.projectId).toBe(projectId);
   });
 
+  it("does not emit PROJECT_STATE_READ on a cache hit", async () => {
+    await manager.saveProjectState(projectId, makeState());
+    await manager.getProjectState(projectId);
+    vi.mocked(withPerformanceSpan).mockClear();
+
+    await manager.getProjectState(projectId);
+
+    const readCall = vi
+      .mocked(withPerformanceSpan)
+      .mock.calls.find((call) => call[0] === PERF_MARKS.PROJECT_STATE_READ);
+    expect(readCall).toBeUndefined();
+  });
+
+  it("does not emit PROJECT_STATE_READ when no state file exists", async () => {
+    const missingId = generateProjectId("/missing/telemetry-project");
+
+    const result = await manager.getProjectState(missingId);
+
+    expect(result).toBeNull();
+    const readCall = vi
+      .mocked(withPerformanceSpan)
+      .mock.calls.find((call) => call[0] === PERF_MARKS.PROJECT_STATE_READ);
+    expect(readCall).toBeUndefined();
+  });
+
   it("emits PROJECT_STATE_QUARANTINE when a corrupted state file is quarantined", async () => {
     const filePath = stateFilePath(tempDir, projectId)!;
     await fs.writeFile(filePath, "{ not valid json", "utf-8");
