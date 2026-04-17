@@ -9,6 +9,7 @@
 2. **Native Modules:** The `postinstall` script rebuilds `node-pty` automatically. Run `npm run rebuild` manually if errors occur.
 3. **Code Style:** Minimal comments, no decorative headers, high signal-to-noise.
 4. **Commits:** NEVER commit changes without explicit permission from the user.
+5. **Agent Config Boundary:** Never modify user-owned agent configuration (`~/.claude/settings.json`, `~/.gemini/`, user hooks, agent-native settings files). This includes additive CLI injection like Claude's `--settings` flag—adding hooks or config still changes the user's session behavior. If a capability requires altering user agent config, it's out of scope. Use passive observation instead (output parsing, OSC title sniffing, process-tree state). Precedent: issue #4100.
 
 ## Commands
 
