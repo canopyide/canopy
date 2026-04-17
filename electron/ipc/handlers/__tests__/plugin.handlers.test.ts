@@ -169,7 +169,7 @@ describe("PLUGIN_VALIDATE_ACTION_IDS handler", () => {
     warn.mockRestore();
   });
 
-  it("warns when a toolbar button actionId is unknown", async () => {
+  it("warns with the exact message when a toolbar button actionId is unknown", async () => {
     mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.my.button"]);
     mockGetToolbarButtonConfig.mockReturnValue({
       id: "plugin.my.button",
@@ -183,15 +183,13 @@ describe("PLUGIN_VALIDATE_ACTION_IDS handler", () => {
     const handler = getValidateHandler();
     await handler({}, ["action.known"]);
     expect(warn).toHaveBeenCalledTimes(1);
-    const message = warn.mock.calls[0]![0] as string;
-    expect(message).toContain("action.missing");
-    expect(message).toContain("plugin.my.button");
-    expect(message).toContain("my-plugin");
-    expect(message).toContain("toolbar button");
+    expect(warn).toHaveBeenCalledWith(
+      '[Plugin] Unknown actionId "action.missing" on toolbar button "plugin.my.button" (plugin: my-plugin)'
+    );
     warn.mockRestore();
   });
 
-  it("warns when a menu item actionId is unknown", async () => {
+  it("warns with the exact message when a menu item actionId is unknown", async () => {
     mockGetPluginMenuItems.mockReturnValue([
       {
         pluginId: "my-plugin",
@@ -206,11 +204,9 @@ describe("PLUGIN_VALIDATE_ACTION_IDS handler", () => {
     const handler = getValidateHandler();
     await handler({}, ["action.known"]);
     expect(warn).toHaveBeenCalledTimes(1);
-    const message = warn.mock.calls[0]![0] as string;
-    expect(message).toContain("action.missing");
-    expect(message).toContain("Do Thing");
-    expect(message).toContain("my-plugin");
-    expect(message).toContain("menu item");
+    expect(warn).toHaveBeenCalledWith(
+      '[Plugin] Unknown actionId "action.missing" on menu item "Do Thing" (plugin: my-plugin)'
+    );
     warn.mockRestore();
   });
 
@@ -280,6 +276,47 @@ describe("PLUGIN_VALIDATE_ACTION_IDS handler", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const handler = getValidateHandler();
     await expect(handler({}, [])).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it.each<[string, unknown]>([
+    ["null", null],
+    ["undefined", undefined],
+    ["string", "action.a"],
+    ["object", { a: 1 }],
+  ])("does not warn when payload is a non-array (%s)", async (_label, payload) => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.a"]);
+    mockGetToolbarButtonConfig.mockReturnValue({
+      id: "plugin.a",
+      label: "A",
+      iconId: "i",
+      actionId: "action.missing",
+      priority: 3,
+      pluginId: "p1",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await expect(handler({}, payload as unknown as string[])).resolves.toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("only validates once per handler lifecycle so multi-window callers don't double-log", async () => {
+    mockGetPluginToolbarButtonIds.mockReturnValue(["plugin.a"]);
+    mockGetToolbarButtonConfig.mockReturnValue({
+      id: "plugin.a",
+      label: "A",
+      iconId: "i",
+      actionId: "action.missing",
+      priority: 3,
+      pluginId: "p1",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handler = getValidateHandler();
+    await handler({}, []);
+    await handler({}, []);
+    await handler({}, []);
+    expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
 });

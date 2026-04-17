@@ -10,8 +10,11 @@ import { isTrustedRendererUrl } from "../../../shared/utils/trustedRenderer.js";
 import type { LoadedPluginInfo, PluginIpcHandler } from "../../../shared/types/plugin.js";
 import type { ToolbarButtonConfig } from "../../../shared/config/toolbarButtonRegistry.js";
 
+let hasValidatedActionIds = false;
+
 export function registerPluginHandlers(): () => void {
   const handlers: Array<() => void> = [];
+  hasValidatedActionIds = false;
 
   const handleList = async (): Promise<LoadedPluginInfo[]> => {
     return pluginService.listPlugins();
@@ -29,9 +32,13 @@ export function registerPluginHandlers(): () => void {
 
   const handleValidateActionIds = async (
     _event: Electron.IpcMainInvokeEvent,
-    actionIds: string[]
+    actionIds: unknown
   ): Promise<void> => {
-    const knownIds = new Set(actionIds);
+    if (hasValidatedActionIds) return;
+    if (!Array.isArray(actionIds)) return;
+    hasValidatedActionIds = true;
+
+    const knownIds = new Set(actionIds.filter((id): id is string => typeof id === "string"));
 
     for (const id of getPluginToolbarButtonIds()) {
       const config = getToolbarButtonConfig(id);
