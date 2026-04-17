@@ -3,6 +3,7 @@ import "./setup/environment.js";
 
 import { app, BrowserWindow, crashReporter, protocol } from "electron";
 import { registerGlobalErrorHandlers } from "./setup/globalErrorHandlers.js";
+import os from "node:os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PERF_MARKS } from "../shared/perf/marks.js";
@@ -25,6 +26,7 @@ import {
 } from "./window/windowRef.js";
 import { WindowRegistry } from "./window/WindowRegistry.js";
 import { ProjectViewManager } from "./window/ProjectViewManager.js";
+import { computeDefaultCachedViews } from "./utils/cachedProjectViews.js";
 import { setupBrowserWindow } from "./window/createWindow.js";
 import { distributePortsToView } from "./window/portDistribution.js";
 import {
@@ -183,8 +185,9 @@ if (!gotTheLock) {
         // cached view alive is required so the wizard rendered in the
         // originating project view survives a switch into a freshly added
         // project view. Increase the cache only when the e2e harness flag is
-        // set so production behavior is unchanged.
-        (process.env.DAINTREE_E2E_MODE ? 4 : undefined),
+        // set so production behavior is unchanged. Otherwise auto-size the
+        // default from system RAM so higher-memory machines cache more views.
+        (process.env.DAINTREE_E2E_MODE ? 4 : computeDefaultCachedViews(os.totalmem())),
       onViewEvicted: (wcId) => {
         getWorkspaceClientRef()?.removeDirectPort(wcId);
         getWorktreePortBrokerRef()?.closePortsForView(wcId);
