@@ -1223,7 +1223,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       false,
       undefined
     );
-    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    const entry = generateAgentCommandMock.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.dangerousEnabled).toBe(true);
   });
 
@@ -1241,7 +1241,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       false,
       undefined
     );
-    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    const entry = generateAgentCommandMock.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.customFlags).toBe("--my-flag");
   });
 
@@ -1255,7 +1255,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       false,
       undefined
     );
-    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    const entry = generateAgentCommandMock.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.inlineMode).toBe(false);
   });
 
@@ -1269,7 +1269,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       false,
       undefined
     );
-    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    const entry = generateAgentCommandMock.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.dangerousEnabled).toBe(true);
   });
 
@@ -1283,7 +1283,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       false,
       undefined
     );
-    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    const entry = generateAgentCommandMock.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.customFlags).toBe("--base-flag");
   });
 
@@ -1294,7 +1294,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       args: ["--system-prompt", "be concise"],
     });
     buildArgsForRespawn(BASE, "agent", "/p", { agents: { claude: {} } }, false, undefined);
-    const opts = generateAgentCommandMock.mock.calls[0][3] as Record<string, unknown>;
+    const opts = generateAgentCommandMock.mock.calls[0]![3] as Record<string, unknown>;
     expect(opts.flavorArgs).toBe("--system-prompt be concise");
   });
 
@@ -1305,7 +1305,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       args: ["--output-format=json"],
     });
     buildArgsForRespawn(BASE, "agent", "/p", { agents: { claude: {} } }, false, undefined);
-    const opts = generateAgentCommandMock.mock.calls[0][3] as Record<string, unknown>;
+    const opts = generateAgentCommandMock.mock.calls[0]![3] as Record<string, unknown>;
     expect(opts.flavorArgs).toBe("--output-format=json");
   });
 
@@ -1325,7 +1325,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
       false,
       undefined
     );
-    const entry = generateAgentCommandMock.mock.calls[0][1] as Record<string, unknown>;
+    const entry = generateAgentCommandMock.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.dangerousEnabled).toBe(true);
     expect(entry.customFlags).toBe("--base-flag");
   });
@@ -1333,7 +1333,7 @@ describe("adversarial: behavioral overrides flow through to generateAgentCommand
   it("flavorArgs is undefined when flavor has no args field", () => {
     getMergedFlavorMock.mockReturnValue({ id: "user-x", name: "NoArgs" });
     buildArgsForRespawn(BASE, "agent", "/p", { agents: { claude: {} } }, false, undefined);
-    const opts = generateAgentCommandMock.mock.calls[0][3] as Record<string, unknown>;
+    const opts = generateAgentCommandMock.mock.calls[0]![3] as Record<string, unknown>;
     expect(opts.flavorArgs).toBeUndefined();
   });
 });

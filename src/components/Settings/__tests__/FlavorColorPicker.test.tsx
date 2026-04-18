@@ -50,7 +50,7 @@ describe("FlavorColorPicker", () => {
     expect(swatch).toBeTruthy();
     fireEvent.click(swatch);
     expect(onChange).toHaveBeenCalledTimes(1);
-    const arg = onChange.mock.calls[0][0];
+    const arg = onChange.mock.calls[0]![0];
     expect(arg).toMatch(/^#[0-9a-f]{6}$/i);
   });
 

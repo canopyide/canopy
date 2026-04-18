@@ -837,7 +837,7 @@ describe("AgentTrayButton", () => {
     it("Enter on the submenu trigger launches vanilla (flavorId: null)", () => {
       const availability = arrangeAgentWithFlavors();
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-      const submenuTrigger = getAllByTestId("submenu-trigger")[0];
+      const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
       fireEvent.keyDown(submenuTrigger, { key: "Enter" });
 
@@ -851,7 +851,7 @@ describe("AgentTrayButton", () => {
     it("Space on the submenu trigger also launches vanilla", () => {
       const availability = arrangeAgentWithFlavors();
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-      const submenuTrigger = getAllByTestId("submenu-trigger")[0];
+      const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
       fireEvent.keyDown(submenuTrigger, { key: " " });
 
@@ -865,7 +865,7 @@ describe("AgentTrayButton", () => {
     it("other keys (ArrowRight, Tab) do NOT trigger launch", () => {
       const availability = arrangeAgentWithFlavors();
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-      const submenuTrigger = getAllByTestId("submenu-trigger")[0];
+      const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
       fireEvent.keyDown(submenuTrigger, { key: "ArrowRight" });
       fireEvent.keyDown(submenuTrigger, { key: "Tab" });

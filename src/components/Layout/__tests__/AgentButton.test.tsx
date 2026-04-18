@@ -225,8 +225,8 @@ describe("AgentButton flavor UX", () => {
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
       );
       // Split-button branch — first button is the primary launch button.
-      const [primaryBtn] = getAllByRole("button");
-      fireEvent.click(primaryBtn);
+      const [primaryBtn] = getAllByRole("button") as HTMLElement[];
+      fireEvent.click(primaryBtn!);
 
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",

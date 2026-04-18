@@ -83,8 +83,8 @@ describe("EnvVarEditor", () => {
     const keyInputs = getAllByTestId("env-editor-key") as HTMLInputElement[];
 
     // Change the second row's key to match the first.
-    fireEvent.change(keyInputs[1], { target: { value: "FOO" } });
-    fireEvent.blur(keyInputs[1]);
+    fireEvent.change(keyInputs[1]!, { target: { value: "FOO" } });
+    fireEvent.blur(keyInputs[1]!);
 
     // Duplicate key error surfaces (the first row also gets flagged because it
     // matches the duplicate set).
@@ -103,7 +103,7 @@ describe("EnvVarEditor", () => {
     const { getAllByTestId } = renderEditor({ KEEP: "a", REMOVE: "b" });
     const removeButtons = getAllByTestId("env-editor-remove");
 
-    fireEvent.click(removeButtons[1]);
+    fireEvent.click(removeButtons[1]!);
 
     expect(onChange).toHaveBeenLastCalledWith({ KEEP: "a" });
   });
@@ -117,7 +117,7 @@ describe("EnvVarEditor", () => {
     const keyInputs = getAllByTestId("env-editor-key") as HTMLInputElement[];
     expect(keyInputs).toHaveLength(2);
     // Second row should pick NEW_VAR_1 (first collides).
-    expect(keyInputs[1].value).toBe("NEW_VAR_1");
+    expect(keyInputs[1]!.value).toBe("NEW_VAR_1");
   });
 
   it("newly-added rows do not show 'Key required' before first blur", () => {

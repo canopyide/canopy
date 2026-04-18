@@ -37,7 +37,7 @@ describe("Adversarial Unit Tests: Logic Vulnerabilities", () => {
       const result = getMergedFlavors("claude", flavors);
       // Flavor survives, circular value is dropped
       expect(result).toHaveLength(1);
-      expect(result[0].env?.["self"]).toBeUndefined();
+      expect(result[0]!.env?.["self"]).toBeUndefined();
     });
 
     it("validates flavor ID format — rejects unsafe chars", () => {
@@ -69,7 +69,7 @@ describe("Adversarial Unit Tests: Logic Vulnerabilities", () => {
       const flavors = [{ id: "huge", name: "Big", env: hugeEnv }];
       expect(() => getMergedFlavors("claude", flavors)).not.toThrow();
       const result = getMergedFlavors("claude", flavors);
-      expect(result[0].env).toBeDefined();
+      expect(result[0]!.env).toBeDefined();
     });
 
     it("blocks dangerous env var names (PATH, LD_PRELOAD, etc.)", () => {
@@ -77,8 +77,8 @@ describe("Adversarial Unit Tests: Logic Vulnerabilities", () => {
         { id: "danger", name: "Bad", env: { PATH: "/bin", LD_PRELOAD: "evil.so" } },
       ];
       const result = getMergedFlavors("claude", dangerous);
-      expect(result[0].env?.PATH).toBeUndefined();
-      expect(result[0].env?.LD_PRELOAD).toBeUndefined();
+      expect(result[0]!.env?.PATH).toBeUndefined();
+      expect(result[0]!.env?.LD_PRELOAD).toBeUndefined();
     });
 
     it("rejects non-string env values silently", () => {
@@ -91,8 +91,8 @@ describe("Adversarial Unit Tests: Logic Vulnerabilities", () => {
       ];
       expect(() => getMergedFlavors("claude", flavors)).not.toThrow();
       const result = getMergedFlavors("claude", flavors);
-      expect(result[0].env?.NUM).toBeUndefined();
-      expect(result[0].env?.OBJ).toBeUndefined();
+      expect(result[0]!.env?.NUM).toBeUndefined();
+      expect(result[0]!.env?.OBJ).toBeUndefined();
     });
   });
 

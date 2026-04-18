@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { serializePtyPanel } from "../serializer";
-import type { TerminalInstance } from "@shared/types/panel";
+import type { PtyPanelData } from "@shared/types/panel";
 
-function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
+function makePanel(overrides: Partial<PtyPanelData> = {}): PtyPanelData {
   return {
     id: "p1",
     title: "Claude",
@@ -13,7 +13,7 @@ function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance 
     cwd: "/project",
     location: "grid",
     ...overrides,
-  } as TerminalInstance;
+  } as PtyPanelData;
 }
 
 describe("serializePtyPanel — agentFlavorId", () => {

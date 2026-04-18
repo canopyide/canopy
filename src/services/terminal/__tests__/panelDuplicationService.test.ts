@@ -541,7 +541,7 @@ describe("adversarial: behavioral overrides flow to generateAgentCommand in dupl
     await buildPanelDuplicateOptions(panel, "grid");
 
     expect(spy).toHaveBeenCalled();
-    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    const entry = spy.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.dangerousEnabled).toBe(true);
   });
 
@@ -560,7 +560,7 @@ describe("adversarial: behavioral overrides flow to generateAgentCommand in dupl
     const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
     await buildPanelDuplicateOptions(panel, "grid");
 
-    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    const entry = spy.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.customFlags).toBe("--extra-flag");
   });
 
@@ -575,7 +575,7 @@ describe("adversarial: behavioral overrides flow to generateAgentCommand in dupl
     const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
     await buildPanelDuplicateOptions(panel, "grid");
 
-    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    const entry = spy.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.inlineMode).toBe(false);
   });
 
@@ -590,7 +590,7 @@ describe("adversarial: behavioral overrides flow to generateAgentCommand in dupl
     const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
     await buildPanelDuplicateOptions(panel, "grid");
 
-    const entry = spy.mock.calls[0][1] as Record<string, unknown>;
+    const entry = spy.mock.calls[0]![1] as Record<string, unknown>;
     expect(entry.dangerousEnabled).toBe(true);
   });
 
@@ -609,7 +609,7 @@ describe("adversarial: behavioral overrides flow to generateAgentCommand in dupl
     const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
     await buildPanelDuplicateOptions(panel, "grid");
 
-    const opts = spy.mock.calls[0][3] as Record<string, unknown>;
+    const opts = spy.mock.calls[0]![3] as Record<string, unknown>;
     expect(opts.flavorArgs).toBe("--verbose --trace");
   });
 
@@ -624,7 +624,7 @@ describe("adversarial: behavioral overrides flow to generateAgentCommand in dupl
     const panel = makePanel({ kind: "agent", agentId: "claude", agentFlavorId: "user-abc" });
     await buildPanelDuplicateOptions(panel, "grid");
 
-    const opts = spy.mock.calls[0][3] as Record<string, unknown>;
+    const opts = spy.mock.calls[0]![3] as Record<string, unknown>;
     expect(opts.flavorArgs).toBeUndefined();
   });
 });
