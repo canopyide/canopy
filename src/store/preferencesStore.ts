@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createSafeJSONStorage } from "./persistence/safeStorage";
+import { registerPersistedStore } from "./persistence/persistedStoreRegistry";
 
 export type DockDensity = "compact" | "normal" | "comfortable";
 
@@ -80,3 +81,10 @@ export const usePreferencesStore = create<PreferencesState>()(
     }
   )
 );
+
+registerPersistedStore({
+  storeId: "preferencesStore",
+  store: usePreferencesStore,
+  persistedStateType:
+    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
+});
