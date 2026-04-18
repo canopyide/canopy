@@ -1074,8 +1074,10 @@ export async function listIssues(
       if (options.search) {
         const stateFilter =
           options.state === "closed" ? "is:closed" : options.state === "all" ? "" : "is:open";
+        const sortQualifier =
+          resolvedSortOrder === "updated" ? "sort:updated-desc" : "sort:created-desc";
         const searchQuery =
-          `repo:${context.owner}/${context.repo} is:issue ${stateFilter} sort:updated-desc ${options.search}`.trim();
+          `repo:${context.owner}/${context.repo} is:issue ${stateFilter} ${sortQualifier} ${options.search}`.trim();
 
         const response = (await client(SEARCH_QUERY, {
           searchQuery,
@@ -1191,8 +1193,10 @@ export async function listPullRequests(
         else if (options.state === "closed") stateFilter = "is:closed is:unmerged";
         else if (options.state === "merged") stateFilter = "is:merged";
 
+        const sortQualifier =
+          resolvedSortOrder === "updated" ? "sort:updated-desc" : "sort:created-desc";
         const searchQuery =
-          `repo:${context.owner}/${context.repo} is:pr ${stateFilter} sort:updated-desc ${options.search}`.trim();
+          `repo:${context.owner}/${context.repo} is:pr ${stateFilter} ${sortQualifier} ${options.search}`.trim();
 
         const response = (await client(SEARCH_QUERY, {
           searchQuery,

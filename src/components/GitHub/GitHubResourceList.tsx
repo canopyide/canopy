@@ -617,11 +617,11 @@ export function GitHubResourceList({
                   "relative flex items-center justify-center w-7 h-7 rounded shrink-0",
                   "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
                   "transition-colors",
-                  sortOrder !== "updated" && "text-daintree-accent"
+                  sortOrder !== "created" && "text-daintree-accent"
                 )}
               >
                 <Filter className="w-3.5 h-3.5" />
-                {sortOrder !== "updated" && (
+                {sortOrder !== "created" && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-daintree-accent" />
                 )}
               </button>
