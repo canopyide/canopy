@@ -912,7 +912,7 @@ describe("PtyClient adversarial", () => {
     }
   }
 
-  it("PENDING_KILLS_UNTRACKED_AT_CAP_BUT_IPC_STILL_SENT", async () => {
+  it("NEW_ID_AT_CAP_WARNS_BUT_TRACKS_AND_SENDS_IPC", async () => {
     const client = createReadyClient();
     const privateAccess = client as unknown as PtyClientPrivateAccess;
     const { logWarn } = await import("../../utils/logger.js");
@@ -925,11 +925,12 @@ describe("PtyClient adversarial", () => {
     client.spawn("t-overflow", baseSpawnOptions());
     client.kill("t-overflow");
 
-    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
-    expect(privateAccess.pendingKillCount.has("t-overflow")).toBe(false);
-    // IPC must still be dispatched so the host-side PTY is actually killed.
+    // Cap is soft — tracking the known id is required to prevent a late
+    // "exit" from deleting a re-spawned entry with the same id.
+    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS + 1);
+    expect(privateAccess.pendingKillCount.get("t-overflow")).toBe(1);
     expect(countKillMessages(mockChild, "t-overflow")).toBe(1);
-    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("pendingKillCount at cap"));
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("exceeds soft cap"));
   });
 
   it("KILL_EXISTING_ID_INCREMENTS_AT_CAP", async () => {
@@ -943,7 +944,8 @@ describe("PtyClient adversarial", () => {
     mockChild.postMessage.mockClear();
 
     // Already-tracked id: re-spawn so the next kill sees it as known,
-    // then kill again. Size stays at cap; count bumps to 2.
+    // then kill again. Size stays at cap; count bumps to 2. No warn because
+    // the entry existed (no soft-cap crossing).
     client.spawn("k-0", baseSpawnOptions());
     client.kill("k-0");
 
@@ -964,7 +966,8 @@ describe("PtyClient adversarial", () => {
     }
 
     // Unknown ids were never spawned, so they must not occupy cap slots —
-    // otherwise stray kills would permanently starve legitimate kills.
+    // otherwise stray kills would inflate the soft cap without any host-side
+    // terminal actually owning the slot.
     expect(privateAccess.pendingKillCount.size).toBe(0);
     expect(logWarn).not.toHaveBeenCalled();
     // IPC still sent for each — PtyManager.kill() no-ops for unknown ids.
@@ -975,25 +978,20 @@ describe("PtyClient adversarial", () => {
     expect(privateAccess.pendingKillCount.get("t-real")).toBe(1);
   });
 
-  it("EXIT_DECREMENT_FREES_CAPACITY_FOR_NEW_ID", async () => {
+  it("EXIT_DECREMENTS_AND_REMOVES_ENTRY", async () => {
     const client = createReadyClient();
     const privateAccess = client as unknown as PtyClientPrivateAccess;
-    const { logWarn } = await import("../../utils/logger.js");
 
-    fillKnownPendingKills(client, MAX_PENDING_KILLS);
-    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
+    client.spawn("k-0", baseSpawnOptions());
+    client.kill("k-0");
+    client.spawn("k-0", baseSpawnOptions());
+    client.kill("k-0");
+    expect(privateAccess.pendingKillCount.get("k-0")).toBe(2);
 
-    // Exit for k-0 decrements (and deletes) its entry.
     mockChild.emit("message", { type: "exit", id: "k-0", exitCode: 0 });
-    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS - 1);
-    (logWarn as Mock).mockClear();
-
-    client.spawn("t-new", baseSpawnOptions());
-    client.kill("t-new");
-
-    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
-    expect(privateAccess.pendingKillCount.get("t-new")).toBe(1);
-    expect(logWarn).not.toHaveBeenCalled();
+    expect(privateAccess.pendingKillCount.get("k-0")).toBe(1);
+    mockChild.emit("message", { type: "exit", id: "k-0", exitCode: 0 });
+    expect(privateAccess.pendingKillCount.has("k-0")).toBe(false);
   });
 
   it("KILL_COUNT_CLEARED_ON_HOST_CRASH", () => {
@@ -1015,7 +1013,7 @@ describe("PtyClient adversarial", () => {
     client.dispose();
   });
 
-  it("BOOKKEEPING_RUNS_AND_IPC_SENT_WHEN_KILL_UNTRACKED_AT_CAP", async () => {
+  it("BOOKKEEPING_RUNS_AND_IPC_SENT_WHEN_CAP_EXCEEDED", async () => {
     const client = createReadyClient();
     const privateAccess = client as unknown as PtyClientPrivateAccess;
     const { logWarn } = await import("../../utils/logger.js");
@@ -1032,12 +1030,36 @@ describe("PtyClient adversarial", () => {
 
     client.kill("t-victim");
 
-    // Full bookkeeping must have run despite the cap.
+    // Full bookkeeping must have run, and the victim must be tracked so a
+    // late "exit" doesn't fall into the wrong branch of the exit handler.
     expect(client.hasTerminal("t-victim")).toBe(false);
     expect(privateAccess.ipcDataMirrorIds.has("t-victim")).toBe(false);
-    expect(privateAccess.pendingKillCount.has("t-victim")).toBe(false);
-    // IPC must still be dispatched — otherwise the host-side PTY leaks.
+    expect(privateAccess.pendingKillCount.get("t-victim")).toBe(1);
     expect(countKillMessages(mockChild, "t-victim")).toBe(1);
-    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("pendingKillCount at cap"));
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("exceeds soft cap"));
+  });
+
+  it("LATE_EXIT_DOES_NOT_DELETE_NEWLY_RESPAWNED_ID_AT_CAP", () => {
+    const client = createReadyClient();
+    const privateAccess = client as unknown as PtyClientPrivateAccess;
+
+    // Fill to soft cap so the next new-id kill crosses it.
+    fillKnownPendingKills(client, MAX_PENDING_KILLS);
+
+    client.spawn("t-same", baseSpawnOptions());
+    client.kill("t-same");
+    expect(privateAccess.pendingKillCount.get("t-same")).toBe(1);
+
+    // Re-spawn the same id (hydration path: requestedId: saved.id).
+    client.spawn("t-same", baseSpawnOptions());
+    expect(client.hasTerminal("t-same")).toBe(true);
+
+    // Now the late "exit" for the old terminal arrives. The exit handler
+    // must take the killCount > 0 branch and NOT delete pendingSpawns —
+    // otherwise the newly respawned terminal would be silently dropped.
+    mockChild.emit("message", { type: "exit", id: "t-same", exitCode: 0 });
+
+    expect(client.hasTerminal("t-same")).toBe(true);
+    expect(privateAccess.pendingKillCount.has("t-same")).toBe(false);
   });
 });
