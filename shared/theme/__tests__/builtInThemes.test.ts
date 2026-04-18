@@ -92,10 +92,15 @@ describe("built-in themes", () => {
 
   it("surface-disabled token derives as opaque color (not rgba)", () => {
     for (const scheme of BUILT_IN_APP_SCHEMES) {
+      const surfaceDisabled = scheme.tokens["surface-disabled"];
+      expect(surfaceDisabled, `${scheme.id} surface-disabled should exist`).toBeTruthy();
+      expect(surfaceDisabled, `${scheme.id} surface-disabled should be opaque`).not.toMatch(
+        /^rgba\(/
+      );
       expect(
-        scheme.tokens["surface-disabled"],
-        `${scheme.id} surface-disabled should be opaque`
-      ).not.toMatch(/^rgba\(/);
+        surfaceDisabled,
+        `${scheme.id} surface-disabled should not contain undefined`
+      ).not.toContain("undefined");
     }
   });
 
@@ -111,14 +116,19 @@ describe("built-in themes", () => {
   });
 
   it("knob-base token is polarity-aware (dark vs light)", () => {
-    const darkScheme = BUILT_IN_APP_SCHEMES.find((s) => s.type === "dark");
-    const lightScheme = BUILT_IN_APP_SCHEMES.find((s) => s.type === "light");
-    expect(darkScheme).toBeDefined();
-    expect(lightScheme).toBeDefined();
-    const darkKnob = darkScheme!.tokens["knob-base"];
-    const lightKnob = lightScheme!.tokens["knob-base"];
-    expect(darkKnob, "dark theme knob should be light color").toMatch(/oklch\([0-9]\.[8-9]/);
-    expect(lightKnob, "light theme knob should be dark color").toMatch(/oklch\([0-1]\.[0-2]/);
+    for (const scheme of BUILT_IN_APP_SCHEMES) {
+      const knobBase = scheme.tokens["knob-base"];
+      expect(knobBase, `${scheme.id} knob-base should be oklch`).toMatch(/oklch\(/);
+      if (scheme.type === "dark") {
+        expect(knobBase, `${scheme.id} dark theme knob should be light`).toMatch(
+          /oklch\([0-9]\.[8-9]/
+        );
+      } else {
+        expect(knobBase, `${scheme.id} light theme knob should be dark`).toMatch(
+          /oklch\([0-1]\.[0-2]/
+        );
+      }
+    }
   });
 
   it("state-modified token derives from status-info base", () => {

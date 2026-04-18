@@ -209,7 +209,7 @@ export function createDaintreeTokens(
     "surface-active": tokens["surface-active"] ?? withAlpha(overlayTone, dark ? 0.08 : 0.06),
     "surface-disabled":
       tokens["surface-disabled"] ??
-      `color-mix(in oklab, ${tokens["surface-input"]} 70%, ${tokens["surface-canvas"]})`,
+      `color-mix(in oklab, ${tokens["surface-input"] ?? (dark ? tokens["surface-panel-elevated"] : tokens["surface-panel"])} 70%, ${tokens["surface-canvas"]})`,
     "text-placeholder":
       tokens["text-placeholder"] ?? withAlpha(tokens["text-primary"], dark ? 0.35 : 0.32),
     "text-link": tokens["text-link"] ?? tokens["accent-primary"],
@@ -719,6 +719,7 @@ export function normalizeAppColorScheme(
   const resolvedType = explicitType ?? fallback.type;
   const baseScheme =
     fallback.type === resolvedType ? fallback : getBuiltInAppSchemeForType(resolvedType);
+  const tint = resolvedType === "dark" ? "#ffffff" : "#000000";
   const rawTokens = (palette ? compilePaletteToTokens(palette) : maybeScheme.tokens) as
     | Record<string, unknown>
     | undefined;
@@ -733,6 +734,25 @@ export function normalizeAppColorScheme(
       normalizedTokens["accent-primary"],
       [normalizedTokens["text-inverse"], normalizedTokens["text-primary"], "#ffffff", "#000000"]
     );
+  }
+
+  if (!palette && typeof rawTokens === "object") {
+    if (
+      typeof normalizedTokens["status-danger-surface"] !== "string" &&
+      typeof normalizedTokens["status-danger"] === "string"
+    ) {
+      normalizedTokens["status-danger-surface"] = withAlpha(
+        normalizedTokens["status-danger"],
+        resolvedType === "dark" ? 0.1 : 0.08
+      );
+    }
+    if (
+      typeof normalizedTokens["state-modified"] !== "string" &&
+      typeof normalizedTokens["status-info"] === "string"
+    ) {
+      normalizedTokens["state-modified"] =
+        `color-mix(in oklab, ${normalizedTokens["status-info"]} 90%, ${tint})`;
+    }
   }
   const result: AppColorScheme = {
     id:

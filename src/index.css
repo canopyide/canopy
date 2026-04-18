@@ -50,6 +50,8 @@
   --color-status-danger: var(--theme-status-danger);
   --color-status-info: var(--theme-status-info);
   --color-status-danger-surface: var(--theme-status-danger-surface);
+  --color-knob-base: var(--theme-knob-base);
+  --color-state-modified: var(--theme-state-modified);
   --color-activity-active: var(--theme-activity-active);
   --color-activity-idle: var(--theme-activity-idle);
   --color-activity-working: var(--theme-activity-working);
