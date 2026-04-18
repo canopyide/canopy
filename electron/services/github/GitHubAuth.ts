@@ -1,4 +1,5 @@
 import { graphql } from "@octokit/graphql";
+import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 
 export const GITHUB_API_TIMEOUT_MS = 15_000;
 export const GITHUB_AUTH_TIMEOUT_MS = 10_000;
@@ -75,6 +76,7 @@ export class GitHubAuth {
     this.cachedUsername = null;
     this.cachedAvatarUrl = null;
     this.cachedScopes = [];
+    gitHubRateLimitService.clear();
   }
 
   static hasToken(): boolean {
@@ -93,6 +95,7 @@ export class GitHubAuth {
     this.cachedUsername = null;
     this.cachedAvatarUrl = null;
     this.cachedScopes = [];
+    gitHubRateLimitService.clear();
   }
 
   static clearToken(): void {
@@ -103,6 +106,7 @@ export class GitHubAuth {
     this.tokenVersion++;
     this.pendingValidation = null;
     this.storage.delete();
+    gitHubRateLimitService.clear();
   }
 
   private static pendingValidation: Promise<void> | null = null;
@@ -177,6 +181,9 @@ export class GitHubAuth {
       headers: {
         authorization: `token ${token}`,
       },
+      request: {
+        fetch: rateLimitAwareFetch,
+      },
     });
   }
 
@@ -247,4 +254,37 @@ export class GitHubAuth {
       return { valid: false, scopes: [], error: message };
     }
   }
+}
+
+/**
+ * Custom fetch wrapper used by `@octokit/graphql` via `graphql.defaults({ request: { fetch } })`.
+ *
+ * `@octokit/graphql` v9 resolves to the parsed `data.data` payload — the raw
+ * `Response` (and its headers) are dropped before the promise resolves.
+ * Installing this fetch wrapper is the only reliable place to observe GitHub
+ * rate-limit headers on every response (both 2xx and error paths). We read
+ * headers synchronously, hand them to {@link gitHubRateLimitService}, and
+ * return the original response untouched so Octokit can parse it normally.
+ */
+async function rateLimitAwareFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  const response = await globalThis.fetch(input, init);
+  let bodyText: string | undefined;
+  if (!response.ok && (response.status === 403 || response.status === 429)) {
+    try {
+      bodyText = await response.clone().text();
+    } catch {
+      // Cloning can fail in rare cases (e.g., an aborted stream). Falling back
+      // to header-only classification is safe — `retry-after` alone suffices
+      // for genuine secondary limits.
+    }
+  }
+  try {
+    gitHubRateLimitService.update(response.headers, response.status, bodyText);
+  } catch {
+    // Rate-limit bookkeeping must never break the underlying request.
+  }
+  return response;
 }

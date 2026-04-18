@@ -32,6 +32,7 @@ import type {
   PRClearedPayload,
   IssueDetectedPayload,
   IssueNotFoundPayload,
+  GitHubRateLimitPayload,
   GitStatus,
   KeyAction,
   TerminalRecipe,
@@ -1994,6 +1995,9 @@ const api: ElectronAPI = {
 
     onIssueNotFound: (callback: (data: IssueNotFoundPayload) => void) =>
       _typedOn(CHANNELS.ISSUE_NOT_FOUND, callback),
+
+    onRateLimitChanged: (callback: (data: GitHubRateLimitPayload) => void) =>
+      _typedOn(CHANNELS.GITHUB_RATE_LIMIT_CHANGED, callback),
   },
 
   // Notes API

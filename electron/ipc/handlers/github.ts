@@ -85,6 +85,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
       const commitCount = await getCommitCount(resolved).catch(() => 0);
 
+      const { gitHubRateLimitService } = await import("../../services/github/index.js");
+      const rateLimitState = gitHubRateLimitService.getState();
+
       return {
         commitCount,
         issueCount: statsResult.stats?.issueCount ?? null,
@@ -93,6 +96,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
         ghError: statsResult.error,
         stale: statsResult.stats?.stale,
         lastUpdated: statsResult.stats?.lastUpdated,
+        rateLimitResetAt:
+          rateLimitState.blocked && rateLimitState.resetAt ? rateLimitState.resetAt : undefined,
+        rateLimitKind: rateLimitState.blocked ? (rateLimitState.kind ?? undefined) : undefined,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

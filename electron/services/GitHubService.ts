@@ -25,6 +25,8 @@ import {
   GET_ISSUE_QUERY,
   GET_PR_QUERY,
   buildBatchPRQuery,
+  gitHubRateLimitService,
+  GitHubRateLimitError,
 } from "./github/index.js";
 
 import type {
@@ -240,6 +242,24 @@ export async function getRepoStats(
     return { stats: null, error: "GitHub token not configured. Set it in Settings." };
   }
 
+  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
+  if (rateLimitBlock.blocked && rateLimitBlock.reason && rateLimitBlock.resumeAt) {
+    const diskCached = persistentCache.get(cacheKey);
+    const message = rateLimitMessage(rateLimitBlock.reason, rateLimitBlock.resumeAt);
+    if (diskCached) {
+      return {
+        stats: {
+          issueCount: diskCached.issueCount,
+          prCount: diskCached.prCount,
+          stale: true,
+          lastUpdated: diskCached.lastUpdated,
+        },
+        error: message,
+      };
+    }
+    return { stats: null, error: message };
+  }
+
   if (!bypassCache) {
     const cached = repoStatsCache.get(cacheKey);
     if (cached) {
@@ -398,6 +418,14 @@ export async function getProjectHealth(
   const client = GitHubAuth.createClient();
   if (!client) {
     return { health: null, error: "GitHub token not configured. Set it in Settings." };
+  }
+
+  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
+  if (rateLimitBlock.blocked && rateLimitBlock.reason && rateLimitBlock.resumeAt) {
+    return {
+      health: null,
+      error: rateLimitMessage(rateLimitBlock.reason, rateLimitBlock.resumeAt),
+    };
   }
 
   if (!bypassCache) {
@@ -612,6 +640,14 @@ export async function batchCheckLinkedPRs(
     return { results: new Map(), error: "Not a GitHub repository" };
   }
 
+  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
+  if (rateLimitBlock.blocked && rateLimitBlock.reason && rateLimitBlock.resumeAt) {
+    return {
+      results: new Map(),
+      error: rateLimitMessage(rateLimitBlock.reason, rateLimitBlock.resumeAt),
+    };
+  }
+
   try {
     const query = buildBatchPRQuery(context.owner, context.repo, candidates);
     const response = (await client(query, {
@@ -792,7 +828,32 @@ function updateIssueAssigneeInCache(
   }
 }
 
+function rateLimitMessage(kind: "primary" | "secondary", resumeAt: number): string {
+  const seconds = Math.max(0, Math.ceil((resumeAt - Date.now()) / 1000));
+  const human = formatCountdown(seconds);
+  if (kind === "secondary") {
+    return `GitHub secondary rate limit triggered. Resuming in ${human}.`;
+  }
+  return `GitHub rate limit exceeded. Resets in ${human}.`;
+}
+
+function formatCountdown(totalSeconds: number): string {
+  if (totalSeconds <= 0) return "a moment";
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) {
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return remMinutes > 0 ? `${hours}h ${remMinutes}m` : `${hours}h`;
+}
+
 function parseGitHubError(error: unknown): string {
+  if (error instanceof GitHubRateLimitError) {
+    return rateLimitMessage(error.kind, error.resumeAt);
+  }
   const message = error instanceof Error ? error.message : String(error);
   const isTimeout = error instanceof Error && error.name === "TimeoutError";
 
@@ -807,6 +868,11 @@ function parseGitHubError(error: unknown): string {
     message === "Cannot reach GitHub. Check your internet connection."
   ) {
     return message;
+  }
+
+  const blockState = gitHubRateLimitService.shouldBlockRequest();
+  if (blockState.blocked && blockState.reason && blockState.resumeAt) {
+    return rateLimitMessage(blockState.reason, blockState.resumeAt);
   }
 
   if (message.includes("rate limit") || message.includes("API rate limit")) {
