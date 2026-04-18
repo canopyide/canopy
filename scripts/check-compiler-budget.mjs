@@ -7,8 +7,9 @@
 // bailouts can't sneak past code review.
 //
 // Usage:
-//   node scripts/check-compiler-budget.mjs           # check mode (CI)
-//   node scripts/check-compiler-budget.mjs --update  # write current report as new baseline
+//   node scripts/check-compiler-budget.mjs                    # check mode (CI)
+//   node scripts/check-compiler-budget.mjs --update           # write current report as new baseline
+//   node scripts/check-compiler-budget.mjs --update --force   # bypass the shrinkage guard
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -20,9 +21,17 @@ const REPORT_FILE = path.join(ROOT, "dist", "compiler-bailout-report.json");
 const BASELINE_FILE = path.join(ROOT, "compiler-bailout-baseline.json");
 
 const COUNT_KEYS = ["success", "skip", "error", "pipeline"];
-// Only these counts gate CI. A file that loses successes is informational only
-// (it may have been deleted, or a function was removed) — we don't fail on it.
+// Only these counts gate CI per file. A file that loses successes is logged
+// but doesn't fail by itself (could be a deleted function or a removed
+// component). However, a file *disappearing entirely* from the report after
+// being in the baseline IS a hard failure — that's how silent coverage loss
+// (path-normalization bug, upstream taxonomy change) sneaks past CI.
 const REGRESSION_KEYS = ["skip", "error", "pipeline"];
+
+// Refuse to overwrite the baseline in --update mode if the report shrinks by
+// more than this fraction. Catches the case where a developer reflexively
+// updates after a logger bug shrinks the report. Override with --force.
+const UPDATE_SHRINKAGE_THRESHOLD = 0.1;
 
 function readJson(file, label) {
   if (!existsSync(file)) {
@@ -69,7 +78,7 @@ function validateShape(data, label, file) {
   }
 }
 
-function writeBaseline(report) {
+function writeBaseline(report, { force }) {
   // Sort keys deterministically so diffs stay clean across runs.
   const sorted = Object.keys(report)
     .sort()
@@ -78,6 +87,38 @@ function writeBaseline(report) {
       acc[k] = { success: e.success, skip: e.skip, error: e.error, pipeline: e.pipeline };
       return acc;
     }, {});
+
+  // Sanity guard: if the previous baseline existed and the new report covers
+  // significantly fewer files, refuse to overwrite unless the caller passed
+  // --force. This protects against a logger bug or path-normalization
+  // regression silently shrinking coverage.
+  if (existsSync(BASELINE_FILE) && !force) {
+    let priorCount = 0;
+    try {
+      const prior = JSON.parse(readFileSync(BASELINE_FILE, "utf8"));
+      if (prior && typeof prior === "object" && !Array.isArray(prior)) {
+        priorCount = Object.keys(prior).length;
+      }
+    } catch {
+      // Unparseable prior baseline — let the update proceed; the previous
+      // baseline is unusable anyway.
+    }
+    const newCount = Object.keys(sorted).length;
+    if (priorCount > 0) {
+      const drop = (priorCount - newCount) / priorCount;
+      if (drop > UPDATE_SHRINKAGE_THRESHOLD) {
+        console.error(
+          `::error::refusing to update baseline — file count would drop from ${priorCount} to ${newCount} (${(drop * 100).toFixed(1)}% shrinkage > ${(UPDATE_SHRINKAGE_THRESHOLD * 100).toFixed(0)}% threshold).`
+        );
+        console.error(
+          "   This usually means the build emitted a partial report (logger bug, path-normalization regression, or React Compiler upstream change)."
+        );
+        console.error("   If the shrinkage is intentional, re-run with --force.");
+        process.exit(1);
+      }
+    }
+  }
+
   writeFileSync(BASELINE_FILE, JSON.stringify(sorted, null, 2) + "\n");
   const totals = COUNT_KEYS.reduce((t, k) => {
     t[k] = Object.values(sorted).reduce((s, e) => s + e[k], 0);
@@ -90,12 +131,13 @@ function writeBaseline(report) {
 
 function main() {
   const isUpdate = process.argv.includes("--update");
+  const force = process.argv.includes("--force");
 
   const report = readJson(REPORT_FILE, "compiler bailout report");
   validateShape(report, "report", REPORT_FILE);
 
   if (isUpdate) {
-    writeBaseline(report);
+    writeBaseline(report, { force });
     return;
   }
 
@@ -140,9 +182,11 @@ function main() {
     }
   }
 
-  // Files that disappeared from the report aren't failures (file deleted, or
-  // moved out of compilation scope). Surface them as a notice so a stale
-  // baseline can be cleaned up.
+  // Files that vanished from the report ARE failures: the most likely cause
+  // is a path-normalization regression or an upstream React Compiler taxonomy
+  // change silently shrinking coverage. Genuine deletions are handled via
+  // `npm run compiler-budget:update`, which is the symmetric escape hatch
+  // used for intentional regressions.
   const disappeared = Object.keys(baseline).filter((f) => !(f in report));
 
   // Print informational notices first.
@@ -156,18 +200,15 @@ function main() {
   for (const { file, from, to } of successDrops) {
     console.log(`::notice file=${file}::compile success count dropped ${from} → ${to}`);
   }
-  for (const file of disappeared) {
-    console.log(`::notice::baseline entry "${file}" no longer present in build output`);
-  }
 
-  if (regressions.length === 0) {
+  if (regressions.length === 0 && disappeared.length === 0) {
     const totals = COUNT_KEYS.reduce((t, k) => {
       t[k] = Object.values(report).reduce((s, e) => s + e[k], 0);
       return t;
     }, {});
     const improvedCount = improvements.length;
     const refreshHint =
-      improvedCount > 0 || disappeared.length > 0 || newClean.length > 0
+      improvedCount > 0 || newClean.length > 0
         ? "  (consider `npm run compiler-budget:update` to capture improvements)"
         : "";
     console.log(
@@ -181,9 +222,15 @@ function main() {
     const prefix = isNew ? "new file with compiler bailouts" : "compiler bailout regression";
     console.error(`::error file=${file}::${prefix} (${summary})`);
   }
+  for (const file of disappeared) {
+    console.error(
+      `::error file=${file}::baseline entry no longer present in build output (deleted file? path-normalization regression? upstream React Compiler change?)`
+    );
+  }
+  const total = regressions.length + disappeared.length;
   console.error(
-    `\n[check-compiler-budget] FAILED — ${regressions.length} file(s) regressed. ` +
-      `If the change is intentional, run \`npm run compiler-budget:update\` to refresh the baseline.`
+    `\n[check-compiler-budget] FAILED — ${total} issue(s): ${regressions.length} regression(s), ${disappeared.length} missing baseline entrie(s). ` +
+      `If the change is intentional (e.g. files were genuinely deleted), run \`npm run compiler-budget:update\` to refresh the baseline.`
   );
   process.exit(1);
 }

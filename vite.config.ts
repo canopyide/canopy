@@ -118,6 +118,12 @@ function reactCompilerReportPlugin(command: "build" | "serve"): {
     plugin: {
       name: "react-compiler-report",
       apply: "build",
+      buildStart() {
+        // Reset between builds — relevant for `vite build --watch` or any
+        // scenario that triggers a second build inside the same Node process.
+        // Without this, watch-mode rebuilds would inflate every count.
+        counts.clear();
+      },
       closeBundle() {
         if (command !== "build") return;
         if (counts.size === 0) {
@@ -129,7 +135,9 @@ function reactCompilerReportPlugin(command: "build" | "serve"): {
             "[react-compiler-report] logger received zero events; check that the logger from reactCompilerReportPlugin() is passed into reactCompilerPreset({ logger })."
           );
         }
-        const sorted = [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
+        // Plain lexicographic sort matches the check script's default Array#sort
+        // so the freshly built report and the checked-in baseline diff cleanly.
+        const sorted = [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
         const out: Record<string, CompilerBailoutCounts> = {};
         for (const [file, entry] of sorted) out[file] = entry;
         mkdirSync(path.dirname(reportPath), { recursive: true });
