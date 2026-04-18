@@ -139,12 +139,12 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
       <div className="flex-1 relative">
         <div className="h-full overflow-y-auto overflow-x-hidden font-mono">
           {previousSessionEntry && !filters?.search && (
-            <div className="border-b border-daintree-border bg-daintree-surface-secondary/50 p-3">
-              <div className="flex items-center gap-2 text-daintree-text-secondary text-xs font-medium mb-2">
-                <div className="w-2 h-2 rounded-full bg-daintree-text-secondary/40" />
+            <div className="border-b border-daintree-border bg-surface-panel/50 p-3">
+              <div className="flex items-center gap-2 text-text-secondary text-xs font-medium mb-2">
+                <div className="w-2 h-2 rounded-full bg-text-secondary/40" />
                 <span>Previous session</span>
               </div>
-              <pre className="text-xs text-daintree-text/70 whitespace-pre-wrap break-all font-mono">
+              <pre className="text-xs text-text-muted whitespace-pre-wrap break-all font-mono">
                 {String(previousSessionEntry.context?.tail || "")}
               </pre>
             </div>
