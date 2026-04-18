@@ -273,12 +273,7 @@ export function buildArgsForRespawn(
     const shareClipboardDirectory = baseEntry.shareClipboardDirectory as boolean | undefined;
     const ccrFlavors = useCcrFlavorsStore.getState().ccrFlavorsByAgent[agentId];
     flavor = saved.agentFlavorId
-      ? getMergedFlavor(
-          agentId,
-          saved.agentFlavorId,
-          baseEntry.customFlavors as never,
-          ccrFlavors
-        )
+      ? getMergedFlavor(agentId, saved.agentFlavorId, baseEntry.customFlavors as never, ccrFlavors)
       : undefined;
     const effectiveEntry = flavor
       ? {

@@ -170,25 +170,25 @@ describe("buildPanelSnapshotOptions", () => {
   it("copies agentFlavorId to the snapshot", () => {
     const panel = makePanel({ agentFlavorId: "user-abc" });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.agentFlavorId).toBe("user-abc");
+    expect(result!.agentFlavorId).toBe("user-abc");
   });
 
   it("copies agentFlavorColor to the snapshot", () => {
     const panel = makePanel({ agentFlavorColor: "#ff6600" });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.agentFlavorColor).toBe("#ff6600");
+    expect(result!.agentFlavorColor).toBe("#ff6600");
   });
 
   it("copies title to the snapshot (preserves 'Claude (FlavorName)' format)", () => {
     const panel = makePanel({ title: "Claude (My Flavor)" });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.title).toBe("Claude (My Flavor)");
+    expect(result!.title).toBe("Claude (My Flavor)");
   });
 
   it("omits agentFlavorId when undefined", () => {
     const panel = makePanel({ agentFlavorId: undefined });
     const result = buildPanelSnapshotOptions(panel);
-    expect(result.agentFlavorId).toBeUndefined();
+    expect(result!.agentFlavorId).toBeUndefined();
   });
 });
 

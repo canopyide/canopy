@@ -69,7 +69,7 @@ beforeEach(() => {
   );
   generateAgentCommandMock.mockReset();
   generateAgentCommandMock.mockImplementation(
-    (base: string, _settings: unknown, _id: string, _opts: unknown) => `${base} --generated`
+    (base: string, _entry?: unknown, _agentId?: string, _options?: unknown) => `${base} --generated`
   );
 });
 

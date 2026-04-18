@@ -86,8 +86,7 @@ export function registerAgentCapabilitiesHandlers(): () => void {
   const handleGetCcrFlavors = async () => {
     return CcrConfigService.getInstance().getFlavors();
   };
-  ipcMain.handle(CHANNELS.AGENT_CAPABILITIES_GET_CCR_FLAVORS, handleGetCcrFlavors);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_CAPABILITIES_GET_CCR_FLAVORS));
+  handlers.push(typedHandle(CHANNELS.AGENT_CAPABILITIES_GET_CCR_FLAVORS, handleGetCcrFlavors));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

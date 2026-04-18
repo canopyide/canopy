@@ -1413,6 +1413,10 @@ export interface IpcInvokeMap {
     args: [agentId: string];
     result: boolean;
   };
+  "agent-capabilities:get-ccr-flavors": {
+    args: [];
+    result: AgentFlavor[];
+  };
 
   // Daintree CLI install channels
   "cli:install": {
