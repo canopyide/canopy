@@ -230,9 +230,10 @@ describe("useActionPalette", () => {
 
   describe("context-aware ranking", () => {
     it("boosts terminal and panel categories when a terminal panel is focused", async () => {
+      // Fixture order puts non-boosted browser.close first — boost must reshuffle.
       listMock.mockReturnValue([
-        makeEntry("terminal.close", "Close", true, "terminal"),
         makeEntry("browser.close", "Close", true, "browser"),
+        makeEntry("terminal.close", "Close", true, "terminal"),
         makeEntry("panel.close", "Close", true, "panel"),
       ]);
       getContextMock.mockReturnValue({ focusedTerminalKind: "terminal" });
@@ -249,11 +250,12 @@ describe("useActionPalette", () => {
     });
 
     it("boosts terminal, agent, and panel categories when an agent panel is focused", async () => {
+      // Fixture order puts browser.close first so the boost must actually move it to the back.
       listMock.mockReturnValue([
+        makeEntry("browser.close", "Close", true, "browser"),
         makeEntry("agent.close", "Close", true, "agent"),
         makeEntry("terminal.close", "Close", true, "terminal"),
         makeEntry("panel.close", "Close", true, "panel"),
-        makeEntry("browser.close", "Close", true, "browser"),
       ]);
       getContextMock.mockReturnValue({ focusedTerminalKind: "agent" });
 
@@ -265,9 +267,9 @@ describe("useActionPalette", () => {
 
       const ids = result.current.results.map((r) => r.id);
       expect(ids.indexOf("browser.close")).toBe(3);
-      expect(ids).toContain("agent.close");
-      expect(ids).toContain("terminal.close");
-      expect(ids).toContain("panel.close");
+      expect(ids.indexOf("agent.close")).toBeLessThan(3);
+      expect(ids.indexOf("terminal.close")).toBeLessThan(3);
+      expect(ids.indexOf("panel.close")).toBeLessThan(3);
     });
 
     it("boosts browser and panel categories when a browser panel is focused", async () => {
@@ -303,11 +305,12 @@ describe("useActionPalette", () => {
     });
 
     it("boosts worktree, git, and github categories when a worktree is focused", async () => {
+      // Fixture order puts browser.open first so only the boost can push it to the back.
       listMock.mockReturnValue([
+        makeEntry("browser.open", "Open", true, "browser"),
         makeEntry("worktree.open", "Open", true, "worktree"),
         makeEntry("git.open", "Open", true, "git"),
         makeEntry("github.open", "Open", true, "github"),
-        makeEntry("browser.open", "Open", true, "browser"),
       ]);
       getContextMock.mockReturnValue({ focusedWorktreeId: "wt-1" });
 
@@ -319,13 +322,17 @@ describe("useActionPalette", () => {
 
       const ids = result.current.results.map((r) => r.id);
       expect(ids.indexOf("browser.open")).toBe(3);
+      expect(ids.indexOf("worktree.open")).toBeLessThan(3);
+      expect(ids.indexOf("git.open")).toBeLessThan(3);
+      expect(ids.indexOf("github.open")).toBeLessThan(3);
     });
 
     it("boosts settings and preferences categories when settings panel is open", async () => {
+      // Fixture order puts terminal.open first — the boost must push it to the back.
       listMock.mockReturnValue([
+        makeEntry("terminal.open", "Open", true, "terminal"),
         makeEntry("settings.open", "Open", true, "settings"),
         makeEntry("preferences.open", "Open", true, "preferences"),
-        makeEntry("terminal.open", "Open", true, "terminal"),
       ]);
       getContextMock.mockReturnValue({ isSettingsOpen: true });
 
@@ -425,18 +432,80 @@ describe("useActionPalette", () => {
       act(() => result.current.open());
       act(() => result.current.setQuery("close"));
 
-      await waitFor(() => expect(result.current.results.length).toBe(2), { timeout: 2000 });
-      expect(result.current.results[0]!.id).toBe("terminal.close");
+      await waitFor(() => expect(result.current.results[0]!.id).toBe("terminal.close"), {
+        timeout: 2000,
+      });
 
-      // Context flips to browser focus — change mock, then trigger a re-filter
+      // Flip context to browser focus and use a different query so the filter memo re-runs
+      // without any query round-tripping (no reliance on useDeferredValue coalescing).
       getContextMock.mockReturnValue({ focusedTerminalKind: "browser" });
       act(() => result.current.setQuery("clos"));
-      await waitFor(() => expect(result.current.query).toBe("clos"), { timeout: 2000 });
-      act(() => result.current.setQuery("close"));
 
       await waitFor(() => expect(result.current.results[0]!.id).toBe("browser.close"), {
         timeout: 2000,
       });
+    });
+
+    it("applies all three boost dimensions when terminal, worktree, and settings are active", async () => {
+      // A regression that drops one branch of the union in getBoostedCategories
+      // would leave the corresponding action unboosted.
+      listMock.mockReturnValue([
+        makeEntry("browser.open", "Open", true, "browser"),
+        makeEntry("terminal.open", "Open", true, "terminal"),
+        makeEntry("worktree.open", "Open", true, "worktree"),
+        makeEntry("settings.open", "Open", true, "settings"),
+      ]);
+      getContextMock.mockReturnValue({
+        focusedTerminalKind: "terminal",
+        focusedWorktreeId: "wt-1",
+        isSettingsOpen: true,
+      });
+
+      const { result } = renderHook(() => useActionPalette());
+      act(() => result.current.open());
+      act(() => result.current.setQuery("open"));
+
+      await waitFor(() => expect(result.current.results.length).toBe(4), { timeout: 2000 });
+
+      const ids = result.current.results.map((r) => r.id);
+      expect(ids.indexOf("browser.open")).toBe(3);
+      expect(ids.indexOf("terminal.open")).toBeLessThan(3);
+      expect(ids.indexOf("worktree.open")).toBeLessThan(3);
+      expect(ids.indexOf("settings.open")).toBeLessThan(3);
+    });
+
+    it("boosts dev-preview categories when a dev-preview panel is focused", async () => {
+      listMock.mockReturnValue([
+        makeEntry("browser.close", "Close", true, "browser"),
+        makeEntry("devServer.close", "Close", true, "devServer"),
+      ]);
+      getContextMock.mockReturnValue({ focusedTerminalKind: "dev-preview" });
+
+      const { result } = renderHook(() => useActionPalette());
+      act(() => result.current.open());
+      act(() => result.current.setQuery("close"));
+
+      await waitFor(() => expect(result.current.results.length).toBe(2), { timeout: 2000 });
+
+      expect(result.current.results[0]!.id).toBe("devServer.close");
+    });
+
+    it("does not boost worktree categories when focusedWorktreeId is whitespace", async () => {
+      listMock.mockReturnValue([
+        makeEntry("browser.open", "Open", true, "browser"),
+        makeEntry("worktree.open", "Open", true, "worktree"),
+      ]);
+      useActionMruStore.setState({ actionMruList: ["browser.open"] });
+      getContextMock.mockReturnValue({ focusedWorktreeId: "   " });
+
+      const { result } = renderHook(() => useActionPalette());
+      act(() => result.current.open());
+      act(() => result.current.setQuery("open"));
+
+      await waitFor(() => expect(result.current.results.length).toBe(2), { timeout: 2000 });
+
+      // No context boost on worktree — MRU on browser keeps it first
+      expect(result.current.results[0]!.id).toBe("browser.open");
     });
 
     it("keeps disabled context-boosted items below enabled items", async () => {

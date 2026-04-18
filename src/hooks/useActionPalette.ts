@@ -71,9 +71,13 @@ function getBoostedCategories(ctx: ActionContext): Set<string> {
       boosted.add("notes");
       boosted.add("panel");
       break;
+    case "dev-preview":
+      boosted.add("devServer");
+      boosted.add("panel");
+      break;
   }
 
-  if (typeof ctx.focusedWorktreeId === "string" && ctx.focusedWorktreeId.length > 0) {
+  if (typeof ctx.focusedWorktreeId === "string" && ctx.focusedWorktreeId.trim().length > 0) {
     boosted.add("worktree");
     boosted.add("git");
     boosted.add("github");
