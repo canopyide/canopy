@@ -87,6 +87,11 @@ export type SettingsRecovery =
   | { kind: "restored-from-backup"; quarantinedPath?: string }
   | { kind: "reset-to-defaults"; quarantinedPath?: string };
 
+/** Describes a per-project state file that was quarantined due to corruption */
+export interface ProjectStateRecovery {
+  quarantinedPath: string;
+}
+
 /** Result from app hydration */
 export interface HydrateResult {
   appState: AppState;
@@ -97,4 +102,5 @@ export interface HydrateResult {
   gpuHardwareAccelerationDisabled: boolean;
   safeMode: boolean;
   settingsRecovery?: SettingsRecovery | null;
+  projectStateRecovery?: ProjectStateRecovery | null;
 }
