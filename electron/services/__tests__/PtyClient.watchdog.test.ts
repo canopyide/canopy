@@ -1,14 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { EventEmitter } from "events";
 
-const shared = vi.hoisted(() => ({
-  forkMock: vi.fn(),
-  tracker: {
-    removeTrashed: vi.fn(),
-    persistTrashed: vi.fn(),
-    clearAll: vi.fn(),
-  },
-}));
+const shared = vi.hoisted(() => {
+  // vi.hoisted runs before module imports resolve, so use require() to load
+  // the Node stdlib synchronously.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { EventEmitter } = require("events") as typeof import("events");
+  const appEmitter = new EventEmitter();
+  const appMock = Object.assign(appEmitter, {
+    getPath: vi.fn().mockReturnValue("/mock/user/data"),
+  });
+  return {
+    forkMock: vi.fn(),
+    tracker: {
+      removeTrashed: vi.fn(),
+      persistTrashed: vi.fn(),
+      clearAll: vi.fn(),
+    },
+    appMock,
+  };
+});
 
 vi.mock("electron", () => ({
   utilityProcess: {
@@ -16,9 +27,7 @@ vi.mock("electron", () => ({
   },
   UtilityProcess: EventEmitter,
   MessagePortMain: class {},
-  app: {
-    getPath: vi.fn().mockReturnValue("/mock/user/data"),
-  },
+  app: shared.appMock,
 }));
 
 vi.mock("../TrashedPidTracker.js", () => ({
@@ -61,6 +70,7 @@ describe("PtyClient watchdog", () => {
     vi.useFakeTimers();
     vi.resetModules();
     vi.clearAllMocks();
+    shared.appMock.removeAllListeners();
     mockChild = createMockChild();
     shared.forkMock.mockReturnValue(mockChild);
     killSpy = vi.spyOn(process, "kill").mockImplementation((() => true) as typeof process.kill);
