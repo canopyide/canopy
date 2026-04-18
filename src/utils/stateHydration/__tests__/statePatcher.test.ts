@@ -1178,13 +1178,92 @@ describe("buildArgsForRespawn — preset overrides", () => {
     );
     expect(r2.agentPresetId).toBe("user-bbb");
 
+    // buildArgsForRespawn
+    getMergedPresetMock.mockReturnValue({ id: "user-ddd", name: "P" });
+    const r3 = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentPresetId: "user-ddd",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(r3.agentPresetId).toBe("user-ddd");
+    getMergedPresetMock.mockReset();
+
     // buildArgsForNonPtyRecreation
-    const r3 = buildArgsForNonPtyRecreation(
+    const r4 = buildArgsForNonPtyRecreation(
       { id: "t1", kind: "browser", location: "grid", agentPresetId: "user-ccc" },
       "browser",
       "/p"
     );
-    expect(r3.agentPresetId).toBe("user-ccc");
+    expect(r4.agentPresetId).toBe("user-ccc");
+  });
+
+  // Backward-compat fallback for project JSON written before issue #5459.
+  // Pre-v16 saved terminals use agentFlavorId / agentFlavorColor; all four
+  // hydration builders must read those legacy keys when the new keys are
+  // absent so users don't lose preset assignment after upgrade. Issue #5459.
+  it("reads legacy agentFlavorId/agentFlavorColor when new keys are absent", () => {
+    const legacy = {
+      id: "t1",
+      location: "grid" as const,
+      agentFlavorId: "old-aaa",
+      agentFlavorColor: "#ff0000",
+    };
+
+    const r1 = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      legacy,
+      "/p"
+    );
+    expect(r1.agentPresetId).toBe("old-aaa");
+    expect(r1.agentPresetColor).toBe("#ff0000");
+
+    const r2 = buildArgsForReconnectedFallback({ id: "t1", cwd: "/p" }, legacy, "/p");
+    expect(r2.agentPresetId).toBe("old-aaa");
+    expect(r2.agentPresetColor).toBe("#ff0000");
+
+    getMergedPresetMock.mockReturnValue({ id: "old-aaa", name: "Legacy", color: "#00ff00" });
+    const r3 = buildArgsForRespawn(
+      { ...legacy, kind: "agent", agentId: "claude", cwd: "/p" },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(r3.agentPresetId).toBe("old-aaa");
+    getMergedPresetMock.mockReset();
+
+    const r4 = buildArgsForNonPtyRecreation({ ...legacy, kind: "browser" }, "browser", "/p");
+    expect(r4.agentPresetId).toBe("old-aaa");
+    expect(r4.agentPresetColor).toBe("#ff0000");
+  });
+
+  it("prefers new agentPresetId over legacy agentFlavorId when both are present", () => {
+    const mixed = {
+      id: "t1",
+      location: "grid" as const,
+      agentPresetId: "new-zzz",
+      agentPresetColor: "#0000ff",
+      agentFlavorId: "old-aaa",
+      agentFlavorColor: "#ff0000",
+    };
+    const r = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "agent", agentId: "claude" },
+      mixed,
+      "/p"
+    );
+    expect(r.agentPresetId).toBe("new-zzz");
+    expect(r.agentPresetColor).toBe("#0000ff");
   });
 });
 

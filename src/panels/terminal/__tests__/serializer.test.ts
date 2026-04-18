@@ -99,4 +99,15 @@ describe("serializePtyPanel — agentPresetColor (Bug: not serialized)", () => {
     expect(snapshot.agentPresetId).toBe("user-abc");
     expect(snapshot.agentPresetColor).toBe("#aabbcc");
   });
+
+  // Forward-only write contract for issue #5459: the serializer must never
+  // emit the legacy agentFlavorId / agentFlavorColor keys. The hydration path
+  // (statePatcher.ts) tolerates them on read for backward compat, but writes
+  // must be clean so old keys age out of project JSON on the next save.
+  it("never writes legacy agentFlavorId or agentFlavorColor keys", () => {
+    const panel = makePanel({ agentPresetId: "user-abc", agentPresetColor: "#aabbcc" });
+    const snapshot = serializePtyPanel(panel) as Record<string, unknown>;
+    expect("agentFlavorId" in snapshot).toBe(false);
+    expect("agentFlavorColor" in snapshot).toBe(false);
+  });
 });

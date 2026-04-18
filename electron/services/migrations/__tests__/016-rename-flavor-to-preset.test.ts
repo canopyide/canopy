@@ -159,6 +159,30 @@ describe("migration016 — rename flavor to preset", () => {
     expect(after.agents.claude.presetId).toBe("x");
   });
 
+  it("prefers existing presetId over legacy flavorId when both are present", () => {
+    const data: Record<string, unknown> = {
+      agentSettings: {
+        agents: {
+          claude: { flavorId: "legacy-value", presetId: "new-value", pinned: true },
+          gemini: {
+            customFlavors: [{ id: "old" }],
+            customPresets: [{ id: "new" }],
+          },
+        },
+      },
+    };
+    const store = makeStoreMock(data);
+    migration016.up(store);
+    const after = data.agentSettings as {
+      agents: Record<string, Record<string, unknown>>;
+    };
+    expect(after.agents.claude.presetId).toBe("new-value");
+    expect("flavorId" in after.agents.claude).toBe(false);
+    expect(after.agents.claude.pinned).toBe(true);
+    expect(after.agents.gemini.customPresets).toEqual([{ id: "new" }]);
+    expect("customFlavors" in after.agents.gemini).toBe(false);
+  });
+
   it("does not throw on malformed shapes", () => {
     const shapes: Array<[string, unknown]> = [
       ["agentSettings null", null],

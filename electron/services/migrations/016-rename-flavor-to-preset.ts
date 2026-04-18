@@ -29,8 +29,12 @@ export const migration016: Migration = {
       }
       const { flavorId, customFlavors, ...rest } = entry;
       const next: Record<string, unknown> = { ...rest };
-      if (flavorId !== undefined) next.presetId = flavorId;
-      if (customFlavors !== undefined) next.customPresets = customFlavors;
+      // Defense in depth: if an entry somehow already has the new key
+      // (hand-edited storage, partial migration), keep it and drop the legacy one.
+      if (flavorId !== undefined && next.presetId === undefined) next.presetId = flavorId;
+      if (customFlavors !== undefined && next.customPresets === undefined) {
+        next.customPresets = customFlavors;
+      }
       migratedAgents[id] = next;
     }
 
