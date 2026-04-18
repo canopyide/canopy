@@ -922,6 +922,28 @@ describe("ReviewHub", () => {
       });
     });
 
+    it("renders cherry-pick operation labels", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus({ repoState: "CHERRY_PICKING" }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      screen.getByText(/Resolve Cherry-pick Conflicts/i);
+      screen.getByRole("button", { name: /^Abort cherry-pick/i });
+      screen.getByRole("button", { name: /^Continue cherry-pick/i });
+    });
+
+    it("renders revert operation labels", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus({ repoState: "REVERTING" }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      screen.getByText(/Resolve Revert Conflicts/i);
+      screen.getByRole("button", { name: /^Abort revert/i });
+      screen.getByRole("button", { name: /^Continue revert/i });
+    });
+
     it("renders normal staging UI when repoState is DIRTY with conflicts", async () => {
       getStagingStatusMock.mockResolvedValue(
         makeStatus({

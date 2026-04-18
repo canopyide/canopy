@@ -9,6 +9,10 @@ const SAFE_GIT_CONFIG = [
   "protocol.ext.allow=never",
   "core.gitProxy=",
   "core.hooksPath=",
+  // Emit literal UTF-8 paths in porcelain/status output so non-ASCII filenames
+  // flow through to IPC consumers unquoted (e.g. conflict detection on
+  // `café.txt` would otherwise be returned as `"caf\303\251.txt"`).
+  "core.quotepath=false",
 ] as const;
 
 /**

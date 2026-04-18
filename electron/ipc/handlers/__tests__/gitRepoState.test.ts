@@ -82,6 +82,15 @@ describe("parsePorcelainV2Conflicts", () => {
     expect(result).toEqual([{ path: "ok.ts", xy: "UU", label: "both modified" }]);
   });
 
+  it("passes literal UTF-8 paths through unchanged (core.quotepath=false)", () => {
+    // With core.quotepath=false the path is emitted literally (bytes as UTF-8),
+    // not C-quoted. Regression guard for the quoted-path issue surfaced in
+    // review: ensure the parser preserves non-ASCII bytes verbatim.
+    const line = "u UU N... 100644 100644 100644 100644 a b c src/café.txt";
+    const result = parsePorcelainV2Conflicts(line);
+    expect(result).toEqual([{ path: "src/café.txt", xy: "UU", label: "both modified" }]);
+  });
+
   it("parses multiple entries across many lines", () => {
     const input = [
       "# branch.oid abc",

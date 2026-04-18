@@ -316,11 +316,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     async (filePath: string) => {
       setActionError(null);
       try {
-        const separator = worktreePath.includes("\\") ? "\\" : "/";
-        const fullPath = worktreePath.endsWith(separator)
-          ? `${worktreePath}${filePath}`
-          : `${worktreePath}${separator}${filePath}`;
-        await window.electron.system.openInEditor({ path: fullPath });
+        const base = worktreePath.replace(/\\/g, "/").replace(/\/+$/, "");
+        const tail = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+        await window.electron.system.openInEditor({ path: `${base}/${tail}` });
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err));
       }
