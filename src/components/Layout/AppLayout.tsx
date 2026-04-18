@@ -7,12 +7,17 @@ import { ErrorBoundary } from "../ErrorBoundary";
 import { PortalDock, PortalVisibilityController } from "../Portal";
 import { HelpPanel } from "../HelpPanel";
 import { ProjectSwitchOverlay } from "@/components/Project";
-import { FleetArmingRibbon } from "@/components/Fleet";
+import { FleetArmingRibbon, FleetDeck } from "@/components/Fleet";
 import { ChordIndicator } from "./ChordIndicator";
 import { DemoCursor, DemoOverlay } from "../Demo";
 
 import { AllClearOverlay } from "../AllClearOverlay";
-import { useDiagnosticsStore, useDockStore, type PanelState } from "@/store";
+import {
+  useDiagnosticsStore,
+  useDockStore,
+  useFleetDeckStore,
+  type PanelState,
+} from "@/store";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
 import type { RetryAction } from "@/store";
@@ -89,6 +94,12 @@ export function AppLayout({
         // which reads per-project focus mode state. This ensures each project has its own focus mode.
         useDockStore.getState().hydrate({
           popoverHeight: appState.dockedPopoverHeight,
+        });
+        useFleetDeckStore.getState().hydrate({
+          isOpen: appState.fleetDeckOpen,
+          edge: appState.fleetDeckEdge,
+          width: appState.fleetDeckWidth,
+          height: appState.fleetDeckHeight,
         });
       } catch (error) {
         console.error("Failed to restore app state:", error);
@@ -354,6 +365,9 @@ export function AppLayout({
                   </div>
                 </ErrorBoundary>
               )}
+              <ErrorBoundary variant="section" componentName="FleetDeck">
+                <FleetDeck />
+              </ErrorBoundary>
             </main>
           </ErrorBoundary>
         </div>

@@ -929,17 +929,19 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 <TooltipTrigger asChild>
                   <button
                     onClick={() =>
-                      actionService.dispatch("terminal.bulkCommand", undefined, {
+                      actionService.dispatch("fleet.deck.toggle", undefined, {
                         source: "user",
                       })
                     }
                     className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
-                    aria-label="Bulk Operations"
+                    aria-label="Toggle Fleet Deck"
                   >
                     <BroadcastTerminalIcon className="w-3.5 h-3.5" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">Bulk Operations</TooltipContent>
+                <TooltipContent side="bottom">
+                  {createTooltipWithShortcut("Toggle Fleet Deck", "Cmd+Alt+Shift+B")}
+                </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>

@@ -80,6 +80,14 @@ export interface AppState {
   mruList?: string[];
   /** Most-recently-used ordered list of action IDs for the action palette */
   actionMruList?: string[];
+  /** Whether the Fleet Deck panel is open */
+  fleetDeckOpen?: boolean;
+  /** Which edge the Fleet Deck is docked to */
+  fleetDeckEdge?: "right" | "left" | "bottom";
+  /** Width of the Fleet Deck in pixels (when docked to a side edge) */
+  fleetDeckWidth?: number;
+  /** Height of the Fleet Deck in pixels (when docked to the bottom edge) */
+  fleetDeckHeight?: number;
 }
 
 /** Describes how the settings store recovered from corruption at startup */

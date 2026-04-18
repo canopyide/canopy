@@ -177,6 +177,13 @@ export default defineConfig(({ command, mode }) => {
     define: {
       IS_LEGACY_BUILD: JSON.stringify(IS_LEGACY_BUILD),
     },
+    // xterm 6.0 ships a bundled InputHandler that references an unminified
+    // identifier in `requestMode`; Vite's default identifier mangling produces
+    // `ReferenceError: i is not defined` at runtime. Disable identifier
+    // renaming only — whitespace and syntax compression still apply.
+    esbuild: {
+      minifyIdentifiers: false,
+    },
     plugins: [
       react(),
       babel({
