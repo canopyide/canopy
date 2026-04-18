@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_THEME_SOURCES } from "../builtInThemes/index.js";
+import { getThemeContrastWarnings } from "../contrast.js";
 import { BUILT_IN_APP_SCHEMES } from "../themes.js";
 import { APP_THEME_TOKEN_KEYS } from "../types.js";
 
 describe("built-in themes", () => {
   it("every source compiles to a valid AppColorScheme", () => {
+    expect(BUILT_IN_THEME_SOURCES.length).toBeGreaterThan(0);
     expect(BUILT_IN_APP_SCHEMES).toHaveLength(BUILT_IN_THEME_SOURCES.length);
     for (const scheme of BUILT_IN_APP_SCHEMES) {
       expect(scheme.id).toBeTruthy();
@@ -19,6 +21,14 @@ describe("built-in themes", () => {
     const ids = BUILT_IN_APP_SCHEMES.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it.each(BUILT_IN_APP_SCHEMES.map((s) => [s.id, s] as const))(
+    "scheme %s passes WCAG contrast checks",
+    (_id, scheme) => {
+      const warnings = getThemeContrastWarnings(scheme);
+      expect(warnings, warnings.map((w) => w.message).join("; ")).toHaveLength(0);
+    }
+  );
 
   it("every compiled scheme has all required token keys", () => {
     for (const scheme of BUILT_IN_APP_SCHEMES) {
