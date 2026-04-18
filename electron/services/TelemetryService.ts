@@ -42,52 +42,79 @@ function sanitizeString(value: string): string {
   return scrubSecrets(sanitizePath(value));
 }
 
+// Recurse through arrays and plain objects, sanitizing every string leaf.
+// Depth-capped to guard against pathological / circular inputs — Sentry
+// breadcrumbs and `event.extra` are typically shallow, so 10 levels is well
+// beyond any realistic payload.
+const MAX_DEEP_SANITIZE_DEPTH = 10;
+
+function sanitizeStringsDeep(value: unknown, depth = 0): unknown {
+  if (depth > MAX_DEEP_SANITIZE_DEPTH) return value;
+  if (typeof value === "string") return sanitizeString(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeStringsDeep(item, depth + 1));
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = sanitizeStringsDeep(val, depth + 1);
+    }
+    return result;
+  }
+  return value;
+}
+
 export function sanitizeEvent(event: SentryEvent): SentryEvent | null {
-  if (event.exception?.values) {
-    for (const ex of event.exception.values) {
-      if (ex.stacktrace?.frames) {
-        for (const frame of ex.stacktrace.frames) {
-          if (frame.filename) frame.filename = sanitizeString(frame.filename);
-          if (frame.abs_path) frame.abs_path = sanitizeString(frame.abs_path);
-        }
-      }
-      if (ex.value) ex.value = sanitizeString(ex.value);
-    }
-  }
-  if (typeof event.message === "string") {
-    event.message = sanitizeString(event.message);
-  }
-  if (event.request?.url) {
-    try {
-      const u = new URL(event.request.url);
-      u.search = "";
-      event.request.url = u.toString();
-    } catch {
-      // not a valid URL, leave as-is
-    }
-  }
-  if (Array.isArray(event.breadcrumbs)) {
-    for (const breadcrumb of event.breadcrumbs) {
-      if (typeof breadcrumb.message === "string") {
-        breadcrumb.message = sanitizeString(breadcrumb.message);
-      }
-      if (breadcrumb.data && typeof breadcrumb.data === "object") {
-        for (const [key, val] of Object.entries(breadcrumb.data)) {
-          if (typeof val === "string") {
-            breadcrumb.data[key] = sanitizeString(val);
+  // `beforeSend` must never throw — a throw causes Sentry to drop the event
+  // silently. Fail closed on unexpected input rather than leaking unscrubbed
+  // data by returning the event as-is.
+  try {
+    if (event.exception?.values) {
+      for (const ex of event.exception.values) {
+        if (!ex || typeof ex !== "object") continue;
+        if (ex.stacktrace?.frames) {
+          for (const frame of ex.stacktrace.frames) {
+            if (!frame || typeof frame !== "object") continue;
+            if (frame.filename) frame.filename = sanitizeString(frame.filename);
+            if (frame.abs_path) frame.abs_path = sanitizeString(frame.abs_path);
           }
         }
+        if (ex.value) ex.value = sanitizeString(ex.value);
       }
     }
-  }
-  if (event.extra && typeof event.extra === "object") {
-    for (const [key, val] of Object.entries(event.extra)) {
-      if (typeof val === "string") {
-        event.extra[key] = sanitizeString(val);
+    if (typeof event.message === "string") {
+      event.message = sanitizeString(event.message);
+    }
+    if (event.request?.url) {
+      try {
+        const u = new URL(event.request.url);
+        u.search = "";
+        u.hash = "";
+        u.username = "";
+        u.password = "";
+        event.request.url = u.toString();
+      } catch {
+        // not a valid URL, leave as-is
       }
     }
+    if (Array.isArray(event.breadcrumbs)) {
+      for (const breadcrumb of event.breadcrumbs) {
+        if (!breadcrumb || typeof breadcrumb !== "object") continue;
+        if (typeof breadcrumb.message === "string") {
+          breadcrumb.message = sanitizeString(breadcrumb.message);
+        }
+        if (breadcrumb.data && typeof breadcrumb.data === "object") {
+          breadcrumb.data = sanitizeStringsDeep(breadcrumb.data) as Record<string, unknown>;
+        }
+      }
+    }
+    if (event.extra && typeof event.extra === "object") {
+      event.extra = sanitizeStringsDeep(event.extra) as Record<string, unknown>;
+    }
+    return event;
+  } catch {
+    return null;
   }
-  return event;
 }
 
 let initialized = false;

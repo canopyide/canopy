@@ -331,7 +331,7 @@ describe("DiagnosticsCollector adversarial", () => {
     expect(msg).toContain("[REDACTED]");
   });
 
-  it("FREE_TEXT_BEARER_AND_JWT_SCRUBBED_IN_NESTED_CONTEXT", async () => {
+  it("FREE_TEXT_JWT_AND_BEARER_SCRUBBED_IN_NESTED_CONTEXT", async () => {
     const jwt = `eyJ${"a".repeat(20)}.${"b".repeat(20)}.${"c".repeat(40)}`;
     shared.logEntries = [
       {
@@ -339,10 +339,15 @@ describe("DiagnosticsCollector adversarial", () => {
         message: "auth failure",
         timestamp: 2,
         context: {
+          // `authorization` key name is caught by SENSITIVE_KEY_PATTERN — the
+          // whole value becomes `<redacted>` via key-based redaction.
           requestHeaders: {
             authorization: "Bearer abcdefghij.klmnop-qr_st=",
           },
-          responseBody: `{"token":"${jwt}"}`,
+          // `responseBody` is a safe key name, so its value is a free-text
+          // string that only the new scrubber can catch. Also embed a Bearer
+          // header shape here so the scrubber's Bearer pattern is exercised.
+          responseBody: `{"token":"${jwt}","echo":"Authorization: Bearer abcdefghij.klmnop-qr_st="}`,
         },
       },
     ];
@@ -358,11 +363,12 @@ describe("DiagnosticsCollector adversarial", () => {
       };
     };
 
-    // `authorization` key itself is caught by SENSITIVE_KEY_PATTERN (key-based
-    // redaction wins), but responseBody is a free-text string that only the
-    // scrubber can catch — this is the case this feature exists to cover.
-    expect(payload.logs.recentEntries[0]?.context?.responseBody).not.toContain("eyJ");
-    expect(payload.logs.recentEntries[0]?.context?.responseBody).toContain("[REDACTED]");
+    expect(payload.logs.recentEntries[0]?.context?.requestHeaders?.authorization).toBe("<redacted>");
+    const body = payload.logs.recentEntries[0]?.context?.responseBody ?? "";
+    expect(body).not.toContain(jwt);
+    expect(body).not.toContain("eyJ");
+    expect(body).not.toMatch(/Bearer [A-Za-z0-9]/);
+    expect(body).toContain("[REDACTED]");
   });
 
   it("FREE_TEXT_AWS_KEY_SCRUBBED_IN_LOG_MESSAGE", async () => {

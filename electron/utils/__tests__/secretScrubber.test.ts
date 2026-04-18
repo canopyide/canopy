@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import safe from "safe-regex2";
-import {
-  MAX_SCRUB_INPUT_LENGTH,
-  PATTERNS,
-  REDACTED,
-  scrubSecrets,
-} from "../secretScrubber.js";
+import { PATTERNS, REDACTED, scrubSecrets } from "../secretScrubber.js";
 
 describe("secretScrubber", () => {
   describe("ReDoS safety", () => {
@@ -163,21 +158,63 @@ describe("secretScrubber", () => {
     });
   });
 
-  describe("length guard", () => {
-    it("pre-truncates to MAX_SCRUB_INPUT_LENGTH to bound worst-case work", () => {
-      const oversized = "x".repeat(MAX_SCRUB_INPUT_LENGTH + 50_000);
-      const out = scrubSecrets(oversized);
-      expect(out.length).toBe(MAX_SCRUB_INPUT_LENGTH);
+  describe("large inputs", () => {
+    it("scrubs secrets in oversized strings without truncating (no prefix leak)", () => {
+      // Place the secret deep inside a 200KB input. Prior 100KB pre-truncation
+      // would have severed the secret and leaked its head. With no truncation,
+      // the full secret must be recognized and redacted wherever it sits.
+      const secret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456";
+      const buried = `${"a ".repeat(60_000)}${secret} tail`;
+      expect(buried.length).toBeGreaterThan(100_000);
+      const out = scrubSecrets(buried);
+      expect(out).not.toContain(secret);
+      // Also: no prefix of the secret longer than the sigil alone remains.
+      expect(out).not.toContain(secret.slice(0, 12));
     });
 
-    it("still redacts a secret inside the first 100KB of oversized input", () => {
-      // Prefix the secret with a non-word char so `\bghp_` matches.
-      const padding = "a".repeat(50_000) + " ";
+    it("scrubs a secret that would have straddled a legacy 100KB cap", () => {
+      const MAX = 100 * 1024;
       const secret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456";
-      const oversized = padding + secret + " " + "b".repeat(MAX_SCRUB_INPUT_LENGTH);
-      const out = scrubSecrets(oversized);
-      expect(out).toContain(REDACTED);
+      // Position the secret so it starts 10 chars before the legacy cut point.
+      const prefix = "a ".repeat((MAX - 10) / 2);
+      const straddle = `${prefix}${secret} keep-this`;
+      const out = scrubSecrets(straddle);
       expect(out).not.toContain(secret);
+      expect(out).not.toContain(secret.slice(0, 20));
+      expect(out).toContain("keep-this");
+    });
+  });
+
+  describe("boundary fidelity", () => {
+    it("Bearer token does not consume across CRLF into the next header", () => {
+      const input = "Authorization: Bearer abcdefghij.klmnop-qr_st=\r\nX-Trace-Id: keep-this";
+      const out = scrubSecrets(input);
+      expect(out).toBe(`Authorization: Bearer ${REDACTED}\r\nX-Trace-Id: keep-this`);
+    });
+
+    it("oauth form-body at start of a non-first line is scrubbed (m flag)", () => {
+      const input = "POST /token\naccess_token=supersecrettokenvalue&other=1";
+      const out = scrubSecrets(input);
+      expect(out).toBe(`POST /token\naccess_token=${REDACTED}&other=1`);
+    });
+
+    it("oauth param after CRLF is scrubbed", () => {
+      const input = "request body:\r\nclient_secret=abc123xyz";
+      const out = scrubSecrets(input);
+      expect(out).toContain(`client_secret=${REDACTED}`);
+      expect(out).not.toContain("abc123xyz");
+    });
+  });
+
+  describe("pattern upper bounds", () => {
+    it("Anthropic key at the upper bound (255) matches", () => {
+      const atCap = `sk-ant-${"a".repeat(255)}`;
+      expect(scrubSecrets(atCap)).toBe(REDACTED);
+    });
+
+    it("Bearer token at upper bound (4000 chars) is scrubbed", () => {
+      const input = `Authorization: Bearer ${"A".repeat(4000)}`;
+      expect(scrubSecrets(input)).toBe(`Authorization: Bearer ${REDACTED}`);
     });
   });
 
