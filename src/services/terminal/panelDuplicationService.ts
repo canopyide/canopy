@@ -193,13 +193,17 @@ export async function buildPanelDuplicateOptions(
       type: sourcePanel.type,
       agentId: sourcePanel.agentId,
       command,
+      title: sourcePanel.title,
       cwd: sourcePanel.cwd || "",
       worktreeId: sourcePanel.worktreeId,
       location: targetLocation,
       exitBehavior: sourcePanel.exitBehavior,
       isInputLocked: sourcePanel.isInputLocked,
       agentModelId: sourcePanel.agentModelId,
+      agentFlavorId: sourcePanel.agentFlavorId,
+      agentFlavorColor: sourcePanel.agentFlavorColor,
       agentLaunchFlags: sourcePanel.agentLaunchFlags,
+      env,
     };
   }
 
