@@ -56,6 +56,7 @@ interface PtyClientPrivateAccess {
   child: MockUtilityProcess | null;
   pendingMessagePorts: Map<number, MockMessagePortMain>;
   pendingKillCount: Map<string, number>;
+  ipcDataMirrorIds: Set<string>;
 }
 
 function createMockChild(): MockUtilityProcess {
@@ -896,56 +897,103 @@ describe("PtyClient adversarial", () => {
 
   const MAX_PENDING_KILLS = 500;
 
-  function countKillMessages(child: MockUtilityProcess): number {
-    return child.postMessage.mock.calls.filter(
-      (call: unknown[]) => (call[0] as { type?: string })?.type === "kill"
-    ).length;
+  function countKillMessages(child: MockUtilityProcess, id?: string): number {
+    return child.postMessage.mock.calls.filter((call: unknown[]) => {
+      const msg = call[0] as { type?: string; id?: string };
+      if (msg?.type !== "kill") return false;
+      return id === undefined || msg.id === id;
+    }).length;
   }
 
-  it("PENDING_KILLS_REJECTED_AT_CAP", async () => {
+  function fillKnownPendingKills(client: import("../PtyClient.js").PtyClient, count: number): void {
+    for (let i = 0; i < count; i++) {
+      client.spawn(`k-${i}`, baseSpawnOptions());
+      client.kill(`k-${i}`);
+    }
+  }
+
+  it("PENDING_KILLS_UNTRACKED_AT_CAP_BUT_IPC_STILL_SENT", async () => {
     const client = createReadyClient();
     const privateAccess = client as unknown as PtyClientPrivateAccess;
     const { logWarn } = await import("../../utils/logger.js");
 
-    for (let i = 0; i < MAX_PENDING_KILLS; i++) {
-      client.kill(`t-${i}`);
-    }
+    fillKnownPendingKills(client, MAX_PENDING_KILLS);
     expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
-    expect(countKillMessages(mockChild)).toBe(MAX_PENDING_KILLS);
     (logWarn as Mock).mockClear();
     mockChild.postMessage.mockClear();
 
+    client.spawn("t-overflow", baseSpawnOptions());
     client.kill("t-overflow");
 
     expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
     expect(privateAccess.pendingKillCount.has("t-overflow")).toBe(false);
-    expect(countKillMessages(mockChild)).toBe(0);
+    // IPC must still be dispatched so the host-side PTY is actually killed.
+    expect(countKillMessages(mockChild, "t-overflow")).toBe(1);
     expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("pendingKillCount at cap"));
   });
 
-  it("KILL_EXISTING_ID_ALLOWED_AT_CAP", async () => {
+  it("KILL_EXISTING_ID_INCREMENTS_AT_CAP", async () => {
     const client = createReadyClient();
     const privateAccess = client as unknown as PtyClientPrivateAccess;
     const { logWarn } = await import("../../utils/logger.js");
 
-    for (let i = 0; i < MAX_PENDING_KILLS; i++) {
-      client.kill(`t-${i}`);
-    }
+    fillKnownPendingKills(client, MAX_PENDING_KILLS);
     expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
     (logWarn as Mock).mockClear();
     mockChild.postMessage.mockClear();
 
-    client.kill("t-0");
+    // Already-tracked id: re-spawn so the next kill sees it as known,
+    // then kill again. Size stays at cap; count bumps to 2.
+    client.spawn("k-0", baseSpawnOptions());
+    client.kill("k-0");
 
     expect(logWarn).not.toHaveBeenCalled();
     expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
-    expect(privateAccess.pendingKillCount.get("t-0")).toBe(2);
-    const killCalls = mockChild.postMessage.mock.calls.filter(
-      (call: unknown[]) =>
-        (call[0] as { type?: string })?.type === "kill" &&
-        (call[0] as { id?: string })?.id === "t-0"
-    );
-    expect(killCalls).toHaveLength(1);
+    expect(privateAccess.pendingKillCount.get("k-0")).toBe(2);
+    expect(countKillMessages(mockChild, "k-0")).toBe(1);
+  });
+
+  it("KILL_BOGUS_ID_DOES_NOT_CONSUME_CAP_SLOT", async () => {
+    const client = createReadyClient();
+    const privateAccess = client as unknown as PtyClientPrivateAccess;
+    const { logWarn } = await import("../../utils/logger.js");
+    mockChild.postMessage.mockClear();
+
+    for (let i = 0; i < MAX_PENDING_KILLS; i++) {
+      client.kill(`unknown-${i}`);
+    }
+
+    // Unknown ids were never spawned, so they must not occupy cap slots —
+    // otherwise stray kills would permanently starve legitimate kills.
+    expect(privateAccess.pendingKillCount.size).toBe(0);
+    expect(logWarn).not.toHaveBeenCalled();
+    // IPC still sent for each — PtyManager.kill() no-ops for unknown ids.
+    expect(countKillMessages(mockChild)).toBe(MAX_PENDING_KILLS);
+
+    client.spawn("t-real", baseSpawnOptions());
+    client.kill("t-real");
+    expect(privateAccess.pendingKillCount.get("t-real")).toBe(1);
+  });
+
+  it("EXIT_DECREMENT_FREES_CAPACITY_FOR_NEW_ID", async () => {
+    const client = createReadyClient();
+    const privateAccess = client as unknown as PtyClientPrivateAccess;
+    const { logWarn } = await import("../../utils/logger.js");
+
+    fillKnownPendingKills(client, MAX_PENDING_KILLS);
+    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
+
+    // Exit for k-0 decrements (and deletes) its entry.
+    mockChild.emit("message", { type: "exit", id: "k-0", exitCode: 0 });
+    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS - 1);
+    (logWarn as Mock).mockClear();
+
+    client.spawn("t-new", baseSpawnOptions());
+    client.kill("t-new");
+
+    expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
+    expect(privateAccess.pendingKillCount.get("t-new")).toBe(1);
+    expect(logWarn).not.toHaveBeenCalled();
   });
 
   it("KILL_COUNT_CLEARED_ON_HOST_CRASH", () => {
@@ -953,9 +1001,7 @@ describe("PtyClient adversarial", () => {
     const privateAccess = client as unknown as PtyClientPrivateAccess;
     const restartedChild = createMockChild();
 
-    client.kill("t-0");
-    client.kill("t-1");
-    client.kill("t-2");
+    fillKnownPendingKills(client, 3);
     expect(privateAccess.pendingKillCount.size).toBe(3);
 
     shared.forkMock.mockReturnValue(restartedChild);
@@ -969,24 +1015,29 @@ describe("PtyClient adversarial", () => {
     client.dispose();
   });
 
-  it("BOOKKEEPING_RUNS_ON_REJECTED_KILL", async () => {
+  it("BOOKKEEPING_RUNS_AND_IPC_SENT_WHEN_KILL_UNTRACKED_AT_CAP", async () => {
     const client = createReadyClient();
     const privateAccess = client as unknown as PtyClientPrivateAccess;
     const { logWarn } = await import("../../utils/logger.js");
 
     client.spawn("t-victim", baseSpawnOptions());
+    client.setIpcDataMirror("t-victim", true);
     expect(client.hasTerminal("t-victim")).toBe(true);
+    expect(privateAccess.ipcDataMirrorIds.has("t-victim")).toBe(true);
 
-    for (let i = 0; i < MAX_PENDING_KILLS; i++) {
-      client.kill(`fill-${i}`);
-    }
+    fillKnownPendingKills(client, MAX_PENDING_KILLS);
     expect(privateAccess.pendingKillCount.size).toBe(MAX_PENDING_KILLS);
     (logWarn as Mock).mockClear();
+    mockChild.postMessage.mockClear();
 
     client.kill("t-victim");
 
+    // Full bookkeeping must have run despite the cap.
     expect(client.hasTerminal("t-victim")).toBe(false);
+    expect(privateAccess.ipcDataMirrorIds.has("t-victim")).toBe(false);
     expect(privateAccess.pendingKillCount.has("t-victim")).toBe(false);
+    // IPC must still be dispatched — otherwise the host-side PTY leaks.
+    expect(countKillMessages(mockChild, "t-victim")).toBe(1);
     expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("pendingKillCount at cap"));
   });
 });

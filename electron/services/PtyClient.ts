@@ -1100,16 +1100,32 @@ export class PtyClient extends EventEmitter {
 
   kill(id: string, reason?: string): void {
     getTrashedPidTracker().removeTrashed(id);
+    const wasKnown = this.pendingSpawns.has(id);
     this.pendingSpawns.delete(id);
     this.ipcDataMirrorIds.delete(id);
 
-    if (!this.pendingKillCount.has(id) && this.pendingKillCount.size >= this.MAX_PENDING_KILLS) {
-      logWarn(
-        `[PtyClient] kill skipped — pendingKillCount at cap (${this.MAX_PENDING_KILLS}), id=${id}`
-      );
-      return;
+    // Only track pendingKillCount for ids we've seen locally. An "exit"
+    // decrement only arrives for terminals the host actually owned, so
+    // tracking kills for unknown ids would leak cap slots permanently.
+    if (wasKnown) {
+      const current = this.pendingKillCount.get(id);
+      if (current !== undefined) {
+        // Existing entry — incrementing doesn't grow the map, always allow.
+        this.pendingKillCount.set(id, current + 1);
+      } else if (this.pendingKillCount.size < this.MAX_PENDING_KILLS) {
+        this.pendingKillCount.set(id, 1);
+      } else {
+        // At cap with a new id: skip tracking. The kill IPC still goes out so
+        // the host-side terminal is killed; we accept that exit attribution
+        // for this id may fall through to the "normal exit" branch of the
+        // exit handler. Prevents silent PTY leaks under repeated crashes.
+        logWarn(
+          `[PtyClient] kill untracked — pendingKillCount at cap (${this.MAX_PENDING_KILLS}), id=${id}`
+        );
+      }
     }
-    this.pendingKillCount.set(id, (this.pendingKillCount.get(id) ?? 0) + 1);
+    // Always send the kill IPC. PtyManager.kill() guards on registry.get(id),
+    // so unknown ids are a safe no-op on the host side.
     this.send({ type: "kill", id, reason });
   }
 
