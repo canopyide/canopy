@@ -91,12 +91,15 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   }, [containerSelector]);
 
   // Derive visual grid groups (one cell per tab group), matching ContentGrid.
-  // tabGroups + terminals are intentional deps: getTabGroups reads both internally.
-  const gridGroups = useMemo(
-    () => getTabGroups("grid", activeWorktreeId ?? undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tabGroups/panelIds/panelsById are intentional trigger deps; getTabGroups reads them internally
-    [getTabGroups, activeWorktreeId, tabGroups, panelIds, panelsById]
-  );
+  // getTabGroups reads tabGroups/panelIds/panelsById from the store via get();
+  // reference them so exhaustive-deps treats them as real deps without a
+  // suppression (which would force the React Compiler to bail out).
+  const gridGroups = useMemo(() => {
+    void tabGroups;
+    void panelIds;
+    void panelsById;
+    return getTabGroups("grid", activeWorktreeId ?? undefined);
+  }, [getTabGroups, activeWorktreeId, tabGroups, panelIds, panelsById]);
 
   // Compute gridCols using visual group count, matching ContentGrid's gridItemCount
   const gridCols = useMemo(() => {
@@ -223,6 +226,9 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   // Uses getTabGroups for ordering (explicit groups first by terminal order, then virtual groups)
   // so Cmd+N indices are consistent with what the user sees on screen.
   const groupRowMajor = useMemo(() => {
+    void tabGroups;
+    void panelIds;
+    void panelsById;
     const orderedGroups = getTabGroups("grid", activeWorktreeId ?? undefined);
     return orderedGroups.flatMap((group) => {
       const resolvedId = group.panelIds.includes(group.activeTabId)
@@ -230,7 +236,6 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
         : group.panelIds[0];
       return resolvedId ? [resolvedId] : [];
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional trigger deps for getTabGroups
   }, [getTabGroups, activeWorktreeId, tabGroups, panelIds, panelsById]);
 
   const findByIndex = useCallback(
