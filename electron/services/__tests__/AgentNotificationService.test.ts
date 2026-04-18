@@ -735,7 +735,39 @@ describe("AgentNotificationService", () => {
       // At 10s — first pulse fires
       vi.advanceTimersByTime(1);
       expect(soundServiceMock.playPulse).toHaveBeenCalledTimes(1);
-      expect(soundServiceMock.playPulse).toHaveBeenCalledWith("pulse.wav");
+      expect(soundServiceMock.playPulse).toHaveBeenCalledWith("pulse.wav", expect.any(Number));
+    });
+
+    it("passes a random detune within ±15 cents on each pulse", () => {
+      mockStore({ soundEnabled: true, workingPulseEnabled: true });
+
+      // Each tick consumes Math.random() twice: first for detune, then for
+      // jitter. Providing a fixed [detune, jitter] pair per tick pins both
+      // the formula (detune = rand*30 - 15) and the call order contract.
+      const randomSpy = vi.spyOn(Math, "random");
+      try {
+        randomSpy
+          .mockReturnValueOnce(0) // tick 1 detune → -15
+          .mockReturnValueOnce(0.5) // tick 1 jitter
+          .mockReturnValueOnce(0.5) // tick 2 detune → 0
+          .mockReturnValueOnce(0.5) // tick 2 jitter
+          .mockReturnValueOnce(0.999) // tick 3 detune → 14.97
+          .mockReturnValueOnce(0.5); // tick 3 jitter
+
+        events.emit("agent:state-changed", makePayload("working", "idle"));
+        vi.advanceTimersByTime(10_000);
+        expect(soundServiceMock.playPulse).toHaveBeenLastCalledWith("pulse.wav", -15);
+
+        vi.advanceTimersByTime(10_000);
+        expect(soundServiceMock.playPulse).toHaveBeenLastCalledWith("pulse.wav", 0);
+
+        vi.advanceTimersByTime(10_000);
+        const lastCall = soundServiceMock.playPulse.mock.calls.at(-1);
+        expect(lastCall?.[0]).toBe("pulse.wav");
+        expect(lastCall?.[1]).toBeCloseTo(14.97, 2);
+      } finally {
+        randomSpy.mockRestore();
+      }
     });
 
     it("starts pulse for docked terminal with escalation enabled", () => {
