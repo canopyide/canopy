@@ -136,4 +136,40 @@ describe("project:detect-context-files handler", () => {
     const result = await handler({}, "p1");
     expect(result).toEqual([]);
   });
+
+  it("ignores directories that share a candidate name", async () => {
+    projectStoreMock.getProjectById.mockReturnValue({ id: "p1", path: tempDir });
+    // A directory named CLAUDE.md should not count as a context file.
+    await fs.mkdir(path.join(tempDir, "CLAUDE.md"));
+
+    const handler = getHandler(CHANNELS.PROJECT_DETECT_CONTEXT_FILES);
+    const result = await handler({}, "p1");
+
+    expect(result).toEqual([]);
+  });
+
+  it("rejects symlinks even when they target real files", async () => {
+    projectStoreMock.getProjectById.mockReturnValue({ id: "p1", path: tempDir });
+    const realTarget = path.join(tempDir, "real-claude.md");
+    await fs.writeFile(realTarget, "# claude", "utf-8");
+    await fs.symlink(realTarget, path.join(tempDir, "CLAUDE.md"));
+
+    const handler = getHandler(CHANNELS.PROJECT_DETECT_CONTEXT_FILES);
+    const result = await handler({}, "p1");
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns other files when one candidate cannot be read", async () => {
+    projectStoreMock.getProjectById.mockReturnValue({ id: "p1", path: tempDir });
+    await fs.writeFile(path.join(tempDir, "CLAUDE.md"), "# claude", "utf-8");
+    // A directory at this path will be rejected by isFile(); remaining files still reported.
+    await fs.mkdir(path.join(tempDir, ".cursorrules"));
+    await fs.writeFile(path.join(tempDir, "AGENTS.md"), "# agents", "utf-8");
+
+    const handler = getHandler(CHANNELS.PROJECT_DETECT_CONTEXT_FILES);
+    const result = await handler({}, "p1");
+
+    expect(result).toEqual(["CLAUDE.md", "AGENTS.md"]);
+  });
 });

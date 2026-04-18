@@ -151,8 +151,13 @@ export function registerProjectInRepoSettingsHandlers(_deps: HandlerDependencies
 
     const checks = await Promise.all(
       CONTEXT_FILE_CANDIDATES.map(async (relative) => {
+        const absolute = path.join(project.path, relative);
         try {
-          await fs.access(path.join(project.path, relative));
+          // lstat (not stat) — reject symlinks to avoid advertising files that
+          // point outside the project tree. All candidates are expected to be
+          // regular files; directories named like a candidate are ignored.
+          const info = await fs.lstat(absolute);
+          if (!info.isFile()) return null;
           return relative;
         } catch {
           return null;

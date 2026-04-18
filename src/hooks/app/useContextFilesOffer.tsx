@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useProjectStore } from "@/store";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
-import { useProjectSettings } from "../useProjectSettings";
 import { notify } from "@/lib/notify";
 import { useNotificationStore } from "@/store/notificationStore";
 import { projectClient } from "@/clients";
@@ -14,14 +13,19 @@ function formatFileList(files: string[]): string {
 
 export function useContextFilesOffer() {
   const currentProject = useProjectStore((state) => state.currentProject);
-  const { settings, projectId: settingsProjectId } = useProjectSettingsStore();
-  const { saveSettings } = useProjectSettings();
+  const settingsProjectId = useProjectSettingsStore((s) => s.projectId);
+  const settingsHydrated = useProjectSettingsStore((s) => s.settings !== null);
+  const dismissed = useProjectSettingsStore((s) => s.settings?.contextFilesOfferDismissed === true);
   const removeNotification = useNotificationStore((s) => s.removeNotification);
-  const lastCheckedProjectRef = useRef<string | null>(null);
+
+  // Guards against double-IPC / double-notify for the same project across re-renders.
+  // Set at IPC start, cleared only on project change or explicit retry.
+  const inFlightProjectRef = useRef<string | null>(null);
+  // The active banner's notification id, when one is actually visible.
   const notificationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!currentProject?.id || settingsProjectId !== currentProject.id || !settings) {
+    if (!currentProject?.id || settingsProjectId !== currentProject.id || !settingsHydrated) {
       return;
     }
 
@@ -29,17 +33,16 @@ export function useContextFilesOffer() {
       return;
     }
 
-    if (settings.contextFilesOfferDismissed) {
+    if (dismissed) {
       return;
     }
 
-    if (lastCheckedProjectRef.current === currentProject.id) {
+    if (inFlightProjectRef.current === currentProject.id) {
       return;
     }
-
-    lastCheckedProjectRef.current = currentProject.id;
 
     const targetProjectId = currentProject.id;
+    inFlightProjectRef.current = targetProjectId;
     let cancelled = false;
 
     (async () => {
@@ -48,8 +51,8 @@ export function useContextFilesOffer() {
         foundFiles = await projectClient.detectContextFiles(targetProjectId);
       } catch (error) {
         console.error("Failed to detect project context files:", error);
-        if (lastCheckedProjectRef.current === targetProjectId) {
-          lastCheckedProjectRef.current = null;
+        if (inFlightProjectRef.current === targetProjectId) {
+          inFlightProjectRef.current = null;
         }
         return;
       }
@@ -57,10 +60,10 @@ export function useContextFilesOffer() {
       if (cancelled) return;
       if (foundFiles.length === 0) return;
 
-      const latestState = useProjectSettingsStore.getState();
+      const latestSettingsState = useProjectSettingsStore.getState();
       if (
-        latestState.projectId !== targetProjectId ||
-        latestState.settings?.contextFilesOfferDismissed
+        latestSettingsState.projectId !== targetProjectId ||
+        latestSettingsState.settings?.contextFilesOfferDismissed
       ) {
         return;
       }
@@ -73,11 +76,15 @@ export function useContextFilesOffer() {
       const fileList = formatFileList(foundFiles);
       const pluralSuffix = foundFiles.length === 1 ? "this file" : "these files";
 
-      const markDismissed = async (): Promise<boolean> => {
+      const markDismissed = async (): Promise<void> => {
         const freshSettings = useProjectSettingsStore.getState().settings;
-        if (!freshSettings) return false;
-        await saveSettings({ ...freshSettings, contextFilesOfferDismissed: true });
-        return true;
+        if (!freshSettings) return;
+        // Bind persistence to the captured project id, not whichever project is
+        // current at click time — guards against rapid project switches.
+        await projectClient.saveSettings(targetProjectId, {
+          ...freshSettings,
+          contextFilesOfferDismissed: true,
+        });
       };
 
       const notificationId = notify({
@@ -106,7 +113,10 @@ export function useContextFilesOffer() {
                   message: err instanceof Error ? err.message : "Unknown error",
                   duration: 6000,
                 });
-                lastCheckedProjectRef.current = null;
+                // Allow a retry next time the effect runs for this project.
+                if (inFlightProjectRef.current === targetProjectId) {
+                  inFlightProjectRef.current = null;
+                }
               }
             },
           },
@@ -128,7 +138,9 @@ export function useContextFilesOffer() {
                   message: err instanceof Error ? err.message : "Unknown error",
                   duration: 6000,
                 });
-                lastCheckedProjectRef.current = null;
+                if (inFlightProjectRef.current === targetProjectId) {
+                  inFlightProjectRef.current = null;
+                }
               }
             },
           },
@@ -141,7 +153,17 @@ export function useContextFilesOffer() {
         return;
       }
 
-      notificationIdRef.current = notificationId || null;
+      if (!notificationId) {
+        // Suppressed by quiet period or notifications-disabled setting. Allow a
+        // retry on the next render or the next project open so the offer isn't
+        // silently dropped.
+        if (inFlightProjectRef.current === targetProjectId) {
+          inFlightProjectRef.current = null;
+        }
+        return;
+      }
+
+      notificationIdRef.current = notificationId;
     })();
 
     return () => {
@@ -150,13 +172,19 @@ export function useContextFilesOffer() {
         removeNotification(notificationIdRef.current);
         notificationIdRef.current = null;
       }
+      // On project change (the only dep-driven reason this effect tears down
+      // and re-runs with a different currentProject.id), clear the in-flight
+      // guard so the new project can be detected. If the dep change was for the
+      // same project (dismissal flip), we also clear — the next run's dismissed
+      // early-return will handle it correctly.
+      inFlightProjectRef.current = null;
     };
   }, [
     currentProject?.id,
     currentProject?.inRepoSettings,
     settingsProjectId,
-    settings,
-    saveSettings,
+    settingsHydrated,
+    dismissed,
     removeNotification,
   ]);
 }
