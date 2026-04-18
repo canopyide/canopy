@@ -264,12 +264,26 @@ describe("ActivationFunnelService", () => {
       { id: "term-1", agentState: "working" },
       { id: "term-2", agentState: "working" },
     ]);
+    trackEventMock.mockClear();
+    broadcastMock.mockClear();
     const now = Date.now();
     activationFunnelService.initialize({ appLaunchMs: now - 500 });
     vi.advanceTimersByTime(8_500);
-    trackEventMock.mockClear();
 
-    // Emit a fresh state change — guard should still hold.
+    // Assert BEFORE any mockClear — catches a reconcile fire that would
+    // otherwise be erased by cleanup between phases of the test.
+    expect(
+      trackEventMock.mock.calls.find((c) => c[0] === "activation_first_parallel_agents")
+    ).toBeUndefined();
+    expect(
+      broadcastMock.mock.calls.find((c) => c[0] === CHANNELS.ONBOARDING_CHECKLIST_PUSH)
+    ).toBeUndefined();
+    expect(
+      (storeMock._data["activationFunnel"] as { firstParallelAgentsAt: number })
+        .firstParallelAgentsAt
+    ).toBe(1_700_000_000_000);
+
+    // A fresh state-change event should also respect the persisted guard.
     setTerminals([
       { id: "term-1", agentState: "working" },
       { id: "term-2", agentState: "working" },

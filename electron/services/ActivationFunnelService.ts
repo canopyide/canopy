@@ -60,7 +60,9 @@ class ActivationFunnelService {
     // two agents already running (no transition event will fire for existing
     // state), we still want the parallel-agents milestone to land in this
     // session. Guarded by the persisted `firstParallelAgentsAt` timestamp so
-    // it's idempotent across restarts.
+    // it's idempotent across restarts. Clear any orphan timer from a prior
+    // initialize call — double-init without dispose would otherwise leak.
+    if (this.reconcileTimer) clearTimeout(this.reconcileTimer);
     this.reconcileTimer = setTimeout(() => {
       this.reconcileTimer = null;
       this.maybeFireFirstParallelAgents();
