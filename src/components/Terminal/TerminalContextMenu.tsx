@@ -11,6 +11,8 @@ import { isValidBrowserUrl } from "@/components/Browser/browserUtils";
 import { actionService } from "@/services/ActionService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
+import { computeGridSelectedAgentIds } from "./contentGridAgentFilter";
 import {
   ArrowDownFromLine,
   Bell,
@@ -159,6 +161,9 @@ export function TerminalContextMenu({
   const { worktrees } = useWorktrees();
 
   const isWatched = usePanelStore((state) => state.watchedPanels.has(terminalId));
+
+  const availability = useCliAvailabilityStore((s) => s.availability);
+  const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
 
   const [hasSelection, setHasSelection] = useState(false);
   const [selectionText, setSelectionText] = useState("");
@@ -389,6 +394,22 @@ export function TerminalContextMenu({
     [terminal, terminalId, selectionText, worktrees]
   );
 
+  const currentAgentId =
+    terminal?.agentId ?? (terminal?.type !== "terminal" ? terminal?.type : null);
+  const isPlainTerminal = terminal?.type === "terminal" || terminal?.kind === "terminal";
+
+  const visibleAgentIds = useMemo(() => {
+    const filtered = computeGridSelectedAgentIds(hasRealData, availability, AGENT_IDS);
+    if (!currentAgentId || filtered === undefined) return filtered;
+    return new Set([...filtered, currentAgentId]);
+  }, [hasRealData, availability, currentAgentId]);
+
+  const showConvertTo =
+    !isPlainTerminal ||
+    !!currentAgentId ||
+    hasRealData === false ||
+    (visibleAgentIds?.size ?? 0) > 0;
+
   if (!terminal) {
     return <div className="contents">{children}</div>;
   }
@@ -397,9 +418,6 @@ export function TerminalContextMenu({
   const isNotes = terminal.kind === "notes";
   const isDevPreview = terminal.kind === "dev-preview";
   const hasPty = terminal.kind ? panelKindHasPty(terminal.kind) : true;
-
-  const currentAgentId = terminal.agentId ?? (terminal.type !== "terminal" ? terminal.type : null);
-  const isPlainTerminal = terminal.type === "terminal" || terminal.kind === "terminal";
 
   const layoutSection = (
     <>
@@ -613,8 +631,6 @@ export function TerminalContextMenu({
     );
   }
 
-  const showConvertTo = !isPlainTerminal || !!currentAgentId || AGENT_IDS.length > 0;
-
   const convertToItems = (
     <>
       {(!isPlainTerminal || !!currentAgentId) && (
@@ -623,7 +639,7 @@ export function TerminalContextMenu({
           Terminal
         </ContextMenuItem>
       )}
-      {AGENT_IDS.map((agentId) => {
+      {[...(visibleAgentIds ?? AGENT_IDS)].map((agentId) => {
         const config = getAgentConfig(agentId);
         if (!config) return null;
         const isCurrent = currentAgentId === agentId;
