@@ -888,7 +888,7 @@ describe("deprecated renderer field", () => {
 
   it("warns when plugin manifest contains renderer field", async () => {
     await writePlugin("renderer-deprecated", {
-      name: "renderer-deprecated",
+      name: "acme.renderer-deprecated",
       version: "1.0.0",
       renderer: "dist/renderer.js",
       engines: { daintree: "*" },
@@ -899,13 +899,13 @@ describe("deprecated renderer field", () => {
 
     expect(service.listPlugins()).toHaveLength(1);
     expect(warnSpy).toHaveBeenCalledWith(
-      `[PluginService] Plugin "renderer-deprecated" uses deprecated 'renderer' field. This field is no longer supported and will be ignored. Daintree plugins use main process entry points only; renderer-side plugins are not supported.`
+      `[PluginService] Plugin "acme.renderer-deprecated" uses deprecated 'renderer' field. This field is no longer supported and will be ignored. Daintree plugins use main process entry points only; renderer-side plugins are not supported.`
     );
   });
 
   it("does not warn when plugin manifest lacks renderer field", async () => {
     await writePlugin("no-renderer", {
-      name: "no-renderer",
+      name: "acme.no-renderer",
       version: "1.0.0",
       engines: { daintree: "*" },
     });
@@ -919,7 +919,7 @@ describe("deprecated renderer field", () => {
 
   it("does not include resolvedRenderer in listPlugins output", async () => {
     await writePlugin("renderer-test", {
-      name: "renderer-test",
+      name: "acme.renderer-test",
       version: "1.0.0",
       renderer: "dist/renderer.js",
       engines: { daintree: "*" },
@@ -935,7 +935,7 @@ describe("deprecated renderer field", () => {
 
   it("does not warn for incompatible plugins that fail compatibility gate", async () => {
     await writePlugin("incompatible-with-renderer", {
-      name: "incompatible-with-renderer",
+      name: "acme.incompatible-with-renderer",
       version: "1.0.0",
       renderer: "dist/renderer.js",
       engines: { daintree: "^1.0.0" },
@@ -952,7 +952,7 @@ describe("deprecated renderer field", () => {
 
   it("warns once per load attempt even with both main and renderer", async () => {
     await writePlugin("both-entries", {
-      name: "both-entries",
+      name: "acme.both-entries",
       version: "1.0.0",
       main: "dist/main.js",
       renderer: "dist/renderer.js",
