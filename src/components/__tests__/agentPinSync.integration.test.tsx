@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import type { AgentSettings, CliAvailability } from "@shared/types";
+import type { ActionFrecencyEntry } from "@shared/types/actions";
 
 // Shared settings state — mutated by setAgentPinnedMock, read by both UIs.
 let sharedSettings: AgentSettings | null = null;
@@ -36,8 +37,9 @@ vi.mock("@/store/agentSettingsStore", () => ({
 }));
 
 vi.mock("@/store/actionMruStore", () => ({
-  useActionMruStore: (selector: (s: { actionMruList: string[] }) => unknown) =>
-    selector({ actionMruList: [] }),
+  useActionMruStore: (
+    selector: (s: { getSortedActionMruList: () => ActionFrecencyEntry[] }) => unknown
+  ) => selector({ getSortedActionMruList: () => [] }),
 }));
 
 vi.mock("@/store/cliAvailabilityStore", () => ({
