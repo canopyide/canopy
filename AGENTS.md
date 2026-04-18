@@ -19,6 +19,7 @@ Every plan MUST include these sections, in roughly this order.
 **Testing Strategy.** Which `__tests__/` files to add or extend, which existing tests may break, specific cases to cover. For cross-process features, note whether an `e2e/core/` or `e2e/online/` test applies. Call out async/cleanup pitfalls.
 
 **Adversarial Test Matrix.** How this could break. Work through each category that applies and list concrete scenarios — not generics:
+
 - Boundary values (zero, one, max, overflow)
 - Invalid / malformed input
 - Empty / null / undefined / missing
@@ -34,7 +35,7 @@ Every plan MUST include these sections, in roughly this order.
 
 **Rejected Approaches.** Approaches you considered and will NOT use, with the specific reason (e.g., "cannot use middleware because the Actions dispatcher runs before middleware is registered"). This saves the executing agent from rediscovering dead ends.
 
-**Pushback Requested.** 2–3 areas where you want the implementer to challenge your plan — places where you are least confident, alternatives exist, or codebase conventions may override your suggestion. See *Where to flag pushback* below for the usual suspects.
+**Pushback Requested.** 2–3 areas where you want the implementer to challenge your plan — places where you are least confident, alternatives exist, or codebase conventions may override your suggestion. See _Where to flag pushback_ below for the usual suspects.
 
 **Out of Scope.** Explicit list of nearby things you deliberately will not touch. If the issue reads like two changes, plan one and declare the other out of scope.
 
@@ -42,7 +43,7 @@ Every plan MUST include these sections, in roughly this order.
 
 **For PR work only — add these two sections at the top:**
 
-- **Disposition.** One of `PROCEED` (worth improving) or `REJECT` (fundamentally wrong approach). If `REJECT`, give a clear, specific reason and stop — no roadmap needed. See *PR disposition criteria* below.
+- **Disposition.** One of `PROCEED` (worth improving) or `REJECT` (fundamentally wrong approach). If `REJECT`, give a clear, specific reason and stop — no roadmap needed. See _PR disposition criteria_ below.
 - **What's Already Good.** Brief assessment of what the contributor got right — patterns followed, tests included, edge cases considered. This frames the scope: you are improving, not rewriting.
 
 ---
@@ -51,23 +52,23 @@ Every plan MUST include these sections, in roughly this order.
 
 Read the named entry point before scoping.
 
-| Signal | Start reading |
-|---|---|
-| Terminal render, input, xterm behavior | `src/components/Terminal/TerminalPane.tsx`, `electron/pty-host/` |
-| Agent state wrong (idle/working/waiting/directing) | `src/services/terminal/TerminalAgentStateController.ts`, `shared/config/agentStateMachine*` |
-| Worktree status stale, not refreshing | `electron/workspace-host/WorktreeLifecycleService.ts`, `WorktreeMonitor.ts` |
-| IPC error, renderer can't reach main | `electron/ipc/channels.ts`, `electron/ipc/handlers.ts` |
-| Panel state, layout, kind, persistence | `src/store/panelStore.ts`, `shared/config/panelKindRegistry.ts` |
-| Keybinding not firing, menu item missing | `src/services/actions/actionDefinitions.ts`, `shared/types/keymap.ts`, `electron/menu.ts` |
-| Theme token, color, semantic styling | `shared/theme/semantic.ts`, `shared/theme/builtInThemes/` |
-| Multi-window, project view, LRU | `electron/window/ProjectViewManager.ts`, `electron/window/WindowRegistry.ts` |
-| Memory, event loop lag, resource profile | `electron/services/resource/ResourceProfileService.ts`, `shared/perf/` |
-| Notifications / Pulse / Portal / Commands — see which one | *Anti-patterns → Four "on-screen" systems* |
-| Browser panel, dev-preview | `src/panels/browser/`, `src/panels/dev-preview/` |
-| Settings persistence | `src/components/Settings/`, `electron/services/persistence/` |
-| GitHub PR/issue integration | `electron/services/github/`, `src/components/GitHub/` |
-| Onboarding, first-run | `src/components/Onboarding/`, `src/components/Setup/` |
-| MCP server, plugin, external tool | `electron/services/rpc/`, `shared/types/plugin.ts` |
+| Signal                                                    | Start reading                                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Terminal render, input, xterm behavior                    | `src/components/Terminal/TerminalPane.tsx`, `electron/pty-host/`                            |
+| Agent state wrong (idle/working/waiting/directing)        | `src/services/terminal/TerminalAgentStateController.ts`, `shared/config/agentStateMachine*` |
+| Worktree status stale, not refreshing                     | `electron/workspace-host/WorktreeLifecycleService.ts`, `WorktreeMonitor.ts`                 |
+| IPC error, renderer can't reach main                      | `electron/ipc/channels.ts`, `electron/ipc/handlers.ts`                                      |
+| Panel state, layout, kind, persistence                    | `src/store/panelStore.ts`, `shared/config/panelKindRegistry.ts`                             |
+| Keybinding not firing, menu item missing                  | `src/services/actions/actionDefinitions.ts`, `shared/types/keymap.ts`, `electron/menu.ts`   |
+| Theme token, color, semantic styling                      | `shared/theme/semantic.ts`, `shared/theme/builtInThemes/`                                   |
+| Multi-window, project view, LRU                           | `electron/window/ProjectViewManager.ts`, `electron/window/WindowRegistry.ts`                |
+| Memory, event loop lag, resource profile                  | `electron/services/resource/ResourceProfileService.ts`, `shared/perf/`                      |
+| Notifications / Pulse / Portal / Commands — see which one | _Anti-patterns → Four "on-screen" systems_                                                  |
+| Browser panel, dev-preview                                | `src/panels/browser/`, `src/panels/dev-preview/`                                            |
+| Settings persistence                                      | `src/components/Settings/`, `electron/services/persistence/`                                |
+| GitHub PR/issue integration                               | `electron/services/github/`, `src/components/GitHub/`                                       |
+| Onboarding, first-run                                     | `src/components/Onboarding/`, `src/components/Setup/`                                       |
+| MCP server, plugin, external tool                         | `electron/services/rpc/`, `shared/types/plugin.ts`                                          |
 
 If nothing matches, grep outward from `src/store/` or `electron/services/`.
 
@@ -122,6 +123,7 @@ Preserve these or the plan is wrong. They are not discoverable from casual readi
 These five spine patterns cross layers. A plan that names only the "primary" file is incomplete.
 
 ### Add an Action
+
 1. `shared/types/actions.ts` — extend `BuiltInActionId` union
 2. `src/services/actions/definitions/<domain>Actions.ts` — define action, set `ActionSource` / `ActionDanger`
 3. `src/services/actions/actionDefinitions.ts` — wire via `register<Domain>Actions()` in `createActionDefinitions()`
@@ -132,6 +134,7 @@ These five spine patterns cross layers. A plan that names only the "primary" fil
 **Invariant:** ActionId in the union before `.register()`; domain register fn invoked in `createActionDefinitions()`.
 
 ### Add an IPC channel
+
 1. `electron/ipc/channels.ts` — `CHANNEL: "namespace:channel"` in `CHANNELS`
 2. `shared/types/ipc/maps.ts` (or domain file) + `shared/types/ipc/index.ts` — entry in `IpcInvokeMap` or `IpcEventMap`
 3. `electron/schemas/<domain>.ts` — Zod schema for payload
@@ -143,6 +146,7 @@ These five spine patterns cross layers. A plan that names only the "primary" fil
 **Invariant:** Channel string in `CHANNELS` == preload key == `IpcInvokeMap` entry key, exactly. A drift check enforces this.
 
 ### Add a Panel Kind
+
 1. `shared/types/panel.ts` — extend `BuiltInPanelKind` union and `isBuiltInPanelKind()` guard
 2. `shared/config/panelKindRegistry.ts` — entry in `PANEL_KIND_REGISTRY`
 3. `shared/theme/entityColors.ts` — brand color in `PANEL_KIND_BRAND_COLORS`
@@ -153,6 +157,7 @@ These five spine patterns cross layers. A plan that names only the "primary" fil
 **Invariant:** Every kind appears in the union, the registry, the brand colors map, and `registry.tsx`. Missing any ONE is a silent runtime failure, not a typecheck error.
 
 ### Add a Zustand store or slice
+
 1. Create store/slice in `src/store/` or `src/store/slices/<domain>/`
 2. Use `StateCreator<T>`; compose slices via spread in `create()` (see `src/store/panelStore.ts`)
 3. Inject cross-slice/cross-store deps as closures, never as module-top imports
@@ -162,34 +167,35 @@ These five spine patterns cross layers. A plan that names only the "primary" fil
 **Invariant:** Lazy-getter injection for cross-store reads. Never direct import in a cyclic graph.
 
 ### Add a semantic theme token
+
 1. `shared/theme/types.ts` — extend `AppColorSchemeTokens`
 2. `shared/theme/semantic.ts` — mapping in `createSemanticTokens()`
 3. `shared/theme/builtInThemes/*.ts` — palette entry in **all 14** themes (daintree, bondi, table-mountain, arashiyama, fiordland, galapagos, highlands, namib, redwoods, atacama, bali, hokkaido, serengeti, svalbard)
 
-**Invariant:** Any token missing in any theme fails `builtInThemes.test.ts`. From `docs/themes/theme-system.md`: *"Add a semantic token only when the value is genuinely app-wide. Add a component public var when a visual decision belongs to one shell or component family. Do not add recipe-style theme tokens or alias compatibility layers."*
+**Invariant:** Any token missing in any theme fails `builtInThemes.test.ts`. From `docs/themes/theme-system.md`: _"Add a semantic token only when the value is genuinely app-wide. Add a component public var when a visual decision belongs to one shell or component family. Do not add recipe-style theme tokens or alias compatibility layers."_
 
 ---
 
 ## Anti-patterns (reject these in your plan)
 
-When the issue reads like one of these, prefer the alternative and add the rejected approach to the *Rejected Approaches* section with the reason.
+When the issue reads like one of these, prefer the alternative and add the rejected approach to the _Rejected Approaches_ section with the reason.
 
 **New IPC channel for what should be an action.** If the operation is user-facing and fits an existing action domain, extend the domain. New IPC is a red flag. Alternative: add an Action.
 
 **New panel kind for a variant.** Only 5 kinds exist. A sixth is almost always a browser panel with a preset URL, a dev-preview with a different type, or a notes panel with a custom document. Prefer a config-driven variant.
 
-**State that duplicates the filesystem.** From `docs/feature-curation.md`: *"Use the file system (git) as the source of truth whenever possible. Don't sync state that can be derived from the folder structure."* Worktrees, projects, and `.daintree/recipes/*.json` are derived from disk — plan to read, not to shadow.
+**State that duplicates the filesystem.** From `docs/feature-curation.md`: _"Use the file system (git) as the source of truth whenever possible. Don't sync state that can be derived from the folder structure."_ Worktrees, projects, and `.daintree/recipes/*.json` are derived from disk — plan to read, not to shadow.
 
 **Recipe tokens or alias layers in the theme.** Palette → semantic → component extension. Ad-hoc colors, recipe-style tokens, and alias compatibility layers are explicitly forbidden.
 
 **Four "on-screen" systems conflated.** Plans routinely confuse these:
 
-| System | Purpose | Lifetime |
-|---|---|---|
-| Notifications (toast) | Transient alerts, success / error / info | Ephemeral, dismissable, max 3 visible |
-| Pulse | Activity summary / commit timeline dashboard | Persisted view state |
-| Portal | Tabbed dock for web UIs, localhost preview, agent dashboards | Persisted tabs/width |
-| Commands overlay / QuickSwitcher | Palette for dispatching actions | Transient UI |
+| System                           | Purpose                                                      | Lifetime                              |
+| -------------------------------- | ------------------------------------------------------------ | ------------------------------------- |
+| Notifications (toast)            | Transient alerts, success / error / info                     | Ephemeral, dismissable, max 3 visible |
+| Pulse                            | Activity summary / commit timeline dashboard                 | Persisted view state                  |
+| Portal                           | Tabbed dock for web UIs, localhost preview, agent dashboards | Persisted tabs/width                  |
+| Commands overlay / QuickSwitcher | Palette for dispatching actions                              | Transient UI                          |
 
 Pulse is not a notification system. Portal is not a transient alert. Use the right one.
 
@@ -199,7 +205,7 @@ Pulse is not a notification system. Portal is not a transient alert. Use the rig
 
 ## Where to flag pushback
 
-Use these as candidates for the *Pushback Requested* section when they apply:
+Use these as candidates for the _Pushback Requested_ section when they apply:
 
 - **Action vs new IPC** — when an operation fits both, which should it be?
 - **Extending panelStore vs new store** — when does a new domain earn its own store?
@@ -218,8 +224,9 @@ These are the high-leverage decisions where the executing agent benefits from be
 When the input is a pull request, your first job is deciding whether to improve it (`PROCEED`) or close it (`REJECT`).
 
 Lean **REJECT** when any of these hold:
+
 - The approach fundamentally conflicts with the architectural invariants above (e.g., bypasses the action dispatcher, adds IPC where an action exists, bypasses the semantic theme layer).
-- The PR reinvents the code editor, the git GUI, or the chat UI — see *Feature-curation red lines* below.
+- The PR reinvents the code editor, the git GUI, or the chat UI — see _Feature-curation red lines_ below.
 - The change requires configuration to do its primary job (violates "works with zero config").
 - The PR duplicates an existing feature without adding orchestration value.
 - The scope is too broad — the PR solves two or three problems that should be separate issues.
@@ -230,6 +237,7 @@ Otherwise **PROCEED**. The contributor's working libraries and architectural dec
 ### Feature-curation red lines (auto-reject on principle)
 
 From `docs/feature-curation.md`:
+
 - **Reinvents the code editor** — editing, refactoring, linting belong in VS Code. Read-only viewing is the line.
 - **Reinvents the git GUI** — no merge-conflict resolution, no git graph. Lightweight commit/push only.
 - **Reinvents the chat UI** — agents run in terminals. (Assistant with orchestration context is the exception.)
@@ -259,7 +267,7 @@ Plans assume exact versions. Breaking changes between majors are frequent.
 - **React 19** — Compiler active; flag any render-time ref mutation or render-side-effect as a Compiler bailout risk.
 - **Zustand 5**, **Vite 8**, **Tailwind v4**, strict **TypeScript**.
 
-When incoming research cites older docs, assume drift and flag it in *Assumptions and Risks*.
+When incoming research cites older docs, assume drift and flag it in _Assumptions and Risks_.
 
 ---
 
