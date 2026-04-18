@@ -14,12 +14,20 @@ const buildResumeCommandMock = vi.fn(
     `${agentId} --resume ${sessionId}`
 );
 
-vi.mock("@shared/types", () => ({
-  generateAgentCommand: (base: string, _settings: unknown, _id: string, _opts: unknown) =>
-    `${base} --generated`,
-  buildResumeCommand: (...args: unknown[]) =>
-    buildResumeCommandMock(...(args as [string, string, string[]?])),
-}));
+const generateAgentCommandMock = vi.fn(
+  (base: string, _settings: unknown, _id: string, _opts: unknown): string => `${base} --generated`
+);
+
+vi.mock("@shared/types", async () => {
+  const actual = await vi.importActual<typeof import("@shared/types")>("@shared/types");
+  return {
+    ...actual,
+    generateAgentCommand: (...args: unknown[]) =>
+      generateAgentCommandMock(...(args as [string, unknown, string, unknown])),
+    buildResumeCommand: (...args: unknown[]) =>
+      buildResumeCommandMock(...(args as [string, string, string[]?])),
+  };
+});
 
 const {
   inferKind,
@@ -34,8 +42,13 @@ const {
 } = await import("../statePatcher");
 
 beforeEach(() => {
+  buildResumeCommandMock.mockReset();
   buildResumeCommandMock.mockImplementation(
     (agentId: string, sessionId: string) => `${agentId} --resume ${sessionId}`
+  );
+  generateAgentCommandMock.mockReset();
+  generateAgentCommandMock.mockImplementation(
+    (base: string, _settings: unknown, _id: string, _opts: unknown) => `${base} --generated`
   );
 });
 
@@ -440,6 +453,134 @@ describe("buildArgsForRespawn", () => {
       "--yolo",
       "--dangerously-skip-permissions",
     ]);
+  });
+
+  it("uses persisted agentLaunchFlags for no-session agent respawn", () => {
+    // Sentinel return value would signal the bug (settings path taken instead of flags path)
+    generateAgentCommandMock.mockReturnValue("claude --from-settings");
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: ["--dangerously-skip-permissions", "--model", "claude-opus-4-7"],
+      },
+      "agent",
+      "/p",
+      { agents: { claude: { dangerousEnabled: false } } },
+      false,
+      "/tmp/clip"
+    );
+    // `--...` flags pass through raw; the positional `claude-opus-4-7` is escaped.
+    expect(result.command).toBe("claude --dangerously-skip-permissions --model 'claude-opus-4-7'");
+    expect(generateAgentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to generateAgentCommand when agentLaunchFlags is empty (pre-fix terminals)", () => {
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: [],
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      "/tmp/clip"
+    );
+    expect(result.command).toBe("claude --generated");
+    expect(generateAgentCommandMock).toHaveBeenCalledOnce();
+  });
+
+  it("uses persisted agentLaunchFlags when session exists but resume returns undefined", () => {
+    buildResumeCommandMock.mockReturnValue(undefined);
+    generateAgentCommandMock.mockReturnValue("claude --from-settings");
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentSessionId: "sess-expired",
+        agentLaunchFlags: ["--dangerously-skip-permissions"],
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.command).toBe("claude --dangerously-skip-permissions");
+    expect(generateAgentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("shell-escapes non-flag tokens in persisted agentLaunchFlags (defends against metachars)", () => {
+    // Simulates a user customFlag like `--log /tmp/a;b.log` persisted at launch time.
+    // The `/tmp/a;b.log` positional must be quoted so the shell doesn't split on `;`.
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: ["--log", "/tmp/a;b.log"],
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined
+    );
+    expect(result.command).toBe("claude --log '/tmp/a;b.log'");
+    expect(generateAgentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("re-injects --include-directories for Gemini on respawn (runtime-dynamic, excluded at capture)", () => {
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "gemini",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: ["--yolo"],
+      },
+      "agent",
+      "/p",
+      { agents: { gemini: {} } },
+      false,
+      "/tmp/daintree-clipboard"
+    );
+    // Exact assertion locks flag/value pairing and ordering.
+    expect(result.command).toBe("gemini --yolo --include-directories '/tmp/daintree-clipboard'");
+    expect(generateAgentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("respects shareClipboardDirectory=false for Gemini on respawn", () => {
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "agent" as const,
+        agentId: "gemini",
+        cwd: "/p",
+        location: "grid",
+        agentLaunchFlags: ["--yolo"],
+      },
+      "agent",
+      "/p",
+      { agents: { gemini: { shareClipboardDirectory: false } } },
+      false,
+      "/tmp/daintree-clipboard"
+    );
+    expect(result.command).not.toContain("--include-directories");
   });
 });
 

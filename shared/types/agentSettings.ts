@@ -387,3 +387,59 @@ export function buildResumeCommand(
   }
   return parts.join(" ");
 }
+
+export interface BuildLaunchCommandFromFlagsOptions {
+  /** Absolute path to the clipboard temp directory (re-injected for agents that support it) */
+  clipboardDirectory?: string;
+  /**
+   * Current `shareClipboardDirectory` setting for the agent entry. When not `false`
+   * and the agent supports clipboard injection (e.g. Gemini), `--include-directories
+   * <clipboardDirectory>` is appended if not already present.
+   */
+  shareClipboardDirectory?: boolean;
+}
+
+/**
+ * Reconstructs an agent launch command from persisted launch flags.
+ *
+ * Used on respawn/restart paths when no resumable session is available but
+ * the original `agentLaunchFlags` are persisted. Mirrors the shell-escaping
+ * rules of `buildResumeCommand` (raw for flag-style `-`-prefixed tokens,
+ * `escapeShellArg` for positional values).
+ *
+ * Re-injects runtime-dynamic values that `buildAgentLaunchFlags` deliberately
+ * excluded at capture time — today, only Gemini's `--include-directories
+ * <clipboardDirectory>` (with dedup if already present in the persisted flags).
+ */
+export function buildLaunchCommandFromFlags(
+  baseCommand: string,
+  agentId: string,
+  launchFlags: readonly string[],
+  options?: BuildLaunchCommandFromFlagsOptions
+): string {
+  const flags: string[] = [...launchFlags];
+
+  if (
+    agentId === "gemini" &&
+    options?.shareClipboardDirectory !== false &&
+    options?.clipboardDirectory
+  ) {
+    const dir = options.clipboardDirectory;
+    const alreadyIncluded = flags.some(
+      (flag, i) => flag === "--include-directories" && flags[i + 1] === dir
+    );
+    if (!alreadyIncluded) {
+      flags.push("--include-directories", dir);
+    }
+  }
+
+  const parts: string[] = [baseCommand];
+  for (const flag of flags) {
+    if (flag.startsWith("-")) {
+      parts.push(flag);
+    } else {
+      parts.push(escapeShellArg(flag));
+    }
+  }
+  return parts.join(" ");
+}

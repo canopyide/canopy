@@ -3,7 +3,11 @@ import type { BrowserHistory } from "@shared/types/browser";
 import type { PanelExitBehavior } from "@shared/types/panel";
 import type { AddPanelOptionsBase } from "@shared/types/addPanelOptions";
 import { isRegisteredAgent, getAgentConfig } from "@/config/agents";
-import { generateAgentCommand, buildResumeCommand } from "@shared/types";
+import {
+  generateAgentCommand,
+  buildResumeCommand,
+  buildLaunchCommandFromFlags,
+} from "@shared/types";
 import { logWarn } from "@/utils/logger";
 import { inferKind as inferKindShared } from "@shared/utils/inferPanelKind";
 import { getDeserializer } from "@/config/panelKindSerialisers";
@@ -247,24 +251,35 @@ export function buildArgsForRespawn(
   let command = saved.command?.trim() || undefined;
 
   if (agentId) {
+    const agentConfig = getAgentConfig(agentId);
+    const baseCommand = agentConfig?.command || agentId;
+    const persistedFlags = saved.agentLaunchFlags;
+    const hasPersistedFlags = Boolean(persistedFlags && persistedFlags.length > 0);
+    const entry = agentSettings?.agents?.[agentId];
+    const shareClipboardDirectory = entry?.shareClipboardDirectory as boolean | undefined;
+
+    const buildFromPersistedFlags = () =>
+      buildLaunchCommandFromFlags(baseCommand, agentId, persistedFlags as string[], {
+        clipboardDirectory,
+        shareClipboardDirectory,
+      });
+
     if (saved.agentSessionId) {
-      const resumeCmd = buildResumeCommand(agentId, saved.agentSessionId, saved.agentLaunchFlags);
+      const resumeCmd = buildResumeCommand(agentId, saved.agentSessionId, persistedFlags);
       if (resumeCmd) {
         command = resumeCmd;
+      } else if (hasPersistedFlags) {
+        command = buildFromPersistedFlags();
       } else if (agentSettings) {
-        const agentConfig = getAgentConfig(agentId);
-        const baseCommand = agentConfig?.command || agentId;
-        command = generateAgentCommand(
-          baseCommand,
-          agentSettings.agents?.[agentId] ?? {},
-          agentId,
-          { clipboardDirectory, modelId: saved.agentModelId }
-        );
+        command = generateAgentCommand(baseCommand, entry ?? {}, agentId, {
+          clipboardDirectory,
+          modelId: saved.agentModelId,
+        });
       }
+    } else if (hasPersistedFlags) {
+      command = buildFromPersistedFlags();
     } else if (agentSettings) {
-      const agentConfig = getAgentConfig(agentId);
-      const baseCommand = agentConfig?.command || agentId;
-      command = generateAgentCommand(baseCommand, agentSettings.agents?.[agentId] ?? {}, agentId, {
+      command = generateAgentCommand(baseCommand, entry ?? {}, agentId, {
         clipboardDirectory,
         modelId: saved.agentModelId,
       });
