@@ -172,7 +172,7 @@ describe("fleet actions — threshold confirmation", () => {
     expect(usePanelStore.getState().panelsById["a0"]?.location).toBe("grid");
   });
 
-  it("fleet.accept only targets armed agents in the waiting state", async () => {
+  it("fleet.accept writes 'y\\r' only to armed agents in the waiting state", async () => {
     seedPanels([
       makeAgent("a", { agentState: "waiting" }),
       makeAgent("b", { agentState: "working" }),
@@ -181,15 +181,13 @@ describe("fleet actions — threshold confirmation", () => {
     useFleetArmingStore.getState().armIds(["a", "b", "c"]);
     const registry = await buildRegistry();
     await run(registry, "fleet.accept");
-    // sendKey called for a and c, not b
-    const sendKey = terminalClient.sendKey as ReturnType<typeof vi.fn>;
-    const calls = sendKey.mock.calls.map((c) => c[0]);
-    expect(calls.sort()).toEqual(["a", "c"]);
+    const write = terminalClient.write as ReturnType<typeof vi.fn>;
+    const calls = write.mock.calls;
+    expect(calls.map((c) => c[0]).sort()).toEqual(["a", "c"]);
+    for (const c of calls) expect(c[1]).toBe("y\r");
   });
 
   it("fleet.accept drops terminals that are no longer eligible at dispatch time", async () => {
-    // Arm three agents, then transition one to exited before dispatch — it
-    // should be silently dropped, not cause an error.
     seedPanels([
       makeAgent("a", { agentState: "waiting" }),
       makeAgent("b", { agentState: "waiting", hasPty: false }),
@@ -198,18 +196,72 @@ describe("fleet actions — threshold confirmation", () => {
     useFleetArmingStore.getState().armIds(["a", "b", "c"]);
     const registry = await buildRegistry();
     await run(registry, "fleet.accept");
-    const sendKey = terminalClient.sendKey as ReturnType<typeof vi.fn>;
-    const calls = sendKey.mock.calls.map((c) => c[0]);
-    expect(calls).toEqual(["a"]);
+    const write = terminalClient.write as ReturnType<typeof vi.fn>;
+    expect(write.mock.calls.map((c) => c[0])).toEqual(["a"]);
   });
 
-  it("fleet.reject no-ops when waiting set is empty but keeps armed set intact", async () => {
-    seedPanels([makeAgent("a", { agentState: "working" })]);
-    useFleetArmingStore.getState().armIds(["a"]);
+  it("fleet.reject writes 'n\\r' and respects the 5-target threshold", async () => {
+    // Below threshold — dispatches directly
+    const agents = Array.from({ length: 4 }, (_, i) =>
+      makeAgent(`a${i}`, { agentState: "waiting" })
+    );
+    seedPanels(agents);
+    useFleetArmingStore.getState().armIds(agents.map((a) => a.id));
     const registry = await buildRegistry();
     await run(registry, "fleet.reject");
-    const sendKey = terminalClient.sendKey as ReturnType<typeof vi.fn>;
-    expect(sendKey).not.toHaveBeenCalled();
-    expect(useFleetArmingStore.getState().armedIds.size).toBe(1);
+    const write = terminalClient.write as ReturnType<typeof vi.fn>;
+    expect(write.mock.calls.length).toBe(4);
+    for (const c of write.mock.calls) expect(c[1]).toBe("n\r");
+    expect(useFleetPendingActionStore.getState().pending).toBeNull();
+  });
+
+  it("fleet.reject opens a confirmation at 5+ waiting targets", async () => {
+    const agents = Array.from({ length: 5 }, (_, i) =>
+      makeAgent(`a${i}`, { agentState: "waiting" })
+    );
+    seedPanels(agents);
+    useFleetArmingStore.getState().armIds(agents.map((a) => a.id));
+    const registry = await buildRegistry();
+    await run(registry, "fleet.reject");
+    expect(terminalClient.write).not.toHaveBeenCalled();
+    const pending = useFleetPendingActionStore.getState().pending;
+    expect(pending?.kind).toBe("reject");
+    expect(pending?.targetCount).toBe(5);
+  });
+
+  it("fleet.reject falls through to panel.palette when no waiting agents are armed", async () => {
+    // Setup: armed agent exists but is 'working' — nothing to reject.
+    seedPanels([makeAgent("a", { agentState: "working" })]);
+    useFleetArmingStore.getState().armIds(["a"]);
+    // Spy on actionService.dispatch via dynamic import mock
+    const actionServiceModule = await import("@/services/ActionService");
+    const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+    const registry = await buildRegistry();
+    await run(registry, "fleet.reject");
+    // Should have called panel.palette
+    const calls = dispatchSpy.mock.calls.map((c) => c[0]);
+    expect(calls).toContain("panel.palette");
+    dispatchSpy.mockRestore();
+  });
+
+  it("fleet.interrupt only targets working/waiting/running agents", async () => {
+    seedPanels([
+      makeAgent("a", { agentState: "working" }),
+      makeAgent("b", { agentState: "waiting" }),
+      makeAgent("c", { agentState: "running" }),
+      makeAgent("d", { agentState: "completed" }),
+      makeAgent("e", { agentState: "idle" }),
+    ]);
+    useFleetArmingStore.getState().armIds(["a", "b", "c", "d", "e"]);
+    const registry = await buildRegistry();
+    // 3 interrupt candidates (a, b, c) hits the ≥3 threshold → confirmation
+    await run(registry, "fleet.interrupt");
+    expect(terminalClient.batchDoubleEscape).not.toHaveBeenCalled();
+    const pending = useFleetPendingActionStore.getState().pending;
+    expect(pending?.kind).toBe("interrupt");
+    expect(pending?.targetCount).toBe(3);
+    // Confirm and verify only the right subset is interrupted
+    await run(registry, "fleet.interrupt", { confirmed: true });
+    expect(terminalClient.batchDoubleEscape).toHaveBeenCalledWith(["a", "b", "c"]);
   });
 });

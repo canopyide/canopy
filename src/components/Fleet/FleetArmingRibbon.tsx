@@ -73,7 +73,7 @@ interface QuickAction {
 const QUICK_ACTIONS: QuickAction[] = [
   { id: "fleet.accept", label: "Accept" },
   { id: "fleet.reject", label: "Reject" },
-  { id: "fleet.interrupt", label: "Interrupt", chordOverride: "⎋⎋" },
+  { id: "fleet.interrupt", label: "Interrupt", chordOverride: "⌘⎋⎋" },
   { id: "fleet.restart", label: "Restart" },
   { id: "fleet.kill", label: "Kill" },
   { id: "fleet.trash", label: "Trash" },
@@ -85,6 +85,8 @@ function buildConfirmMessage(
   sessionLoss: number
 ): string {
   switch (kind) {
+    case "reject":
+      return `Reject ${count} ${count === 1 ? "prompt" : "prompts"}?`;
     case "interrupt":
       return `Interrupt ${count} ${count === 1 ? "agent" : "agents"}?`;
     case "restart": {
@@ -144,7 +146,11 @@ export function FleetArmingRibbon(): ReactElement | null {
     if (pending === null) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Enter") return;
-      const target = e.target as HTMLElement | null;
+      const rawTarget = e.target;
+      const target =
+        rawTarget && typeof (rawTarget as HTMLElement).closest === "function"
+          ? (rawTarget as HTMLElement)
+          : null;
       if (
         target &&
         (target.tagName === "INPUT" ||
@@ -157,24 +163,27 @@ export function FleetArmingRibbon(): ReactElement | null {
       e.preventDefault();
       e.stopPropagation();
       const actionId: QuickActionId =
-        pending.kind === "interrupt"
-          ? "fleet.interrupt"
-          : pending.kind === "restart"
-            ? "fleet.restart"
-            : pending.kind === "kill"
-              ? "fleet.kill"
-              : "fleet.trash";
+        pending.kind === "reject"
+          ? "fleet.reject"
+          : pending.kind === "interrupt"
+            ? "fleet.interrupt"
+            : pending.kind === "restart"
+              ? "fleet.restart"
+              : pending.kind === "kill"
+                ? "fleet.kill"
+                : "fleet.trash";
       void actionService.dispatch(actionId, { confirmed: true }, { source: "keybinding" });
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [pending]);
 
-  // Esc-Esc double-tap → fleet.interrupt. Using a chord binding would
-  // intercept the single Escape too and break the escape-stack LIFO that
-  // powers overlay dismissal elsewhere. This listener watches for two
-  // Escapes within DOUBLE_ESC_WINDOW_MS and only stops propagation on the
-  // second one — the first still flows through the escape stack.
+  // Cmd+Esc Esc double-tap → fleet.interrupt. The Cmd modifier is what
+  // separates this from the plain-Escape escape-stack LIFO used elsewhere
+  // in the app: bare Escape continues to dismiss confirmations / disarm
+  // the fleet without poisoning the double-tap timer. (An earlier
+  // bare-Escape version had a race where cancelling a confirmation with
+  // Escape then pressing Escape again to disarm fired fleet.interrupt.)
   const lastEscapeMsRef = useRef<number>(0);
   useEffect(() => {
     if (armedCount === 0) {
@@ -183,7 +192,14 @@ export function FleetArmingRibbon(): ReactElement | null {
     }
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      const target = e.target as HTMLElement | null;
+      // Cmd on macOS, Ctrl on other platforms — keybindingService
+      // normalizes the two, but for a raw listener we accept either.
+      if (!e.metaKey && !e.ctrlKey) return;
+      const rawTarget = e.target;
+      const target =
+        rawTarget && typeof (rawTarget as HTMLElement).closest === "function"
+          ? (rawTarget as HTMLElement)
+          : null;
       if (
         target &&
         (target.tagName === "INPUT" ||
@@ -207,7 +223,7 @@ export function FleetArmingRibbon(): ReactElement | null {
   }, [armedCount]);
 
   const hint = useMemo(() => {
-    return "Esc to disarm · Esc Esc to interrupt · Shift-click to extend";
+    return "Esc to disarm · ⌘Esc Esc to interrupt · Shift-click to extend";
   }, []);
 
   if (armedCount === 0) return null;

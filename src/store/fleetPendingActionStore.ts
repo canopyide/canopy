@@ -10,7 +10,7 @@ import { create } from "zustand";
  * The store is not persisted — a pending confirmation dies with the
  * current session.
  */
-export type FleetPendingActionKind = "interrupt" | "restart" | "kill" | "trash";
+export type FleetPendingActionKind = "reject" | "interrupt" | "restart" | "kill" | "trash";
 
 export interface FleetPendingActionSnapshot {
   kind: FleetPendingActionKind;
