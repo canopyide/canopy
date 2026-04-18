@@ -6,11 +6,13 @@ import { type PanelLocation, type TerminalType } from "@/types";
 import { usePanelStore } from "@/store";
 import { useShallow } from "zustand/react/shallow";
 import { useWorktrees } from "@/hooks/useWorktrees";
-import { AGENT_IDS, getAgentConfig } from "@/config/agents";
+import { getAgentConfig, getAgentIds } from "@/config/agents";
 import { isValidBrowserUrl } from "@/components/Browser/browserUtils";
 import { actionService } from "@/services/ActionService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
+import { computeConvertToAgentIds } from "./convertToAgentFilter";
 import {
   ArrowDownFromLine,
   Bell,
@@ -158,6 +160,9 @@ export function TerminalContextMenu({
 
   const { worktrees } = useWorktrees();
 
+  const agentAvailability = useCliAvailabilityStore((s) => s.availability);
+  const isAvailabilityInitialized = useCliAvailabilityStore((s) => s.isInitialized);
+
   const isWatched = usePanelStore((state) => state.watchedPanels.has(terminalId));
 
   const [hasSelection, setHasSelection] = useState(false);
@@ -215,7 +220,7 @@ export function TerminalContextMenu({
 
       if (actionId.startsWith("convert-to:")) {
         const targetType = actionId.slice("convert-to:".length);
-        if (targetType === "terminal" || AGENT_IDS.includes(targetType)) {
+        if (targetType === "terminal" || getAgentIds().includes(targetType)) {
           void actionService.dispatch(
             "terminal.convertType",
             { terminalId, type: targetType as TerminalType },
@@ -613,7 +618,18 @@ export function TerminalContextMenu({
     );
   }
 
-  const showConvertTo = !isPlainTerminal || !!currentAgentId || AGENT_IDS.length > 0;
+  // Pre-probe, the helper returns `undefined` → fall back to the full registry
+  // so the menu doesn't flash empty on cold boot. Post-probe, only installed
+  // agents (plus the current one, if any) survive the filter.
+  const convertToAgentIds =
+    computeConvertToAgentIds(
+      isAvailabilityInitialized,
+      agentAvailability,
+      getAgentIds(),
+      currentAgentId
+    ) ?? getAgentIds();
+
+  const showConvertTo = !isPlainTerminal || !!currentAgentId || convertToAgentIds.length > 0;
 
   const convertToItems = (
     <>
@@ -623,7 +639,7 @@ export function TerminalContextMenu({
           Terminal
         </ContextMenuItem>
       )}
-      {AGENT_IDS.map((agentId) => {
+      {convertToAgentIds.map((agentId) => {
         const config = getAgentConfig(agentId);
         if (!config) return null;
         const isCurrent = currentAgentId === agentId;

@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { AGENT_IDS, getAgentConfig } from "@/config/agents";
-import type { MenuItemOption } from "@shared/types";
+import { AGENT_IDS, getAgentConfig, getAgentIds } from "@/config/agents";
+import type { CliAvailability, MenuItemOption } from "@shared/types";
 import { extractUrlAtPoint, buildCreateNoteArgs } from "../TerminalContextMenu";
+import { computeConvertToAgentIds } from "../convertToAgentFilter";
 
 describe("TerminalContextMenu - Convert To Submenu", () => {
   describe("Agent configuration", () => {
@@ -21,8 +22,13 @@ describe("TerminalContextMenu - Convert To Submenu", () => {
   });
 
   describe("Submenu generation logic", () => {
+    // Mirrors the production render in TerminalContextMenu.tsx. The availability
+    // args default to the pre-probe state (show all) so the existing cases keep
+    // exercising "all agents visible"; dedicated availability cases pass
+    // `isInitialized: true` with a concrete `CliAvailability` map.
     function buildConvertToSubmenu(
-      terminal: { type: string; kind?: string; agentId?: string | null } | null
+      terminal: { type: string; kind?: string; agentId?: string | null } | null,
+      opts: { isInitialized?: boolean; availability?: CliAvailability } = {}
     ): MenuItemOption[] {
       if (!terminal) return [];
 
@@ -40,7 +46,15 @@ describe("TerminalContextMenu - Convert To Submenu", () => {
         });
       }
 
-      for (const agentId of AGENT_IDS) {
+      const agentIds =
+        computeConvertToAgentIds(
+          opts.isInitialized ?? false,
+          opts.availability,
+          getAgentIds(),
+          currentAgentId
+        ) ?? getAgentIds();
+
+      for (const agentId of agentIds) {
         const config = getAgentConfig(agentId);
         if (!config) continue;
         const isCurrent = currentAgentId === agentId;
@@ -186,6 +200,25 @@ describe("TerminalContextMenu - Convert To Submenu", () => {
       } else {
         expect(submenu.length).toBeGreaterThan(0);
       }
+    });
+
+    it("filters to installed agents once availability is probed (issue #5360)", () => {
+      const terminal = { type: "terminal", kind: "terminal" };
+      const available = Object.fromEntries(
+        getAgentIds().map((id) => [id, id === "claude" ? "ready" : "missing"])
+      ) as unknown as CliAvailability;
+
+      const submenu = buildConvertToSubmenu(terminal, {
+        isInitialized: true,
+        availability: available,
+      });
+
+      const agentItems = submenu.filter(
+        (i) => i.type !== "separator" && i.id.startsWith("convert-to:")
+      );
+      expect(agentItems.map((i) => (i.type === "separator" ? null : i.id))).toEqual([
+        "convert-to:claude",
+      ]);
     });
   });
 });
