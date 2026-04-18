@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { events } from "./events.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
+import { gitHubRateLimitService } from "./github/index.js";
 import { store } from "../store.js";
 
 import { WorkspaceHostProcess } from "./WorkspaceHostProcess.js";
@@ -261,6 +262,15 @@ export class WorkspaceClient extends EventEmitter {
         };
         events.emit("sys:issue:not-found", notFoundPayload);
         this.sendToEntryWindows(entry, CHANNELS.ISSUE_NOT_FOUND, notFoundPayload);
+        break;
+      }
+
+      case "github-rate-limit-changed": {
+        // Apply the utility-process observation to main's own singleton so
+        // that subsequent main-process GitHub calls preflight-block. The
+        // main-process transport registered in `registerGithubHandlers`
+        // then rebroadcasts the state to all renderer windows.
+        gitHubRateLimitService.applyRemoteState(event.state);
         break;
       }
 

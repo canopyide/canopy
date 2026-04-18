@@ -2,8 +2,6 @@ import type {
   GitHubRateLimitKind,
   GitHubRateLimitPayload,
 } from "../../../shared/types/ipc/github.js";
-import { CHANNELS } from "../../ipc/channels.js";
-import { broadcastToRenderer } from "../../ipc/utils.js";
 import { logDebug, logInfo, logWarn } from "../../utils/logger.js";
 
 // Buffer applied to GitHub's `x-ratelimit-reset` to absorb clock skew between
@@ -26,8 +24,38 @@ export interface ShouldBlockResult {
   resumeAt?: number;
 }
 
+type StateChangeListener = (state: GitHubRateLimitPayload) => void;
+
 class GitHubRateLimitServiceImpl {
   private state: BlockState | null = null;
+  private readonly listeners = new Set<StateChangeListener>();
+
+  /**
+   * Register a subscriber that fires on every state transition (entering a
+   * block, changing resume time, or clearing). Transports (main-process
+   * broadcast to renderer, utility-process relay to main) hook in here.
+   */
+  onStateChange(listener: StateChangeListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  /**
+   * Apply a state snapshot observed in another process (utility host →
+   * main) without re-emitting transport-level events on this side beyond
+   * the local subscriber notification. The main-process transport in turn
+   * rebroadcasts to all renderers, so a utility-observed limit ends up on
+   * the toolbar even though the utility process can't call BrowserWindow.
+   */
+  applyRemoteState(payload: GitHubRateLimitPayload): void {
+    if (payload.blocked && payload.kind && payload.resetAt) {
+      this.markBlocked(payload.kind, payload.resetAt);
+      return;
+    }
+    this.clear();
+  }
 
   /**
    * Inspect a GitHub HTTP response's headers/status and update internal
@@ -90,7 +118,7 @@ class GitHubRateLimitServiceImpl {
     if (!this.state) return;
     this.state = null;
     logInfo("GitHub rate limit cleared");
-    this.broadcast();
+    this.notifyListeners();
   }
 
   /** Test-only helper. */
@@ -115,14 +143,24 @@ class GitHubRateLimitServiceImpl {
           waitMs: resumeAt - Date.now(),
         });
       }
-      this.broadcast();
+      this.notifyListeners();
     } else {
       logDebug("GitHub rate limit refreshed", { kind, resumeAt });
     }
   }
 
-  private broadcast(): void {
-    broadcastToRenderer(CHANNELS.GITHUB_RATE_LIMIT_CHANGED, this.getState());
+  private notifyListeners(): void {
+    const snapshot = this.getState();
+    for (const listener of this.listeners) {
+      try {
+        listener(snapshot);
+      } catch (err) {
+        // A misbehaving transport must not break rate-limit bookkeeping.
+        logWarn("GitHub rate-limit listener threw", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 }
 

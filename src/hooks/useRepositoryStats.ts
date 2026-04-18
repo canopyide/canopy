@@ -326,6 +326,14 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
       setRateLimitResetAt(nextResetAt);
       setRateLimitKind(nextKind);
 
+      // Cancel any pending poll scheduled against the old state so it
+      // can't race with the state-change handler (e.g. firing a
+      // redundant fetch right after our immediate refresh kicks off).
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+
       // When the limit clears, run an immediate refresh so the UI updates
       // without waiting a full poll interval; otherwise reschedule against
       // the new resume time.

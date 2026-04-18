@@ -99,17 +99,28 @@ export const GitHubStatsToolbarButton = memo(
         setRateLimitCountdown(null);
         return;
       }
+      let intervalId: number | null = null;
       const tick = () => {
         const remainingMs = rateLimitResetAt - Date.now();
         if (remainingMs <= 0) {
           setRateLimitCountdown(null);
+          // Stop ticking once we've hit zero — otherwise the 1Hz interval
+          // keeps running uselessly until the component unmounts.
+          if (intervalId !== null) {
+            window.clearInterval(intervalId);
+            intervalId = null;
+          }
           return;
         }
         setRateLimitCountdown(formatRateLimitCountdown(remainingMs));
       };
       tick();
-      const intervalId = window.setInterval(tick, 1000);
-      return () => window.clearInterval(intervalId);
+      intervalId = window.setInterval(tick, 1000);
+      return () => {
+        if (intervalId !== null) {
+          window.clearInterval(intervalId);
+        }
+      };
     }, [rateLimitResetAt]);
 
     const rateLimitActive = rateLimitCountdown !== null;

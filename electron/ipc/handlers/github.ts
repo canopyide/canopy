@@ -2,7 +2,7 @@ import { shell } from "electron";
 import fs from "fs/promises";
 import path from "path";
 import { CHANNELS } from "../channels.js";
-import { checkRateLimit, typedHandle } from "../utils.js";
+import { broadcastToRenderer, checkRateLimit, typedHandle } from "../utils.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
   RepositoryStats,
@@ -11,6 +11,7 @@ import type {
   GitHubTokenConfig,
   GitHubTokenValidation,
 } from "../../types/index.js";
+import { gitHubRateLimitService } from "../../services/github/index.js";
 import { getWorkspaceClient } from "../../services/WorkspaceClient.js";
 
 export function buildGitHubSearchQuery(
@@ -53,6 +54,15 @@ export function buildGitHubSearchQuery(
 export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
+  // Main-process transport: every time the main-process rate-limit singleton
+  // changes state (either from a local fetch observation or a forwarded
+  // utility-process observation via WorkspaceClient.routeHostEvent), push
+  // the new state to every renderer window.
+  const unsubscribeRateLimit = gitHubRateLimitService.onStateChange((state) => {
+    broadcastToRenderer(CHANNELS.GITHUB_RATE_LIMIT_CHANGED, state);
+  });
+  handlers.push(unsubscribeRateLimit);
+
   const handleGitHubGetRepoStats = async (
     cwd: string,
     bypassCache = false
@@ -85,7 +95,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
       const commitCount = await getCommitCount(resolved).catch(() => 0);
 
-      const { gitHubRateLimitService } = await import("../../services/github/index.js");
       const rateLimitState = gitHubRateLimitService.getState();
 
       return {

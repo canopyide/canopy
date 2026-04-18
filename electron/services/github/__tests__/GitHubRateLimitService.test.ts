@@ -1,26 +1,25 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("electron", () => ({
-  ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
-  BrowserWindow: { getAllWindows: () => [] },
-  shell: { openExternal: vi.fn() },
-}));
-
-vi.mock("../../../ipc/utils.js", () => ({
-  broadcastToRenderer: vi.fn(),
-}));
-
-import { broadcastToRenderer } from "../../../ipc/utils.js";
 import { gitHubRateLimitService } from "../GitHubRateLimitService.js";
+import type { GitHubRateLimitPayload } from "../../../../shared/types/ipc/github.js";
 
 function makeHeaders(entries: Record<string, string>): Headers {
   return new Headers(entries);
 }
 
 describe("GitHubRateLimitService", () => {
+  const listener = vi.fn<(state: GitHubRateLimitPayload) => void>();
+  let unsubscribe: (() => void) | null = null;
+
   beforeEach(() => {
     gitHubRateLimitService._resetForTests();
-    (broadcastToRenderer as ReturnType<typeof vi.fn>).mockClear();
+    listener.mockClear();
+    unsubscribe = gitHubRateLimitService.onStateChange(listener);
+  });
+
+  afterEach(() => {
+    unsubscribe?.();
+    unsubscribe = null;
   });
 
   describe("update()", () => {
@@ -125,40 +124,74 @@ describe("GitHubRateLimitService", () => {
     });
   });
 
-  describe("broadcast", () => {
-    it("broadcasts on transition into blocked state", () => {
+  describe("onStateChange listeners", () => {
+    it("notifies on transition into blocked state", () => {
       gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
-      expect(broadcastToRenderer).toHaveBeenCalledWith(
-        "github:rate-limit-changed",
+      expect(listener).toHaveBeenCalledWith(
         expect.objectContaining({ blocked: true, kind: "secondary" })
       );
     });
 
-    it("broadcasts on clear()", () => {
+    it("notifies on clear()", () => {
       gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
-      (broadcastToRenderer as ReturnType<typeof vi.fn>).mockClear();
+      listener.mockClear();
       gitHubRateLimitService.clear();
-      expect(broadcastToRenderer).toHaveBeenCalledWith(
-        "github:rate-limit-changed",
-        expect.objectContaining({ blocked: false })
-      );
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({ blocked: false }));
     });
 
-    it("does not re-broadcast when a new update produces the same state", () => {
+    it("does not re-notify when a new update produces the same state", () => {
       const now = Math.floor(Date.now() / 1000);
       gitHubRateLimitService.update(
         makeHeaders({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(now + 600) }),
         200
       );
-      const initialCalls = (broadcastToRenderer as ReturnType<typeof vi.fn>).mock.calls.length;
+      const initialCalls = listener.mock.calls.length;
       // Identical update: same kind, same resumeAt within 1s tolerance.
       gitHubRateLimitService.update(
         makeHeaders({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(now + 600) }),
         200
       );
-      expect((broadcastToRenderer as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
-        initialCalls
+      expect(listener.mock.calls.length).toBe(initialCalls);
+    });
+
+    it("survives a misbehaving listener without breaking other listeners", () => {
+      const good = vi.fn<(s: GitHubRateLimitPayload) => void>();
+      gitHubRateLimitService.onStateChange(() => {
+        throw new Error("boom");
+      });
+      gitHubRateLimitService.onStateChange(good);
+
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+
+      expect(good).toHaveBeenCalledWith(
+        expect.objectContaining({ blocked: true, kind: "secondary" })
       );
+    });
+  });
+
+  describe("applyRemoteState()", () => {
+    it("marks a block from a remote payload and notifies local listeners", () => {
+      const resetAt = Date.now() + 45_000;
+      gitHubRateLimitService.applyRemoteState({
+        blocked: true,
+        kind: "secondary",
+        resetAt,
+      });
+
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(true);
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({ blocked: true, kind: "secondary" })
+      );
+    });
+
+    it("clears local state when the remote payload is unblocked", () => {
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+      listener.mockClear();
+
+      gitHubRateLimitService.applyRemoteState({ blocked: false, kind: null });
+
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(false);
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({ blocked: false }));
     });
   });
 

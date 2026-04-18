@@ -531,6 +531,22 @@ class PullRequestService {
   }
 
   private handleError(errorMsg: string): void {
+    // On the FIRST rate-limited response the fetch wrapper populates
+    // gitHubRateLimitService before batchCheckLinkedPRs throws, so treat
+    // this as a rate-limit pause rather than a generic error. This avoids
+    // the circuit breaker conflating quota exhaustion with flaky network
+    // failures — GitHub's docs explicitly warn that blind retrying through
+    // secondary limits can escalate to a permanent ban.
+    const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
+    if (rateLimitBlock.blocked && rateLimitBlock.resumeAt) {
+      this.nextRetryAt = rateLimitBlock.resumeAt;
+      logWarn("PR check hit a GitHub rate limit — pausing without tripping circuit breaker", {
+        reason: rateLimitBlock.reason,
+        resumeAt: rateLimitBlock.resumeAt,
+      });
+      return;
+    }
+
     this.consecutiveErrors++;
     logWarn("PR check failed", { error: errorMsg, consecutiveErrors: this.consecutiveErrors });
 
