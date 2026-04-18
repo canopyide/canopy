@@ -20,8 +20,10 @@ const storeMock = vi.hoisted(() => {
 
 vi.mock("../../../store.js", () => ({ store: storeMock }));
 
+const setOnboardingCompleteTagMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../../../services/TelemetryService.js", () => ({
-  setOnboardingCompleteTag: vi.fn(),
+  setOnboardingCompleteTag: setOnboardingCompleteTagMock,
 }));
 
 import { registerOnboardingHandlers } from "../onboarding.js";
@@ -252,5 +254,42 @@ describe("registerOnboardingHandlers — discovery IPC", () => {
     expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("onboarding:mark-agents-seen");
     expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("onboarding:dismiss-welcome-card");
     expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("onboarding:dismiss-setup-banner");
+  });
+
+  it("complete handler stamps the onboarding_complete Sentry tag with true", () => {
+    registerOnboardingHandlers();
+    seedOnboarding();
+    const complete = getHandler("onboarding:complete");
+    setOnboardingCompleteTagMock.mockClear();
+    complete(null);
+    expect(setOnboardingCompleteTagMock).toHaveBeenCalledWith(true);
+  });
+
+  it("migrate stamps the onboarding_complete Sentry tag when legacy state was fully complete", () => {
+    storeMock._data["privacy"] = { hasSeenPrompt: true };
+    registerOnboardingHandlers();
+    seedOnboarding({ migratedFromLocalStorage: false });
+    const migrate = getHandler("onboarding:migrate");
+    setOnboardingCompleteTagMock.mockClear();
+    migrate(null, {
+      agentSelectionDismissed: true,
+      agentSetupComplete: true,
+      firstRunToastSeen: true,
+    });
+    expect(setOnboardingCompleteTagMock).toHaveBeenCalledWith(true);
+  });
+
+  it("migrate does NOT stamp the onboarding_complete tag when legacy state is partial", () => {
+    storeMock._data["privacy"] = { hasSeenPrompt: false };
+    registerOnboardingHandlers();
+    seedOnboarding({ migratedFromLocalStorage: false });
+    const migrate = getHandler("onboarding:migrate");
+    setOnboardingCompleteTagMock.mockClear();
+    migrate(null, {
+      agentSelectionDismissed: true,
+      agentSetupComplete: false,
+      firstRunToastSeen: true,
+    });
+    expect(setOnboardingCompleteTagMock).not.toHaveBeenCalled();
   });
 });

@@ -141,12 +141,17 @@ export async function setTelemetryLevel(level: TelemetryLevel): Promise<void> {
 
   if (level === "full") {
     await initializeTelemetry();
+    // If the user flips telemetry on mid-session, Sentry has only just loaded
+    // — stamp the onboarding_complete tag now so the rest of this session's
+    // events carry it (we don't wait for the next launch).
+    setOnboardingCompleteTag(store.get("onboarding")?.completed === true);
     flushPreConsentBuffer();
   } else if (level === "errors") {
     // Errors-only consent covers crash reports, not analytics — drop any
     // buffered onboarding analytics rather than replaying them to Sentry.
     preConsentBuffer.length = 0;
     await initializeTelemetry();
+    setOnboardingCompleteTag(store.get("onboarding")?.completed === true);
   } else {
     preConsentBuffer.length = 0;
   }

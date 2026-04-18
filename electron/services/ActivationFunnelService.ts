@@ -40,6 +40,7 @@ class ActivationFunnelService {
   private appLaunchMs = 0;
   private initializedAt = 0;
   private unsubscribers: Array<() => void> = [];
+  private reconcileTimer: NodeJS.Timeout | null = null;
 
   initialize(opts: { appLaunchMs: number }): void {
     this.appLaunchMs = opts.appLaunchMs;
@@ -54,6 +55,16 @@ class ActivationFunnelService {
     });
 
     this.unsubscribers.push(unsubStateChanged, unsubCompleted);
+
+    // Reconcile once after the boot grace window: if the user relaunches with
+    // two agents already running (no transition event will fire for existing
+    // state), we still want the parallel-agents milestone to land in this
+    // session. Guarded by the persisted `firstParallelAgentsAt` timestamp so
+    // it's idempotent across restarts.
+    this.reconcileTimer = setTimeout(() => {
+      this.reconcileTimer = null;
+      this.maybeFireFirstParallelAgents();
+    }, BOOT_GRACE_PERIOD_MS + 100);
   }
 
   private isWithinBootGrace(): boolean {
@@ -70,7 +81,7 @@ class ActivationFunnelService {
   }
 
   private countActiveAgents(): number {
-    const terminals = store.get("appState").terminals;
+    const terminals = store.get("appState")?.terminals ?? [];
     return terminals.filter(
       (t: { agentState?: string }) => t.agentState && ACTIVE_AGENT_STATES.has(t.agentState)
     ).length;
@@ -91,8 +102,12 @@ class ActivationFunnelService {
   }
 
   private handleCompleted(payload: CompletedPayload): void {
-    // emitAgentCompleted only fires for non-killed agents, so exitCode === 0 is
-    // a clean "successful completion" signal.
+    // `agent:completed` already excludes user-killed terminals upstream
+    // (`TerminalProcess.ts` only emits when `!wasKilled`). Requiring
+    // `exitCode === 0` further narrows the "first successful task" milestone
+    // to clean exits — interrupted runs (e.g. ctrl-C, 130) are intentionally
+    // excluded so activation telemetry reflects *completed work*, not
+    // abandoned attempts.
     if (payload.exitCode !== 0) return;
     if (this.isWithinBootGrace()) return;
 
@@ -167,6 +182,10 @@ class ActivationFunnelService {
       unsub();
     }
     this.unsubscribers = [];
+    if (this.reconcileTimer) {
+      clearTimeout(this.reconcileTimer);
+      this.reconcileTimer = null;
+    }
     this.appLaunchMs = 0;
     this.initializedAt = 0;
   }

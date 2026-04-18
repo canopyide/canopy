@@ -33,9 +33,8 @@ describe("migration015 — activation funnel + checklist rename", () => {
     });
     migration015.up(store);
     // set should NOT be called for activationFunnel since it's already a non-null object
-    expect(
-      store.set.mock.calls.filter((c: [string, unknown]) => c[0] === "activationFunnel")
-    ).toHaveLength(0);
+    const setSpy = store.set as unknown as ReturnType<typeof vi.fn>;
+    expect(setSpy.mock.calls.filter((c: unknown[]) => c[0] === "activationFunnel")).toHaveLength(0);
   });
 
   it("renames checklist.items.subscribedNewsletter to ranSecondParallelAgent (reset to false regardless)", () => {

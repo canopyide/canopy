@@ -220,6 +220,68 @@ describe("ActivationFunnelService", () => {
     ).toBeUndefined();
   });
 
+  it("reconciles parallel-agents milestone after boot grace when agents were already active at launch", () => {
+    // Reset: simulate a relaunch where two agents are already in `working`
+    // state from a prior session (no state-change events will fire for them).
+    activationFunnelService.dispose();
+    for (const key of Object.keys(storeMock._data)) {
+      delete storeMock._data[key];
+    }
+    seedOnboardingDefaults();
+    setTerminals([
+      { id: "term-1", agentState: "working" },
+      { id: "term-2", agentState: "working" },
+    ]);
+    const now = Date.now();
+    activationFunnelService.initialize({ appLaunchMs: now - 500 });
+    trackEventMock.mockClear();
+    broadcastMock.mockClear();
+
+    // Advance past the boot grace window + reconcile timer delay (8100ms)
+    vi.advanceTimersByTime(8_200);
+
+    expect(trackEventMock).toHaveBeenCalledWith("activation_first_parallel_agents", {
+      agent_count: 2,
+    });
+    const onboarding = storeMock._data["onboarding"] as {
+      checklist: { items: { ranSecondParallelAgent: boolean } };
+    };
+    expect(onboarding.checklist.items.ranSecondParallelAgent).toBe(true);
+    expect(broadcastMock).toHaveBeenCalledWith(
+      CHANNELS.ONBOARDING_CHECKLIST_PUSH,
+      expect.objectContaining({
+        items: expect.objectContaining({ ranSecondParallelAgent: true }),
+      })
+    );
+  });
+
+  it("does not re-fire a persisted activation_first_parallel_agents milestone across re-initialize", () => {
+    // Seed a persisted milestone from a prior session.
+    storeMock._data["activationFunnel"] = { firstParallelAgentsAt: 1_700_000_000_000 };
+    // Fresh service — re-initialize path must honor the persisted guard.
+    activationFunnelService.dispose();
+    setTerminals([
+      { id: "term-1", agentState: "working" },
+      { id: "term-2", agentState: "working" },
+    ]);
+    const now = Date.now();
+    activationFunnelService.initialize({ appLaunchMs: now - 500 });
+    vi.advanceTimersByTime(8_500);
+    trackEventMock.mockClear();
+
+    // Emit a fresh state change — guard should still hold.
+    setTerminals([
+      { id: "term-1", agentState: "working" },
+      { id: "term-2", agentState: "working" },
+      { id: "term-3", agentState: "working" },
+    ]);
+    emitStateChange("working", "idle", "term-3");
+
+    expect(
+      trackEventMock.mock.calls.find((c) => c[0] === "activation_first_parallel_agents")
+    ).toBeUndefined();
+  });
+
   it("suppresses all activation events during the 8-second boot grace window", () => {
     // Reset to immediately after initialize (still inside boot grace)
     activationFunnelService.dispose();
