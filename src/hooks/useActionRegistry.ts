@@ -24,7 +24,9 @@ export function useActionRegistry(options: ActionCallbacks): void {
   const callbacksRef = useRef<ActionCallbacks>(options);
 
   // Always keep the ref updated with latest callbacks
-  callbacksRef.current = options;
+  useEffect(() => {
+    callbacksRef.current = options;
+  }, [options]);
 
   useEffect(() => {
     if (registeredRef.current) return;

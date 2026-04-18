@@ -62,7 +62,7 @@ test.describe.serial("Flavors: IPC Sync — Main ↔ Renderer (77–82)", () => 
       await ctx.window.waitForTimeout(T_SETTLE);
     }
 
-    const trayButton = ctx.window.locator('[aria-label="Agent tray"]');
+    const trayButton = ctx.window.locator('[aria-label^="Agent tray"]');
     await trayButton.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 

@@ -145,7 +145,9 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     defaultWorktreeMode,
     turbopackEnabled,
   ]);
-  currentProjectSnapshotRef.current = currentProjectSnapshot;
+  useEffect(() => {
+    currentProjectSnapshotRef.current = currentProjectSnapshot;
+  }, [currentProjectSnapshot]);
 
   useEffect(() => {
     if (isOpen && projectId !== prevProjectIdRef.current) {

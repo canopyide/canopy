@@ -1,11 +1,18 @@
-import { writeFileSync, mkdirSync, rmSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, rmSync, existsSync, mkdtempSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { tmpdir } from "os";
 import { expect } from "@playwright/test";
 import { SEL } from "./selectors";
 
-const CCR_DIR = join(homedir(), ".claude-code-router");
+// Each test process gets its own CCR config file so parallel workers don't
+// clobber each other via the shared `~/.claude-code-router/config.json`.
+// Pair with launchApp({ env: { DAINTREE_CCR_CONFIG_PATH: CCR_CONFIG_PATH } })
+// so the main process under test reads from the same file.
+const CCR_DIR = mkdtempSync(join(tmpdir(), "daintree-ccr-"));
 const CCR_CONFIG_PATH = join(CCR_DIR, "config.json");
+// Pre-seed the env so launchApp's `{ ...process.env, ... }` picks it up
+// without every flavor spec needing to thread the variable by hand.
+process.env.DAINTREE_CCR_CONFIG_PATH = CCR_CONFIG_PATH;
 
 export interface CcrModelEntry {
   id?: string;
@@ -50,7 +57,7 @@ export async function navigateToAgentSettings(
   }
 
   const agentsPanel = window.locator("#settings-panel-agents");
-  const dropdownTrigger = agentsPanel.locator('button[aria-haspopup="listbox"]');
+  const dropdownTrigger = agentsPanel.locator('[data-testid="agent-selector-trigger"]');
   await expect(dropdownTrigger).toBeVisible({ timeout: 5000 });
 
   const displayName = agentId.charAt(0).toUpperCase() + agentId.slice(1);

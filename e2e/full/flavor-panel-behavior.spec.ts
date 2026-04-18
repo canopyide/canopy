@@ -51,7 +51,7 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
    * is ready and has flavors configured).  Leaves the tray open on success.
    */
   const openTrayAndCheckReady = async (): Promise<boolean> => {
-    const trayBtn = ctx.window.locator('[aria-label="Agent tray"]');
+    const trayBtn = ctx.window.locator('[aria-label^="Agent tray"]');
     await trayBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 

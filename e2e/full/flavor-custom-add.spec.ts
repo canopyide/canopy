@@ -59,7 +59,7 @@ test.describe.serial("Flavors: Custom Add (13–24)", () => {
       await ctx.window.waitForTimeout(T_SETTLE);
     }
 
-    const trayButton = ctx.window.locator('[aria-label="Agent tray"]');
+    const trayButton = ctx.window.locator('[aria-label^="Agent tray"]');
     await trayButton.click();
     await ctx.window.waitForTimeout(T_SETTLE);
     const submenuTrigger = ctx.window.locator('[data-testid="submenu-trigger"]', {

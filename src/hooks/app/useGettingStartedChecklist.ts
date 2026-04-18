@@ -47,7 +47,9 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
   const [forceShow, setForceShow] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const checklistRef = useRef(checklist);
-  checklistRef.current = checklist;
+  useEffect(() => {
+    checklistRef.current = checklist;
+  }, [checklist]);
 
   const markItem = useCallback((item: ChecklistItemId) => {
     if (!isElectronAvailable()) return;

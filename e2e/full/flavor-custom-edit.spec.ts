@@ -67,7 +67,7 @@ test.describe.serial("Flavors: Custom Edit (25–34)", () => {
       await ctx.window.waitForTimeout(T_SETTLE);
     }
 
-    const trayButton = ctx.window.locator('[aria-label="Agent tray"]');
+    const trayButton = ctx.window.locator('[aria-label^="Agent tray"]');
     if (!(await trayButton.isVisible().catch(() => false))) return;
     await trayButton.click();
     await ctx.window.waitForTimeout(T_SETTLE);

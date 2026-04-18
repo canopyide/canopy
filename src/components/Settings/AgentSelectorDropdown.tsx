@@ -100,6 +100,7 @@ export function AgentSelectorDropdown({
           type="button"
           aria-expanded={open}
           aria-haspopup="listbox"
+          data-testid="agent-selector-trigger"
           className={cn(
             "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-[var(--radius-md)]",
             "border border-daintree-border bg-daintree-bg text-daintree-text",

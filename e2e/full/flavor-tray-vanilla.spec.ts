@@ -44,7 +44,7 @@ test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
   });
 
   const openTray = async () => {
-    const btn = ctx.window.locator('[aria-label="Agent tray"]');
+    const btn = ctx.window.locator('[aria-label^="Agent tray"]');
     await btn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
   };

@@ -188,7 +188,7 @@ export const SEL = {
   agent: {
     panel: '[aria-label^="Claude agent:"]',
     startButton: '[aria-label="Start Claude Agent"]',
-    trayButton: '[aria-label="Agent tray"]',
+    trayButton: '[aria-label^="Agent tray"]',
   },
   opencodeAgent: {
     panel: '[aria-label^="OpenCode agent:"]',
@@ -282,7 +282,7 @@ export const SEL = {
   },
   flavor: {
     section: "#agents-flavors",
-    addButton: 'button:has-text("Add")',
+    addButton: '[data-testid="flavor-add-button"]',
     // Back-compat alias for the flavor picker trigger (Popover now, was <select>).
     defaultSelect: '[data-testid="flavor-selector-trigger"]',
     selectorTrigger: '[data-testid="flavor-selector-trigger"]',

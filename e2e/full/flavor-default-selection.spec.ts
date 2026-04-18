@@ -86,7 +86,7 @@ test.describe.serial("Flavors: Default Flavor Selection (53–62)", () => {
     const selectedOption = select.locator("option:checked");
     const defaultName = (await selectedOption.textContent()) ?? "";
 
-    const trayButton = ctx.window.locator('[aria-label="Agent tray"]');
+    const trayButton = ctx.window.locator('[aria-label^="Agent tray"]');
     await trayButton.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 

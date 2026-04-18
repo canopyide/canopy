@@ -409,6 +409,7 @@ export function AgentSettings({
                       <Button
                         size="sm"
                         variant="ghost"
+                        data-testid="flavor-add-button"
                         className="text-daintree-accent hover:text-daintree-accent/80"
                         onClick={handleAddFlavor}
                       >
@@ -630,6 +631,7 @@ export function AgentSettings({
                     <Button
                       size="sm"
                       variant="ghost"
+                      data-testid="flavor-add-button"
                       className="text-daintree-accent hover:text-daintree-accent/80"
                       onClick={handleAddFlavor}
                     >

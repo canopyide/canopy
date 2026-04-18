@@ -45,13 +45,17 @@ export function ThemeSelector<T extends { id: string }>({
 }: ThemeSelectorProps<T>) {
   const [query, setQuery] = useState("");
   const getNameRef = useRef(getName);
-  getNameRef.current = getName;
+  useEffect(() => {
+    getNameRef.current = getName;
+  }, [getName]);
 
   // Single rAF handle shared across all cards so rapid pointer moves between
   // cards cancel any pending revert before the next preview fires.
   const revertRafRef = useRef<number | null>(null);
   const onPreviewEndRef = useRef(onPreviewEnd);
-  onPreviewEndRef.current = onPreviewEnd;
+  useEffect(() => {
+    onPreviewEndRef.current = onPreviewEnd;
+  }, [onPreviewEnd]);
 
   const cancelPendingRevert = () => {
     if (revertRafRef.current !== null) {

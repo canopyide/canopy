@@ -48,12 +48,14 @@ export function useNoteEditor({
   const latestHasConflictRef = useRef(hasConflict);
   const latestSelectedNoteRef = useRef(selectedNote);
 
-  // Keep refs in sync
-  latestContentRef.current = noteContent;
-  latestMetadataRef.current = noteMetadata;
-  latestLastModifiedRef.current = noteLastModified;
-  latestHasConflictRef.current = hasConflict;
-  latestSelectedNoteRef.current = selectedNote;
+  // Keep refs in sync after commit
+  useEffect(() => {
+    latestContentRef.current = noteContent;
+    latestMetadataRef.current = noteMetadata;
+    latestLastModifiedRef.current = noteLastModified;
+    latestHasConflictRef.current = hasConflict;
+    latestSelectedNoteRef.current = selectedNote;
+  });
 
   // Flush-on-switch: when selectedNote changes, save pending content immediately
   // Capture note path at setup time to avoid stale ref during cleanup

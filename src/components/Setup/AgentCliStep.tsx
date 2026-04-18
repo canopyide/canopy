@@ -39,7 +39,9 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
   const mountedRef = useRef(true);
   const installingRef = useRef(new Set<string>());
   const cardStatusesRef = useRef(cardStatuses);
-  cardStatusesRef.current = cardStatuses;
+  useEffect(() => {
+    cardStatusesRef.current = cardStatuses;
+  }, [cardStatuses]);
 
   const selectedAgentIds = useMemo(() => AGENT_ORDER.filter((id) => selections[id]), [selections]);
 

@@ -58,8 +58,10 @@ function MirrorTileInternal({
   // lifecycle; these are passive inputs.
   const initialSnapshotRef = useRef(initialSnapshot);
   const onCaptureSnapshotRef = useRef(onCaptureSnapshot);
-  initialSnapshotRef.current = initialSnapshot;
-  onCaptureSnapshotRef.current = onCaptureSnapshot;
+  useEffect(() => {
+    initialSnapshotRef.current = initialSnapshot;
+    onCaptureSnapshotRef.current = onCaptureSnapshot;
+  });
   const [liveError, setLiveError] = useState(false);
 
   const focusAgent = useCallback(() => {

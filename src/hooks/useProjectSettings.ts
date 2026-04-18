@@ -43,7 +43,9 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
   const [localError, setLocalError] = useState<string | null>(null);
 
   const latestTargetIdRef = useRef(targetId);
-  latestTargetIdRef.current = targetId;
+  useEffect(() => {
+    latestTargetIdRef.current = targetId;
+  }, [targetId]);
 
   const fetchLocalSettings = useCallback(async () => {
     if (!targetId) {

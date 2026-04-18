@@ -20,7 +20,11 @@ interface CcrConfig {
   [key: string]: unknown;
 }
 
-const CCR_CONFIG_PATH = join(homedir(), ".claude-code-router", "config.json");
+// E2E isolation: the main process path defaults to `~/.claude-code-router/config.json`,
+// but tests running in parallel need to point each instance at its own config file so
+// they don't clobber each other's state. DAINTREE_CCR_CONFIG_PATH overrides the default.
+const CCR_CONFIG_PATH =
+  process.env.DAINTREE_CCR_CONFIG_PATH ?? join(homedir(), ".claude-code-router", "config.json");
 
 function flavorsChanged(prev: AgentFlavor[] | null, next: AgentFlavor[]): boolean {
   if (!prev) return next.length > 0;

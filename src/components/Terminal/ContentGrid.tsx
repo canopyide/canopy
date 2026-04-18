@@ -516,7 +516,9 @@ export function ContentGrid({
   // Track container dimensions for responsive layout and capacity calculation
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const preMaximizeLayoutRef = useRef(preMaximizeLayout);
-  preMaximizeLayoutRef.current = preMaximizeLayout;
+  useEffect(() => {
+    preMaximizeLayoutRef.current = preMaximizeLayout;
+  }, [preMaximizeLayout]);
   const [gridWidth, setGridWidth] = useState<number | null>(null);
 
   // Get placeholder state from DnD context
@@ -751,7 +753,9 @@ export function ContentGrid({
   // Track mode transitions and stabilize terminals after switch
   const prevModeRef = useRef<boolean>(useTwoPaneSplitMode);
   const gridTerminalsRef = useRef(gridTerminals);
-  gridTerminalsRef.current = gridTerminals;
+  useEffect(() => {
+    gridTerminalsRef.current = gridTerminals;
+  }, [gridTerminals]);
 
   useEffect(() => {
     const prevMode = prevModeRef.current;
