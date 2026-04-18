@@ -505,16 +505,18 @@ describe("errorHandlers", () => {
       registerErrorHandlers(null, ptyClient);
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
-      await expect(
-        retryHandler(
-          {} as never,
-          {
-            errorId: "cap-1",
-            action: "terminal",
-            args: { id: "t-cap", cwd: "/tmp" },
-          } as never
-        )
-      ).rejects.toThrow("Too many pending spawns");
+      const thrown = await retryHandler(
+        {} as never,
+        {
+          errorId: "cap-1",
+          action: "terminal",
+          args: { id: "t-cap", cwd: "/tmp" },
+        } as never
+      ).catch((err: unknown) => err);
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toContain("Too many pending spawns");
+      // Preserves result.error.code so handleRetry's transient-classifier sees it
+      expect((thrown as NodeJS.ErrnoException).code).toBe("PENDING_SPAWNS_CAPPED");
 
       // Non-transient code → no backoff retry
       expect(spawn).toHaveBeenCalledTimes(1);
@@ -554,7 +556,7 @@ describe("errorHandlers", () => {
       expect(ptyClient.listenerCount("spawn-result")).toBe(0);
     });
 
-    it("rejects on async spawn-result failure", async () => {
+    it("rejects on async spawn-result failure and preserves error code", async () => {
       const CHANNELS = await getChannels();
       createMockWindow();
       const spawn = vi.fn();
@@ -565,12 +567,13 @@ describe("errorHandlers", () => {
       registerErrorHandlers(null, ptyClient);
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
-      await expect(
-        retryHandler(
-          {} as never,
-          { errorId: "fail-1", action: "terminal", args: { id: "t-fail", cwd: "/tmp" } } as never
-        )
-      ).rejects.toThrow("shell not found");
+      const thrown = await retryHandler(
+        {} as never,
+        { errorId: "fail-1", action: "terminal", args: { id: "t-fail", cwd: "/tmp" } } as never
+      ).catch((err: unknown) => err);
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toContain("shell not found");
+      expect((thrown as NodeJS.ErrnoException).code).toBe("ENOENT");
 
       expect(ptyClient.listenerCount("spawn-result")).toBe(0);
     });
@@ -580,19 +583,30 @@ describe("errorHandlers", () => {
       createMockWindow();
       const spawn = vi.fn();
       const ptyClient = createPtyClientMock(spawn);
+      let settleMatching: (() => void) | undefined;
       spawn.mockImplementation((id: string) => {
         // Emit for some other terminal first — must be ignored
         emitSpawnSuccess(ptyClient, "some-other-id");
-        // Then the matching one
-        setImmediate(() => emitSpawnSuccess(ptyClient, id));
+        // Stash the matching emit so the test can trigger it on demand
+        settleMatching = () => emitSpawnSuccess(ptyClient, id);
       });
       registerErrorHandlers(null, ptyClient);
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
-      await retryHandler(
+      const pending = retryHandler(
         {} as never,
         { errorId: "cross-1", action: "terminal", args: { id: "t-cross", cwd: "/tmp" } } as never
       );
+
+      // Race pending against a tick-flushed sentinel — if the foreign event leaked
+      // through, pending would already have resolved. Sentinel should win.
+      const sentinel = Promise.resolve("still-pending");
+      await expect(Promise.race([pending, sentinel])).resolves.toBe("still-pending");
+      expect(ptyClient.listenerCount("spawn-result")).toBe(1);
+
+      // Deliver the matching event — pending should now resolve
+      settleMatching?.();
+      await pending;
 
       expect(spawn).toHaveBeenCalledTimes(1);
       expect(ptyClient.listenerCount("spawn-result")).toBe(0);
