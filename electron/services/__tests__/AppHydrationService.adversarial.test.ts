@@ -255,11 +255,11 @@ describe("AppHydrationService adversarial", () => {
     };
     let resolveProjectState!: (value: {
       state: ProjectStateFixture;
-      quarantinedPath?: string;
+      quarantinedPath: string | undefined;
     }) => void;
     const pendingProjectState = new Promise<{
       state: ProjectStateFixture;
-      quarantinedPath?: string;
+      quarantinedPath: string | undefined;
     }>((resolve) => {
       resolveProjectState = resolve;
     });
@@ -284,6 +284,7 @@ describe("AppHydrationService adversarial", () => {
         focusMode: false,
         activeWorktreeId: "wt-project",
       },
+      quarantinedPath: undefined,
     });
 
     const [first, second] = (await Promise.all([firstPromise, secondPromise])) as [
