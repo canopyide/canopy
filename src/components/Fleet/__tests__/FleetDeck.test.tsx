@@ -52,10 +52,7 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 
-function makeAgent(
-  id: string,
-  overrides: Partial<TerminalInstance> = {}
-): TerminalInstance {
+function makeAgent(id: string, overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
     id,
     title: id,
@@ -169,13 +166,7 @@ describe("FleetDeck", () => {
   });
 
   it("re-renders tiles when panelIds is reordered", async () => {
-    seedPanels([
-      makeAgent("a"),
-      makeAgent("b"),
-      makeAgent("c"),
-      makeAgent("d"),
-      makeAgent("e"),
-    ]);
+    seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c"), makeAgent("d"), makeAgent("e")]);
     const { getAllByTestId } = render(<FleetDeck />);
     const initialOrder = getAllByTestId("fleet-mirror-tile").map(
       (el) => el.getAttribute("data-terminal-id") ?? ""

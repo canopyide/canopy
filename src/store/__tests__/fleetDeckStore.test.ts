@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const { setStateMock } = vi.hoisted(() => ({
-  setStateMock: vi.fn(() => Promise.resolve()),
+  setStateMock: vi.fn((_patch: Record<string, unknown>) => Promise.resolve()),
 }));
 
-vi.mock("@/clients", () => ({
-  appClient: {
-    setState: setStateMock,
+vi.mock("@/controllers/FleetDeckController", () => ({
+  fleetDeckController: {
+    persistOpen: (isOpen: boolean) => setStateMock({ fleetDeckOpen: isOpen }),
+    persistEdge: (edge: string) => setStateMock({ fleetDeckEdge: edge }),
+    persistWidth: (width: number) => setStateMock({ fleetDeckWidth: width }),
+    persistHeight: (height: number) => setStateMock({ fleetDeckHeight: height }),
   },
 }));
 

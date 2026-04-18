@@ -15,9 +15,7 @@ describe("computeLiveSlotIds", () => {
   it("returns empty array when cap is zero", () => {
     const ids = ["a", "b"];
     const panelsById = { a: panel("a"), b: panel("b") };
-    expect(
-      computeLiveSlotIds(ids, new Set(), new Set(), panelsById, 0)
-    ).toEqual([]);
+    expect(computeLiveSlotIds(ids, new Set(), new Set(), panelsById, 0)).toEqual([]);
   });
 
   it("returns empty array when no eligible ids", () => {

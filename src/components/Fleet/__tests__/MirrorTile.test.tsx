@@ -147,10 +147,6 @@ function withNonZeroLayout(): () => void {
 
 function installResizeObserverMock(): () => void {
   class MockResizeObserver {
-    // The callback is stored so tests could fire it, but for our purposes
-    // the initial mount path (triggered from requestAnimationFrame) is the
-    // one that matters. The callback would otherwise re-fit on layout.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     constructor(_cb: ResizeObserverCallback) {}
     observe(): void {}
     unobserve(): void {}

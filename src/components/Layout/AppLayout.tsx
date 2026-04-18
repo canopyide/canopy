@@ -12,12 +12,7 @@ import { ChordIndicator } from "./ChordIndicator";
 import { DemoCursor, DemoOverlay } from "../Demo";
 
 import { AllClearOverlay } from "../AllClearOverlay";
-import {
-  useDiagnosticsStore,
-  useDockStore,
-  useFleetDeckStore,
-  type PanelState,
-} from "@/store";
+import { useDiagnosticsStore, useDockStore, useFleetDeckStore, type PanelState } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
 import type { RetryAction } from "@/store";

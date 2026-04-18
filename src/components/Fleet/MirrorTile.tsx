@@ -1,12 +1,4 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactElement,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Terminal, type ITerminalOptions } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
@@ -60,6 +52,14 @@ function MirrorTileInternal({
   const mountGenRef = useRef(0);
   const dataCleanupRef = useRef<(() => void) | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Hold the initial snapshot + capture callback in refs so the mount
+  // effect can read their latest values without adding them as deps (which
+  // would re-mount the xterm every render). terminalId + isLive drive the
+  // lifecycle; these are passive inputs.
+  const initialSnapshotRef = useRef(initialSnapshot);
+  const onCaptureSnapshotRef = useRef(onCaptureSnapshot);
+  initialSnapshotRef.current = initialSnapshot;
+  onCaptureSnapshotRef.current = onCaptureSnapshot;
   const [liveError, setLiveError] = useState(false);
 
   const focusAgent = useCallback(() => {
@@ -106,8 +106,9 @@ function MirrorTileInternal({
           // fit() can throw during layout thrash; a subsequent
           // ResizeObserver tick will re-fit.
         }
-        if (initialSnapshot) {
-          term.write(initialSnapshot);
+        const snapshotToWrite = initialSnapshotRef.current;
+        if (snapshotToWrite) {
+          term.write(snapshotToWrite);
         }
         dataCleanup = terminalClient.onData(terminalId, (data) => {
           if (mountGenRef.current !== gen) return;
@@ -147,10 +148,11 @@ function MirrorTileInternal({
       // static tile that picks up where the mirror left off.
       const term = termRef.current;
       const serialize = serializeRef.current;
-      if (term && serialize && onCaptureSnapshot) {
+      const capture = onCaptureSnapshotRef.current;
+      if (term && serialize && capture) {
         try {
           const snap = serialize.serialize({ scrollback: 500 });
-          onCaptureSnapshot(terminalId, snap);
+          capture(terminalId, snap);
         } catch {
           // Serialize may throw if the terminal was disposed by another path.
         }
@@ -203,10 +205,6 @@ function MirrorTileInternal({
       resizeObserverRef.current = null;
       tearDown();
     };
-    // onCaptureSnapshot and initialSnapshot should not re-trigger mount —
-    // they are captured as closures on purpose. terminalId + isLive drive
-    // the lifecycle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, isLive]);
 
   const stateClass = useMemo(() => {

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { appClient } from "@/clients";
+import { fleetDeckController } from "@/controllers/FleetDeckController";
 
 export const FLEET_DECK_MIN_WIDTH = 360;
 export const FLEET_DECK_MAX_WIDTH = 900;
@@ -11,13 +11,7 @@ export const FLEET_DECK_LIVE_TILE_CAP = 4;
 
 export type FleetDeckEdge = "right" | "left" | "bottom";
 export type FleetDeckScope = "current" | "all";
-export type FleetDeckStateFilter =
-  | "all"
-  | "waiting"
-  | "working"
-  | "idle"
-  | "completed"
-  | "failed";
+export type FleetDeckStateFilter = "all" | "waiting" | "working" | "idle" | "completed" | "failed";
 
 interface FleetDeckState {
   isOpen: boolean;
@@ -41,9 +35,7 @@ interface FleetDeckState {
   unpinLive: (id: string) => void;
   togglePinLive: (id: string) => void;
   prunePins: (validIds: Set<string>) => void;
-  hydrate: (
-    state: Partial<Pick<FleetDeckState, "isOpen" | "edge" | "width" | "height">>
-  ) => void;
+  hydrate: (state: Partial<Pick<FleetDeckState, "isOpen" | "edge" | "width" | "height">>) => void;
 }
 
 function clampWidth(width: number): number {
@@ -174,34 +166,10 @@ export const useFleetDeckStore = create<FleetDeckState>()((set, get) => ({
   },
 }));
 
-async function persistOpen(isOpen: boolean): Promise<void> {
-  try {
-    await appClient.setState({ fleetDeckOpen: isOpen });
-  } catch (error) {
-    console.error("Failed to persist fleet deck open state:", error);
-  }
-}
+const persistOpen = (isOpen: boolean): Promise<void> => fleetDeckController.persistOpen(isOpen);
 
-async function persistEdge(edge: FleetDeckEdge): Promise<void> {
-  try {
-    await appClient.setState({ fleetDeckEdge: edge });
-  } catch (error) {
-    console.error("Failed to persist fleet deck edge:", error);
-  }
-}
+const persistEdge = (edge: FleetDeckEdge): Promise<void> => fleetDeckController.persistEdge(edge);
 
-async function persistWidth(width: number): Promise<void> {
-  try {
-    await appClient.setState({ fleetDeckWidth: width });
-  } catch (error) {
-    console.error("Failed to persist fleet deck width:", error);
-  }
-}
+const persistWidth = (width: number): Promise<void> => fleetDeckController.persistWidth(width);
 
-async function persistHeight(height: number): Promise<void> {
-  try {
-    await appClient.setState({ fleetDeckHeight: height });
-  } catch (error) {
-    console.error("Failed to persist fleet deck height:", error);
-  }
-}
+const persistHeight = (height: number): Promise<void> => fleetDeckController.persistHeight(height);

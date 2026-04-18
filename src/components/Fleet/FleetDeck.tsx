@@ -23,11 +23,7 @@ import {
   type FleetDeckStateFilter,
 } from "@/store/fleetDeckStore";
 import { computeLiveSlotIds } from "@/utils/fleetDeckLiveSlots";
-import {
-  matchesDeckFilter,
-  DECK_FILTER_ORDER,
-  DECK_FILTER_LABELS,
-} from "@/utils/agentStateFilter";
+import { matchesDeckFilter, DECK_FILTER_ORDER, DECK_FILTER_LABELS } from "@/utils/agentStateFilter";
 import { ClusterAttentionPill } from "./ClusterAttentionPill";
 import { FleetComposer } from "./FleetComposer";
 import { MirrorTile } from "./MirrorTile";
@@ -80,19 +76,19 @@ export function FleetDeck(): ReactElement | null {
   // reorders (which mutate panelIds without touching panelsById) trigger a
   // re-render.
   const panelIds = usePanelStore((s) => s.panelIds);
-  const activeWorktreeId = useWorktreeSelectionStore(
-    (s) => s.activeWorktreeId ?? null
-  );
+  const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId ?? null);
 
   const [isResizing, setIsResizing] = useState(false);
   const snapshotsRef = useRef<Map<string, string>>(new Map());
 
   const eligibleIds = useMemo(() => {
+    // collectEligibleIds reads panelsById and panelIds from usePanelStore
+    // directly. Referencing both here ensures the memo re-runs whenever
+    // either mutates (panelsById on agent state updates, panelIds on
+    // reorder/add/remove).
+    void panelsById;
+    void panelIds;
     return collectEligibleIds(scope, activeWorktreeId);
-    // panelsById + panelIds are the two slices collectEligibleIds reads from
-    // usePanelStore.getState() — subscribing to both ensures the memo
-    // reruns when either mutates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, activeWorktreeId, panelsById, panelIds]);
 
   const filteredIds = useMemo(() => {
@@ -342,10 +338,7 @@ export function FleetDeck(): ReactElement | null {
         </div>
       </nav>
 
-      <div
-        className="flex-1 min-h-0 overflow-y-auto p-3"
-        data-testid="fleet-deck-grid-scroll"
-      >
+      <div className="flex-1 min-h-0 overflow-y-auto p-3" data-testid="fleet-deck-grid-scroll">
         {filteredIds.length === 0 ? (
           <div
             role="status"
