@@ -218,6 +218,14 @@ export class PtyClient extends EventEmitter {
    */
   private readonly MAX_PENDING_SPAWNS = 250;
 
+  /**
+   * Cap on pendingKillCount to prevent unbounded growth after repeated host
+   * crashes. Entries are decremented via "exit" events; if the host crashes
+   * before emitting them, entries persist. 2x MAX_PENDING_SPAWNS since kills
+   * are fire-and-forget IPC messages with no replay cost.
+   */
+  private readonly MAX_PENDING_KILLS = 500;
+
   /** RTT observability: timestamp of the in-flight health-check ping, or null if none. */
   private lastPingTime: number | null = null;
   private rttSamples: number[] = [];
@@ -829,6 +837,13 @@ export class PtyClient extends EventEmitter {
   }
 
   private respawnPending(): void {
+    // Kills sent to the crashed host will never receive "exit" events, so
+    // pendingKillCount entries from that session are permanently stale.
+    // Unlike pendingSpawns (replayed below to recreate terminals on the new
+    // host), pendingKillCount is cleared — the terminals those kills targeted
+    // died with the host process.
+    this.pendingKillCount.clear();
+
     // Notify that ports need refresh after host restart
     if (this.onPortRefresh) {
       for (const port of this.pendingMessagePorts.values()) {
@@ -1085,9 +1100,31 @@ export class PtyClient extends EventEmitter {
 
   kill(id: string, reason?: string): void {
     getTrashedPidTracker().removeTrashed(id);
-    this.pendingKillCount.set(id, (this.pendingKillCount.get(id) ?? 0) + 1);
+    const wasKnown = this.pendingSpawns.has(id);
     this.pendingSpawns.delete(id);
     this.ipcDataMirrorIds.delete(id);
+
+    // Only track pendingKillCount for ids we've seen locally. An "exit"
+    // decrement only arrives for terminals the host actually owned, so
+    // tracking kills for unknown ids would leak cap slots permanently.
+    //
+    // Cap is SOFT: the primary defense against unbounded growth is the
+    // clear-on-respawn in respawnPending(). Skipping tracking at cap would
+    // allow a late "exit" for this id to hit the exit handler's else branch
+    // and incorrectly delete a re-spawned entry for the same id (supported
+    // by the hydration flow via `requestedId`). So at cap we log a warning
+    // for observability but still track.
+    if (wasKnown) {
+      const current = this.pendingKillCount.get(id);
+      if (current === undefined && this.pendingKillCount.size >= this.MAX_PENDING_KILLS) {
+        logWarn(
+          `[PtyClient] pendingKillCount exceeds soft cap (${this.MAX_PENDING_KILLS}), id=${id}`
+        );
+      }
+      this.pendingKillCount.set(id, (current ?? 0) + 1);
+    }
+    // Always send the kill IPC. The host-side handler kills the terminal if
+    // it exists and removes any persisted session state for the id.
     this.send({ type: "kill", id, reason });
   }
 
