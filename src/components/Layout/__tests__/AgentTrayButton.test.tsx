@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, act } from "@testing-library/react";
 import type { AgentSettings, CliAvailability } from "@shared/types";
+import type { ActionFrecencyEntry } from "@shared/types/actions";
 
 const dispatchMock = vi.fn();
 const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
@@ -54,8 +55,17 @@ vi.mock("@/store/agentSettingsStore", () => ({
 }));
 
 vi.mock("@/store/actionMruStore", () => ({
-  useActionMruStore: (selector: (s: { actionMruList: string[] }) => unknown) =>
-    selector({ actionMruList: mockActionMruList }),
+  useActionMruStore: (
+    selector: (s: { getSortedActionMruList: () => ActionFrecencyEntry[] }) => unknown
+  ) =>
+    selector({
+      getSortedActionMruList: () =>
+        mockActionMruList.map((id) => ({
+          id,
+          score: mockActionMruList.length - mockActionMruList.indexOf(id),
+          lastAccessedAt: Date.now(),
+        })),
+    }),
 }));
 
 type MockCliAvailabilityStoreState = {
