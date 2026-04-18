@@ -344,11 +344,14 @@ describe("terminal spawn rate limiting (#5352)", () => {
     registerTerminalLifecycleHandlers(deps);
 
     const handler = getSpawnHandler();
-    await handler({} as Electron.IpcMainInvokeEvent, {
-      cols: 80,
-      rows: 24,
-      restore: true,
-    } as unknown as Parameters<typeof handler>[1]);
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        restore: true,
+      } as unknown as Parameters<typeof handler>[1]
+    );
 
     expect(waitForRateLimitSlotMock).not.toHaveBeenCalled();
     expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
