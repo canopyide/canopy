@@ -198,6 +198,23 @@ export function hasTelemetryPromptBeenShown(): boolean {
   return store.get("privacy")?.hasSeenPrompt ?? false;
 }
 
+/**
+ * Sets the `onboarding_complete` Sentry scope tag so all subsequent captured
+ * events are tagged with the user's onboarding state. Lets us separate
+ * first-run crashes from established-user crashes in Sentry issue triage.
+ *
+ * Safe to call before telemetry is initialized — becomes a no-op. When called
+ * after init (or re-called when state changes), it updates the global scope
+ * and applies to all events captured afterward.
+ */
+export function setOnboardingCompleteTag(completed: boolean): void {
+  try {
+    sentryModule?.setTag("onboarding_complete", completed ? "true" : "false");
+  } catch {
+    // never let telemetry errors escape into product code paths
+  }
+}
+
 export function markTelemetryPromptShown(): void {
   const privacy = store.get("privacy") ?? DEFAULT_PRIVACY;
   store.set("privacy", { ...privacy, hasSeenPrompt: true });

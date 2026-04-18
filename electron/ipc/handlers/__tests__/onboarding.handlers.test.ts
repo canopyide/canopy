@@ -20,6 +20,10 @@ const storeMock = vi.hoisted(() => {
 
 vi.mock("../../../store.js", () => ({ store: storeMock }));
 
+vi.mock("../../../services/TelemetryService.js", () => ({
+  setOnboardingCompleteTag: vi.fn(),
+}));
+
 import { registerOnboardingHandlers } from "../onboarding.js";
 
 function getHandler(channel: string) {
@@ -49,7 +53,7 @@ function seedOnboarding(partial: Record<string, unknown> = {}) {
         openedProject: false,
         launchedAgent: false,
         createdWorktree: false,
-        subscribedNewsletter: false,
+        ranSecondParallelAgent: false,
       },
     },
     ...partial,
@@ -83,7 +87,7 @@ describe("registerOnboardingHandlers — discovery IPC", () => {
           openedProject: false,
           launchedAgent: false,
           createdWorktree: false,
-          subscribedNewsletter: false,
+          ranSecondParallelAgent: false,
         },
       },
     };
