@@ -791,7 +791,7 @@ describe("engines.daintree compatibility gate", () => {
 describe("Plugin unload lifecycle", () => {
   it("unloadPlugin calls all registry unregister functions for the plugin", async () => {
     await writePlugin("unloadable", {
-      name: "unloadable",
+      name: "acme.unloadable",
       version: "1.0.0",
       contributes: {
         panels: [{ id: "viewer", name: "Viewer", iconId: "eye", color: "#000" }],
@@ -803,41 +803,41 @@ describe("Plugin unload lifecycle", () => {
     const service = new PluginService(tmpDir);
     await service.initialize();
 
-    expect(service.hasPlugin("unloadable")).toBe(true);
+    expect(service.hasPlugin("acme.unloadable")).toBe(true);
 
-    service.unloadPlugin("unloadable");
+    service.unloadPlugin("acme.unloadable");
 
-    expect(unregisterPluginMenuItems).toHaveBeenCalledWith("unloadable");
-    expect(unregisterPluginToolbarButtons).toHaveBeenCalledWith("unloadable");
-    expect(unregisterPluginPanelKinds).toHaveBeenCalledWith("unloadable");
+    expect(unregisterPluginMenuItems).toHaveBeenCalledWith("acme.unloadable");
+    expect(unregisterPluginToolbarButtons).toHaveBeenCalledWith("acme.unloadable");
+    expect(unregisterPluginPanelKinds).toHaveBeenCalledWith("acme.unloadable");
   });
 
   it("unloadPlugin removes the plugin from hasPlugin and listPlugins", async () => {
-    await writePlugin("goodbye", { name: "goodbye", version: "1.0.0" });
+    await writePlugin("goodbye", { name: "acme.goodbye", version: "1.0.0" });
 
     const service = new PluginService(tmpDir);
     await service.initialize();
-    expect(service.hasPlugin("goodbye")).toBe(true);
+    expect(service.hasPlugin("acme.goodbye")).toBe(true);
 
-    service.unloadPlugin("goodbye");
+    service.unloadPlugin("acme.goodbye");
 
-    expect(service.hasPlugin("goodbye")).toBe(false);
+    expect(service.hasPlugin("acme.goodbye")).toBe(false);
     expect(service.listPlugins()).toEqual([]);
   });
 
   it("unloadPlugin removes IPC handlers registered for the plugin", async () => {
-    await writePlugin("handler-host", { name: "handler-host", version: "1.0.0" });
+    await writePlugin("handler-host", { name: "acme.handler-host", version: "1.0.0" });
 
     const service = new PluginService(tmpDir);
     await service.initialize();
 
-    service.registerHandler("handler-host", "ping", () => "pong");
-    expect(await service.dispatchHandler("handler-host", "ping", [])).toBe("pong");
+    service.registerHandler("acme.handler-host", "ping", () => "pong");
+    expect(await service.dispatchHandler("acme.handler-host", "ping", [])).toBe("pong");
 
-    service.unloadPlugin("handler-host");
+    service.unloadPlugin("acme.handler-host");
 
-    await expect(service.dispatchHandler("handler-host", "ping", [])).rejects.toThrow(
-      "No plugin handler registered for handler-host:ping"
+    await expect(service.dispatchHandler("acme.handler-host", "ping", [])).rejects.toThrow(
+      "No plugin handler registered for acme.handler-host:ping"
     );
   });
 
@@ -845,23 +845,23 @@ describe("Plugin unload lifecycle", () => {
     const service = new PluginService(tmpDir);
     await service.initialize();
 
-    expect(() => service.unloadPlugin("never-loaded")).not.toThrow();
+    expect(() => service.unloadPlugin("acme.never-loaded")).not.toThrow();
     expect(unregisterPluginMenuItems).not.toHaveBeenCalled();
     expect(unregisterPluginToolbarButtons).not.toHaveBeenCalled();
     expect(unregisterPluginPanelKinds).not.toHaveBeenCalled();
   });
 
   it("unloadPlugin is idempotent across repeated calls", async () => {
-    await writePlugin("twice", { name: "twice", version: "1.0.0" });
+    await writePlugin("twice", { name: "acme.twice", version: "1.0.0" });
 
     const service = new PluginService(tmpDir);
     await service.initialize();
 
-    service.unloadPlugin("twice");
-    expect(service.hasPlugin("twice")).toBe(false);
+    service.unloadPlugin("acme.twice");
+    expect(service.hasPlugin("acme.twice")).toBe(false);
 
     // Second call finds nothing to remove and stays silent.
-    service.unloadPlugin("twice");
+    service.unloadPlugin("acme.twice");
     expect(unregisterPluginMenuItems).toHaveBeenCalledTimes(1);
     expect(unregisterPluginToolbarButtons).toHaveBeenCalledTimes(1);
     expect(unregisterPluginPanelKinds).toHaveBeenCalledTimes(1);
@@ -869,7 +869,7 @@ describe("Plugin unload lifecycle", () => {
 
   it("supports load → unload → reload lifecycle via fresh service instance", async () => {
     await writePlugin("lifecycle", {
-      name: "lifecycle",
+      name: "acme.lifecycle",
       version: "1.0.0",
       contributes: {
         panels: [{ id: "viewer", name: "Viewer", iconId: "eye", color: "#000" }],
@@ -880,19 +880,19 @@ describe("Plugin unload lifecycle", () => {
     await first.initialize();
     expect(registerPanelKind).toHaveBeenCalledTimes(1);
 
-    first.unloadPlugin("lifecycle");
-    expect(unregisterPluginPanelKinds).toHaveBeenCalledWith("lifecycle");
-    expect(first.hasPlugin("lifecycle")).toBe(false);
+    first.unloadPlugin("acme.lifecycle");
+    expect(unregisterPluginPanelKinds).toHaveBeenCalledWith("acme.lifecycle");
+    expect(first.hasPlugin("acme.lifecycle")).toBe(false);
 
     // A fresh service instance re-reads the plugin directory and re-registers.
     vi.clearAllMocks();
     const second = new PluginService(tmpDir);
     await second.initialize();
 
-    expect(second.hasPlugin("lifecycle")).toBe(true);
+    expect(second.hasPlugin("acme.lifecycle")).toBe(true);
     expect(registerPanelKind).toHaveBeenCalledTimes(1);
     expect(registerPanelKind).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "lifecycle.viewer", extensionId: "lifecycle" })
+      expect.objectContaining({ id: "acme.lifecycle.viewer", extensionId: "acme.lifecycle" })
     );
   });
 });
