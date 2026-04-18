@@ -163,7 +163,7 @@ export function TerminalContextMenu({
   const isWatched = usePanelStore((state) => state.watchedPanels.has(terminalId));
 
   const availability = useCliAvailabilityStore((s) => s.availability);
-  const isAvailabilityInitialized = useCliAvailabilityStore((s) => s.isInitialized);
+  const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
 
   const [hasSelection, setHasSelection] = useState(false);
   const [selectionText, setSelectionText] = useState("");
@@ -619,16 +619,16 @@ export function TerminalContextMenu({
   }
 
   const visibleAgentIds = useMemo(() => {
-    const filtered = computeGridSelectedAgentIds(
-      isAvailabilityInitialized,
-      availability,
-      AGENT_IDS
-    );
+    const filtered = computeGridSelectedAgentIds(hasRealData, availability, AGENT_IDS);
     if (!currentAgentId || filtered === undefined) return filtered;
     return new Set([...filtered, currentAgentId]);
-  }, [isAvailabilityInitialized, availability, currentAgentId]);
+  }, [hasRealData, availability, currentAgentId]);
 
-  const showConvertTo = !isPlainTerminal || !!currentAgentId || (visibleAgentIds?.size ?? 0) > 0;
+  const showConvertTo =
+    !isPlainTerminal ||
+    !!currentAgentId ||
+    hasRealData === false ||
+    (visibleAgentIds?.size ?? 0) > 0;
 
   const convertToItems = (
     <>
