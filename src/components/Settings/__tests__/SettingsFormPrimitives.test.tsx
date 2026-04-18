@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SettingsInput } from "../SettingsInput";
 import { SettingsSelect } from "../SettingsSelect";
 import { SettingsNumberInput } from "../SettingsNumberInput";
 import { SettingsTextarea } from "../SettingsTextarea";
+import { SettingsChoicebox, type ChoiceboxOption } from "../SettingsChoicebox";
 
 describe("SettingsInput", () => {
   it("renders label associated to input", () => {
@@ -140,5 +141,360 @@ describe("SettingsTextarea", () => {
     const ref = vi.fn();
     render(<SettingsTextarea label="Bio" ref={ref} />);
     expect(ref).toHaveBeenCalledWith(expect.any(HTMLTextAreaElement));
+  });
+});
+
+const MOCK_OPTIONS: readonly ChoiceboxOption<string>[] = [
+  { value: "compact", label: "Compact", description: "Smaller items" },
+  { value: "normal", label: "Normal", description: "Default size" },
+  { value: "comfortable", label: "Comfortable", description: "Larger items" },
+] as const;
+
+describe("SettingsChoicebox", () => {
+  it("renders label associated to radio group", () => {
+    render(
+      <SettingsChoicebox label="Density" value="normal" onChange={vi.fn()} options={MOCK_OPTIONS} />
+    );
+    const group = screen.getByRole("radiogroup", { name: "Density" });
+    expect(group).toBeTruthy();
+  });
+
+  it("renders all options as radio buttons", () => {
+    render(
+      <SettingsChoicebox label="Density" value="normal" onChange={vi.fn()} options={MOCK_OPTIONS} />
+    );
+    const radios = screen.getAllByRole("radio");
+    expect(radios).toHaveLength(3);
+    expect(radios[0]?.textContent).toContain("Compact");
+    expect(radios[1]?.textContent).toContain("Normal");
+    expect(radios[2]?.textContent).toContain("Comfortable");
+  });
+
+  it("sets aria-checked on selected option", () => {
+    render(
+      <SettingsChoicebox label="Density" value="normal" onChange={vi.fn()} options={MOCK_OPTIONS} />
+    );
+    const radios = screen.getAllByRole("radio");
+    expect(radios[0]?.getAttribute("aria-checked")).toBe("false");
+    expect(radios[1]?.getAttribute("aria-checked")).toBe("true");
+    expect(radios[2]?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("wires description to aria-describedby", () => {
+    render(
+      <SettingsChoicebox
+        label="Density"
+        description="Choose dock density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+      />
+    );
+    const group = screen.getByRole("radiogroup");
+    const describedBy = group.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toBe("Choose dock density");
+  });
+
+  it("shows error and sets aria-invalid", () => {
+    render(
+      <SettingsChoicebox
+        label="Density"
+        error="Invalid selection"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+      />
+    );
+    const group = screen.getByRole("radiogroup");
+    expect(group.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("alert")?.textContent).toBe("Invalid selection");
+  });
+
+  it("hides description when error is shown", () => {
+    render(
+      <SettingsChoicebox
+        label="Density"
+        description="Choose dock density"
+        error="Invalid selection"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+      />
+    );
+    expect(screen.queryByText("Choose dock density")).toBeNull();
+    expect(screen.getByText("Invalid selection")).toBeTruthy();
+  });
+
+  it("aria-describedby only references error when both description and error exist", () => {
+    render(
+      <SettingsChoicebox
+        label="Density"
+        description="Choose dock density"
+        error="Invalid selection"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+      />
+    );
+    const group = screen.getByRole("radiogroup");
+    const describedBy = group.getAttribute("aria-describedby")!;
+    const ids = describedBy.split(" ");
+    expect(ids).toHaveLength(1);
+    expect(document.getElementById(ids[0]!)?.textContent).toBe("Invalid selection");
+  });
+
+  it("shows modified indicator when isModified", () => {
+    const { container } = render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        isModified
+      />
+    );
+    const dot = container.querySelector(".bg-daintree-accent.rounded-full");
+    expect(dot).toBeTruthy();
+  });
+
+  it("shows reset button when isModified and onReset and not disabled", () => {
+    const onReset = vi.fn();
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        isModified
+        onReset={onReset}
+      />
+    );
+    expect(screen.getByLabelText("Reset Density to default")).toBeTruthy();
+  });
+
+  it("hides reset button when disabled", () => {
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        isModified
+        onReset={vi.fn()}
+        disabled
+      />
+    );
+    expect(screen.queryByLabelText("Reset Density to default")).toBeNull();
+  });
+
+  it("calls onChange when clicking an option", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={onChange}
+        options={MOCK_OPTIONS}
+      />
+    );
+
+    const compactRadio = screen.getByRole("radio", { name: "Compact Smaller items" });
+    fireEvent.click(compactRadio);
+    expect(onChange).toHaveBeenCalledWith("compact");
+  });
+
+  it("does not call onChange when clicking disabled option", async () => {
+    const onChange = vi.fn();
+    const optionsWithDisabled = [
+      ...MOCK_OPTIONS,
+      { value: "large", label: "Large", disabled: true },
+    ] as const;
+
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={onChange}
+        options={optionsWithDisabled}
+      />
+    );
+
+    const largeRadio = screen.getByRole("radio", { name: "Large" });
+    fireEvent.click(largeRadio);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("does not call onChange when clicking disabled group", async () => {
+    const onChange = vi.fn();
+
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={onChange}
+        options={MOCK_OPTIONS}
+        disabled
+      />
+    );
+
+    const compactRadio = screen.getByRole("radio", { name: "Compact Smaller items" });
+    fireEvent.click(compactRadio);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("updates selection when onChange is called", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={onChange}
+        options={MOCK_OPTIONS}
+      />
+    );
+
+    const radios = screen.getAllByRole("radio");
+    expect(radios[1]?.getAttribute("aria-checked")).toBe("true");
+
+    onChange.mockImplementation(() => {
+      rerender(
+        <SettingsChoicebox
+          label="Density"
+          value="compact"
+          onChange={onChange}
+          options={MOCK_OPTIONS}
+        />
+      );
+    });
+
+    const compactRadio = screen.getByRole("radio", { name: /Compact/ });
+    fireEvent.click(compactRadio);
+    const updatedRadios = screen.getAllByRole("radio");
+    expect(updatedRadios[0]?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("navigates with arrow keys", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={onChange}
+        options={MOCK_OPTIONS}
+      />
+    );
+
+    const compactRadio = screen.getByRole("radio", { name: "Compact Smaller items" });
+    compactRadio.focus();
+
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight", code: "ArrowRight" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Normal Default size" }));
+
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight", code: "ArrowRight" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Comfortable Larger items" })
+    );
+
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight", code: "ArrowRight" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Compact Smaller items" })
+    );
+
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft", code: "ArrowLeft" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Comfortable Larger items" })
+    );
+
+    fireEvent.keyDown(document.activeElement!, { key: "Home", code: "Home" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Compact Smaller items" })
+    );
+
+    fireEvent.keyDown(document.activeElement!, { key: "End", code: "End" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Comfortable Larger items" })
+    );
+  });
+
+  it("activates option with Space key", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={onChange}
+        options={MOCK_OPTIONS}
+      />
+    );
+
+    const compactRadio = screen.getByRole("radio", { name: "Compact Smaller items" });
+    compactRadio.focus();
+
+    fireEvent.keyDown(document.activeElement!, { key: " ", code: "Space" });
+    expect(onChange).toHaveBeenCalledWith("compact");
+  });
+
+  it("activates option with Enter key", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={onChange}
+        options={MOCK_OPTIONS}
+      />
+    );
+
+    const compactRadio = screen.getByRole("radio", { name: "Compact Smaller items" });
+    compactRadio.focus();
+
+    fireEvent.keyDown(document.activeElement!, { key: "Enter", code: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("compact");
+  });
+
+  it("applies grid layout when columns prop is set", () => {
+    const { container } = render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        columns={3}
+      />
+    );
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(group?.classList.contains("grid")).toBe(true);
+    expect(group?.classList.contains("grid-cols-3")).toBe(true);
+  });
+
+  it("respects custom resetAriaLabel", () => {
+    const onReset = vi.fn();
+    render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        isModified
+        onReset={onReset}
+        resetAriaLabel="Reset density setting"
+      />
+    );
+    expect(screen.getByLabelText("Reset density setting")).toBeTruthy();
+  });
+
+  it("applies className to container", () => {
+    const { container } = render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        className="custom-class"
+      />
+    );
+    const wrapper = container.querySelector(".custom-class");
+    expect(wrapper).toBeTruthy();
   });
 });
