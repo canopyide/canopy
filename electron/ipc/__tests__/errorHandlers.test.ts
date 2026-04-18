@@ -1,4 +1,6 @@
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import type { SpawnErrorCode, SpawnResult } from "../../../shared/types/pty-host.js";
 
 const sleepMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
@@ -52,6 +54,34 @@ function createNonTransientError(message: string): Error {
   const err = new Error(message);
   (err as NodeJS.ErrnoException).code = "ENOENT";
   return err;
+}
+
+interface MockPtyClient extends EventEmitter {
+  spawn: Mock;
+}
+
+function createPtyClientMock(spawn: Mock): MockPtyClient {
+  const emitter = new EventEmitter();
+  return Object.assign(emitter, { spawn }) as MockPtyClient;
+}
+
+function emitSpawnSuccess(client: MockPtyClient, id: string): void {
+  const result: SpawnResult = { success: true, id };
+  client.emit("spawn-result", id, result);
+}
+
+function emitSpawnFailure(
+  client: MockPtyClient,
+  id: string,
+  code: SpawnErrorCode,
+  message: string
+): void {
+  const result: SpawnResult = {
+    success: false,
+    id,
+    error: { code, message },
+  };
+  client.emit("spawn-result", id, result);
 }
 
 function createMockWindow(options: { destroyed?: boolean } = {}) {
@@ -140,7 +170,9 @@ describe("errorHandlers", () => {
     const CHANNELS = await getChannels();
     const spawn = vi.fn();
     createMockWindow();
-    registerErrorHandlers(null, { spawn } as never);
+    const ptyClient = createPtyClientMock(spawn);
+    spawn.mockImplementation((id: string) => emitSpawnSuccess(ptyClient, id));
+    registerErrorHandlers(null, ptyClient);
 
     const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
     await retryHandler(
@@ -149,13 +181,16 @@ describe("errorHandlers", () => {
     );
 
     expect(spawn).toHaveBeenCalledWith("term-1", { cwd: "/tmp", cols: 80, rows: 30 });
+    expect(ptyClient.listenerCount("spawn-result")).toBe(0);
   });
 
   it("sanitizes invalid terminal dimensions in retry args", async () => {
     const CHANNELS = await getChannels();
     const spawn = vi.fn();
     createMockWindow();
-    registerErrorHandlers(null, { spawn } as never);
+    const ptyClient = createPtyClientMock(spawn);
+    spawn.mockImplementation((id: string) => emitSpawnSuccess(ptyClient, id));
+    registerErrorHandlers(null, ptyClient);
 
     const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
     await retryHandler(
@@ -180,7 +215,7 @@ describe("errorHandlers", () => {
     allWindowsMock.mockReturnValue([
       { isDestroyed: () => false, webContents: { isDestroyed: () => false, send: vi.fn() } },
     ]);
-    registerErrorHandlers(null, { spawn } as never);
+    registerErrorHandlers(null, createPtyClientMock(spawn));
 
     const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
     await expect(
@@ -194,7 +229,7 @@ describe("errorHandlers", () => {
   it("rejects malformed retry payload and reports it safely", async () => {
     const CHANNELS = await getChannels();
     const mockWindow = createMockWindow();
-    registerErrorHandlers(null, { spawn: vi.fn() } as never);
+    registerErrorHandlers(null, createPtyClientMock(vi.fn()));
 
     const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
     await expect(retryHandler({} as never, undefined as never)).rejects.toThrow(
@@ -238,12 +273,15 @@ describe("errorHandlers", () => {
       const CHANNELS = await getChannels();
       createMockWindow();
       let callCount = 0;
-      const spawn = vi.fn(() => {
+      const spawn = vi.fn();
+      const ptyClient = createPtyClientMock(spawn);
+      spawn.mockImplementation((id: string) => {
         callCount++;
         if (callCount < 3) throw createTransientError("EBUSY");
+        emitSpawnSuccess(ptyClient, id);
       });
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, ptyClient);
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await retryHandler(
@@ -264,7 +302,7 @@ describe("errorHandlers", () => {
         throw createTransientError("EBUSY");
       });
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await expect(
@@ -301,7 +339,7 @@ describe("errorHandlers", () => {
         throw createNonTransientError("File not found");
       });
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await expect(
@@ -325,7 +363,7 @@ describe("errorHandlers", () => {
         throw createNonTransientError("ENOENT");
       });
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await expect(
@@ -343,12 +381,15 @@ describe("errorHandlers", () => {
       const CHANNELS = await getChannels();
       const mockWindow = createMockWindow();
       let callCount = 0;
-      const spawn = vi.fn(() => {
+      const spawn = vi.fn();
+      const ptyClient = createPtyClientMock(spawn);
+      spawn.mockImplementation((id: string) => {
         callCount++;
         if (callCount < 3) throw createTransientError("EBUSY");
+        emitSpawnSuccess(ptyClient, id);
       });
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, ptyClient);
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await retryHandler(
@@ -377,7 +418,7 @@ describe("errorHandlers", () => {
       const abortError = new DOMException("The operation was aborted", "AbortError");
       sleepMock.mockRejectedValueOnce(abortError);
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await expect(
@@ -414,7 +455,7 @@ describe("errorHandlers", () => {
         }
       );
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await expect(
@@ -435,7 +476,7 @@ describe("errorHandlers", () => {
         throw createTransientError("EBUSY");
       });
 
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
 
       await retryHandler(
@@ -449,6 +490,158 @@ describe("errorHandlers", () => {
       expect(sleepMock).toHaveBeenCalledTimes(2);
       expect(sleepMock.mock.calls[0][0]).toBe(550);
       expect(sleepMock.mock.calls[1][0]).toBe(1050);
+    });
+  });
+
+  describe("terminal spawn-result event integration", () => {
+    it("surfaces PENDING_SPAWNS_CAPPED synchronous failure as a retry error", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      const spawn = vi.fn();
+      const ptyClient = createPtyClientMock(spawn);
+      spawn.mockImplementation((id: string) => {
+        emitSpawnFailure(ptyClient, id, "PENDING_SPAWNS_CAPPED", "Too many pending spawns");
+      });
+      registerErrorHandlers(null, ptyClient);
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await expect(
+        retryHandler(
+          {} as never,
+          {
+            errorId: "cap-1",
+            action: "terminal",
+            args: { id: "t-cap", cwd: "/tmp" },
+          } as never
+        )
+      ).rejects.toThrow("Too many pending spawns");
+
+      // Non-transient code → no backoff retry
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(sleepMock).not.toHaveBeenCalled();
+
+      // Error surfaced to renderer via ERROR_NOTIFY
+      const notifyCalls = mockWindow.webContents.send.mock.calls.filter(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      );
+      expect(notifyCalls.length).toBeGreaterThan(0);
+      expect(notifyCalls[0][1]).toMatchObject({
+        message: expect.stringContaining("Too many pending spawns"),
+      });
+
+      // Listener cleaned up
+      expect(ptyClient.listenerCount("spawn-result")).toBe(0);
+    });
+
+    it("resolves on async spawn-result success", async () => {
+      const CHANNELS = await getChannels();
+      createMockWindow();
+      const spawn = vi.fn();
+      const ptyClient = createPtyClientMock(spawn);
+      spawn.mockImplementation((id: string) => {
+        // Async success after the listener is registered
+        setImmediate(() => emitSpawnSuccess(ptyClient, id));
+      });
+      registerErrorHandlers(null, ptyClient);
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler(
+        {} as never,
+        { errorId: "ok-1", action: "terminal", args: { id: "t-ok", cwd: "/tmp" } } as never
+      );
+
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(ptyClient.listenerCount("spawn-result")).toBe(0);
+    });
+
+    it("rejects on async spawn-result failure", async () => {
+      const CHANNELS = await getChannels();
+      createMockWindow();
+      const spawn = vi.fn();
+      const ptyClient = createPtyClientMock(spawn);
+      spawn.mockImplementation((id: string) => {
+        setImmediate(() => emitSpawnFailure(ptyClient, id, "ENOENT", "shell not found"));
+      });
+      registerErrorHandlers(null, ptyClient);
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await expect(
+        retryHandler(
+          {} as never,
+          { errorId: "fail-1", action: "terminal", args: { id: "t-fail", cwd: "/tmp" } } as never
+        )
+      ).rejects.toThrow("shell not found");
+
+      expect(ptyClient.listenerCount("spawn-result")).toBe(0);
+    });
+
+    it("ignores spawn-result for a different terminal id", async () => {
+      const CHANNELS = await getChannels();
+      createMockWindow();
+      const spawn = vi.fn();
+      const ptyClient = createPtyClientMock(spawn);
+      spawn.mockImplementation((id: string) => {
+        // Emit for some other terminal first — must be ignored
+        emitSpawnSuccess(ptyClient, "some-other-id");
+        // Then the matching one
+        setImmediate(() => emitSpawnSuccess(ptyClient, id));
+      });
+      registerErrorHandlers(null, ptyClient);
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler(
+        {} as never,
+        { errorId: "cross-1", action: "terminal", args: { id: "t-cross", cwd: "/tmp" } } as never
+      );
+
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(ptyClient.listenerCount("spawn-result")).toBe(0);
+    });
+
+    it("times out and cleans up listener when no spawn-result arrives", async () => {
+      const CHANNELS = await getChannels();
+      createMockWindow();
+      vi.useFakeTimers();
+      try {
+        const spawn = vi.fn(); // never emits anything
+        const ptyClient = createPtyClientMock(spawn);
+        registerErrorHandlers(null, ptyClient);
+
+        const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+        const pending = retryHandler(
+          {} as never,
+          { errorId: "to-1", action: "terminal", args: { id: "t-to", cwd: "/tmp" } } as never
+        );
+        const assertion = expect(pending).rejects.toThrow(/did not complete/);
+
+        // Advance past the 30s timeout
+        await vi.advanceTimersByTimeAsync(30_001);
+        await assertion;
+
+        expect(ptyClient.listenerCount("spawn-result")).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up listener when spawn() throws synchronously", async () => {
+      const CHANNELS = await getChannels();
+      createMockWindow();
+      const spawn = vi.fn(() => {
+        throw createNonTransientError("kaboom");
+      });
+      const ptyClient = createPtyClientMock(spawn);
+      registerErrorHandlers(null, ptyClient);
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await expect(
+        retryHandler(
+          {} as never,
+          { errorId: "thr-1", action: "terminal", args: { id: "t-thr", cwd: "/tmp" } } as never
+        )
+      ).rejects.toThrow("kaboom");
+
+      expect(ptyClient.listenerCount("spawn-result")).toBe(0);
     });
   });
 
@@ -494,7 +687,7 @@ describe("errorHandlers", () => {
         throw new ConfigError("Bad config", { key: "config-key" });
       });
       // Re-register with spawn
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -620,7 +813,7 @@ describe("errorHandlers", () => {
         err.syscall = "open";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -646,7 +839,7 @@ describe("errorHandlers", () => {
         err.syscall = "spawn git";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -672,7 +865,7 @@ describe("errorHandlers", () => {
         err.syscall = "spawn npm";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -698,7 +891,7 @@ describe("errorHandlers", () => {
         err.syscall = "open";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -721,7 +914,7 @@ describe("errorHandlers", () => {
       const spawn = vi.fn(() => {
         throw new Error("posix_spawnp: No such file or directory");
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -746,7 +939,7 @@ describe("errorHandlers", () => {
         err.code = "ENOTFOUND";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -771,7 +964,7 @@ describe("errorHandlers", () => {
         err.code = "ECONNREFUSED";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -796,7 +989,7 @@ describe("errorHandlers", () => {
         err.code = "ETIMEDOUT";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -820,7 +1013,7 @@ describe("errorHandlers", () => {
       const spawn = vi.fn(() => {
         throw new GitError("fatal: not a git repository");
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -844,7 +1037,7 @@ describe("errorHandlers", () => {
       const spawn = vi.fn(() => {
         throw new GitError("Authentication failed for repo");
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -868,7 +1061,7 @@ describe("errorHandlers", () => {
       const spawn = vi.fn(() => {
         throw new ConfigError("bad config");
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -892,7 +1085,7 @@ describe("errorHandlers", () => {
       const spawn = vi.fn(() => {
         throw new ProcessError("pty failed");
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -920,7 +1113,7 @@ describe("errorHandlers", () => {
           new Error("fatal: not a git repository (or any parent up to mount point /)")
         );
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -944,7 +1137,7 @@ describe("errorHandlers", () => {
       const spawn = vi.fn(() => {
         throw new GitError("Git operation failed: merge");
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -969,7 +1162,7 @@ describe("errorHandlers", () => {
         err.code = "ECONNRESET";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -994,7 +1187,7 @@ describe("errorHandlers", () => {
         err.code = "EBUSY";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {
@@ -1019,7 +1212,7 @@ describe("errorHandlers", () => {
         err.code = "EAGAIN";
         throw err;
       });
-      registerErrorHandlers(null, { spawn } as never);
+      registerErrorHandlers(null, createPtyClientMock(spawn));
 
       const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
       await retryHandler({} as never, {

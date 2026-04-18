@@ -18,6 +18,7 @@ import { FAULT_MODE_ENABLED } from "./faultRegistry.js";
 import type { PtyClient } from "../services/PtyClient.js";
 import type { WorkspaceClient } from "../services/WorkspaceClient.js";
 import type { AppError, ErrorType, RetryAction } from "../../shared/types/ipc/errors.js";
+import type { SpawnResult } from "../../shared/types/pty-host.js";
 
 interface RetryPayload {
   errorId: string;
@@ -36,6 +37,7 @@ const MAX_RETRY_ATTEMPTS: Record<RetryAction, number> = {
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 10_000;
 const BACKOFF_FLOOR_MS = 100;
+const TERMINAL_RETRY_SPAWN_TIMEOUT_MS = 30_000;
 
 function computeRetryDelay(attempt: number): number {
   const exponentialCeil = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * Math.pow(2, attempt));
@@ -314,15 +316,24 @@ class ErrorService {
     }
   }
 
-  private async executeAction(action: RetryAction, args?: Record<string, unknown>): Promise<void> {
+  private async executeAction(
+    action: RetryAction,
+    args?: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<void> {
     switch (action) {
       case "terminal":
         if (this.ptyClient && typeof args?.id === "string" && typeof args?.cwd === "string") {
-          this.ptyClient.spawn(args.id, {
-            cwd: args.cwd,
-            cols: normalizeTerminalDimension(args.cols, 80),
-            rows: normalizeTerminalDimension(args.rows, 30),
-          });
+          await this.spawnTerminalAndAwaitResult(
+            this.ptyClient,
+            args.id,
+            {
+              cwd: args.cwd,
+              cols: normalizeTerminalDimension(args.cols, 80),
+              rows: normalizeTerminalDimension(args.rows, 30),
+            },
+            signal
+          );
         }
         break;
 
@@ -338,6 +349,87 @@ class ErrorService {
         }
         break;
     }
+  }
+
+  private spawnTerminalAndAwaitResult(
+    ptyClient: PtyClient,
+    id: string,
+    options: { cwd: string; cols: number; rows: number },
+    signal?: AbortSignal
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      const cleanup = () => {
+        ptyClient.off("spawn-result", onSpawnResult);
+        if (timer !== undefined) {
+          clearTimeout(timer);
+          timer = undefined;
+        }
+        if (signal) {
+          signal.removeEventListener("abort", onAbort);
+        }
+      };
+
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn();
+      };
+
+      const onSpawnResult = (eventId: string, result: SpawnResult) => {
+        if (eventId !== id) return;
+        if (result.success) {
+          settle(() => resolve());
+          return;
+        }
+        const error = new Error(
+          result.error?.message ?? `Terminal spawn failed for ${id}`
+        ) as NodeJS.ErrnoException;
+        if (result.error?.code) {
+          error.code = result.error.code;
+        }
+        settle(() => reject(error));
+      };
+
+      const onAbort = () => {
+        settle(() =>
+          reject(
+            signal?.reason instanceof Error
+              ? signal.reason
+              : new DOMException("The operation was aborted", "AbortError")
+          )
+        );
+      };
+
+      // Listener MUST be attached before spawn() — PENDING_SPAWNS_CAPPED emits synchronously.
+      ptyClient.on("spawn-result", onSpawnResult);
+
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      timer = setTimeout(() => {
+        // Non-transient: retry storm from a wedged host won't help; each attempt
+        // would wait another TERMINAL_RETRY_SPAWN_TIMEOUT_MS.
+        const error = new Error(
+          `Terminal spawn for ${id} did not complete within ${TERMINAL_RETRY_SPAWN_TIMEOUT_MS}ms`
+        );
+        settle(() => reject(error));
+      }, TERMINAL_RETRY_SPAWN_TIMEOUT_MS);
+
+      try {
+        ptyClient.spawn(id, options);
+      } catch (err) {
+        settle(() => reject(err));
+      }
+    });
   }
 
   async handleRetry(payload: RetryPayload): Promise<void> {
@@ -360,7 +452,7 @@ class ErrorService {
         this.sendRetryProgress(errorId, attempt, maxAttempts);
 
         try {
-          await this.executeAction(action, args);
+          await this.executeAction(action, args, signal);
           return;
         } catch (error) {
           if (isAbortError(error)) throw error;
