@@ -2,6 +2,47 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionDefinition, ActionContext } from "@shared/types/actions";
 
+// Node 25 exposes a broken native `localStorage` stub on `globalThis` (no
+// `clear`/`getItem`/etc) that shadows JSDOM's Storage and leaks the warning
+// `--localstorage-file was provided without a valid path`. JSDOM also fails
+// to replace it (its env setup skips configurable:false globals). Install an
+// in-memory Storage shim so both `globalThis.localStorage` and
+// `window.localStorage` resolve to the same working implementation.
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear() {
+      data.clear();
+    },
+    getItem(key: string) {
+      return data.has(key) ? (data.get(key) ?? null) : null;
+    },
+    setItem(key: string, value: string) {
+      data.set(key, String(value));
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
+    key(index: number) {
+      return Array.from(data.keys())[index] ?? null;
+    },
+  };
+}
+const testLocalStorage = createMemoryStorage();
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  writable: true,
+  value: testLocalStorage,
+});
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  writable: true,
+  value: testLocalStorage,
+});
+
 // Stubs for other actions' dependencies (actions.list, actions.getContext). These
 // are not exercised by the persistedStores tests but must load without errors.
 vi.mock("@/services/ActionService", () => ({
