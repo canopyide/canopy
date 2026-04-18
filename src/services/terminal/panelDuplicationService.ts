@@ -5,26 +5,26 @@ import { generateAgentCommand } from "@shared/types";
 import {
   getAgentConfig,
   isRegisteredAgent,
-  getMergedFlavor,
+  getMergedPreset,
   sanitizeAgentEnv,
 } from "@/config/agents";
 import { agentSettingsClient, systemClient } from "@/clients";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 
 export interface ResolvedCommand {
   command: string | undefined;
   env: Record<string, string> | undefined;
-  /** Resolved flavor, or undefined if the saved flavorId is stale/deleted. */
-  flavor: import("@/config/agents").AgentFlavor | undefined;
-  /** True when the caller requested a flavor but it no longer resolves. */
-  flavorWasStale: boolean;
+  /** Resolved preset, or undefined if the saved presetId is stale/deleted. */
+  preset: import("@/config/agents").AgentPreset | undefined;
+  /** True when the caller requested a preset but it no longer resolves. */
+  presetWasStale: boolean;
 }
 
 /**
  * Generate the startup command for a panel being duplicated.
  * For agent panels, re-generates the command from current settings and
- * merges globalEnv + flavor env the same way useAgentLauncher does (global
- * first, flavor overrides). For all others, copies the existing command.
+ * merges globalEnv + preset env the same way useAgentLauncher does (global
+ * first, preset overrides). For all others, copies the existing command.
  */
 async function resolveCommandForPanel(panel: TerminalInstance): Promise<ResolvedCommand> {
   if (panel.agentId && isRegisteredAgent(panel.agentId)) {
@@ -36,19 +36,19 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<Resolved
           systemClient.getTmpDir().catch(() => ""),
         ]);
         const entry = agentSettings?.agents?.[panel.agentId] ?? {};
-        const ccrFlavors = useCcrFlavorsStore.getState().ccrFlavorsByAgent[panel.agentId];
-        const flavor = panel.agentFlavorId
-          ? getMergedFlavor(panel.agentId, panel.agentFlavorId, entry.customFlavors, ccrFlavors)
+        const ccrPresets = useCcrPresetsStore.getState().ccrPresetsByAgent[panel.agentId];
+        const preset = panel.agentPresetId
+          ? getMergedPreset(panel.agentId, panel.agentPresetId, entry.customPresets, ccrPresets)
           : undefined;
-        const flavorWasStale = !!panel.agentFlavorId && !flavor;
-        const effectiveEntry = flavor
+        const presetWasStale = !!panel.agentPresetId && !preset;
+        const effectiveEntry = preset
           ? {
               ...entry,
-              ...(flavor.dangerousEnabled !== undefined && {
-                dangerousEnabled: flavor.dangerousEnabled,
+              ...(preset.dangerousEnabled !== undefined && {
+                dangerousEnabled: preset.dangerousEnabled,
               }),
-              ...(flavor.customFlags !== undefined && { customFlags: flavor.customFlags }),
-              ...(flavor.inlineMode !== undefined && { inlineMode: flavor.inlineMode }),
+              ...(preset.customFlags !== undefined && { customFlags: preset.customFlags }),
+              ...(preset.inlineMode !== undefined && { inlineMode: preset.inlineMode }),
             }
           : entry;
         const clipboardDirectory = tmpDir ? `${tmpDir}/daintree-clipboard` : undefined;
@@ -56,18 +56,18 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<Resolved
           interactive: true,
           clipboardDirectory,
           modelId: panel.agentModelId,
-          flavorArgs: flavor?.args?.join(" "),
+          presetArgs: preset?.args?.join(" "),
         });
-        // Mirror useAgentLauncher.ts: global env first, flavor env wins on
+        // Mirror useAgentLauncher.ts: global env first, preset env wins on
         // conflicts. Critical for duplicates — dropping globalEnv here
         // silently routes the duplicated panel to the default backend.
         const sanitizedGlobal = sanitizeAgentEnv(entry.globalEnv as Record<string, unknown>);
-        const sanitizedFlavor = flavor?.env;
+        const sanitizedPreset = preset?.env;
         const mergedEnv =
-          sanitizedGlobal || sanitizedFlavor
-            ? { ...sanitizedGlobal, ...sanitizedFlavor }
+          sanitizedGlobal || sanitizedPreset
+            ? { ...sanitizedGlobal, ...sanitizedPreset }
             : undefined;
-        return { command, env: mergedEnv, flavor, flavorWasStale };
+        return { command, env: mergedEnv, preset, presetWasStale };
       } catch (error) {
         console.warn(
           `Failed to get agent settings for ${panel.agentId}, using existing command:`,
@@ -76,13 +76,13 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<Resolved
         return {
           command: panel.command ?? agentConfig.command,
           env: undefined,
-          flavor: undefined,
-          flavorWasStale: false,
+          preset: undefined,
+          presetWasStale: false,
         };
       }
     }
   }
-  return { command: panel.command, env: undefined, flavor: undefined, flavorWasStale: false };
+  return { command: panel.command, env: undefined, preset: undefined, presetWasStale: false };
 }
 
 function buildBrowserOptions(panel: TerminalInstance) {
@@ -188,8 +188,8 @@ export function buildPanelSnapshotOptions(panel: TerminalInstance): AddPanelOpti
     exitBehavior: panel.exitBehavior,
     isInputLocked: panel.isInputLocked,
     agentModelId: panel.agentModelId,
-    agentFlavorId: panel.agentFlavorId,
-    agentFlavorColor: panel.agentFlavorColor,
+    agentPresetId: panel.agentPresetId,
+    agentPresetColor: panel.agentPresetColor,
     agentLaunchFlags: panel.agentLaunchFlags ? [...panel.agentLaunchFlags] : undefined,
     command: panel.command,
   };
@@ -208,7 +208,7 @@ export async function buildPanelDuplicateOptions(
   targetLocation: TabGroupLocation
 ): Promise<AddPanelOptions> {
   const kind = sourcePanel.kind ?? "terminal";
-  const { command, env, flavorWasStale } = await resolveCommandForPanel(sourcePanel);
+  const { command, env, presetWasStale } = await resolveCommandForPanel(sourcePanel);
 
   if (kind === "agent") {
     if (!sourcePanel.agentId || !command) {
@@ -216,15 +216,15 @@ export async function buildPanelDuplicateOptions(
         `Cannot duplicate agent panel: ${!sourcePanel.agentId ? "agentId" : "command"} is missing`
       );
     }
-    // When the saved flavor no longer resolves (deleted custom flavor, CCR
-    // route removed from config), null out the flavor-derived fields so the
+    // When the saved preset no longer resolves (deleted custom preset, CCR
+    // route removed from config), null out the preset-derived fields so the
     // duplicate doesn't lie about its identity — blue "Claude (Pro)" title
-    // with vanilla env is the split-brain the review flagged.
+    // with default env is the split-brain the review flagged.
     const agentConfig = getAgentConfig(sourcePanel.agentId);
     const fallbackTitle = agentConfig?.name ?? sourcePanel.title;
-    const agentFlavorId = flavorWasStale ? undefined : sourcePanel.agentFlavorId;
-    const agentFlavorColor = flavorWasStale ? undefined : sourcePanel.agentFlavorColor;
-    const title = flavorWasStale ? fallbackTitle : sourcePanel.title;
+    const agentPresetId = presetWasStale ? undefined : sourcePanel.agentPresetId;
+    const agentPresetColor = presetWasStale ? undefined : sourcePanel.agentPresetColor;
+    const title = presetWasStale ? fallbackTitle : sourcePanel.title;
     return {
       kind: "agent",
       type: sourcePanel.type,
@@ -237,8 +237,8 @@ export async function buildPanelDuplicateOptions(
       exitBehavior: sourcePanel.exitBehavior,
       isInputLocked: sourcePanel.isInputLocked,
       agentModelId: sourcePanel.agentModelId,
-      agentFlavorId,
-      agentFlavorColor,
+      agentPresetId,
+      agentPresetColor,
       agentLaunchFlags: sourcePanel.agentLaunchFlags,
       env,
     };
@@ -294,8 +294,8 @@ export async function buildPanelDuplicateOptions(
     exitBehavior: sourcePanel.exitBehavior,
     isInputLocked: sourcePanel.isInputLocked,
     agentModelId: sourcePanel.agentModelId,
-    agentFlavorId: sourcePanel.agentFlavorId,
-    agentFlavorColor: sourcePanel.agentFlavorColor,
+    agentPresetId: sourcePanel.agentPresetId,
+    agentPresetColor: sourcePanel.agentPresetColor,
     agentLaunchFlags: sourcePanel.agentLaunchFlags,
     env,
     command,

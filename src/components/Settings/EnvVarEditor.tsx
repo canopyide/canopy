@@ -31,7 +31,7 @@ export interface EnvVarEditorProps {
   suggestions?: EnvVarSuggestion[];
   /** HTML id used for the shared datalist element (must be unique per page). */
   datalistId?: string;
-  /** Optional "keyed" identity (e.g. flavorId) — used to reset draft rows when the parent context changes. */
+  /** Optional "keyed" identity (e.g. presetId) — used to reset draft rows when the parent context changes. */
   contextKey?: string;
   /** Placeholder text for the value input. */
   valuePlaceholder?: string;
@@ -113,7 +113,7 @@ export function EnvVarEditor({
   const lastEnvRef = useRef<Record<string, string>>(env);
   const lastContextKeyRef = useRef<string | undefined>(contextKey);
 
-  // When the parent's env changes externally (different flavor selected,
+  // When the parent's env changes externally (different preset selected,
   // programmatic reset), reseed the draft rows. We use a shallow compare on
   // keys+values so typing a value doesn't trigger a reseed.
   useEffect(() => {

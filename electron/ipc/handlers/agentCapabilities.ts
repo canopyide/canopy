@@ -83,10 +83,10 @@ export function registerAgentCapabilitiesHandlers(): () => void {
   };
   handlers.push(typedHandle(CHANNELS.AGENT_CAPABILITIES_IS_AGENT_ENABLED, handleIsAgentEnabled));
 
-  const handleGetCcrFlavors = async () => {
-    return CcrConfigService.getInstance().getFlavors();
+  const handleGetCcrPresets = async () => {
+    return CcrConfigService.getInstance().getPresets();
   };
-  handlers.push(typedHandle(CHANNELS.AGENT_CAPABILITIES_GET_CCR_FLAVORS, handleGetCcrFlavors));
+  handlers.push(typedHandle(CHANNELS.AGENT_CAPABILITIES_GET_CCR_PRESETS, handleGetCcrPresets));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

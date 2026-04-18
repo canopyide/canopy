@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useCallback } from "react";
-import { getAgentIds, getAgentConfig, getMergedFlavors, type AgentFlavor } from "@/config/agents";
+import { getAgentIds, getAgentConfig, getMergedPresets, type AgentPreset } from "@/config/agents";
 import { useAgentSettingsStore, useCliAvailabilityStore, useAgentPreferencesStore } from "@/store";
 import { cliAvailabilityClient } from "@/clients";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
@@ -16,8 +16,8 @@ import { DaintreeAgentIcon } from "@/components/icons";
 import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { SettingsSelect } from "./SettingsSelect";
-import { FlavorSelector } from "./FlavorSelector";
-import { FlavorColorPicker } from "./FlavorColorPicker";
+import { PresetSelector } from "./PresetSelector";
+import { PresetColorPicker } from "./PresetColorPicker";
 import { EnvVarEditor } from "./EnvVarEditor";
 import { actionService } from "@/services/ActionService";
 import { AgentHelpOutput } from "./AgentHelpOutput";
@@ -101,22 +101,22 @@ export function AgentSettings({
   const defaultAgent = useAgentPreferencesStore((state) => state.defaultAgent);
   const setDefaultAgent = useAgentPreferencesStore((state) => state.setDefaultAgent);
 
-  const ccrFlavorsByAgent = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent);
+  const ccrPresetsByAgent = useCcrPresetsStore((s) => s.ccrPresetsByAgent);
 
   // Rate limiting refs
   const lastAddTimeRef = useRef(0);
   const lastEditTimeRef = useRef(0);
 
-  // Flavor editing state
-  const [editingFlavorId, setEditingFlavorId] = useState<string | null>(null);
+  // Preset editing state
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
-  // Reset flavor-editing state when switching between agent subtabs. Without
-  // this, an in-progress rename on one agent's flavor would leak into a
+  // Reset preset-editing state when switching between agent subtabs. Without
+  // this, an in-progress rename on one agent's preset would leak into a
   // different agent's panel after a tab switch (and can silently commit the
   // rename to the wrong agent on blur).
   useEffect(() => {
-    setEditingFlavorId(null);
+    setEditingPresetId(null);
     setEditName("");
   }, [activeSubtab]);
 
@@ -127,24 +127,24 @@ export function AgentSettings({
     activeSubtab === GENERAL_SUBTAB_ID || activeSubtab === null || !agentIds.includes(activeSubtab);
   const activeAgentId = isGeneralActive ? null : activeSubtab;
 
-  // Stale-flavor cleanup in Settings: when a saved flavorId no longer resolves
-  // (deleted custom flavor, CCR route removed from config), clear it so the
+  // Stale-preset cleanup in Settings: when a saved presetId no longer resolves
+  // (deleted custom preset, CCR route removed from config), clear it so the
   // Settings UI and the stored settings agree. useAgentLauncher.ts does this
-  // cleanup on the next launch, but the UI otherwise shows vanilla with a
-  // zombie flavorId in storage until the user launches the agent again.
+  // cleanup on the next launch, but the UI otherwise shows default with a
+  // zombie presetId in storage until the user launches the agent again.
   // updateAgent/onSettingsChange are stable Zustand actions / prop callbacks;
   // calling them via useEffectEvent keeps them out of the deps array so the
-  // effect only reruns on activeAgentId/settings/ccrFlavorsByAgent changes.
-  const clearStaleFlavor = useEffectEvent(() => {
+  // effect only reruns on activeAgentId/settings/ccrPresetsByAgent changes.
+  const clearStalePreset = useEffectEvent(() => {
     if (!activeAgentId) return;
     const entry = settings?.agents?.[activeAgentId];
-    if (!entry?.flavorId) return;
-    const ccr = ccrFlavorsByAgent[activeAgentId];
-    const merged = getMergedFlavors(activeAgentId, entry.customFlavors, ccr);
-    const stillExists = merged.some((f) => f.id === entry.flavorId);
+    if (!entry?.presetId) return;
+    const ccr = ccrPresetsByAgent[activeAgentId];
+    const merged = getMergedPresets(activeAgentId, entry.customPresets, ccr);
+    const stillExists = merged.some((f) => f.id === entry.presetId);
     if (!stillExists) {
       void (async () => {
-        await updateAgent(activeAgentId, { flavorId: undefined });
+        await updateAgent(activeAgentId, { presetId: undefined });
         onSettingsChange?.();
       })();
     }
@@ -152,9 +152,9 @@ export function AgentSettings({
   useEffect(() => {
     void activeAgentId;
     void settings;
-    void ccrFlavorsByAgent;
-    clearStaleFlavor();
-  }, [activeAgentId, settings, ccrFlavorsByAgent]);
+    void ccrPresetsByAgent;
+    clearStalePreset();
+  }, [activeAgentId, settings, ccrPresetsByAgent]);
 
   const agentOptions = useMemo(
     () =>
@@ -356,39 +356,39 @@ export function AgentSettings({
               />
             </div>
 
-            {/* Flavor section — picker + all per-flavor settings inside */}
+            {/* Preset section — picker + all per-preset settings inside */}
             {(() => {
-              const ccrFlavors = ccrFlavorsByAgent[activeAgent.id];
-              const customFlavors = activeEntry.customFlavors;
-              const allFlavors = getMergedFlavors(activeAgent.id, customFlavors, ccrFlavors);
+              const ccrPresets = ccrPresetsByAgent[activeAgent.id];
+              const customPresets = activeEntry.customPresets;
+              const allPresets = getMergedPresets(activeAgent.id, customPresets, ccrPresets);
               const agentCfg = getAgentConfig(activeAgent.id);
               const supportsInlineMode = !!agentCfg?.capabilities?.inlineModeFlag;
 
-              const selectedFlavor = allFlavors.find((f) => f.id === activeEntry.flavorId);
-              const selectedIsCcr = selectedFlavor?.id.startsWith("ccr-") ?? false;
-              const selectedIsCustom = selectedFlavor?.id.startsWith("user-") ?? false;
-              const isVanilla = !selectedFlavor;
+              const selectedPreset = allPresets.find((f) => f.id === activeEntry.presetId);
+              const selectedIsCcr = selectedPreset?.id.startsWith("ccr-") ?? false;
+              const selectedIsCustom = selectedPreset?.id.startsWith("user-") ?? false;
+              const isDefault = !selectedPreset;
 
               // ── handlers ──────────────────────────────────────────────────
 
-              const handleAddFlavor = () => {
+              const handleAddPreset = () => {
                 const now = Date.now();
                 // Rate limiting: max 5 adds per minute (12s between adds).
-                // Skip in E2E mode — tests need to add multiple flavors in
+                // Skip in E2E mode — tests need to add multiple presets in
                 // rapid succession and the real rate limit only defends
                 // against abusive renderer loops, not orchestrated tests.
                 const e2eMode =
                   typeof window !== "undefined" && window.__DAINTREE_E2E_MODE__ === true;
                 if (!e2eMode && now - lastAddTimeRef.current < 12000) {
-                  console.warn("Rate limit exceeded for flavor creation");
+                  console.warn("Rate limit exceeded for preset creation");
                   return;
                 }
                 lastAddTimeRef.current = now;
 
                 // Disambiguate rapid-fire adds (E2E) where two clicks can
                 // land in the same millisecond — otherwise the IDs collide
-                // and the dedup in getMergedFlavors drops one.
-                const existing = activeEntry.customFlavors ?? [];
+                // and the dedup in getMergedPresets drops one.
+                const existing = activeEntry.customPresets ?? [];
                 let id = `user-${now}`;
                 if (existing.some((f) => f.id === id)) {
                   let suffix = 1;
@@ -399,7 +399,7 @@ export function AgentSettings({
                   ...existing,
                   {
                     id,
-                    name: "New Flavor",
+                    name: "New Preset",
                     env: Object.fromEntries(
                       (getAgentConfig(activeAgent.id)?.envSuggestions ?? [])
                         .filter((s) => s.defaultValue !== undefined)
@@ -408,20 +408,20 @@ export function AgentSettings({
                   },
                 ];
                 void (async () => {
-                  await updateAgent(activeAgent.id, { customFlavors: updated, flavorId: id });
+                  await updateAgent(activeAgent.id, { customPresets: updated, presetId: id });
                   onSettingsChange?.();
                 })();
               };
 
-              if (allFlavors.length === 0 && !customFlavors?.length) {
+              if (allPresets.length === 0 && !customPresets?.length) {
                 return (
                   <div
-                    id="agents-flavors"
+                    id="agents-presets"
                     className="space-y-3 pt-2 border-t border-daintree-border"
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <label className="text-sm font-medium text-daintree-text">Flavors</label>
+                        <label className="text-sm font-medium text-daintree-text">Presets</label>
                         <p className="text-xs text-daintree-text/40 select-text">
                           Variants with different env overrides and model routes
                         </p>
@@ -429,9 +429,9 @@ export function AgentSettings({
                       <Button
                         size="sm"
                         variant="ghost"
-                        data-testid="flavor-add-button"
+                        data-testid="preset-add-button"
                         className="text-daintree-accent hover:text-daintree-accent/80"
-                        onClick={handleAddFlavor}
+                        onClick={handleAddPreset}
                       >
                         <Plus size={14} />
                         Add
@@ -441,64 +441,64 @@ export function AgentSettings({
                 );
               }
 
-              const handleDuplicateFlavor = (flavor: AgentFlavor) => {
+              const handleDuplicatePreset = (preset: AgentPreset) => {
                 const id = `user-${Date.now()}`;
                 const updated = [
-                  ...(activeEntry.customFlavors ?? []),
-                  { ...flavor, id, name: `${flavor.name} (copy)` },
+                  ...(activeEntry.customPresets ?? []),
+                  { ...preset, id, name: `${preset.name} (copy)` },
                 ];
                 void (async () => {
-                  await updateAgent(activeAgent.id, { customFlavors: updated });
+                  await updateAgent(activeAgent.id, { customPresets: updated });
                   onSettingsChange?.();
                 })();
               };
 
-              const handleDeleteFlavor = (flavorId: string) => {
-                const updated = (activeEntry.customFlavors ?? []).filter((f) => f.id !== flavorId);
+              const handleDeletePreset = (presetId: string) => {
+                const updated = (activeEntry.customPresets ?? []).filter((f) => f.id !== presetId);
                 void (async () => {
-                  if (activeEntry.flavorId === flavorId) {
+                  if (activeEntry.presetId === presetId) {
                     await updateAgent(activeAgent.id, {
-                      customFlavors: updated,
-                      flavorId: undefined,
+                      customPresets: updated,
+                      presetId: undefined,
                     });
                   } else {
-                    await updateAgent(activeAgent.id, { customFlavors: updated });
+                    await updateAgent(activeAgent.id, { customPresets: updated });
                   }
                   onSettingsChange?.();
                 })();
               };
 
-              const handleUpdateFlavor = (flavorId: string, patch: Partial<AgentFlavor>) => {
-                const updated = (activeEntry.customFlavors ?? []).map((f) =>
-                  f.id === flavorId ? { ...f, ...patch } : f
+              const handleUpdatePreset = (presetId: string, patch: Partial<AgentPreset>) => {
+                const updated = (activeEntry.customPresets ?? []).map((f) =>
+                  f.id === presetId ? { ...f, ...patch } : f
                 );
                 void (async () => {
                   try {
-                    await updateAgent(activeAgent.id, { customFlavors: updated });
+                    await updateAgent(activeAgent.id, { customPresets: updated });
                     onSettingsChange?.();
                   } catch (error) {
-                    console.error("Failed to update flavor:", error);
+                    console.error("Failed to update preset:", error);
                   }
                 })();
               };
 
-              const handleStartEdit = (flavor: AgentFlavor) => {
-                if (!flavor.name || flavor.name.length > 200) {
-                  console.warn("Invalid flavor name length");
+              const handleStartEdit = (preset: AgentPreset) => {
+                if (!preset.name || preset.name.length > 200) {
+                  console.warn("Invalid preset name length");
                   return;
                 }
-                if (/[<>'"&]/.test(flavor.name)) {
-                  console.warn("Flavor name contains dangerous characters");
+                if (/[<>'"&]/.test(preset.name)) {
+                  console.warn("Preset name contains dangerous characters");
                   return;
                 }
-                setEditingFlavorId(flavor.id);
-                setEditName(flavor.name);
+                setEditingPresetId(preset.id);
+                setEditName(preset.name);
               };
 
               const handleCommitEdit = () => {
                 const trimmed = editName.trim();
                 if (
-                  editingFlavorId &&
+                  editingPresetId &&
                   trimmed &&
                   trimmed.length <= 200 &&
                   !/[<>'"&]/.test(trimmed)
@@ -506,36 +506,36 @@ export function AgentSettings({
                   const now = Date.now();
                   if (now - lastEditTimeRef.current < 100) return;
                   lastEditTimeRef.current = now;
-                  handleUpdateFlavor(editingFlavorId, { name: trimmed });
+                  handleUpdatePreset(editingPresetId, { name: trimmed });
                 }
-                setEditingFlavorId(null);
+                setEditingPresetId(null);
                 setEditName("");
               };
 
               const handleCancelEdit = () => {
-                setEditingFlavorId(null);
+                setEditingPresetId(null);
                 setEditName("");
               };
 
               // ── reusable behavioral settings block ───────────────────────
-              // For vanilla/CCR: reads from activeEntry and writes to agent.
-              // For custom: reads from the flavor and writes via handleUpdateFlavor.
+              // For default/CCR: reads from activeEntry and writes to agent.
+              // For custom: reads from the preset and writes via handleUpdatePreset.
 
               const skipPerms = selectedIsCustom
-                ? (selectedFlavor!.dangerousEnabled ?? false)
+                ? (selectedPreset!.dangerousEnabled ?? false)
                 : (activeEntry.dangerousEnabled ?? false);
 
               const inlineMode = selectedIsCustom
-                ? (selectedFlavor!.inlineMode ?? activeEntry.inlineMode ?? true)
+                ? (selectedPreset!.inlineMode ?? activeEntry.inlineMode ?? true)
                 : (activeEntry.inlineMode ?? true);
 
               const customFlags = selectedIsCustom
-                ? (selectedFlavor!.customFlags ?? "")
+                ? (selectedPreset!.customFlags ?? "")
                 : (activeEntry.customFlags ?? "");
 
               const onSkipPermsToggle = () => {
                 if (selectedIsCustom) {
-                  handleUpdateFlavor(selectedFlavor!.id, { dangerousEnabled: !skipPerms });
+                  handleUpdatePreset(selectedPreset!.id, { dangerousEnabled: !skipPerms });
                 } else {
                   void (async () => {
                     await updateAgent(activeAgent.id, { dangerousEnabled: !skipPerms });
@@ -546,7 +546,7 @@ export function AgentSettings({
 
               const onInlineModeToggle = () => {
                 if (selectedIsCustom) {
-                  handleUpdateFlavor(selectedFlavor!.id, { inlineMode: !inlineMode });
+                  handleUpdatePreset(selectedPreset!.id, { inlineMode: !inlineMode });
                 } else {
                   void (async () => {
                     await updateAgent(activeAgent.id, { inlineMode: !inlineMode });
@@ -557,10 +557,10 @@ export function AgentSettings({
 
               const onCustomFlagsChange = (value: string) => {
                 if (selectedIsCustom) {
-                  const updated = (activeEntry.customFlavors ?? []).map((f) =>
-                    f.id === selectedFlavor!.id ? { ...f, customFlags: value } : f
+                  const updated = (activeEntry.customPresets ?? []).map((f) =>
+                    f.id === selectedPreset!.id ? { ...f, customFlags: value } : f
                   );
-                  void updateAgent(activeAgent.id, { customFlavors: updated });
+                  void updateAgent(activeAgent.id, { customPresets: updated });
                 } else {
                   void updateAgent(activeAgent.id, { customFlags: value });
                 }
@@ -640,10 +640,10 @@ export function AgentSettings({
               );
 
               return (
-                <div id="agents-flavors" className="space-y-3 pt-2 border-t border-daintree-border">
+                <div id="agents-presets" className="space-y-3 pt-2 border-t border-daintree-border">
                   <div className="flex items-center justify-between">
                     <div>
-                      <label className="text-sm font-medium text-daintree-text">Flavors</label>
+                      <label className="text-sm font-medium text-daintree-text">Presets</label>
                       <p className="text-xs text-daintree-text/40 select-text">
                         Variants with different env overrides and model routes
                       </p>
@@ -651,24 +651,24 @@ export function AgentSettings({
                     <Button
                       size="sm"
                       variant="ghost"
-                      data-testid="flavor-add-button"
+                      data-testid="preset-add-button"
                       className="text-daintree-accent hover:text-daintree-accent/80"
-                      onClick={handleAddFlavor}
+                      onClick={handleAddPreset}
                     >
                       <Plus size={14} />
                       Add
                     </Button>
                   </div>
 
-                  {/* Unified flavor picker — Popover listbox with color swatches and grouping */}
-                  <FlavorSelector
-                    selectedFlavorId={activeEntry.flavorId ?? undefined}
-                    allFlavors={allFlavors}
-                    ccrFlavors={ccrFlavors ?? []}
-                    customFlavors={customFlavors ?? []}
-                    onChange={(flavorId) => {
+                  {/* Unified preset picker — Popover listbox with color swatches and grouping */}
+                  <PresetSelector
+                    selectedPresetId={activeEntry.presetId ?? undefined}
+                    allPresets={allPresets}
+                    ccrPresets={ccrPresets ?? []}
+                    customPresets={customPresets ?? []}
+                    onChange={(presetId) => {
                       void (async () => {
-                        await updateAgent(activeAgent.id, { flavorId: flavorId ?? undefined });
+                        await updateAgent(activeAgent.id, { presetId: presetId ?? undefined });
                         onSettingsChange?.();
                       })();
                     }}
@@ -682,32 +682,32 @@ export function AgentSettings({
                     ))}
                   </datalist>
 
-                  {/* Detail view for selected CCR flavor */}
-                  {selectedFlavor && selectedIsCcr && (
+                  {/* Detail view for selected CCR preset */}
+                  {selectedPreset && selectedIsCcr && (
                     <div className="rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30 divide-y divide-daintree-border/50">
                       <div className="px-3 py-2.5 space-y-2">
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-medium text-daintree-text">
-                            {selectedFlavor.name.replace(/^CCR:\s*/, "")}
+                            {selectedPreset.name.replace(/^CCR:\s*/, "")}
                           </span>
                           <span
-                            data-testid="flavor-badge-auto"
+                            data-testid="preset-badge-auto"
                             className="text-[10px] text-daintree-text/40 bg-daintree-text/10 px-1.5 py-0.5 rounded"
                           >
                             auto
                           </span>
                           <button
                             className="ml-auto text-daintree-text/30 hover:text-daintree-text transition-colors"
-                            onClick={() => handleDuplicateFlavor(selectedFlavor)}
-                            aria-label={`Duplicate ${selectedFlavor.name.replace(/^CCR:\s*/, "")}`}
+                            onClick={() => handleDuplicatePreset(selectedPreset)}
+                            aria-label={`Duplicate ${selectedPreset.name.replace(/^CCR:\s*/, "")}`}
                             title="Duplicate as custom"
                           >
                             <Copy size={13} />
                           </button>
                         </div>
-                        {selectedFlavor.env && Object.keys(selectedFlavor.env).length > 0 && (
+                        {selectedPreset.env && Object.keys(selectedPreset.env).length > 0 && (
                           <div className="space-y-1">
-                            {Object.entries(selectedFlavor.env).map(([k, v]) => (
+                            {Object.entries(selectedPreset.env).map(([k, v]) => (
                               <div
                                 key={k}
                                 className="flex items-center gap-2 font-mono text-[11px]"
@@ -719,9 +719,9 @@ export function AgentSettings({
                             ))}
                           </div>
                         )}
-                        {selectedFlavor.description && (
+                        {selectedPreset.description && (
                           <p className="text-[11px] text-daintree-text/40 select-text">
-                            {selectedFlavor.description}
+                            {selectedPreset.description}
                           </p>
                         )}
                       </div>
@@ -729,23 +729,23 @@ export function AgentSettings({
                     </div>
                   )}
 
-                  {/* Detail view for selected custom flavor */}
-                  {selectedFlavor && selectedIsCustom && (
+                  {/* Detail view for selected custom preset */}
+                  {selectedPreset && selectedIsCustom && (
                     <div
-                      id="agents-flavor-detail"
+                      id="agents-preset-detail"
                       className="rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30 divide-y divide-daintree-border/50"
                     >
                       {/* Name row */}
                       <div className="flex items-center gap-2 px-3 py-2.5">
                         {/* Color picker — preset palette with Clear + Custom escape hatch */}
-                        <FlavorColorPicker
-                          color={selectedFlavor.color}
+                        <PresetColorPicker
+                          color={selectedPreset.color}
                           agentColor={getAgentConfig(activeAgent.id)?.color ?? "#888888"}
-                          onChange={(color) => handleUpdateFlavor(selectedFlavor.id, { color })}
-                          ariaLabel="Flavor color"
+                          onChange={(color) => handleUpdatePreset(selectedPreset.id, { color })}
+                          ariaLabel="Preset color"
                         />
 
-                        {editingFlavorId === selectedFlavor.id ? (
+                        {editingPresetId === selectedPreset.id ? (
                           <input
                             className="flex-1 text-sm font-medium bg-daintree-bg border border-daintree-accent rounded px-2 py-0.5 focus:outline-none"
                             value={editName}
@@ -763,17 +763,17 @@ export function AgentSettings({
                               }
                             }}
                             autoFocus
-                            data-testid="flavor-edit-input"
-                            placeholder="Flavor name..."
+                            data-testid="preset-edit-input"
+                            placeholder="Preset name..."
                           />
                         ) : (
                           <button
                             className="flex items-center gap-1.5 text-sm font-medium text-daintree-text hover:text-daintree-accent transition-colors text-left"
-                            onClick={() => handleStartEdit(selectedFlavor)}
-                            aria-label={`Edit ${selectedFlavor.name}`}
+                            onClick={() => handleStartEdit(selectedPreset)}
+                            aria-label={`Edit ${selectedPreset.name}`}
                             title="Click to rename"
                           >
-                            <span>{selectedFlavor.name}</span>
+                            <span>{selectedPreset.name}</span>
                             <Pencil size={12} className="text-daintree-text/30" />
                           </button>
                         )}
@@ -782,22 +782,22 @@ export function AgentSettings({
                         <div className="flex items-center gap-1.5 ml-auto shrink-0">
                           <button
                             className="text-daintree-text/30 hover:text-daintree-text transition-colors"
-                            onClick={() => handleDuplicateFlavor(selectedFlavor)}
-                            aria-label={`Duplicate ${selectedFlavor.name}`}
+                            onClick={() => handleDuplicatePreset(selectedPreset)}
+                            aria-label={`Duplicate ${selectedPreset.name}`}
                             title="Duplicate"
                           >
                             <Copy size={13} />
                           </button>
                           <button
                             className="text-daintree-text/30 hover:text-status-error transition-colors"
-                            onClick={() => handleDeleteFlavor(selectedFlavor.id)}
-                            aria-label={`Delete ${selectedFlavor.name}`}
+                            onClick={() => handleDeletePreset(selectedPreset.id)}
+                            aria-label={`Delete ${selectedPreset.name}`}
                             title="Delete"
                           >
                             <Trash2 size={13} />
                           </button>
                           <span
-                            data-testid="flavor-badge-custom"
+                            data-testid="preset-badge-custom"
                             className="text-[10px] text-daintree-accent bg-daintree-accent/10 px-1.5 py-0.5 rounded"
                           >
                             custom
@@ -811,12 +811,12 @@ export function AgentSettings({
                           Env overrides
                         </span>
                         <EnvVarEditor
-                          env={selectedFlavor.env ?? {}}
-                          onChange={(env) => handleUpdateFlavor(selectedFlavor.id, { env })}
+                          env={selectedPreset.env ?? {}}
+                          onChange={(env) => handleUpdatePreset(selectedPreset.id, { env })}
                           suggestions={getAgentConfig(activeAgent.id)?.envSuggestions ?? []}
                           datalistId="env-key-suggestions"
-                          contextKey={selectedFlavor.id}
-                          data-testid="flavor-env-editor"
+                          contextKey={selectedPreset.id}
+                          data-testid="preset-env-editor"
                         />
                         {envVarReference}
                       </div>
@@ -826,11 +826,11 @@ export function AgentSettings({
                     </div>
                   )}
 
-                  {/* Vanilla settings */}
-                  {isVanilla && (
+                  {/* Default settings */}
+                  {isDefault && (
                     <div
                       className={
-                        allFlavors.length > 0
+                        allPresets.length > 0
                           ? "rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30 px-3 py-2.5"
                           : ""
                       }
@@ -842,12 +842,12 @@ export function AgentSettings({
               );
             })()}
 
-            {/* Global env vars — agent-level, applied to every launch regardless of flavor */}
+            {/* Global env vars — agent-level, applied to every launch regardless of preset */}
             <div id="agents-global-env" className="space-y-2 pt-2 border-t border-daintree-border">
               <div>
                 <label className="text-sm font-medium text-daintree-text">Global env vars</label>
                 <p className="text-xs text-daintree-text/40 select-text">
-                  Applied to every launch of this agent. Flavor-specific vars take precedence.
+                  Applied to every launch of this agent. Preset-specific vars take precedence.
                 </p>
               </div>
               <EnvVarEditor

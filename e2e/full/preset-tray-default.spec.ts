@@ -8,33 +8,33 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
-  addCustomFlavor,
-} from "../helpers/flavors";
+  addCustomPreset,
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
 /**
- * Tests 101–106: Agent tray vanilla-launch behavior.
+ * Tests 101–106: Agent tray default-launch behavior.
  *
  * These tests verify that:
- * - The tray shows a split-button (submenu trigger) when an agent has flavors.
- * - Clicking the left-area text (not the chevron) dispatches a vanilla launch
+ * - The tray shows a split-button (submenu trigger) when an agent has presets.
+ * - Clicking the left-area text (not the chevron) dispatches a default launch
  *   and closes the tray without opening the submenu.
- * - Hovering the chevron area opens the submenu and lists all flavors.
+ * - Hovering the chevron area opens the submenu and lists all presets.
  *
  * All panel-launch assertions are guarded: if Claude is not in a ready state
  * (binary not installed in CI), the block is skipped gracefully.
  */
-test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
+test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-tray-vanilla" });
+    const fixtureDir = createFixtureRepo({ name: "preset-tray-default" });
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
       fixtureDir,
-      "Flavor Tray Vanilla Test"
+      "Preset Tray Default Test"
     );
   });
 
@@ -54,7 +54,7 @@ test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
     await ctx.window.waitForTimeout(T_SETTLE);
   };
 
-  test("101. Without flavors: Claude appears as a plain menu item (no chevron)", async () => {
+  test("101. Without presets: Claude appears as a plain menu item (no chevron)", async () => {
     removeCcrConfig();
     await ctx.window.waitForTimeout(T_SETTLE);
 
@@ -66,7 +66,7 @@ test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
       return;
     }
 
-    // No submenu trigger should be present when there are no flavors
+    // No submenu trigger should be present when there are no presets
     const submenuTrigger = menu.locator('[data-testid="submenu-trigger"]', { hasText: "Claude" });
     const hasSubmenu = await submenuTrigger.isVisible({ timeout: T_SHORT }).catch(() => false);
     expect(hasSubmenu).toBe(false);
@@ -74,7 +74,7 @@ test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
     await closeTray();
   });
 
-  test("102. With CCR flavors: Claude appears as a split-button (submenu trigger)", async () => {
+  test("102. With CCR presets: Claude appears as a split-button (submenu trigger)", async () => {
     writeCcrConfig([
       { id: "tray-a", name: "Tray Model A", model: "tray-model-a" },
       { id: "tray-b", name: "Tray Model B", model: "tray-model-b" },
@@ -123,15 +123,15 @@ test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
     const submenuContent = ctx.window.locator('[data-testid="submenu-content"]');
     await expect(submenuContent).toBeVisible({ timeout: T_MEDIUM });
 
-    // "Vanilla" must be the first item
+    // "Default" must be the first item
     const firstItem = submenuContent.locator('[role="menuitem"]').first();
     const firstText = (await firstItem.textContent()) ?? "";
-    expect(firstText.toLowerCase()).toContain("vanilla");
+    expect(firstText.toLowerCase()).toContain("default");
 
     await closeTray();
   });
 
-  test("104. Submenu lists all available CCR flavors", async () => {
+  test("104. Submenu lists all available CCR presets", async () => {
     await openTray();
 
     const menu = ctx.window.locator('[role="menu"]');
@@ -192,9 +192,9 @@ test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
     expect(submenuOpened).toBe(false);
   });
 
-  test("106. Tray submenu also shows custom flavors alongside CCR flavors", async () => {
+  test("106. Tray submenu also shows custom presets alongside CCR presets", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
     await ctx.window.locator(SEL.settings.closeButton).click();
     await ctx.window.waitForTimeout(T_SETTLE);
@@ -224,7 +224,7 @@ test.describe.serial("Flavors: Tray Vanilla Launch (101–106)", () => {
 
     const items = submenuContent.locator('[role="menuitem"]');
     const count = await items.count();
-    // Vanilla + 2 CCR + 1 custom = at least 4
+    // Default + 2 CCR + 1 custom = at least 4
     expect(count).toBeGreaterThanOrEqual(4);
 
     await closeTray();

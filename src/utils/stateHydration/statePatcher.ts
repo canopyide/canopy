@@ -5,7 +5,7 @@ import type { AddPanelOptionsBase } from "@shared/types/addPanelOptions";
 import {
   isRegisteredAgent,
   getAgentConfig,
-  getMergedFlavor,
+  getMergedPreset,
   sanitizeAgentEnv,
 } from "@/config/agents";
 import {
@@ -16,7 +16,7 @@ import {
 import { logWarn } from "@/utils/logger";
 import { inferKind as inferKindShared } from "@shared/utils/inferPanelKind";
 import { getDeserializer } from "@/config/panelKindSerialisers";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 
 /**
  * Args for building addPanel options from hydration data.
@@ -68,9 +68,21 @@ export interface SavedTerminalData {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  agentPresetId?: string;
+  agentPresetColor?: string;
+  /** @deprecated pre-#5459 legacy key; read-only fallback, never written. */
   agentFlavorId?: string;
+  /** @deprecated pre-#5459 legacy key; read-only fallback, never written. */
   agentFlavorColor?: string;
   extensionState?: Record<string, unknown>;
+}
+
+function readPresetId(saved: SavedTerminalData): string | undefined {
+  return saved.agentPresetId ?? saved.agentFlavorId;
+}
+
+function readPresetColor(saved: SavedTerminalData): string | undefined {
+  return saved.agentPresetColor ?? saved.agentFlavorColor;
 }
 
 interface BackendTerminalData {
@@ -183,8 +195,8 @@ export function buildArgsForBackendTerminal(
     agentSessionId: backendTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: backendTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: backendTerminal.agentModelId ?? saved.agentModelId,
-    agentFlavorId: saved.agentFlavorId,
-    agentFlavorColor: saved.agentFlavorColor,
+    agentPresetId: readPresetId(saved),
+    agentPresetColor: readPresetColor(saved),
     extensionState: saved.extensionState,
   };
 }
@@ -235,8 +247,8 @@ export function buildArgsForReconnectedFallback(
     agentSessionId: reconnectedTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: reconnectedTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: reconnectedTerminal.agentModelId ?? saved.agentModelId,
-    agentFlavorId: saved.agentFlavorId,
-    agentFlavorColor: saved.agentFlavorColor,
+    agentPresetId: readPresetId(saved),
+    agentPresetColor: readPresetColor(saved),
     extensionState: saved.extensionState,
   };
 }
@@ -261,8 +273,8 @@ export function buildArgsForRespawn(
   const isAgentPanel = kind === "agent" || Boolean(effectiveAgentId);
   const agentId = effectiveAgentId;
   let command = saved.command?.trim() || undefined;
-  let flavorEnv: Record<string, string> | undefined;
-  let flavor: ReturnType<typeof getMergedFlavor> | undefined;
+  let presetEnv: Record<string, string> | undefined;
+  let preset: ReturnType<typeof getMergedPreset> | undefined;
 
   if (agentId) {
     const agentConfig = getAgentConfig(agentId);
@@ -271,27 +283,28 @@ export function buildArgsForRespawn(
     const hasPersistedFlags = Boolean(persistedFlags && persistedFlags.length > 0);
     const baseEntry = agentSettings?.agents?.[agentId] ?? {};
     const shareClipboardDirectory = baseEntry.shareClipboardDirectory as boolean | undefined;
-    const ccrFlavors = useCcrFlavorsStore.getState().ccrFlavorsByAgent[agentId];
-    flavor = saved.agentFlavorId
-      ? getMergedFlavor(agentId, saved.agentFlavorId, baseEntry.customFlavors as never, ccrFlavors)
+    const ccrPresets = useCcrPresetsStore.getState().ccrPresetsByAgent[agentId];
+    const savedPresetId = readPresetId(saved);
+    preset = savedPresetId
+      ? getMergedPreset(agentId, savedPresetId, baseEntry.customPresets as never, ccrPresets)
       : undefined;
-    const effectiveEntry = flavor
+    const effectiveEntry = preset
       ? {
           ...baseEntry,
-          ...(flavor.dangerousEnabled !== undefined && {
-            dangerousEnabled: flavor.dangerousEnabled,
+          ...(preset.dangerousEnabled !== undefined && {
+            dangerousEnabled: preset.dangerousEnabled,
           }),
-          ...(flavor.customFlags !== undefined && { customFlags: flavor.customFlags }),
-          ...(flavor.inlineMode !== undefined && { inlineMode: flavor.inlineMode }),
+          ...(preset.customFlags !== undefined && { customFlags: preset.customFlags }),
+          ...(preset.inlineMode !== undefined && { inlineMode: preset.inlineMode }),
         }
       : baseEntry;
-    // Merge: global env (base) overridden by flavor env (flavor wins on conflicts)
+    // Merge: global env (base) overridden by preset env (preset wins on conflicts)
     const sanitizedGlobal = sanitizeAgentEnv(
       (baseEntry.globalEnv ?? {}) as Record<string, unknown>
     );
-    const sanitizedFlavor = flavor?.env;
-    if (sanitizedGlobal || sanitizedFlavor) {
-      flavorEnv = { ...sanitizedGlobal, ...sanitizedFlavor };
+    const sanitizedPreset = preset?.env;
+    if (sanitizedGlobal || sanitizedPreset) {
+      presetEnv = { ...sanitizedGlobal, ...sanitizedPreset };
     }
 
     const buildFromPersistedFlags = () =>
@@ -310,7 +323,7 @@ export function buildArgsForRespawn(
         command = generateAgentCommand(baseCommand, effectiveEntry, agentId, {
           clipboardDirectory,
           modelId: saved.agentModelId,
-          flavorArgs: flavor?.args?.join(" "),
+          presetArgs: preset?.args?.join(" "),
         });
       }
     } else if (hasPersistedFlags) {
@@ -319,7 +332,7 @@ export function buildArgsForRespawn(
       command = generateAgentCommand(baseCommand, effectiveEntry, agentId, {
         clipboardDirectory,
         modelId: saved.agentModelId,
-        flavorArgs: flavor?.args?.join(" "),
+        presetArgs: preset?.args?.join(" "),
       });
     }
   }
@@ -328,17 +341,19 @@ export function buildArgsForRespawn(
   const isDevPreview = kind === "dev-preview";
   const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
 
-  // Stale-flavor split-brain: when saved.agentFlavorId was set but the flavor
-  // no longer resolves (deleted custom flavor, CCR route removed from config),
-  // clear agentFlavorId/agentFlavorColor and strip the flavor suffix from the
+  // Stale-preset split-brain: when saved.agentPresetId was set but the preset
+  // no longer resolves (deleted custom preset, CCR route removed from config),
+  // clear agentPresetId/agentPresetColor and strip the preset suffix from the
   // title so the respawned panel doesn't lie about its identity — it's now
-  // running vanilla env/command, so it should look like vanilla.
-  const flavorWasStale = isAgentPanel && !!saved.agentFlavorId && !flavor;
-  const respawnAgentFlavorId = flavorWasStale ? undefined : saved.agentFlavorId;
-  const respawnAgentFlavorColor = flavorWasStale
+  // running default env/command, so it should look like default.
+  const savedPresetIdForRespawn = readPresetId(saved);
+  const savedPresetColorForRespawn = readPresetColor(saved);
+  const presetWasStale = isAgentPanel && !!savedPresetIdForRespawn && !preset;
+  const respawnAgentPresetId = presetWasStale ? undefined : savedPresetIdForRespawn;
+  const respawnAgentPresetColor = presetWasStale
     ? undefined
-    : (flavor?.color ?? saved.agentFlavorColor);
-  const respawnTitle = flavorWasStale
+    : (preset?.color ?? savedPresetColorForRespawn);
+  const respawnTitle = presetWasStale
     ? (agentId ? getAgentConfig(agentId)?.name : saved.title) || saved.title
     : saved.title;
 
@@ -361,9 +376,9 @@ export function buildArgsForRespawn(
     exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
     agentLaunchFlags: saved.agentLaunchFlags,
     agentModelId: saved.agentModelId,
-    agentFlavorId: respawnAgentFlavorId,
-    agentFlavorColor: respawnAgentFlavorColor,
-    env: flavorEnv,
+    agentPresetId: respawnAgentPresetId,
+    agentPresetColor: respawnAgentPresetColor,
+    env: presetEnv,
     extensionState: saved.extensionState,
     restore: true,
   };
@@ -383,8 +398,8 @@ export function buildArgsForNonPtyRecreation(
     location,
     requestedId: saved.id,
     exitBehavior: saved.exitBehavior,
-    agentFlavorId: saved.agentFlavorId,
-    agentFlavorColor: saved.agentFlavorColor,
+    agentPresetId: readPresetId(saved),
+    agentPresetColor: readPresetColor(saved),
     extensionState: saved.extensionState,
   };
 

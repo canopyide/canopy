@@ -74,12 +74,12 @@ vi.mock("@/config/agents", () => ({
     name: id.charAt(0).toUpperCase() + id.slice(1),
     icon: () => null,
   }),
-  getMergedFlavors: () => [],
+  getMergedPresets: () => [],
 }));
 
-vi.mock("@/store/ccrFlavorsStore", () => ({
-  useCcrFlavorsStore: (selector: (s: { ccrFlavorsByAgent: Record<string, unknown> }) => unknown) =>
-    selector({ ccrFlavorsByAgent: {} }),
+vi.mock("@/store/ccrPresetsStore", () => ({
+  useCcrPresetsStore: (selector: (s: { ccrPresetsByAgent: Record<string, unknown> }) => unknown) =>
+    selector({ ccrPresetsByAgent: {} }),
 }));
 
 vi.mock("@/hooks/app/useAgentDiscoveryOnboarding", () => ({

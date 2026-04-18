@@ -8,21 +8,21 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
-  addCustomFlavor,
-} from "../helpers/flavors";
+  addCustomPreset,
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
-test.describe.serial("Flavors: Context Menu Integration (93–96)", () => {
+test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-ctx-menu" });
+    const fixtureDir = createFixtureRepo({ name: "preset-ctx-menu" });
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
       fixtureDir,
-      "Flavor Context Menu Test"
+      "Preset Context Menu Test"
     );
   });
 
@@ -47,7 +47,7 @@ test.describe.serial("Flavors: Context Menu Integration (93–96)", () => {
     await ctx.window.waitForTimeout(T_SETTLE);
   };
 
-  test("93. Right-click Claude toolbar shows 'Launch with Flavor' submenu", async () => {
+  test("93. Right-click Claude toolbar shows 'Launch with Preset' submenu", async () => {
     writeCcrConfig([
       { id: "ctx-a", name: "Ctx Model A", model: "ctx-model-a" },
       { id: "ctx-b", name: "Ctx Model B", model: "ctx-model-b" },
@@ -58,18 +58,18 @@ test.describe.serial("Flavors: Context Menu Integration (93–96)", () => {
 
     const contextMenu = ctx.window.locator(SEL.contextMenu.content);
     if (await contextMenu.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-      const flavorSubmenu = contextMenu.getByText(/Launch with Flavor/i);
-      if (await flavorSubmenu.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-        await expect(flavorSubmenu).toBeVisible({ timeout: T_SHORT });
+      const presetSubmenu = contextMenu.getByText(/Launch with Preset/i);
+      if (await presetSubmenu.isVisible({ timeout: T_SHORT }).catch(() => false)) {
+        await expect(presetSubmenu).toBeVisible({ timeout: T_SHORT });
       }
     }
 
     await dismissContextMenu();
   });
 
-  test("94. Context menu submenu lists all CCR and custom flavors", async () => {
+  test("94. Context menu submenu lists all CCR and custom presets", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await ctx.window.locator(SEL.settings.closeButton).click();
@@ -79,9 +79,9 @@ test.describe.serial("Flavors: Context Menu Integration (93–96)", () => {
 
     const contextMenu = ctx.window.locator(SEL.contextMenu.content);
     if (await contextMenu.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-      const flavorTrigger = contextMenu.getByText(/Launch with Flavor/i);
-      if (await flavorTrigger.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-        await flavorTrigger.hover();
+      const presetTrigger = contextMenu.getByText(/Launch with Preset/i);
+      if (await presetTrigger.isVisible({ timeout: T_SHORT }).catch(() => false)) {
+        await presetTrigger.hover();
         await ctx.window.waitForTimeout(T_SETTLE);
 
         const submenuContent = ctx.window.locator('[data-testid="context-submenu-content"]');
@@ -96,14 +96,14 @@ test.describe.serial("Flavors: Context Menu Integration (93–96)", () => {
     await dismissContextMenu();
   });
 
-  test("95. Click a flavor from context menu — no crash, panel opens", async () => {
+  test("95. Click a preset from context menu — no crash, panel opens", async () => {
     await rightClickClaudeToolbar();
 
     const contextMenu = ctx.window.locator(SEL.contextMenu.content);
     if (await contextMenu.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-      const flavorTrigger = contextMenu.getByText(/Launch with Flavor/i);
-      if (await flavorTrigger.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-        await flavorTrigger.hover();
+      const presetTrigger = contextMenu.getByText(/Launch with Preset/i);
+      if (await presetTrigger.isVisible({ timeout: T_SHORT }).catch(() => false)) {
+        await presetTrigger.hover();
         await ctx.window.waitForTimeout(T_SETTLE);
 
         const submenuContent = ctx.window.locator('[data-testid="context-submenu-content"]');
@@ -127,9 +127,9 @@ test.describe.serial("Flavors: Context Menu Integration (93–96)", () => {
     await dismissContextMenu();
   });
 
-  test("96. Checkmark or highlight next to currently saved default flavor", async () => {
+  test("96. Checkmark or highlight next to currently saved default preset", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    const select = ctx.window.locator(SEL.flavor.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.defaultSelect);
     await expect(select).toBeVisible({ timeout: T_MEDIUM });
     const options = select.locator("option");
     const count = await options.count();
@@ -145,9 +145,9 @@ test.describe.serial("Flavors: Context Menu Integration (93–96)", () => {
 
     const contextMenu = ctx.window.locator(SEL.contextMenu.content);
     if (await contextMenu.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-      const flavorTrigger = contextMenu.getByText(/Launch with Flavor/i);
-      if (await flavorTrigger.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-        await flavorTrigger.hover();
+      const presetTrigger = contextMenu.getByText(/Launch with Preset/i);
+      if (await presetTrigger.isVisible({ timeout: T_SHORT }).catch(() => false)) {
+        await presetTrigger.hover();
         await ctx.window.waitForTimeout(T_SETTLE);
 
         const submenuContent = ctx.window.locator('[data-testid="context-submenu-content"]');

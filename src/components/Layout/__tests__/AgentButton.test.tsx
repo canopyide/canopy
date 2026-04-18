@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 /**
- * AgentButton — toolbar button with optional flavor picker.
+ * AgentButton — toolbar button with optional preset picker.
  *
- * Covers the MRU (most-recently-used) flavor launch semantics and the
+ * Covers the MRU (most-recently-used) preset launch semantics and the
  * >= 2 threshold for showing the split/chevron UI. These are UX regressions
- * corrected during the flavor PR review:
+ * corrected during the preset PR review:
  *
- *  - Primary-button click launches with the saved `flavorId` when present,
- *    otherwise launches vanilla (no flavorId). Research called out that
- *    always-vanilla on the primary button contradicts the industry-standard
+ *  - Primary-button click launches with the saved `presetId` when present,
+ *    otherwise launches default (no presetId). Research called out that
+ *    always-default on the primary button contradicts the industry-standard
  *    split-button convention.
  *
- *  - The chevron/dropdown only appears when there are at least 2 flavors.
- *    A single flavor is implicitly the default and doesn't warrant a picker.
+ *  - The chevron/dropdown only appears when there are at least 2 presets.
+ *    A single preset is implicitly the default and doesn't warrant a picker.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
@@ -21,8 +21,8 @@ import type { AgentSettings, CliAvailability } from "@shared/types";
 const dispatchMock = vi.fn();
 
 let mockSettings: AgentSettings | null = null;
-let mockCcrFlavorsByAgent: Record<string, Array<{ id: string; name: string }>> = {};
-let mockMergedFlavorsFn: (
+let mockCcrPresetsByAgent: Record<string, Array<{ id: string; name: string }>> = {};
+let mockMergedPresetsFn: (
   agentId: string
 ) => Array<{ id: string; name: string; color?: string }> = () => [];
 
@@ -40,10 +40,10 @@ vi.mock("@/store/agentSettingsStore", () => ({
   ),
 }));
 
-vi.mock("@/store/ccrFlavorsStore", () => ({
-  useCcrFlavorsStore: (
-    selector: (s: { ccrFlavorsByAgent: Record<string, unknown[]> }) => unknown
-  ) => selector({ ccrFlavorsByAgent: mockCcrFlavorsByAgent }),
+vi.mock("@/store/ccrPresetsStore", () => ({
+  useCcrPresetsStore: (
+    selector: (s: { ccrPresetsByAgent: Record<string, unknown[]> }) => unknown
+  ) => selector({ ccrPresetsByAgent: mockCcrPresetsByAgent }),
 }));
 
 vi.mock("@/store/panelStore", () => ({
@@ -70,7 +70,7 @@ vi.mock("@/config/agents", () => ({
     name: id.charAt(0).toUpperCase() + id.slice(1),
     icon: () => null,
   }),
-  getMergedFlavors: (agentId: string) => mockMergedFlavorsFn(agentId),
+  getMergedPresets: (agentId: string) => mockMergedPresetsFn(agentId),
 }));
 
 vi.mock("@/lib/colorUtils", () => ({
@@ -110,7 +110,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="flavor-dropdown">{children}</div>
+    <div data-testid="preset-dropdown">{children}</div>
   ),
   DropdownMenuItem: ({
     children,
@@ -123,7 +123,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   }) => (
     <div
       role="menuitem"
-      data-testid="flavor-item"
+      data-testid="preset-item"
       className={className}
       onClick={(e) => onSelect?.(e as unknown as Event)}
     >
@@ -131,9 +131,9 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     </div>
   ),
   DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="flavor-menu-label">{children}</div>
+    <div data-testid="preset-menu-label">{children}</div>
   ),
-  DropdownMenuSeparator: () => <hr data-testid="flavor-menu-separator" />,
+  DropdownMenuSeparator: () => <hr data-testid="preset-menu-separator" />,
 }));
 
 vi.mock("@/components/ui/context-menu", () => ({
@@ -158,34 +158,34 @@ function settingsWith(agents: Record<string, unknown>): AgentSettings {
   return { agents } as unknown as AgentSettings;
 }
 
-describe("AgentButton flavor UX", () => {
+describe("AgentButton preset UX", () => {
   beforeEach(() => {
     dispatchMock.mockClear();
     mockSettings = null;
-    mockCcrFlavorsByAgent = {};
-    mockMergedFlavorsFn = () => [];
+    mockCcrPresetsByAgent = {};
+    mockMergedPresetsFn = () => [];
   });
 
   describe("split threshold", () => {
-    it("renders plain button (no chevron) when agent has 0 flavors", () => {
-      mockMergedFlavorsFn = () => [];
+    it("renders plain button (no chevron) when agent has 0 presets", () => {
+      mockMergedPresetsFn = () => [];
       const { queryByTestId } = render(
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
       );
       expect(queryByTestId("chevron-icon")).toBeNull();
     });
 
-    it("renders plain button (no chevron) when agent has exactly 1 flavor", () => {
-      mockMergedFlavorsFn = () => [{ id: "only", name: "Only" }];
+    it("renders plain button (no chevron) when agent has exactly 1 preset", () => {
+      mockMergedPresetsFn = () => [{ id: "only", name: "Only" }];
       const { queryByTestId } = render(
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
       );
-      // Threshold is >= 2, so a single flavor should not trigger the split UI.
+      // Threshold is >= 2, so a single preset should not trigger the split UI.
       expect(queryByTestId("chevron-icon")).toBeNull();
     });
 
-    it("renders split button (with chevron) when agent has >= 2 flavors", () => {
-      mockMergedFlavorsFn = () => [
+    it("renders split button (with chevron) when agent has >= 2 presets", () => {
+      mockMergedPresetsFn = () => [
         { id: "a", name: "Alpha" },
         { id: "b", name: "Beta" },
       ];
@@ -197,9 +197,9 @@ describe("AgentButton flavor UX", () => {
   });
 
   describe("MRU primary-click launch", () => {
-    it("primary click with no savedFlavorId dispatches without flavorId (vanilla fallthrough)", () => {
+    it("primary click with no savedPresetId dispatches without presetId (default fallthrough)", () => {
       mockSettings = settingsWith({ claude: {} });
-      mockMergedFlavorsFn = () => [];
+      mockMergedPresetsFn = () => [];
 
       const { getByRole } = render(
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
@@ -214,9 +214,9 @@ describe("AgentButton flavor UX", () => {
       );
     });
 
-    it("primary click with savedFlavorId dispatches with that flavorId (MRU)", () => {
-      mockSettings = settingsWith({ claude: { flavorId: "user-blue" } });
-      mockMergedFlavorsFn = () => [
+    it("primary click with savedPresetId dispatches with that presetId (MRU)", () => {
+      mockSettings = settingsWith({ claude: { presetId: "user-blue" } });
+      mockMergedPresetsFn = () => [
         { id: "user-blue", name: "Blue" },
         { id: "user-red", name: "Red" },
       ];
@@ -230,16 +230,16 @@ describe("AgentButton flavor UX", () => {
 
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
-        { agentId: "claude", flavorId: "user-blue" },
+        { agentId: "claude", presetId: "user-blue" },
         { source: "user" }
       );
     });
 
-    it("primary click with savedFlavorId dispatches flavorId even when agent has only 1 flavor (no split)", () => {
-      // With < 2 flavors we render a plain button, but MRU must still work —
-      // the user picked this flavor from Settings and expects it on next click.
-      mockSettings = settingsWith({ claude: { flavorId: "user-alpha" } });
-      mockMergedFlavorsFn = () => [{ id: "user-alpha", name: "Alpha" }];
+    it("primary click with savedPresetId dispatches presetId even when agent has only 1 preset (no split)", () => {
+      // With < 2 presets we render a plain button, but MRU must still work —
+      // the user picked this preset from Settings and expects it on next click.
+      mockSettings = settingsWith({ claude: { presetId: "user-alpha" } });
+      mockMergedPresetsFn = () => [{ id: "user-alpha", name: "Alpha" }];
 
       const { getByRole } = render(
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
@@ -248,15 +248,15 @@ describe("AgentButton flavor UX", () => {
 
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
-        { agentId: "claude", flavorId: "user-alpha" },
+        { agentId: "claude", presetId: "user-alpha" },
         { source: "user" }
       );
     });
   });
 
   describe("dropdown grouping", () => {
-    it("does not label groups when only CCR flavors are present", () => {
-      mockMergedFlavorsFn = () => [
+    it("does not label groups when only CCR presets are present", () => {
+      mockMergedPresetsFn = () => [
         { id: "ccr-a", name: "CCR: A" },
         { id: "ccr-b", name: "CCR: B" },
       ];
@@ -270,7 +270,7 @@ describe("AgentButton flavor UX", () => {
     });
 
     it("labels both groups when CCR and custom coexist", () => {
-      mockMergedFlavorsFn = () => [
+      mockMergedPresetsFn = () => [
         { id: "ccr-a", name: "CCR: A" },
         { id: "user-beta", name: "Beta" },
       ];
@@ -279,7 +279,7 @@ describe("AgentButton flavor UX", () => {
       const { queryAllByTestId } = render(
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
       );
-      const labels = queryAllByTestId("flavor-menu-label");
+      const labels = queryAllByTestId("preset-menu-label");
       const texts = labels.map((el) => el.textContent);
       expect(texts).toContain("CCR Routes");
       expect(texts).toContain("Custom");
@@ -289,7 +289,7 @@ describe("AgentButton flavor UX", () => {
   describe("not-ready state", () => {
     it("primary click when CLI is not installed opens settings (does not launch)", () => {
       mockSettings = settingsWith({ claude: {} });
-      mockMergedFlavorsFn = () => [];
+      mockMergedPresetsFn = () => [];
 
       const { getByRole } = render(
         <AgentButton type="claude" availability={"missing" as unknown as CliAvailability[string]} />

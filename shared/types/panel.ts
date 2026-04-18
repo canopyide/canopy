@@ -252,10 +252,10 @@ export interface PtyPanelData extends BasePanelData {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time for per-panel model selection */
   agentModelId?: string;
-  /** Flavor ID used at launch time, for live color lookup */
-  agentFlavorId?: string;
-  /** Flavor brand color (hex) captured at launch time; overridden by live settings lookup */
-  agentFlavorColor?: string;
+  /** Preset ID used at launch time, for live color lookup */
+  agentPresetId?: string;
+  /** Preset brand color (hex) captured at launch time; overridden by live settings lookup */
+  agentPresetColor?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
   /** Timestamp when this terminal was created */
@@ -421,10 +421,10 @@ export interface TerminalInstance {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time for per-panel model selection */
   agentModelId?: string;
-  /** Flavor ID used at launch time, for live color lookup */
-  agentFlavorId?: string;
-  /** Flavor brand color (hex) captured at launch time; overridden by live settings lookup */
-  agentFlavorColor?: string;
+  /** Preset ID used at launch time, for live color lookup */
+  agentPresetId?: string;
+  /** Preset brand color (hex) captured at launch time; overridden by live settings lookup */
+  agentPresetColor?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
   /** Timestamp when this terminal was created */

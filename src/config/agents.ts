@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import {
   AGENT_REGISTRY as BASE_AGENT_REGISTRY,
   type AgentConfig as BaseAgentConfig,
-  type AgentFlavor,
+  type AgentPreset,
   getEffectiveAgentConfig,
   getEffectiveAgentIds,
   isEffectivelyRegisteredAgent,
@@ -10,7 +10,7 @@ import {
 } from "../../shared/config/agentRegistry";
 
 export { getAgentDisplayTitle };
-export type { AgentFlavor };
+export type { AgentPreset };
 import { resolveAgentIcon } from "./agentIcons";
 
 export interface AgentIconProps {
@@ -85,23 +85,23 @@ export function sanitizeAgentEnv(
   return Object.keys(sanitized).length > 0 ? sanitized : undefined;
 }
 
-export function getMergedFlavors(
+export function getMergedPresets(
   agentId: string,
-  customFlavors?: AgentFlavor[],
-  ccrFlavors?: AgentFlavor[]
-): AgentFlavor[] {
-  const registryFlavors = ccrFlavors ?? getAgentConfig(agentId)?.flavors ?? [];
-  const custom = customFlavors ?? [];
+  customPresets?: AgentPreset[],
+  ccrPresets?: AgentPreset[]
+): AgentPreset[] {
+  const registryPresets = ccrPresets ?? getAgentConfig(agentId)?.presets ?? [];
+  const custom = customPresets ?? [];
 
-  // Validate and sanitize flavor objects
-  const validateFlavor = (flavor: AgentFlavor): AgentFlavor | null => {
+  // Validate and sanitize preset objects
+  const validatePreset = (preset: AgentPreset): AgentPreset | null => {
     // Trim name first so a whitespace-only string is caught by the empty check below
-    const trimmedName = flavor.name?.trim() ?? "";
-    if (!flavor.id || !trimmedName) return null;
+    const trimmedName = preset.name?.trim() ?? "";
+    if (!preset.id || !trimmedName) return null;
     if (trimmedName.length > 200) return null;
     if (/[<>]/.test(trimmedName)) return null; // Block XSS-relevant angle brackets only
-    if (flavor.id.length > 100) return null;
-    if (!/^[a-zA-Z0-9_.-]+$/.test(flavor.id)) return null; // Only safe ID chars
+    if (preset.id.length > 100) return null;
+    if (!/^[a-zA-Z0-9_.-]+$/.test(preset.id)) return null; // Only safe ID chars
 
     // Sanitize args array — filter out non-string, empty, injection-containing, or oversized entries
     const sanitizeArgs = (args?: string[]): string[] | undefined => {
@@ -122,60 +122,60 @@ export function getMergedFlavors(
     };
 
     return {
-      ...flavor,
+      ...preset,
       name: trimmedName,
-      env: sanitizeAgentEnv(flavor.env),
-      args: sanitizeArgs(flavor.args),
+      env: sanitizeAgentEnv(preset.env),
+      args: sanitizeArgs(preset.args),
       dangerousEnabled:
-        typeof flavor.dangerousEnabled === "boolean" ? flavor.dangerousEnabled : undefined,
+        typeof preset.dangerousEnabled === "boolean" ? preset.dangerousEnabled : undefined,
       customFlags:
-        typeof flavor.customFlags === "string" &&
-        !flavor.customFlags.includes(";") &&
-        !flavor.customFlags.includes("|") &&
-        !flavor.customFlags.includes("$(") &&
-        !flavor.customFlags.includes("`")
-          ? flavor.customFlags.slice(0, 10000)
+        typeof preset.customFlags === "string" &&
+        !preset.customFlags.includes(";") &&
+        !preset.customFlags.includes("|") &&
+        !preset.customFlags.includes("$(") &&
+        !preset.customFlags.includes("`")
+          ? preset.customFlags.slice(0, 10000)
           : undefined,
-      inlineMode: typeof flavor.inlineMode === "boolean" ? flavor.inlineMode : undefined,
+      inlineMode: typeof preset.inlineMode === "boolean" ? preset.inlineMode : undefined,
       color:
-        typeof flavor.color === "string" &&
-        /^#[0-9a-fA-F]{3,4}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$/.test(flavor.color)
-          ? flavor.color
+        typeof preset.color === "string" &&
+        /^#[0-9a-fA-F]{3,4}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$/.test(preset.color)
+          ? preset.color
           : undefined,
     };
   };
 
-  const sanitizedRegistry = registryFlavors.map(validateFlavor).filter(Boolean) as AgentFlavor[];
-  const sanitizedCustom = custom.map(validateFlavor).filter(Boolean) as AgentFlavor[];
+  const sanitizedRegistry = registryPresets.map(validatePreset).filter(Boolean) as AgentPreset[];
+  const sanitizedCustom = custom.map(validatePreset).filter(Boolean) as AgentPreset[];
 
-  // Remove duplicates by ID (custom flavors take precedence)
+  // Remove duplicates by ID (custom presets take precedence)
   const seenIds = new Set<string>();
-  const result: AgentFlavor[] = [];
+  const result: AgentPreset[] = [];
 
   // Add custom first (they override registry)
-  for (const flavor of [...sanitizedCustom, ...sanitizedRegistry]) {
-    if (!seenIds.has(flavor.id)) {
-      seenIds.add(flavor.id);
-      result.push(flavor);
+  for (const preset of [...sanitizedCustom, ...sanitizedRegistry]) {
+    if (!seenIds.has(preset.id)) {
+      seenIds.add(preset.id);
+      result.push(preset);
     }
   }
 
   return result;
 }
 
-export function getMergedFlavor(
+export function getMergedPreset(
   agentId: string,
-  flavorId: string | undefined,
-  customFlavors?: AgentFlavor[],
-  ccrFlavors?: AgentFlavor[]
-): AgentFlavor | undefined {
-  if (flavorId !== undefined && !flavorId) return undefined;
+  presetId: string | undefined,
+  customPresets?: AgentPreset[],
+  ccrPresets?: AgentPreset[]
+): AgentPreset | undefined {
+  if (presetId !== undefined && !presetId) return undefined;
   const config = getAgentConfig(agentId);
-  const merged = getMergedFlavors(agentId, customFlavors, ccrFlavors ?? config?.flavors ?? []);
-  if (flavorId === undefined) {
-    const defaultId = config?.defaultFlavorId;
+  const merged = getMergedPresets(agentId, customPresets, ccrPresets ?? config?.presets ?? []);
+  if (presetId === undefined) {
+    const defaultId = config?.defaultPresetId;
     if (defaultId) return merged.find((f) => f.id === defaultId);
     return merged[0];
   }
-  return merged.find((f) => f.id === flavorId);
+  return merged.find((f) => f.id === presetId);
 }

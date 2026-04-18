@@ -1087,11 +1087,11 @@ export interface ElectronAPI {
     getAgentMetadata(agentId: string): Promise<AgentMetadata | null>;
     /** Check if agent is enabled/available */
     isAgentEnabled(agentId: string): Promise<boolean>;
-    /** Subscribe to CCR flavor updates from main process */
-    onFlavorsUpdated(
+    /** Subscribe to CCR preset updates from main process */
+    onPresetsUpdated(
       callback: (payload: {
         agentId: string;
-        flavors: Array<{
+        presets: Array<{
           id: string;
           name: string;
           description?: string;
@@ -1104,8 +1104,8 @@ export interface ElectronAPI {
         }>;
       }) => void
     ): () => void;
-    /** Fetch current CCR flavors from main process */
-    getCcrFlavors(): Promise<
+    /** Fetch current CCR presets from main process */
+    getCcrPresets(): Promise<
       Array<{
         id: string;
         name: string;

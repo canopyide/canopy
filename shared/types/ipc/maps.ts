@@ -11,7 +11,7 @@ import type {
 } from "../project.js";
 import type { GitInitOptions, GitInitProgressEvent, GitInitResult } from "./gitInit.js";
 import type { AgentSettings } from "../agentSettings.js";
-import type { AgentFlavor } from "../../config/agentRegistry.js";
+import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
 import type { KeyAction } from "../keymap.js";
 import type { KeybindingImportResult, MicPermissionStatus, VoiceInputSettings } from "./api.js";
@@ -1413,9 +1413,9 @@ export interface IpcInvokeMap {
     args: [agentId: string];
     result: boolean;
   };
-  "agent-capabilities:get-ccr-flavors": {
+  "agent-capabilities:get-ccr-presets": {
     args: [];
-    result: AgentFlavor[];
+    result: AgentPreset[];
   };
 
   // Daintree CLI install channels
@@ -2366,8 +2366,8 @@ export interface IpcEventMap {
   // Onboarding checklist push (main → renderer)
   "onboarding:checklist-push": ChecklistState;
 
-  // Agent flavor events
-  "agent-flavors:updated": { agentId: string; flavors: AgentFlavor[] };
+  // Agent preset events
+  "agent-presets:updated": { agentId: string; presets: AgentPreset[] };
 }
 
 export type IpcInvokeArgs<K extends keyof IpcInvokeMap> = IpcInvokeMap[K]["args"];

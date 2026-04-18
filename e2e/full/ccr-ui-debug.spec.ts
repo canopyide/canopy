@@ -8,8 +8,8 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
-  getFlavorRowByName,
-} from "../helpers/flavors";
+  getPresetRowByName,
+} from "../helpers/presets";
 
 let ctx: AppContext;
 test.describe("CCR UI Debug", () => {
@@ -24,19 +24,19 @@ test.describe("CCR UI Debug", () => {
     if (ctx?.app) await closeApp(ctx.app);
   });
 
-  test("flavors section appears after navigating to Claude settings", async () => {
+  test("presets section appears after navigating to Claude settings", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
     // Wait up to 10s for the section to appear
-    const section = ctx.window.locator(SEL.flavor.section);
+    const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: 10_000 });
   });
 
-  test("CCR flavor row is visible", async () => {
+  test("CCR preset row is visible", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    // Select the CCR flavor in the Popover, then assert the detail view
-    // renders with an `auto` badge (the indicator that it's a CCR flavor).
-    const detail = await getFlavorRowByName(ctx.window, "UI Debug");
+    // Select the CCR preset in the Popover, then assert the detail view
+    // renders with an `auto` badge (the indicator that it's a CCR preset).
+    const detail = await getPresetRowByName(ctx.window, "UI Debug");
     await expect(detail).toBeVisible({ timeout: T_MEDIUM });
-    await expect(detail.locator(SEL.flavor.autoBadge)).toBeVisible();
+    await expect(detail.locator(SEL.preset.autoBadge)).toBeVisible();
   });
 });

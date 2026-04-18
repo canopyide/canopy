@@ -368,7 +368,7 @@ export async function setupWindowServices(
     // Auto-updater
     autoUpdaterService.initialize();
 
-    // CCR config — discover Claude Code Router models as agent flavors
+    // CCR config — discover Claude Code Router models as agent presets
     try {
       const { CcrConfigService } = await import("../services/CcrConfigService.js");
       const ccrService = CcrConfigService.getInstance();

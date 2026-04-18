@@ -10,11 +10,11 @@ vi.mock("../../ipc/utils.js", () => ({
 }));
 
 vi.mock("../../ipc/channels.js", () => ({
-  CHANNELS: { AGENT_FLAVORS_UPDATED: "agent-flavors:updated" },
+  CHANNELS: { AGENT_PRESETS_UPDATED: "agent-presets:updated" },
 }));
 
 vi.mock("../config/agentRegistry.js", () => ({
-  setAgentFlavors: vi.fn(),
+  setAgentPresets: vi.fn(),
 }));
 
 import { readFile } from "fs/promises";
@@ -29,26 +29,26 @@ describe("CcrConfigService", () => {
     vi.clearAllMocks();
   });
 
-  describe("discoverFlavors", () => {
+  describe("discoverPresets", () => {
     it("returns empty array when config file does not exist", async () => {
       mockReadFile.mockRejectedValue(new Error("ENOENT"));
-      const flavors = await service.discoverFlavors();
-      expect(flavors).toEqual([]);
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
     });
 
     it("returns empty array when config has no models", async () => {
       mockReadFile.mockResolvedValue(JSON.stringify({}));
-      const flavors = await service.discoverFlavors();
-      expect(flavors).toEqual([]);
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
     });
 
     it("returns empty array when models array is empty", async () => {
       mockReadFile.mockResolvedValue(JSON.stringify({ models: [] }));
-      const flavors = await service.discoverFlavors();
-      expect(flavors).toEqual([]);
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
     });
 
-    it("maps CCR model entries to AgentFlavor objects", async () => {
+    it("maps CCR model entries to AgentPreset objects", async () => {
       mockReadFile.mockResolvedValue(
         JSON.stringify({
           models: [
@@ -63,11 +63,11 @@ describe("CcrConfigService", () => {
         })
       );
 
-      const flavors = await service.discoverFlavors();
+      const presets = await service.discoverPresets();
 
-      expect(flavors).toHaveLength(2);
+      expect(presets).toHaveLength(2);
 
-      expect(flavors[0]).toEqual({
+      expect(presets[0]).toEqual({
         id: "ccr-deepseek",
         name: "CCR: DeepSeek V3",
         description: "Routed via Claude Code Router (deepseek)",
@@ -77,7 +77,7 @@ describe("CcrConfigService", () => {
         },
       });
 
-      expect(flavors[1]).toEqual({
+      expect(presets[1]).toEqual({
         id: "ccr-gpt5",
         name: "CCR: gpt-5.4",
         description: "Routed via Claude Code Router (gpt5)",
@@ -94,10 +94,10 @@ describe("CcrConfigService", () => {
         })
       );
 
-      const flavors = await service.discoverFlavors();
-      expect(flavors).toHaveLength(1);
-      expect(flavors[0].id).toBe("ccr-custom-model");
-      expect(flavors[0].name).toBe("CCR: custom-model");
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-custom-model");
+      expect(presets[0].name).toBe("CCR: custom-model");
     });
 
     it("filters out entries with neither id nor model", async () => {
@@ -107,15 +107,15 @@ describe("CcrConfigService", () => {
         })
       );
 
-      const flavors = await service.discoverFlavors();
-      expect(flavors).toHaveLength(1);
-      expect(flavors[0].id).toBe("ccr-valid");
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
     });
 
     it("handles invalid JSON", async () => {
       mockReadFile.mockResolvedValue("not json at all");
-      const flavors = await service.discoverFlavors();
-      expect(flavors).toEqual([]);
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
     });
 
     it("includes apiKeyEnv as template in env", async () => {
@@ -125,17 +125,17 @@ describe("CcrConfigService", () => {
         })
       );
 
-      const flavors = await service.discoverFlavors();
-      expect(flavors[0].env?.ANTHROPIC_API_KEY).toBe("${MY_API_KEY}");
+      const presets = await service.discoverPresets();
+      expect(presets[0].env?.ANTHROPIC_API_KEY).toBe("${MY_API_KEY}");
     });
   });
 
-  describe("getFlavors", () => {
+  describe("getPresets", () => {
     it("returns empty array before loading", () => {
-      expect(service.getFlavors()).toEqual([]);
+      expect(service.getPresets()).toEqual([]);
     });
 
-    it("returns cached flavors after loadAndApply", async () => {
+    it("returns cached presets after loadAndApply", async () => {
       mockReadFile.mockResolvedValue(
         JSON.stringify({
           models: [{ id: "test", model: "test-model" }],
@@ -143,7 +143,7 @@ describe("CcrConfigService", () => {
       );
 
       await service.loadAndApply();
-      expect(service.getFlavors()).toHaveLength(1);
+      expect(service.getPresets()).toHaveLength(1);
     });
   });
 
@@ -219,7 +219,7 @@ describe("CcrConfigService", () => {
       expect(broadcastMock.mock.calls.length).toBeGreaterThan(initialCalls);
     });
 
-    it("does NOT broadcast when flavors are fully unchanged", async () => {
+    it("does NOT broadcast when presets are fully unchanged", async () => {
       const { broadcastToRenderer } = await import("../../ipc/utils.js");
       const broadcastMock = vi.mocked(broadcastToRenderer);
       const config = JSON.stringify({
