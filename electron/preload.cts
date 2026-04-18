@@ -815,6 +815,8 @@ const CHANNELS = {
   GIT_SNAPSHOT_LIST: "git:snapshot-list",
   GIT_SNAPSHOT_REVERT: "git:snapshot-revert",
   GIT_SNAPSHOT_DELETE: "git:snapshot-delete",
+  GIT_ABORT_REPOSITORY_OPERATION: "git:abort-repository-operation",
+  GIT_CONTINUE_REPOSITORY_OPERATION: "git:continue-repository-operation",
 
   // Portal channels
   PORTAL_CREATE: "portal:create",
@@ -2096,6 +2098,12 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
 
     getStagingStatus: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
+
+    abortRepositoryOperation: (cwd: string) =>
+      _unwrappingInvoke(CHANNELS.GIT_ABORT_REPOSITORY_OPERATION, cwd),
+
+    continueRepositoryOperation: (cwd: string) =>
+      _unwrappingInvoke(CHANNELS.GIT_CONTINUE_REPOSITORY_OPERATION, cwd),
 
     compareWorktrees: (
       cwd: string,
