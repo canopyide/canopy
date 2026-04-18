@@ -70,7 +70,9 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
       holdTimerRef.current = null;
     }
     sessionRef.current = createIdleSession();
-    setOverlay((prev) => (prev.visible ? { visible: false, selectedIndex: 1, projects: [] } : prev));
+    setOverlay((prev) =>
+      prev.visible ? { visible: false, selectedIndex: 1, projects: [] } : prev
+    );
   }, []);
 
   const commitSelection = useCallback((session: SessionState) => {
@@ -80,8 +82,7 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
     const liveTarget = state.projects.find((p) => p.id === snapshotTarget.id);
     if (!liveTarget) return;
     if (state.currentProject?.id === liveTarget.id) return;
-    const switchFn =
-      liveTarget.status === "background" ? state.reopenProject : state.switchProject;
+    const switchFn = liveTarget.status === "background" ? state.reopenProject : state.switchProject;
     Promise.resolve(switchFn(liveTarget.id)).catch((error) => {
       notify({
         type: "error",

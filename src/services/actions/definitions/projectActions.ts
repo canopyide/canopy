@@ -12,8 +12,7 @@ async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void>
   const otherProjects = sorted.filter((p) => p.id !== currentId);
   if (otherProjects.length === 0) return;
 
-  const target =
-    direction === "older" ? otherProjects[0] : otherProjects[otherProjects.length - 1];
+  const target = direction === "older" ? otherProjects[0] : otherProjects[otherProjects.length - 1];
   if (!target) return;
 
   try {
