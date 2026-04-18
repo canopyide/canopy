@@ -91,6 +91,7 @@ describe("PtyClient adversarial", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   function createReadyClient(
@@ -198,8 +199,10 @@ describe("PtyClient adversarial", () => {
       status: "paused-backpressure",
       timestamp: 1,
     });
+    // Pin jitter to the floor so the timing is deterministic.
+    vi.spyOn(Math, "random").mockReturnValue(0);
     mockChild.emit("exit", 1);
-    vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(200);
     restartedChild.emit("message", { type: "ready" });
     restartedChild.emit("message", {
       type: "terminal-status",
@@ -659,6 +662,44 @@ describe("PtyClient adversarial", () => {
     expect(privateRtt.lastPingTime).toBeNull();
     expect(privateRtt.rttSamplesSinceLastLog).toBe(0);
     expect(privateRtt.lastRttLogTime).toBe(0);
+  });
+
+  it("AUTO_RESTART_FLOOR_IS_HONORED", () => {
+    createReadyClient();
+    shared.forkMock.mockClear();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+
+    mockChild.emit("exit", 1);
+
+    vi.advanceTimersByTime(99);
+    expect(shared.forkMock).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(shared.forkMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("AUTO_RESTART_NEVER_EXCEEDS_CAP", () => {
+    createReadyClient();
+    shared.forkMock.mockClear();
+    // Push jitter to its upper bound for attempt 1 (cap = 2000ms).
+    vi.spyOn(Math, "random").mockReturnValue(0.9999);
+
+    mockChild.emit("exit", 1);
+
+    vi.advanceTimersByTime(1999);
+    expect(shared.forkMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DISPOSE_BEFORE_RESTART_TIMER_FIRES_PREVENTS_RESPAWN", () => {
+    const client = createReadyClient();
+    shared.forkMock.mockClear();
+    vi.spyOn(Math, "random").mockReturnValue(0.9999);
+
+    mockChild.emit("exit", 1);
+    client.dispose();
+    vi.advanceTimersByTime(10_000);
+
+    expect(shared.forkMock).not.toHaveBeenCalled();
   });
 
   it("DISPOSE_RESOLVES_ORPHANED_PENDING_OPS", async () => {

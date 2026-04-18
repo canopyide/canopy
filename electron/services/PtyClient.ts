@@ -513,7 +513,11 @@ export class PtyClient extends EventEmitter {
         // Try to restart
         if (this.restartAttempts < this.config.maxRestartAttempts) {
           this.restartAttempts++;
-          const delay = Math.min(1000 * Math.pow(2, this.restartAttempts), 10000);
+          // Full jitter with floor: break deterministic retry lockstep while
+          // keeping a minimum wait so instant-fail crashes don't spin the CPU.
+          const cap = Math.min(1000 * Math.pow(2, this.restartAttempts), 10000);
+          const floor = 100;
+          const delay = floor + Math.floor(Math.random() * Math.max(0, cap - floor));
           console.log(
             `[PtyClient] Restarting Host in ${delay}ms (attempt ${this.restartAttempts}/${this.config.maxRestartAttempts})`
           );
