@@ -44,7 +44,7 @@ describe("computeFrecencyScore", () => {
       computeFrecencyScore(5.0, NOW - days * 24 * 60 * 60 * 1000, NOW)
     );
     for (let i = 1; i < scores.length; i++) {
-      expect(scores[i]).toBeLessThan(scores[i - 1]);
+      expect(scores[i]).toBeLessThan(scores[i - 1]!);
     }
   });
 

@@ -3,6 +3,8 @@ import type { TerminalState } from "./terminal.js";
 import type { TerminalConfig } from "./config.js";
 import type { ActionFrecencyEntry } from "../actions.js";
 
+export type { ActionFrecencyEntry };
+
 /** Saved recipe terminal */
 export interface SavedRecipeTerminal {
   /** Terminal type */

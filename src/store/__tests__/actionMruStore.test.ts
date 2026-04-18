@@ -67,12 +67,12 @@ describe("actionMruStore", () => {
     expect(entries.size).toBe(3);
 
     const sorted = useActionMruStore.getState().getSortedActionMruList();
-    expect(sorted[0].id).toBe("action.0");
-    expect(sorted[1].id).toBe("action.1");
-    expect(sorted[2].id).toBe("action.2");
+    expect(sorted[0]!.id).toBe("action.0");
+    expect(sorted[1]!.id).toBe("action.1");
+    expect(sorted[2]!.id).toBe("action.2");
 
-    expect(sorted[0].score).toBeGreaterThan(sorted[1].score);
-    expect(sorted[1].score).toBeGreaterThan(sorted[2].score);
+    expect(sorted[0]!.score).toBeGreaterThan(sorted[1]!.score);
+    expect(sorted[1]!.score).toBeGreaterThan(sorted[2]!.score);
   });
 
   it("hydrates from new ActionFrecencyEntry[] format", () => {
@@ -85,9 +85,9 @@ describe("actionMruStore", () => {
 
     const sorted = useActionMruStore.getState().getSortedActionMruList();
     expect(sorted.length).toBe(3);
-    expect(sorted[0].id).toBe("action.2");
-    expect(sorted[1].id).toBe("action.0");
-    expect(sorted[2].id).toBe("action.1");
+    expect(sorted[0]!.id).toBe("action.2");
+    expect(sorted[1]!.id).toBe("action.0");
+    expect(sorted[2]!.id).toBe("action.1");
   });
 
   it("truncates hydrated list to 20", () => {
@@ -118,9 +118,9 @@ describe("actionMruStore", () => {
     useActionMruStore.getState().hydrateActionMru(entries);
 
     const sorted = useActionMruStore.getState().getSortedActionMruList();
-    expect(sorted[0].id).toBe("high");
-    expect(sorted[1].id).toBe("mid");
-    expect(sorted[2].id).toBe("low");
+    expect(sorted[0]!.id).toBe("high");
+    expect(sorted[1]!.id).toBe("mid");
+    expect(sorted[2]!.id).toBe("low");
   });
 
   it("getSortedActionMruList uses lastAccessedAt as tiebreaker", () => {
@@ -131,8 +131,8 @@ describe("actionMruStore", () => {
     useActionMruStore.getState().hydrateActionMru(entries);
 
     const sorted = useActionMruStore.getState().getSortedActionMruList();
-    expect(sorted[0].id).toBe("newer");
-    expect(sorted[1].id).toBe("older");
+    expect(sorted[0]!.id).toBe("newer");
+    expect(sorted[1]!.id).toBe("older");
   });
 
   it("getSortedActionMruList uses id as final tiebreaker", () => {
@@ -143,8 +143,8 @@ describe("actionMruStore", () => {
     useActionMruStore.getState().hydrateActionMru(entries);
 
     const sorted = useActionMruStore.getState().getSortedActionMruList();
-    expect(sorted[0].id).toBe("a.action");
-    expect(sorted[1].id).toBe("z.action");
+    expect(sorted[0]!.id).toBe("a.action");
+    expect(sorted[1]!.id).toBe("z.action");
   });
 
   it("deduplicates entries on hydration", () => {

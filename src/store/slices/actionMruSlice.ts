@@ -1,10 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { ActionFrecencyEntry } from "@shared/types/actions";
-import {
-  computeFrecencyScore,
-  FRECENCY_COLD_START,
-  FRECENCY_INCREMENT,
-} from "@shared/utils/frecency";
+import { computeFrecencyScore, FRECENCY_INCREMENT } from "@shared/utils/frecency";
 
 const MRU_MAX_SIZE = 20;
 const SCORE_FLOOR = 0.5;
