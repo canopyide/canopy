@@ -252,5 +252,57 @@ describe("projectStore addProject", () => {
         expect.objectContaining({ title: "Failed to add project" })
       );
     });
+
+    it("shows an error toast when markSafeDirectory fails and does not retry", async () => {
+      projectClientMock.openDialog.mockResolvedValueOnce("/tmp/dubious-repo");
+      projectClientMock.add.mockRejectedValueOnce(new Error("detected dubious ownership"));
+      markSafeDirectoryMock.mockRejectedValueOnce(new Error("git binary not on PATH"));
+
+      await useProjectStore.getState().addProject();
+      const payload = notifyMock.mock.calls[0]![0] as {
+        actions: Array<{ onClick: () => void | Promise<void> }>;
+      };
+
+      const addCallsBefore = projectClientMock.add.mock.calls.length;
+      await payload.actions[0]!.onClick();
+
+      expect(markSafeDirectoryMock).toHaveBeenCalledWith("/tmp/dubious-repo");
+      expect(notifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "error",
+          title: "Failed to mark as safe",
+          message: "git binary not on PATH",
+        })
+      );
+      // Retry must NOT happen when the mark-as-safe step failed.
+      expect(projectClientMock.add.mock.calls.length).toBe(addCallsBefore);
+    });
+
+    it("does not re-show the dubious toast when the retry also fails", async () => {
+      projectClientMock.openDialog.mockResolvedValueOnce("/tmp/dubious-repo");
+      // First add: dubious ownership → toast
+      projectClientMock.add.mockRejectedValueOnce(new Error("detected dubious ownership"));
+
+      await useProjectStore.getState().addProject();
+      const payload = notifyMock.mock.calls[0]![0] as {
+        actions: Array<{ onClick: () => void | Promise<void> }>;
+      };
+
+      // Retry add: same dubious error (symlink case) — must NOT show another
+      // "Repository ownership issue" toast; falls through to generic instead.
+      projectClientMock.add.mockRejectedValueOnce(new Error("detected dubious ownership"));
+      notifyMock.mockClear();
+
+      await payload.actions[0]!.onClick();
+
+      const ownershipToasts = notifyMock.mock.calls.filter(
+        (call) => (call[0] as { title?: string }).title === "Repository ownership issue"
+      );
+      expect(ownershipToasts).toHaveLength(0);
+      const genericToasts = notifyMock.mock.calls.filter(
+        (call) => (call[0] as { title?: string }).title === "Failed to add project"
+      );
+      expect(genericToasts.length).toBeGreaterThan(0);
+    });
   });
 });

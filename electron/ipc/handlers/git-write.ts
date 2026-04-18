@@ -565,10 +565,22 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     if (!path.isAbsolute(repoPath)) {
       throw new Error("Invalid path: must be absolute");
     }
+    // Git compares safe.directory against the canonical repo path. If the
+    // user opened a symlinked repo, writing the link path would leave the
+    // error unresolved. realpath() reconciles the two; if it fails (e.g., the
+    // path no longer exists), fall back to the resolved path so the user
+    // still gets a deterministic write.
+    const resolved = path.resolve(repoPath);
+    let canonical: string;
+    try {
+      canonical = await fs.promises.realpath(resolved);
+    } catch {
+      canonical = resolved;
+    }
     // Git for Windows (MSYS2) expects forward-slash Win32 paths like
     // `C:/Users/foo/repo`. Backslashes or POSIX-prefixed `/c/...` paths can be
     // misinterpreted relative to the Git installation root.
-    const normalized = path.resolve(repoPath).replace(/\\/g, "/");
+    const normalized = canonical.replace(/\\/g, "/");
     await execFileAsync("git", ["config", "--global", "--add", "safe.directory", normalized], {
       env: { ...process.env, LC_ALL: "C" },
     });

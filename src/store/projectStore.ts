@@ -117,7 +117,10 @@ interface ProjectState {
   loadProjects: () => Promise<void>;
   getCurrentProject: () => Promise<void>;
   addProject: () => Promise<void>;
-  addProjectByPath: (path: string) => Promise<void>;
+  addProjectByPath: (
+    path: string,
+    options?: { skipDubiousOwnershipRetry?: boolean }
+  ) => Promise<void>;
   createProjectFolder: (parentPath: string, folderName: string) => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
@@ -251,7 +254,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   cloneRepoDialogOpen: false,
   error: null,
 
-  addProjectByPath: async (path) => {
+  addProjectByPath: async (path, options) => {
     set({ isLoading: true, error: null });
     let resolvedPath: string | undefined | null;
     try {
@@ -288,10 +291,14 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       });
       const errorMessage = error instanceof Error ? error.message : String(error);
 
+      // Absolute-path check: POSIX (/...), Windows drive letter (C:\... / C:/...),
+      // and Windows UNC (\\server\share...) are all "absolute" here.
+      const isAbsolutePath = (p: string) =>
+        p.startsWith("/") || p.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(p);
+
       if (errorMessage.includes("Not a git repository")) {
         const gitInitPath =
           resolvedPath || path.trim() || errorMessage.match(/Not a git repository: (.+)/)?.[1];
-        const isAbsolutePath = (p: string) => p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p);
         if (gitInitPath && isAbsolutePath(gitInitPath)) {
           set({ isLoading: false });
           get().openGitInitDialog(gitInitPath);
@@ -299,9 +306,8 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         }
       }
 
-      if (isDubiousOwnershipError(error)) {
+      if (isDubiousOwnershipError(error) && !options?.skipDubiousOwnershipRetry) {
         const targetPath = resolvedPath ?? path.trim();
-        const isAbsolutePath = (p: string) => p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p);
         if (targetPath && isAbsolutePath(targetPath)) {
           notify({
             type: "error",
@@ -315,8 +321,26 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
                 label: "Mark as safe",
                 variant: "primary",
                 onClick: async () => {
-                  await window.electron.git.markSafeDirectory(targetPath);
-                  await get().addProjectByPath(targetPath);
+                  try {
+                    await window.electron.git.markSafeDirectory(targetPath);
+                  } catch (markError) {
+                    const markMessage =
+                      markError instanceof Error ? markError.message : String(markError);
+                    notify({
+                      type: "error",
+                      title: "Failed to mark as safe",
+                      message: markMessage,
+                      duration: 6000,
+                    });
+                    return;
+                  }
+                  // Pass skipDubiousOwnershipRetry so a persistent dubious
+                  // ownership error (e.g., the path we wrote doesn't match
+                  // what git canonicalizes to) falls through to the generic
+                  // error toast instead of showing the same CTA indefinitely.
+                  await get().addProjectByPath(targetPath, {
+                    skipDubiousOwnershipRetry: true,
+                  });
                 },
               },
               {
