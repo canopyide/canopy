@@ -30,10 +30,17 @@ function build(terminals: TerminalInstance[]) {
 }
 
 const noTrash = () => false;
+const EMPTY_WORKTREE_IDS = new Set<string>();
 
 function derive(terminals: TerminalInstance[], now: number = NOW) {
   const { panelsById, panelIds } = build(terminals);
-  return deriveHighestPriorityCluster({ panelIds, panelsById, isInTrash: noTrash, now });
+  return deriveHighestPriorityCluster({
+    panelIds,
+    panelsById,
+    isInTrash: noTrash,
+    worktreeIds: EMPTY_WORKTREE_IDS,
+    now,
+  });
 }
 
 describe("deriveHighestPriorityCluster", () => {
@@ -243,9 +250,60 @@ describe("deriveHighestPriorityCluster", () => {
         panelIds,
         panelsById,
         isInTrash: (id) => id === "a",
+        worktreeIds: EMPTY_WORKTREE_IDS,
         now: NOW,
       });
       expect(cluster).toBeNull();
+    });
+
+    it("excludes terminals whose worktreeId is not in the active set (orphaned)", () => {
+      const { panelsById, panelIds } = build([
+        makeAgent("a", {
+          agentState: "waiting",
+          waitingReason: "prompt",
+          lastStateChange: NOW,
+          worktreeId: "wt-1",
+        }),
+        makeAgent("b", {
+          agentState: "waiting",
+          waitingReason: "prompt",
+          lastStateChange: NOW,
+          worktreeId: "wt-gone",
+        }),
+      ]);
+      const cluster = deriveHighestPriorityCluster({
+        panelIds,
+        panelsById,
+        isInTrash: noTrash,
+        worktreeIds: new Set(["wt-1"]),
+        now: NOW,
+      });
+      expect(cluster).toBeNull();
+    });
+
+    it("does not treat terminals as orphaned when the worktree id set is empty", () => {
+      const { panelsById, panelIds } = build([
+        makeAgent("a", {
+          agentState: "waiting",
+          waitingReason: "prompt",
+          lastStateChange: NOW,
+          worktreeId: "wt-whatever",
+        }),
+        makeAgent("b", {
+          agentState: "waiting",
+          waitingReason: "prompt",
+          lastStateChange: NOW,
+          worktreeId: "wt-other",
+        }),
+      ]);
+      const cluster = deriveHighestPriorityCluster({
+        panelIds,
+        panelsById,
+        isInTrash: noTrash,
+        worktreeIds: EMPTY_WORKTREE_IDS,
+        now: NOW,
+      });
+      expect(cluster?.count).toBe(2);
     });
 
     it("tolerates missing entries in panelsById", () => {
@@ -264,6 +322,7 @@ describe("deriveHighestPriorityCluster", () => {
           }),
         },
         isInTrash: noTrash,
+        worktreeIds: EMPTY_WORKTREE_IDS,
         now: NOW,
       });
       expect(cluster?.count).toBe(2);
@@ -281,6 +340,7 @@ describe("deriveHighestPriorityCluster", () => {
         panelIds,
         panelsById,
         isInTrash: noTrash,
+        worktreeIds: EMPTY_WORKTREE_IDS,
         now: NOW,
       });
       expect(cluster?.memberIds).toEqual(["b", "a"]);

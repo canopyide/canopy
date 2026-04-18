@@ -4,7 +4,9 @@ import { render, fireEvent, screen } from "@testing-library/react";
 import { ClusterAttentionPill } from "../ClusterAttentionPill";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useClusterAttentionStore } from "@/store/clusterAttentionStore";
+import { usePanelStore } from "@/store/panelStore";
 import type { ClusterGroup } from "@/hooks/useAgentClusters";
+import type { TerminalInstance } from "@shared/types";
 
 const { useAgentClustersMock } = vi.hoisted(() => ({
   useAgentClustersMock: vi.fn(),
@@ -22,7 +24,33 @@ function resetStores() {
     lastArmedId: null,
   });
   useClusterAttentionStore.setState({ dismissedSignatures: new Set<string>() });
+  usePanelStore.setState({ panelsById: {}, panelIds: [] });
   useAgentClustersMock.mockReset();
+}
+
+function makeAgent(id: string, overrides: Partial<TerminalInstance> = {}): TerminalInstance {
+  return {
+    id,
+    title: id,
+    type: "terminal",
+    kind: "agent",
+    agentId: "claude",
+    worktreeId: "wt-1",
+    location: "grid",
+    agentState: "waiting",
+    hasPty: true,
+    ...overrides,
+  } as TerminalInstance;
+}
+
+function seedPanels(terminals: TerminalInstance[]): void {
+  const panelsById: Record<string, TerminalInstance> = {};
+  const panelIds: string[] = [];
+  for (const t of terminals) {
+    panelsById[t.id] = t;
+    panelIds.push(t.id);
+  }
+  usePanelStore.setState({ panelsById, panelIds });
 }
 
 function makeCluster(overrides: Partial<ClusterGroup> = {}): ClusterGroup {
@@ -74,10 +102,31 @@ describe("ClusterAttentionPill", () => {
 
   it("arm button calls armIds with the cluster members", () => {
     useAgentClustersMock.mockReturnValue(makeCluster({ memberIds: ["a", "b", "c"], count: 3 }));
+    seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c")]);
     render(<ClusterAttentionPill />);
     fireEvent.click(screen.getByRole("button", { name: /arm 3 agents/i }));
     const armed = useFleetArmingStore.getState().armedIds;
     expect([...armed].sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("arm button re-checks eligibility and skips members that are no longer eligible", () => {
+    useAgentClustersMock.mockReturnValue(makeCluster({ memberIds: ["a", "b"], count: 2 }));
+    seedPanels([
+      makeAgent("a"),
+      makeAgent("b", { location: "trash" }), // became ineligible between render and click
+    ]);
+    render(<ClusterAttentionPill />);
+    fireEvent.click(screen.getByRole("button", { name: /arm 2 agents/i }));
+    const armed = useFleetArmingStore.getState().armedIds;
+    expect([...armed]).toEqual(["a"]);
+  });
+
+  it("arm button is a no-op when every member has become ineligible", () => {
+    useAgentClustersMock.mockReturnValue(makeCluster({ memberIds: ["a", "b"], count: 2 }));
+    seedPanels([makeAgent("a", { location: "trash" }), makeAgent("b", { location: "trash" })]);
+    render(<ClusterAttentionPill />);
+    fireEvent.click(screen.getByRole("button", { name: /arm 2 agents/i }));
+    expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
   });
 
   it("dismiss button adds the cluster signature to dismissed set and hides the pill", () => {

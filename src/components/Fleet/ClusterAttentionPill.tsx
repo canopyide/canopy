@@ -3,7 +3,8 @@ import { AlertCircle, CheckCircle2, Clock, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAgentClusters, type ClusterType } from "@/hooks/useAgentClusters";
 import { useClusterAttentionStore } from "@/store/clusterAttentionStore";
-import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
+import { usePanelStore } from "@/store/panelStore";
 
 const ICONS: Record<ClusterType, React.ComponentType<{ className?: string }>> = {
   prompt: Clock,
@@ -29,7 +30,10 @@ export function ClusterAttentionPill(): ReactElement | null {
   const iconClass = ICON_CLASSES[cluster.type];
 
   const handleArm = () => {
-    useFleetArmingStore.getState().armIds(cluster.memberIds);
+    const { panelsById } = usePanelStore.getState();
+    const stillEligible = cluster.memberIds.filter((id) => isFleetArmEligible(panelsById[id]));
+    if (stillEligible.length === 0) return;
+    useFleetArmingStore.getState().armIds(stillEligible);
   };
 
   const handleDismiss = () => {

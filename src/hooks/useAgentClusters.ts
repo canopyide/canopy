@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
 import { isFleetArmEligible } from "@/store/fleetArmingStore";
+import { isTerminalVisible, useWorktreeIds } from "@/hooks/useTerminalSelectors";
 
 export type ClusterType = "prompt" | "error" | "completion";
 
@@ -19,13 +20,6 @@ const PROMPT_PRIORITY = 1;
 const ERROR_PRIORITY = 2;
 const COMPLETION_PRIORITY = 3;
 const COMPLETION_WINDOW_MS = 30_000;
-
-function isVisibleForCluster(t: TerminalInstance, isInTrash: (id: string) => boolean): boolean {
-  if (isInTrash(t.id)) return false;
-  if (t.location === "trash") return false;
-  if (t.location === "background") return false;
-  return true;
-}
 
 function makeSignature(type: ClusterType, memberIds: string[], latestStateChange: number): string {
   const sorted = [...memberIds].sort();
@@ -64,6 +58,7 @@ interface DeriveParams {
   panelIds: string[];
   panelsById: Record<string, TerminalInstance | undefined>;
   isInTrash: (id: string) => boolean;
+  worktreeIds: Set<string>;
   now: number;
 }
 
@@ -75,7 +70,7 @@ interface DeriveParams {
  * Tie-break: larger count → newer latestStateChange → lexical member-id order.
  */
 export function deriveHighestPriorityCluster(params: DeriveParams): ClusterGroup | null {
-  const { panelIds, panelsById, isInTrash, now } = params;
+  const { panelIds, panelsById, isInTrash, worktreeIds, now } = params;
 
   const buckets: Record<ClusterType, BucketMember[]> = {
     prompt: [],
@@ -87,7 +82,7 @@ export function deriveHighestPriorityCluster(params: DeriveParams): ClusterGroup
     const t = panelsById[id];
     if (!t) continue;
     if (!isFleetArmEligible(t)) continue;
-    if (!isVisibleForCluster(t, isInTrash)) continue;
+    if (!isTerminalVisible(t, isInTrash, worktreeIds)) continue;
 
     const lsc =
       typeof t.lastStateChange === "number" && !Number.isNaN(t.lastStateChange)
@@ -167,6 +162,7 @@ export function useAgentClusters(): ClusterGroup | null {
   const panelIds = usePanelStore((state) => state.panelIds);
   const panelsById = usePanelStore(useShallow((state) => state.panelsById));
   const isInTrash = usePanelStore((state) => state.isInTrash);
+  const worktreeIds = useWorktreeIds();
 
   return useMemo(
     () =>
@@ -174,8 +170,9 @@ export function useAgentClusters(): ClusterGroup | null {
         panelIds,
         panelsById,
         isInTrash,
+        worktreeIds,
         now: Date.now(),
       }),
-    [panelIds, panelsById, isInTrash]
+    [panelIds, panelsById, isInTrash, worktreeIds]
   );
 }
