@@ -194,6 +194,25 @@ export class CliAvailabilityService {
       };
     }
 
+    // WSL-detected agents are "installed" but NEVER "ready". Daintree's PTY
+    // host spawns binaries directly — we cannot yet launch through wsl.exe.
+    // Promoting to "ready" (e.g. because OPENAI_API_KEY is set) would make
+    // the user click Codex and hit a silent ENOENT. Cap at "installed" and
+    // attach a clear diagnostic so the Settings UI explains the gap.
+    if (probe.via === "wsl") {
+      return {
+        state: "installed",
+        detail: {
+          state: "installed",
+          resolvedPath: probe.path,
+          via: "wsl",
+          wslDistro: probe.wslDistro,
+          message:
+            "Detected in WSL — direct launch from Daintree on Windows isn't supported yet. Install a native Windows binary if available.",
+        },
+      };
+    }
+
     if (!config.authCheck) {
       return {
         state: "ready",
@@ -201,7 +220,6 @@ export class CliAvailabilityService {
           state: "ready",
           resolvedPath: probe.path,
           via: probe.via,
-          ...(probe.wslDistro ? { wslDistro: probe.wslDistro } : {}),
         },
       };
     }
@@ -213,7 +231,6 @@ export class CliAvailabilityService {
         state: authState,
         resolvedPath: probe.path,
         via: probe.via,
-        ...(probe.wslDistro ? { wslDistro: probe.wslDistro } : {}),
       },
     };
   }
@@ -227,9 +244,13 @@ export class CliAvailabilityService {
     // emit a misleading "auth check fell through" log for an agent whose
     // state was actually determined by the timeout branch.
     let timedOut = false;
+    // Track the timeout handle so we can clear it when checkPromise wins —
+    // otherwise each fast-path success leaves an unresolved 3s timer pinned
+    // to the event loop. Bounded leak per-refresh but worth avoiding.
+    let timeoutHandle: NodeJS.Timeout | undefined;
 
     const timeoutPromise = new Promise<AgentAvailabilityState>((resolve) => {
-      setTimeout(() => {
+      timeoutHandle = setTimeout(() => {
         timedOut = true;
         resolve(authCheck.fallback ?? "installed");
       }, CliAvailabilityService.AUTH_CHECK_TIMEOUT_MS);
@@ -286,7 +307,11 @@ export class CliAvailabilityService {
       return fallbackState;
     })();
 
-    return Promise.race([checkPromise, timeoutPromise]);
+    try {
+      return await Promise.race([checkPromise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
   }
 
   /**
@@ -506,24 +531,28 @@ export class CliAvailabilityService {
             ? stdout
             : Buffer.from(typeof stdout === "string" ? stdout : "", "utf8");
 
-          const asUtf8 = buf
-            .toString("utf8")
-            .replace(/\u0000/g, "")
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter(Boolean);
-          if (asUtf8.length > 0) {
-            resolve(asUtf8[0] ?? null);
-            return;
+          // WSL has historically emitted UTF-16LE (with BOM) regardless of
+          // `WSL_UTF8=1`; recent Windows builds honor the env var and emit
+          // UTF-8. Pick the encoding heuristically: a UTF-16LE-encoded ASCII
+          // string is roughly half null bytes, and will also be prefixed by
+          // the FF FE BOM. Either signal is a strong indicator.
+          const sample = buf.subarray(0, Math.min(buf.length, 64));
+          let nullBytes = 0;
+          for (const byte of sample) {
+            if (byte === 0) nullBytes++;
           }
+          const hasUtf16Bom = buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe;
+          const looksUtf16 = hasUtf16Bom || nullBytes > sample.length / 3;
 
-          const asUtf16 = buf
-            .toString("utf16le")
-            .replace(/^\uFEFF/, "")
+          const decoded = looksUtf16
+            ? buf.toString("utf16le").replace(/^\uFEFF/, "")
+            : buf.toString("utf8");
+
+          const lines = decoded
             .split(/\r?\n/)
             .map((l) => l.trim())
             .filter(Boolean);
-          resolve(asUtf16[0] ?? null);
+          resolve(lines[0] ?? null);
         }
       );
     });

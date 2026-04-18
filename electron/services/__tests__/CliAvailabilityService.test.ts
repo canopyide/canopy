@@ -820,4 +820,177 @@ describe("CliAvailabilityService", () => {
       expect(service.getDetails()!.claude?.resolvedPath).toBeNull();
     });
   });
+
+  describe("npx fallback probe", () => {
+    it("detects agent via npx --prefer-offline --no <pkg> --version on cache hit", async () => {
+      // Shell probe misses for Gemini (no native paths either, so npx is the
+      // only remaining layer). Mock execFile to succeed only for Gemini's pkg.
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const argv = args[1] as string[];
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        // Only @google/gemini-cli succeeds; everything else ENOENTs.
+        if (argv?.includes("@google/gemini-cli")) {
+          queueMicrotask(() => callback?.(null, "1.2.3"));
+        } else {
+          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+          queueMicrotask(() => callback?.(err));
+        }
+        return {} as never;
+      }) as never);
+
+      const result = await service.checkAvailability();
+      expect(result.gemini).toBe("installed");
+
+      const details = service.getDetails();
+      expect(details!.gemini?.via).toBe("npx");
+      expect(details!.gemini?.resolvedPath).toBe("npx:@google/gemini-cli");
+
+      // Verify the exact probe args used — guards against regressions in the
+      // deprecation-safe `--prefer-offline --no` invocation form.
+      const geminiCall = mockedExecFile.mock.calls.find((c) =>
+        (c[1] as string[])?.includes("@google/gemini-cli")
+      );
+      expect(geminiCall?.[1]).toEqual([
+        "--prefer-offline",
+        "--no",
+        "@google/gemini-cli",
+        "--version",
+      ]);
+    });
+
+    it("classifies npx EPERM as 'blocked' (endpoint security blocks npx itself)", async () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const callback = args.find((a): a is (err: unknown) => void => typeof a === "function");
+        const err = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+        queueMicrotask(() => callback?.(err));
+        return {} as never;
+      }) as never);
+
+      const result = await service.checkAvailability();
+      // Every agent with an npxPackage hits EPERM at the npx layer → blocked.
+      // Agents without npxPackage (cursor, kiro, opencode, copilot) still
+      // report missing since they have no fallback.
+      expect(result.claude).toBe("blocked");
+      expect(result.gemini).toBe("blocked");
+      expect(result.codex).toBe("blocked");
+
+      const details = service.getDetails();
+      expect(details!.claude?.blockReason).toBe("security");
+      expect(details!.claude?.via).toBe("npx");
+    });
+
+    it("skips npx probe for agents without npxPackage in the registry", async () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      await service.checkAvailability();
+
+      // Agents with npxPackage: claude, gemini, codex → 3 npx probes.
+      // Cursor/Kiro/Opencode/Copilot must NOT appear in execFile calls.
+      const npxPackages = mockedExecFile.mock.calls
+        .map((c) => c[1] as string[])
+        .map((args) => args?.find((a) => a.startsWith("@") || a === "opencode-ai"))
+        .filter(Boolean);
+      expect(npxPackages).toEqual(
+        expect.arrayContaining(["@anthropic-ai/claude-code", "@google/gemini-cli", "@openai/codex"])
+      );
+      expect(npxPackages).toHaveLength(3);
+    });
+  });
+
+  describe("WSL fallback probe (Windows)", () => {
+    const originalPlatform = process.platform;
+
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "win32", writable: true });
+    });
+    afterEach(() => {
+      Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    });
+
+    it("detects Codex via WSL when shell, native, and npx all miss", async () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const argv = args[1] as string[];
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: unknown) => void => typeof a === "function"
+        );
+
+        // wsl.exe --list --quiet: return a UTF-16LE-encoded distro list
+        // with a BOM, simulating older Windows builds that don't honor
+        // WSL_UTF8=1.
+        if (argv?.[0] === "--list") {
+          const utf16 = Buffer.concat([
+            Buffer.from([0xff, 0xfe]), // BOM
+            Buffer.from("Ubuntu\r\nDebian\r\n", "utf16le"),
+          ]);
+          queueMicrotask(() => callback?.(null, utf16));
+          return {} as never;
+        }
+
+        // wsl.exe -d Ubuntu -e codex --version: succeed for codex.
+        if (argv?.[0] === "-d" && argv?.[3] === "codex") {
+          queueMicrotask(() => callback?.(null, "codex 1.0.0"));
+          return {} as never;
+        }
+
+        const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+        queueMicrotask(() => callback?.(err));
+        return {} as never;
+      }) as never);
+
+      const result = await service.checkAvailability();
+      // WSL-detected agents are capped at "installed" — launching through
+      // wsl.exe from the PTY host isn't wired up yet, so surfacing them as
+      // "ready" would lead to silent-ENOENT clicks.
+      expect(result.codex).toBe("installed");
+
+      const details = service.getDetails();
+      expect(details!.codex?.via).toBe("wsl");
+      expect(details!.codex?.wslDistro).toBe("Ubuntu");
+      expect(details!.codex?.resolvedPath).toBe("wsl:Ubuntu");
+      expect(details!.codex?.message).toMatch(/WSL/);
+    });
+
+    it("skips WSL probe for agents without supportsWsl flag", async () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      await service.checkAvailability();
+
+      // wsl.exe should never appear in execFile calls — only Codex has
+      // supportsWsl: true, and Codex's npx probe fails first under the
+      // default mock, but WSL probing requires reaching the WSL layer.
+      // Even for Codex, the WSL probe fires only if npx misses — default
+      // execFile returns ENOENT, so WSL *is* reached for Codex. Verify
+      // via the file arg that no NON-Codex agent triggered wsl.exe.
+      const wslCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "wsl.exe");
+      // Two expected calls: --list (to enumerate distros) + one -d probe.
+      // Those fire because Codex has supportsWsl. No agent besides Codex
+      // should produce wsl.exe invocations.
+      for (const call of wslCalls) {
+        const argv = call[1] as string[];
+        if (argv?.includes("-e")) {
+          // Command arg sits after `-e`.
+          const cmdIdx = argv.indexOf("-e");
+          expect(argv[cmdIdx + 1]).toBe("codex");
+        }
+      }
+    });
+  });
 });
