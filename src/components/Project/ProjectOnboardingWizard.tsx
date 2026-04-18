@@ -79,6 +79,7 @@ export function ProjectOnboardingWizard({
   const [saveError, setSaveError] = useState<string | null>(null);
   const initStartedRef = useRef(false);
   const emojiShuffleQueueRef = useRef<string[]>([]);
+  const nameInputComposingRef = useRef(false);
 
   useEffect(() => {
     if (isOpen && !isLoading && settings && currentProject && !initStartedRef.current) {
@@ -110,18 +111,18 @@ export function ProjectOnboardingWizard({
     setIsSaving(true);
     setSaveError(null);
     try {
+      await saveSettings({
+        ...settings,
+        runCommands: sanitizedRunCommands,
+        devServerCommand: devServerCommand.trim() || undefined,
+      });
+
       if (currentProject) {
         await updateProject(projectId, {
           name: name.trim() || currentProject.name,
           emoji,
         });
       }
-
-      await saveSettings({
-        ...settings,
-        runCommands: sanitizedRunCommands,
-        devServerCommand: devServerCommand.trim() || undefined,
-      });
 
       onClose();
       onFinish?.(projectId);
@@ -210,8 +211,14 @@ export function ProjectOnboardingWizard({
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  onCompositionStart={() => {
+                    nameInputComposingRef.current = true;
+                  }}
+                  onCompositionEnd={() => {
+                    nameInputComposingRef.current = false;
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (e.key === "Enter" && !nameInputComposingRef.current) {
                       e.preventDefault();
                       handleFinish();
                     }

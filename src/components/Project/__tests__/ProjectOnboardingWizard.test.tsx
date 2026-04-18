@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ProjectOnboardingWizard } from "../ProjectOnboardingWizard";
 
@@ -190,7 +190,7 @@ describe("ProjectOnboardingWizard", () => {
     expect(seenEmojis.has(initialEmoji)).toBe(false);
   });
 
-  it("calls handleFinish when Enter is pressed in project name input", () => {
+  it("calls handleFinish when Enter is pressed in project name input", async () => {
     render(
       <ProjectOnboardingWizard
         isOpen
@@ -204,9 +204,18 @@ describe("ProjectOnboardingWizard", () => {
     fireEvent.change(nameInput, { target: { value: "New Name" } });
     fireEvent.keyDown(nameInput, { key: "Enter" });
 
-    expect(mockUpdateProject).toHaveBeenCalledWith("test-project", {
-      name: "New Name",
-      emoji: "🌲",
+    await waitFor(() => {
+      expect(mockSaveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runCommands: [],
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(mockUpdateProject).toHaveBeenCalledWith("test-project", {
+        name: "New Name",
+        emoji: "🌲",
+      });
     });
   });
 
@@ -282,7 +291,7 @@ describe("ProjectOnboardingWizard", () => {
     expect(mockUpdateProject).not.toHaveBeenCalled();
   });
 
-  it("blocks double Enter submission while saving", () => {
+  it("blocks double Enter submission while saving", async () => {
     let resolveSave: () => void;
     const savePromise = new Promise<void>((resolve) => {
       resolveSave = resolve;
@@ -302,7 +311,10 @@ describe("ProjectOnboardingWizard", () => {
     fireEvent.keyDown(nameInput, { key: "Enter" });
     fireEvent.keyDown(nameInput, { key: "Enter" });
 
-    expect(mockUpdateProject).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockSaveSettings).toHaveBeenCalledTimes(1);
+    });
+    expect(mockUpdateProject).toHaveBeenCalledTimes(0);
     resolveSave!();
   });
 });
