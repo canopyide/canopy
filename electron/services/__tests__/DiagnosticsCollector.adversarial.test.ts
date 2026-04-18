@@ -312,4 +312,94 @@ describe("DiagnosticsCollector adversarial", () => {
       "https://<redacted>@example.com/private"
     );
   });
+
+  it("FREE_TEXT_GITHUB_PAT_SCRUBBED_IN_LOG_MESSAGE", async () => {
+    shared.logEntries = [
+      {
+        level: "error",
+        message: "git clone failed with token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456",
+        timestamp: 1,
+      },
+    ];
+
+    const payload = (await diagnostics.collectDiagnostics(createDeps())) as {
+      logs: { recentEntries: Array<{ message: string }> };
+    };
+
+    const msg = payload.logs.recentEntries[0]?.message ?? "";
+    expect(msg).not.toContain("ghp_");
+    expect(msg).toContain("[REDACTED]");
+  });
+
+  it("FREE_TEXT_BEARER_AND_JWT_SCRUBBED_IN_NESTED_CONTEXT", async () => {
+    const jwt = `eyJ${"a".repeat(20)}.${"b".repeat(20)}.${"c".repeat(40)}`;
+    shared.logEntries = [
+      {
+        level: "warn",
+        message: "auth failure",
+        timestamp: 2,
+        context: {
+          requestHeaders: {
+            authorization: "Bearer abcdefghij.klmnop-qr_st=",
+          },
+          responseBody: `{"token":"${jwt}"}`,
+        },
+      },
+    ];
+
+    const payload = (await diagnostics.collectDiagnostics(createDeps())) as {
+      logs: {
+        recentEntries: Array<{
+          context?: {
+            requestHeaders?: { authorization?: string };
+            responseBody?: string;
+          };
+        }>;
+      };
+    };
+
+    // `authorization` key itself is caught by SENSITIVE_KEY_PATTERN (key-based
+    // redaction wins), but responseBody is a free-text string that only the
+    // scrubber can catch — this is the case this feature exists to cover.
+    expect(payload.logs.recentEntries[0]?.context?.responseBody).not.toContain("eyJ");
+    expect(payload.logs.recentEntries[0]?.context?.responseBody).toContain("[REDACTED]");
+  });
+
+  it("FREE_TEXT_AWS_KEY_SCRUBBED_IN_LOG_MESSAGE", async () => {
+    shared.logEntries = [
+      {
+        level: "info",
+        message: "envrc loaded: AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
+        timestamp: 3,
+      },
+    ];
+
+    const payload = (await diagnostics.collectDiagnostics(createDeps())) as {
+      logs: { recentEntries: Array<{ message: string }> };
+    };
+
+    const msg = payload.logs.recentEntries[0]?.message ?? "";
+    expect(msg).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(msg).toContain("[REDACTED]");
+  });
+
+  it("FREE_TEXT_PEM_BLOCK_SCRUBBED", async () => {
+    shared.logEntries = [
+      {
+        level: "error",
+        message:
+          "config dump: -----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END RSA PRIVATE KEY----- end",
+        timestamp: 4,
+      },
+    ];
+
+    const payload = (await diagnostics.collectDiagnostics(createDeps())) as {
+      logs: { recentEntries: Array<{ message: string }> };
+    };
+
+    const msg = payload.logs.recentEntries[0]?.message ?? "";
+    expect(msg).not.toContain("BEGIN RSA PRIVATE KEY");
+    expect(msg).not.toContain("MIIEpAIBAAKCAQEA");
+    expect(msg).toContain("[REDACTED]");
+  });
 });

@@ -1,0 +1,133 @@
+/**
+ * Pattern-based scrubbing for free-text secrets in telemetry and diagnostic
+ * bundles. Complements the key-based redaction in `TelemetryService.sanitizeEvent`
+ * and `DiagnosticsCollector.redactDeep`.
+ *
+ * Apply at two boundaries only — Sentry `beforeSend` and DiagnosticsCollector
+ * string output. NEVER call on the logger hot write path.
+ *
+ * All patterns use bounded quantifiers for ReDoS safety. See the
+ * `secretScrubber.test.ts` sibling for the `safe-regex2` assertion that
+ * guards this invariant.
+ */
+
+export const REDACTED = "[REDACTED]";
+
+// Cap input length before scrubbing. Linear-time regexes still traverse the
+// whole string for every pattern; a 100KB cap keeps total work bounded even
+// when callers pass oversized blobs. DiagnosticsCollector truncates to 16KB
+// separately before display — this cap is purely a scrub-time guard.
+export const MAX_SCRUB_INPUT_LENGTH = 100 * 1024;
+
+export interface SecretPattern {
+  name: string;
+  regex: RegExp;
+  replacement: string;
+}
+
+// Order matters for overlapping sigils: more-specific patterns must run before
+// less-specific ones. `sk-ant-` must precede `sk-` so Anthropic keys aren't
+// half-redacted by the OpenAI pattern.
+export const PATTERNS: readonly SecretPattern[] = [
+  {
+    name: "github-pat",
+    regex: /\bghp_[A-Za-z0-9_]{36,255}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "github-fine-grained-pat",
+    regex: /\bgithub_pat_[A-Za-z0-9_]{82}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "github-app-token",
+    regex: /\bghs_[A-Za-z0-9_]{36}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "anthropic-api-key",
+    regex: /\bsk-ant-[A-Za-z0-9\-_]{90,255}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "openai-api-key",
+    regex: /\bsk-[A-Za-z0-9]{48}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "stripe-secret-key",
+    regex: /\bsk_(?:live|test)_[0-9a-zA-Z]{24,48}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "slack-token",
+    regex: /\bxox[abprs]-[A-Za-z0-9-]{10,255}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "google-api-key",
+    regex: /\bAIza[0-9A-Za-z_-]{35}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "aws-access-key-id",
+    regex: /\bAKIA[0-9A-Z]{16}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "npm-token",
+    regex: /\bnpm_[A-Za-z0-9]{36}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "azure-connection-string",
+    regex:
+      /DefaultEndpointsProtocol=https;AccountName=[a-zA-Z0-9]{3,24};AccountKey=[a-zA-Z0-9+/]{86}==/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "pem-block",
+    // CRITICAL: bounded `{1,10000}?` avoids quadratic backtracking on
+    // malformed input where `-----END ...-----` is missing. Unbounded
+    // `[\s\S]+?` would O(N^2)-scan to EOF per BEGIN occurrence.
+    regex: /-----BEGIN [A-Z ]{1,64}-----[\s\S]{1,10000}?-----END [A-Z ]{1,64}-----/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "jwt",
+    regex: /\beyJ[A-Za-z0-9\-_]{1,8000}\.[A-Za-z0-9\-_]{1,8000}\.[A-Za-z0-9\-_]{1,8000}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "bearer-token",
+    regex: /Bearer [A-Za-z0-9\-._~+/]{8,4000}={0,2}/g,
+    replacement: `Bearer ${REDACTED}`,
+  },
+  {
+    name: "oauth-query-param",
+    // Matches the param at the start of a URL query, within a query (`&key=`),
+    // or at the start of a form-urlencoded body. `(^|[?&])` keeps the preceding
+    // separator in the output so `&other=1` isn't merged into the token.
+    regex: /(^|[?&])(access_token|refresh_token|client_secret|code)=[^&\s]{1,1000}/g,
+    replacement: `$1$2=${REDACTED}`,
+  },
+];
+
+/**
+ * Scrubs known secret sigils from free text. Idempotent — calling twice yields
+ * the same result, because the `[REDACTED]` token contains no secret sigil.
+ *
+ * @param value arbitrary string; may contain log lines, stack traces, or URLs
+ * @returns the input with recognized secrets replaced by `[REDACTED]`
+ */
+export function scrubSecrets(value: string): string {
+  if (value.length === 0) return value;
+
+  let out = value.length > MAX_SCRUB_INPUT_LENGTH ? value.slice(0, MAX_SCRUB_INPUT_LENGTH) : value;
+
+  for (const { regex, replacement } of PATTERNS) {
+    out = out.replace(regex, replacement);
+  }
+
+  return out;
+}
