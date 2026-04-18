@@ -279,6 +279,17 @@ export async function hydrateAppState(
       }
     }
 
+    if (hydrateResult.projectStateRecovery) {
+      const { quarantinedPath } = hydrateResult.projectStateRecovery;
+      notify({
+        type: "warning",
+        title: "Project State Corrupted",
+        message: `Your project state was corrupted and has been reset. The corrupt file is preserved at: ${quarantinedPath}`,
+        priority: "high",
+        duration: 0,
+      });
+    }
+
     normalizeAndApplyScrollback(terminalConfig, logHydrationInfo);
 
     if (!appState) {

@@ -14,8 +14,14 @@ interface ProjectStateCacheEntry {
   value: ProjectState | null;
 }
 
+export interface ProjectStateReadResult {
+  state: ProjectState | null;
+  quarantinedPath?: string;
+}
+
 export class ProjectStateManager {
   private projectStateCache = new Map<string, ProjectStateCacheEntry>();
+  private pendingQuarantines = new Map<string, string>();
 
   constructor(private projectsConfigDir: string) {}
 
@@ -177,6 +183,7 @@ export class ProjectStateManager {
         const quarantinePath = `${filePath}.corrupted`;
         markPerformance(PERF_MARKS.PROJECT_STATE_QUARANTINE, { projectId });
         await resilientRename(filePath, quarantinePath);
+        this.pendingQuarantines.set(projectId, quarantinePath);
         console.warn(`[ProjectStateManager] Corrupted state file moved to ${quarantinePath}`);
       } catch {
         // Ignore
@@ -184,6 +191,16 @@ export class ProjectStateManager {
       this.setProjectStateCache(projectId, null);
       return null;
     }
+  }
+
+  async getProjectStateWithRecovery(projectId: string): Promise<ProjectStateReadResult> {
+    const state = await this.getProjectState(projectId);
+    const quarantinedPath = this.pendingQuarantines.get(projectId);
+    if (quarantinedPath !== undefined) {
+      this.pendingQuarantines.delete(projectId);
+      return { state, quarantinedPath };
+    }
+    return { state };
   }
 
   async clearProjectState(projectId: string): Promise<void> {

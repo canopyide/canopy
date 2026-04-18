@@ -33,9 +33,12 @@ export function registerAppStateHandlers(): () => void {
     let focusPanelStateToUse = globalAppState.focusPanelState;
     // Active worktree state to include in response
     let activeWorktreeIdToUse = globalAppState.activeWorktreeId;
+    let projectStateQuarantinedPath: string | undefined;
 
     if (projectId) {
-      const projectState = await projectStore.getProjectState(projectId);
+      const { state: projectState, quarantinedPath } =
+        await projectStore.getProjectStateWithRecovery(projectId);
+      projectStateQuarantinedPath = quarantinedPath;
       // Per-project state exists (even if empty) - use it as authoritative
       if (projectState?.terminals !== undefined) {
         // Use per-project terminals, excluding trashed and normalizing location
@@ -239,6 +242,9 @@ export function registerAppStateHandlers(): () => void {
       gpuHardwareAccelerationDisabled: isGpuDisabledByFlag(app.getPath("userData")),
       safeMode: inSafeMode,
       settingsRecovery: consumePendingSettingsRecovery(),
+      projectStateRecovery: projectStateQuarantinedPath
+        ? { quarantinedPath: projectStateQuarantinedPath }
+        : null,
     };
   };
   handlers.push(typedHandle(CHANNELS.APP_HYDRATE, handleAppHydrate));

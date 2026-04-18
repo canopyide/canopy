@@ -184,3 +184,68 @@ describe("ProjectStateManager telemetry", () => {
     });
   });
 });
+
+describe("ProjectStateManager quarantine recovery", () => {
+  let tempDir: string;
+  let manager: ProjectStateManager;
+  let projectId: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-state-recovery-"));
+    manager = new ProjectStateManager(tempDir);
+    projectId = generateProjectId("/test/recovery-project");
+    await fs.mkdir(path.join(tempDir, projectId), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("surfaces the quarantined path when state JSON is invalid", async () => {
+    const filePath = stateFilePath(tempDir, projectId)!;
+    await fs.writeFile(filePath, "{ not valid json", "utf-8");
+
+    const result = await manager.getProjectStateWithRecovery(projectId);
+
+    expect(result.state).toBeNull();
+    expect(result.quarantinedPath).toBe(`${filePath}.corrupted`);
+    await expect(fs.access(`${filePath}.corrupted`)).resolves.toBeUndefined();
+  });
+
+  it("drains the quarantine signal after one read — subsequent reads return no path", async () => {
+    const filePath = stateFilePath(tempDir, projectId)!;
+    await fs.writeFile(filePath, "{ not valid json", "utf-8");
+
+    const first = await manager.getProjectStateWithRecovery(projectId);
+    expect(first.quarantinedPath).toBe(`${filePath}.corrupted`);
+
+    const second = await manager.getProjectStateWithRecovery(projectId);
+    expect(second.state).toBeNull();
+    expect(second.quarantinedPath).toBeUndefined();
+  });
+
+  it("returns no quarantinedPath when state is valid", async () => {
+    await manager.saveProjectState(projectId, makeState());
+
+    const result = await manager.getProjectStateWithRecovery(projectId);
+
+    expect(result.state).not.toBeNull();
+    expect(result.quarantinedPath).toBeUndefined();
+  });
+
+  it("surfaces the quarantine when a preceding getProjectState() triggered it", async () => {
+    const filePath = stateFilePath(tempDir, projectId)!;
+    await fs.writeFile(filePath, "{ not valid json", "utf-8");
+
+    // windowServices.ts-style caller reads state via the plain method — this
+    // triggers quarantine but discards the recovery signal.
+    const firstState = await manager.getProjectState(projectId);
+    expect(firstState).toBeNull();
+
+    // Hydration path later reads via the recovery-aware method and should
+    // still receive the quarantined path.
+    const result = await manager.getProjectStateWithRecovery(projectId);
+    expect(result.state).toBeNull();
+    expect(result.quarantinedPath).toBe(`${filePath}.corrupted`);
+  });
+});

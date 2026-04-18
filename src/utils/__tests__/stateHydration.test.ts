@@ -2112,6 +2112,104 @@ describe("hydrateAppState", () => {
     });
   });
 
+  describe("project state recovery notifications", () => {
+    it("shows persistent warning toast when project state was quarantined", async () => {
+      appClientMock.hydrate.mockResolvedValue({
+        appState: { terminals: [], sidebarWidth: 350 },
+        terminalConfig,
+        project,
+        agentSettings,
+        projectStateRecovery: {
+          quarantinedPath: "/path/to/state.json.corrupted",
+        },
+      });
+
+      await hydrateAppState({
+        addPanel: vi.fn().mockResolvedValue("terminal-id"),
+        setActiveWorktree: vi.fn(),
+        loadRecipes: vi.fn().mockResolvedValue(undefined),
+        openDiagnosticsDock: vi.fn(),
+      });
+
+      expect(notifyMock).toHaveBeenCalledTimes(1);
+      expect(notifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "warning",
+          title: "Project State Corrupted",
+          priority: "high",
+          duration: 0,
+        })
+      );
+      expect(notifyMock.mock.calls[0][0].message).toContain("/path/to/state.json.corrupted");
+      expect(notifyMock.mock.calls[0][0].message).toContain("has been reset");
+    });
+
+    it("does not show notification when projectStateRecovery is null", async () => {
+      appClientMock.hydrate.mockResolvedValue({
+        appState: { terminals: [], sidebarWidth: 350 },
+        terminalConfig,
+        project,
+        agentSettings,
+        projectStateRecovery: null,
+      });
+
+      await hydrateAppState({
+        addPanel: vi.fn().mockResolvedValue("terminal-id"),
+        setActiveWorktree: vi.fn(),
+        loadRecipes: vi.fn().mockResolvedValue(undefined),
+        openDiagnosticsDock: vi.fn(),
+      });
+
+      expect(notifyMock).not.toHaveBeenCalled();
+    });
+
+    it("does not show notification when projectStateRecovery is omitted", async () => {
+      appClientMock.hydrate.mockResolvedValue({
+        appState: { terminals: [], sidebarWidth: 350 },
+        terminalConfig,
+        project,
+        agentSettings,
+      });
+
+      await hydrateAppState({
+        addPanel: vi.fn().mockResolvedValue("terminal-id"),
+        setActiveWorktree: vi.fn(),
+        loadRecipes: vi.fn().mockResolvedValue(undefined),
+        openDiagnosticsDock: vi.fn(),
+      });
+
+      expect(notifyMock).not.toHaveBeenCalled();
+    });
+
+    it("shows both settings and project state notifications when both recoveries occur", async () => {
+      appClientMock.hydrate.mockResolvedValue({
+        appState: { terminals: [], sidebarWidth: 350 },
+        terminalConfig,
+        project,
+        agentSettings,
+        settingsRecovery: {
+          kind: "reset-to-defaults",
+          quarantinedPath: "/path/to/config.json.corrupted",
+        },
+        projectStateRecovery: {
+          quarantinedPath: "/path/to/state.json.corrupted",
+        },
+      });
+
+      await hydrateAppState({
+        addPanel: vi.fn().mockResolvedValue("terminal-id"),
+        setActiveWorktree: vi.fn(),
+        loadRecipes: vi.fn().mockResolvedValue(undefined),
+        openDiagnosticsDock: vi.fn(),
+      });
+
+      expect(notifyMock).toHaveBeenCalledTimes(2);
+      const titles = notifyMock.mock.calls.map((call) => call[0].title);
+      expect(titles).toContain("Settings Reset to Defaults");
+      expect(titles).toContain("Project State Corrupted");
+    });
+  });
+
   describe("orphan filter for default terminals", () => {
     it("filters out default-N orphan when no saved panels exist (brand-new project)", async () => {
       appClientMock.hydrate.mockResolvedValue({

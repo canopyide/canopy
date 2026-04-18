@@ -23,7 +23,7 @@ import {
 import { eq, desc } from "drizzle-orm";
 import { generateProjectId, getProjectStateDir } from "./projectStorePaths.js";
 import { ProjectSettingsManager } from "./ProjectSettingsManager.js";
-import { ProjectStateManager } from "./ProjectStateManager.js";
+import { ProjectStateManager, type ProjectStateReadResult } from "./ProjectStateManager.js";
 import { ProjectFileStore } from "./ProjectFileStore.js";
 import { GlobalFileStore } from "./GlobalFileStore.js";
 import { ProjectIdentityFiles } from "./ProjectIdentityFiles.js";
@@ -549,6 +549,10 @@ export class ProjectStore {
 
   async getProjectState(projectId: string): Promise<ProjectState | null> {
     return this.stateManager.getProjectState(projectId);
+  }
+
+  async getProjectStateWithRecovery(projectId: string): Promise<ProjectStateReadResult> {
+    return this.stateManager.getProjectStateWithRecovery(projectId);
   }
 
   async clearProjectState(projectId: string): Promise<void> {
