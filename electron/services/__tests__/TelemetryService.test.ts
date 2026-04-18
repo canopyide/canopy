@@ -186,6 +186,88 @@ describe("sanitizeEvent", () => {
     const second = sanitizeEvent(JSON.parse(JSON.stringify(first)) as SentryEvent);
     expect(second).toEqual(first);
   });
+
+  it("recurses into nested breadcrumb.data objects and arrays", () => {
+    const event: SentryEvent = {
+      breadcrumbs: [
+        {
+          message: "http request",
+          data: {
+            request: {
+              headers: {
+                authorization: "Bearer abcdefghij.klmnop-qr_st=",
+              },
+            },
+            trailers: [{ token: `sk-${"A".repeat(48)}` }],
+          },
+        },
+      ],
+    };
+    const result = sanitizeEvent(event);
+    const data = result?.breadcrumbs?.[0]?.data as {
+      request: { headers: { authorization: string } };
+      trailers: Array<{ token: string }>;
+    };
+    expect(data.request.headers.authorization).toBe("Bearer [REDACTED]");
+    expect(data.trailers[0]?.token).toBe("[REDACTED]");
+  });
+
+  it("recurses into nested event.extra objects and arrays", () => {
+    const event: SentryEvent = {
+      extra: {
+        diagnostic: {
+          env: {
+            AWS_ACCESS_KEY_ID: "AKIAIOSFODNN7EXAMPLE",
+          },
+          errors: ["failed to read token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456"],
+        },
+      },
+    };
+    const result = sanitizeEvent(event);
+    const diag = result?.extra?.diagnostic as {
+      env: { AWS_ACCESS_KEY_ID: string };
+      errors: string[];
+    };
+    expect(diag.env.AWS_ACCESS_KEY_ID).toBe("[REDACTED]");
+    expect(diag.errors[0]).not.toContain("ghp_");
+    expect(diag.errors[0]).toContain("[REDACTED]");
+  });
+
+  it("survives null elements in exception.values without throwing", () => {
+    const event = {
+      exception: {
+        values: [null, { value: "Bearer abcdefghij.klmnop-qr_st=" }],
+      },
+    } as unknown as SentryEvent;
+    expect(() => sanitizeEvent(event)).not.toThrow();
+    const result = sanitizeEvent(event);
+    expect(result).not.toBeNull();
+    expect(result?.exception?.values?.[1]?.value).toBe("Bearer [REDACTED]");
+  });
+
+  it("survives null elements in breadcrumbs without throwing", () => {
+    const event = {
+      breadcrumbs: [null, { message: "token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456" }],
+    } as unknown as SentryEvent;
+    expect(() => sanitizeEvent(event)).not.toThrow();
+    const result = sanitizeEvent(event);
+    expect(result?.breadcrumbs?.[1]?.message).toContain("[REDACTED]");
+    expect(result?.breadcrumbs?.[1]?.message).not.toContain("ghp_");
+  });
+
+  it("clears username, password, search, and hash from request.url", () => {
+    const event: SentryEvent = {
+      request: {
+        url: "https://user:pat@api.example.com/path?access_token=abc#token=xyz",
+      },
+    };
+    const result = sanitizeEvent(event);
+    const cleaned = result?.request?.url ?? "";
+    expect(cleaned).not.toContain("user:pat");
+    expect(cleaned).not.toContain("access_token=");
+    expect(cleaned).not.toContain("#token=");
+    expect(cleaned).not.toContain("xyz");
+  });
 });
 
 describe("getTelemetryLevel", () => {
@@ -760,5 +842,53 @@ describe("addActionBreadcrumb", () => {
     } finally {
       process.env.SENTRY_DSN = original;
     }
+  });
+});
+
+describe("beforeSend wrapper (end-to-end via initializeTelemetry)", () => {
+  async function loadFreshModule() {
+    vi.resetModules();
+    return await import("../TelemetryService.js");
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sentryInitMock.mockReset();
+    setPrivacy({ telemetryLevel: "errors", hasSeenPrompt: true });
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+  });
+
+  it("scrubs a PAT passed through the registered beforeSend hook", async () => {
+    const mod = await loadFreshModule();
+    await mod.initializeTelemetry();
+    const init = sentryInitMock.mock.calls[0]?.[0] as {
+      beforeSend?: (event: unknown) => unknown;
+    };
+    expect(typeof init.beforeSend).toBe("function");
+
+    const input = {
+      message: "clone failed ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456",
+      breadcrumbs: [
+        {
+          message: "http",
+          data: {
+            request: { headers: { authorization: "Bearer abcdefghij.klmnop-qr_st=" } },
+          },
+        },
+      ],
+      extra: { note: `key=sk-ant-${"a".repeat(95)}` },
+      exception: { values: [null] },
+    };
+    const out = init.beforeSend?.(input) as typeof input | null;
+
+    expect(out).not.toBeNull();
+    expect(out?.message).not.toContain("ghp_");
+    expect(out?.message).toContain("[REDACTED]");
+    const headers = (out?.breadcrumbs?.[0]?.data as {
+      request: { headers: { authorization: string } };
+    }).request.headers;
+    expect(headers.authorization).toBe("Bearer [REDACTED]");
+    expect(out?.extra?.note).not.toContain("sk-ant-");
+    expect(out?.extra?.note).toContain("[REDACTED]");
   });
 });

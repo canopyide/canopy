@@ -13,12 +13,6 @@
 
 export const REDACTED = "[REDACTED]";
 
-// Cap input length before scrubbing. Linear-time regexes still traverse the
-// whole string for every pattern; a 100KB cap keeps total work bounded even
-// when callers pass oversized blobs. DiagnosticsCollector truncates to 16KB
-// separately before display — this cap is purely a scrub-time guard.
-export const MAX_SCRUB_INPUT_LENGTH = 100 * 1024;
-
 export interface SecretPattern {
   name: string;
   regex: RegExp;
@@ -106,9 +100,11 @@ export const PATTERNS: readonly SecretPattern[] = [
   {
     name: "oauth-query-param",
     // Matches the param at the start of a URL query, within a query (`&key=`),
-    // or at the start of a form-urlencoded body. `(^|[?&])` keeps the preceding
-    // separator in the output so `&other=1` isn't merged into the token.
-    regex: /(^|[?&])(access_token|refresh_token|client_secret|code)=[^&\s]{1,1000}/g,
+    // or at the start of a form-urlencoded body (including bodies that appear
+    // after a newline in a log line). The `m` flag makes `^` match line starts.
+    // `(^|[?&])` keeps the preceding separator in the output so `&other=1` isn't
+    // merged into the token.
+    regex: /(^|[?&])(access_token|refresh_token|client_secret|code)=[^&\s]{1,1000}/gm,
     replacement: `$1$2=${REDACTED}`,
   },
 ];
@@ -117,14 +113,21 @@ export const PATTERNS: readonly SecretPattern[] = [
  * Scrubs known secret sigils from free text. Idempotent — calling twice yields
  * the same result, because the `[REDACTED]` token contains no secret sigil.
  *
+ * All patterns are linear-time with bounded quantifiers; total work is O(N·K)
+ * where K is the number of patterns. No pre-truncation is applied, because any
+ * length cap would have to slice at an arbitrary byte boundary and would leak
+ * the leading bytes of a secret that straddled the cut point. Callers that
+ * care about payload size apply their own truncation downstream (e.g.
+ * `DiagnosticsCollector.truncateDiagnosticString` at 16 KB, Sentry's own field
+ * caps).
+ *
  * @param value arbitrary string; may contain log lines, stack traces, or URLs
  * @returns the input with recognized secrets replaced by `[REDACTED]`
  */
 export function scrubSecrets(value: string): string {
   if (value.length === 0) return value;
 
-  let out = value.length > MAX_SCRUB_INPUT_LENGTH ? value.slice(0, MAX_SCRUB_INPUT_LENGTH) : value;
-
+  let out = value;
   for (const { regex, replacement } of PATTERNS) {
     out = out.replace(regex, replacement);
   }
