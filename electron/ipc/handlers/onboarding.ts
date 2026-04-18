@@ -37,6 +37,7 @@ function getOnboardingState(): OnboardingState {
       waitingNudgeSeen: true,
       seenAgentIds: [],
       welcomeCardDismissed: true,
+      setupBannerDismissed: true,
       migratedFromLocalStorage: true,
       checklist: {
         dismissed: true,
@@ -62,6 +63,7 @@ function getOnboardingState(): OnboardingState {
       waitingNudgeSeen: false,
       seenAgentIds: [],
       welcomeCardDismissed: false,
+      setupBannerDismissed: false,
       migratedFromLocalStorage: false,
       checklist: DEFAULT_CHECKLIST,
     };
@@ -75,6 +77,10 @@ function getOnboardingState(): OnboardingState {
       ? (raw.seenAgentIds as string[]).filter((id) => typeof id === "string")
       : [],
     welcomeCardDismissed: raw.welcomeCardDismissed === true,
+    // Treat any already-completed onboarding as implicit banner dismissal —
+    // without this, upgraded users who finished onboarding before #5131 see
+    // the new "Set up your AI agents" banner on every launch.
+    setupBannerDismissed: raw.setupBannerDismissed === true || raw.completed === true,
     checklist: {
       ...DEFAULT_CHECKLIST,
       ...checklist,
@@ -116,6 +122,10 @@ export function registerOnboardingHandlers(): () => void {
       completed: allPreviouslyComplete,
       currentStep: allPreviouslyComplete ? null : state.currentStep,
       firstRunToastSeen: firstRunToastSeen || state.firstRunToastSeen,
+      // If the legacy Canopy onboarding was fully completed, the #5131 setup
+      // banner should also be considered dismissed — these users have already
+      // made their agent/telemetry decisions.
+      setupBannerDismissed: allPreviouslyComplete || state.setupBannerDismissed,
       migratedFromLocalStorage: true,
       checklist: allPreviouslyComplete
         ? {
@@ -219,6 +229,14 @@ export function registerOnboardingHandlers(): () => void {
     return updated;
   });
   cleanups.push(() => ipcMain.removeHandler(CHANNELS.ONBOARDING_DISMISS_WELCOME_CARD));
+
+  ipcMain.handle(CHANNELS.ONBOARDING_DISMISS_SETUP_BANNER, () => {
+    const state = getOnboardingState();
+    const updated: OnboardingState = { ...state, setupBannerDismissed: true };
+    store.set("onboarding", updated);
+    return updated;
+  });
+  cleanups.push(() => ipcMain.removeHandler(CHANNELS.ONBOARDING_DISMISS_SETUP_BANNER));
 
   ipcMain.handle(CHANNELS.ONBOARDING_CHECKLIST_GET, () => getChecklistState());
   cleanups.push(() => ipcMain.removeHandler(CHANNELS.ONBOARDING_CHECKLIST_GET));
