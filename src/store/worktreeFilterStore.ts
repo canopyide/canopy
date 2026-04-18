@@ -152,7 +152,8 @@ const GLOBAL_KEY = "daintree-worktree-filters";
 function resolveProjectIdFromUrl(): string {
   if (typeof window === "undefined") return "default";
   try {
-    return new URLSearchParams(window.location.search).get("projectId") ?? "default";
+    const fromUrl = new URLSearchParams(window.location.search).get("projectId");
+    return fromUrl && fromUrl.length > 0 ? fromUrl : "default";
   } catch {
     return "default";
   }
@@ -173,17 +174,35 @@ function isGlobalField(key: string): boolean {
   return GLOBAL_FIELD_KEYS.has(key as keyof WorktreeFilterStore);
 }
 
+function arrayOrUndefined<T>(value: unknown): T[] | undefined {
+  return Array.isArray(value) ? (value as T[]) : undefined;
+}
+
 /**
- * One-time migration seed: when the per-project key does not yet exist, but a
- * legacy combined blob is present under the global key, copy the per-project
- * fields out of it so existing pins/order survive the upgrade. The global key
- * is left intact — the global store's versioned `migrate` trims the stale
- * per-project fields from it on its own first hydrate.
+ * One-time migration seed: when the per-project key does not yet exist (or is
+ * unparseable), but a legacy combined blob is present under the global key,
+ * copy the per-project fields out of it so existing pins/order survive the
+ * upgrade. The global key is left intact — the global store's versioned
+ * `migrate` trims the stale per-project fields from it on its own first
+ * hydrate.
+ *
+ * The "scoped key exists" gate checks parseability, not raw presence — a
+ * corrupt scoped blob would otherwise silently suppress legacy recovery.
  */
 function loadLegacySeedForProject(): Partial<ProjectPersistedShape> {
-  if (readLocalStorageItemSafely(PROJECT_KEY) !== null) {
-    return {};
+  const scopedRaw = readLocalStorageItemSafely(PROJECT_KEY);
+  if (scopedRaw !== null) {
+    const scopedParsed = safeJSONParse<{ state?: unknown } | null>(
+      scopedRaw,
+      { store: "worktreeFilterStore", key: PROJECT_KEY },
+      null
+    );
+    if (scopedParsed && scopedParsed.state && typeof scopedParsed.state === "object") {
+      return {};
+    }
+    // Fall through — scoped blob was corrupt, try legacy seed instead.
   }
+
   const raw = readLocalStorageItemSafely(GLOBAL_KEY);
   if (raw === null) return {};
 
@@ -193,18 +212,18 @@ function loadLegacySeedForProject(): Partial<ProjectPersistedShape> {
     null
   );
   const state = parsed?.state;
-  if (!state) return {};
+  if (!state || typeof state !== "object") return {};
 
   return {
-    query: state.query,
-    statusFilters: state.statusFilters,
-    typeFilters: state.typeFilters,
-    githubFilters: state.githubFilters,
-    sessionFilters: state.sessionFilters,
-    activityFilters: state.activityFilters,
-    pinnedWorktrees: state.pinnedWorktrees,
-    collapsedWorktrees: state.collapsedWorktrees,
-    manualOrder: state.manualOrder,
+    query: typeof state.query === "string" ? state.query : undefined,
+    statusFilters: arrayOrUndefined<StatusFilter>(state.statusFilters),
+    typeFilters: arrayOrUndefined<TypeFilter>(state.typeFilters),
+    githubFilters: arrayOrUndefined<GitHubFilter>(state.githubFilters),
+    sessionFilters: arrayOrUndefined<SessionFilter>(state.sessionFilters),
+    activityFilters: arrayOrUndefined<ActivityFilter>(state.activityFilters),
+    pinnedWorktrees: arrayOrUndefined<string>(state.pinnedWorktrees),
+    collapsedWorktrees: arrayOrUndefined<string>(state.collapsedWorktrees),
+    manualOrder: arrayOrUndefined<string>(state.manualOrder),
   };
 }
 

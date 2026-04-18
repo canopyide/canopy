@@ -209,6 +209,15 @@ describe("worktreeFilterStore persistence scoping", () => {
     delete (globalThis as Partial<typeof globalThis>).localStorage;
   }
 
+  function setProjectIdInUrl(projectId: string | null): void {
+    const search = projectId === null ? "" : `?projectId=${encodeURIComponent(projectId)}`;
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search },
+      configurable: true,
+      writable: true,
+    });
+  }
+
   beforeEach(() => {
     // Ensure each test gets a freshly evaluated store module that picks up
     // the installed localStorage mock at module-load time. The file-level
@@ -219,6 +228,7 @@ describe("worktreeFilterStore persistence scoping", () => {
 
   afterEach(() => {
     restoreLocalStorage();
+    setProjectIdInUrl(null);
     vi.resetModules();
     vi.restoreAllMocks();
   });
@@ -394,6 +404,118 @@ describe("worktreeFilterStore persistence scoping", () => {
     expect(parsed.state).not.toHaveProperty("manualOrder");
     expect(parsed.state.orderBy).toBe("recent");
     expect(parsed.state.hideMainWorktree).toBe(true);
+  });
+
+  it("isolates per-project pins across different projectIds in the URL", async () => {
+    // Shared localStorage across both project loads — backing key-value store
+    // persists through module resets, just like real localStorage does.
+    const persistent = new Map<string, string>();
+    installLocalStorage({
+      getItem: (key) => persistent.get(key) ?? null,
+      setItem: (key, value) => {
+        persistent.set(key, value);
+      },
+      removeItem: (key) => {
+        persistent.delete(key);
+      },
+    });
+
+    // Project A: pin wt-a
+    setProjectIdInUrl("project-a");
+    let mod = await import("../worktreeFilterStore");
+    mod.useWorktreeFilterStore.getState().pinWorktree("wt-a");
+    expect(mod.useWorktreeFilterStore.getState().pinnedWorktrees).toEqual(["wt-a"]);
+
+    // Switch to Project B — module reset simulates a fresh WebContentsView
+    vi.resetModules();
+    setProjectIdInUrl("project-b");
+    mod = await import("../worktreeFilterStore");
+
+    // Project B must not see Project A's pin
+    expect(mod.useWorktreeFilterStore.getState().pinnedWorktrees).toEqual([]);
+    mod.useWorktreeFilterStore.getState().pinWorktree("wt-b");
+    expect(mod.useWorktreeFilterStore.getState().pinnedWorktrees).toEqual(["wt-b"]);
+
+    // Back to Project A — its pin is intact
+    vi.resetModules();
+    setProjectIdInUrl("project-a");
+    mod = await import("../worktreeFilterStore");
+    expect(mod.useWorktreeFilterStore.getState().pinnedWorktrees).toEqual(["wt-a"]);
+
+    // Each project writes to its own scoped key
+    expect(persistent.has("daintree-worktree-filters:project-a")).toBe(true);
+    expect(persistent.has("daintree-worktree-filters:project-b")).toBe(true);
+  });
+
+  it("recovers legacy seed when the scoped key is corrupt JSON", async () => {
+    const legacyBlob = JSON.stringify({
+      state: {
+        query: "recovered",
+        pinnedWorktrees: ["wt-legacy"],
+      },
+    });
+    installLocalStorage({
+      getItem: (key) => {
+        if (key === GLOBAL_KEY) return legacyBlob;
+        if (key === PROJECT_KEY) return "{corrupt";
+        return null;
+      },
+      setItem: () => {},
+      removeItem: () => {},
+    });
+
+    const { useWorktreeFilterStore: store } = await import("../worktreeFilterStore");
+
+    // Corrupt scoped blob should not suppress legacy recovery
+    expect(store.getState().query).toBe("recovered");
+    expect(store.getState().pinnedWorktrees).toEqual(["wt-legacy"]);
+  });
+
+  it("ignores legacy fields with wrong types to avoid silent corruption", async () => {
+    const legacyBlob = JSON.stringify({
+      state: {
+        // Malformed: strings where arrays are expected. Without type guards,
+        // `new Set<StatusFilter>("active")` would split into 6 characters.
+        statusFilters: "active",
+        pinnedWorktrees: "wt-oops",
+        manualOrder: 42,
+      },
+    });
+    installLocalStorage({
+      getItem: (key) => (key === GLOBAL_KEY ? legacyBlob : null),
+      setItem: () => {},
+      removeItem: () => {},
+    });
+
+    const { useWorktreeFilterStore: store } = await import("../worktreeFilterStore");
+
+    expect(Array.from(store.getState().statusFilters)).toEqual([]);
+    expect(store.getState().pinnedWorktrees).toEqual([]);
+    expect(store.getState().manualOrder).toEqual([]);
+  });
+
+  it("routes functional setState updates to the correct backing stores", async () => {
+    const writes = new Map<string, string>();
+    installLocalStorage({
+      getItem: () => null,
+      setItem: (key, value) => {
+        writes.set(key, value);
+      },
+      removeItem: (key) => {
+        writes.delete(key);
+      },
+    });
+
+    const { useWorktreeFilterStore: store } = await import("../worktreeFilterStore");
+
+    store.setState((state) => ({
+      orderBy: state.orderBy === "created" ? "alpha" : "created",
+      pinnedWorktrees: [...state.pinnedWorktrees, "wt-func"],
+    }));
+
+    const next = store.getState();
+    expect(next.orderBy).toBe("alpha");
+    expect(next.pinnedWorktrees).toEqual(["wt-func"]);
   });
 
   it("keeps global preferences when clearAll runs", async () => {
