@@ -222,6 +222,35 @@ describe("round-trip serialization", () => {
     expect(restored.context).toEqual({ noteId: "n-1" });
     expect(restored.currentLastModified).toBe(12345);
   });
+
+  it("round-trips a GitOperationError discriminator through the properties bag", () => {
+    // Synthesize the shape produced by errorTypes.GitOperationError without a
+    // direct import — shared/ tests must not depend on electron/ modules.
+    const original = Object.assign(new Error("fatal: not a git repository"), {
+      name: "GitOperationError",
+      context: { cwd: "/repo", op: "status", reason: "not-a-repository" },
+      reason: "not-a-repository",
+      op: "status",
+      rawMessage: "fatal: not a git repository",
+    });
+
+    const restored = deserializeError(serializeError(original)) as Error & {
+      reason: string;
+      op: string;
+      rawMessage: string;
+      context: Record<string, unknown>;
+    };
+
+    expect(restored.name).toBe("GitOperationError");
+    expect(restored.reason).toBe("not-a-repository");
+    expect(restored.op).toBe("status");
+    expect(restored.rawMessage).toBe("fatal: not a git repository");
+    expect(restored.context).toEqual({
+      cwd: "/repo",
+      op: "status",
+      reason: "not-a-repository",
+    });
+  });
 });
 
 describe("wrapSuccess", () => {
