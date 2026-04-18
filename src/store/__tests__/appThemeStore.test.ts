@@ -14,6 +14,7 @@ describe("appThemeStore.recentSchemeIds LRU", () => {
       preferredLightSchemeId: "bondi",
       recentSchemeIds: [],
       accentColorOverride: null,
+      previewSchemeId: null,
     });
   });
 
@@ -142,6 +143,50 @@ describe("appThemeStore.recentSchemeIds LRU", () => {
     expect(document.documentElement.style.getPropertyValue("--theme-accent-primary")).toBe(
       "#abcdef"
     );
+  });
+
+  it("setPreviewSchemeId does not mutate selectedSchemeId or recentSchemeIds", () => {
+    useAppThemeStore.getState().setSelectedSchemeId("daintree");
+    const recentBefore = useAppThemeStore.getState().recentSchemeIds;
+
+    useAppThemeStore.getState().setPreviewSchemeId("bondi");
+    expect(useAppThemeStore.getState().previewSchemeId).toBe("bondi");
+    expect(useAppThemeStore.getState().selectedSchemeId).toBe("daintree");
+    expect(useAppThemeStore.getState().recentSchemeIds).toEqual(recentBefore);
+
+    useAppThemeStore.getState().setPreviewSchemeId(null);
+    expect(useAppThemeStore.getState().previewSchemeId).toBeNull();
+  });
+
+  it("removeCustomScheme clears previewSchemeId when it points at the removed id", () => {
+    const customScheme = {
+      id: "custom-preview-target",
+      name: "CustomPreview",
+      type: "dark" as const,
+      builtin: false,
+      tokens: {} as never,
+    };
+    useAppThemeStore.getState().addCustomScheme(customScheme);
+    useAppThemeStore.getState().setPreviewSchemeId("custom-preview-target");
+    expect(useAppThemeStore.getState().previewSchemeId).toBe("custom-preview-target");
+
+    useAppThemeStore.getState().removeCustomScheme("custom-preview-target");
+    expect(useAppThemeStore.getState().previewSchemeId).toBeNull();
+  });
+
+  it("removeCustomScheme leaves previewSchemeId alone when unrelated id is removed", () => {
+    const customScheme = {
+      id: "some-custom",
+      name: "Some Custom",
+      type: "dark" as const,
+      builtin: false,
+      tokens: {} as never,
+    };
+    useAppThemeStore.getState().addCustomScheme(customScheme);
+    useAppThemeStore.getState().setPreviewSchemeId("daintree");
+
+    useAppThemeStore.getState().removeCustomScheme("some-custom");
+    expect(useAppThemeStore.getState().previewSchemeId).toBe("daintree");
   });
 
   it("removeCustomScheme strips the removed id from recentSchemeIds", () => {

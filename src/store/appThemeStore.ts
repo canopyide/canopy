@@ -15,7 +15,15 @@ interface AppThemeState {
   preferredLightSchemeId: string;
   recentSchemeIds: string[];
   accentColorOverride: string | null;
+  /**
+   * Ephemeral override used by the picker for live hover/focus preview.
+   * Never persisted. The picker reads this to drive the hero panel image
+   * and aria-live announcement during preview, while calling
+   * `injectSchemeToDOM` imperatively for the CSS variable side-effect.
+   */
+  previewSchemeId: string | null;
   setSelectedSchemeId: (id: string) => void;
+  setPreviewSchemeId: (id: string | null) => void;
   /**
    * Updates Zustand state for a deliberate scheme selection (selectedSchemeId
    * + recentSchemeIds LRU) WITHOUT touching the DOM. The caller is responsible
@@ -63,6 +71,7 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
   preferredLightSchemeId: "bondi",
   recentSchemeIds: [],
   accentColorOverride: null,
+  previewSchemeId: null,
 
   setSelectedSchemeId: (id) => {
     const { customSchemes } = useAppThemeStore.getState();
@@ -76,6 +85,8 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
     }));
     injectSchemeToDOM(scheme);
   },
+
+  setPreviewSchemeId: (id) => set({ previewSchemeId: id }),
 
   commitSchemeSelection: (id) => {
     const { customSchemes } = useAppThemeStore.getState();
@@ -107,6 +118,7 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
     set((state) => ({
       customSchemes: state.customSchemes.filter((s) => s.id !== id),
       selectedSchemeId: needsFallback ? DEFAULT_APP_SCHEME_ID : state.selectedSchemeId,
+      previewSchemeId: state.previewSchemeId === id ? null : state.previewSchemeId,
       recentSchemeIds: state.recentSchemeIds.filter((x) => x !== id),
     }));
     if (needsFallback) {
