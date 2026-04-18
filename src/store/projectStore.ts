@@ -3,6 +3,7 @@ import { persist, subscribeWithSelector } from "zustand/middleware";
 import type { Project, ProjectCloseResult } from "@shared/types";
 import { projectClient } from "@/clients";
 import { notify } from "@/lib/notify";
+import { actionService } from "@/services/ActionService";
 import { logErrorWithContext } from "@/utils/errorContext";
 import { logDebug } from "@/utils/logger";
 import { useUrlHistoryStore } from "./urlHistoryStore";
@@ -186,6 +187,12 @@ function getProjectStoreListenerState(): ProjectStoreListenerState {
   return created;
 }
 
+function isDubiousOwnershipError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  return lower.includes("dubious ownership") || lower.includes("safe.directory");
+}
+
 function getProjectOpenErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
@@ -194,7 +201,7 @@ function getProjectOpenErrorMessage(error: unknown): string {
     return "Git executable not found. Install Git and ensure it is available on your PATH.";
   }
 
-  if (lower.includes("dubious ownership") || lower.includes("safe.directory")) {
+  if (isDubiousOwnershipError(error)) {
     return (
       "Git refused to open this repository due to 'dubious ownership'. " +
       "Mark it as safe.directory in Git settings and try again."
@@ -288,6 +295,44 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         if (gitInitPath && isAbsolutePath(gitInitPath)) {
           set({ isLoading: false });
           get().openGitInitDialog(gitInitPath);
+          return;
+        }
+      }
+
+      if (isDubiousOwnershipError(error)) {
+        const targetPath = resolvedPath ?? path.trim();
+        const isAbsolutePath = (p: string) => p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p);
+        if (targetPath && isAbsolutePath(targetPath)) {
+          notify({
+            type: "error",
+            title: "Repository ownership issue",
+            message:
+              "Git refused to open this repository due to an ownership mismatch. " +
+              "You can mark it as trusted to open it.",
+            duration: 0,
+            actions: [
+              {
+                label: "Mark as safe",
+                variant: "primary",
+                onClick: async () => {
+                  await window.electron.git.markSafeDirectory(targetPath);
+                  await get().addProjectByPath(targetPath);
+                },
+              },
+              {
+                label: "Open logs",
+                variant: "secondary",
+                actionId: "errors.openLogs",
+                onClick: () => {
+                  void actionService.dispatch("errors.openLogs", undefined, { source: "user" });
+                },
+              },
+            ],
+          });
+          set({
+            error: "Git refused to open repository due to dubious ownership.",
+            isLoading: false,
+          });
           return;
         }
       }

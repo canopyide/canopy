@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { SimpleGit } from "simple-git";
 import { CHANNELS } from "../channels.js";
 import { checkRateLimit, typedHandle } from "../utils.js";
@@ -20,6 +22,8 @@ import {
   classifyGitError,
   getGitRecoveryAction,
 } from "../../../shared/utils/gitOperationErrors.js";
+
+const execFileAsync = promisify(execFile);
 
 interface StagingFileEntry {
   path: string;
@@ -546,6 +550,30 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     await preAgentSnapshotService.deleteSnapshot(worktreeId);
   };
   handlers.push(typedHandle(CHANNELS.GIT_SNAPSHOT_DELETE, handleSnapshotDelete));
+
+  // Resolves the "fatal: detected dubious ownership" error (CVE-2022-24765) by
+  // adding the repo path to the user's global safe.directory list. The caller
+  // is expected to retry the original operation after this succeeds.
+  // Detection lives in the renderer (see src/store/projectStore.ts) — this
+  // handler only writes the config. Inline because #5369 (unified git error
+  // taxonomy) has no PR yet.
+  const handleMarkSafeDirectory = async (repoPath: string): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_MARK_SAFE_DIRECTORY, 5, 10_000);
+    if (typeof repoPath !== "string" || !repoPath.trim()) {
+      throw new Error("Invalid path: must be a non-empty string");
+    }
+    if (!path.isAbsolute(repoPath)) {
+      throw new Error("Invalid path: must be absolute");
+    }
+    // Git for Windows (MSYS2) expects forward-slash Win32 paths like
+    // `C:/Users/foo/repo`. Backslashes or POSIX-prefixed `/c/...` paths can be
+    // misinterpreted relative to the Git installation root.
+    const normalized = path.resolve(repoPath).replace(/\\/g, "/");
+    await execFileAsync("git", ["config", "--global", "--add", "safe.directory", normalized], {
+      env: { ...process.env, LC_ALL: "C" },
+    });
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_MARK_SAFE_DIRECTORY, handleMarkSafeDirectory));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }
