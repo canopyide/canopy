@@ -58,9 +58,7 @@ describe("ActionService", () => {
       expect(manifest[0]!.id).toBe("actions.list");
     });
 
-    it("should warn when registering duplicate action", () => {
-      const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
+    it("should throw when registering duplicate action", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
@@ -73,14 +71,10 @@ describe("ActionService", () => {
       };
 
       service.register(action);
-      service.register(action);
 
-      expect(consoleWarn).toHaveBeenCalledWith(
-        '[WARN] Action "actions.list" already registered. Overwriting.',
-        ""
+      expect(() => service.register(action)).toThrow(
+        'Action "actions.list" is already registered.'
       );
-
-      consoleWarn.mockRestore();
     });
   });
 
