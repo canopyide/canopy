@@ -8,6 +8,7 @@ import type { HandlerDependencies } from "../../types.js";
 import type { TerminalResizePayload } from "../../../types/index.js";
 import { TerminalResizePayloadSchema } from "../../../schemas/ipc.js";
 import type { PtyHostActivityTier } from "../../../../shared/types/pty-host.js";
+import { normalizeObservedTitle } from "../../../../shared/utils/isUselessTitle.js";
 
 export function registerTerminalIOHandlers(deps: HandlerDependencies): () => void {
   const { ptyClient } = deps;
@@ -143,6 +144,29 @@ export function registerTerminalIOHandlers(deps: HandlerDependencies): () => voi
   ipcMain.on(CHANNELS.TERMINAL_AGENT_TITLE_STATE, handleTerminalAgentTitleState);
   handlers.push(() =>
     ipcMain.removeListener(CHANNELS.TERMINAL_AGENT_TITLE_STATE, handleTerminalAgentTitleState)
+  );
+
+  const handleTerminalUpdateObservedTitle = (
+    _event: Electron.IpcMainEvent,
+    payload: { id: string; title: string }
+  ) => {
+    try {
+      if (!payload || typeof payload !== "object") return;
+      const { id, title } = payload;
+      if (typeof id !== "string" || !id) return;
+      const normalized = normalizeObservedTitle(title);
+      if (!normalized) return;
+      ptyClient.updateObservedTitle(id, normalized);
+    } catch (error) {
+      console.error("[IPC] Error handling observed title update:", error);
+    }
+  };
+  ipcMain.on(CHANNELS.TERMINAL_UPDATE_OBSERVED_TITLE, handleTerminalUpdateObservedTitle);
+  handlers.push(() =>
+    ipcMain.removeListener(
+      CHANNELS.TERMINAL_UPDATE_OBSERVED_TITLE,
+      handleTerminalUpdateObservedTitle
+    )
   );
 
   const handleTerminalForceResume = async (
