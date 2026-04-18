@@ -58,23 +58,38 @@ describe("ActionService", () => {
       expect(manifest[0]!.id).toBe("actions.list");
     });
 
-    it("should throw when registering duplicate action", () => {
-      const action: ActionDefinition = {
+    it("should throw when registering duplicate action and preserve the original registration", async () => {
+      const originalRun = vi.fn().mockResolvedValue("original");
+      const original: ActionDefinition = {
         id: "actions.list" as ActionId,
-        title: "Test Action",
-        description: "A test action",
+        title: "Original Action",
+        description: "Original",
         category: "test",
         kind: "command",
         danger: "safe",
         scope: "renderer",
-        run: vi.fn().mockResolvedValue(undefined),
+        run: originalRun,
       };
 
-      service.register(action);
+      const duplicateRun = vi.fn().mockResolvedValue("duplicate");
+      const duplicate: ActionDefinition = {
+        ...original,
+        title: "Duplicate Action",
+        run: duplicateRun,
+      };
 
-      expect(() => service.register(action)).toThrow(
-        'Action "actions.list" is already registered.'
+      service.register(original);
+
+      expect(() => service.register(duplicate)).toThrow(
+        /^Action "actions\.list" is already registered\.$/
       );
+
+      const result = await service.dispatch("actions.list" as ActionId);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.result).toBe("original");
+      expect(originalRun).toHaveBeenCalledTimes(1);
+      expect(duplicateRun).not.toHaveBeenCalled();
+      expect(service.get("actions.list" as ActionId)?.title).toBe("Original Action");
     });
   });
 
