@@ -398,12 +398,12 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Terminal",
   },
   {
-    actionId: "terminal.bulkCommand",
+    actionId: "fleet.deck.toggle",
     combo: "Cmd+Alt+Shift+B",
     scope: "global",
     priority: 0,
-    description: "Open Bulk Operations",
-    category: "Terminal",
+    description: "Toggle Fleet Deck",
+    category: "Fleet",
   },
   // Directional terminal navigation (Ghostty-style: Cmd+Option+Arrow)
   {

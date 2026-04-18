@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useEscapeStack } from "@/hooks";
 import { useFleetArmingStore, type FleetArmStatePreset } from "@/store/fleetArmingStore";
+import { useFleetDeckStore } from "@/store/fleetDeckStore";
 import {
   useFleetPendingActionStore,
   type FleetPendingActionKind,
@@ -112,6 +113,7 @@ export function FleetArmingRibbon(): ReactElement | null {
   const counts = useArmedCounts();
   const pending = useFleetPendingActionStore((s) => s.pending);
   const clearPending = useFleetPendingActionStore((s) => s.clear);
+  const isDeckOpen = useFleetDeckStore((s) => s.isOpen);
 
   // Escape stack: confirmation cancel sits above the fleet-disarm entry, so
   // the first Escape while confirming clears the pending action and a
@@ -347,7 +349,7 @@ export function FleetArmingRibbon(): ReactElement | null {
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <FleetComposer />
+      {!isDeckOpen && <FleetComposer />}
     </div>
   );
 }

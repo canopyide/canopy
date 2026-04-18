@@ -104,6 +104,10 @@ export interface StoreSchema {
     panelGridConfig?: PanelGridConfig;
     mruList?: string[];
     actionMruList?: string[];
+    fleetDeckOpen?: boolean;
+    fleetDeckEdge?: "right" | "left" | "bottom";
+    fleetDeckWidth?: number;
+    fleetDeckHeight?: number;
   };
   userConfig: {
     githubToken?: string;
@@ -246,6 +250,9 @@ const storeOptions = {
       recipes: [],
       hasSeenWelcome: false,
       panelGridConfig: { strategy: "automatic" as const, value: 3 },
+      fleetDeckOpen: false,
+      fleetDeckEdge: "right" as const,
+      fleetDeckWidth: 480,
     },
     userConfig: {},
     worktreeConfig: {

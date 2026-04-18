@@ -4,6 +4,7 @@ import { render, fireEvent, screen, act } from "@testing-library/react";
 import { FleetArmingRibbon } from "../FleetArmingRibbon";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetPendingActionStore } from "@/store/fleetPendingActionStore";
+import { useFleetDeckStore } from "@/store/fleetDeckStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
@@ -17,6 +18,7 @@ function resetStores() {
     lastArmedId: null,
   });
   useFleetPendingActionStore.setState({ pending: null });
+  useFleetDeckStore.setState({ isOpen: false });
   usePanelStore.setState({ panelsById: {}, panelIds: [] });
   useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-1" });
   useAnnouncerStore.setState({ polite: null, assertive: null });
@@ -206,5 +208,23 @@ describe("FleetArmingRibbon", () => {
     expect(match).toBeDefined();
     expect(match?.[1]).toEqual({ confirmed: true });
     dispatchSpy.mockRestore();
+  });
+
+  describe("Fleet Deck composer suppression", () => {
+    it("renders the embedded FleetComposer when the Deck is closed", () => {
+      useFleetArmingStore.getState().armIds(["a"]);
+      useFleetDeckStore.setState({ isOpen: false });
+      render(<FleetArmingRibbon />);
+      expect(screen.queryByTestId("fleet-composer")).toBeTruthy();
+    });
+
+    it("suppresses the embedded FleetComposer when the Deck is open", () => {
+      useFleetArmingStore.getState().armIds(["a"]);
+      useFleetDeckStore.setState({ isOpen: true });
+      render(<FleetArmingRibbon />);
+      expect(screen.queryByTestId("fleet-composer")).toBeNull();
+      // The ribbon itself still renders — only the composer is suppressed.
+      expect(screen.queryByTestId("fleet-arming-ribbon")).toBeTruthy();
+    });
   });
 });
