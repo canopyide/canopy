@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ActionDefinition } from "@shared/types/actions";
-import type { ActionCallbacks, ActionRegistry } from "../../actionTypes";
+import type { ActionCallbacks, ActionRegistry, AnyActionDefinition } from "../../actionTypes";
 import { registerNavigationActions } from "../navigationActions";
 
 function setupActions() {
@@ -42,7 +41,7 @@ afterEach(() => {
 async function call(actions: ActionRegistry, id: string) {
   const factory = actions.get(id);
   if (!factory) throw new Error(`missing ${id}`);
-  const def = factory() as ActionDefinition<unknown, unknown>;
+  const def = factory() as AnyActionDefinition;
   return def.run(undefined, {} as never);
 }
 
@@ -91,7 +90,7 @@ describe("navigationActions adversarial", () => {
     ]) {
       const factory = actions.get(id);
       expect(factory).toBeDefined();
-      const def = factory!() as ActionDefinition<unknown, unknown>;
+      const def = factory!() as AnyActionDefinition;
       expect(def.argsSchema).toBeUndefined();
       expect(def.danger).toBe("safe");
     }

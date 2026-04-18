@@ -9,6 +9,7 @@ import type {
   ActionSource,
   ActionError,
 } from "../../shared/types/actions.js";
+import type { AnyActionDefinition } from "./actions/actionTypes";
 import { logWarn } from "@/utils/logger";
 import { keybindingService } from "./KeybindingService";
 import { shortcutHintStore } from "../store/shortcutHintStore";
@@ -41,14 +42,16 @@ function zodSchemaToJsonSchema(schema: z.ZodType): Record<string, unknown> | und
 }
 
 export class ActionService {
-  private registry = new Map<ActionId, ActionDefinition<unknown, unknown>>();
+  private registry = new Map<ActionId, AnyActionDefinition>();
   private contextProvider: (() => ActionContext) | null = null;
 
-  register<Args = unknown, Result = unknown>(definition: ActionDefinition<Args, Result>): void {
+  register<S extends z.ZodTypeAny | undefined = undefined, Result = unknown>(
+    definition: ActionDefinition<S, Result>
+  ): void {
     if (this.registry.has(definition.id)) {
       throw new Error(`Action "${definition.id}" is already registered.`);
     }
-    this.registry.set(definition.id, definition as ActionDefinition<unknown, unknown>);
+    this.registry.set(definition.id, definition as AnyActionDefinition);
   }
 
   setContextProvider(provider: (() => ActionContext) | null): void {
@@ -157,7 +160,7 @@ export class ActionService {
   }
 
   private toManifestEntry(
-    definition: ActionDefinition<unknown, unknown>,
+    definition: AnyActionDefinition,
     context: ActionContext
   ): ActionManifestEntry {
     const enabled = definition.isEnabled?.(context) ?? true;

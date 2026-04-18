@@ -303,7 +303,14 @@ export interface ActionContext {
   isSettingsOpen?: boolean;
 }
 
-export interface ActionDefinition<Args = unknown, Result = unknown> {
+export type InferActionArgs<S extends z.ZodTypeAny | undefined> = [S] extends [z.ZodTypeAny]
+  ? z.infer<S>
+  : void;
+
+export interface ActionDefinition<
+  S extends z.ZodTypeAny | undefined = undefined,
+  Result = unknown,
+> {
   id: ActionId;
   title: string;
   description: string;
@@ -311,11 +318,11 @@ export interface ActionDefinition<Args = unknown, Result = unknown> {
   kind: ActionKind;
   danger: ActionDanger;
   scope: ActionScope;
-  argsSchema?: z.ZodType<Args>;
+  argsSchema?: S;
   resultSchema?: z.ZodType<Result>;
   isEnabled?: (ctx: ActionContext) => boolean;
   disabledReason?: (ctx: ActionContext) => string | undefined;
-  run: (args: Args, ctx: ActionContext) => Promise<Result>;
+  run: (args: InferActionArgs<S>, ctx: ActionContext) => Promise<Result>;
 }
 
 export interface ActionManifestEntry {

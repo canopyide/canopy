@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import type { ActionDefinition, ActionContext } from "@shared/types/actions";
+import type { ActionContext } from "@shared/types/actions";
+import type { AnyActionDefinition } from "../../actionTypes";
 
 const mockGetSettings = vi.fn();
 const mockSaveSettings = vi.fn();
@@ -14,7 +15,7 @@ vi.mock("@/clients", () => ({
 const mockGlobalEnvGet = vi.fn();
 const mockGlobalEnvSet = vi.fn();
 
-type ActionFactory = () => ActionDefinition;
+type ActionFactory = () => AnyActionDefinition;
 
 const ENV_ACTION_IDS = [
   "env.global.get",

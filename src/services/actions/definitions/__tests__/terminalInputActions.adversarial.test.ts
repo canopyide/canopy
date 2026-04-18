@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ActionDefinition } from "@shared/types/actions";
-import type { ActionCallbacks, ActionRegistry } from "../../actionTypes";
+import type { ActionCallbacks, ActionRegistry, AnyActionDefinition } from "../../actionTypes";
 
 const panelStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const contextMenuMock = vi.hoisted(() => ({ openPanelContextMenu: vi.fn() }));
@@ -72,7 +71,7 @@ function setupActions(): {
     run: async (id: string, args?: unknown) => {
       const factory = actions.get(id);
       if (!factory) throw new Error(`missing ${id}`);
-      const def = factory() as ActionDefinition<unknown, unknown>;
+      const def = factory() as AnyActionDefinition;
       return def.run(args, {});
     },
     callbacks,

@@ -5,7 +5,10 @@ import type { AddPanelOptions } from "@/store";
 
 type AddTerminalOptions = AddPanelOptions;
 
-export type ActionRegistry = Map<ActionId, () => ActionDefinition<unknown, unknown>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyActionDefinition = ActionDefinition<any, any>;
+
+export type ActionRegistry = Map<ActionId, () => AnyActionDefinition>;
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
 

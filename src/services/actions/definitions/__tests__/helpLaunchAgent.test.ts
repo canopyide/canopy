@@ -47,7 +47,8 @@ vi.mock("@shared/config/agentRegistry", async (importOriginal) => {
 
 import { registerPreferencesActions } from "../preferencesActions";
 import type { ActionCallbacks, ActionRegistry } from "../../actionTypes";
-import type { ActionContext, ActionDefinition } from "@shared/types/actions";
+import type { ActionContext } from "@shared/types/actions";
+import type { AnyActionDefinition } from "../../actionTypes";
 
 const stubCtx: ActionContext = {};
 
@@ -61,8 +62,8 @@ function allAvailability(override?: Partial<CliAvailability>): CliAvailability {
   } as CliAvailability;
 }
 
-function extractHelpLaunchAgent(): ActionDefinition {
-  const registry = new Map<string, () => ActionDefinition>();
+function extractHelpLaunchAgent(): AnyActionDefinition {
+  const registry = new Map<string, () => AnyActionDefinition>();
   const callbacks = { onOpenShortcuts: vi.fn() } as unknown as ActionCallbacks;
   registerPreferencesActions(registry as unknown as ActionRegistry, callbacks);
   const factory = registry.get("help.launchAgent");
@@ -71,7 +72,7 @@ function extractHelpLaunchAgent(): ActionDefinition {
 }
 
 describe("help.launchAgent", () => {
-  let action: ActionDefinition;
+  let action: AnyActionDefinition;
 
   beforeEach(() => {
     vi.clearAllMocks();

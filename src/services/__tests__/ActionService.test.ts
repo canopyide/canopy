@@ -106,7 +106,7 @@ describe("ActionService", () => {
 
     it("should successfully execute a registered action", async () => {
       const mockRun = vi.fn().mockResolvedValue("success");
-      const action: ActionDefinition<void, string> = {
+      const action: ActionDefinition<undefined, string> = {
         id: "actions.list" as ActionId,
         title: "Test Action",
         description: "A test action",
@@ -128,7 +128,8 @@ describe("ActionService", () => {
     });
 
     it("should validate arguments with Zod schema", async () => {
-      const action: ActionDefinition<{ name: string }, void> = {
+      const nameSchema = z.object({ name: z.string() });
+      const action: ActionDefinition<typeof nameSchema, void> = {
         id: "actions.list" as ActionId,
         title: "Test Action",
         description: "A test action",
@@ -136,7 +137,7 @@ describe("ActionService", () => {
         kind: "command",
         danger: "safe",
         scope: "renderer",
-        argsSchema: z.object({ name: z.string() }),
+        argsSchema: nameSchema,
         run: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -231,7 +232,8 @@ describe("ActionService", () => {
     });
 
     it("should include inputSchema from Zod schema", () => {
-      const action: ActionDefinition<{ count: number }, void> = {
+      const countSchema = z.object({ count: z.number() });
+      const action: ActionDefinition<typeof countSchema, void> = {
         id: "actions.list" as ActionId,
         title: "Test Action",
         description: "A test action",
@@ -239,7 +241,7 @@ describe("ActionService", () => {
         kind: "command",
         danger: "safe",
         scope: "renderer",
-        argsSchema: z.object({ count: z.number() }),
+        argsSchema: countSchema,
         run: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -344,7 +346,7 @@ describe("ActionService", () => {
 
       try {
         const mockRun = vi.fn().mockResolvedValue("done");
-        const action: ActionDefinition<void, string> = {
+        const action: ActionDefinition<undefined, string> = {
           id: "actions.list" as ActionId,
           title: "Test",
           description: "Test action",

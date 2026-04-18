@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ActionDefinition } from "@shared/types/actions";
+import type { AnyActionDefinition } from "../../actionTypes";
 
 const mockNotify = vi.fn();
 vi.mock("@/lib/notify", () => ({
@@ -35,7 +35,7 @@ vi.mock("@/store/terminalStore", () => ({
   useTerminalStore: { getState: () => ({ addTerminal: vi.fn() }) },
 }));
 
-type ActionFactory = () => ActionDefinition;
+type ActionFactory = () => AnyActionDefinition;
 
 const RESOURCE_ACTION_IDS = [
   "worktree.resource.provision",
