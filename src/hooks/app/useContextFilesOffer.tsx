@@ -6,7 +6,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { projectClient } from "@/clients";
 
 function formatFileList(files: string[]): string {
-  if (files.length === 1) return files[0];
+  if (files.length === 1) return files[0]!;
   if (files.length === 2) return `${files[0]} and ${files[1]}`;
   return `${files.slice(0, -1).join(", ")}, and ${files[files.length - 1]}`;
 }
