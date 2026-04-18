@@ -151,6 +151,28 @@ describe("fleetDeckStore", () => {
       });
       expect(setStateMock).not.toHaveBeenCalled();
     });
+
+    it("a user mutator before hydrate() wins over stale persisted values", () => {
+      // Simulate: user hits Cmd+Alt+Shift+B before AppState IPC resolves
+      useFleetDeckStore.getState().open();
+      useFleetDeckStore.getState().setWidth(700);
+      // Stale hydrate arrives with persisted closed state and old width
+      useFleetDeckStore.getState().hydrate({
+        isOpen: false,
+        width: 480,
+      });
+      const s = useFleetDeckStore.getState();
+      expect(s.isOpen).toBe(true);
+      expect(s.width).toBe(700);
+    });
+
+    it("hydrate() becomes a no-op after first hydrate", () => {
+      useFleetDeckStore.getState().hydrate({ isOpen: true, width: 500 });
+      useFleetDeckStore.getState().hydrate({ isOpen: false, width: 600 });
+      const s = useFleetDeckStore.getState();
+      expect(s.isOpen).toBe(true);
+      expect(s.width).toBe(500);
+    });
   });
 
   describe("pin management", () => {

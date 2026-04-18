@@ -24,7 +24,7 @@ describe("computeLiveSlotIds", () => {
     expect(computeLiveSlotIds([], new Set(), new Set(), {}, 4)).toEqual([]);
   });
 
-  it("returns all ids when under cap", () => {
+  it("returns all ids when under cap, preserving appearance order", () => {
     const ids = ["a", "b", "c"];
     const panelsById = {
       a: panel("a"),
@@ -32,10 +32,10 @@ describe("computeLiveSlotIds", () => {
       c: panel("c"),
     };
     const result = computeLiveSlotIds(ids, new Set(), new Set(), panelsById, 4);
-    expect(new Set(result)).toEqual(new Set(ids));
+    expect(result).toEqual(["a", "b", "c"]);
   });
 
-  it("pins take absolute priority over armed and state", () => {
+  it("pins take absolute priority over armed and state, with ordered tiers", () => {
     const ids = ["a", "b", "c", "d", "e"];
     const panelsById = {
       a: panel("a", { agentState: "idle" }),
@@ -47,11 +47,9 @@ describe("computeLiveSlotIds", () => {
     const armed = new Set(["c"]);
     const pinned = new Set(["e", "d"]);
     const result = computeLiveSlotIds(ids, armed, pinned, panelsById, 4);
-    // Tier 0 first: pinned (by appearance order), then tier 1 (armed), then waiting
-    expect(result[0]).toBe("d");
-    expect(result[1]).toBe("e");
-    expect(result).toContain("c");
-    expect(result).toContain("b");
+    // Tier 0 pinned ("d" before "e" by appearance), tier 1 armed ("c"),
+    // tier 2 waiting ("b"). "a" (idle, tier 4) drops because cap=4.
+    expect(result).toEqual(["d", "e", "c", "b"]);
   });
 
   it("armed beats waiting", () => {
@@ -109,8 +107,7 @@ describe("computeLiveSlotIds", () => {
     const ids = ["a", "b"];
     const panelsById = { a: panel("a", { agentState: "waiting" }) };
     const result = computeLiveSlotIds(ids, new Set(), new Set(), panelsById, 2);
-    // "a" has tier 2 (waiting), "b" missing defaults to tier 4 — "a" comes first.
-    expect(result[0]).toBe("a");
-    expect(result).toContain("b");
+    // "a" has tier 2 (waiting), "b" missing defaults to tier 4 — "a" first.
+    expect(result).toEqual(["a", "b"]);
   });
 });

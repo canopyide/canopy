@@ -74,40 +74,43 @@ export const useFleetDeckStore = create<FleetDeckState>()((set, get) => ({
 
   open: () => {
     if (get().isOpen) return;
-    set({ isOpen: true });
+    // User interaction before hydrate() resolves wins; hydrate() becomes a
+    // no-op once isHydrated flips (whether via this path or the explicit
+    // hydrate call).
+    set({ isOpen: true, isHydrated: true });
     void persistOpen(true);
   },
 
   close: () => {
     if (!get().isOpen) return;
-    set({ isOpen: false });
+    set({ isOpen: false, isHydrated: true });
     void persistOpen(false);
   },
 
   toggle: () => {
     const next = !get().isOpen;
-    set({ isOpen: next });
+    set({ isOpen: next, isHydrated: true });
     void persistOpen(next);
   },
 
   setEdge: (edge) => {
     const normalized = normalizeEdge(edge);
     if (get().edge === normalized) return;
-    set({ edge: normalized });
+    set({ edge: normalized, isHydrated: true });
     void persistEdge(normalized);
   },
 
   setWidth: (width) => {
     const clamped = clampWidth(width);
     if (get().width === clamped) return;
-    set({ width: clamped });
+    set({ width: clamped, isHydrated: true });
     void persistWidth(clamped);
   },
 
   setHeight: (height) => {
     const clamped = clampHeight(height);
     if (get().height === clamped) return;
-    set({ height: clamped });
+    set({ height: clamped, isHydrated: true });
     void persistHeight(clamped);
   },
 
@@ -159,6 +162,9 @@ export const useFleetDeckStore = create<FleetDeckState>()((set, get) => ({
     }),
 
   hydrate: (state) => {
+    // If a user mutator ran before the async AppState hydration resolves,
+    // their interaction wins — don't clobber it with stale persisted values.
+    if (get().isHydrated) return;
     const patch: Partial<FleetDeckState> = { isHydrated: true };
     if (typeof state.isOpen === "boolean") patch.isOpen = state.isOpen;
     if (state.edge != null) patch.edge = normalizeEdge(state.edge);

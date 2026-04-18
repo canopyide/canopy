@@ -1,25 +1,33 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { StrictMode } from "react";
 import { act, render } from "@testing-library/react";
 import type { TerminalInstance } from "@shared/types";
 
-const { terminalInstances, dataCallbacks, fitInstances, serializeInstances, dataCleanups } =
-  vi.hoisted(() => ({
-    terminalInstances: [] as Array<{
-      open: ReturnType<typeof vi.fn>;
-      dispose: ReturnType<typeof vi.fn>;
-      write: ReturnType<typeof vi.fn>;
-      refresh: ReturnType<typeof vi.fn>;
-      loadAddon: ReturnType<typeof vi.fn>;
-      rows: number;
-    }>,
-    dataCallbacks: new Map<string, Set<(data: string) => void>>(),
-    fitInstances: [] as Array<{ fit: ReturnType<typeof vi.fn> }>,
-    serializeInstances: [] as Array<{
-      serialize: ReturnType<typeof vi.fn>;
-    }>,
-    dataCleanups: [] as Array<ReturnType<typeof vi.fn>>,
-  }));
+const {
+  terminalInstances,
+  dataCallbacks,
+  fitInstances,
+  serializeInstances,
+  dataCleanups,
+  onDataBehavior,
+} = vi.hoisted(() => ({
+  terminalInstances: [] as Array<{
+    open: ReturnType<typeof vi.fn>;
+    dispose: ReturnType<typeof vi.fn>;
+    write: ReturnType<typeof vi.fn>;
+    refresh: ReturnType<typeof vi.fn>;
+    loadAddon: ReturnType<typeof vi.fn>;
+    rows: number;
+  }>,
+  dataCallbacks: new Map<string, Set<(data: string) => void>>(),
+  fitInstances: [] as Array<{ fit: ReturnType<typeof vi.fn> }>,
+  serializeInstances: [] as Array<{
+    serialize: ReturnType<typeof vi.fn>;
+  }>,
+  dataCleanups: [] as Array<ReturnType<typeof vi.fn>>,
+  onDataBehavior: { shouldThrow: false },
+}));
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class MockTerminal {
@@ -56,6 +64,9 @@ vi.mock("@xterm/addon-serialize", () => ({
 vi.mock("@/clients/terminalClient", () => ({
   terminalClient: {
     onData: vi.fn((id: string, cb: (data: string) => void) => {
+      if (onDataBehavior.shouldThrow) {
+        throw new Error("simulated onData failure");
+      }
       let set = dataCallbacks.get(id);
       if (!set) {
         set = new Set();
@@ -86,6 +97,7 @@ function resetAll(): void {
   serializeInstances.length = 0;
   dataCleanups.length = 0;
   dataCallbacks.clear();
+  onDataBehavior.shouldThrow = false;
   useFleetArmingStore.setState({
     armedIds: new Set<string>(),
     armOrder: [],
@@ -259,5 +271,41 @@ describe("MirrorTile", () => {
     });
     expect(terminalInstances[0]!.dispose).toHaveBeenCalled();
     expect(capture).toHaveBeenCalledWith("t1", "<serialized>");
+  });
+
+  it("disposes the partially-constructed Terminal when onData throws", async () => {
+    seedPanel("t1");
+    onDataBehavior.shouldThrow = true;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<MirrorTile terminalId="t1" isLive={true} />);
+    await act(async () => {
+      await flushRaf();
+    });
+    // One Terminal was created before onData threw — it must be disposed
+    // (no leak, no retry) even though no ref was ever published.
+    expect(terminalInstances).toHaveLength(1);
+    expect(terminalInstances[0]!.dispose).toHaveBeenCalled();
+    expect(dataCallbacks.get("t1")).toBeUndefined();
+    // The live-error surface is shown.
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("survives React 19 StrictMode double-invoke with exactly one active subscription", async () => {
+    seedPanel("t1");
+    const { unmount } = render(
+      <StrictMode>
+        <MirrorTile terminalId="t1" isLive={true} />
+      </StrictMode>
+    );
+    await act(async () => {
+      await flushRaf();
+    });
+    // After StrictMode's mount/cleanup/mount cycle there must be at most
+    // one active data subscription (mountGeneration guard + dispose in
+    // cleanup guarantees this).
+    expect(dataCallbacks.get("t1")?.size ?? 0).toBe(1);
+    unmount();
+    expect(dataCallbacks.get("t1")?.size ?? 0).toBe(0);
   });
 });

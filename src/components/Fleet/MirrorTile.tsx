@@ -77,6 +77,7 @@ function MirrorTileInternal({
 
     const gen = ++mountGenRef.current;
     let cancelled = false;
+    let mountFailed = false;
 
     const mountMirror = () => {
       if (cancelled || mountGenRef.current !== gen) return;
@@ -84,8 +85,16 @@ function MirrorTileInternal({
       if (container.clientWidth === 0 || container.clientHeight === 0) return;
       if (termRef.current) return;
 
+      // Keep allocated resources in locals until the full mount succeeds, so
+      // that a partial-construction failure disposes what was created and
+      // never publishes to the refs. Without this, a throw between
+      // `new Terminal()` and the final ref assignment would leak an xterm
+      // and the ResizeObserver would retry-loop (creating more orphans)
+      // because `termRef.current` stayed null.
+      let term: Terminal | null = null;
+      let dataCleanup: (() => void) | null = null;
       try {
-        const term = new Terminal(MIRROR_TERMINAL_OPTIONS);
+        term = new Terminal(MIRROR_TERMINAL_OPTIONS);
         const fit = new FitAddon();
         const serialize = new SerializeAddon();
         term.loadAddon(fit);
@@ -100,10 +109,10 @@ function MirrorTileInternal({
         if (initialSnapshot) {
           term.write(initialSnapshot);
         }
-        const dataCleanup = terminalClient.onData(terminalId, (data) => {
+        dataCleanup = terminalClient.onData(terminalId, (data) => {
           if (mountGenRef.current !== gen) return;
           try {
-            term.write(data);
+            term?.write(data);
           } catch {
             // xterm may throw during dispose races; ignored.
           }
@@ -115,6 +124,19 @@ function MirrorTileInternal({
         setLiveError(false);
       } catch (error) {
         console.error("Failed to mount fleet mirror terminal:", error);
+        // Dispose in reverse allocation order. Swallow any secondary
+        // throws so we still set liveError and stop the retry loop.
+        try {
+          dataCleanup?.();
+        } catch {
+          /* ignore */
+        }
+        try {
+          term?.dispose();
+        } catch {
+          /* ignore */
+        }
+        mountFailed = true;
         setLiveError(true);
       }
     };
@@ -153,6 +175,9 @@ function MirrorTileInternal({
     const ro = new ResizeObserver(() => {
       if (cancelled) return;
       if (!termRef.current) {
+        // Don't retry after a previous mount failure — that path leaks
+        // if the failure is structural (e.g., xterm throw on open).
+        if (mountFailed) return;
         if (container.clientWidth > 0 && container.clientHeight > 0) {
           mountMirror();
         }

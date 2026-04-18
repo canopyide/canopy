@@ -76,6 +76,10 @@ export function FleetDeck(): ReactElement | null {
   const armAll = useFleetArmingStore((s) => s.armAll);
   const clearArmed = useFleetArmingStore((s) => s.clear);
   const panelsById = usePanelStore((s) => s.panelsById);
+  // panelIds also drives eligibleIds (appearance order) — subscribe so that
+  // reorders (which mutate panelIds without touching panelsById) trigger a
+  // re-render.
+  const panelIds = usePanelStore((s) => s.panelIds);
   const activeWorktreeId = useWorktreeSelectionStore(
     (s) => s.activeWorktreeId ?? null
   );
@@ -85,7 +89,11 @@ export function FleetDeck(): ReactElement | null {
 
   const eligibleIds = useMemo(() => {
     return collectEligibleIds(scope, activeWorktreeId);
-  }, [scope, activeWorktreeId, panelsById]);
+    // panelsById + panelIds are the two slices collectEligibleIds reads from
+    // usePanelStore.getState() — subscribing to both ensures the memo
+    // reruns when either mutates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, activeWorktreeId, panelsById, panelIds]);
 
   const filteredIds = useMemo(() => {
     if (stateFilter === "all") return eligibleIds;
@@ -108,15 +116,22 @@ export function FleetDeck(): ReactElement | null {
   const liveIdSet = useMemo(() => new Set(liveIds), [liveIds]);
 
   // Prune pinned ids whose terminals have disappeared (trashed/killed) so the
-  // pin count never represents stale panels.
+  // pin count never represents stale panels. Also evict stale snapshot
+  // entries so the session-lifetime Map doesn't accumulate for terminals
+  // the user has killed.
   useEffect(() => {
-    if (pinnedLiveIds.size === 0) return;
-    const validIds = new Set<string>();
-    for (const id of eligibleIds) validIds.add(id);
-    for (const id of pinnedLiveIds) {
-      if (!validIds.has(id)) {
-        prunePins(validIds);
-        return;
+    const validIds = new Set<string>(eligibleIds);
+    if (pinnedLiveIds.size > 0) {
+      for (const id of pinnedLiveIds) {
+        if (!validIds.has(id)) {
+          prunePins(validIds);
+          break;
+        }
+      }
+    }
+    if (snapshotsRef.current.size > 0) {
+      for (const id of Array.from(snapshotsRef.current.keys())) {
+        if (!validIds.has(id)) snapshotsRef.current.delete(id);
       }
     }
   }, [eligibleIds, pinnedLiveIds, prunePins]);
