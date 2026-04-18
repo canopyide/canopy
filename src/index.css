@@ -22,6 +22,7 @@
   --color-surface-inset: var(--theme-surface-inset);
   --color-surface-hover: var(--theme-surface-hover);
   --color-surface-active: var(--theme-surface-active);
+  --color-surface-disabled: var(--theme-surface-disabled);
   --color-text-primary: var(--theme-text-primary);
   --color-text-secondary: var(--theme-text-secondary);
   --color-text-muted: var(--theme-text-muted);
@@ -48,6 +49,9 @@
   --color-status-warning: var(--theme-status-warning);
   --color-status-danger: var(--theme-status-danger);
   --color-status-info: var(--theme-status-info);
+  --color-status-danger-surface: var(--theme-status-danger-surface);
+  --color-knob-base: var(--theme-knob-base);
+  --color-state-modified: var(--theme-state-modified);
   --color-activity-active: var(--theme-activity-active);
   --color-activity-idle: var(--theme-activity-idle);
   --color-activity-working: var(--theme-activity-working);
