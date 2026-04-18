@@ -1,5 +1,8 @@
 import React, { useCallback, useMemo, useEffect, useRef } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { getMergedFlavors } from "@/config/agents";
 import { GridPanel } from "./GridPanel";
 import type { TabGroup } from "@/types";
 import type { TabInfo } from "@/components/Panel/TabButton";
@@ -148,19 +151,35 @@ export const GridTabGroup = React.memo(function GridTabGroup({
     return panels.find((p) => p.id === activeTabId) ?? panels[0];
   }, [panels, activeTabId]);
 
+  const agentSettings = useAgentSettingsStore((s) => s.settings);
+  const ccrFlavorsByAgent = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent);
+
   // Build tabs array for PanelHeader
   const tabs: TabInfo[] = useMemo(() => {
-    return panels.map((p) => ({
-      id: p.id,
-      title: p.title,
-      type: p.type,
-      agentId: p.agentId,
-      detectedProcessId: p.detectedProcessId,
-      kind: p.kind ?? "terminal",
-      agentState: p.agentState,
-      isActive: p.id === activeTabId,
-    }));
-  }, [panels, activeTabId]);
+    return panels.map((p) => {
+      let flavorColor = p.agentFlavorColor;
+      if (p.agentId && p.agentFlavorId) {
+        const flavors = getMergedFlavors(
+          p.agentId,
+          agentSettings?.agents?.[p.agentId]?.customFlavors,
+          ccrFlavorsByAgent[p.agentId]
+        );
+        const live = flavors.find((f) => f.id === p.agentFlavorId);
+        if (live) flavorColor = live.color ?? flavorColor;
+      }
+      return {
+        id: p.id,
+        title: p.title,
+        type: p.type,
+        agentId: p.agentId,
+        detectedProcessId: p.detectedProcessId,
+        kind: p.kind ?? "terminal",
+        agentState: p.agentState,
+        isActive: p.id === activeTabId,
+        flavorColor,
+      };
+    });
+  }, [panels, activeTabId, agentSettings, ccrFlavorsByAgent]);
 
   // Check if this group is currently focused
   const isGroupFocused = useMemo(() => panels.some((p) => p.id === focusedId), [panels, focusedId]);

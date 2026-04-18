@@ -15,6 +15,7 @@ import { AllClearOverlay } from "../AllClearOverlay";
 import { useDiagnosticsStore, useDockStore, useFleetDeckStore, type PanelState } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
+import { useCcrFlavorsSubscription } from "@/hooks/useCcrFlavorsSubscription";
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
@@ -52,6 +53,7 @@ export function AppLayout({
   isHydrated = true,
   projectSwitcherPalette,
 }: AppLayoutProps) {
+  useCcrFlavorsSubscription();
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const currentProject = useProjectStore((state) => state.currentProject);
   const layout = useLayoutState();

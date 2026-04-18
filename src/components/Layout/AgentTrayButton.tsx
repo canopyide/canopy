@@ -3,11 +3,12 @@ import {
   useMemo,
   useRef,
   useState,
+  useCallback,
   type ComponentType,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Plug, Pin, Settings2 } from "lucide-react";
+import { Plug, Pin, Settings2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -17,14 +18,23 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getBrandColorHex } from "@/lib/colorUtils";
-import { getAgentConfig, type AgentIconProps } from "@/config/agents";
+import {
+  getAgentConfig,
+  getMergedFlavors,
+  type AgentIconProps,
+  type AgentFlavor,
+} from "@/config/agents";
 import { actionService } from "@/services/ActionService";
 import { useActionMruStore } from "@/store/actionMruStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useShallow } from "zustand/react/shallow";
@@ -52,6 +62,7 @@ type AgentRow = {
   pinned: boolean;
   dominantState: AgentState | null;
   isNew: boolean;
+  flavors?: AgentFlavor[];
 };
 
 const ACTIVE_AGENT_STATES: ReadonlySet<AgentState | undefined> = new Set<AgentState | undefined>([
@@ -66,11 +77,23 @@ function buildAgentRow(
   id: BuiltInAgentId,
   pinned: boolean,
   dominantState: AgentState | null,
-  isNew: boolean
+  isNew: boolean,
+  customFlavors?: AgentFlavor[],
+  ccrFlavors?: AgentFlavor[]
 ): AgentRow | null {
   const config = getAgentConfig(id);
   if (!config) return null;
-  return { id, name: config.name, Icon: config.icon, pinned, dominantState, isNew };
+  const flavors = getMergedFlavors(id, customFlavors, ccrFlavors);
+  const hasFlavors = flavors.length > 1;
+  return {
+    id,
+    name: config.name,
+    Icon: config.icon,
+    pinned,
+    dominantState,
+    isNew,
+    flavors: hasFlavors ? flavors : undefined,
+  };
 }
 
 function RunningDot({ state }: { state: AgentState | null }) {
@@ -86,11 +109,110 @@ function RunningDot({ state }: { state: AgentState | null }) {
   );
 }
 
+type SplitLaunchItemProps = {
+  row: AgentRow;
+  onLaunch: (agentId: BuiltInAgentId, flavorId?: string | null) => void;
+};
+
+function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
+  const leftAreaRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const el = leftAreaRef.current;
+    if (!el) return;
+    const handler = (e: PointerEvent) => {
+      // Prevent Radix from opening the submenu when clicking the main area
+      e.stopPropagation();
+      e.preventDefault();
+      onLaunch(row.id, null);
+    };
+    el.addEventListener("pointerdown", handler, true);
+    return () => el.removeEventListener("pointerdown", handler, true);
+  }, [row.id, onLaunch]);
+
+  // Keyboard: Enter/Space on the SubTrigger must launch vanilla (primary action)
+  // rather than Radix's default of opening the submenu. ArrowRight still opens
+  // the submenu for picking a specific flavor. Without this, keyboard users
+  // cannot trigger the left-side vanilla launch at all.
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      onLaunch(row.id, null);
+    }
+  };
+
+  const ccrFlavors = (row.flavors ?? []).filter((f) => f.id.startsWith("ccr-"));
+  const customFlavors = (row.flavors ?? []).filter((f) => !f.id.startsWith("ccr-"));
+  const hasBothGroups = ccrFlavors.length > 0 && customFlavors.length > 0;
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        className="p-0 [&>svg:last-child]:hidden overflow-hidden"
+        data-testid="submenu-trigger"
+        onKeyDown={handleKeyDown}
+        aria-label={`${row.name} (press Enter to launch, Right Arrow for flavors)`}
+      >
+        <span ref={leftAreaRef} className="flex flex-1 items-center gap-2 px-2.5 py-1.5">
+          <span className="inline-flex h-4 w-4 items-center justify-center shrink-0">
+            <row.Icon brandColor={getBrandColorHex(row.id)} />
+          </span>
+          {row.name}
+        </span>
+        <span
+          className="flex items-center px-2 py-1.5 border-l border-daintree-border/50"
+          aria-hidden="true"
+        >
+          <ChevronRight className="h-3.5 w-3.5 text-daintree-text/40" />
+        </span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent data-testid="submenu-content">
+        <DropdownMenuItem onSelect={() => onLaunch(row.id, null)}>
+          <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
+            <row.Icon brandColor={getBrandColorHex(row.id)} />
+          </span>
+          Vanilla
+        </DropdownMenuItem>
+        {ccrFlavors.length > 0 && (
+          <>
+            {hasBothGroups && <DropdownMenuSeparator />}
+            {hasBothGroups && <DropdownMenuLabel>CCR Routes</DropdownMenuLabel>}
+            {ccrFlavors.map((flavor) => (
+              <DropdownMenuItem key={flavor.id} onSelect={() => onLaunch(row.id, flavor.id)}>
+                <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
+                  <row.Icon brandColor={flavor.color ?? getBrandColorHex(row.id)} />
+                </span>
+                {flavor.name.replace(/^CCR:\s*/, "")}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+        {customFlavors.length > 0 && (
+          <>
+            {hasBothGroups && <DropdownMenuSeparator />}
+            {hasBothGroups && <DropdownMenuLabel>Custom</DropdownMenuLabel>}
+            {customFlavors.map((flavor) => (
+              <DropdownMenuItem key={flavor.id} onSelect={() => onLaunch(row.id, flavor.id)}>
+                <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
+                  <row.Icon brandColor={flavor.color ?? getBrandColorHex(row.id)} />
+                </span>
+                {flavor.name}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
 export function AgentTrayButton({
   agentAvailability,
   "data-toolbar-item": dataToolbarItem,
 }: AgentTrayButtonProps) {
   const agentSettings = useAgentSettingsStore((s) => s.settings);
+  const ccrFlavorsByAgent = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent);
   const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
 
   const getSortedActionMruList = useActionMruStore(useShallow((s) => s.getSortedActionMruList));
@@ -104,6 +226,8 @@ export function AgentTrayButton({
     welcomeCardDismissed,
     markAgentsSeen,
   } = useAgentDiscoveryOnboarding();
+
+  const [open, setOpen] = useState(false);
 
   const panelsById = usePanelStore(useShallow((s) => s.panelsById));
   const panelIds = usePanelStore(useShallow((s) => s.panelIds));
@@ -232,7 +356,16 @@ export function AgentTrayButton({
     for (const id of BUILT_IN_AGENT_IDS) {
       const pinned = isAgentPinned(agentSettings?.agents?.[id]);
       const dominant = agentDominantStates.get(id) ?? null;
-      const row = buildAgentRow(id, pinned, dominant, newAgentIds.has(id));
+      const customFlavors = agentSettings?.agents?.[id]?.customFlavors;
+      const ccrFlavors = ccrFlavorsByAgent[id];
+      const row = buildAgentRow(
+        id,
+        pinned,
+        dominant,
+        newAgentIds.has(id),
+        customFlavors,
+        ccrFlavors
+      );
       if (!row) continue;
 
       const state = agentAvailability?.[id];
@@ -270,11 +403,23 @@ export function AgentTrayButton({
     });
 
     return { launchable, needsSetup, fallbackSetup };
-  }, [agentAvailability, agentSettings, agentDominantStates, getSortedActionMruList, newAgentIds]);
+  }, [
+    agentAvailability,
+    agentSettings,
+    agentDominantStates,
+    getSortedActionMruList,
+    newAgentIds,
+    ccrFlavorsByAgent,
+  ]);
 
-  const handleLaunch = (row: AgentRow) => {
-    void actionService.dispatch("agent.launch", { agentId: row.id }, { source: "user" });
-  };
+  const handleLaunch = useCallback((agentId: BuiltInAgentId, flavorId?: string | null) => {
+    setOpen(false);
+    void actionService.dispatch(
+      "agent.launch",
+      { agentId, ...(flavorId !== undefined ? { flavorId } : {}) },
+      { source: "user" }
+    );
+  }, []);
 
   const handleSetup = (agentId: BuiltInAgentId) => {
     void actionService.dispatch(
@@ -327,8 +472,31 @@ export function AgentTrayButton({
   // availability data has landed.
   const showFallback = !isAvailabilityLoading && !hasAnyContent && fallbackSetup.length > 0;
 
+  const renderLaunchItem = (row: AgentRow) => {
+    if (row.flavors && row.flavors.length > 0) {
+      return <SplitLaunchItem key={`launch-${row.id}`} row={row} onLaunch={handleLaunch} />;
+    }
+
+    return (
+      <LaunchRow
+        key={`launch-${row.id}`}
+        row={row}
+        onLaunch={handleLaunch}
+        onKeyDown={handleRowKeyDown}
+        onTogglePin={togglePin}
+        stopPointer={stopPointer}
+      />
+    );
+  };
+
   return (
-    <DropdownMenu onOpenChange={handleOpenChange}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        handleOpenChange(o);
+      }}
+    >
       <TooltipProvider>
         <Tooltip open={tooltipOpen} onOpenChange={handleTooltipOpenChange}>
           <TooltipTrigger asChild>
@@ -371,16 +539,7 @@ export function AgentTrayButton({
         {launchable.length > 0 && (
           <>
             <DropdownMenuLabel>Launch</DropdownMenuLabel>
-            {launchable.map((row) => (
-              <LaunchRow
-                key={`launch-${row.id}`}
-                row={row}
-                onLaunch={handleLaunch}
-                onKeyDown={handleRowKeyDown}
-                onTogglePin={togglePin}
-                stopPointer={stopPointer}
-              />
-            ))}
+            {launchable.map((row) => renderLaunchItem(row))}
           </>
         )}
 
@@ -450,7 +609,7 @@ function LaunchRow({
   stopPointer,
 }: {
   row: AgentRow;
-  onLaunch: (row: AgentRow) => void;
+  onLaunch: (agentId: BuiltInAgentId, flavorId?: string) => void;
   onKeyDown: (e: KeyboardEvent<HTMLDivElement>, row: AgentRow) => void;
   onTogglePin: (row: AgentRow) => void;
   stopPointer: (e: ReactPointerEvent) => void;
@@ -459,7 +618,7 @@ function LaunchRow({
 
   return (
     <DropdownMenuItem
-      onSelect={() => onLaunch(row)}
+      onSelect={() => onLaunch(row.id)}
       onKeyDown={(e) => onKeyDown(e, row)}
       className="group h-7"
       data-testid={`agent-tray-row-${row.id}`}

@@ -2,7 +2,12 @@ import type { PanelKind, TerminalType, AgentState } from "@/types";
 import type { BrowserHistory } from "@shared/types/browser";
 import type { PanelExitBehavior } from "@shared/types/panel";
 import type { AddPanelOptionsBase } from "@shared/types/addPanelOptions";
-import { isRegisteredAgent, getAgentConfig } from "@/config/agents";
+import {
+  isRegisteredAgent,
+  getAgentConfig,
+  getMergedFlavor,
+  sanitizeAgentEnv,
+} from "@/config/agents";
 import {
   generateAgentCommand,
   buildResumeCommand,
@@ -11,6 +16,7 @@ import {
 import { logWarn } from "@/utils/logger";
 import { inferKind as inferKindShared } from "@shared/utils/inferPanelKind";
 import { getDeserializer } from "@/config/panelKindSerialisers";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
 
 /**
  * Args for building addPanel options from hydration data.
@@ -62,6 +68,8 @@ export interface SavedTerminalData {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  agentFlavorId?: string;
+  agentFlavorColor?: string;
   extensionState?: Record<string, unknown>;
 }
 
@@ -175,6 +183,8 @@ export function buildArgsForBackendTerminal(
     agentSessionId: backendTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: backendTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: backendTerminal.agentModelId ?? saved.agentModelId,
+    agentFlavorId: saved.agentFlavorId,
+    agentFlavorColor: saved.agentFlavorColor,
     extensionState: saved.extensionState,
   };
 }
@@ -225,6 +235,8 @@ export function buildArgsForReconnectedFallback(
     agentSessionId: reconnectedTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: reconnectedTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: reconnectedTerminal.agentModelId ?? saved.agentModelId,
+    agentFlavorId: saved.agentFlavorId,
+    agentFlavorColor: saved.agentFlavorColor,
     extensionState: saved.extensionState,
   };
 }
@@ -249,14 +261,38 @@ export function buildArgsForRespawn(
   const isAgentPanel = kind === "agent" || Boolean(effectiveAgentId);
   const agentId = effectiveAgentId;
   let command = saved.command?.trim() || undefined;
+  let flavorEnv: Record<string, string> | undefined;
+  let flavor: ReturnType<typeof getMergedFlavor> | undefined;
 
   if (agentId) {
     const agentConfig = getAgentConfig(agentId);
     const baseCommand = agentConfig?.command || agentId;
     const persistedFlags = saved.agentLaunchFlags;
     const hasPersistedFlags = Boolean(persistedFlags && persistedFlags.length > 0);
-    const entry = agentSettings?.agents?.[agentId];
-    const shareClipboardDirectory = entry?.shareClipboardDirectory as boolean | undefined;
+    const baseEntry = agentSettings?.agents?.[agentId] ?? {};
+    const shareClipboardDirectory = baseEntry.shareClipboardDirectory as boolean | undefined;
+    const ccrFlavors = useCcrFlavorsStore.getState().ccrFlavorsByAgent[agentId];
+    flavor = saved.agentFlavorId
+      ? getMergedFlavor(agentId, saved.agentFlavorId, baseEntry.customFlavors as never, ccrFlavors)
+      : undefined;
+    const effectiveEntry = flavor
+      ? {
+          ...baseEntry,
+          ...(flavor.dangerousEnabled !== undefined && {
+            dangerousEnabled: flavor.dangerousEnabled,
+          }),
+          ...(flavor.customFlags !== undefined && { customFlags: flavor.customFlags }),
+          ...(flavor.inlineMode !== undefined && { inlineMode: flavor.inlineMode }),
+        }
+      : baseEntry;
+    // Merge: global env (base) overridden by flavor env (flavor wins on conflicts)
+    const sanitizedGlobal = sanitizeAgentEnv(
+      (baseEntry.globalEnv ?? {}) as Record<string, unknown>
+    );
+    const sanitizedFlavor = flavor?.env;
+    if (sanitizedGlobal || sanitizedFlavor) {
+      flavorEnv = { ...sanitizedGlobal, ...sanitizedFlavor };
+    }
 
     const buildFromPersistedFlags = () =>
       buildLaunchCommandFromFlags(baseCommand, agentId, persistedFlags as string[], {
@@ -271,17 +307,19 @@ export function buildArgsForRespawn(
       } else if (hasPersistedFlags) {
         command = buildFromPersistedFlags();
       } else if (agentSettings) {
-        command = generateAgentCommand(baseCommand, entry ?? {}, agentId, {
+        command = generateAgentCommand(baseCommand, effectiveEntry, agentId, {
           clipboardDirectory,
           modelId: saved.agentModelId,
+          flavorArgs: flavor?.args?.join(" "),
         });
       }
     } else if (hasPersistedFlags) {
       command = buildFromPersistedFlags();
     } else if (agentSettings) {
-      command = generateAgentCommand(baseCommand, entry ?? {}, agentId, {
+      command = generateAgentCommand(baseCommand, effectiveEntry, agentId, {
         clipboardDirectory,
         modelId: saved.agentModelId,
+        flavorArgs: flavor?.args?.join(" "),
       });
     }
   }
@@ -290,11 +328,25 @@ export function buildArgsForRespawn(
   const isDevPreview = kind === "dev-preview";
   const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
 
+  // Stale-flavor split-brain: when saved.agentFlavorId was set but the flavor
+  // no longer resolves (deleted custom flavor, CCR route removed from config),
+  // clear agentFlavorId/agentFlavorColor and strip the flavor suffix from the
+  // title so the respawned panel doesn't lie about its identity — it's now
+  // running vanilla env/command, so it should look like vanilla.
+  const flavorWasStale = isAgentPanel && !!saved.agentFlavorId && !flavor;
+  const respawnAgentFlavorId = flavorWasStale ? undefined : saved.agentFlavorId;
+  const respawnAgentFlavorColor = flavorWasStale
+    ? undefined
+    : (flavor?.color ?? saved.agentFlavorColor);
+  const respawnTitle = flavorWasStale
+    ? (agentId ? getAgentConfig(agentId)?.name : saved.title) || saved.title
+    : saved.title;
+
   return {
     kind: respawnKind,
     type: saved.type,
     agentId,
-    title: saved.title,
+    title: respawnTitle,
     cwd: saved.cwd || projectRoot || "",
     worktreeId: saved.worktreeId,
     location,
@@ -309,6 +361,9 @@ export function buildArgsForRespawn(
     exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
     agentLaunchFlags: saved.agentLaunchFlags,
     agentModelId: saved.agentModelId,
+    agentFlavorId: respawnAgentFlavorId,
+    agentFlavorColor: respawnAgentFlavorColor,
+    env: flavorEnv,
     extensionState: saved.extensionState,
     restore: true,
   };
@@ -328,6 +383,8 @@ export function buildArgsForNonPtyRecreation(
     location,
     requestedId: saved.id,
     exitBehavior: saved.exitBehavior,
+    agentFlavorId: saved.agentFlavorId,
+    agentFlavorColor: saved.agentFlavorColor,
     extensionState: saved.extensionState,
   };
 

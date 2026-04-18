@@ -72,6 +72,7 @@ export interface PanelHeaderProps {
   type?: TerminalType;
   agentId?: string;
   detectedProcessId?: string;
+  flavorColor?: string;
   worktreeAccentColor?: string;
   worktreeBranch?: string;
   isFocused: boolean;
@@ -123,6 +124,7 @@ function PanelHeaderComponent({
   type,
   agentId,
   detectedProcessId,
+  flavorColor,
   worktreeAccentColor,
   worktreeBranch,
   isFocused,
@@ -498,6 +500,7 @@ function PanelHeaderComponent({
                         kind={tab.kind}
                         agentState={tab.agentState}
                         isActive={tab.isActive}
+                        flavorColor={tab.flavorColor}
                         onClick={() => onTabClick?.(tab.id)}
                         onClose={() => onTabClose?.(tab.id)}
                         onRename={
@@ -593,6 +596,7 @@ function PanelHeaderComponent({
                     kind={tab.kind}
                     agentState={tab.agentState}
                     isActive={tab.isActive}
+                    flavorColor={tab.flavorColor}
                     onClick={() => onTabClick?.(tab.id)}
                     onClose={() => onTabClose?.(tab.id)}
                     onRename={onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined}
@@ -652,7 +656,7 @@ function PanelHeaderComponent({
               agentId={agentId}
               detectedProcessId={detectedProcessId}
               className="w-3.5 h-3.5"
-              brandColor={getBrandColorHex(agentId ?? type)}
+              brandColor={flavorColor ?? getBrandColorHex(agentId ?? type)}
             />
           </span>
 

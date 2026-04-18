@@ -74,6 +74,21 @@ vi.mock("@/config/agents", () => ({
     name: id.charAt(0).toUpperCase() + id.slice(1),
     icon: () => null,
   }),
+  getMergedFlavors: () => [],
+}));
+
+vi.mock("@/store/ccrFlavorsStore", () => ({
+  useCcrFlavorsStore: (selector: (s: { ccrFlavorsByAgent: Record<string, unknown> }) => unknown) =>
+    selector({ ccrFlavorsByAgent: {} }),
+}));
+
+vi.mock("@/hooks/app/useAgentDiscoveryOnboarding", () => ({
+  useAgentDiscoveryOnboarding: () => ({
+    loaded: true,
+    seenAgentIds: [],
+    welcomeCardDismissed: true,
+    markAgentsSeen: vi.fn(),
+  }),
 }));
 
 vi.mock("@/lib/colorUtils", () => ({ getBrandColorHex: (id: string) => `#${id}` }));

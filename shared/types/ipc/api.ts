@@ -1087,6 +1087,37 @@ export interface ElectronAPI {
     getAgentMetadata(agentId: string): Promise<AgentMetadata | null>;
     /** Check if agent is enabled/available */
     isAgentEnabled(agentId: string): Promise<boolean>;
+    /** Subscribe to CCR flavor updates from main process */
+    onFlavorsUpdated(
+      callback: (payload: {
+        agentId: string;
+        flavors: Array<{
+          id: string;
+          name: string;
+          description?: string;
+          env?: Record<string, string>;
+          args?: string[];
+          color?: string;
+          dangerousEnabled?: boolean;
+          customFlags?: string;
+          inlineMode?: boolean;
+        }>;
+      }) => void
+    ): () => void;
+    /** Fetch current CCR flavors from main process */
+    getCcrFlavors(): Promise<
+      Array<{
+        id: string;
+        name: string;
+        description?: string;
+        env?: Record<string, string>;
+        args?: string[];
+        color?: string;
+        dangerousEnabled?: boolean;
+        customFlags?: string;
+        inlineMode?: boolean;
+      }>
+    >;
   };
   agentSessionHistory: {
     list(worktreeId?: string): Promise<AgentSessionRecord[]>;

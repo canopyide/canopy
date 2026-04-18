@@ -453,6 +453,8 @@ export const createCorePanelActions = (
         agentSessionId: options.agentSessionId,
         agentLaunchFlags: options.agentLaunchFlags,
         agentModelId: options.agentModelId,
+        agentFlavorId: options.agentFlavorId,
+        agentFlavorColor: options.agentFlavorColor,
         extensionState: options.extensionState,
         spawnedBy: options.spawnedBy,
         startedAt: Date.now(),

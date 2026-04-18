@@ -11,6 +11,9 @@ import {
   useFocusStore,
   type TerminalInstance,
 } from "@/store";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { getMergedFlavors } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
@@ -180,12 +183,33 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     [terminal.id, openDockTerminal, closeDockTerminal]
   );
 
+  const flavorCustomFlavors = useAgentSettingsStore((s) =>
+    terminal.agentId ? s.settings?.agents?.[terminal.agentId]?.customFlavors : undefined
+  );
+  const flavorCcrFlavors = useCcrFlavorsStore((s) =>
+    terminal.agentId ? s.ccrFlavorsByAgent[terminal.agentId] : undefined
+  );
+  const brandColor = useMemo(() => {
+    const vanilla = getBrandColorHex(terminal.agentId ?? terminal.type);
+    if (!terminal.agentFlavorId || !terminal.agentId) return vanilla;
+    const flavor = getMergedFlavors(terminal.agentId, flavorCustomFlavors, flavorCcrFlavors).find(
+      (f) => f.id === terminal.agentFlavorId
+    );
+    return flavor?.color ?? terminal.agentFlavorColor ?? vanilla;
+  }, [
+    terminal.agentId,
+    terminal.type,
+    terminal.agentFlavorId,
+    terminal.agentFlavorColor,
+    flavorCustomFlavors,
+    flavorCcrFlavors,
+  ]);
+
   const isWorking = terminal.agentState === "working";
   const isRunning = terminal.agentState === "running";
   const isWaiting = terminal.agentState === "waiting";
   const isActive = isWorking || isRunning || isWaiting;
   const commandText = terminal.activityHeadline || terminal.lastCommand;
-  const brandColor = getBrandColorHex(terminal.agentId ?? terminal.type);
   const agentState = terminal.agentState;
   const blockedState = useDockBlockedState(terminal.agentState);
   const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);

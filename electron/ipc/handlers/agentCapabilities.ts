@@ -1,5 +1,6 @@
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
+import { CcrConfigService } from "../../services/CcrConfigService.js";
 import {
   AGENT_REGISTRY,
   getEffectiveRegistry,
@@ -81,6 +82,11 @@ export function registerAgentCapabilitiesHandlers(): () => void {
     return isAgentPinned(agentEntry);
   };
   handlers.push(typedHandle(CHANNELS.AGENT_CAPABILITIES_IS_AGENT_ENABLED, handleIsAgentEnabled));
+
+  const handleGetCcrFlavors = async () => {
+    return CcrConfigService.getInstance().getFlavors();
+  };
+  handlers.push(typedHandle(CHANNELS.AGENT_CAPABILITIES_GET_CCR_FLAVORS, handleGetCcrFlavors));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }
