@@ -2140,8 +2140,8 @@ describe("hydrateAppState", () => {
           duration: 0,
         })
       );
-      expect(notifyMock.mock.calls[0][0].message).toContain("/path/to/state.json.corrupted");
-      expect(notifyMock.mock.calls[0][0].message).toContain("has been reset");
+      expect(notifyMock.mock.calls[0]![0].message).toContain("/path/to/state.json.corrupted");
+      expect(notifyMock.mock.calls[0]![0].message).toContain("has been reset");
     });
 
     it("does not show notification when projectStateRecovery is null", async () => {
