@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ActionDefinition } from "@shared/types/actions";
-import type { ActionCallbacks, ActionRegistry } from "../../actionTypes";
+import type { ActionCallbacks, ActionRegistry, AnyActionDefinition } from "../../actionTypes";
 
 const notesClientMock = vi.hoisted(() => ({
   create: vi.fn(),
@@ -26,7 +25,7 @@ function setupActions() {
   return async (id: string, args?: unknown): Promise<unknown> => {
     const factory = actions.get(id);
     if (!factory) throw new Error(`missing ${id}`);
-    const def = factory() as ActionDefinition<unknown, unknown>;
+    const def = factory() as AnyActionDefinition;
     return def.run(args, {} as never);
   };
 }

@@ -34,8 +34,8 @@ vi.mock("@/services/ActionService", () => ({
 }));
 
 import { registerAppActions } from "../appActions";
-import type { ActionCallbacks, ActionRegistry } from "../../actionTypes";
-import type { ActionContext, ActionDefinition } from "@shared/types/actions";
+import type { ActionCallbacks, ActionRegistry, AnyActionDefinition } from "../../actionTypes";
+import type { ActionContext } from "@shared/types/actions";
 
 const stubCtx: ActionContext = {};
 
@@ -55,10 +55,10 @@ const lightA = makeScheme("light-a", "light", "Light A");
 const darkB = makeScheme("dark-b", "dark", "Dark B");
 
 function getActions(): {
-  toggle: ActionDefinition;
-  pick: ActionDefinition;
+  toggle: AnyActionDefinition;
+  pick: AnyActionDefinition;
 } {
-  const registry = new Map<string, () => ActionDefinition>();
+  const registry = new Map<string, () => AnyActionDefinition>();
   const callbacks = {
     onOpenSettings: vi.fn(),
     onOpenSettingsTab: vi.fn(),
