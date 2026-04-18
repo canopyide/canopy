@@ -139,6 +139,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
       ) : (
         <div className="-m-3 flex items-stretch">
           <div
+            onClick={onToggleExpand}
             className={cn(
               "worktree-section-button relative flex min-w-0 flex-1 items-center justify-between px-3 py-2.5 text-left transition-colors",
               onOpenReviewHub && hasChanges
@@ -148,7 +149,6 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
           >
             <button
               type="button"
-              onClick={onToggleExpand}
               aria-expanded={false}
               aria-controls={detailsPanelId}
               id={`${detailsId}-button`}

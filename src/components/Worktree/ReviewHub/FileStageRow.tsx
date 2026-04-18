@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import type React from "react";
 import type { StagingFileEntry } from "@shared/types";
 import type { GitStatus } from "@shared/types";
 import { cn } from "@/lib/utils";
@@ -66,9 +67,13 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
   const config = STATUS_CONFIG[file.status] || STATUS_CONFIG.untracked;
   const { dir, base } = splitPath(file.path);
 
-  const handleToggle = useCallback(() => {
-    onToggle(file.path);
-  }, [onToggle, file.path]);
+  const handleToggle = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onToggle(file.path);
+    },
+    [onToggle, file.path]
+  );
 
   const handleClick = useCallback(() => {
     onFileClick(file.path, file.status);
@@ -76,6 +81,7 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
 
   return (
     <div
+      onClick={handleClick}
       className={cn(
         "group/stagerow flex items-center text-xs rounded px-1.5 py-1.5 transition-colors",
         isStaged ? "bg-status-success/[0.06] hover:bg-status-success/[0.10]" : "hover:bg-tint/5"
@@ -106,7 +112,6 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
 
       <button
         type="button"
-        onClick={handleClick}
         title={file.path}
         aria-label={`View diff: ${file.path}`}
         className={cn(

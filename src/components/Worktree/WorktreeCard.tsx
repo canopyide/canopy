@@ -671,11 +671,11 @@ export const WorktreeCard = React.memo(function WorktreeCard({
           data-resource-status={resourceStatusLabel ?? undefined}
           role="group"
           aria-label={`Worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}${isActive ? " (selected)" : ""}${worktree.isCurrent ? " (current)" : ""}, Status: ${spineState}${hasChanges ? ", has uncommitted changes" : ""}`}
+          onClick={onSelect}
+          onDoubleClick={handleDoubleClick}
         >
           <button
             type="button"
-            onClick={onSelect}
-            onDoubleClick={handleDoubleClick}
             className={cn(
               "absolute inset-0 z-0",
               variant === "grid" && "rounded-lg",
