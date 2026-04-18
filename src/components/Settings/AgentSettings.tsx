@@ -11,11 +11,14 @@ import {
   type AgentCliDetails,
 } from "@shared/types";
 import { isAgentPinned } from "../../../shared/utils/agentPinned";
-import { RotateCcw, ExternalLink, Plus, Copy, Trash2, Pencil, X } from "lucide-react";
+import { RotateCcw, ExternalLink, Plus, Copy, Trash2, Pencil } from "lucide-react";
 import { DaintreeAgentIcon } from "@/components/icons";
 import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { SettingsSelect } from "./SettingsSelect";
+import { FlavorSelector } from "./FlavorSelector";
+import { FlavorColorPicker } from "./FlavorColorPicker";
+import { EnvVarEditor } from "./EnvVarEditor";
 import { actionService } from "@/services/ActionService";
 import { AgentHelpOutput } from "./AgentHelpOutput";
 import { AgentCard, AgentInstallSection } from "@/components/agents/AgentCard";
@@ -107,6 +110,15 @@ export function AgentSettings({
   // Flavor editing state
   const [editingFlavorId, setEditingFlavorId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+
+  // Reset flavor-editing state when switching between agent subtabs. Without
+  // this, an in-progress rename on one agent's flavor would leak into a
+  // different agent's panel after a tab switch (and can silently commit the
+  // rename to the wrong agent on blur).
+  useEffect(() => {
+    setEditingFlavorId(null);
+    setEditName("");
+  }, [activeSubtab]);
 
   const agentIds = useMemo(() => getAgentIds(), []);
   const effectiveSettings = settings ?? DEFAULT_AGENT_SETTINGS;
@@ -603,39 +615,27 @@ export function AgentSettings({
                     </Button>
                   </div>
 
-                  {/* Unified flavor picker */}
-                  <select
-                    value={activeEntry.flavorId ?? ""}
-                    onChange={(e) => {
+                  {/* Unified flavor picker — Popover listbox with color swatches and grouping */}
+                  <FlavorSelector
+                    selectedFlavorId={activeEntry.flavorId ?? undefined}
+                    allFlavors={allFlavors}
+                    ccrFlavors={ccrFlavors ?? []}
+                    customFlavors={customFlavors ?? []}
+                    onChange={(flavorId) => {
                       void (async () => {
-                        await updateAgent(activeAgent.id, {
-                          flavorId: e.target.value || undefined,
-                        });
+                        await updateAgent(activeAgent.id, { flavorId: flavorId ?? undefined });
                         onSettingsChange?.();
                       })();
                     }}
-                    className="w-full px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-none transition-colors"
-                  >
-                    <option value="">Vanilla (no overrides)</option>
-                    {ccrFlavors && ccrFlavors.length > 0 && (
-                      <optgroup label="CCR Routes">
-                        {ccrFlavors.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.name.replace(/^CCR:\s*/, "")}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {customFlavors && customFlavors.length > 0 && (
-                      <optgroup label="Custom">
-                        {customFlavors.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
+                    agentColor={getAgentConfig(activeAgent.id)?.color ?? "#888888"}
+                  />
+
+                  {/* Hidden datalist retained for any remaining text inputs that still reference it */}
+                  <datalist id="env-key-suggestions">
+                    {(getAgentConfig(activeAgent.id)?.envSuggestions ?? []).map(({ key }) => (
+                      <option key={key} value={key} />
+                    ))}
+                  </datalist>
 
                   {/* Detail view for selected CCR flavor */}
                   {selectedFlavor && selectedIsCcr && (
@@ -692,30 +692,13 @@ export function AgentSettings({
                     >
                       {/* Name row */}
                       <div className="flex items-center gap-2 px-3 py-2.5">
-                        {/* Color picker */}
-                        <label
-                          className="shrink-0 cursor-pointer"
-                          title="Pick flavor color"
-                          aria-label="Flavor color"
-                        >
-                          <input
-                            type="color"
-                            className="sr-only"
-                            value={selectedFlavor.color ?? "#888888"}
-                            onChange={(e) =>
-                              handleUpdateFlavor(selectedFlavor.id, { color: e.target.value })
-                            }
-                          />
-                          <span
-                            className="block w-4 h-4 rounded-full border border-daintree-border/60 ring-1 ring-transparent hover:ring-daintree-accent/50 transition-all"
-                            style={{
-                              backgroundColor:
-                                selectedFlavor.color ??
-                                getAgentConfig(activeAgent.id)?.color ??
-                                "#888888",
-                            }}
-                          />
-                        </label>
+                        {/* Color picker — preset palette with Clear + Custom escape hatch */}
+                        <FlavorColorPicker
+                          color={selectedFlavor.color}
+                          agentColor={getAgentConfig(activeAgent.id)?.color ?? "#888888"}
+                          onChange={(color) => handleUpdateFlavor(selectedFlavor.id, { color })}
+                          ariaLabel="Flavor color"
+                        />
 
                         {editingFlavorId === selectedFlavor.id ? (
                           <input
@@ -777,70 +760,19 @@ export function AgentSettings({
                         </div>
                       </div>
 
-                      {/* Env var editor */}
+                      {/* Env var editor — draft-row state with empty/duplicate key validation */}
                       <div className="px-3 py-2.5 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-daintree-text/50 font-medium uppercase tracking-wide">
-                            Env overrides
-                          </span>
-                          <button
-                            className="text-[11px] text-daintree-accent hover:text-daintree-accent/80 transition-colors"
-                            onClick={() => {
-                              const env = { ...(selectedFlavor.env ?? {}) };
-                              let key = "NEW_VAR";
-                              let i = 1;
-                              while (key in env) key = `NEW_VAR_${i++}`;
-                              env[key] = "";
-                              handleUpdateFlavor(selectedFlavor.id, { env });
-                            }}
-                          >
-                            + Add
-                          </button>
-                        </div>
-                        {Object.entries(selectedFlavor.env ?? {}).map(([k, v]) => (
-                          <div
-                            key={`${selectedFlavor.id}-${k}`}
-                            className="flex items-center gap-1 font-mono text-[11px]"
-                          >
-                            <input
-                              className="w-2/5 bg-daintree-bg border border-border-strong rounded px-1.5 py-0.5 text-daintree-text/70 focus:outline-none focus:border-daintree-accent"
-                              defaultValue={k}
-                              placeholder="KEY"
-                              list="env-key-suggestions"
-                              onBlur={(e) => {
-                                const newKey = e.target.value.trim();
-                                if (!newKey || newKey === k) return;
-                                const env = { ...(selectedFlavor.env ?? {}) };
-                                delete env[k];
-                                env[newKey] = v;
-                                handleUpdateFlavor(selectedFlavor.id, { env });
-                              }}
-                            />
-                            <span className="text-daintree-text/30">=</span>
-                            <input
-                              className="flex-1 bg-daintree-bg border border-border-strong rounded px-1.5 py-0.5 text-daintree-accent/80 focus:outline-none focus:border-daintree-accent"
-                              defaultValue={v}
-                              placeholder="value or ${ENV_VAR}"
-                              onBlur={(e) => {
-                                const newVal = e.target.value;
-                                if (newVal === v) return;
-                                const env = { ...(selectedFlavor.env ?? {}), [k]: newVal };
-                                handleUpdateFlavor(selectedFlavor.id, { env });
-                              }}
-                            />
-                            <button
-                              className="text-daintree-text/30 hover:text-status-error transition-colors shrink-0"
-                              aria-label={`Remove ${k}`}
-                              onClick={() => {
-                                const env = { ...(selectedFlavor.env ?? {}) };
-                                delete env[k];
-                                handleUpdateFlavor(selectedFlavor.id, { env });
-                              }}
-                            >
-                              <X size={11} />
-                            </button>
-                          </div>
-                        ))}
+                        <span className="text-[11px] text-daintree-text/50 font-medium uppercase tracking-wide block">
+                          Env overrides
+                        </span>
+                        <EnvVarEditor
+                          env={selectedFlavor.env ?? {}}
+                          onChange={(env) => handleUpdateFlavor(selectedFlavor.id, { env })}
+                          suggestions={getAgentConfig(activeAgent.id)?.envSuggestions ?? []}
+                          datalistId="env-key-suggestions"
+                          contextKey={selectedFlavor.id}
+                          data-testid="flavor-env-editor"
+                        />
                         {envVarReference}
                       </div>
 
@@ -867,82 +799,28 @@ export function AgentSettings({
 
             {/* Global env vars — agent-level, applied to every launch regardless of flavor */}
             <div id="agents-global-env" className="space-y-2 pt-2 border-t border-daintree-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-sm font-medium text-daintree-text">Global env vars</label>
-                  <p className="text-xs text-daintree-text/40 select-text">
-                    Applied to every launch of this agent. Flavor-specific vars take precedence.
-                  </p>
-                </div>
-                <button
-                  className="text-[11px] text-daintree-accent hover:text-daintree-accent/80 transition-colors px-1"
-                  onClick={() => {
-                    const globalEnv = { ...(activeEntry.globalEnv ?? {}) };
-                    let key = "NEW_VAR";
-                    let i = 1;
-                    while (key in globalEnv) key = `NEW_VAR_${i++}`;
-                    globalEnv[key] = "";
-                    void (async () => {
-                      await updateAgent(activeAgent.id, { globalEnv });
-                      onSettingsChange?.();
-                    })();
-                  }}
-                >
-                  + Add
-                </button>
+              <div>
+                <label className="text-sm font-medium text-daintree-text">Global env vars</label>
+                <p className="text-xs text-daintree-text/40 select-text">
+                  Applied to every launch of this agent. Flavor-specific vars take precedence.
+                </p>
               </div>
-              {Object.entries(activeEntry.globalEnv ?? {}).map(([k, v]) => (
-                <div key={k} className="flex items-center gap-1 font-mono text-[11px]">
-                  <input
-                    className="w-2/5 bg-daintree-bg border border-border-strong rounded px-1.5 py-0.5 text-daintree-text/70 focus:outline-none focus:border-daintree-accent"
-                    defaultValue={k}
-                    placeholder="KEY"
-                    list="env-key-suggestions"
-                    onBlur={(e) => {
-                      const newKey = e.target.value.trim();
-                      if (!newKey || newKey === k) return;
-                      const globalEnv = { ...(activeEntry.globalEnv ?? {}) };
-                      delete globalEnv[k];
-                      globalEnv[newKey] = v;
-                      void (async () => {
-                        await updateAgent(activeAgent.id, { globalEnv });
-                        onSettingsChange?.();
-                      })();
-                    }}
-                  />
-                  <span className="text-daintree-text/30">=</span>
-                  <input
-                    className="flex-1 bg-daintree-bg border border-border-strong rounded px-1.5 py-0.5 text-daintree-accent/80 focus:outline-none focus:border-daintree-accent"
-                    defaultValue={v}
-                    placeholder="value"
-                    onBlur={(e) => {
-                      const newVal = e.target.value;
-                      if (newVal === v) return;
-                      const globalEnv = { ...(activeEntry.globalEnv ?? {}), [k]: newVal };
-                      void (async () => {
-                        await updateAgent(activeAgent.id, { globalEnv });
-                        onSettingsChange?.();
-                      })();
-                    }}
-                  />
-                  <button
-                    className="text-daintree-text/30 hover:text-status-error transition-colors shrink-0"
-                    aria-label={`Remove ${k}`}
-                    onClick={() => {
-                      const globalEnv = { ...(activeEntry.globalEnv ?? {}) };
-                      delete globalEnv[k];
-                      void (async () => {
-                        await updateAgent(activeAgent.id, {
-                          globalEnv: Object.keys(globalEnv).length > 0 ? globalEnv : undefined,
-                        });
-                        onSettingsChange?.();
-                      })();
-                    }}
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              ))}
+              <EnvVarEditor
+                env={(activeEntry.globalEnv as Record<string, string>) ?? {}}
+                onChange={(globalEnv) => {
+                  void (async () => {
+                    await updateAgent(activeAgent.id, {
+                      globalEnv: Object.keys(globalEnv).length > 0 ? globalEnv : undefined,
+                    });
+                    onSettingsChange?.();
+                  })();
+                }}
+                suggestions={getAgentConfig(activeAgent.id)?.envSuggestions ?? []}
+                datalistId="env-key-suggestions-global"
+                contextKey={`global-${activeAgent.id}`}
+                valuePlaceholder="value"
+                data-testid="global-env-editor"
+              />
             </div>
 
             {/* Share Clipboard Directory — Gemini only, always agent-level */}

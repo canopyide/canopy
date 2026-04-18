@@ -66,34 +66,53 @@ export async function navigateToAgentSettings(
 }
 
 /**
- * Selects the named flavor in the flavor `<select>` and returns the detail-view
- * panel that appears below it.  With the select+detail design only one flavor's
- * detail is visible at a time; call this function sequentially for each flavor
- * you need to inspect.
+ * Selects the named flavor in the FlavorSelector Popover listbox and returns
+ * the detail-view panel that appears below the selector. With the
+ * selector+detail design only one flavor's detail is visible at a time;
+ * call this function sequentially for each flavor you need to inspect.
  */
 export async function getFlavorRowByName(
   window: import("@playwright/test").Page,
   name: string
 ): Promise<import("@playwright/test").Locator> {
-  const select = window.locator(SEL.flavor.defaultSelect);
-  await select.waitFor({ state: "visible", timeout: 10_000 });
+  const trigger = window.locator(SEL.flavor.selectorTrigger);
+  await trigger.waitFor({ state: "visible", timeout: 10_000 });
+  // Playwright recommends hover() before click() for Radix Popover triggers
+  // — prevents race on Windows where focus events can close the popover
+  // mid-click.
+  await trigger.hover();
+  await trigger.click();
 
-  // Select the matching option (strip "CCR: " prefix from display)
-  const options = select.locator("option");
-  const allTexts = await options.allTextContents();
-  const matchingText = allTexts.find(
-    (t) =>
-      t.trim() === name || t.trim() === `CCR: ${name}` || t.replace(/^CCR:\s*/, "").trim() === name
-  );
-  if (!matchingText) throw new Error(`Flavor option "${name}" not found in select`);
-  await select.selectOption({ label: matchingText });
+  const listbox = window.locator(SEL.flavor.selectorListbox);
+  await expect(listbox).toBeVisible({ timeout: 5000 });
 
-  // Return the detail-view panel (the first bordered panel below the select)
+  // Match options by their visible label (CCR-prefix stripped in the trigger,
+  // not in the listbox items themselves — but we stripped prefix in the
+  // component too, so direct label match works).
+  const option = listbox.locator('[role="option"]', {
+    hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}$`),
+  });
+  await option.first().hover();
+  await option.first().click();
+  await expect(listbox).not.toBeVisible({ timeout: 5000 });
+
+  // Return the detail-view panel (the first bordered panel below the selector).
   return window
     .locator(
-      `${SEL.flavor.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-canopy-border`
+      `${SEL.flavor.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-canopy-border, ${SEL.flavor.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-daintree-border`
     )
     .first();
+}
+
+/**
+ * Reads the currently selected flavor label from the FlavorSelector trigger.
+ * Use this in place of `select.inputValue()` or option-checked assertions.
+ */
+export async function getSelectedFlavorLabel(
+  window: import("@playwright/test").Page
+): Promise<string> {
+  const trigger = window.locator(SEL.flavor.selectorTrigger);
+  return (await trigger.textContent())?.trim() ?? "";
 }
 
 export async function addCustomFlavor(window: import("@playwright/test").Page): Promise<void> {
