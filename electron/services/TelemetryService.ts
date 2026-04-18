@@ -2,6 +2,13 @@ import os from "os";
 import { app } from "electron";
 import { store } from "../store.js";
 import type { ActionBreadcrumb } from "../../shared/types/ipc/crashRecovery.js";
+import { scrubSecrets } from "../utils/secretScrubber.js";
+
+export interface SentryBreadcrumb {
+  message?: string;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
+}
 
 export interface SentryEvent {
   exception?: {
@@ -14,6 +21,8 @@ export interface SentryEvent {
   };
   message?: string;
   request?: { url?: string };
+  breadcrumbs?: SentryBreadcrumb[];
+  extra?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -29,20 +38,24 @@ export function sanitizePath(str: string): string {
     .replace(/C:\/Users\/[^/]+\//gi, "C:/Users/USER/");
 }
 
-function sanitizeEvent(event: SentryEvent): SentryEvent | null {
+function sanitizeString(value: string): string {
+  return scrubSecrets(sanitizePath(value));
+}
+
+export function sanitizeEvent(event: SentryEvent): SentryEvent | null {
   if (event.exception?.values) {
     for (const ex of event.exception.values) {
       if (ex.stacktrace?.frames) {
         for (const frame of ex.stacktrace.frames) {
-          if (frame.filename) frame.filename = sanitizePath(frame.filename);
-          if (frame.abs_path) frame.abs_path = sanitizePath(frame.abs_path);
+          if (frame.filename) frame.filename = sanitizeString(frame.filename);
+          if (frame.abs_path) frame.abs_path = sanitizeString(frame.abs_path);
         }
       }
-      if (ex.value) ex.value = sanitizePath(ex.value);
+      if (ex.value) ex.value = sanitizeString(ex.value);
     }
   }
   if (typeof event.message === "string") {
-    event.message = sanitizePath(event.message);
+    event.message = sanitizeString(event.message);
   }
   if (event.request?.url) {
     try {
@@ -51,6 +64,27 @@ function sanitizeEvent(event: SentryEvent): SentryEvent | null {
       event.request.url = u.toString();
     } catch {
       // not a valid URL, leave as-is
+    }
+  }
+  if (Array.isArray(event.breadcrumbs)) {
+    for (const breadcrumb of event.breadcrumbs) {
+      if (typeof breadcrumb.message === "string") {
+        breadcrumb.message = sanitizeString(breadcrumb.message);
+      }
+      if (breadcrumb.data && typeof breadcrumb.data === "object") {
+        for (const [key, val] of Object.entries(breadcrumb.data)) {
+          if (typeof val === "string") {
+            breadcrumb.data[key] = sanitizeString(val);
+          }
+        }
+      }
+    }
+  }
+  if (event.extra && typeof event.extra === "object") {
+    for (const [key, val] of Object.entries(event.extra)) {
+      if (typeof val === "string") {
+        event.extra[key] = sanitizeString(val);
+      }
     }
   }
   return event;
@@ -95,8 +129,7 @@ export async function initializeTelemetry(): Promise<void> {
         environment: app.isPackaged ? "production" : "development",
         // Do not set `sampleRate` — it defaults to 1.0 (100% error capture). If
         // performance tracing is ever added, use `tracesSampleRate` instead.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        beforeSend: sanitizeEvent as any,
+        beforeSend: (event) => sanitizeEvent(event as SentryEvent) as typeof event,
         initialScope: {
           tags: {
             platform: process.platform,
