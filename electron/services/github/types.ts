@@ -34,6 +34,13 @@ export interface PRCheckCandidate {
   worktreeId: string;
   issueNumber?: number;
   branchName?: string;
+  /**
+   * When set, enables ETag-based change detection on `/pulls/{knownPRNumber}`
+   * before issuing the batch GraphQL query. Used by the revalidation path to
+   * skip GraphQL entirely when all known PRs return 304 Not Modified (which
+   * does not consume primary rate-limit points).
+   */
+  knownPRNumber?: number;
 }
 
 export interface BatchPRCheckResult {

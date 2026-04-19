@@ -66,6 +66,10 @@ const projectHealthCache = new Cache<string, ProjectHealth>({ defaultTTL: 60000 
 const issueTooltipCache = new Cache<string, IssueTooltipData>({ defaultTTL: 300000 }); // 5 min TTL
 const prTooltipCache = new Cache<string, PRTooltipData>({ defaultTTL: 300000 }); // 5 min TTL
 
+// ETag cache for PR conditional revalidation. Key: `owner/repo#prNumber`.
+// Cleared on token rotation via clearGitHubCaches (ETags are token-scoped).
+const prETagCache = new Map<string, string>();
+
 export function getGitHubToken(): string | undefined {
   return GitHubAuth.getToken();
 }
@@ -623,6 +627,91 @@ function parseBatchPRResponse(
   return results;
 }
 
+/**
+ * Conditional REST probe against `/repos/{owner}/{repo}/pulls/{number}`.
+ * A 304 (Not Modified) response signals the PR has not changed since the
+ * stored ETag and does NOT consume primary rate-limit quota for authenticated
+ * requests. Returns:
+ *   - "unchanged" on 304 (cached ETag still valid)
+ *   - "changed" on 200 (new data available; ETag refreshed when present, or
+ *     invalidated when the response omits one)
+ *   - "unknown" on any other outcome (network error, non-200/304 status, etc.)
+ *
+ * Callers should treat "unknown" as a cue to fall through to GraphQL —
+ * preserving correctness even if the REST path is transiently unavailable.
+ */
+async function probePRChange(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token: string
+): Promise<"changed" | "unchanged" | "unknown"> {
+  const cacheKey = `${owner}/${repo}#${prNumber}`;
+  const cachedETag = prETagCache.get(cacheKey);
+  const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (cachedETag) {
+    headers["If-None-Match"] = cachedETag;
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
+    });
+
+    try {
+      gitHubRateLimitService.update(response.headers, response.status);
+    } catch {
+      // Rate-limit bookkeeping must never break the probe.
+    }
+
+    if (response.status === 304) {
+      return "unchanged";
+    }
+    if (response.status === 200) {
+      const etag = response.headers.get("etag");
+      if (etag) {
+        prETagCache.set(cacheKey, etag);
+      } else {
+        // If the new 200 response carries no ETag, drop any stale cached
+        // validator so the next cycle does not send a now-meaningless
+        // If-None-Match header.
+        prETagCache.delete(cacheKey);
+      }
+      return "changed";
+    }
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * When every candidate has a `knownPRNumber` (the revalidation path), probe
+ * each unique PR via REST conditional requests. If the entire batch is
+ * unchanged, the caller can skip the GraphQL query — the dominant per-cycle
+ * cost for PR polling — at zero primary quota impact. Duplicate PR numbers
+ * across candidates (multiple worktrees pointing at the same PR) are probed
+ * only once.
+ */
+async function allKnownPRsUnchanged(
+  owner: string,
+  repo: string,
+  candidates: PRCheckCandidate[],
+  token: string
+): Promise<boolean> {
+  const uniquePRNumbers = Array.from(new Set(candidates.map((c) => c.knownPRNumber!)));
+  const probes = await Promise.all(
+    uniquePRNumbers.map((prNumber) => probePRChange(owner, repo, prNumber, token))
+  );
+  return probes.every((result) => result === "unchanged");
+}
+
 export async function batchCheckLinkedPRs(
   cwd: string,
   candidates: PRCheckCandidate[]
@@ -648,6 +737,31 @@ export async function batchCheckLinkedPRs(
       error: rateLimitMessage(rateLimitBlock.reason, rateLimitBlock.resumeAt),
       rateLimit: { kind: rateLimitBlock.reason, resumeAt: rateLimitBlock.resumeAt },
     };
+  }
+
+  // ETag-gated fast path: if every candidate is a known PR (revalidation),
+  // probe each REST endpoint and skip GraphQL entirely when nothing has
+  // changed. Discovery cycles (any candidate without knownPRNumber) fall
+  // through to the normal GraphQL path.
+  const token = GitHubAuth.getToken();
+  const allRevalidation =
+    token !== undefined && candidates.every((c) => typeof c.knownPRNumber === "number");
+  if (allRevalidation) {
+    const allUnchanged = await allKnownPRsUnchanged(context.owner, context.repo, candidates, token);
+    if (allUnchanged) {
+      return { results: new Map() };
+    }
+    // A probe may itself have observed a 403/429 and updated the rate-limit
+    // service. Re-check before issuing the fallthrough GraphQL request so we
+    // do not burn an attempt while a known pause is already in effect.
+    const postProbeBlock = gitHubRateLimitService.shouldBlockRequest();
+    if (postProbeBlock.blocked && postProbeBlock.reason && postProbeBlock.resumeAt) {
+      return {
+        results: new Map(),
+        error: rateLimitMessage(postProbeBlock.reason, postProbeBlock.resumeAt),
+        rateLimit: { kind: postProbeBlock.reason, resumeAt: postProbeBlock.resumeAt },
+      };
+    }
   }
 
   try {
@@ -950,6 +1064,7 @@ export function clearGitHubCaches(): void {
   prListCache.clear();
   issueTooltipCache.clear();
   prTooltipCache.clear();
+  prETagCache.clear();
 }
 
 export function clearPRCaches(): void {
