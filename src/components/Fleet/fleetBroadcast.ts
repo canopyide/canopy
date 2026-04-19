@@ -6,6 +6,15 @@ import type { RecipeContext } from "@/utils/recipeVariables";
 export const FLEET_BROADCAST_HISTORY_KEY = "fleet-broadcast" as const;
 
 /**
+ * Build a per-project fleet history key so broadcast history doesn't leak
+ * across projects. Falls back to the global key when no project is active.
+ */
+export function getFleetBroadcastHistoryKey(projectId: string | undefined): string {
+  if (!projectId) return FLEET_BROADCAST_HISTORY_KEY;
+  return `${FLEET_BROADCAST_HISTORY_KEY}:${projectId}`;
+}
+
+/**
  * Bytes in UTF-8 rather than JS string length — keeps accounting honest for
  * multi-byte characters when we compare against the backend's paste buffer.
  */

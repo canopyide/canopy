@@ -10,11 +10,20 @@ export interface PromptHistoryEntry {
   prompt: string;
   agentId: string | null;
   addedAt: number;
+  /** Armed terminal IDs at the time of fleet broadcast (fleet history only) */
+  armedIds?: string[];
+  /** Filter spec used when the broadcast was sent (fleet history only) */
+  targetSpec?: { scope: "current" | "all"; stateFilter: string };
 }
 
 interface CommandHistoryState {
   history: Record<string, PromptHistoryEntry[]>;
-  recordPrompt: (projectId: string, prompt: string, agentId?: string | null) => void;
+  recordPrompt: (
+    projectId: string,
+    prompt: string,
+    agentId?: string | null,
+    fleetMeta?: { armedIds?: string[]; targetSpec?: PromptHistoryEntry["targetSpec"] }
+  ) => void;
   getProjectHistory: (projectId: string | undefined) => PromptHistoryEntry[];
   getGlobalHistory: () => PromptHistoryEntry[];
   removeProjectHistory: (projectId: string) => void;
@@ -25,18 +34,30 @@ export const useCommandHistoryStore = create<CommandHistoryState>()(
     (set, get) => ({
       history: {},
 
-      recordPrompt: (projectId, prompt, agentId) =>
+      recordPrompt: (projectId, prompt, agentId, fleetMeta) =>
         set((state) => {
           const trimmed = prompt.trim();
           if (trimmed === "") return state;
 
           const projectEntries = [...(state.history[projectId] ?? [])];
-          const filtered = projectEntries.filter((e) => e.prompt !== trimmed);
+          // For fleet entries with armed IDs, only dedup against entries with
+          // the same armed set — different targets are different intents.
+          const armedKey = fleetMeta?.armedIds?.join(",") ?? "";
+          const filtered = projectEntries.filter((e) => {
+            if (e.prompt !== trimmed) return true;
+            if (armedKey) {
+              const existingKey = e.armedIds?.join(",") ?? "";
+              return existingKey !== armedKey;
+            }
+            return false;
+          });
           const entry: PromptHistoryEntry = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             prompt: trimmed,
             agentId: agentId ?? null,
             addedAt: Date.now(),
+            armedIds: fleetMeta?.armedIds,
+            targetSpec: fleetMeta?.targetSpec,
           };
           const updated = [entry, ...filtered].slice(0, MAX_HISTORY_SIZE);
           return { history: { ...state.history, [projectId]: updated } };

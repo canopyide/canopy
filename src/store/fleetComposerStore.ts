@@ -3,14 +3,31 @@ import { useFleetArmingStore } from "./fleetArmingStore";
 
 interface FleetComposerState {
   draft: string;
+  /** When true, the FleetComposer should open the dry-run dialog on next render */
+  dryRunRequested: boolean;
+  /** Terminal IDs from the most recent broadcast that failed (for retry-failed) */
+  lastFailedIds: string[];
+  /** The prompt text from the most recent broadcast (for retry-failed) */
+  lastBroadcastPrompt: string;
   setDraft: (draft: string) => void;
   clearDraft: () => void;
+  requestDryRun: () => void;
+  clearDryRunRequest: () => void;
+  setLastFailed: (ids: string[], prompt: string) => void;
+  clearLastFailed: () => void;
 }
 
 export const useFleetComposerStore = create<FleetComposerState>()((set) => ({
   draft: "",
+  dryRunRequested: false,
+  lastFailedIds: [],
+  lastBroadcastPrompt: "",
   setDraft: (draft) => set({ draft }),
   clearDraft: () => set({ draft: "" }),
+  requestDryRun: () => set({ dryRunRequested: true }),
+  clearDryRunRequest: () => set({ dryRunRequested: false }),
+  setLastFailed: (ids, prompt) => set({ lastFailedIds: ids, lastBroadcastPrompt: prompt }),
+  clearLastFailed: () => set({ lastFailedIds: [], lastBroadcastPrompt: "" }),
 }));
 
 /**

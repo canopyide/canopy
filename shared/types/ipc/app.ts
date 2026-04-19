@@ -91,6 +91,10 @@ export interface AppState {
   fleetDeckWidth?: number;
   /** Height of the Fleet Deck in pixels (when docked to the bottom edge) */
   fleetDeckHeight?: number;
+  /** Whether Enter in Fleet Composer always opens dry-run preview */
+  fleetDeckAlwaysPreview?: boolean;
+  /** Number of armed targets that triggers quorum confirmation */
+  fleetDeckQuorumThreshold?: number;
 }
 
 /** Describes how the settings store recovered from corruption at startup */
