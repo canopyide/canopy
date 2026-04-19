@@ -9,7 +9,11 @@ import "@fontsource/jetbrains-mono/600.css";
 import "@fontsource/jetbrains-mono/700.css";
 import "./index.css";
 import { applyDefaultAppTheme } from "./theme/applyAppTheme";
-import { ensureTerminalFontLoaded } from "./config/terminalFont";
+// Importing this module has the side effect of starting the font load (via
+// the eagerly-initialised `terminalFontReady` singleton). `XtermAdapter`
+// suspends locally on that same promise so the grid measurement waits while
+// the rest of the app shell mounts immediately.
+import "./config/terminalFont";
 import { initStoreOrchestrator } from "./store/rendererStoreOrchestrator";
 import { useAgentSettingsStore } from "./store/agentSettingsStore";
 import { registerRendererGlobalErrorHandlers } from "./utils/rendererGlobalErrorHandlers";
@@ -46,13 +50,6 @@ async function bootstrap() {
   // without it the store stays null and the orchestrator's availability
   // subscription never gets a chance to reconcile (see issue #5158).
   void useAgentSettingsStore.getState().initialize();
-
-  // Kick off the terminal font load eagerly without blocking first paint.
-  // The app shell (sidebar, toolbar, etc.) doesn't need the monospace font —
-  // only terminal panels do. `XtermAdapter` suspends locally on the same
-  // singleton promise (exported as `terminalFontReady`) so the grid
-  // measurement at `terminal.open()` still waits for the font.
-  void ensureTerminalFontLoaded();
 
   const { default: App } = await import("./App");
 
