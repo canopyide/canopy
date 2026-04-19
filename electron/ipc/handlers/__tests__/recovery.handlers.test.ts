@@ -37,6 +37,22 @@ vi.mock("electron", () => ({
 
 vi.mock("node:fs", () => fsMock);
 
+vi.mock("../../../window/webContentsRegistry.js", () => ({
+  getWindowForWebContents: vi.fn(() => null),
+  getAppWebContents: vi.fn(),
+  getAllAppWebContents: vi.fn(() => []),
+}));
+
+vi.mock("../../../window/windowRef.js", () => ({
+  getProjectViewManager: vi.fn(() => null),
+}));
+
+vi.mock("../../../utils/performance.js", () => ({
+  isPerformanceCaptureEnabled: vi.fn(() => false),
+  markPerformance: vi.fn(),
+  sampleIpcTiming: vi.fn(),
+}));
+
 vi.mock("../../../services/CrashRecoveryService.js", () => ({
   getCrashRecoveryService: vi.fn(() => ({
     resetToFresh: vi.fn(),
@@ -64,6 +80,15 @@ const TRUSTED_RECOVERY_URL = "app://daintree/recovery.html";
 const UNTRUSTED_URL = "https://evil.com/recovery.html";
 const MAIN_RENDERER_URL = "app://daintree/index.html";
 
+const SENDER = { id: 1 };
+
+function buildEvent(url: string | null) {
+  return {
+    senderFrame: url === null ? null : { url },
+    sender: SENDER,
+  };
+}
+
 describe("registerRecoveryHandlers", () => {
   const deps = { mainWindow: undefined } as HandlerDependencies;
 
@@ -77,7 +102,7 @@ describe("registerRecoveryHandlers", () => {
     collectDiagnosticsMock.mockResolvedValue({ version: "test", platform: "darwin" });
   });
 
-  it("registers export-diagnostics and open-logs via raw ipcMain.handle", () => {
+  it("registers export-diagnostics and open-logs via typedHandleWithContext", () => {
     registerRecoveryHandlers(deps);
     expect(ipcMainMock.handle).toHaveBeenCalledWith(
       "recovery:export-diagnostics",
@@ -86,7 +111,7 @@ describe("registerRecoveryHandlers", () => {
     expect(ipcMainMock.handle).toHaveBeenCalledWith("recovery:open-logs", expect.any(Function));
   });
 
-  it("cleanup removes both raw handlers", () => {
+  it("cleanup removes the handlers", () => {
     const cleanup = registerRecoveryHandlers(deps);
     cleanup();
     expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("recovery:export-diagnostics");
@@ -97,7 +122,7 @@ describe("registerRecoveryHandlers", () => {
     it("rejects untrusted sender and does not collect diagnostics, show dialog, or write file", async () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
-      await expect(handler({ senderFrame: { url: UNTRUSTED_URL } })).rejects.toThrow(
+      await expect(handler(buildEvent(UNTRUSTED_URL))).rejects.toThrow(
         "recovery:export-diagnostics rejected: untrusted sender"
       );
       expect(collectDiagnosticsMock).not.toHaveBeenCalled();
@@ -116,16 +141,14 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
 
-      await expect(
-        handler({ senderFrame: { url: TRUSTED_RECOVERY_URL }, sender: {} })
-      ).rejects.toThrow("no space");
+      await expect(handler(buildEvent(TRUSTED_RECOVERY_URL))).rejects.toThrow("no space");
       expect(shellMock.showItemInFolder).not.toHaveBeenCalled();
     });
 
     it("rejects the main renderer URL (not the recovery page)", async () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
-      await expect(handler({ senderFrame: { url: MAIN_RENDERER_URL } })).rejects.toThrow(
+      await expect(handler(buildEvent(MAIN_RENDERER_URL))).rejects.toThrow(
         "recovery:export-diagnostics rejected: untrusted sender"
       );
       expect(dialogMock.showSaveDialog).not.toHaveBeenCalled();
@@ -134,7 +157,7 @@ describe("registerRecoveryHandlers", () => {
     it("rejects missing senderFrame", async () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
-      await expect(handler({ senderFrame: null })).rejects.toThrow(
+      await expect(handler(buildEvent(null))).rejects.toThrow(
         "recovery:export-diagnostics rejected: untrusted sender"
       );
     });
@@ -147,10 +170,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
 
-      const result = await handler({
-        senderFrame: { url: TRUSTED_RECOVERY_URL },
-        sender: {},
-      });
+      const result = await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(result).toBe(true);
       expect(fsMock.promises.writeFile).toHaveBeenCalledWith(
@@ -166,10 +186,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
 
-      const result = await handler({
-        senderFrame: { url: TRUSTED_RECOVERY_URL },
-        sender: {},
-      });
+      const result = await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(result).toBe(false);
       expect(fsMock.promises.writeFile).not.toHaveBeenCalled();
@@ -186,10 +203,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
 
-      await handler({
-        senderFrame: { url: TRUSTED_RECOVERY_URL },
-        sender: {},
-      });
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(dialogMock.showSaveDialog).toHaveBeenCalledWith(parentWin, expect.any(Object));
     });
@@ -202,10 +216,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:export-diagnostics");
 
-      await handler({
-        senderFrame: { url: TRUSTED_RECOVERY_URL },
-        sender: {},
-      });
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(dialogMock.showSaveDialog).toHaveBeenCalledWith(
         expect.objectContaining({ title: "Save Diagnostics" })
@@ -217,7 +228,7 @@ describe("registerRecoveryHandlers", () => {
     it("rejects untrusted sender and does not open anything", async () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:open-logs");
-      await expect(handler({ senderFrame: { url: UNTRUSTED_URL } })).rejects.toThrow(
+      await expect(handler(buildEvent(UNTRUSTED_URL))).rejects.toThrow(
         "recovery:open-logs rejected: untrusted sender"
       );
       expect(shellMock.openPath).not.toHaveBeenCalled();
@@ -229,7 +240,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:open-logs");
 
-      await handler({ senderFrame: { url: TRUSTED_RECOVERY_URL } });
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(shellMock.openPath).toHaveBeenCalledTimes(1);
       expect(shellMock.openPath).toHaveBeenCalledWith("/tmp/daintree/logs/main.log");
@@ -244,7 +255,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:open-logs");
 
-      await handler({ senderFrame: { url: TRUSTED_RECOVERY_URL } });
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(fsMock.promises.mkdir).toHaveBeenCalledWith("/tmp/daintree/logs", {
         recursive: true,
@@ -265,7 +276,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:open-logs");
 
-      await handler({ senderFrame: { url: TRUSTED_RECOVERY_URL } });
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(shellMock.openPath).toHaveBeenCalledWith("/tmp/daintree/logs");
     });
@@ -276,7 +287,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:open-logs");
 
-      await handler({ senderFrame: { url: TRUSTED_RECOVERY_URL } });
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(shellMock.openPath).toHaveBeenNthCalledWith(1, "/tmp/daintree/logs/main.log");
       expect(shellMock.openPath).toHaveBeenNthCalledWith(2, "/tmp/daintree/logs");
@@ -288,7 +299,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:open-logs");
 
-      await expect(handler({ senderFrame: { url: TRUSTED_RECOVERY_URL } })).rejects.toThrow(
+      await expect(handler(buildEvent(TRUSTED_RECOVERY_URL))).rejects.toThrow(
         "recovery:open-logs failed"
       );
       expect(shellMock.openPath).toHaveBeenNthCalledWith(1, "/tmp/daintree/logs/main.log");
@@ -304,7 +315,7 @@ describe("registerRecoveryHandlers", () => {
       registerRecoveryHandlers(deps);
       const handler = getHandlerFn("recovery:open-logs");
 
-      await expect(handler({ senderFrame: { url: TRUSTED_RECOVERY_URL } })).rejects.toThrow(
+      await expect(handler(buildEvent(TRUSTED_RECOVERY_URL))).rejects.toThrow(
         "recovery:open-logs failed"
       );
     });
