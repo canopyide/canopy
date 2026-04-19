@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, Settings2, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, Moon, Settings2, Trash2 } from "lucide-react";
 import {
   useNotificationHistoryStore,
   type NotificationHistoryEntry,
@@ -7,6 +7,7 @@ import {
 import { NotificationCenterEntry } from "./NotificationCenterEntry";
 import { Button } from "@/components/ui/button";
 import { actionService } from "@/services/ActionService";
+import { muteForDuration, muteUntilNextMorning, notify } from "@/lib/notify";
 
 interface NotificationCenterProps {
   open: boolean;
@@ -79,6 +80,27 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     markAllRead();
   };
 
+  const handleMuteFor = (durationMs: number, label: string) => {
+    muteForDuration(durationMs);
+    notify({
+      type: "info",
+      message: `Notifications muted ${label}`,
+      priority: "low",
+      urgent: true,
+    });
+  };
+
+  const handleMuteUntilMorning = () => {
+    const until = muteUntilNextMorning();
+    const formatter = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+    notify({
+      type: "info",
+      message: `Notifications muted until ${formatter.format(new Date(until))}`,
+      priority: "low",
+      urgent: true,
+    });
+  };
+
   return (
     <div className="w-[360px] max-h-[420px] flex flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-divider">
@@ -115,6 +137,27 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => handleMuteFor(60 * 60 * 1000, "for 1h")}
+            className="text-daintree-text/50"
+            title="Suppress non-urgent notifications for the next hour"
+          >
+            <Moon />
+            Mute 1h
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={handleMuteUntilMorning}
+            className="text-daintree-text/50"
+            title="Suppress non-urgent notifications until 8:00 AM"
+          >
+            Until morning
+          </Button>
           {unreadCount > 0 && (
             <Button
               type="button"

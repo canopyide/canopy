@@ -4,6 +4,7 @@ import { store } from "../store.js";
 import { projectStore } from "./ProjectStore.js";
 import { soundService } from "./SoundService.js";
 import { CHANNELS } from "../ipc/channels.js";
+import { isScheduledQuietNow } from "../../shared/utils/quietHours.js";
 
 const COMPLETION_DEBOUNCE_MS = 2000;
 const NOTIFICATION_STAGGER_MS = 500;
@@ -69,9 +70,19 @@ class AgentNotificationService {
   private agentSpawnTimestamps = new Map<string, number>();
   /** Timestamp when the service was initialized — sounds are suppressed during boot */
   private initializedAt = 0;
+  /** Session-mute expiry mirrored from the renderer's quick-action buttons. */
+  private sessionMuteUntil = 0;
 
   syncWatchedPanels(panelIds: string[]): void {
     this.watchedTerminals = new Set(panelIds);
+  }
+
+  setSessionMuteUntil(timestampMs: number): void {
+    this.sessionMuteUntil = Number.isFinite(timestampMs) ? timestampMs : 0;
+  }
+
+  private isSessionMuted(): boolean {
+    return Date.now() < this.sessionMuteUntil;
   }
 
   initialize(): void {
@@ -499,6 +510,16 @@ class AgentNotificationService {
         this.clearWorkingPulse(terminalId);
         return;
       }
+      // During scheduled quiet hours or an active session mute, skip this tick's
+      // sound but keep the loop alive so pulses resume automatically after.
+      if (isScheduledQuietNow(currentSettings) || this.isSessionMuted()) {
+        const jitter =
+          WORKING_PULSE_MIN_INTERVAL_MS +
+          Math.random() * (WORKING_PULSE_MAX_INTERVAL_MS - WORKING_PULSE_MIN_INTERVAL_MS);
+        const nextTimer = setTimeout(tick, jitter);
+        this.workingPulseIntervalTimers.set(terminalId, nextTimer);
+        return;
+      }
       // Randomize pitch ±15 cents per pulse to slow auditory habituation.
       // Exceeds JND (~5-10 cents) but preserves sound identity.
       const detuneCents = Math.random() * 30 - 15;
@@ -550,6 +571,21 @@ class AgentNotificationService {
     const settings = projectStore.getEffectiveNotificationSettings();
     if (settings.enabled === false) {
       this.notificationQueue = [];
+      return;
+    }
+
+    // Quiet hours schedule and renderer-driven session mute both suppress
+    // completion/pulse alerts but not waiting alerts — waiting agents block
+    // user work and should page through.
+    if (isScheduledQuietNow(settings) || this.isSessionMuted()) {
+      if (this.notificationQueue.length > 0) {
+        this.staggerTimer = setTimeout(() => {
+          this.staggerTimer = null;
+          this.drainQueue();
+        }, NOTIFICATION_STAGGER_MS);
+      } else {
+        this.staggerTimer = null;
+      }
       return;
     }
 
