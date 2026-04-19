@@ -31,9 +31,10 @@ const NAMED_PATTERNS: readonly RegExp[] = [
 ];
 
 // Fallback high-entropy heuristic for opaque tokens that don't match a named
-// vendor pattern. 48 chars is long enough to avoid UUIDs (32/36) and most
-// long passwords while still catching real-world base64/JWT-style secrets.
-const LONG_OPAQUE_RE = /^[A-Za-z0-9+/=_-]{48,}$/;
+// vendor pattern. 40 chars is the issue spec's threshold — above UUIDs (36)
+// while still catching HuggingFace `hf_`, Slack bot tokens, and similar
+// 40–47 char secrets that vendor patterns don't cover.
+const LONG_OPAQUE_RE = /^[A-Za-z0-9+/=_-]{40,}$/;
 
 export function looksLikeSecret(value: string): boolean {
   if (!value) return false;

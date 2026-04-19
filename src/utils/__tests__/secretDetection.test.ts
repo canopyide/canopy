@@ -38,16 +38,44 @@ describe("looksLikeSecret", () => {
   });
 
   describe("long opaque fallback", () => {
-    it("detects a 48-char base64-ish string", () => {
-      expect(looksLikeSecret("A".repeat(48))).toBe(true);
+    it("detects a 40-char base64-ish string (spec threshold)", () => {
+      expect(looksLikeSecret("A".repeat(40))).toBe(true);
     });
 
     it("detects a long base64+/= style token", () => {
       expect(looksLikeSecret("abcd1234+/=".repeat(5))).toBe(true);
     });
 
-    it("does NOT flag a 47-char string (under threshold)", () => {
-      expect(looksLikeSecret("A".repeat(47))).toBe(false);
+    it("does NOT flag a 39-char string (under threshold)", () => {
+      expect(looksLikeSecret("A".repeat(39))).toBe(false);
+    });
+  });
+
+  describe("named pattern boundary cases", () => {
+    // Note: Anthropic's `sk-ant-...` body length boundary isn't independently
+    // testable because any `sk-<20+ chars>` also matches the OpenAI pattern.
+    // The OpenAI boundary below is the effective floor for all `sk-` prefixed
+    // keys.
+
+    it("requires at least 20 chars in OpenAI body", () => {
+      expect(looksLikeSecret("sk-" + "a".repeat(19))).toBe(false);
+      expect(looksLikeSecret("sk-" + "a".repeat(20))).toBe(true);
+    });
+
+    it("requires at least 24 chars in generic ak/sk/pk body", () => {
+      // The OpenAI pattern matches at 20 chars, so test with a prefix that
+      // only the generic pattern catches. At 23 chars body, the generic
+      // pattern fails but OpenAI still matches (sk-). Use ak- to isolate.
+      expect(looksLikeSecret("ak-" + "a".repeat(23))).toBe(false);
+      expect(looksLikeSecret("ak-" + "a".repeat(24))).toBe(true);
+    });
+
+    it("requires exactly 16 chars in AWS AKIA body", () => {
+      expect(looksLikeSecret("AKIA" + "A".repeat(15))).toBe(false);
+      expect(looksLikeSecret("AKIA" + "A".repeat(16))).toBe(true);
+      // 17 chars would fail anchor ($), but the fallback may catch it if
+      // total length ≥ 40 — which it's not here.
+      expect(looksLikeSecret("AKIA" + "A".repeat(17))).toBe(false);
     });
   });
 
