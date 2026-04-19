@@ -43,6 +43,7 @@ import {
   Terminal as TerminalIcon,
   Box,
   Layers,
+  Trash2,
 } from "lucide-react";
 import type { AggregateCounts } from "./MainWorktreeSummaryRows";
 import { useIssueTooltip, usePRTooltip } from "@/hooks/useGitHubTooltip";
@@ -261,6 +262,7 @@ export interface WorktreeHeaderProps {
   resourceEndpoint?: string;
   resourceLastCheckedAt?: number;
   onCheckResourceStatus?: () => void;
+  onCleanupWorktree?: () => void;
   badges: {
     onOpenIssue?: () => void;
     onOpenPR?: () => void;
@@ -347,6 +349,7 @@ export function WorktreeHeader({
   resourceEndpoint,
   resourceLastCheckedAt,
   onCheckResourceStatus,
+  onCleanupWorktree,
   badges,
   menu,
 }: WorktreeHeaderProps) {
@@ -578,6 +581,26 @@ export function WorktreeHeader({
             <TooltipContent side="top" className="text-xs">
               {visibleStates.map((v) => `${v.count} ${STATE_LABELS[v.state]}`).join(", ")}
             </TooltipContent>
+          </Tooltip>
+        )}
+
+        {onCleanupWorktree && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCleanupWorktree();
+                }}
+                className="sidebar-action-button p-1.5 text-github-merged hover:text-status-error rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent shrink-0"
+                aria-label="Delete worktree"
+                data-testid="worktree-cleanup-button"
+              >
+                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Delete worktree</TooltipContent>
           </Tooltip>
         )}
 
