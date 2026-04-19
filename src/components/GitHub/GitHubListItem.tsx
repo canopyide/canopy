@@ -77,10 +77,15 @@ function getCIStatusInfo(
 } {
   switch (status) {
     case "SUCCESS": {
-      const tooltip =
-        summary && summary.requiredTotal > 0
-          ? `${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} passing`
-          : "All checks passed";
+      let tooltip: string;
+      if (summary) {
+        tooltip =
+          summary.requiredTotal === 0
+            ? "No required checks"
+            : `${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} passing`;
+      } else {
+        tooltip = "All checks passed";
+      }
       return { icon: Check, color: "text-status-success", tooltip };
     }
     case "PENDING":

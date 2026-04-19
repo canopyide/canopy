@@ -72,7 +72,13 @@ describe("deriveRequiredCIStatus", () => {
   });
 
   it("treats TIMED_OUT, ACTION_REQUIRED, CANCELLED, STARTUP_FAILURE as failing", () => {
-    for (const conclusion of ["TIMED_OUT", "ACTION_REQUIRED", "CANCELLED", "STARTUP_FAILURE"]) {
+    for (const conclusion of [
+      "TIMED_OUT",
+      "ACTION_REQUIRED",
+      "CANCELLED",
+      "STARTUP_FAILURE",
+      "STALE",
+    ]) {
       const r = deriveRequiredCIStatus(
         [{ __typename: "CheckRun", conclusion, status: "COMPLETED", isRequired: true }],
         false,

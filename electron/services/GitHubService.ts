@@ -1386,7 +1386,8 @@ export async function listIssues(
 async function enrichPRsWithRequiredStatus(
   context: RepoContext,
   prs: GitHubPR[],
-  client: NonNullable<ReturnType<typeof GitHubAuth.createClient>>
+  client: NonNullable<ReturnType<typeof GitHubAuth.createClient>>,
+  bypassCache = false
 ): Promise<GitHubPR[]> {
   const candidates = prs.filter(
     (pr) =>
@@ -1402,7 +1403,7 @@ async function enrichPRsWithRequiredStatus(
   const cached = new Map<number, PRRequiredStatusEntry>();
 
   for (const pr of candidates) {
-    const hit = prRequiredStatusCache.get(cacheKeyFor(pr.number));
+    const hit = bypassCache ? undefined : prRequiredStatusCache.get(cacheKeyFor(pr.number));
     if (hit) {
       cached.set(pr.number, hit);
     } else {
@@ -1533,7 +1534,12 @@ export async function listPullRequests(
         const nodes = (search?.nodes ?? []) as Array<Record<string, unknown>>;
 
         const parsedItems = nodes.filter(Boolean).map(parsePRNode);
-        const enrichedItems = await enrichPRsWithRequiredStatus(context, parsedItems, client);
+        const enrichedItems = await enrichPRsWithRequiredStatus(
+          context,
+          parsedItems,
+          client,
+          options.bypassCache ?? false
+        );
         result = {
           items: enrichedItems,
           pageInfo: {
@@ -1563,7 +1569,12 @@ export async function listPullRequests(
         const totalCount = (pullRequests?.totalCount as number) ?? undefined;
 
         const parsedItems = nodes.filter(Boolean).map(parsePRNode);
-        const enrichedItems = await enrichPRsWithRequiredStatus(context, parsedItems, client);
+        const enrichedItems = await enrichPRsWithRequiredStatus(
+          context,
+          parsedItems,
+          client,
+          options.bypassCache ?? false
+        );
         result = {
           items: enrichedItems,
           pageInfo: {
