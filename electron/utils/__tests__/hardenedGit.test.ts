@@ -157,6 +157,62 @@ describe("createHardenedGit", () => {
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options).not.toHaveProperty("abort");
   });
+
+  it("sets LC_MESSAGES=C and LANGUAGE empty via .env()", () => {
+    createHardenedGit("/test/repo");
+
+    expect(mockGitInstance.env).toHaveBeenCalledWith(
+      expect.objectContaining({
+        LC_MESSAGES: "C",
+        LANGUAGE: "",
+      })
+    );
+  });
+
+  it("does not apply hardened SSH command (blocked via config instead)", () => {
+    const origSsh = process.env.GIT_SSH_COMMAND;
+    delete process.env.GIT_SSH_COMMAND;
+    try {
+      createHardenedGit("/test/repo");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.GIT_SSH_COMMAND).toBeUndefined();
+    } finally {
+      if (origSsh !== undefined) process.env.GIT_SSH_COMMAND = origSsh;
+    }
+  });
+
+  it("spreads process.env into hardenedGit .env() call", () => {
+    process.env.DAINTREE_TEST_SENTINEL = "sentinel_value";
+    try {
+      createHardenedGit("/test/repo");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.PATH).toBe(process.env.PATH);
+      expect(envArg.DAINTREE_TEST_SENTINEL).toBe("sentinel_value");
+    } finally {
+      delete process.env.DAINTREE_TEST_SENTINEL;
+    }
+  });
+
+  it("locale env values override conflicting process.env entries", () => {
+    const origMessages = process.env.LC_MESSAGES;
+    const origLanguage = process.env.LANGUAGE;
+    process.env.LC_MESSAGES = "fr_FR.UTF-8";
+    process.env.LANGUAGE = "fr_FR";
+    try {
+      createHardenedGit("/test/repo");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.LC_MESSAGES).toBe("C");
+      expect(envArg.LANGUAGE).toBe("");
+    } finally {
+      if (origMessages === undefined) delete process.env.LC_MESSAGES;
+      else process.env.LC_MESSAGES = origMessages;
+      if (origLanguage === undefined) delete process.env.LANGUAGE;
+      else process.env.LANGUAGE = origLanguage;
+    }
+  });
 });
 
 describe("createAuthenticatedGit", () => {
@@ -195,13 +251,25 @@ describe("createAuthenticatedGit", () => {
     expect(options.config).toContain("core.hooksPath=");
   });
 
-  it("sets GIT_TERMINAL_PROMPT and GIT_SSH_COMMAND via .env()", () => {
+  it("sets GIT_TERMINAL_PROMPT and hardened GIT_SSH_COMMAND via .env()", () => {
     createAuthenticatedGit("/test/repo");
 
     expect(mockGitInstance.env).toHaveBeenCalledWith(
       expect.objectContaining({
         GIT_TERMINAL_PROMPT: "0",
-        GIT_SSH_COMMAND: "ssh",
+        GIT_SSH_COMMAND:
+          "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
+      })
+    );
+  });
+
+  it("sets LC_MESSAGES=C and LANGUAGE empty via .env()", () => {
+    createAuthenticatedGit("/test/repo");
+
+    expect(mockGitInstance.env).toHaveBeenCalledWith(
+      expect.objectContaining({
+        LC_MESSAGES: "C",
+        LANGUAGE: "",
       })
     );
   });
@@ -223,19 +291,31 @@ describe("createAuthenticatedGit", () => {
   it("forced env values override conflicting process.env entries", () => {
     const origPrompt = process.env.GIT_TERMINAL_PROMPT;
     const origSsh = process.env.GIT_SSH_COMMAND;
+    const origMessages = process.env.LC_MESSAGES;
+    const origLanguage = process.env.LANGUAGE;
     process.env.GIT_TERMINAL_PROMPT = "1";
     process.env.GIT_SSH_COMMAND = "ssh -i /custom/key";
+    process.env.LC_MESSAGES = "fr_FR.UTF-8";
+    process.env.LANGUAGE = "fr_FR";
     try {
       createAuthenticatedGit("/test/repo");
 
       const envArg = mockGitInstance.env.mock.calls[0][0];
       expect(envArg.GIT_TERMINAL_PROMPT).toBe("0");
-      expect(envArg.GIT_SSH_COMMAND).toBe("ssh");
+      expect(envArg.GIT_SSH_COMMAND).toBe(
+        "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15"
+      );
+      expect(envArg.LC_MESSAGES).toBe("C");
+      expect(envArg.LANGUAGE).toBe("");
     } finally {
       if (origPrompt === undefined) delete process.env.GIT_TERMINAL_PROMPT;
       else process.env.GIT_TERMINAL_PROMPT = origPrompt;
       if (origSsh === undefined) delete process.env.GIT_SSH_COMMAND;
       else process.env.GIT_SSH_COMMAND = origSsh;
+      if (origMessages === undefined) delete process.env.LC_MESSAGES;
+      else process.env.LC_MESSAGES = origMessages;
+      if (origLanguage === undefined) delete process.env.LANGUAGE;
+      else process.env.LANGUAGE = origLanguage;
     }
   });
 

@@ -53,6 +53,10 @@ export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit 
     timeout: { block: GIT_BLOCK_TIMEOUT_MS },
     ...(signal ? { abort: signal } : {}),
     unsafe: UNSAFE_FLAGS,
+  }).env({
+    ...process.env,
+    LC_MESSAGES: "C",
+    LANGUAGE: "",
   });
 }
 
@@ -73,7 +77,10 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
     unsafe: UNSAFE_FLAGS,
   }).env({
     ...process.env,
+    LC_MESSAGES: "C",
+    LANGUAGE: "",
     GIT_TERMINAL_PROMPT: "0",
-    GIT_SSH_COMMAND: "ssh",
+    GIT_SSH_COMMAND:
+      "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
   });
 }

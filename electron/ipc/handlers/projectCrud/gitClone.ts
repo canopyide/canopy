@@ -114,8 +114,6 @@ export function registerGitCloneHandlers(): () => void {
         extraConfig: ["transfer.bundleURI=false"],
       });
 
-      git.env({ ...process.env, GIT_TERMINAL_PROMPT: "0" });
-
       await git.clone(url, trimmedFolder, shallowClone ? ["--depth", "1"] : []);
 
       emitProgress("complete", 100, "Clone complete");
