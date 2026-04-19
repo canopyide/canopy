@@ -85,6 +85,10 @@ export const worktreeClient = {
     return window.electron.worktree.getAllIssueAssociations();
   },
 
+  restartService: (): Promise<void> => {
+    return window.electron.worktree.restartService();
+  },
+
   onRemove: (callback: (data: { worktreeId: string }) => void): (() => void) => {
     return window.electron.worktree.onRemove(callback);
   },

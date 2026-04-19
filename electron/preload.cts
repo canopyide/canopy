@@ -508,6 +508,7 @@ const CHANNELS = {
   WORKTREE_GET_ISSUE_ASSOCIATION: "worktree:get-issue-association",
   WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS: "worktree:get-all-issue-associations",
   WORKTREE_HOST_DISCONNECTED: "worktree:host-disconnected",
+  WORKTREE_RESTART_SERVICE: "worktree:restart-service",
 
   // Terminal channels
   TERMINAL_SPAWN: "terminal:spawn",
@@ -1206,6 +1207,8 @@ const api: ElectronAPI = {
 
     getAllIssueAssociations: (): Promise<Record<string, IssueAssociation>> =>
       _unwrappingInvoke(CHANNELS.WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS),
+
+    restartService: (): Promise<void> => _unwrappingInvoke(CHANNELS.WORKTREE_RESTART_SERVICE),
 
     onUpdate: (callback: (state: WorktreeState) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { worktree: WorktreeState }) =>

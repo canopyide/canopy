@@ -212,6 +212,46 @@ export class WorkspaceHostProcess extends EventEmitter {
     }, 5000);
   }
 
+  /**
+   * Restart the host after its auto-restart budget has been exhausted.
+   * Resets `restartAttempts` so future crashes get a fresh budget, respawns
+   * the child, and emits `"restarted"` so `WorkspaceClient` can re-broker
+   * ports and reload the project — the auto-restart path emits this from
+   * its `setTimeout` callback which `manualRestart()` bypasses.
+   */
+  manualRestart(): void {
+    if (this.isDisposed) {
+      console.warn(`[WorkspaceHost:${this.serviceName}] Cannot manual restart - already disposed`);
+      return;
+    }
+
+    if (this.child !== null) {
+      console.warn(
+        `[WorkspaceHost:${this.serviceName}] Cannot manual restart - host process already exists`
+      );
+      return;
+    }
+
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+
+    this.restartAttempts = 0;
+
+    console.log(`[WorkspaceHost:${this.serviceName}] Manual restart initiated`);
+    this.startHost();
+
+    // Only signal "restarted" when the fork actually produced a child —
+    // `startHost()` emits `host-crash` on fork failure and leaves `child`
+    // null; emitting `restarted` in that case would poison
+    // `reloadProjectAfterRestart` by awaiting a `waitForReady()` that will
+    // never resolve.
+    if (this.child !== null) {
+      this.emit("restarted");
+    }
+  }
+
   dispose(): void {
     if (this.isDisposed) return;
     this.isDisposed = true;

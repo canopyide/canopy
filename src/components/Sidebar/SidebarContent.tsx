@@ -810,10 +810,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <div className="px-4 py-4">
           <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
           <button
-            onClick={refresh}
+            onClick={() => {
+              void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
+            }}
             className="text-xs px-2 py-1 border border-divider rounded hover:bg-tint/[0.06] text-daintree-text"
           >
-            Retry
+            Restart Service
           </button>
         </div>
       </div>

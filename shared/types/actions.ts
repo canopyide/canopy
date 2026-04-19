@@ -139,6 +139,7 @@ export type BuiltInActionId =
   | "telemetry.clearPreview"
   | "worktree.refresh"
   | "worktree.refreshPullRequests"
+  | "worktree.restartService"
   | "worktree.setActive"
   | "worktree.create"
   | "worktree.delete"

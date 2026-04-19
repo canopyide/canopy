@@ -282,12 +282,16 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
 
     // If the host exhausts its restart budget, no replacement port will
     // arrive — transition to a terminal error state instead of leaving the
-    // spinner stuck indefinitely.
+    // spinner stuck indefinitely.  `setFatalError` also resets
+    // `isInitialized` so a successful manual restart re-hydrates as a cold
+    // fetch rather than a silent wake refresh.
     cleanups.push(
       worktreePort.onFatalDisconnect(() => {
-        const state = store.getState();
-        state.setReconnecting(false);
-        state.setError("Workspace host crashed and could not recover. Please restart Daintree.");
+        store
+          .getState()
+          .setFatalError(
+            "Workspace service crashed and could not recover automatically. Restart the service to reconnect."
+          );
       })
     );
 

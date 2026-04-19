@@ -63,6 +63,21 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
   };
   handlers.push(typedHandle(CHANNELS.WORKTREE_CREATE, handleWorktreeCreate));
 
+  const handleWorktreeRestartService = async (ctx: IpcContext): Promise<void> => {
+    if (!deps.worktreeService) return;
+    const windowId = ctx.senderWindow?.id;
+    if (windowId === undefined) {
+      console.warn(
+        "[worktree.restart-service] No sender window; cannot route manual restart to a host"
+      );
+      return;
+    }
+    deps.worktreeService.manualRestartForWindow(windowId);
+  };
+  handlers.push(
+    typedHandleWithContext(CHANNELS.WORKTREE_RESTART_SERVICE, handleWorktreeRestartService)
+  );
+
   const handleWorktreeDelete = async (ctx: IpcContext, payload: WorktreeDeletePayload) => {
     checkRateLimit(CHANNELS.WORKTREE_DELETE, 10, 10_000);
     if (!deps.worktreeService) {

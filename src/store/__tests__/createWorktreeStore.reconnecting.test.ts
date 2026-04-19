@@ -78,3 +78,53 @@ describe("createWorktreeStore — reconnecting state", () => {
     expect(store.getState().isReconnecting).toBe(false);
   });
 });
+
+describe("createWorktreeStore — fatal error state", () => {
+  it("setFatalError sets error, clears isReconnecting, and resets isInitialized", () => {
+    const store = createWorktreeStore();
+
+    // Simulate a fully-hydrated store before the host crashes
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+    store.getState().setReconnecting(true);
+    expect(store.getState().isInitialized).toBe(true);
+
+    store.getState().setFatalError("host crashed");
+
+    expect(store.getState().error).toBe("host crashed");
+    expect(store.getState().isReconnecting).toBe(false);
+    // isInitialized must be reset so the next fetch is treated as a cold
+    // start, not a silent wake refresh (which swallows fetch errors).
+    expect(store.getState().isInitialized).toBe(false);
+  });
+
+  it("setFatalError clears isLoading so the error UI surfaces before first hydration", () => {
+    // If the host exhausts its restart budget before the first snapshot
+    // ever arrives, `isLoading` is still `true` and `worktrees` is empty.
+    // `SidebarContent` checks `isLoading && worktrees.length === 0` BEFORE
+    // the error branch — so without clearing `isLoading`, the Restart
+    // Service button would never appear.
+    const store = createWorktreeStore();
+    expect(store.getState().isLoading).toBe(true);
+    expect(store.getState().worktrees.size).toBe(0);
+
+    store.getState().setFatalError("host crashed before first fetch");
+
+    expect(store.getState().isLoading).toBe(false);
+    expect(store.getState().error).toBe("host crashed before first fetch");
+  });
+
+  it("applySnapshot after setFatalError clears error and restores isInitialized", () => {
+    const store = createWorktreeStore();
+    store.getState().setFatalError("host crashed");
+    expect(store.getState().error).toBe("host crashed");
+    expect(store.getState().isInitialized).toBe(false);
+
+    const version = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], version);
+
+    expect(store.getState().error).toBeNull();
+    expect(store.getState().isInitialized).toBe(true);
+    expect(store.getState().worktrees.size).toBe(1);
+  });
+});

@@ -309,6 +309,10 @@ export interface IpcInvokeMap {
     args: [];
     result: Record<string, IssueAssociation>;
   };
+  "worktree:restart-service": {
+    args: [];
+    result: void;
+  };
 
   // Terminal channels
   "terminal:spawn": {
