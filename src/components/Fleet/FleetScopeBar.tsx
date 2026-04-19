@@ -3,10 +3,10 @@ import { useShallow } from "zustand/react/shallow";
 import { Save, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFleetSavedScopesStore } from "@/store/fleetSavedScopesStore";
-import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import { useFleetArmingStore, collectEligibleIds } from "@/store/fleetArmingStore";
+import { usePanelStore } from "@/store/panelStore";
 import type { FleetDeckScope } from "@/store/fleetDeckStore";
 import { useProjectStore } from "@/store/projectStore";
-import { collectEligibleIds } from "@/store/fleetArmingStore";
 
 export function FleetScopeBar(): ReactElement | null {
   const { scopes } = useFleetSavedScopesStore(useShallow((s) => ({ scopes: s.scopes })));
@@ -33,7 +33,11 @@ export function FleetScopeBar(): ReactElement | null {
         return;
       }
       if (scopeItem.filter) {
-        const ids = collectEligibleIds(scopeItem.filter.scope as FleetDeckScope, null);
+        let ids = collectEligibleIds(scopeItem.filter.scope as FleetDeckScope, null);
+        if (scopeItem.filter.stateFilter && scopeItem.filter.stateFilter !== "all") {
+          const { panelsById } = usePanelStore.getState();
+          ids = ids.filter((id) => panelsById[id]?.agentState === scopeItem.filter!.stateFilter);
+        }
         armIds(ids);
       }
     },

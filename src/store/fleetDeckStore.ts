@@ -203,6 +203,8 @@ const persistWidth = (width: number): Promise<void> => fleetDeckController.persi
 
 const persistHeight = (height: number): Promise<void> => fleetDeckController.persistHeight(height);
 
-const persistAlwaysPreview = (_value: boolean): Promise<void> => Promise.resolve();
+const persistAlwaysPreview = (value: boolean): Promise<void> =>
+  fleetDeckController.persistAlwaysPreview(value);
 
-const persistQuorumThreshold = (_value: number): Promise<void> => Promise.resolve();
+const persistQuorumThreshold = (value: number): Promise<void> =>
+  fleetDeckController.persistQuorumThreshold(value);

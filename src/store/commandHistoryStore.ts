@@ -40,7 +40,17 @@ export const useCommandHistoryStore = create<CommandHistoryState>()(
           if (trimmed === "") return state;
 
           const projectEntries = [...(state.history[projectId] ?? [])];
-          const filtered = projectEntries.filter((e) => e.prompt !== trimmed);
+          // For fleet entries with armed IDs, only dedup against entries with
+          // the same armed set — different targets are different intents.
+          const armedKey = fleetMeta?.armedIds?.join(",") ?? "";
+          const filtered = projectEntries.filter((e) => {
+            if (e.prompt !== trimmed) return true;
+            if (armedKey) {
+              const existingKey = e.armedIds?.join(",") ?? "";
+              return existingKey !== armedKey;
+            }
+            return false;
+          });
           const entry: PromptHistoryEntry = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             prompt: trimmed,

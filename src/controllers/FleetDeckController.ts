@@ -21,4 +21,14 @@ export const fleetDeckController = {
     appClient.setState({ fleetDeckHeight: height }).catch((error) => {
       console.error("Failed to persist fleet deck height:", error);
     }),
+
+  persistAlwaysPreview: (value: boolean): Promise<void> =>
+    appClient.setState({ fleetDeckAlwaysPreview: value }).catch((error) => {
+      console.error("Failed to persist fleet deck alwaysPreview:", error);
+    }),
+
+  persistQuorumThreshold: (value: number): Promise<void> =>
+    appClient.setState({ fleetDeckQuorumThreshold: value }).catch((error) => {
+      console.error("Failed to persist fleet deck quorumThreshold:", error);
+    }),
 };

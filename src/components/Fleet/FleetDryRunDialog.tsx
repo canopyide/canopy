@@ -9,7 +9,8 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useCommandHistoryStore } from "@/store/commandHistoryStore";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
-import { FLEET_BROADCAST_HISTORY_KEY } from "./fleetBroadcast";
+import { getFleetBroadcastHistoryKey } from "./fleetBroadcast";
+import { useProjectStore } from "@/store/projectStore";
 
 interface FleetDryRunDialogProps {
   draft: string;
@@ -22,7 +23,8 @@ export function FleetDryRunDialog({
   onSend,
   onClose,
 }: FleetDryRunDialogProps): ReactElement {
-  const previews = useMemo(() => buildFleetTargetPreviews(draft), [draft]);
+  const armOrderKey = useFleetArmingStore((s) => s.armOrder.join(","));
+  const previews = useMemo(() => buildFleetTargetPreviews(draft), [draft, armOrderKey]);
   const eligible = previews.filter((p) => !p.excluded);
 
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -59,9 +61,9 @@ export function FleetDryRunDialog({
       });
 
       const armedIds = Array.from(useFleetArmingStore.getState().armedIds);
-      useCommandHistoryStore
-        .getState()
-        .recordPrompt(FLEET_BROADCAST_HISTORY_KEY, draft, null, { armedIds });
+      const projectId = useProjectStore.getState().currentProject?.id;
+      const historyKey = getFleetBroadcastHistoryKey(projectId);
+      useCommandHistoryStore.getState().recordPrompt(historyKey, draft, null, { armedIds });
 
       if (result.successCount > 0) {
         useFleetComposerStore.getState().clearDraft();

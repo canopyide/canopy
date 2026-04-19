@@ -16,10 +16,7 @@ import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { useProjectStore } from "@/store/projectStore";
 import { terminalClient } from "@/clients";
 import { executeFleetBroadcast } from "@/components/Fleet/fleetExecution";
-import { resolveFleetBroadcastTargetIds } from "@/components/Fleet/fleetBroadcast";
 import { useNotificationStore } from "@/store/notificationStore";
-import { useCommandHistoryStore } from "@/store/commandHistoryStore";
-import { FLEET_BROADCAST_HISTORY_KEY } from "@/components/Fleet/fleetBroadcast";
 import type { TerminalInstance } from "@shared/types";
 
 interface ArmedSnapshot {
@@ -395,16 +392,19 @@ export function registerFleetActions(actions: ActionRegistry): void {
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      const draft = useFleetComposerStore.getState().draft;
-      const lastEntry = useCommandHistoryStore
-        .getState()
-        .getProjectHistory(FLEET_BROADCAST_HISTORY_KEY)[0];
-      const prompt = draft.trim() || lastEntry?.prompt;
+      const { lastFailedIds, lastBroadcastPrompt, draft } = useFleetComposerStore.getState();
+      if (lastFailedIds.length === 0) return;
+      const prompt = draft.trim() || lastBroadcastPrompt;
       if (!prompt) return;
-      const targetIds = resolveFleetBroadcastTargetIds();
-      if (targetIds.length === 0) return;
+      // Arm the specific terminals that failed, not the current armed set
+      useFleetArmingStore.getState().armIds(lastFailedIds);
 
-      const result = await executeFleetBroadcast(prompt, targetIds);
+      const result = await executeFleetBroadcast(prompt, lastFailedIds);
+      if (result.failureCount > 0) {
+        useFleetComposerStore.getState().setLastFailed(result.failedIds, prompt);
+      } else {
+        useFleetComposerStore.getState().clearLastFailed();
+      }
       useNotificationStore.getState().addNotification({
         type: result.failureCount > 0 ? "warning" : "success",
         priority: "low",

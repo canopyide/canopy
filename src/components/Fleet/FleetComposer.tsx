@@ -14,9 +14,10 @@ import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { useFleetDeckStore } from "@/store/fleetDeckStore";
 import { useCommandHistoryStore } from "@/store/commandHistoryStore";
 import { useNotificationStore } from "@/store/notificationStore";
+import { useProjectStore } from "@/store/projectStore";
 import { logWarn } from "@/utils/logger";
 import {
-  FLEET_BROADCAST_HISTORY_KEY,
+  getFleetBroadcastHistoryKey,
   getFleetBroadcastWarnings,
   needsFleetBroadcastConfirmation,
   resolveFleetBroadcastTargetIds,
@@ -62,17 +63,20 @@ export function FleetComposer(): ReactElement | null {
 
   const dryRunRequested = useFleetComposerStore((s) => s.dryRunRequested);
   const clearDryRunRequest = useFleetComposerStore((s) => s.clearDryRunRequest);
+  const projectId = useProjectStore((s) => s.currentProject?.id);
 
-  const historyEntries = useCommandHistoryStore(
-    useShallow((s) => s.getProjectHistory(FLEET_BROADCAST_HISTORY_KEY))
-  );
+  const historyKey = getFleetBroadcastHistoryKey(projectId);
+
+  const lastFailedIds = useFleetComposerStore((s) => s.lastFailedIds);
+  const setLastFailed = useFleetComposerStore((s) => s.setLastFailed);
+  const clearLastFailed = useFleetComposerStore((s) => s.clearLastFailed);
+
+  const historyEntries = useCommandHistoryStore(useShallow((s) => s.getProjectHistory(historyKey)));
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const historySnapshotRef = useRef<string>("");
   const submittingRef = useRef<boolean>(false);
-  /** Terminal IDs from the most recent broadcast that failed (for retry-failed). */
-  const lastFailedIdsRef = useRef<string[]>([]);
 
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -159,7 +163,9 @@ export function FleetComposer(): ReactElement | null {
             failureCount: result.failureCount,
             failedIds: result.failedIds,
           });
-          lastFailedIdsRef.current = result.failedIds;
+          setLastFailed(result.failedIds, currentDraft);
+        } else {
+          clearLastFailed();
         }
 
         useNotificationStore.getState().addNotification({
@@ -175,11 +181,12 @@ export function FleetComposer(): ReactElement | null {
                   {
                     label: "Retry failed",
                     onClick: () => {
-                      const failedIds = lastFailedIdsRef.current;
-                      if (failedIds.length === 0) return;
-                      useFleetArmingStore.getState().armIds(failedIds);
+                      const failed = useFleetComposerStore.getState().lastFailedIds;
+                      if (failed.length === 0) return;
+                      useFleetArmingStore.getState().armIds(failed);
                       if (useFleetComposerStore.getState().draft.trim() === "") {
-                        useFleetComposerStore.getState().setDraft(currentDraft);
+                        const lastPrompt = useFleetComposerStore.getState().lastBroadcastPrompt;
+                        useFleetComposerStore.getState().setDraft(lastPrompt);
                       }
                     },
                     variant: "primary" as const,
@@ -192,31 +199,30 @@ export function FleetComposer(): ReactElement | null {
           const armedIds = Array.from(useFleetArmingStore.getState().armedIds);
           useCommandHistoryStore
             .getState()
-            .recordPrompt(FLEET_BROADCAST_HISTORY_KEY, currentDraft, null, { armedIds });
+            .recordPrompt(historyKey, currentDraft, null, { armedIds });
           if (useFleetComposerStore.getState().draft === currentDraft) {
             clearDraft();
           }
           setHistoryIndex(-1);
           historySnapshotRef.current = "";
-          lastFailedIdsRef.current = result.failureCount > 0 ? result.failedIds : [];
         }
       } finally {
         submittingRef.current = false;
         setIsSubmitting(false);
       }
     },
-    [clearDraft, isConfirming]
+    [clearDraft, clearLastFailed, historyKey, isConfirming, setLastFailed]
   );
 
   const handleRetryFailed = useCallback(() => {
-    const failedIds = lastFailedIdsRef.current;
-    if (failedIds.length === 0) return;
-    useFleetArmingStore.getState().armIds(failedIds);
+    const failed = useFleetComposerStore.getState().lastFailedIds;
+    if (failed.length === 0) return;
+    useFleetArmingStore.getState().armIds(failed);
     if (draft.trim() === "") {
-      const lastEntry = historyEntries[0];
-      if (lastEntry) setDraft(lastEntry.prompt);
+      const lastPrompt = useFleetComposerStore.getState().lastBroadcastPrompt;
+      if (lastPrompt) setDraft(lastPrompt);
     }
-  }, [draft, historyEntries, setDraft]);
+  }, [draft, setDraft]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -240,15 +246,16 @@ export function FleetComposer(): ReactElement | null {
       }
 
       if (e.key === "Enter") {
-        if (e.shiftKey) return;
-        e.preventDefault();
-        // Cmd+Shift+Enter → dry-run preview
+        // Cmd/Ctrl+Shift+Enter → dry-run preview (check before shift passthrough)
         if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+          e.preventDefault();
           if (draft.trim().length > 0) {
             setIsDryRunOpen(true);
           }
           return;
         }
+        if (e.shiftKey) return; // newline passthrough
+        e.preventDefault();
         const force = e.metaKey || e.ctrlKey;
         void handleSubmit({ force });
         return;
@@ -299,12 +306,18 @@ export function FleetComposer(): ReactElement | null {
     }
   }, []);
 
-  const handleDryRunSend = useCallback((failedIds?: string[]) => {
-    setIsDryRunOpen(false);
-    if (failedIds && failedIds.length > 0) {
-      lastFailedIdsRef.current = failedIds;
-    }
-  }, []);
+  const handleDryRunSend = useCallback(
+    (failedIds?: string[]) => {
+      setIsDryRunOpen(false);
+      if (failedIds && failedIds.length > 0) {
+        const currentDraft =
+          useFleetComposerStore.getState().draft ||
+          useFleetComposerStore.getState().lastBroadcastPrompt;
+        setLastFailed(failedIds, currentDraft);
+      }
+    },
+    [setLastFailed]
+  );
 
   if (armedCount === 0) return null;
 
@@ -355,7 +368,7 @@ export function FleetComposer(): ReactElement | null {
             >
               {sendLabel}
             </button>
-            {lastFailedIdsRef.current.length > 0 && !isSubmitting && (
+            {lastFailedIds.length > 0 && !isSubmitting && (
               <button
                 type="button"
                 onClick={handleRetryFailed}

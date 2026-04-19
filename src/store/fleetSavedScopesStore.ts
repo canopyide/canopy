@@ -105,10 +105,10 @@ if (typeof useProjectStore.subscribe === "function") {
       const nextId = state.currentProject?.id;
       if (nextId === sub.lastProjectId) return;
       sub.lastProjectId = nextId;
+      // Clear synchronously before async load to avoid showing stale scopes
+      useFleetSavedScopesStore.setState({ scopes: [], isLoaded: false });
       if (nextId) {
         void useFleetSavedScopesStore.getState().load(nextId);
-      } else {
-        useFleetSavedScopesStore.setState({ scopes: [], isLoaded: false });
       }
     });
   }
