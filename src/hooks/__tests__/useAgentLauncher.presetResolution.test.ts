@@ -69,7 +69,13 @@ function resolvePresetForLaunch(
     entry.presetId &&
     entry.presetId !== scopedId
   ) {
-    return getMergedPreset(agentId, entry.presetId, entry.customPresets, ccrPresets, projectPresets);
+    return getMergedPreset(
+      agentId,
+      entry.presetId,
+      entry.customPresets,
+      ccrPresets,
+      projectPresets
+    );
   }
   return undefined;
 }
