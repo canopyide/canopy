@@ -78,6 +78,62 @@ describe("urlHistoryStore", () => {
     expect(useUrlHistoryStore.getState().entries["proj2"]).toHaveLength(1);
   });
 
+  it("updateFavicon sets favicon for an existing entry", () => {
+    const store = useUrlHistoryStore.getState();
+    store.recordVisit("proj1", "http://localhost:3000/", "Home");
+    store.updateFavicon("proj1", "http://localhost:3000/", "https://example.com/favicon.ico");
+    const entries = useUrlHistoryStore.getState().entries["proj1"];
+    expect(entries![0]!.favicon).toBe("https://example.com/favicon.ico");
+  });
+
+  it("updateFavicon creates entry for non-existent URL", () => {
+    const store = useUrlHistoryStore.getState();
+    store.recordVisit("proj1", "http://localhost:3000/", "Title");
+    store.updateFavicon("proj1", "http://localhost:5000/", "https://other.com/favicon.ico");
+    const entries = useUrlHistoryStore.getState().entries["proj1"]!;
+    expect(entries).toHaveLength(2);
+    expect(entries.find((e) => e.url === "http://localhost:5000/")!.favicon).toBe(
+      "https://other.com/favicon.ico"
+    );
+  });
+
+  it("removeUrl removes a specific entry by URL", () => {
+    const store = useUrlHistoryStore.getState();
+    store.recordVisit("proj1", "http://localhost:3000/", "A");
+    store.recordVisit("proj1", "http://localhost:5173/", "B");
+    store.removeUrl("proj1", "http://localhost:3000/");
+    const entries = useUrlHistoryStore.getState().entries["proj1"];
+    expect(entries).toHaveLength(1);
+    expect(entries![0]!.url).toBe("http://localhost:5173/");
+  });
+
+  it("removeUrl is a no-op for non-existent URL", () => {
+    const store = useUrlHistoryStore.getState();
+    store.recordVisit("proj1", "http://localhost:3000/", "A");
+    store.removeUrl("proj1", "http://localhost:9999/");
+    expect(useUrlHistoryStore.getState().entries["proj1"]).toHaveLength(1);
+  });
+
+  it("hydrates legacy entries without favicon field", () => {
+    useUrlHistoryStore.setState({
+      entries: {
+        proj1: [
+          {
+            url: "http://localhost:3000/",
+            title: "Legacy",
+            visitCount: 1,
+            lastVisitAt: Date.now(),
+          },
+        ],
+      },
+    });
+    const entries = useUrlHistoryStore.getState().entries["proj1"];
+    expect(entries![0]!.favicon).toBeUndefined();
+    // Store methods still work on legacy entries
+    useUrlHistoryStore.getState().updateFavicon("proj1", "http://localhost:3000/", "favicon.ico");
+    expect(useUrlHistoryStore.getState().entries["proj1"]![0]!.favicon).toBe("favicon.ico");
+  });
+
   it("updates lastVisitAt on repeated visits", () => {
     const store = useUrlHistoryStore.getState();
     store.recordVisit("proj1", "http://localhost:3000/", "Home");
@@ -158,9 +214,15 @@ describe("getFrecencySuggestions", () => {
     { url: "http://localhost:5173/", title: "Vite Dev", visitCount: 1, lastVisitAt: now - 1000 },
   ];
 
-  it("returns empty for empty query", () => {
-    expect(getFrecencySuggestions(entries, "")).toEqual([]);
-    expect(getFrecencySuggestions(entries, "   ")).toEqual([]);
+  it("returns top entries for empty query", () => {
+    const results = getFrecencySuggestions(entries, "");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.length).toBeLessThanOrEqual(5);
+  });
+
+  it("returns top entries for whitespace-only query", () => {
+    const results = getFrecencySuggestions(entries, "   ");
+    expect(results.length).toBeGreaterThan(0);
   });
 
   it("filters by URL substring match", () => {

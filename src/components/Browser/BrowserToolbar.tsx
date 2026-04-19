@@ -13,6 +13,7 @@ import {
   SquareTerminal,
   Code,
   Smartphone,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeBrowserUrl, getDisplayUrl } from "./browserUtils";
@@ -182,6 +183,21 @@ export function BrowserToolbar({
           setHighlightedIndex(-1);
           return;
         }
+        if (e.shiftKey && (e.key === "Delete" || e.key === "Backspace") && highlightedIndex >= 0) {
+          e.preventDefault();
+          const entry = suggestions[highlightedIndex]!;
+          if (projectId) {
+            useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
+          }
+          const remaining = suggestions.length - 1;
+          if (remaining === 0) {
+            setIsDropdownOpen(false);
+            setHighlightedIndex(-1);
+          } else if (highlightedIndex >= remaining) {
+            setHighlightedIndex(remaining - 1);
+          }
+          return;
+        }
       }
       if (e.key === "Escape") {
         setIsEditing(false);
@@ -189,7 +205,7 @@ export function BrowserToolbar({
         inputRef.current?.blur();
       }
     },
-    [isDropdownOpen, suggestions, highlightedIndex, onNavigate]
+    [isDropdownOpen, suggestions, highlightedIndex, onNavigate, projectId]
   );
 
   const handleCopy = useCallback(async () => {
@@ -498,28 +514,75 @@ export function BrowserToolbar({
             className="absolute left-0 right-0 top-full mt-1 z-50 bg-daintree-bg border border-overlay rounded shadow-[var(--theme-shadow-floating)] overflow-hidden"
           >
             {suggestions.map((entry, index) => (
-              <button
+              <div
                 key={entry.url}
-                type="button"
-                tabIndex={-1}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setIsEditing(false);
-                  setIsDropdownOpen(false);
-                  setHighlightedIndex(-1);
-                  onNavigate(entry.url);
-                }}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={cn(
-                  "w-full text-left px-2.5 py-1.5 flex flex-col gap-0.5 cursor-pointer",
+                  "group/row w-full text-left px-2.5 py-1.5 flex items-center gap-2 cursor-pointer",
                   index === highlightedIndex ? "bg-overlay-medium" : "hover:bg-overlay-soft"
                 )}
               >
-                {entry.title && (
-                  <span className="text-xs text-daintree-text truncate">{entry.title}</span>
+                {entry.favicon ? (
+                  <span className="relative w-4 h-4 shrink-0">
+                    <img
+                      src={entry.favicon}
+                      alt=""
+                      className="w-4 h-4 rounded-sm object-contain"
+                      onError={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        img.style.display = "none";
+                        const fallback = img.nextElementSibling;
+                        if (fallback) (fallback as HTMLElement).style.display = "";
+                      }}
+                    />
+                    <Globe
+                      className="w-4 h-4 text-daintree-text/30 absolute inset-0"
+                      style={{ display: "none" }}
+                    />
+                  </span>
+                ) : (
+                  <Globe className="w-4 h-4 shrink-0 text-daintree-text/30" />
                 )}
-                <span className="text-xs text-daintree-text/50 truncate">{entry.url}</span>
-              </button>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setIsEditing(false);
+                    setIsDropdownOpen(false);
+                    setHighlightedIndex(-1);
+                    onNavigate(entry.url);
+                  }}
+                  className="flex-1 min-w-0 flex flex-col gap-0.5 text-left"
+                >
+                  {entry.title && (
+                    <span className="text-xs text-daintree-text truncate">{entry.title}</span>
+                  )}
+                  <span className="text-xs text-daintree-text/50 truncate">{entry.url}</span>
+                </button>
+                {projectId && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
+                      const remaining = suggestions.length - 1;
+                      if (remaining === 0) {
+                        setIsDropdownOpen(false);
+                        setHighlightedIndex(-1);
+                      } else if (index === highlightedIndex && highlightedIndex >= remaining) {
+                        setHighlightedIndex(remaining - 1);
+                      }
+                    }}
+                    className="shrink-0 p-0.5 rounded opacity-0 group-hover/row:opacity-100 hover:bg-overlay-strong transition-opacity text-daintree-text/40 hover:text-daintree-text/70"
+                    aria-label={`Remove ${entry.url} from history`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}

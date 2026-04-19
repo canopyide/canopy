@@ -376,6 +376,30 @@ export function BrowserPane({
       }
     };
 
+    // Debounce favicon updates to avoid store thrashing on rapid events
+    let faviconDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const handlePageFaviconUpdated = (event: Event) => {
+      const detail = event as Event & { favicons?: string[] };
+      if (!projectId || !detail.favicons?.length) return;
+      const favicon = detail.favicons[0]!;
+      // Skip oversized data URLs that could exceed localStorage quota
+      if (favicon.startsWith("data:") && favicon.length > 8192) return;
+      // Capture URL at event time to avoid race with navigation
+      let capturedUrl: string;
+      try {
+        capturedUrl = webview.getURL();
+      } catch {
+        return;
+      }
+      if (!capturedUrl || capturedUrl === "about:blank") return;
+      if (faviconDebounceTimer) clearTimeout(faviconDebounceTimer);
+      const url = capturedUrl;
+      faviconDebounceTimer = setTimeout(() => {
+        faviconDebounceTimer = null;
+        useUrlHistoryStore.getState().updateFavicon(projectId, url, favicon);
+      }, 200);
+    };
+
     try {
       const existingUrl = webview.getURL();
       if (existingUrl && existingUrl !== "about:blank" && !webview.isLoading()) {
@@ -397,6 +421,7 @@ export function BrowserPane({
     webview.addEventListener("did-navigate", handleDidNavigate);
     webview.addEventListener("did-navigate-in-page", handleDidNavigateInPage);
     webview.addEventListener("page-title-updated", handlePageTitleUpdated);
+    webview.addEventListener("page-favicon-updated", handlePageFaviconUpdated);
 
     return () => {
       webview.removeEventListener("dom-ready", handleDomReady);
@@ -406,6 +431,11 @@ export function BrowserPane({
       webview.removeEventListener("did-navigate", handleDidNavigate);
       webview.removeEventListener("did-navigate-in-page", handleDidNavigateInPage);
       webview.removeEventListener("page-title-updated", handlePageTitleUpdated);
+      webview.removeEventListener("page-favicon-updated", handlePageFaviconUpdated);
+      if (faviconDebounceTimer) {
+        clearTimeout(faviconDebounceTimer);
+        faviconDebounceTimer = null;
+      }
     };
   }, [
     webviewElement,
