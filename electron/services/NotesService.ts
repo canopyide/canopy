@@ -284,6 +284,73 @@ export class NotesService {
     return { lastModified: stats.mtimeMs };
   }
 
+  /**
+   * Reads the current disk version of the note and writes it to a dated
+   * sibling file. Used to preserve an externally-modified version when the
+   * user is about to force-save their in-memory buffer to the original path.
+   *
+   * The returned relative path points to the preserved on-disk content; it
+   * carries its own frontmatter with a fresh id and a `(conflict YYYY-MM-DD)`
+   * title suffix so it appears in the notes list without collisions.
+   */
+  async createConflictCopy(notePath: string): Promise<{ conflictPath: string }> {
+    const original = await this.read(notePath);
+
+    const posixDir = path.posix.dirname(notePath.replace(/\\/g, "/"));
+    const relDir = posixDir === "." ? "" : posixDir;
+    const base = path.posix.basename(notePath.replace(/\\/g, "/"), ".md");
+    // Use local date: the filename should match the day the user experienced
+    // the conflict, not a UTC date that can skew by a calendar day in the
+    // evening in western timezones.
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`;
+    const notesDir = path.resolve(this.getNotesDir());
+
+    // Atomically reserve a free filename via exclusive create (O_CREAT|O_EXCL)
+    // so two concurrent conflict saves on the same note cannot both pick the
+    // same slot and overwrite each other's preserved copy.
+    let conflictRelativePath = "";
+    await fs.mkdir(path.join(notesDir, relDir), { recursive: true });
+    for (let i = 0; i < 1000; i++) {
+      const suffix = i === 0 ? "" : `-${i + 1}`;
+      const conflictName = `${base} (conflict ${date}${suffix}).md`;
+      const candidateRelative = relDir ? `${relDir}/${conflictName}` : conflictName;
+      const candidateAbs = path.join(notesDir, relDir, conflictName);
+      try {
+        const handle = await fs.open(candidateAbs, "wx");
+        await handle.close();
+        conflictRelativePath = candidateRelative;
+        break;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw err;
+        }
+      }
+    }
+
+    if (!conflictRelativePath) {
+      throw new Error("Failed to generate a unique conflict copy filename");
+    }
+
+    const conflictMetadata: NoteMetadata = {
+      id: nanoid(),
+      title: `${original.metadata.title} (conflict ${date})`,
+      scope: original.metadata.scope,
+      ...(original.metadata.worktreeId !== undefined && {
+        worktreeId: original.metadata.worktreeId,
+      }),
+      createdAt: original.metadata.createdAt,
+      ...(original.metadata.tags &&
+        original.metadata.tags.length > 0 && { tags: original.metadata.tags }),
+    };
+
+    await this.write(conflictRelativePath, original.content, conflictMetadata);
+
+    return { conflictPath: conflictRelativePath };
+  }
+
   async list(): Promise<NoteListItem[]> {
     const notesDir = this.getNotesDir();
 

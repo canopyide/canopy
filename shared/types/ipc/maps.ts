@@ -1317,9 +1317,7 @@ export interface IpcInvokeMap {
     ];
     result: {
       lastModified?: number;
-      error?: "conflict";
-      message?: string;
-      currentLastModified?: number;
+      conflictPath?: string;
     };
   };
   "notes:list": {

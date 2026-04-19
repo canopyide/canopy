@@ -39,9 +39,12 @@ export interface NoteUpdatedPayload {
 
 export interface WriteResult {
   lastModified?: number;
-  error?: "conflict";
-  message?: string;
-  currentLastModified?: number;
+  /**
+   * When set, an external modification was detected during this save. The
+   * previous on-disk version was preserved at this relative path as a sibling
+   * file; the user's buffer was still saved to the original path.
+   */
+  conflictPath?: string;
 }
 
 export interface SaveAttachmentResult {

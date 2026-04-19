@@ -27,7 +27,7 @@ interface UseNoteActionsOptions {
   setNoteContent: (content: string) => void;
   setNoteMetadata: (metadata: NoteMetadata | null) => void;
   setNoteLastModified: (ts: number | null) => void;
-  setHasConflict: (v: boolean) => void;
+  dismissConflictNotice: () => void;
   setEditingNoteId: (id: string | null) => void;
   setIsEditingHeaderTitle: (v: boolean) => void;
   setHeaderTitleEdit: (title: string) => void;
@@ -78,7 +78,7 @@ export function useNoteActions({
   setNoteContent,
   setNoteMetadata,
   setNoteLastModified,
-  setHasConflict,
+  dismissConflictNotice,
   setEditingNoteId,
   setIsEditingHeaderTitle,
   setHeaderTitleEdit,
@@ -115,7 +115,7 @@ export function useNoteActions({
       setNoteLastModified(null);
       setEditingNoteId(null);
       setIsEditingHeaderTitle(false);
-      setHasConflict(false);
+      dismissConflictNotice();
     }
   }, [
     isOpen,
@@ -128,7 +128,7 @@ export function useNoteActions({
     setNoteLastModified,
     setEditingNoteId,
     setIsEditingHeaderTitle,
-    setHasConflict,
+    dismissConflictNotice,
   ]);
 
   // Restore last selected note

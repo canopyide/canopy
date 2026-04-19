@@ -303,4 +303,71 @@ describe("NotesService", () => {
       expect(dir).toBe(path.join(userDataDir, "notes", projectId));
     });
   });
+
+  describe("createConflictCopy", () => {
+    it("persists the disk content to a dated sibling with valid frontmatter", async () => {
+      const created = await service.create("Meeting prep", "project");
+      await service.write(created.path, "disk side", created.metadata);
+
+      const { conflictPath } = await service.createConflictCopy(created.path);
+
+      expect(conflictPath).not.toBe(created.path);
+      expect(conflictPath).toMatch(/ \(conflict \d{4}-\d{2}-\d{2}\)\.md$/);
+
+      const copy = await service.read(conflictPath);
+      expect(copy.content.trimEnd()).toBe("disk side");
+      expect(copy.metadata.title).toMatch(/\(conflict \d{4}-\d{2}-\d{2}\)$/);
+      expect(copy.metadata.id).not.toBe(created.metadata.id);
+      expect(copy.metadata.scope).toBe(created.metadata.scope);
+      expect(copy.metadata.createdAt).toBe(created.metadata.createdAt);
+    });
+
+    it("returns a filename that appears in list() with a distinct id", async () => {
+      const created = await service.create("List me", "project");
+      const { conflictPath } = await service.createConflictCopy(created.path);
+
+      const listed = await service.list();
+      const original = listed.find((note) => note.path === created.path);
+      const conflict = listed.find((note) => note.path === conflictPath);
+
+      expect(original).toBeDefined();
+      expect(conflict).toBeDefined();
+      expect(conflict!.id).not.toBe(original!.id);
+    });
+
+    it("suffixes same-day collisions without overwriting earlier copies", async () => {
+      const created = await service.create("Dupe day", "project");
+      await service.write(created.path, "first disk", created.metadata);
+
+      const first = await service.createConflictCopy(created.path);
+      const firstContent = await service.read(first.conflictPath);
+
+      await service.write(created.path, "second disk", created.metadata);
+      const second = await service.createConflictCopy(created.path);
+
+      expect(second.conflictPath).not.toBe(first.conflictPath);
+      expect(second.conflictPath).toMatch(/-2\)\.md$/);
+
+      const preservedFirst = await service.read(first.conflictPath);
+      expect(preservedFirst.content.trimEnd()).toBe(firstContent.content.trimEnd());
+
+      const preservedSecond = await service.read(second.conflictPath);
+      expect(preservedSecond.content.trimEnd()).toBe("second disk");
+    });
+
+    it("copies worktreeId and tags from the original metadata", async () => {
+      const metadata = makeMetadata({
+        id: "wt-note",
+        worktreeId: "wt-42",
+        tags: ["project", "urgent"],
+      });
+      await service.write("wt-note.md", "body", metadata);
+
+      const { conflictPath } = await service.createConflictCopy("wt-note.md");
+      const copy = await service.read(conflictPath);
+
+      expect(copy.metadata.worktreeId).toBe("wt-42");
+      expect(copy.metadata.tags).toEqual(["project", "urgent"]);
+    });
+  });
 });

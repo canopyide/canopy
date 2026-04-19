@@ -1,14 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import {
-  Copy,
-  Check,
-  AlertCircle,
-  AlertTriangle,
-  RefreshCw,
-  PenLine,
-  Columns2,
-  Eye,
-} from "lucide-react";
+import { Copy, Check, AlertCircle, Info, PenLine, Columns2, Eye } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -65,7 +56,7 @@ export function NotesPane({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [hasConflict, setHasConflict] = useState(false);
+  const [conflictCopyPath, setConflictCopyPath] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"edit" | "split" | "preview">("edit");
   const [editorMountKey, setEditorMountKey] = useState(0);
 
@@ -74,6 +65,8 @@ export function NotesPane({
   const isMountedRef = useRef(true);
   const saveVersionRef = useRef(0);
   const contentRef = useRef<string>("");
+  const metadataRef = useRef<NoteMetadata | null>(null);
+  const lastModifiedRef = useRef<number | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const isSyncingRef = useRef(false);
@@ -82,6 +75,14 @@ export function NotesPane({
     () => {}
   );
   const [notesDir, setNotesDir] = useState<string | null>(null);
+
+  // Keep refs in sync so the debounced save always reads the freshest values,
+  // avoiding stale-closure conflicts when rapid edits overlap with an in-flight
+  // write that hasn't yet updated `lastModified` state.
+  useEffect(() => {
+    metadataRef.current = metadata;
+    lastModifiedRef.current = lastModified;
+  });
 
   const currentProject = useProjectStore((s) => s.currentProject);
   const panelWorktree = useWorktreeStore((s) =>
@@ -201,7 +202,7 @@ export function NotesPane({
       try {
         setIsLoading(true);
         setError(null);
-        setHasConflict(false);
+        setConflictCopyPath(null);
         const noteContent = await notesClient.read(notePath);
         if (cancelled) return;
 
@@ -227,58 +228,12 @@ export function NotesPane({
     };
   }, [notePath]);
 
-  const handleReload = useCallback(async () => {
-    if (!notePath) return;
-    setIsLoading(true);
-    setHasConflict(false);
-    try {
-      const noteContent = await notesClient.read(notePath);
-      setContent(noteContent.content);
-      setMetadata(noteContent.metadata);
-      setLastModified(noteContent.lastModified);
-      lastSavedContentRef.current = noteContent.content;
-      contentRef.current = noteContent.content;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reload note");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [notePath]);
-
-  const saveNote = useCallback(
-    async (newContent: string, version: number) => {
-      if (!notePath || !metadata || hasConflict) return;
-
-      try {
-        const result = await notesClient.write(
-          notePath,
-          newContent,
-          metadata,
-          lastModified ?? undefined
-        );
-        if (!isMountedRef.current) return;
-
-        if (result.error === "conflict") {
-          setHasConflict(true);
-        } else if (result.lastModified) {
-          setLastModified(result.lastModified);
-          if (version === saveVersionRef.current) {
-            lastSavedContentRef.current = newContent;
-          }
-        }
-      } catch (e) {
-        console.error("Failed to save note:", e);
-      }
-    },
-    [notePath, metadata, lastModified, hasConflict]
-  );
-
   const handleContentChange = useCallback(
     (value: string) => {
       setContent(value);
       contentRef.current = value;
 
-      if (hasConflict) return;
+      if (!notePath) return;
 
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -287,12 +242,39 @@ export function NotesPane({
       saveVersionRef.current += 1;
       const version = saveVersionRef.current;
 
-      saveTimeoutRef.current = setTimeout(() => {
-        saveNote(value, version);
+      saveTimeoutRef.current = setTimeout(async () => {
+        const currentMetadata = metadataRef.current;
+        if (!currentMetadata) return;
+
+        try {
+          const result = await notesClient.write(
+            notePath,
+            value,
+            currentMetadata,
+            lastModifiedRef.current ?? undefined
+          );
+          if (!isMountedRef.current) return;
+
+          if (result.lastModified) {
+            setLastModified(result.lastModified);
+            if (version === saveVersionRef.current) {
+              lastSavedContentRef.current = value;
+            }
+          }
+          if (result.conflictPath) {
+            setConflictCopyPath(result.conflictPath);
+          }
+        } catch (e) {
+          console.error("Failed to save note:", e);
+        }
       }, 1000);
     },
-    [saveNote, hasConflict]
+    [notePath]
   );
+
+  const dismissConflictNotice = useCallback(() => {
+    setConflictCopyPath(null);
+  }, []);
 
   // Handle title changes - update both the panel title and the note's front matter
   const handleTitleChange = useCallback(
@@ -470,20 +452,21 @@ export function NotesPane({
         </div>
       ) : (
         <div className="h-full flex flex-col">
-          {/* Conflict warning */}
-          {hasConflict && (
-            <div className="px-3 py-2 bg-status-warning/[0.03] border-l-2 border-status-warning flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2 text-status-warning text-xs">
-                <AlertTriangle size={14} />
-                <span>Note modified externally</span>
+          {conflictCopyPath && (
+            <div className="px-3 py-2 bg-status-info/[0.03] border-l-2 border-status-info flex items-center justify-between shrink-0 gap-2">
+              <div className="flex items-center gap-2 text-status-info text-xs min-w-0">
+                <Info size={14} className="shrink-0" />
+                <span className="truncate">
+                  External changes preserved as{" "}
+                  <span className="font-mono">{conflictCopyPath}</span>. Your edits are saved.
+                </span>
               </div>
               <button
                 type="button"
-                onClick={handleReload}
-                className="px-2 py-1 rounded-[var(--radius-sm)] text-xs bg-status-warning/20 hover:bg-status-warning/30 text-status-warning transition-colors flex items-center gap-1"
+                onClick={dismissConflictNotice}
+                className="px-2 py-1 rounded-[var(--radius-sm)] text-xs bg-status-info/20 hover:bg-status-info/30 text-status-info transition-colors shrink-0"
               >
-                <RefreshCw size={12} />
-                Reload
+                Dismiss
               </button>
             </div>
           )}
@@ -493,7 +476,7 @@ export function NotesPane({
           ) : viewMode === "split" ? (
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <div className="flex-1 flex flex-col min-h-0 border-r border-daintree-border">
-                {!hasConflict && <MarkdownToolbar editorViewRef={editorViewRef} />}
+                <MarkdownToolbar editorViewRef={editorViewRef} />
                 <div className="relative flex-1 overflow-hidden bg-daintree-bg text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-daintree-text/30 [&_.cm-placeholder]:italic">
                   <CodeMirror
                     value={content}
@@ -505,7 +488,6 @@ export function NotesPane({
                       editorViewRef.current = view;
                       setEditorMountKey((k) => k + 1);
                     }}
-                    readOnly={hasConflict}
                     basicSetup={{
                       lineNumbers: false,
                       foldGutter: false,
@@ -515,55 +497,6 @@ export function NotesPane({
                     className="h-full"
                     placeholder="Start writing your notes..."
                   />
-                  {!hasConflict && (
-                    <div className="absolute bottom-3 right-3 z-10">
-                      <VoiceInputButton
-                        panelId={id}
-                        panelTitle={title}
-                        projectId={currentProject?.id}
-                        projectName={currentProject?.name}
-                        worktreeId={worktreeId}
-                        worktreeLabel={
-                          panelWorktree?.isMainWorktree
-                            ? panelWorktree?.name
-                            : panelWorktree?.branch || panelWorktree?.name
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <MarkdownPreview
-                ref={previewRef}
-                content={content}
-                notesDir={notesDir}
-                className="flex-1"
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col min-h-0">
-              {!hasConflict && <MarkdownToolbar editorViewRef={editorViewRef} />}
-              <div className="relative flex-1 overflow-hidden bg-daintree-bg text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-daintree-text/30 [&_.cm-placeholder]:italic">
-                <CodeMirror
-                  value={content}
-                  height="100%"
-                  theme={daintreeTheme}
-                  extensions={extensions}
-                  onChange={handleContentChange}
-                  onCreateEditor={(view) => {
-                    editorViewRef.current = view;
-                  }}
-                  readOnly={hasConflict}
-                  basicSetup={{
-                    lineNumbers: false,
-                    foldGutter: false,
-                    highlightActiveLine: false,
-                    highlightActiveLineGutter: false,
-                  }}
-                  className="h-full"
-                  placeholder="Start writing your notes..."
-                />
-                {!hasConflict && (
                   <div className="absolute bottom-3 right-3 z-10">
                     <VoiceInputButton
                       panelId={id}
@@ -578,7 +511,51 @@ export function NotesPane({
                       }
                     />
                   </div>
-                )}
+                </div>
+              </div>
+              <MarkdownPreview
+                ref={previewRef}
+                content={content}
+                notesDir={notesDir}
+                className="flex-1"
+              />
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col min-h-0">
+              <MarkdownToolbar editorViewRef={editorViewRef} />
+              <div className="relative flex-1 overflow-hidden bg-daintree-bg text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-daintree-text/30 [&_.cm-placeholder]:italic">
+                <CodeMirror
+                  value={content}
+                  height="100%"
+                  theme={daintreeTheme}
+                  extensions={extensions}
+                  onChange={handleContentChange}
+                  onCreateEditor={(view) => {
+                    editorViewRef.current = view;
+                  }}
+                  basicSetup={{
+                    lineNumbers: false,
+                    foldGutter: false,
+                    highlightActiveLine: false,
+                    highlightActiveLineGutter: false,
+                  }}
+                  className="h-full"
+                  placeholder="Start writing your notes..."
+                />
+                <div className="absolute bottom-3 right-3 z-10">
+                  <VoiceInputButton
+                    panelId={id}
+                    panelTitle={title}
+                    projectId={currentProject?.id}
+                    projectName={currentProject?.name}
+                    worktreeId={worktreeId}
+                    worktreeLabel={
+                      panelWorktree?.isMainWorktree
+                        ? panelWorktree?.name
+                        : panelWorktree?.branch || panelWorktree?.name
+                    }
+                  />
+                </div>
               </div>
             </div>
           )}

@@ -22,7 +22,7 @@ import {
   Plus,
   ExternalLink,
   X,
-  AlertTriangle,
+  Info,
   ChevronDown,
   PenLine,
   Eye,
@@ -148,7 +148,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     setNoteContent: editor.setNoteContent,
     setNoteMetadata: editor.setNoteMetadata,
     setNoteLastModified: editor.setNoteLastModified,
-    setHasConflict: editor.setHasConflict,
+    dismissConflictNotice: editor.dismissConflictNotice,
     setEditingNoteId: titleEdit.setEditingNoteId,
     setIsEditingHeaderTitle: titleEdit.setIsEditingHeaderTitle,
     setHeaderTitleEdit: titleEdit.setHeaderTitleEdit,
@@ -524,19 +524,23 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                       </div>
                     )}
 
-                    {editor.hasConflict && (
-                      <div className="px-4 py-2 bg-status-warning/[0.03] border-l-2 border-status-warning flex items-center justify-between shrink-0">
-                        <div className="flex items-center gap-2 text-status-warning text-xs">
-                          <AlertTriangle size={14} />
-                          <span>Note modified externally</span>
+                    {editor.conflictCopyPath && (
+                      <div className="px-4 py-2 bg-status-info/[0.03] border-l-2 border-status-info flex items-center justify-between shrink-0 gap-2">
+                        <div className="flex items-center gap-2 text-status-info text-xs min-w-0">
+                          <Info size={14} className="shrink-0" />
+                          <span className="truncate">
+                            External changes preserved as{" "}
+                            <span className="font-mono">{editor.conflictCopyPath}</span>. Your edits
+                            are saved.
+                          </span>
                         </div>
                         <Button
-                          onClick={editor.handleReloadNote}
+                          onClick={editor.dismissConflictNotice}
                           variant="ghost"
                           size="xs"
-                          className="bg-status-warning/20 hover:bg-status-warning/30 text-status-warning"
+                          className="bg-status-info/20 hover:bg-status-info/30 text-status-info shrink-0"
                         >
-                          Reload
+                          Dismiss
                         </Button>
                       </div>
                     )}
@@ -550,7 +554,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                         <MarkdownPreview content={editor.noteContent} />
                       ) : (
                         <>
-                          {!editor.hasConflict && <MarkdownToolbar editorViewRef={editorViewRef} />}
+                          <MarkdownToolbar editorViewRef={editorViewRef} />
                           <div className="flex-1 overflow-hidden text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:p-4 [&_.cm-placeholder]:text-daintree-text/30 [&_.cm-placeholder]:italic">
                             <CodeMirror
                               key={selectedNote?.id ?? "empty"}
@@ -562,7 +566,6 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                               onCreateEditor={(view) => {
                                 editorViewRef.current = view;
                               }}
-                              readOnly={editor.hasConflict}
                               basicSetup={{
                                 lineNumbers: false,
                                 foldGutter: false,
