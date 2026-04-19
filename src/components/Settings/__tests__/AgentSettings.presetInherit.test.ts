@@ -11,7 +11,8 @@ import { describe, it, expect } from "vitest";
 const boolToSelectValue = (v: boolean | undefined): string =>
   v === undefined ? "" : v ? "true" : "false";
 
-const selectValueToBool = (s: string): boolean | undefined => (s === "" ? undefined : s === "true");
+const selectValueToBool = (s: string): boolean | undefined =>
+  s === "true" ? true : s === "false" ? false : undefined;
 
 function effectiveBool(override: boolean | undefined, agentDefault: boolean): boolean {
   return override ?? agentDefault;
@@ -41,6 +42,12 @@ describe("tri-state boolean serialization", () => {
   it('maps "true" → true and "false" → false', () => {
     expect(selectValueToBool("true")).toBe(true);
     expect(selectValueToBool("false")).toBe(false);
+  });
+
+  it("falls back to undefined for unexpected strings (defensive)", () => {
+    expect(selectValueToBool("yes")).toBeUndefined();
+    expect(selectValueToBool("0")).toBeUndefined();
+    expect(selectValueToBool(" ")).toBeUndefined();
   });
 
   it("round-trips boolean | undefined through the select mapping", () => {
