@@ -154,17 +154,17 @@
     },
     {
       "file": "electron/ipc/handlers/git-write.ts",
-      "line": 225,
+      "line": 306,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/ipc/handlers/git-write.ts",
-      "line": 269,
+      "line": 350,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/ipc/handlers/git-write.ts",
-      "line": 274,
+      "line": 355,
       "pattern": "sync-store-get"
     },
     {
