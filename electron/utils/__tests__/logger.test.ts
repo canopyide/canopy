@@ -93,6 +93,36 @@ describe("logger", () => {
     });
   });
 
+  describe("clearDebugLogs", () => {
+    it("truncates .log files in debug/ on boot", () => {
+      const debugDir = join(TEST_LOG_DIR, "debug");
+      mkdirSync(debugDir, { recursive: true });
+      const debugFile = join(debugDir, "frame-sequences.log");
+      writeFileSync(debugFile, "stale session data\n".repeat(100), "utf8");
+
+      initializeLogger(TEST_LOG_DIR);
+
+      expect(existsSync(debugFile)).toBe(true);
+      expect(readFileSync(debugFile, "utf8")).toBe("");
+    });
+
+    it("leaves non-.log files in debug/ untouched", () => {
+      const debugDir = join(TEST_LOG_DIR, "debug");
+      mkdirSync(debugDir, { recursive: true });
+      const keepFile = join(debugDir, "snapshot.json");
+      writeFileSync(keepFile, '{"keep":true}', "utf8");
+
+      initializeLogger(TEST_LOG_DIR);
+
+      expect(readFileSync(keepFile, "utf8")).toBe('{"keep":true}');
+    });
+
+    it("does nothing when debug/ does not exist", () => {
+      expect(() => initializeLogger(TEST_LOG_DIR)).not.toThrow();
+      expect(existsSync(join(TEST_LOG_DIR, "debug"))).toBe(false);
+    });
+  });
+
   describe("rotateLogsIfNeeded", () => {
     it("does not rotate when file size is below threshold", () => {
       initializeLogger(TEST_LOG_DIR);

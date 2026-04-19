@@ -6,6 +6,7 @@ import {
   readdirSync,
   statSync,
   unlinkSync,
+  writeFileSync,
   openSync,
   readSync,
   closeSync,
@@ -143,10 +144,30 @@ function rotateLogsIfNeeded(): boolean {
   }
 }
 
+function clearDebugLogs(basePath: string): void {
+  const debugDir = join(basePath, "debug");
+  if (!existsSync(debugDir)) return;
+
+  try {
+    const files = readdirSync(debugDir);
+    for (const file of files) {
+      if (!file.endsWith(".log")) continue;
+      try {
+        writeFileSync(join(debugDir, file), "", "utf8");
+      } catch {
+        // Skip locked or inaccessible files (Windows antivirus, etc.)
+      }
+    }
+  } catch {
+    // Directory read failed — non-fatal
+  }
+}
+
 export function initializeLogger(path: string): void {
   storagePath = path;
 
   preservePreviousSessionTail(path);
+  clearDebugLogs(path);
 }
 
 export function getPreviousSessionTail(): string | null {
