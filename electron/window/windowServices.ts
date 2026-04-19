@@ -1096,7 +1096,15 @@ export async function setupWindowServices(
       return;
     }
 
-    // Last window closed — dispose global services
+    // Last window closed — dispose global services.
+    // Stop the CCR config watcher first, before any guard resets or IPC teardown.
+    // Awaiting here blocks a new window from racing into the init block (which would
+    // restart the singleton watcher) and finding this handler about to null the ref.
+    if (ccrConfigService) {
+      await ccrConfigService.stopWatching();
+      ccrConfigService = null;
+    }
+
     if (stopEventLoopLagMonitor) {
       stopEventLoopLagMonitor();
       stopEventLoopLagMonitor = null;
@@ -1153,10 +1161,5 @@ export async function setupWindowServices(
     activationFunnelService.dispose();
     preAgentSnapshotService.dispose();
     autoUpdaterService.dispose();
-
-    if (ccrConfigService) {
-      await ccrConfigService.stopWatching();
-      ccrConfigService = null;
-    }
   });
 }

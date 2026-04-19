@@ -131,7 +131,12 @@ export class CcrConfigService {
           break;
         }
         if (signal.aborted) break;
-        await this.loadAndApply();
+        try {
+          await this.loadAndApply();
+        } catch (err) {
+          // A transient failure must not kill the poll loop silently.
+          console.warn("[CcrConfigService] poll iteration failed:", err);
+        }
       }
     };
 

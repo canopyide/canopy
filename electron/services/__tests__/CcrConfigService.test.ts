@@ -234,6 +234,65 @@ describe("CcrConfigService", () => {
 
       loadSpy.mockRestore();
     });
+
+    it("stopWatching resolves immediately during the sleep phase (no 30s wait)", async () => {
+      const loadSpy = vi.spyOn(service, "loadAndApply").mockResolvedValue([]);
+
+      service.startWatching();
+      // Loop is parked in abortableSleep; stopWatching() must wake it without
+      // advancing real or fake timers.
+      await service.stopWatching();
+
+      expect(loadSpy).not.toHaveBeenCalled();
+      loadSpy.mockRestore();
+    });
+
+    it("transient loadAndApply failure does not kill subsequent polls", async () => {
+      const loadSpy = vi
+        .spyOn(service, "loadAndApply")
+        .mockRejectedValueOnce(new Error("transient"))
+        .mockResolvedValue([]);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      service.startWatching();
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+
+      // Next iteration must still run despite prior failure.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(loadSpy).toHaveBeenCalledTimes(2);
+
+      loadSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it("start → stop → start does not orphan the new watcher", async () => {
+      let resolveFirst: (() => void) | null = null;
+      const loadSpy = vi.spyOn(service, "loadAndApply").mockImplementationOnce(
+        () =>
+          new Promise<AgentPreset[]>((resolve) => {
+            resolveFirst = () => resolve([]);
+          })
+      );
+      loadSpy.mockResolvedValue([]);
+
+      service.startWatching();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+
+      // stop in-flight; new start races while old teardown is pending
+      const stopped = service.stopWatching();
+      service.startWatching();
+
+      // Release the first iteration so the old loop can exit.
+      resolveFirst?.();
+      await stopped;
+
+      // The second watcher (newly started) must still be live and firing polls.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(loadSpy).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("getInstance", () => {
