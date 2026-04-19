@@ -5,6 +5,7 @@ export const PERF_MARKS = {
   RENDERER_FIRST_INTERACTIVE: "renderer_first_interactive",
 
   SERVICE_INIT_START: "service_init_start",
+  WINDOW_SERVICES_START: "window_services_start",
   SERVICE_INIT_MIGRATIONS_DONE: "service_init_migrations_done",
   SERVICE_INIT_PTY_READY: "service_init_pty_ready",
   SERVICE_INIT_WORKSPACE_READY: "service_init_workspace_ready",
