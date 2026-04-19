@@ -13,8 +13,15 @@ vi.mock("../FileLinksAddon", () => ({
   FileLinksAddon: vi.fn(),
 }));
 
-import { setupTerminalAddons, createImageAddon } from "../TerminalAddonManager";
+import {
+  setupTerminalAddons,
+  createImageAddon,
+  createWebLinksAddon,
+  createFileLinksAddon,
+} from "../TerminalAddonManager";
 import type { Terminal } from "@xterm/xterm";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { FileLinksAddon } from "../FileLinksAddon";
 
 function createMockTerminal() {
   return {
@@ -56,6 +63,50 @@ describe("TerminalAddonManager", () => {
       createImageAddon(terminal);
 
       expect(terminal.loadAddon).toHaveBeenCalledWith(expect.any(mockImageAddon));
+    });
+  });
+
+  describe("createWebLinksAddon hover wiring", () => {
+    it("passes hover/leave callbacks through to WebLinksAddon options", () => {
+      const terminal = createMockTerminal();
+      const onActivate = vi.fn();
+      const hover = vi.fn();
+      const leave = vi.fn();
+
+      createWebLinksAddon(terminal, onActivate, { hover, leave });
+
+      const opts = vi.mocked(WebLinksAddon).mock.calls[0]?.[1];
+      expect(opts).toBeDefined();
+      opts!.hover?.(new Event("mousemove") as unknown as MouseEvent, "https://example.com", {
+        start: { x: 0, y: 0 },
+        end: { x: 0, y: 0 },
+      });
+      expect(hover).toHaveBeenCalledWith(expect.any(Event), "https://example.com");
+      opts!.leave?.(new Event("mouseleave") as unknown as MouseEvent, "https://example.com");
+      expect(leave).toHaveBeenCalled();
+    });
+
+    it("constructs WebLinksAddon with undefined hover/leave when no handlers provided", () => {
+      const terminal = createMockTerminal();
+      const onActivate = vi.fn();
+
+      createWebLinksAddon(terminal, onActivate);
+
+      const opts = vi.mocked(WebLinksAddon).mock.calls[0]?.[1];
+      expect(opts?.hover).toBeUndefined();
+      expect(opts?.leave).toBeUndefined();
+    });
+  });
+
+  describe("createFileLinksAddon hover wiring", () => {
+    it("forwards onHover callback to FileLinksAddon constructor", () => {
+      const terminal = createMockTerminal();
+      const getCwd = () => "/tmp";
+      const onHover = vi.fn();
+
+      createFileLinksAddon(terminal, getCwd, onHover);
+
+      expect(FileLinksAddon).toHaveBeenCalledWith(terminal, getCwd, onHover);
     });
   });
 });

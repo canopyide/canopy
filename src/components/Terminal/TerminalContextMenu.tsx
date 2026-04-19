@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { isMac } from "@/lib/platform";
 import type React from "react";
-import type { Terminal as XTermTerminal } from "@xterm/xterm";
 import { type PanelLocation, type TerminalType } from "@/types";
 import { usePanelStore } from "@/store";
 import { useShallow } from "zustand/react/shallow";
@@ -59,36 +58,6 @@ import {
 } from "@/components/ui/context-menu";
 
 const ICON_CLASS = "w-3.5 h-3.5 mr-2 shrink-0";
-
-const URL_REGEX = /(?:https?|ftp):\/\/[^\s"'<>()[\]{}]+/g;
-
-export function extractUrlAtPoint(
-  terminal: XTermTerminal,
-  clientX: number,
-  clientY: number
-): string | null {
-  const el = terminal.element;
-  if (!el) return null;
-  const rect = el.getBoundingClientRect();
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom)
-    return null;
-  const col = Math.floor(((clientX - rect.left) / rect.width) * terminal.cols);
-  const row = Math.floor(((clientY - rect.top) / rect.height) * terminal.rows);
-  if (row < 0 || row >= terminal.rows || col < 0 || col >= terminal.cols) return null;
-  const bufferRow = terminal.buffer.active.viewportY + row;
-  const line = terminal.buffer.active.getLine(bufferRow);
-  if (!line) return null;
-  const text = line.translateToString(true);
-  URL_REGEX.lastIndex = 0;
-  let match;
-  while ((match = URL_REGEX.exec(text)) !== null) {
-    const url = match[0].replace(/[.,;:!?'")\]]+$/, "");
-    if (col >= match.index && col < match.index + url.length) {
-      return url;
-    }
-  }
-  return null;
-}
 
 export interface CreateNoteArgs {
   title: string;
@@ -170,7 +139,7 @@ export function TerminalContextMenu({
   const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
 
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
+    (_e: React.MouseEvent) => {
       const managed = terminalInstanceService.get(terminalId);
       if (!managed?.terminal) {
         setHasSelection(false);
@@ -180,7 +149,7 @@ export function TerminalContextMenu({
       const selection = managed.terminal.getSelection();
       setHasSelection(!!selection);
       setSelectionText(selection);
-      setHoveredUrl(extractUrlAtPoint(managed.terminal, e.clientX, e.clientY));
+      setHoveredUrl(terminalInstanceService.getHoveredLinkText(terminalId));
     },
     [terminalId]
   );
@@ -196,9 +165,8 @@ export function TerminalContextMenu({
     (actionId: string) => {
       if (!terminal) return;
 
-      if (actionId.startsWith("open-link:")) {
-        const url = actionId.slice("open-link:".length);
-        void actionService.dispatch("system.openExternal", { url }, { source: "context-menu" });
+      if (actionId === "open-link") {
+        terminalInstanceService.openHoveredLink(terminalId);
         return;
       }
 
@@ -698,7 +666,7 @@ export function TerminalContextMenu({
             {hoveredUrl && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => handleAction(`open-link:${hoveredUrl}`)}>
+                <ContextMenuItem onSelect={() => handleAction("open-link")}>
                   <ExternalLink className={ICON_CLASS} aria-hidden="true" />
                   Open Link
                 </ContextMenuItem>

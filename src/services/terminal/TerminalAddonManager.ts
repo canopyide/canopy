@@ -4,7 +4,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { FileLinksAddon } from "./FileLinksAddon";
+import { FileLinksAddon, HoverCallback } from "./FileLinksAddon";
 
 const IMAGE_ADDON_OPTIONS = { pixelLimit: 2_000_000, storageLimit: 8 };
 
@@ -17,10 +17,17 @@ export interface TerminalAddons {
   webLinksAddon: WebLinksAddon | null;
 }
 
+export interface WebLinksHoverHandlers {
+  hover: (event: MouseEvent, text: string) => void;
+  leave: () => void;
+}
+
 export function setupTerminalAddons(
   terminal: Terminal,
   getCwd: () => string,
-  onLinkActivate?: (event: MouseEvent, uri: string) => void
+  onLinkActivate?: (event: MouseEvent, uri: string) => void,
+  onFileLinkHover?: HoverCallback,
+  webLinksHover?: WebLinksHoverHandlers
 ): TerminalAddons {
   // Base addons loaded for all terminals. WebGL is managed separately
   // by TerminalWebGLManager (attached only to the focused terminal).
@@ -36,12 +43,15 @@ export function setupTerminalAddons(
   const searchAddon = new SearchAddon();
   terminal.loadAddon(searchAddon);
 
-  const fileLinksAddon = new FileLinksAddon(terminal, getCwd);
+  const fileLinksAddon = new FileLinksAddon(terminal, getCwd, onFileLinkHover);
   const fileLinksDisposable = terminal.registerLinkProvider(fileLinksAddon);
 
   let webLinksAddon: WebLinksAddon | null = null;
   if (onLinkActivate) {
-    webLinksAddon = new WebLinksAddon(onLinkActivate);
+    webLinksAddon = new WebLinksAddon(onLinkActivate, {
+      hover: webLinksHover ? (event, text) => webLinksHover.hover(event, text) : undefined,
+      leave: webLinksHover ? () => webLinksHover.leave() : undefined,
+    });
     terminal.loadAddon(webLinksAddon);
   }
 
@@ -61,16 +71,24 @@ export function createImageAddon(terminal: Terminal): ImageAddon {
   return addon;
 }
 
-export function createFileLinksAddon(terminal: Terminal, getCwd: () => string): IDisposable {
-  const addon = new FileLinksAddon(terminal, getCwd);
+export function createFileLinksAddon(
+  terminal: Terminal,
+  getCwd: () => string,
+  onHover?: HoverCallback
+): IDisposable {
+  const addon = new FileLinksAddon(terminal, getCwd, onHover);
   return terminal.registerLinkProvider(addon);
 }
 
 export function createWebLinksAddon(
   terminal: Terminal,
-  onActivate: (event: MouseEvent, uri: string) => void
+  onActivate: (event: MouseEvent, uri: string) => void,
+  hoverHandlers?: WebLinksHoverHandlers
 ): WebLinksAddon {
-  const addon = new WebLinksAddon(onActivate);
+  const addon = new WebLinksAddon(onActivate, {
+    hover: hoverHandlers ? (event, text) => hoverHandlers.hover(event, text) : undefined,
+    leave: hoverHandlers ? () => hoverHandlers.leave() : undefined,
+  });
   terminal.loadAddon(addon);
   return addon;
 }

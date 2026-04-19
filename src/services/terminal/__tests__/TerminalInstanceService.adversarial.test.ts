@@ -151,6 +151,7 @@ function makeManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal 
     searchAddon: {} as ManagedTerminal["searchAddon"],
     fileLinksDisposable: null,
     webLinksAddon: null,
+    hoveredLink: null,
     hostElement,
     isOpened: true,
     listeners: [],
