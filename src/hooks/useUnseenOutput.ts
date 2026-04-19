@@ -1,9 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-
-// Minimum unseen lines before surfacing the "new output below" pill. Prevents
-// flicker on touchpad jitter / single-line interleavings.
-const UNSEEN_THRESHOLD = 2;
+import { UNSEEN_THRESHOLD } from "@/services/terminal/TerminalUnseenOutputTracker";
 
 // While this many milliseconds have elapsed since the last user wheel event,
 // suppress showing the pill so it does not flash mid-scroll-gesture.

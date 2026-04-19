@@ -227,6 +227,7 @@ export class TerminalHibernationManager {
     const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"]);
     const onWheel = () => {
       managed._userScrollIntent = true;
+      managed.lastWheelAt = Date.now();
     };
     const onKeydownScroll = (e: KeyboardEvent) => {
       if (SCROLL_KEYS.has(e.key)) managed._userScrollIntent = true;

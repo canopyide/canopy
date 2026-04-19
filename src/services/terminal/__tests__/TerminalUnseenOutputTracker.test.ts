@@ -22,28 +22,44 @@ describe("TerminalUnseenOutputTracker", () => {
       expect(snapshot.unseen).toBe(0);
     });
 
-    it("should notify listeners on every increment so threshold gating re-evaluates", () => {
+    it("notifies on the 0→1 entry and on the threshold crossing (UNSEEN_THRESHOLD → UNSEEN_THRESHOLD+1)", () => {
       const listener = vi.fn();
       tracker.subscribe(terminalId, listener);
 
+      // 0 → 1: first unseen, consumers need to know scroll-back + output started
       tracker.incrementUnseen(terminalId, true);
       expect(listener).toHaveBeenCalledTimes(1);
 
+      // 1 → 2: still below threshold, no additional notification
+      tracker.incrementUnseen(terminalId, true);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // 2 → 3: threshold crossing — this is when the pill becomes visible
       tracker.incrementUnseen(terminalId, true);
       expect(listener).toHaveBeenCalledTimes(2);
-
-      tracker.incrementUnseen(terminalId, true);
-      expect(listener).toHaveBeenCalledTimes(3);
     });
 
-    it("should expose the running unseen count in the snapshot on each increment", () => {
+    it("does not wake subscribers for further increments above the threshold", () => {
+      const listener = vi.fn();
+      tracker.subscribe(terminalId, listener);
+
+      for (let i = 0; i < 100; i++) {
+        tracker.incrementUnseen(terminalId, true);
+      }
+
+      // Two notifications total: entry (0→1) and threshold cross (2→3).
+      // All subsequent increments are silent — the pill is already visible
+      // and its label is count-agnostic, so re-renders would be wasted.
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it("reflects the running unseen count on notified snapshots", () => {
       tracker.incrementUnseen(terminalId, true);
       expect(tracker.getSnapshot(terminalId).unseen).toBe(1);
 
       tracker.incrementUnseen(terminalId, true);
-      expect(tracker.getSnapshot(terminalId).unseen).toBe(2);
-
       tracker.incrementUnseen(terminalId, true);
+      // Snapshot updates on the threshold crossing (2→3)
       expect(tracker.getSnapshot(terminalId).unseen).toBe(3);
     });
 
@@ -56,7 +72,9 @@ describe("TerminalUnseenOutputTracker", () => {
       tracker.incrementUnseen(terminal2, true);
 
       expect(tracker.getSnapshot(terminal1).unseen).toBe(1);
-      expect(tracker.getSnapshot(terminal2).unseen).toBe(2);
+      // terminal2 has raw count 2 but only the 0→1 crossing refreshed the
+      // snapshot — 1→2 is below the threshold crossing.
+      expect(tracker.getSnapshot(terminal2).unseen).toBe(1);
     });
   });
 
