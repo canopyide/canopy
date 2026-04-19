@@ -72,6 +72,20 @@ describe("classifyGitError — table-driven", () => {
       "lfs-missing",
       "Smudge error: Error downloading file.bin: external filter 'git-lfs filter-process' failed",
     ],
+    [
+      "lfs-quota-exceeded",
+      "batch response: This repository exceeded its LFS budget. Please contact the owner.",
+    ],
+    [
+      "lfs-quota-exceeded",
+      "batch response: This repository is over its data quota. Please contact the owner.",
+    ],
+    ["lfs-quota-exceeded", "You have reached the free storage limit of 10 GiB for Git LFS"],
+    ["lfs-quota-exceeded", "VS403658: You cannot upload more than 10 GB of Git LFS files"],
+    [
+      "lfs-quota-exceeded",
+      "fatal: unable to access 'https://dev.azure.com/org/_git/repo.git/': The requested URL returned error: HTTP 413 LFS upload too large",
+    ],
     ["config-missing", "fatal: The current branch feature/foo has no upstream branch."],
     ["config-missing", "fatal: no upstream configured for branch 'feature/foo'"],
     ["config-missing", "fatal: unable to read config file '/etc/gitconfig': Permission denied"],
@@ -152,6 +166,15 @@ describe("classifyGitError — ordering and normalization", () => {
     expect(classifyGitError(msg)).toBe("auth-failed");
   });
 
+  it("prefers lfs-missing over lfs-quota-exceeded when both signals appear", () => {
+    // PATTERNS ordering: lfs-missing is listed before lfs-quota-exceeded — the missing
+    // binary is the more actionable root cause when both error classes co-occur.
+    const msg =
+      "Smudge error: external filter 'git-lfs filter-process' failed\n" +
+      "batch response: This repository exceeded its LFS budget";
+    expect(classifyGitError(msg)).toBe("lfs-missing");
+  });
+
   it("combines CRLF, remote-stripping, and ordering for hook rejection", () => {
     const msg =
       "remote:  ! [remote rejected] main -> main (pre-receive hook declined)\r\n" +
@@ -213,6 +236,7 @@ describe("getGitRecoveryHint", () => {
       "push-rejected-policy",
       "pathspec-invalid",
       "lfs-missing",
+      "lfs-quota-exceeded",
       "hook-rejected",
       "system-io-error",
     ];

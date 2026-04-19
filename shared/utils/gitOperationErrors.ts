@@ -76,6 +76,15 @@ const PATTERNS: ReadonlyArray<readonly [GitOperationReason, RegExp]> = [
   ],
   ["lfs-missing", /external filter 'git-lfs filter-process' failed|smudge filter lfs failed/i],
   [
+    // LFS storage/bandwidth quota signals across major providers.
+    //   - GitHub (current): "batch response: This repository exceeded its LFS budget"
+    //   - GitHub (classic): "batch response: This repository is over its data quota"
+    //   - GitLab:           "reached ... free storage limit"
+    //   - Azure DevOps:     VS403658 or HTTP 413 on LFS pushes
+    "lfs-quota-exceeded",
+    /batch response:.*(?:exceeded.*LFS budget|over.*data quota|LFS budget)|reached.*free storage limit|HTTP 413.*LFS|VS403658:/i,
+  ],
+  [
     "config-missing",
     // Covers the older 'has no upstream branch' and the newer 'no upstream configured for branch'.
     /fatal: unable to read config file|fatal: bad config|fatal: The current branch .* has no upstream branch|fatal: no upstream configured for branch/i,
@@ -114,6 +123,8 @@ const RECOVERY_HINTS: Record<GitOperationReason, string | undefined> = {
     "The remote rejected this push (protected branch, hook, or size limit). Contact the repo admin.",
   "pathspec-invalid": "The specified ref or path does not exist.",
   "lfs-missing": "Git LFS objects are missing — install git-lfs and run 'git lfs pull'.",
+  "lfs-quota-exceeded":
+    "This repository has exceeded its Git LFS storage or bandwidth quota. Contact the repo owner or upgrade the plan.",
   "hook-rejected": "A server-side hook rejected the push. See the server output for details.",
   "system-io-error": "A filesystem or permissions problem prevented the git operation.",
   unknown: undefined,

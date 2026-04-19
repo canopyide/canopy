@@ -48,6 +48,7 @@ function buildDaintreeFileUrl(filePath: string, rootPath: string): string {
 const ERROR_MESSAGES: Record<FileReadErrorCode, string> = {
   BINARY_FILE: "Binary file — cannot display",
   FILE_TOO_LARGE: "File too large to display (> 500 KB)",
+  LFS_POINTER: "Git LFS pointer — run `git lfs pull` to download the file contents",
   NOT_FOUND: "File no longer exists",
   OUTSIDE_ROOT: "File is outside the project root",
   INVALID_PATH: "Invalid file path",

@@ -16,6 +16,7 @@ export interface FileReadPayload {
 export type FileReadErrorCode =
   | "BINARY_FILE"
   | "FILE_TOO_LARGE"
+  | "LFS_POINTER"
   | "NOT_FOUND"
   | "OUTSIDE_ROOT"
   | "INVALID_PATH";
