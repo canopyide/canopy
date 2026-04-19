@@ -5,6 +5,11 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { Toaster } from "../toaster";
 
+const dispatchMock = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true }));
+vi.mock("@/services/ActionService", () => ({
+  actionService: { dispatch: dispatchMock },
+}));
+
 vi.stubGlobal(
   "requestAnimationFrame",
   (cb: FrameRequestCallback) => setTimeout(() => cb(0), 0) as unknown as number
@@ -370,5 +375,75 @@ describe("Toast accessibility", () => {
     });
 
     expect(useAnnouncerStore.getState().polite?.msg).toBe("2 agents done");
+  });
+});
+
+describe("Toast overflow menu", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useNotificationStore.getState().reset();
+    useAnnouncerStore.setState({ polite: null, assertive: null });
+    dispatchMock.mockClear();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it("does not render the options trigger when context is absent", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast();
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(screen.queryByLabelText("Notification options")).toBeNull();
+  });
+
+  it("does not render the options trigger when context has no projectId", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ context: { worktreeId: "wt-1" } });
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(screen.queryByLabelText("Notification options")).toBeNull();
+  });
+
+  it("renders the options trigger when context.projectId is set", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ context: { projectId: "p1" } });
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(screen.getByLabelText("Notification options")).toBeTruthy();
+  });
+
+  it("dispatches project.muteNotifications and dismisses when Mute is selected", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ context: { projectId: "p1" }, duration: 0 });
+      vi.advanceTimersByTime(16);
+    });
+
+    const trigger = screen.getByLabelText("Notification options");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+      vi.advanceTimersByTime(16);
+    });
+
+    const muteItem = screen.getByText("Mute project notifications");
+    await act(async () => {
+      fireEvent.click(muteItem);
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(dispatchMock).toHaveBeenCalledWith("project.muteNotifications", {
+      projectId: "p1",
+    });
   });
 });

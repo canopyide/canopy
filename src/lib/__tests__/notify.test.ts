@@ -905,6 +905,51 @@ describe("notify()", () => {
     });
   });
 
+  describe("context — propagates projectId through history and toast", () => {
+    it("stores context on the history entry", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Project event",
+        priority: "high",
+        context: { projectId: "proj-1" },
+      });
+      const entry = useNotificationHistoryStore.getState().entries[0];
+      expect(entry!.context).toEqual({ projectId: "proj-1" });
+    });
+
+    it("stores context on the active toast notification", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Project event",
+        priority: "high",
+        context: { projectId: "proj-1", worktreeId: "wt-2" },
+      });
+      const notification = useNotificationStore.getState().notifications[0];
+      expect(notification!.context).toEqual({ projectId: "proj-1", worktreeId: "wt-2" });
+    });
+
+    it("stores context on grid-bar history entries", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Inline bar",
+        placement: "grid-bar",
+        context: { projectId: "proj-2" },
+      });
+      const entry = useNotificationHistoryStore.getState().entries[0];
+      expect(entry!.context).toEqual({ projectId: "proj-2" });
+    });
+
+    it("omits context on history entry when none supplied", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "info", message: "No ctx", priority: "high" });
+      const entry = useNotificationHistoryStore.getState().entries[0];
+      expect(entry!.context).toBeUndefined();
+    });
+  });
+
   describe("combo — escalating messages on rapid repeats", () => {
     const comboPayload = (message = "Agent spawned") => ({
       type: "success" as const,

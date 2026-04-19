@@ -52,6 +52,7 @@ describe("createActionDefinitions", () => {
     expect(actions.has("app.forceQuit")).toBe(true);
     expect(actions.has("project.add")).toBe(true);
     expect(actions.has("project.openDialog")).toBe(true);
+    expect(actions.has("project.muteNotifications")).toBe(true);
     expect(actions.has("errors.clearAll")).toBe(true);
     expect(actions.has("eventInspector.clear")).toBe(true);
     expect(actions.has("ui.refresh")).toBe(true);

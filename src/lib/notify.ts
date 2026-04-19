@@ -58,6 +58,16 @@ export interface NotifyPayload {
   urgent?: boolean;
   /** Fires exactly once when the user explicitly dismisses the toast via the close or action button */
   onDismiss?: () => void;
+  /**
+   * Origin context — when set, contextual affordances (e.g. "Mute project
+   * notifications") are surfaced on the toast and in the notification center.
+   * Propagated to both the active notification and the history entry.
+   */
+  context?: {
+    projectId?: string;
+    worktreeId?: string;
+    panelId?: string;
+  };
 }
 
 interface CoalesceEntry {
@@ -153,7 +163,7 @@ export function isScheduledQuietHours(now: Date = new Date()): boolean {
  */
 export function notify(payload: NotifyPayload): string {
   const priority = payload.priority ?? "high";
-  const { placement, correlationId, type, title, message, inboxMessage } = payload;
+  const { placement, correlationId, type, title, message, inboxMessage, context } = payload;
 
   const historyMessage = inboxMessage ?? (typeof message === "string" ? message : undefined);
 
@@ -183,6 +193,7 @@ export function notify(payload: NotifyPayload): string {
           seenAsToast: !isQuiet,
           countable: payload.countable,
           actions: historyActions.length > 0 ? historyActions : undefined,
+          context,
         })
       : undefined;
     if (!notificationsEnabled || isQuiet) return "";
@@ -207,6 +218,7 @@ export function notify(payload: NotifyPayload): string {
         seenAsToast: !isQuiet && notificationsEnabled && shouldToast,
         countable: payload.countable,
         actions: historyActions.length > 0 ? historyActions : undefined,
+        context,
       })
     : undefined;
 
