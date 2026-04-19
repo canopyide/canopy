@@ -11,7 +11,7 @@ export function AccessibilityAnnouncer() {
   const pendingSetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const announce = (msg: string | null, ref: React.RefObject<HTMLDivElement>) => {
+    const announce = (msg: string | null, ref: React.RefObject<HTMLDivElement | null>) => {
       const el = ref.current;
       if (!el) return;
 
