@@ -258,18 +258,17 @@ export const migrationScenarios: PerfScenario[] = [
     iterations: { ci: 8, nightly: 12 },
     warmups: 2,
     run() {
+      // Sanity check: fixture must stay large enough to exercise O(N) paths
+      if (FIXTURE_BYTES < getHeavyFixtureMinBytes()) {
+        throw new Error(
+          `PERF-080 fixture too small: ${FIXTURE_BYTES} bytes < ${getHeavyFixtureMinBytes()} minimum. ` +
+            `Add more data to createHeavyMigrationFixture() to exercise O(N) migration paths.`
+        );
+      }
+
       // Deep-clone fixture for this iteration
       const cloned = JSON.parse(FIXTURE_JSON) as ReturnType<typeof createHeavyMigrationFixture>;
       const result = runMigrationChain(cloned);
-
-      // Sanity check: fixture must stay large enough to exercise O(N) paths
-      if (FIXTURE_BYTES < getHeavyFixtureMinBytes()) {
-        return {
-          durationMs: 0,
-          metrics: result,
-          notes: `fixture too small: ${FIXTURE_BYTES} < ${getHeavyFixtureMinBytes()} min bytes`,
-        };
-      }
 
       return {
         durationMs: 0,

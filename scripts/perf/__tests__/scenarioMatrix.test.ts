@@ -24,4 +24,16 @@ describe("perf scenario matrix", () => {
     const unique = new Set(ids);
     expect(unique.size).toBe(ids.length);
   });
+
+  it("PERF-080 returns valid metrics and fixture meets size threshold", async () => {
+    const scenario = allScenarios.find((s) => s.id === "PERF-080");
+    expect(scenario).toBeDefined();
+
+    const context = { mode: "ci" as const, now: () => performance.now() };
+    const sample = await scenario!.run(context);
+
+    expect(sample.metrics).toBeDefined();
+    expect(sample.metrics!.terminalCount).toBeGreaterThan(0);
+    expect(sample.metrics!.bytes).toBeGreaterThan(0);
+  });
 });

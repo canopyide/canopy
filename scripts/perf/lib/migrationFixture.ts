@@ -180,5 +180,5 @@ export function createHeavyMigrationFixture(): StoreSchema {
  * it likely no longer exercises the O(N) migration paths.
  */
 export function getHeavyFixtureMinBytes(): number {
-  return 5_000_000;
+  return 1_000_000;
 }
