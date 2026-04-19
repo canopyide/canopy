@@ -239,7 +239,7 @@ export async function setupWindowServices(
     return;
   }
 
-  markPerformance(PERF_MARKS.MAIN_WINDOW_CREATED);
+  markPerformance(PERF_MARKS.WINDOW_SERVICES_START);
 
   // ── One-time global initialization (first window only) ──
   if (!globalServicesInitialized) {
