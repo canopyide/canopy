@@ -6,6 +6,7 @@ import type {
   GitHubIssue,
   GitHubPR,
   GitHubPRCIStatus,
+  GitHubPRCISummary,
   GitHubUser,
   GitHubListOptions,
   GitHubListResponse,
@@ -25,9 +26,12 @@ import {
   GET_ISSUE_QUERY,
   GET_PR_QUERY,
   buildBatchPRQuery,
+  buildBatchRequiredChecksQuery,
+  deriveRequiredCIStatus,
   gitHubRateLimitService,
   GitHubRateLimitError,
 } from "./github/index.js";
+import type { RollupContextNode } from "./github/index.js";
 import { getLastAuthMetadata } from "./github/GitHubAuth.js";
 
 import type {
@@ -69,6 +73,13 @@ const prTooltipCache = new Cache<string, PRTooltipData>({ defaultTTL: 300000 });
 // ETag cache for PR conditional revalidation. Key: `owner/repo#prNumber`.
 // Cleared on token rotation via clearGitHubCaches (ETags are token-scoped).
 const prETagCache = new Map<string, string>();
+
+interface PRRequiredStatusEntry {
+  ciStatus: GitHubPRCIStatus | undefined;
+  ciSummary: GitHubPRCISummary | undefined;
+}
+// Key: `${owner}/${repo}:${prNumber}`
+const prRequiredStatusCache = new Cache<string, PRRequiredStatusEntry>({ defaultTTL: 60000 });
 
 export function getGitHubToken(): string | undefined {
   return GitHubAuth.getToken();
@@ -1065,11 +1076,13 @@ export function clearGitHubCaches(): void {
   issueTooltipCache.clear();
   prTooltipCache.clear();
   prETagCache.clear();
+  prRequiredStatusCache.clear();
 }
 
 export function clearPRCaches(): void {
   prListCache.clear();
   prTooltipCache.clear();
+  prRequiredStatusCache.clear();
 }
 
 function buildListCacheKey(
@@ -1365,6 +1378,105 @@ export async function listIssues(
   });
 }
 
+/**
+ * For PRs whose raw statusCheckRollup state is non-success, fetch per-PR contexts with
+ * `isRequired` and derive an effective CI status based on required checks only.
+ * Best-effort: on any error, returns the input PRs unchanged.
+ */
+async function enrichPRsWithRequiredStatus(
+  context: RepoContext,
+  prs: GitHubPR[],
+  client: NonNullable<ReturnType<typeof GitHubAuth.createClient>>
+): Promise<GitHubPR[]> {
+  const candidates = prs.filter(
+    (pr) =>
+      pr.state === "OPEN" &&
+      pr.ciStatus !== undefined &&
+      pr.ciStatus !== "SUCCESS" &&
+      pr.ciSummary === undefined
+  );
+  if (candidates.length === 0) return prs;
+
+  const cacheKeyFor = (n: number) => `${context.owner}/${context.repo}:${n}`;
+  const numbersToFetch: number[] = [];
+  const cached = new Map<number, PRRequiredStatusEntry>();
+
+  for (const pr of candidates) {
+    const hit = prRequiredStatusCache.get(cacheKeyFor(pr.number));
+    if (hit) {
+      cached.set(pr.number, hit);
+    } else {
+      numbersToFetch.push(pr.number);
+    }
+  }
+
+  let fetched = new Map<number, PRRequiredStatusEntry>();
+  if (numbersToFetch.length > 0) {
+    try {
+      const query = buildBatchRequiredChecksQuery(context.owner, context.repo, numbersToFetch);
+      if (query) {
+        const response = (await client(query, {
+          request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
+        })) as Record<string, unknown>;
+        fetched = parseBatchRequiredChecksResponse(response, numbersToFetch);
+        for (const [num, entry] of fetched) {
+          prRequiredStatusCache.set(cacheKeyFor(num), entry);
+        }
+      }
+    } catch {
+      // Best-effort — fall through; PRs keep their raw ciStatus and no ciSummary.
+    }
+  }
+
+  return prs.map((pr) => {
+    const entry = cached.get(pr.number) ?? fetched.get(pr.number);
+    if (!entry) return pr;
+    return {
+      ...pr,
+      ciStatus: entry.ciStatus ?? pr.ciStatus,
+      ciSummary: entry.ciSummary,
+    };
+  });
+}
+
+function parseBatchRequiredChecksResponse(
+  data: Record<string, unknown>,
+  prNumbers: number[]
+): Map<number, PRRequiredStatusEntry> {
+  const out = new Map<number, PRRequiredStatusEntry>();
+  for (const num of prNumbers) {
+    const alias = `pr_${num}`;
+    const repo = data?.[alias] as
+      | {
+          pullRequest?: {
+            commits?: {
+              nodes?: Array<{
+                commit?: {
+                  statusCheckRollup?: {
+                    state?: string | null;
+                    contexts?: {
+                      pageInfo?: { hasNextPage?: boolean };
+                      nodes?: RollupContextNode[];
+                    };
+                  } | null;
+                } | null;
+              }>;
+            };
+          };
+        }
+      | undefined;
+    const rollup = repo?.pullRequest?.commits?.nodes?.[0]?.commit?.statusCheckRollup;
+    if (!rollup) continue;
+    const derived = deriveRequiredCIStatus(
+      rollup.contexts?.nodes,
+      rollup.contexts?.pageInfo?.hasNextPage ?? false,
+      rollup.state
+    );
+    out.set(num, { ciStatus: derived.ciStatus, ciSummary: derived.ciSummary });
+  }
+  return out;
+}
+
 export async function listPullRequests(
   options: GitHubListOptions
 ): Promise<GitHubListResponse<GitHubPR>> {
@@ -1420,8 +1532,10 @@ export async function listPullRequests(
         const search = response?.search;
         const nodes = (search?.nodes ?? []) as Array<Record<string, unknown>>;
 
+        const parsedItems = nodes.filter(Boolean).map(parsePRNode);
+        const enrichedItems = await enrichPRsWithRequiredStatus(context, parsedItems, client);
         result = {
-          items: nodes.filter(Boolean).map(parsePRNode),
+          items: enrichedItems,
           pageInfo: {
             hasNextPage: search?.pageInfo?.hasNextPage ?? false,
             endCursor: search?.pageInfo?.endCursor ?? null,
@@ -1448,8 +1562,10 @@ export async function listPullRequests(
         const nodes = (pullRequests?.nodes ?? []) as Array<Record<string, unknown>>;
         const totalCount = (pullRequests?.totalCount as number) ?? undefined;
 
+        const parsedItems = nodes.filter(Boolean).map(parsePRNode);
+        const enrichedItems = await enrichPRsWithRequiredStatus(context, parsedItems, client);
         result = {
-          items: nodes.filter(Boolean).map(parsePRNode),
+          items: enrichedItems,
           pageInfo: {
             hasNextPage: pullRequests?.pageInfo?.hasNextPage ?? false,
             endCursor: pullRequests?.pageInfo?.endCursor ?? null,

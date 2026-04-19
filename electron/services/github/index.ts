@@ -21,7 +21,11 @@ export {
   GET_ISSUE_QUERY,
   GET_PR_QUERY,
   buildBatchPRQuery,
+  buildBatchRequiredChecksQuery,
 } from "./GitHubQueries.js";
+
+export { deriveRequiredCIStatus } from "./prRequiredCIStatus.js";
+export type { RollupContextNode, DerivedCIResult } from "./prRequiredCIStatus.js";
 
 export type {
   RepoContext,

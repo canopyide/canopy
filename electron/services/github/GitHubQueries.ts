@@ -429,3 +429,58 @@ export function buildBatchPRQuery(
 
   return `query { ${issueQueries.join("\n")} ${branchQueries.join("\n")} }`;
 }
+
+/**
+ * Build a batched GraphQL query that fetches statusCheckRollup.contexts with per-context
+ * `isRequired` flags for each supplied PR number. `pullRequestNumber` must be inlined
+ * as an integer literal per alias — GraphQL variables are global to an operation and
+ * cannot differ per-alias.
+ */
+export function buildBatchRequiredChecksQuery(
+  owner: string,
+  repo: string,
+  prNumbers: number[]
+): string {
+  const escapedOwner = escapeGraphQLString(owner);
+  const escapedRepo = escapeGraphQLString(repo);
+  const validNumbers = prNumbers.filter(
+    (n) => typeof n === "number" && Number.isInteger(n) && n > 0
+  );
+  if (validNumbers.length === 0) return "";
+
+  const parts = validNumbers.map(
+    (num) => `
+      pr_${num}: repository(owner: "${escapedOwner}", name: "${escapedRepo}") {
+        pullRequest(number: ${num}) {
+          number
+          commits(last: 1) {
+            nodes {
+              commit {
+                statusCheckRollup {
+                  state
+                  contexts(first: 50) {
+                    pageInfo { hasNextPage }
+                    nodes {
+                      __typename
+                      ... on CheckRun {
+                        conclusion
+                        status
+                        isRequired(pullRequestNumber: ${num})
+                      }
+                      ... on StatusContext {
+                        state
+                        isRequired(pullRequestNumber: ${num})
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `
+  );
+
+  return `query { ${parts.join("\n")} }`;
+}

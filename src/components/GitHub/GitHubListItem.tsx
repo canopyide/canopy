@@ -16,7 +16,13 @@ import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/utils/timeAgo";
 import { actionService } from "@/services/ActionService";
-import type { GitHubIssue, GitHubPR, GitHubLabel, GitHubPRCIStatus } from "@shared/types/github";
+import type {
+  GitHubIssue,
+  GitHubPR,
+  GitHubLabel,
+  GitHubPRCIStatus,
+  GitHubPRCISummary,
+} from "@shared/types/github";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -61,20 +67,38 @@ function isPR(item: GitHubIssue | GitHubPR): item is GitHubPR {
   return "isDraft" in item;
 }
 
-function getCIStatusInfo(status: GitHubPRCIStatus): {
+function getCIStatusInfo(
+  status: GitHubPRCIStatus,
+  summary?: GitHubPRCISummary
+): {
   icon: typeof Check | null;
   color: string;
   tooltip: string;
 } {
   switch (status) {
-    case "SUCCESS":
-      return { icon: Check, color: "text-status-success", tooltip: "All checks passed" };
+    case "SUCCESS": {
+      const tooltip =
+        summary && summary.requiredTotal > 0
+          ? `${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} passing`
+          : "All checks passed";
+      return { icon: Check, color: "text-status-success", tooltip };
+    }
     case "PENDING":
-    case "EXPECTED":
-      return { icon: null, color: "bg-status-warning", tooltip: "Checks pending" };
+    case "EXPECTED": {
+      const tooltip =
+        summary && summary.requiredPending > 0
+          ? `${summary.requiredPending} of ${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} pending`
+          : "Checks pending";
+      return { icon: null, color: "bg-status-warning", tooltip };
+    }
     case "FAILURE":
-    case "ERROR":
-      return { icon: X, color: "text-status-error", tooltip: "Checks failing" };
+    case "ERROR": {
+      const tooltip =
+        summary && summary.requiredFailing > 0
+          ? `${summary.requiredFailing} of ${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} failing`
+          : "Checks failing";
+      return { icon: X, color: "text-status-error", tooltip };
+    }
     default:
       return { icon: null, color: "bg-muted-foreground", tooltip: "Check status unknown" };
   }
@@ -210,7 +234,7 @@ export function GitHubListItem({
               item.state === "OPEN" &&
               item.ciStatus &&
               (() => {
-                const ciInfo = getCIStatusInfo(item.ciStatus);
+                const ciInfo = getCIStatusInfo(item.ciStatus, item.ciSummary);
                 return (
                   <TooltipProvider>
                     <Tooltip>

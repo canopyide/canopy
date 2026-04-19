@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBatchPRQuery,
+  buildBatchRequiredChecksQuery,
   LIST_PRS_QUERY,
   SEARCH_QUERY,
   GET_PR_QUERY,
@@ -89,6 +90,31 @@ describe("buildBatchPRQuery", () => {
     expect(query).toContain('owner: "my\\"owner"');
     expect(query).toContain('name: "repo\\\\name"');
     expect(query).toContain('headRefName: "feat\\"branch"');
+  });
+
+  it("builds required-checks query with per-PR aliases and inlined pullRequestNumber", () => {
+    const query = buildBatchRequiredChecksQuery("owner", "repo", [12, 34]);
+    expect(query).toContain("pr_12: repository");
+    expect(query).toContain("pr_34: repository");
+    expect(query).toContain("pullRequest(number: 12)");
+    expect(query).toContain("pullRequest(number: 34)");
+    expect(query).toContain("isRequired(pullRequestNumber: 12)");
+    expect(query).toContain("isRequired(pullRequestNumber: 34)");
+    expect(query).toContain("contexts(first: 50)");
+    expect(query).toContain("... on CheckRun");
+    expect(query).toContain("... on StatusContext");
+    expect(query).toContain("hasNextPage");
+  });
+
+  it("returns empty string when no valid PR numbers are supplied", () => {
+    expect(buildBatchRequiredChecksQuery("owner", "repo", [])).toBe("");
+    expect(buildBatchRequiredChecksQuery("owner", "repo", [-1, 0, 2.5])).toBe("");
+  });
+
+  it("escapes owner and repo in required-checks query", () => {
+    const query = buildBatchRequiredChecksQuery('my"owner', "repo\\name", [7]);
+    expect(query).toContain('owner: "my\\"owner"');
+    expect(query).toContain('name: "repo\\\\name"');
   });
 
   it("includes issue lookups only for positive integer issue numbers", () => {
