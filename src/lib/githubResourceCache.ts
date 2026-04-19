@@ -33,6 +33,10 @@ export function setCache(key: string, entry: GitHubResourceCacheEntry): void {
 
 export function nextGeneration(key: string): number {
   const gen = (generationMap.get(key) ?? 0) + 1;
+  if (!generationMap.has(key) && generationMap.size >= CACHE_MAX_SIZE) {
+    const oldest = generationMap.keys().next().value;
+    if (oldest !== undefined) generationMap.delete(oldest);
+  }
   generationMap.set(key, gen);
   return gen;
 }

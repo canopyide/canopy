@@ -148,5 +148,16 @@ describe("githubResourceCache", () => {
       expect(getCache("key1")).toBeDefined();
       expect(getCache("key20")).toBeDefined();
     });
+
+    it("bounds the generation map so it cannot grow unbounded", () => {
+      for (let i = 0; i < 20; i++) {
+        nextGeneration(`gen-key-${i}`);
+      }
+      expect(getGeneration("gen-key-0")).toBe(1);
+
+      nextGeneration("gen-key-20");
+      expect(getGeneration("gen-key-0")).toBe(0);
+      expect(getGeneration("gen-key-20")).toBe(1);
+    });
   });
 });

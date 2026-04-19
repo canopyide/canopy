@@ -40,6 +40,70 @@ function sanitizeIpcError(message: string): string {
   return cleaned.length > 120 ? cleaned.slice(0, 117) + "…" : cleaned;
 }
 
+interface LoadMoreFooterContext {
+  hasMore: boolean;
+  loadingMore: boolean;
+  isLoadMoreActive: boolean;
+  loadMoreError: string | null;
+  type: "issue" | "pr";
+  onLoadMore: () => void;
+  onOpenSettings: () => void;
+}
+
+function LoadMoreFooter({ context }: { context?: LoadMoreFooterContext }) {
+  if (!context || !context.hasMore) return null;
+  const { loadingMore, isLoadMoreActive, loadMoreError, type, onLoadMore, onOpenSettings } =
+    context;
+  return (
+    <div className="p-3 space-y-2">
+      {loadMoreError && (
+        <div className="p-2 rounded-[var(--radius-md)] bg-overlay-soft border border-[var(--border-divider)]">
+          <p className="text-xs text-muted-foreground">{sanitizeIpcError(loadMoreError)}</p>
+          {isTokenRelatedError(loadMoreError) ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onOpenSettings}
+              className="mt-1 text-muted-foreground hover:text-daintree-text h-6 text-xs"
+            >
+              <Settings className="h-3 w-3" />
+              Open GitHub Settings
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onLoadMore}
+              className="mt-1 text-muted-foreground hover:text-daintree-text h-6 text-xs"
+            >
+              Retry
+            </Button>
+          )}
+        </div>
+      )}
+      <Button
+        id={`github-${type}-load-more`}
+        variant="ghost"
+        onClick={onLoadMore}
+        disabled={loadingMore}
+        className={cn(
+          "w-full text-muted-foreground hover:text-daintree-text",
+          isLoadMoreActive && "ring-1 ring-daintree-accent text-daintree-text"
+        )}
+      >
+        {loadingMore ? (
+          <>
+            <RefreshCw className="animate-spin" />
+            Loading...
+          </>
+        ) : (
+          "Load More"
+        )}
+      </Button>
+    </div>
+  );
+}
+
 interface GitHubResourceListProps {
   type: "issue" | "pr";
   projectPath: string;
@@ -548,67 +612,26 @@ export function GitHubResourceList({
     onClose?.();
   }, [onClose]);
 
-  const LoadMoreFooter = useMemo(() => {
-    if (!hasMore) return () => null;
-    return function ResourceListFooter() {
-      return (
-        <div className="p-3 space-y-2">
-          {loadMoreError && (
-            <div className="p-2 rounded-[var(--radius-md)] bg-overlay-soft border border-[var(--border-divider)]">
-              <p className="text-xs text-muted-foreground">{sanitizeIpcError(loadMoreError)}</p>
-              {isTokenRelatedError(loadMoreError) ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleOpenGitHubSettings}
-                  className="mt-1 text-muted-foreground hover:text-daintree-text h-6 text-xs"
-                >
-                  <Settings className="h-3 w-3" />
-                  Open GitHub Settings
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLoadMore}
-                  className="mt-1 text-muted-foreground hover:text-daintree-text h-6 text-xs"
-                >
-                  Retry
-                </Button>
-              )}
-            </div>
-          )}
-          <Button
-            id={`github-${type}-load-more`}
-            variant="ghost"
-            onClick={handleLoadMore}
-            disabled={loadingMore}
-            className={cn(
-              "w-full text-muted-foreground hover:text-daintree-text",
-              isLoadMoreActive && "ring-1 ring-daintree-accent text-daintree-text"
-            )}
-          >
-            {loadingMore ? (
-              <>
-                <RefreshCw className="animate-spin" />
-                Loading...
-              </>
-            ) : (
-              "Load More"
-            )}
-          </Button>
-        </div>
-      );
-    };
-  }, [
-    hasMore,
-    loadMoreError,
-    loadingMore,
-    isLoadMoreActive,
-    handleLoadMore,
-    handleOpenGitHubSettings,
-    type,
-  ]);
+  const footerContext = useMemo<LoadMoreFooterContext>(
+    () => ({
+      hasMore,
+      loadingMore,
+      isLoadMoreActive,
+      loadMoreError,
+      type,
+      onLoadMore: handleLoadMore,
+      onOpenSettings: handleOpenGitHubSettings,
+    }),
+    [
+      hasMore,
+      loadingMore,
+      isLoadMoreActive,
+      loadMoreError,
+      type,
+      handleLoadMore,
+      handleOpenGitHubSettings,
+    ]
+  );
 
   const renderEmpty = () => {
     if (exactNumberNotFound !== null) {
@@ -867,6 +890,7 @@ export function GitHubResourceList({
               <Virtuoso
                 ref={virtuosoRef}
                 data={data}
+                context={footerContext}
                 style={{ height: "100%" }}
                 fixedItemHeight={RESOURCE_ITEM_HEIGHT_PX}
                 computeItemKey={(_, item) => item.number}

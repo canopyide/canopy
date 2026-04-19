@@ -74,10 +74,12 @@ vi.mock("react-virtuoso", () => ({
     data,
     itemContent,
     components,
+    context,
   }: {
     data: unknown[];
     itemContent: (index: number, item: unknown) => ReactNode;
-    components?: { Footer?: () => ReactNode };
+    components?: { Footer?: (props: { context?: unknown }) => ReactNode };
+    context?: unknown;
   }) => {
     const Footer = components?.Footer;
     return (
@@ -85,7 +87,7 @@ vi.mock("react-virtuoso", () => ({
         {data.map((item, index) => (
           <div key={index}>{itemContent(index, item)}</div>
         ))}
-        {Footer ? <Footer /> : null}
+        {Footer ? <Footer context={context} /> : null}
       </div>
     );
   },
