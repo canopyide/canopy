@@ -350,15 +350,19 @@ class PullRequestService {
       return;
     }
 
-    // Collect resolved worktrees that need revalidation
+    // Collect resolved worktrees that need revalidation. Always include the
+    // detected PR number so GitHubService can use ETag conditional requests
+    // to skip GraphQL when nothing has changed.
     const candidatesToRevalidate: PRCheckCandidate[] = [];
     for (const worktreeId of this.resolvedWorktrees) {
       const context = this.candidates.get(worktreeId);
-      if (context) {
+      const detectedPR = this.detectedPRs.get(worktreeId);
+      if (context && detectedPR) {
         candidatesToRevalidate.push({
           worktreeId,
           issueNumber: context.issueNumber,
           branchName: context.branchName,
+          knownPRNumber: detectedPR.number,
         });
       }
     }
