@@ -34,6 +34,7 @@ export interface WorktreeViewActions {
   applyRemove(worktreeId: string, version: number): void;
   setLoading(loading: boolean): void;
   setError(error: string | null): void;
+  setFatalError(message: string): void;
   setReconnecting(reconnecting: boolean): void;
 }
 
@@ -99,6 +100,14 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
 
     setError(error: string | null) {
       set({ error });
+    },
+
+    setFatalError(message: string) {
+      // Clear `isInitialized` alongside setting the error so the next
+      // `fetchInitialState` treats the post-restart fetch as a cold start
+      // instead of a silent wake refresh — otherwise fetch errors on the
+      // restarted host would be swallowed.
+      set({ error: message, isInitialized: false, isReconnecting: false });
     },
 
     setReconnecting(reconnecting: boolean) {

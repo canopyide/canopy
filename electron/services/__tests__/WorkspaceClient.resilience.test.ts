@@ -52,6 +52,12 @@ const { mockHosts, MockWorkspaceHostProcess } = vi.hoisted(() => {
       this._isDisposed = true;
     });
 
+    manualRestart = vi.fn(() => {
+      // Emulate the real host: a manual restart emits "restarted" so
+      // `WorkspaceClient` runs reloadProjectAfterRestart.
+      this.emit("restarted");
+    });
+
     setLogLevelOverrides = vi.fn();
 
     // Test helpers
@@ -829,6 +835,41 @@ describe("WorkspaceClient multi-process manager", () => {
         .getAllRequests()
         .filter((r: any) => r.type === "load-project")[1];
       expect(reloadReq.rootPath).toBe(path.resolve("/project-a"));
+    });
+  });
+
+  describe("manualRestartForWindow", () => {
+    it("resolves the window's host and invokes manualRestart", async () => {
+      const load = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load;
+
+      client.manualRestartForWindow(1);
+
+      expect(h(0).manualRestart).toHaveBeenCalledTimes(1);
+    });
+
+    it("triggers reloadProjectAfterRestart via the emitted 'restarted' event", async () => {
+      const load = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load;
+
+      client.manualRestartForWindow(1);
+
+      // The mock's manualRestart() emits "restarted"; the real
+      // WorkspaceClient listener should enqueue a fresh load-project.
+      await vi.waitFor(() => {
+        const reqs = h(0)
+          .getAllRequests()
+          .filter((r: any) => r.type === "load-project");
+        expect(reqs).toHaveLength(2);
+      });
+    });
+
+    it("no-ops when the window has no associated project", () => {
+      // No loadProject — window is not tracked.
+      expect(() => client.manualRestartForWindow(999)).not.toThrow();
+      expect(mockHosts).toHaveLength(0);
     });
   });
 

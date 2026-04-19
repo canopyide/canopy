@@ -884,6 +884,27 @@ export class WorkspaceClient extends EventEmitter {
     this.releaseWindow(windowId);
   }
 
+  /**
+   * User-initiated restart of the workspace host for a window's project after
+   * the auto-restart budget was exhausted. Resolves the host via the existing
+   * entry (kept alive after a fatal crash) and re-spawns its child process.
+   * The existing `"restarted"` listener in `wireHostEvents` drives
+   * `reloadProjectAfterRestart` so ports re-broker and worktree state refreshes.
+   */
+  manualRestartForWindow(windowId: number): void {
+    if (this.isDisposed) return;
+
+    const entry = this.resolveEntryForWindow(windowId);
+    if (!entry) {
+      console.warn(
+        `[WorkspaceClient] No entry for window ${windowId}; cannot manual-restart workspace host`
+      );
+      return;
+    }
+
+    entry.host.manualRestart();
+  }
+
   async listBranches(rootPath: string): Promise<BranchInfo[]> {
     const host = this.resolveHostForPath(rootPath);
     if (!host) return [];

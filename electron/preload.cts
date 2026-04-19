@@ -1207,6 +1207,8 @@ const api: ElectronAPI = {
     getAllIssueAssociations: (): Promise<Record<string, IssueAssociation>> =>
       _unwrappingInvoke(CHANNELS.WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS),
 
+    restartService: (): Promise<void> => _unwrappingInvoke(CHANNELS.WORKTREE_RESTART_SERVICE),
+
     onUpdate: (callback: (state: WorktreeState) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { worktree: WorktreeState }) =>
         callback(payload.worktree);

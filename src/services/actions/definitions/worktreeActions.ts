@@ -107,6 +107,21 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     },
   }));
 
+  actions.set("worktree.restartService", () => ({
+    id: "worktree.restartService",
+    title: "Restart Workspace Service",
+    description:
+      "Restart the workspace host. Available after the service has crashed and could not recover automatically.",
+    category: "worktree",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    isEnabled: () => getCurrentViewStore().getState().error !== null,
+    run: async () => {
+      await worktreeClient.restartService();
+    },
+  }));
+
   actions.set("worktree.setActive", () =>
     defineAction({
       id: "worktree.setActive",
