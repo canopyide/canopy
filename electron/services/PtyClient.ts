@@ -32,7 +32,14 @@ import os from "os";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { performance } from "node:perf_hooks";
-import { logInfo, logWarn } from "../utils/logger.js";
+import { createLogger, isValidLogOverrideLevel } from "../utils/logger.js";
+import { store } from "../store.js";
+
+const logger = createLogger("main:PtyClient");
+const logInfo = (msg: string, ctx?: Record<string, unknown>) =>
+  ctx ? logger.info(msg, ctx) : logger.info(msg);
+const logWarn = (msg: string, ctx?: Record<string, unknown>) =>
+  ctx ? logger.warn(msg, ctx) : logger.warn(msg);
 import { getTrashedPidTracker } from "./TrashedPidTracker.js";
 import { RequestResponseBroker, BrokerError } from "./rpc/index.js";
 import { bridgePtyEvent } from "./pty/PtyEventsBridge.js";
@@ -163,6 +170,27 @@ function classifyCrash(code: number | null, signal: string | null): CrashType {
   return "CLEAN_EXIT";
 }
 
+/**
+ * Read and sanitize the persisted log-level override map. Invalid values are
+ * dropped — the stored payload is `Record<string, string>` but user edits to
+ * the config file could leave it in an unknown state, so we defensively
+ * filter before seeding the cache.
+ */
+function readPersistedOverrides(): Record<string, string> {
+  try {
+    const raw = store.get("logLevelOverrides") ?? {};
+    const clean: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof key === "string" && key && isValidLogOverrideLevel(value)) {
+        clean[key] = value as string;
+      }
+    }
+    return clean;
+  } catch {
+    return {};
+  }
+}
+
 const RTT_BUFFER_SIZE = 20;
 const RTT_LOG_EVERY_N_SAMPLES = 10;
 const RTT_LOG_INTERVAL_MS = 5 * 60 * 1000;
@@ -250,6 +278,13 @@ export class PtyClient extends EventEmitter {
 
   private hostStdoutBuffer = "";
   private hostStderrBuffer = "";
+
+  /** Cached log-level overrides. Replayed on every host spawn/restart via the
+   * `ready` event, which is the first moment the child's message listener is
+   * attached (push-on-spawn would race and silently drop the first message).
+   * Seeded from the persisted store so boot-time host spawns inherit the
+   * user's saved configuration without waiting for renderer IPC. */
+  private logLevelOverridesCache: Record<string, string> = readPersistedOverrides();
 
   /**
    * Authoritative crash reason captured from `app.on("child-process-gone")`.
@@ -416,6 +451,7 @@ export class PtyClient extends EventEmitter {
         env: {
           ...(process.env as Record<string, string>),
           DAINTREE_USER_DATA: app.getPath("userData"),
+          DAINTREE_UTILITY_PROCESS_KIND: "pty-host",
         },
       });
       console.log(`[PtyClient] Pty Host started with ${this.config.memoryLimitMb}MB memory limit`);
@@ -599,6 +635,13 @@ export class PtyClient extends EventEmitter {
           this.readyReject = null;
         }
         console.log("[PtyClient] Pty Host is ready");
+        // Replay log-level overrides on every ready (initial spawn + restarts).
+        // The child's message listener isn't attached until after it receives
+        // "ready", so pushing on spawn would race.
+        this.send({
+          type: "set-log-level-overrides",
+          overrides: this.logLevelOverridesCache,
+        });
         if (this.needsRespawn) {
           this.needsRespawn = false;
           this.respawnPending();
@@ -931,6 +974,18 @@ export class PtyClient extends EventEmitter {
   /** Set callback for MessagePort refresh (called on host restart) */
   setPortRefreshCallback(callback: () => void): void {
     this.onPortRefresh = callback;
+  }
+
+  /**
+   * Update the cached log-level overrides and push immediately if the host is
+   * ready. On every subsequent restart the cached map is replayed via the
+   * `ready` handler — callers don't need to track restarts themselves.
+   */
+  setLogLevelOverrides(overrides: Record<string, string>): void {
+    this.logLevelOverridesCache = { ...overrides };
+    if (this.isInitialized && this.child) {
+      this.send({ type: "set-log-level-overrides", overrides: this.logLevelOverridesCache });
+    }
   }
 
   private flushPendingMessagePorts(): void {

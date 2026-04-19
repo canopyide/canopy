@@ -6,7 +6,17 @@ import type { AgentEvent } from "./AgentStateMachine.js";
 import type { AgentStateChangeTrigger } from "../schemas/agent.js";
 import type { PtyPool } from "./PtyPool.js";
 import type { ProcessTreeCache } from "./ProcessTreeCache.js";
-import { logDebug, logInfo, logWarn, logError } from "../utils/logger.js";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("pty-host:PtyManager");
+const logDebug = (msg: string, ctx?: Record<string, unknown>) =>
+  ctx ? logger.debug(msg, ctx) : logger.debug(msg);
+const logInfo = (msg: string, ctx?: Record<string, unknown>) =>
+  ctx ? logger.info(msg, ctx) : logger.info(msg);
+const logWarn = (msg: string, ctx?: Record<string, unknown>) =>
+  ctx ? logger.warn(msg, ctx) : logger.warn(msg);
+const logError = (msg: string, error?: unknown, ctx?: Record<string, unknown>) =>
+  ctx ? logger.error(msg, error, ctx) : logger.error(msg, error);
 
 import {
   TerminalRegistry,

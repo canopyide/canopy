@@ -85,6 +85,13 @@ vi.mock("../skeletonCss.js", () => ({
 
 vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
+  createLogger: vi.fn(() => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    name: "test-logger",
+  })),
 }));
 
 const mockGetAll = vi.fn<() => Array<{ projectId?: string; agentState?: string }>>(() => []);
