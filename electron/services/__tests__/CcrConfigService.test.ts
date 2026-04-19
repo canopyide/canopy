@@ -165,17 +165,17 @@ describe("CcrConfigService", () => {
     });
 
     it("stopWatching awaits in-flight loadAndApply before resolving", async () => {
-      let resolveLoad: (() => void) | null = null;
+      const resolveRef: { fn: (() => void) | null } = { fn: null };
       const loadSpy = vi.spyOn(service, "loadAndApply").mockImplementation(
         () =>
           new Promise<AgentPreset[]>((resolve) => {
-            resolveLoad = () => resolve([]);
+            resolveRef.fn = () => resolve([]);
           })
       );
 
       service.startWatching();
       // Enter the poll loop and trigger the first iteration (loadAndApply starts
-      // but does not resolve — we control it via resolveLoad).
+      // but does not resolve — we control it via resolveRef.fn).
       await vi.advanceTimersByTimeAsync(30_000);
       expect(loadSpy).toHaveBeenCalledTimes(1);
 
@@ -190,7 +190,7 @@ describe("CcrConfigService", () => {
       expect(settled).toBe(false);
 
       // Releasing loadAndApply lets the loop observe the abort and exit.
-      resolveLoad?.();
+      resolveRef.fn?.();
       await stopped;
       expect(settled).toBe(true);
 
@@ -268,11 +268,11 @@ describe("CcrConfigService", () => {
     });
 
     it("start → stop → start does not orphan the new watcher", async () => {
-      let resolveFirst: (() => void) | null = null;
+      const firstRef: { fn: (() => void) | null } = { fn: null };
       const loadSpy = vi.spyOn(service, "loadAndApply").mockImplementationOnce(
         () =>
           new Promise<AgentPreset[]>((resolve) => {
-            resolveFirst = () => resolve([]);
+            firstRef.fn = () => resolve([]);
           })
       );
       loadSpy.mockResolvedValue([]);
@@ -286,7 +286,7 @@ describe("CcrConfigService", () => {
       service.startWatching();
 
       // Release the first iteration so the old loop can exit.
-      resolveFirst?.();
+      firstRef.fn?.();
       await stopped;
 
       // The second watcher (newly started) must still be live and firing polls.
