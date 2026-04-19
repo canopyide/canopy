@@ -89,6 +89,10 @@
       button:active {
         opacity: 0.8;
       }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
       .btn-primary {
         background: #3b82f6;
         color: #fff;
@@ -96,6 +100,15 @@
       .btn-secondary {
         background: #27272a;
         color: #e4e4e7;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 12px;
+        color: #a1a1aa;
+        min-height: 16px;
+      }
+      .status.error {
+        color: #f87171;
       }
     </style>
   </head>
@@ -118,8 +131,11 @@
       <div class="details" id="crash-details">Loading crash details…</div>
       <div class="actions">
         <button class="btn-primary" id="btn-reload">Reload Window</button>
+        <button class="btn-secondary" id="btn-export-diagnostics">Export Diagnostics</button>
+        <button class="btn-secondary" id="btn-open-logs">Open Logs</button>
         <button class="btn-secondary" id="btn-reset">Reset Workspace State</button>
       </div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
     </div>
     <script src="recovery-renderer.js"></script>
   </body>

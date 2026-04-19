@@ -566,6 +566,8 @@ export const CHANNELS = {
   // Renderer Recovery channels (in-session crash recovery)
   RECOVERY_RELOAD_APP: "recovery:reload-app",
   RECOVERY_RESET_AND_RELOAD: "recovery:reset-and-reload",
+  RECOVERY_EXPORT_DIAGNOSTICS: "recovery:export-diagnostics",
+  RECOVERY_OPEN_LOGS: "recovery:open-logs",
 
   // Demo mode channels (dev-only)
   DEMO_MOVE_TO: "demo:move-to",
