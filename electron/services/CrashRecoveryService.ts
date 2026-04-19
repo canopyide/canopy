@@ -52,6 +52,11 @@ export class CrashRecoveryService {
     return this.pendingCrash;
   }
 
+  getLastBackupTimestamp(): number | null {
+    const info = this.readBackupInfo();
+    return info.exists && typeof info.timestamp === "number" ? info.timestamp : null;
+  }
+
   getConfig(): CrashRecoveryConfig {
     const stored = store.get("crashRecovery");
     return {

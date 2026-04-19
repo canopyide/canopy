@@ -561,6 +561,13 @@ export class ProjectViewManager {
             reason: details.reason,
             exitCode: String(details.exitCode),
           });
+          if (entry?.projectPath) {
+            params.set("project", path.basename(entry.projectPath));
+          }
+          const backupTimestamp = getCrashRecoveryService().getLastBackupTimestamp();
+          if (backupTimestamp !== null) {
+            params.set("backupTimestamp", String(backupTimestamp));
+          }
           if (process.env.NODE_ENV === "development") {
             wc.loadURL(`${getDevServerUrl()}/recovery.html?${params}`);
           } else {

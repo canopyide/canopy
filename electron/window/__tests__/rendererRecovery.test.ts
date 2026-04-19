@@ -78,19 +78,23 @@ function createMockWindow() {
 
 interface CrashRecoveryOptions {
   onRecreateWindow?: () => Promise<void>;
+  backupTimestamp?: number | null;
 }
 
 function setupCrashRecovery(
   win: ReturnType<typeof createMockWindow>,
   options: CrashRecoveryOptions = {}
 ) {
-  const { onRecreateWindow } = options;
+  const { onRecreateWindow, backupTimestamp = null } = options;
   const rendererCrashTimestamps: number[] = [];
   const oomRecreationTimestamps: number[] = [];
   const recordCrash = vi.fn();
 
   const getRecoveryUrl = (reason: string, exitCode: number): string => {
     const params = new URLSearchParams({ reason, exitCode: String(exitCode) });
+    if (backupTimestamp !== null) {
+      params.set("backupTimestamp", String(backupTimestamp));
+    }
     return `app://daintree/recovery.html?${params}`;
   };
 
@@ -489,6 +493,55 @@ describe("renderer crash recovery", () => {
 
     expect(notifyError).not.toHaveBeenCalled();
     expect(win.webContents.loadURL).toHaveBeenCalledOnce();
+  });
+
+  it("recovery URL includes backupTimestamp when service returns one", () => {
+    const win = createMockWindow();
+    setupCrashRecovery(win, { backupTimestamp: 1_700_000_000_000 });
+
+    win._emitWc("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+    win._emitWc("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+    win._emitWc("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+
+    expect(win.webContents.loadURL).toHaveBeenCalledOnce();
+    const url = win.webContents.loadURL.mock.calls[0][0] as string;
+    expect(url).toContain("backupTimestamp=1700000000000");
+  });
+
+  it("recovery URL omits backupTimestamp when service returns null", () => {
+    const win = createMockWindow();
+    setupCrashRecovery(win, { backupTimestamp: null });
+
+    win._emitWc("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+    win._emitWc("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+    win._emitWc("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+
+    expect(win.webContents.loadURL).toHaveBeenCalledOnce();
+    const url = win.webContents.loadURL.mock.calls[0][0] as string;
+    expect(url).not.toContain("backupTimestamp");
+  });
+
+  it("killed reason on third crash still loads recovery page", () => {
+    const win = createMockWindow();
+    setupCrashRecovery(win);
+
+    win._emitWc("render-process-gone", { reason: "killed", exitCode: 137 });
+    vi.advanceTimersByTime(0);
+    win._emitWc("render-process-gone", { reason: "killed", exitCode: 137 });
+    vi.advanceTimersByTime(0);
+    win._emitWc("render-process-gone", { reason: "killed", exitCode: 137 });
+    vi.advanceTimersByTime(0);
+
+    expect(win.webContents.loadURL).toHaveBeenCalledOnce();
+    const url = win.webContents.loadURL.mock.calls[0][0] as string;
+    expect(url).toContain("reason=killed");
+    expect(url).toContain("exitCode=137");
   });
 });
 
