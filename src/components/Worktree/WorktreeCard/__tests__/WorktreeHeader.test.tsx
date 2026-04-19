@@ -809,6 +809,54 @@ describe("WorktreeHeader collapsed session indicators", () => {
   });
 });
 
+describe("WorktreeHeader cleanup button", () => {
+  it("renders the cleanup button when onCleanupWorktree is provided", () => {
+    renderHeader({ onCleanupWorktree: vi.fn() });
+    const button = screen.getByRole("button", { name: "Delete worktree" });
+    expect(button).toBeDefined();
+    expect(button.getAttribute("data-testid")).toBe("worktree-cleanup-button");
+  });
+
+  it("does not render the cleanup button when onCleanupWorktree is omitted", () => {
+    renderHeader();
+    expect(screen.queryByRole("button", { name: "Delete worktree" })).toBeNull();
+    expect(screen.queryByTestId("worktree-cleanup-button")).toBeNull();
+  });
+
+  it("places the cleanup button outside the hover-gated actions wrapper", () => {
+    renderHeader({ onCleanupWorktree: vi.fn() });
+    const button = screen.getByTestId("worktree-cleanup-button");
+    const wrapper = screen.getByTestId("worktree-actions-wrapper");
+    expect(wrapper.contains(button)).toBe(false);
+  });
+
+  it("calls onCleanupWorktree and stops propagation when clicked", () => {
+    const onCleanupWorktree = vi.fn();
+    const onParentClick = vi.fn();
+    render(
+      <TooltipProvider>
+        <div onClick={onParentClick} data-testid="parent-wrapper">
+          <WorktreeHeader
+            worktree={baseWorktree}
+            isActive={false}
+            isMainWorktree={false}
+            isPinned={false}
+            branchLabel="feature/test"
+            badges={{}}
+            menu={baseMenu}
+            onCleanupWorktree={onCleanupWorktree}
+          />
+        </div>
+      </TooltipProvider>
+    );
+
+    const button = screen.getByRole("button", { name: "Delete worktree" });
+    fireEvent.click(button);
+    expect(onCleanupWorktree).toHaveBeenCalledOnce();
+    expect(onParentClick).not.toHaveBeenCalled();
+  });
+});
+
 describe("WorktreeHeader icon button hit targets", () => {
   it("collapse button has p-1.5 for WCAG 24px minimum", () => {
     renderHeader({

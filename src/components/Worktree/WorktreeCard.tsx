@@ -768,6 +768,11 @@ export const WorktreeCard = React.memo(function WorktreeCard({
                 resourceEndpoint={worktree.resourceStatus?.endpoint}
                 resourceLastCheckedAt={worktree.resourceStatus?.lastCheckedAt}
                 onCheckResourceStatus={hasStatusCommand ? handleResourceStatus : undefined}
+                onCleanupWorktree={
+                  chipState === "cleanup" && !isMainWorktree
+                    ? () => setShowDeleteDialog(true)
+                    : undefined
+                }
                 badges={{
                   onOpenIssue: worktree.issueNumber ? handleOpenIssueExternal : undefined,
                   onOpenPR: worktree.prNumber ? handleOpenPRExternal : undefined,
