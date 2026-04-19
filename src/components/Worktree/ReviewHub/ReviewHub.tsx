@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useSta
 import { createPortal } from "react-dom";
 import type { StagingStatus, GitStatus } from "@shared/types";
 import type { CrossWorktreeFile } from "@shared/types/ipc/git";
+import type { GitOperationReason } from "@shared/types/ipc/errors";
 import { cn } from "@/lib/utils";
 import { useOverlayState } from "@/hooks";
 import {
@@ -25,6 +26,7 @@ import { debounce } from "@/utils/debounce";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { useShallow } from "zustand/react/shallow";
 import { githubClient } from "@/clients/githubClient";
+import { actionService } from "@/services/ActionService";
 
 interface ReviewHubProps {
   isOpen: boolean;
@@ -33,6 +35,53 @@ interface ReviewHubProps {
 }
 
 type DiffMode = "working-tree" | "base-branch";
+
+interface PushErrorState {
+  reason: GitOperationReason;
+  rawMessage: string;
+}
+
+type PushBannerCta = { kind: "settings-github"; label: string } | { kind: "retry"; label: string };
+
+interface PushBannerConfig {
+  message: string;
+  showRaw: boolean;
+  cta?: PushBannerCta;
+}
+
+function getPushBannerConfig(reason: GitOperationReason): PushBannerConfig {
+  switch (reason) {
+    case "auth-failed":
+      return {
+        message: "Authentication failed — check your credentials or SSH key.",
+        showRaw: false,
+        cta: { kind: "settings-github", label: "Open GitHub settings" },
+      };
+    case "push-rejected-outdated":
+      return {
+        message: "The remote has new commits. Pull or rebase before pushing.",
+        showRaw: false,
+      };
+    case "push-rejected-policy":
+      return {
+        message: "The remote rejected this push (protected branch or repository rule).",
+        showRaw: true,
+      };
+    case "hook-rejected":
+      return {
+        message: "A server-side hook rejected the push.",
+        showRaw: true,
+      };
+    case "network-unavailable":
+      return {
+        message: "Could not reach the remote. Check your internet connection.",
+        showRaw: false,
+        cta: { kind: "retry", label: "Retry push" },
+      };
+    default:
+      return { message: "Push failed. See details below.", showRaw: true };
+  }
+}
 
 function statusLabel(status: string): { label: string; className: string } {
   switch (status) {
@@ -57,7 +106,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushError, setPushError] = useState<PushErrorState | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     path: string;
@@ -326,6 +375,25 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     [worktreePath]
   );
 
+  const runPush = useCallback(async () => {
+    try {
+      const result = await window.electron.git.push(worktreePath);
+      if (result.success) {
+        setPushError(null);
+      } else {
+        setPushError({
+          reason: result.gitReason ?? "unknown",
+          rawMessage: result.error ?? "",
+        });
+      }
+    } catch (err) {
+      setPushError({
+        reason: "unknown",
+        rawMessage: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, [worktreePath]);
+
   const handleCommitAndPush = useCallback(
     async (message: string) => {
       setActionError(null);
@@ -338,17 +406,16 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         throw err;
       }
       await refresh();
-      try {
-        const result = await window.electron.git.push(worktreePath);
-        if (!result.success) {
-          setPushError(`Push failed: ${result.error}`);
-        }
-      } catch (err) {
-        setPushError(`Push failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      await runPush();
     },
-    [worktreePath, refresh]
+    [worktreePath, refresh, runPush]
   );
+
+  const handleRetryPush = useCallback(async () => {
+    setPushError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    await runPush();
+  }, [runPush]);
 
   useLayoutEffect(() => {
     if (scrollContainerRef.current && status) {
@@ -594,12 +661,63 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
               <span>{actionError}</span>
             </div>
           )}
-          {pushError && (
-            <div className="px-4 py-2 text-xs text-status-warning bg-status-warning/10 flex items-start gap-2 shrink-0">
-              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>Committed locally. {pushError}</span>
-            </div>
-          )}
+          {pushError &&
+            (() => {
+              const config = getPushBannerConfig(pushError.reason);
+              const onCtaClick = () => {
+                if (!config.cta) return;
+                if (config.cta.kind === "settings-github") {
+                  void actionService.dispatch(
+                    "app.settings.openTab",
+                    { tab: "github" },
+                    { source: "user" }
+                  );
+                } else {
+                  void handleRetryPush();
+                }
+              };
+              return (
+                <div
+                  role="alert"
+                  data-testid="review-hub-push-error"
+                  data-reason={pushError.reason}
+                  className="px-4 py-2 text-xs text-status-warning bg-status-warning/10 flex items-start gap-2 shrink-0"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div>
+                      <span className="font-medium">Committed locally.</span>{" "}
+                      <span>{config.message}</span>
+                    </div>
+                    {config.showRaw && pushError.rawMessage && (
+                      <pre
+                        data-testid="review-hub-push-error-details"
+                        className="mt-1 text-[10px] font-mono whitespace-pre-wrap break-all opacity-70"
+                      >
+                        {pushError.rawMessage}
+                      </pre>
+                    )}
+                    {config.cta && (
+                      <div className="mt-1.5">
+                        <button
+                          type="button"
+                          onClick={onCtaClick}
+                          data-testid="review-hub-push-error-cta"
+                          className={cn(
+                            "inline-flex items-center gap-1 px-2 py-0.5 rounded",
+                            "bg-status-warning/20 hover:bg-status-warning/30",
+                            "text-status-warning text-[11px] font-medium transition-colors",
+                            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-status-warning"
+                          )}
+                        >
+                          {config.cta.label}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
           {/* Content */}
           <div
