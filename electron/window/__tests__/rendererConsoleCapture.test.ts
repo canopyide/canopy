@@ -191,6 +191,51 @@ describe("attachRendererConsoleCapture", () => {
     __resetRendererConsoleCaptureForTests(wc as unknown as Electron.WebContents);
   });
 
+  it("releases quota after the rate window expires", () => {
+    vi.useFakeTimers();
+    const wc = createMockWebContents();
+    attachRendererConsoleCapture(wc as unknown as Electron.WebContents);
+
+    for (let i = 0; i < 6; i++) wc.emit(makeDetails("warning"));
+    expect(logWarnMock).toHaveBeenCalledTimes(5);
+
+    vi.advanceTimersByTime(5001);
+    wc.emit(makeDetails("warning"));
+    expect(logWarnMock).toHaveBeenCalledTimes(6);
+
+    __resetRendererConsoleCaptureForTests(wc as unknown as Electron.WebContents);
+    vi.useRealTimers();
+  });
+
+  it("keeps warn and error quotas independent at the same source position", () => {
+    const wc = createMockWebContents();
+    attachRendererConsoleCapture(wc as unknown as Electron.WebContents);
+
+    for (let i = 0; i < 6; i++) wc.emit(makeDetails("warning"));
+    for (let i = 0; i < 6; i++) wc.emit(makeDetails("error"));
+
+    expect(logWarnMock).toHaveBeenCalledTimes(5);
+    expect(logErrorMock).toHaveBeenCalledTimes(5);
+
+    __resetRendererConsoleCaptureForTests(wc as unknown as Electron.WebContents);
+  });
+
+  it("handles non-string sourceId without throwing", () => {
+    const wc = createMockWebContents();
+    attachRendererConsoleCapture(wc as unknown as Electron.WebContents);
+
+    expect(() => {
+      wc.emit({ level: "warning", message: "null src", lineNumber: 1, sourceId: null });
+      wc.emit({ level: "warning", message: "num src", lineNumber: 2, sourceId: 42 });
+      wc.emit({ level: "warning", message: "obj src", lineNumber: 3, sourceId: {} });
+    }).not.toThrow();
+
+    expect(logWarnMock).toHaveBeenCalledTimes(3);
+    expect(logWarnMock.mock.calls.every((c) => c[1].sourceId === "")).toBe(true);
+
+    __resetRendererConsoleCaptureForTests(wc as unknown as Electron.WebContents);
+  });
+
   it("tolerates missing sourceId and lineNumber", () => {
     const wc = createMockWebContents();
     attachRendererConsoleCapture(wc as unknown as Electron.WebContents);

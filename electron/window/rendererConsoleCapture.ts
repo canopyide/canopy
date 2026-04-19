@@ -47,7 +47,6 @@ function shouldAllow(
 
 export function attachRendererConsoleCapture(wc: WebContents): void {
   if (attached.has(wc)) return;
-  attached.add(wc);
 
   wc.on("console-message", (_event, ...args: unknown[]) => {
     if (wc.isDestroyed()) return;
@@ -58,7 +57,7 @@ export function attachRendererConsoleCapture(wc: WebContents): void {
     const { level, message, lineNumber, sourceId } = details;
     if (level !== "warning" && level !== "error") return;
 
-    const safeSourceId = sourceId ?? "";
+    const safeSourceId = typeof sourceId === "string" ? sourceId : "";
     const safeLineNumber = typeof lineNumber === "number" ? lineNumber : 0;
 
     if (!shouldAllow(wc, level, safeSourceId, safeLineNumber)) return;
@@ -76,6 +75,8 @@ export function attachRendererConsoleCapture(wc: WebContents): void {
       logWarn(message ?? "", context);
     }
   });
+
+  attached.add(wc);
 }
 
 export function __resetRendererConsoleCaptureForTests(wc: WebContents): void {
