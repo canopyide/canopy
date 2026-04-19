@@ -6,6 +6,8 @@ import { SettingsSelect } from "../SettingsSelect";
 import { SettingsNumberInput } from "../SettingsNumberInput";
 import { SettingsTextarea } from "../SettingsTextarea";
 import { SettingsChoicebox, type ChoiceboxOption } from "../SettingsChoicebox";
+import { SettingsCheckbox } from "../SettingsCheckbox";
+import { SettingsSwitch } from "../SettingsSwitch";
 
 describe("SettingsInput", () => {
   it("renders label associated to input", () => {
@@ -534,5 +536,350 @@ describe("SettingsChoicebox", () => {
     );
     const wrapper = container.querySelector(".custom-class");
     expect(wrapper).toBeTruthy();
+  });
+});
+
+describe("SettingsCheckbox", () => {
+  it("renders label and description", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Test Setting")).toBeTruthy();
+    expect(screen.getByText("A test description")).toBeTruthy();
+  });
+
+  it("associates label with checkbox", () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={onChange}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox).toBeTruthy();
+  });
+
+  it("wires description to aria-describedby", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    const describedBy = checkbox.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+  });
+
+  it("shows error and sets aria-invalid", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+        error="Invalid state"
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("alert")?.textContent).toBe("Invalid state");
+  });
+
+  it("hides description when error is shown", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+        error="Invalid state"
+      />
+    );
+    expect(screen.queryByText("A test description")).toBeNull();
+    expect(screen.getByText("Invalid state")).toBeTruthy();
+  });
+
+  it("calls onChange with false when unchecking", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={true}
+        onChange={onChange}
+      />
+    );
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("calls onChange with true when checking", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={onChange}
+      />
+    );
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("does not call onChange when disabled", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={onChange}
+        disabled
+      />
+    );
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("applies disabled styling", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+        disabled
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    const checkboxEl = checkbox as HTMLInputElement;
+    expect(checkboxEl.disabled).toBe(true);
+    const label = screen.getByText("Test Setting");
+    expect(label).toBeTruthy();
+    expect(label.classList.contains("cursor-not-allowed")).toBe(true);
+  });
+
+  it("uses semantic tokens for background and border", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.className).toContain("bg-daintree-bg");
+    expect(checkbox.className).toContain("border-border-strong");
+  });
+
+  it("uses accent color when checked", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={true}
+        onChange={vi.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.className).toContain("data-[state=checked]:bg-daintree-accent");
+    expect(checkbox.className).toContain("data-[state=checked]:border-daintree-accent");
+  });
+
+  it("renders checkmark when checked", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={true}
+        onChange={vi.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    const indicator = checkbox.querySelector("svg");
+    expect(indicator).toBeTruthy();
+  });
+
+  it("uses error styling when error is present", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+        error="Invalid state"
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.className).toContain("border-status-error");
+    expect(checkbox.className).toContain("data-[state=checked]:border-status-error");
+  });
+});
+
+describe("SettingsSwitch", () => {
+  it("renders with aria-label", () => {
+    render(<SettingsSwitch checked={false} onCheckedChange={vi.fn()} aria-label="Test switch" />);
+    const switchEl = screen.getByRole("switch");
+    expect(switchEl).toBeTruthy();
+    expect(switchEl.getAttribute("aria-label")).toBe("Test switch");
+  });
+
+  it("calls onCheckedChange with true when toggling on", async () => {
+    const onChange = vi.fn();
+    render(<SettingsSwitch checked={false} onCheckedChange={onChange} aria-label="Test switch" />);
+
+    const switchEl = screen.getByRole("switch");
+    fireEvent.click(switchEl);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("calls onCheckedChange with false when toggling off", async () => {
+    const onChange = vi.fn();
+    render(<SettingsSwitch checked={true} onCheckedChange={onChange} aria-label="Test switch" />);
+
+    const switchEl = screen.getByRole("switch");
+    fireEvent.click(switchEl);
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("does not call onCheckedChange when disabled", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsSwitch
+        checked={false}
+        onCheckedChange={onChange}
+        aria-label="Test switch"
+        disabled
+      />
+    );
+
+    const switchEl = screen.getByRole("switch");
+    fireEvent.click(switchEl);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("applies disabled styling", () => {
+    const { container } = render(
+      <SettingsSwitch checked={false} onCheckedChange={vi.fn()} aria-label="Test switch" disabled />
+    );
+    const switchEl = container.querySelector('[role="switch"]');
+    expect(switchEl?.classList.contains("opacity-50")).toBe(true);
+    expect(switchEl?.classList.contains("cursor-not-allowed")).toBe(true);
+  });
+
+  it("uses correct track dimensions", () => {
+    const { container } = render(
+      <SettingsSwitch checked={false} onCheckedChange={vi.fn()} aria-label="Test switch" />
+    );
+    const switchEl = container.querySelector('[role="switch"]');
+    expect(switchEl?.classList.contains("w-11")).toBe(true);
+    expect(switchEl?.classList.contains("h-6")).toBe(true);
+  });
+
+  it("uses specific transitions (not transition-all)", () => {
+    const { container } = render(
+      <SettingsSwitch checked={false} onCheckedChange={vi.fn()} aria-label="Test switch" />
+    );
+    const switchEl = container.querySelector('[role="switch"]');
+    expect(switchEl?.className).toContain("transition-colors");
+    expect(switchEl?.className).not.toContain("transition-all");
+
+    const thumb = switchEl?.querySelector("[data-state]");
+    expect(thumb?.className).toContain("transition-transform");
+    expect(thumb?.className).not.toContain("transition-all");
+  });
+
+  it("applies accent color scheme by default", () => {
+    const { container } = render(
+      <SettingsSwitch
+        checked={true}
+        onCheckedChange={vi.fn()}
+        aria-label="Test switch"
+        colorScheme="accent"
+      />
+    );
+    const switchEl = container.querySelector('[role="switch"]');
+    expect(switchEl?.className).toContain("data-[state=checked]:bg-daintree-accent");
+  });
+
+  it("applies amber color scheme", () => {
+    const { container } = render(
+      <SettingsSwitch
+        checked={true}
+        onCheckedChange={vi.fn()}
+        aria-label="Test switch"
+        colorScheme="amber"
+      />
+    );
+    const switchEl = container.querySelector('[role="switch"]');
+    expect(switchEl?.className).toContain("data-[state=checked]:bg-status-warning");
+  });
+
+  it("applies danger color scheme", () => {
+    const { container } = render(
+      <SettingsSwitch
+        checked={true}
+        onCheckedChange={vi.fn()}
+        aria-label="Test switch"
+        colorScheme="danger"
+      />
+    );
+    const switchEl = container.querySelector('[role="switch"]');
+    expect(switchEl?.className).toContain("data-[state=checked]:bg-status-error");
+  });
+
+  it("applies correct thumb colors for contrast", () => {
+    const { container: offContainer } = render(
+      <SettingsSwitch checked={false} onCheckedChange={vi.fn()} aria-label="Test switch" />
+    );
+    const thumbOff = offContainer.querySelector('[role="switch"] > span');
+    expect(thumbOff?.className).toContain("bg-daintree-text");
+
+    const { container: onContainer } = render(
+      <SettingsSwitch checked={true} onCheckedChange={vi.fn()} aria-label="Test switch" />
+    );
+    const thumbOn = onContainer.querySelector('[role="switch"] > span');
+    expect(thumbOn?.className).toContain("data-[state=checked]:bg-text-inverse");
+  });
+
+  it("toggles with keyboard (Space key)", () => {
+    const onChange = vi.fn();
+    render(<SettingsSwitch checked={false} onCheckedChange={onChange} aria-label="Test switch" />);
+
+    const switchEl = screen.getByRole("switch");
+    fireEvent.click(switchEl);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("applies className to root", () => {
+    const { container } = render(
+      <SettingsSwitch
+        checked={false}
+        onCheckedChange={vi.fn()}
+        aria-label="Test switch"
+        className="custom-class"
+      />
+    );
+    const switchEl = container.querySelector('[role="switch"]');
+    expect(switchEl?.classList.contains("custom-class")).toBe(true);
   });
 });
