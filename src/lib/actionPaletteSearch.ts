@@ -147,7 +147,7 @@ export function rankActionMatches<T extends SearchableAction>(
   scored.sort((a, b) => {
     if (a.item.enabled !== b.item.enabled) return a.item.enabled ? -1 : 1;
     if (a.score !== b.score) return b.score - a.score;
-    return a.item.title.localeCompare(b.item.title);
+    return a.item.title.localeCompare(b.item.title, "en", { sensitivity: "base" });
   });
 
   return scored.map((entry) => entry.item);

@@ -87,10 +87,10 @@ export function useActionPalette(): UseActionPaletteReturn {
         actionMruList.forEach((id, index) => mruIndexMap.set(id, index));
         return [...items].sort((a, b) => {
           if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-          const aIdx = mruIndexMap.get(a.id) ?? Infinity;
-          const bIdx = mruIndexMap.get(b.id) ?? Infinity;
-          if (aIdx !== bIdx) return aIdx - bIdx;
-          return a.title.localeCompare(b.title);
+          const aIndex = mruIndexMap.get(a.id) ?? Infinity;
+          const bIndex = mruIndexMap.get(b.id) ?? Infinity;
+          if (aIndex !== bIndex) return aIndex - bIndex;
+          return a.title.localeCompare(b.title, "en", { sensitivity: "base" });
         });
       }
 

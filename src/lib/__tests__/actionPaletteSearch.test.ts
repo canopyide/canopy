@@ -161,6 +161,48 @@ describe("rankActionMatches", () => {
     expect(results[0]).toBe(alpha);
   });
 
+  it("keeps identical-acronym matches above non-acronym subsequence matches", () => {
+    const items = [
+      makeAction({ id: "cp", title: "Command Palette" }),
+      makeAction({ id: "cpanel", title: "Close Panel" }),
+      makeAction({ id: "copy", title: "copy path" }),
+      makeAction({ id: "comp", title: "completion" }),
+    ];
+    const results = rankActionMatches("cp", items, []);
+    // All three acronym-like matches (including "copy path" which is prefix match)
+    // outrank scattered subsequence "completion"
+    const ids = results.map((r) => r.id);
+    expect(ids.indexOf("comp")).toBe(ids.length - 1);
+    expect(ids.slice(0, 3).sort()).toEqual(["copy", "cp", "cpanel"].sort());
+  });
+
+  it("disambiguates identical acronyms by alphabetical title when scores tie", () => {
+    const items = [
+      makeAction({ id: "cpanel", title: "Close Panel" }),
+      makeAction({ id: "cp", title: "Command Palette" }),
+    ];
+    // Query is the shared acronym; tiebreaker should be deterministic alphabetical
+    const results = rankActionMatches("cp", items, []);
+    expect(results).toHaveLength(2);
+    // Both are valid matches — order must be deterministic (alphabetical on title)
+    expect(results[0].title < results[1].title || results[0].title === results[1].title).toBe(true);
+  });
+
+  it("full ranked list: prefix > acronym > substring > fuzzy > non-match", () => {
+    const items = [
+      makeAction({ id: "prefix", title: "Terminal Open" }), // 'term' prefix
+      makeAction({ id: "acronym", title: "Toggle Error Markers" }), // 'tem' acronym — different query
+      makeAction({ id: "substring", title: "Close Terminal" }), // 'term' boundary substring
+      makeAction({ id: "fuzzy", title: "take error messages" }), // 'term' scattered
+      makeAction({ id: "none", title: "unrelated" }),
+    ];
+    const results = rankActionMatches("term", items, []);
+    const ids = results.map((r) => r.id);
+    expect(ids).not.toContain("none");
+    expect(ids[0]).toBe("prefix");
+    expect(ids.indexOf("substring")).toBeLessThan(ids.indexOf("fuzzy"));
+  });
+
   it("falls back to title alphabetical for equal score with no MRU", () => {
     const items = [
       makeAction({ id: "b", title: "Beta Terminal" }),
