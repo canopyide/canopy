@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { githubClient } from "@/clients/githubClient";
 import { useNotificationStore } from "@/store/notificationStore";
+import type { GitHubTokenHealthPayload } from "@shared/types";
 
 /**
  * Subscribes to main-process GitHub token health state pushes and surfaces a
@@ -9,20 +10,25 @@ import { useNotificationStore } from "@/store/notificationStore";
  * restored to a healthy state.
  *
  * The main-process service is the source of truth for state; this hook
- * simply reflects transitions into the shared notification store.
+ * simply reflects transitions into the shared notification store. On mount
+ * it also invokes the main-process state getter so a second window (or a
+ * window that mounted after the initial probe completed) can surface the
+ * banner without waiting for the next transition.
  */
 export function useGitHubTokenHealth(): void {
   const notificationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const cleanup = githubClient.onTokenHealthChanged((payload) => {
+    let cancelled = false;
+
+    const apply = (payload: GitHubTokenHealthPayload) => {
+      if (cancelled) return;
       const store = useNotificationStore.getState();
 
       if (payload.status === "unhealthy") {
-        // Coalesce: if we already have a live notification, refresh it rather
-        // than stacking a duplicate. We key on the notification id returned
-        // from the first `addNotification` because the store has no built-in
-        // correlationId-based dedup.
+        // Coalesce: if we already have a live notification, don't stack a
+        // duplicate. Keyed on the notification id returned from the first
+        // `addNotification` since the store has no correlationId dedup.
         const existing = notificationIdRef.current
           ? store.notifications.find((n) => n.id === notificationIdRef.current)
           : undefined;
@@ -60,8 +66,24 @@ export function useGitHubTokenHealth(): void {
           notificationIdRef.current = null;
         }
       }
-    });
+    };
 
-    return cleanup;
+    const cleanup = githubClient.onTokenHealthChanged(apply);
+
+    // Replay current state on mount. If the initial probe fired before this
+    // hook subscribed — or this is a secondary window — the `unhealthy`
+    // state would otherwise never surface because the service only emits on
+    // transitions.
+    void githubClient
+      .getTokenHealth()
+      .then(apply)
+      .catch(() => {
+        // Initial-state fetch is best-effort; transitions still work.
+      });
+
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
   }, []);
 }

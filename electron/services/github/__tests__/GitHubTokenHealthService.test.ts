@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { GitHubAuth } from "../GitHubAuth.js";
+import { GitHubAuth, getLastAuthMetadata } from "../GitHubAuth.js";
 import {
   gitHubTokenHealthService,
   HEALTH_CHECK_FOCUS_COOLDOWN_MS,
@@ -177,6 +177,37 @@ describe("GitHubTokenHealthService", () => {
 
       expect(gitHubTokenHealthService.getState().status).toBe("unknown");
       expect(listener).not.toHaveBeenCalledWith(expect.objectContaining({ status: "unhealthy" }));
+    });
+
+    it("does not repopulate stale auth metadata after mid-flight token rotation", async () => {
+      GitHubAuth.setToken("ghp_stale00000000000000000000000000000000000");
+
+      let resolveFetch: ((value: Response) => void) | null = null;
+      fetchMock.mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          })
+      );
+
+      const probe = gitHubTokenHealthService.refresh({ force: true });
+
+      // New token rotates in — this must clear `lastAuthMetadata` via
+      // `clearAuthMetadata()`. A late-arriving response from the old token
+      // carrying an `X-GitHub-SSO` header would otherwise repopulate the
+      // metadata store with a URL that belongs to a session we no longer
+      // care about.
+      GitHubAuth.setToken("ghp_fresh00000000000000000000000000000000000");
+
+      resolveFetch!(
+        buildResponse(403, {
+          "x-github-sso":
+            "required; url=https://github.com/orgs/stale/sso?authorization_request=abc",
+        })
+      );
+      await probe;
+
+      expect(getLastAuthMetadata()).toBeNull();
     });
   });
 

@@ -186,6 +186,19 @@ class GitHubTokenHealthServiceImpl {
           signal: AbortSignal.timeout(HEALTH_CHECK_FETCH_TIMEOUT_MS),
         });
 
+        // Late-arriving probe from a previous token: discard so it can't
+        // clobber state — including `lastAuthMetadata` — set by the
+        // currently-configured token. Must be checked *before* passive
+        // metadata capture so a stale `X-GitHub-SSO` header from token A
+        // doesn't repopulate the metadata store after token B took over.
+        if (GitHubAuth.getTokenVersion() !== versionAtStart) {
+          logDebug("GitHub token health: stale probe discarded", {
+            versionAtStart,
+            currentVersion: GitHubAuth.getTokenVersion(),
+          });
+          return;
+        }
+
         // Passive auth metadata capture (X-GitHub-SSO, token expiry header)
         // — this is the same capture the Octokit fetch wrapper does, but the
         // health probe uses raw `fetch()` so we mirror the behavior here.
@@ -193,16 +206,6 @@ class GitHubTokenHealthServiceImpl {
           captureAuthMetadata(response.headers);
         } catch {
           // Metadata capture must never break the probe.
-        }
-
-        // Late-arriving probe from a previous token: discard so it can't
-        // clobber state set by the currently-configured token.
-        if (GitHubAuth.getTokenVersion() !== versionAtStart) {
-          logDebug("GitHub token health: stale probe discarded", {
-            versionAtStart,
-            currentVersion: GitHubAuth.getTokenVersion(),
-          });
-          return;
         }
 
         if (response.status === 401) {

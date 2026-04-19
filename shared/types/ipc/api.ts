@@ -646,6 +646,7 @@ export interface ElectronAPI {
     onIssueNotFound(callback: (data: IssueNotFoundPayload) => void): () => void;
     onRateLimitChanged(callback: (data: GitHubRateLimitPayload) => void): () => void;
     onTokenHealthChanged(callback: (data: GitHubTokenHealthPayload) => void): () => void;
+    getTokenHealth(): Promise<GitHubTokenHealthPayload>;
   };
   notes: {
     create(

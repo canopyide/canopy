@@ -107,6 +107,10 @@ export const githubClient = {
     return window.electron.github.onTokenHealthChanged(callback);
   },
 
+  getTokenHealth: (): Promise<GitHubTokenHealthPayload> => {
+    return window.electron.github.getTokenHealth();
+  },
+
   getIssueUrl: (cwd: string, issueNumber: number): Promise<string | null> => {
     return window.electron.github.getIssueUrl(cwd, issueNumber);
   },

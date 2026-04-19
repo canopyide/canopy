@@ -71,6 +71,14 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   });
   handlers.push(unsubscribeTokenHealth);
 
+  // Invoke handler: renderer subscribers call this on mount to replay the
+  // current state — guarantees a second window, or a window that mounts
+  // after the initial probe completed, can surface the banner without
+  // waiting for the next state transition (which might never come while
+  // the token stays unhealthy).
+  const handleGetTokenHealth = async () => gitHubTokenHealthService.getState();
+  handlers.push(typedHandle(CHANNELS.GITHUB_GET_TOKEN_HEALTH, handleGetTokenHealth));
+
   const handleGitHubGetRepoStats = async (
     cwd: string,
     bypassCache = false

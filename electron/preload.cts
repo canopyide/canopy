@@ -2034,6 +2034,8 @@ const api: ElectronAPI = {
 
     onTokenHealthChanged: (callback: (data: GitHubTokenHealthPayload) => void) =>
       _typedOn(CHANNELS.GITHUB_TOKEN_HEALTH_CHANGED, callback),
+
+    getTokenHealth: () => _unwrappingInvoke(CHANNELS.GITHUB_GET_TOKEN_HEALTH),
   },
 
   // Notes API

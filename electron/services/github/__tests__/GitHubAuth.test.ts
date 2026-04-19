@@ -86,6 +86,19 @@ describe("GitHubAuth", () => {
     it("rejects non-https urls to avoid phishing via a spoofed header", () => {
       expect(parseSsoHeader("required; url=http://evil.example/")).toBeNull();
     });
+
+    it("rejects urls outside the github.com domain", () => {
+      expect(
+        parseSsoHeader("required; url=https://github.com.attacker.example/orgs/acme/sso")
+      ).toBeNull();
+      expect(parseSsoHeader("required; url=https://evil.example/orgs/acme/sso")).toBeNull();
+    });
+
+    it("accepts github.com subdomains", () => {
+      expect(
+        parseSsoHeader("required; url=https://www.github.com/orgs/acme/sso?authorization_request=x")
+      ).toBe("https://www.github.com/orgs/acme/sso?authorization_request=x");
+    });
   });
 
   describe("captureAuthMetadata", () => {

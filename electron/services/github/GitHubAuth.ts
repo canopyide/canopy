@@ -31,6 +31,10 @@ function clearAuthMetadata(): void {
  *   - `required; url=https://github.com/orgs/<org>/sso?authorization_request=<id>`
  *   - `partial-results; organizations=<csv>`
  * Only the first form carries a re-auth URL; return it when present.
+ *
+ * Validates that the URL is HTTPS and hosted on `github.com` (or a
+ * subdomain) — a spoofed `api.github.com` response could otherwise
+ * inject a phishing URL into the error message shown to the user.
  */
 export function parseSsoHeader(headerValue: string | null): string | null {
   if (!headerValue) return null;
@@ -38,7 +42,16 @@ export function parseSsoHeader(headerValue: string | null): string | null {
   if (!match) return null;
   const url = match[1];
   if (!url || !url.startsWith("https://")) return null;
-  return url;
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname !== "github.com" && !hostname.endsWith(".github.com")) {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
 }
 
 function parseTokenExpirationHeader(headerValue: string | null): Date | null {

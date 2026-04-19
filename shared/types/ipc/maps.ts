@@ -1983,6 +1983,10 @@ export interface IpcInvokeMap {
       parsedRepo: { owner: string; repo: string } | null;
     }>;
   };
+  "github:get-token-health": {
+    args: [];
+    result: GitHubTokenHealthPayload;
+  };
 
   // Global env channels
   "global-env:get": {
