@@ -48,9 +48,10 @@ function makeFakeGit(overrides: Partial<FakeGit> = {}): FakeGit {
     status: vi.fn().mockResolvedValue({ files: [] as FakeStatusFile[] }),
     diff: vi.fn().mockResolvedValue(""),
     show: vi.fn().mockResolvedValue(""),
-    commit: vi
-      .fn()
-      .mockResolvedValue({ commit: "abc123", summary: { changes: 1, insertions: 1, deletions: 0 } }),
+    commit: vi.fn().mockResolvedValue({
+      commit: "abc123",
+      summary: { changes: 1, insertions: 1, deletions: 0 },
+    }),
     ...overrides,
   };
 }
@@ -212,9 +213,7 @@ describe("scanStagedFilesForConflictMarkers", () => {
       status: vi.fn().mockResolvedValue({ files: [stagedFile("src/foo.ts")] }),
       show: vi.fn().mockRejectedValue(new Error("fatal: bad revision")),
     });
-    await expect(scanStagedFilesForConflictMarkers(git as never)).rejects.toThrow(
-      /bad revision/
-    );
+    await expect(scanStagedFilesForConflictMarkers(git as never)).rejects.toThrow(/bad revision/);
   });
 
   it("handles paths with spaces", async () => {
@@ -246,23 +245,24 @@ describe("git:commit handler", () => {
 
     const result = await handler(null, { cwd: "/tmp/repo", message: "feat: add foo" });
     expect(git.commit).toHaveBeenCalledWith("feat: add foo");
-    expect(result).toEqual({ hash: "abc123", summary: "1 changed, 1 insertions(+), 0 deletions(-)" });
+    expect(result).toEqual({
+      hash: "abc123",
+      summary: "1 changed, 1 insertions(+), 0 deletions(-)",
+    });
   });
 
   it("blocks the commit when a staged file carries conflict markers", async () => {
     const git = makeFakeGit({
       status: vi.fn().mockResolvedValue({ files: [stagedFile("src/foo.ts")] }),
-      show: vi
-        .fn()
-        .mockResolvedValue("<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n"),
+      show: vi.fn().mockResolvedValue("<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n"),
     });
     createHardenedGitMock.mockReturnValue(git);
     registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
     const handler = getHandler("git:commit");
 
-    await expect(
-      handler(null, { cwd: "/tmp/repo", message: "feat: add foo" })
-    ).rejects.toThrow(/Unresolved conflict markers found in src\/foo\.ts/);
+    await expect(handler(null, { cwd: "/tmp/repo", message: "feat: add foo" })).rejects.toThrow(
+      /Unresolved conflict markers found in src\/foo\.ts/
+    );
     expect(git.commit).not.toHaveBeenCalled();
   });
 });
