@@ -49,9 +49,29 @@ function resolvePresetForLaunch(
   const explicitDefault = presetId === null;
   const savedPresetId = resolveEffectivePresetId(entry, worktreeId);
   const resolvedPresetId = explicitDefault ? undefined : (presetId ?? savedPresetId);
-  return isAgent && !explicitDefault
-    ? getMergedPreset(agentId, resolvedPresetId, entry.customPresets, ccrPresets, projectPresets)
-    : undefined;
+  const primary =
+    isAgent && !explicitDefault
+      ? getMergedPreset(agentId, resolvedPresetId, entry.customPresets, ccrPresets, projectPresets)
+      : undefined;
+  if (primary) return primary;
+
+  // Mirror of the launch-time fallback in useAgentLauncher.ts: a stale
+  // worktree-scoped override falls through to the agent-level default so
+  // a deleted scoped pick doesn't silently drop the launch's preset.
+  const scopedId =
+    worktreeId && entry.worktreePresets ? entry.worktreePresets[worktreeId] : undefined;
+  if (
+    isAgent &&
+    !explicitDefault &&
+    presetId === undefined &&
+    scopedId &&
+    scopedId === resolvedPresetId &&
+    entry.presetId &&
+    entry.presetId !== scopedId
+  ) {
+    return getMergedPreset(agentId, entry.presetId, entry.customPresets, ccrPresets, projectPresets);
+  }
+  return undefined;
 }
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
@@ -306,6 +326,36 @@ describe("worktree-scoped preset resolution", () => {
       undefined,
       undefined
     );
+  });
+
+  it("stale worktree override falls back to the agent-level default for the current launch", () => {
+    getMergedPresetMock.mockImplementation((_agentId, presetId) =>
+      presetId === "user-global" ? CUSTOM_PRESET : undefined
+    );
+    const result = resolvePresetForLaunch(
+      undefined,
+      { presetId: "user-global", worktreePresets: { "wt-A": "deleted-id" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-A"
+    );
+    expect(result).toBe(CUSTOM_PRESET);
+  });
+
+  it("returns undefined when both worktree override and agent default are stale", () => {
+    getMergedPresetMock.mockReturnValue(undefined);
+    const result = resolvePresetForLaunch(
+      undefined,
+      { presetId: "also-deleted", worktreePresets: { "wt-A": "deleted-id" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-A"
+    );
+    expect(result).toBeUndefined();
   });
 });
 
