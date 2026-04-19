@@ -764,7 +764,12 @@ class TerminalInstanceService {
     const writeParsedDisposable = terminal.onWriteParsed(() => {
       this.dataBuffer.notifyParsed(id);
       if (managed && !managed.isUserScrolledBack && !managed.isAltBuffer) {
-        this.scrollToBottomSafe(managed);
+        if (!managed.terminal.hasSelection()) {
+          this.scrollToBottomSafe(managed);
+        } else {
+          managed.isUserScrolledBack = true;
+          this.unseenTracker.updateScrollState(id, true);
+        }
       }
       this.maybeReflowTerminal(managed);
     });
