@@ -925,6 +925,7 @@ const CHANNELS = {
   NOTIFICATION_WAITING_ACKNOWLEDGE: "notification:waiting-acknowledge",
   NOTIFICATION_WORKING_PULSE_ACKNOWLEDGE: "notification:working-pulse-acknowledge",
   NOTIFICATION_SHOW_TOAST: "notification:show-toast",
+  NOTIFICATION_SESSION_MUTE_SET: "notification:session-mute-set",
 
   SOUND_PLAY_UI_EVENT: "sound:play-ui-event",
 
