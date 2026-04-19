@@ -2114,6 +2114,14 @@ export interface IpcInvokeMap {
     args: [];
     result: void;
   };
+  "recovery:export-diagnostics": {
+    args: [];
+    result: boolean;
+  };
+  "recovery:open-logs": {
+    args: [];
+    result: void;
+  };
 
   // System prerequisite check channels
   "system:check-tool": {

@@ -994,6 +994,10 @@ export interface ElectronAPI {
     reloadApp(): Promise<void>;
     /** Reset workspace state and reload the main app from the recovery page */
     resetAndReload(): Promise<void>;
+    /** Export a diagnostics bundle via save dialog. Resolves true if saved, false if cancelled. */
+    exportDiagnostics(): Promise<boolean>;
+    /** Open the main log file with the OS default viewer */
+    openLogs(): Promise<void>;
   };
   notification: {
     /** Update window title and dock badge based on terminal attention state */

@@ -1059,6 +1059,8 @@ const CHANNELS = {
   // Renderer Recovery channels
   RECOVERY_RELOAD_APP: "recovery:reload-app",
   RECOVERY_RESET_AND_RELOAD: "recovery:reset-and-reload",
+  RECOVERY_EXPORT_DIAGNOSTICS: "recovery:export-diagnostics",
+  RECOVERY_OPEN_LOGS: "recovery:open-logs",
 
   // Onboarding channels
   ONBOARDING_GET: "onboarding:get",
@@ -2479,6 +2481,9 @@ const api: ElectronAPI = {
   recovery: {
     reloadApp: (): Promise<void> => _unwrappingInvoke(CHANNELS.RECOVERY_RELOAD_APP),
     resetAndReload: (): Promise<void> => _unwrappingInvoke(CHANNELS.RECOVERY_RESET_AND_RELOAD),
+    exportDiagnostics: (): Promise<boolean> =>
+      _unwrappingInvoke(CHANNELS.RECOVERY_EXPORT_DIAGNOSTICS),
+    openLogs: (): Promise<void> => _unwrappingInvoke(CHANNELS.RECOVERY_OPEN_LOGS),
   },
 
   // Notification API
