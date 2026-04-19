@@ -990,10 +990,11 @@ describe("ReviewHub", () => {
     }
 
     it("shows auth-failed banner with Open GitHub settings CTA and dispatches settings tab", async () => {
+      const rawError = "fatal: Authentication failed for 'https://github.com/foo/bar.git/'";
       pushMock.mockResolvedValue({
         success: false,
         gitReason: "auth-failed",
-        error: "fatal: Authentication failed for 'https://github.com/foo/bar.git/'",
+        error: rawError,
       });
 
       await triggerCommitAndPush();
@@ -1002,6 +1003,7 @@ describe("ReviewHub", () => {
       expect(banner.getAttribute("data-reason")).toBe("auth-failed");
       expect(banner.textContent).toMatch(/Authentication failed/i);
       expect(banner.textContent).toMatch(/Committed locally/i);
+      expect(banner.textContent).not.toContain(rawError);
       expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
 
       const cta = screen.getByTestId("review-hub-push-error-cta");
@@ -1065,10 +1067,11 @@ describe("ReviewHub", () => {
     });
 
     it("shows network-unavailable banner with Retry push button that re-pushes without re-committing", async () => {
+      const rawError = "Could not resolve host: github.com";
       pushMock.mockResolvedValueOnce({
         success: false,
         gitReason: "network-unavailable",
-        error: "Could not resolve host: github.com",
+        error: rawError,
       });
 
       await triggerCommitAndPush();
@@ -1076,6 +1079,7 @@ describe("ReviewHub", () => {
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("network-unavailable");
       expect(banner.textContent).toMatch(/Could not reach the remote/i);
+      expect(banner.textContent).not.toContain(rawError);
       expect(commitMock).toHaveBeenCalledTimes(1);
       expect(pushMock).toHaveBeenCalledTimes(1);
 
@@ -1091,6 +1095,98 @@ describe("ReviewHub", () => {
       await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(2));
       expect(commitMock).toHaveBeenCalledTimes(1);
       await waitFor(() => expect(screen.queryByTestId("review-hub-push-error")).toBeNull());
+    });
+
+    it("renders the banner with the unknown reason when push rejects (throws)", async () => {
+      pushMock.mockRejectedValueOnce(new Error("Could not resolve host: github.com"));
+
+      await triggerCommitAndPush();
+
+      const banner = await screen.findByTestId("review-hub-push-error");
+      expect(banner.getAttribute("data-reason")).toBe("unknown");
+      expect(banner.textContent).toMatch(/Push failed\. See details below\./i);
+      expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(
+        "Could not resolve host: github.com"
+      );
+    });
+
+    it("updates the banner when a retry fails with a different reason", async () => {
+      pushMock.mockResolvedValueOnce({
+        success: false,
+        gitReason: "network-unavailable",
+        error: "Could not resolve host: github.com",
+      });
+
+      await triggerCommitAndPush();
+
+      await screen.findByTestId("review-hub-push-error");
+
+      pushMock.mockResolvedValueOnce({
+        success: false,
+        gitReason: "hook-rejected",
+        error: "[remote rejected] main -> main (pre-receive hook declined)",
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("review-hub-push-error-cta"));
+        await Promise.resolve();
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("review-hub-push-error").getAttribute("data-reason")).toBe(
+          "hook-rejected"
+        )
+      );
+      expect(screen.queryByTestId("review-hub-push-error-cta")).toBeNull();
+    });
+
+    it("clears the push banner when the modal is closed and reopened", async () => {
+      pushMock.mockResolvedValue({
+        success: false,
+        gitReason: "auth-failed",
+        error: "Authentication failed",
+      });
+
+      getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+      const { rerender } = render(
+        <ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />
+      );
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      fireEvent.change(screen.getByPlaceholderText("Commit message…"), {
+        target: { value: "feat: thing" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Commit & Push/i }));
+        await Promise.resolve();
+      });
+      await screen.findByTestId("review-hub-push-error");
+
+      rerender(<ReviewHub isOpen={false} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      rerender(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => expect(screen.queryByTestId("review-hub-push-error")).toBeNull());
+    });
+
+    it("does not call push when commit itself fails", async () => {
+      commitMock.mockRejectedValueOnce(new Error("nothing to commit"));
+      getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      fireEvent.change(screen.getByPlaceholderText("Commit message…"), {
+        target: { value: "feat: thing" },
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Commit & Push/i }));
+        await Promise.resolve();
+      });
+
+      expect(pushMock).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("review-hub-push-error")).toBeNull();
+      await waitFor(() => screen.getByText("nothing to commit"));
     });
 
     it("falls back to generic copy + raw stderr for an unclassified failure", async () => {
