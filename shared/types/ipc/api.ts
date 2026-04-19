@@ -165,6 +165,14 @@ export interface NotificationSettings {
   workingPulseEnabled: boolean;
   workingPulseSoundFile: string;
   uiFeedbackSoundEnabled: boolean;
+  /** When true, non-urgent notifications are suppressed during the scheduled window. */
+  quietHoursEnabled: boolean;
+  /** Start of the quiet window, minutes since local midnight (0-1439). */
+  quietHoursStartMin: number;
+  /** End of the quiet window, minutes since local midnight (0-1439). Start === End disables. */
+  quietHoursEndMin: number;
+  /** Days the schedule applies to, 0 (Sun) - 6 (Sat). Empty array means every day. */
+  quietHoursWeekdays: number[];
 }
 
 // ElectronAPI Type (exposed via preload)

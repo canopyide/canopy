@@ -79,6 +79,23 @@ export function registerNotificationHandlers(_deps: HandlerDependencies): () => 
     if (typeof s.uiFeedbackSoundEnabled === "boolean") {
       allowed.uiFeedbackSoundEnabled = s.uiFeedbackSoundEnabled;
     }
+    if (typeof s.quietHoursEnabled === "boolean") {
+      allowed.quietHoursEnabled = s.quietHoursEnabled;
+    }
+    if (typeof s.quietHoursStartMin === "number" && Number.isFinite(s.quietHoursStartMin)) {
+      allowed.quietHoursStartMin = Math.max(0, Math.min(1439, Math.floor(s.quietHoursStartMin)));
+    }
+    if (typeof s.quietHoursEndMin === "number" && Number.isFinite(s.quietHoursEndMin)) {
+      allowed.quietHoursEndMin = Math.max(0, Math.min(1439, Math.floor(s.quietHoursEndMin)));
+    }
+    if (Array.isArray(s.quietHoursWeekdays)) {
+      const days = s.quietHoursWeekdays
+        .filter(
+          (d): d is number => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6
+        )
+        .sort((a, b) => a - b);
+      allowed.quietHoursWeekdays = Array.from(new Set(days));
+    }
 
     const current = store.get("notificationSettings");
     store.set("notificationSettings", { ...current, ...allowed });

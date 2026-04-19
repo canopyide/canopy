@@ -129,6 +129,10 @@ export interface StoreSchema {
     workingPulseEnabled: boolean;
     workingPulseSoundFile: string;
     uiFeedbackSoundEnabled: boolean;
+    quietHoursEnabled: boolean;
+    quietHoursStartMin: number;
+    quietHoursEndMin: number;
+    quietHoursWeekdays: number[];
   };
   userAgentRegistry: UserAgentRegistry;
   agentUpdateSettings: AgentUpdateSettings;
@@ -279,6 +283,10 @@ const storeOptions = {
       workingPulseEnabled: false,
       workingPulseSoundFile: "pulse.wav",
       uiFeedbackSoundEnabled: false,
+      quietHoursEnabled: false,
+      quietHoursStartMin: 22 * 60,
+      quietHoursEndMin: 8 * 60,
+      quietHoursWeekdays: [],
     },
     userAgentRegistry: {},
     agentUpdateSettings: {

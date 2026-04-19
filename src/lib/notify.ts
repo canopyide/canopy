@@ -11,6 +11,7 @@ import {
   type NotificationHistoryAction,
 } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
+import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
 
 export interface ComboOptions {
   key: string;
@@ -96,6 +97,37 @@ export function _setQuietUntil(ts: number): void {
   _quietUntil = ts;
 }
 
+/** Session-only mute helper used by the notification-center quick actions. */
+export function setSessionQuietUntil(ts: number): void {
+  _quietUntil = ts;
+}
+
+export function muteForDuration(durationMs: number): number {
+  const until = Date.now() + Math.max(0, durationMs);
+  setSessionQuietUntil(until);
+  return until;
+}
+
+/** Mutes notifications until the next occurrence of `morningMin` (default 08:00). */
+export function muteUntilNextMorning(morningMin = 8 * 60): number {
+  const until = nextOccurrenceTimestamp(morningMin);
+  setSessionQuietUntil(until);
+  return until;
+}
+
+export function isScheduledQuietHours(now: Date = new Date()): boolean {
+  const state = useNotificationSettingsStore.getState();
+  return isScheduledQuietNow(
+    {
+      quietHoursEnabled: state.quietHoursEnabled,
+      quietHoursStartMin: state.quietHoursStartMin,
+      quietHoursEndMin: state.quietHoursEndMin,
+      quietHoursWeekdays: state.quietHoursWeekdays,
+    },
+    now
+  );
+}
+
 /**
  * The single public API for creating any notification in Daintree.
  *
@@ -134,7 +166,7 @@ export function notify(payload: NotifyPayload): string {
     }));
 
   const notificationsEnabled = useNotificationSettingsStore.getState().enabled;
-  const isQuiet = !payload.urgent && Date.now() < _quietUntil;
+  const isQuiet = !payload.urgent && (Date.now() < _quietUntil || isScheduledQuietHours());
 
   if (placement === "grid-bar") {
     const entryId = historyMessage

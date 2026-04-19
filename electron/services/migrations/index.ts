@@ -14,6 +14,7 @@ import { migration013 } from "./013-cleanup-phantom-pins.js";
 import { migration014 } from "./014-consolidate-telemetry-consent.js";
 import { migration015 } from "./015-activation-funnel-and-checklist-rename.js";
 import { migration016 } from "./016-rename-flavor-to-preset.js";
+import { migration017 } from "./017-add-notification-quiet-hours.js";
 
 export const migrations: Migration[] = [
   migration002,
@@ -31,4 +32,5 @@ export const migrations: Migration[] = [
   migration014,
   migration015,
   migration016,
+  migration017,
 ];

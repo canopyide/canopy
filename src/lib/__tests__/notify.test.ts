@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { notify, _resetCoalesceMap, _resetComboMap, _setQuietUntil } from "../notify";
+import {
+  notify,
+  _resetCoalesceMap,
+  _resetComboMap,
+  _setQuietUntil,
+  muteForDuration,
+  muteUntilNextMorning,
+  isScheduledQuietHours,
+} from "../notify";
 import { useNotificationStore } from "../../store/notificationStore";
 import { useNotificationHistoryStore } from "../../store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "../../store/notificationSettingsStore";
@@ -9,7 +17,12 @@ const mockShowNative = vi.fn();
 
 beforeEach(() => {
   Object.defineProperty(window, "electron", {
-    value: { notification: { showNative: mockShowNative } },
+    value: {
+      notification: {
+        showNative: mockShowNative,
+        setSettings: vi.fn().mockResolvedValue(undefined),
+      },
+    },
     writable: true,
     configurable: true,
   });
@@ -19,7 +32,14 @@ describe("notify()", () => {
   beforeEach(() => {
     useNotificationStore.setState({ notifications: [] });
     useNotificationHistoryStore.setState({ entries: [], unreadCount: 0 });
-    useNotificationSettingsStore.setState({ enabled: true, hydrated: true });
+    useNotificationSettingsStore.setState({
+      enabled: true,
+      hydrated: true,
+      quietHoursEnabled: false,
+      quietHoursStartMin: 22 * 60,
+      quietHoursEndMin: 8 * 60,
+      quietHoursWeekdays: [],
+    });
     _resetCoalesceMap();
     _resetComboMap();
     _setQuietUntil(0);
@@ -1059,6 +1079,168 @@ describe("notify()", () => {
       const notifications = useNotificationStore.getState().notifications;
       expect(notifications[1]!.message).toBe("Double agent");
       expect(notifications[2]!.message).toBe("Worktree created"); // tier 0 for different key
+    });
+  });
+
+  describe("quiet hours schedule — suppresses toasts during configured window", () => {
+    it("isScheduledQuietHours returns false when disabled", () => {
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: false,
+        quietHoursStartMin: 0,
+        quietHoursEndMin: 24 * 60 - 1,
+      });
+      expect(isScheduledQuietHours(new Date(2024, 0, 1, 12, 0))).toBe(false);
+    });
+
+    it("isScheduledQuietHours returns true within the configured window", () => {
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+        quietHoursWeekdays: [],
+      });
+      expect(isScheduledQuietHours(new Date(2024, 0, 1, 23, 0))).toBe(true);
+    });
+
+    it("suppresses non-urgent toast during scheduled quiet hours", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+      });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
+
+      notify({ type: "success", message: "Scheduled quiet", priority: "high" });
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
+      expect(useNotificationHistoryStore.getState().entries[0]!.seenAsToast).toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it("allows toast outside the scheduled window", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+      });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 14, 0));
+
+      notify({ type: "success", message: "Afternoon", priority: "high" });
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("urgent: true bypasses the scheduled window", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+      });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
+
+      notify({ type: "error", message: "Critical", priority: "high", urgent: true });
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("suppresses OS native notification for watch priority during the window", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+      });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
+
+      notify({ type: "warning", message: "Quiet watch", priority: "watch" });
+
+      expect(mockShowNative).not.toHaveBeenCalled();
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      vi.useRealTimers();
+    });
+
+    it("respects weekday filter — skips days not in the list", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 23 * 60,
+        quietHoursWeekdays: [1, 2, 3, 4, 5], // weekdays only
+      });
+      vi.useFakeTimers();
+      // 2024-01-06 is a Saturday
+      vi.setSystemTime(new Date(2024, 0, 6, 22, 30));
+
+      notify({ type: "success", message: "Weekend", priority: "high" });
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("records history during schedule quiet with seenAsToast=false", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+      });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
+
+      notify({ type: "success", message: "Inbox only", priority: "high" });
+
+      const entries = useNotificationHistoryStore.getState().entries;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.seenAsToast).toBe(false);
+      vi.useRealTimers();
+    });
+  });
+
+  describe("session mute helpers", () => {
+    afterEach(() => {
+      _setQuietUntil(0);
+    });
+
+    it("muteForDuration sets _quietUntil to now + duration", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 12, 0));
+      const until = muteForDuration(60 * 60 * 1000);
+      expect(until).toBe(Date.now() + 60 * 60 * 1000);
+
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "info", message: "Muted", priority: "high" });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+
+      vi.useRealTimers();
+    });
+
+    it("muteUntilNextMorning mutes until next 08:00", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
+      const until = muteUntilNextMorning();
+      expect(new Date(until).getHours()).toBe(8);
+      expect(new Date(until).getDate()).toBe(2);
+      vi.useRealTimers();
+    });
+
+    it("muteUntilNextMorning picks tomorrow when already past 08:00", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 10, 0));
+      const until = muteUntilNextMorning();
+      expect(new Date(until).getHours()).toBe(8);
+      expect(new Date(until).getDate()).toBe(2);
+      vi.useRealTimers();
     });
   });
 });

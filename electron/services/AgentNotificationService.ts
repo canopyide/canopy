@@ -4,6 +4,7 @@ import { store } from "../store.js";
 import { projectStore } from "./ProjectStore.js";
 import { soundService } from "./SoundService.js";
 import { CHANNELS } from "../ipc/channels.js";
+import { isScheduledQuietNow } from "../../shared/utils/quietHours.js";
 
 const COMPLETION_DEBOUNCE_MS = 2000;
 const NOTIFICATION_STAGGER_MS = 500;
@@ -499,6 +500,16 @@ class AgentNotificationService {
         this.clearWorkingPulse(terminalId);
         return;
       }
+      // During scheduled quiet hours, skip this tick's sound but keep the
+      // loop alive so pulses resume automatically when the window ends.
+      if (isScheduledQuietNow(currentSettings)) {
+        const jitter =
+          WORKING_PULSE_MIN_INTERVAL_MS +
+          Math.random() * (WORKING_PULSE_MAX_INTERVAL_MS - WORKING_PULSE_MIN_INTERVAL_MS);
+        const nextTimer = setTimeout(tick, jitter);
+        this.workingPulseIntervalTimers.set(terminalId, nextTimer);
+        return;
+      }
       // Randomize pitch ±15 cents per pulse to slow auditory habituation.
       // Exceeds JND (~5-10 cents) but preserves sound identity.
       const detuneCents = Math.random() * 30 - 15;
@@ -550,6 +561,20 @@ class AgentNotificationService {
     const settings = projectStore.getEffectiveNotificationSettings();
     if (settings.enabled === false) {
       this.notificationQueue = [];
+      return;
+    }
+
+    // Quiet hours schedule suppresses completion/pulse alerts but not waiting
+    // alerts — waiting agents block user work and should page through.
+    if (isScheduledQuietNow(settings)) {
+      if (this.notificationQueue.length > 0) {
+        this.staggerTimer = setTimeout(() => {
+          this.staggerTimer = null;
+          this.drainQueue();
+        }, NOTIFICATION_STAGGER_MS);
+      } else {
+        this.staggerTimer = null;
+      }
       return;
     }
 
