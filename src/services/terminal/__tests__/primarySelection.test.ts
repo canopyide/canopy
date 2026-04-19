@@ -114,10 +114,11 @@ describe("installLinuxPrimarySelectionListeners", () => {
       await flush();
       expect(writeToPty).toHaveBeenCalledTimes(1);
       const [id, payload] = writeToPty.mock.calls[0]!;
+      const ESC = String.fromCharCode(0x1b);
       expect(id).toBe("term-1");
       expect(payload).toContain("pasted");
-      expect(payload).toMatch(/\x1b\[200~/);
-      expect(payload).toMatch(/\x1b\[201~/);
+      expect(payload).toContain(`${ESC}[200~`);
+      expect(payload).toContain(`${ESC}[201~`);
     });
 
     it("normalizes newlines to carriage returns when bracketed paste is off", async () => {
