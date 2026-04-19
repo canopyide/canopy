@@ -47,9 +47,9 @@ import type { BuiltInAgentId } from "@shared/config/agentIds";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { actionService } from "@/services/ActionService";
 import { InputTracker } from "@/services/clearCommandDetection";
-import { getAgentConfig, getMergedFlavors, isRegisteredAgent } from "@/config/agents";
+import { getAgentConfig, getMergedPresets, isRegisteredAgent } from "@/config/agents";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { terminalClient } from "@/clients";
 import type { HybridInputBarHandle } from "./HybridInputBar";
 const LazyHybridInputBar = lazy(() =>
@@ -73,8 +73,8 @@ export interface TerminalPaneProps {
   title: string;
   type?: TerminalType;
   agentId?: string;
-  agentFlavorId?: string;
-  flavorColor?: string;
+  agentPresetId?: string;
+  presetColor?: string;
   worktreeId?: string;
   cwd: string;
   isFocused: boolean;
@@ -112,8 +112,8 @@ function TerminalPaneComponent({
   title,
   type,
   agentId,
-  agentFlavorId,
-  flavorColor,
+  agentPresetId,
+  presetColor,
   worktreeId,
   cwd,
   isFocused,
@@ -243,20 +243,20 @@ function TerminalPaneComponent({
 
   const queueCount = usePanelStore((state) => state.commandQueueCountById[id] ?? 0);
 
-  // Live flavor color — re-derives from settings whenever the user edits a flavor's color
-  const flavorCustomFlavors = useAgentSettingsStore((s) =>
-    agentId ? s.settings?.agents?.[agentId]?.customFlavors : undefined
+  // Live preset color — re-derives from settings whenever the user edits a preset's color
+  const presetCustomPresets = useAgentSettingsStore((s) =>
+    agentId ? s.settings?.agents?.[agentId]?.customPresets : undefined
   );
-  const flavorCcrFlavors = useCcrFlavorsStore((s) =>
-    agentId ? s.ccrFlavorsByAgent[agentId] : undefined
+  const presetCcrPresets = useCcrPresetsStore((s) =>
+    agentId ? s.ccrPresetsByAgent[agentId] : undefined
   );
-  const liveFlavorColor = useMemo(() => {
-    if (!agentFlavorId || !agentId) return flavorColor;
-    const flavor = getMergedFlavors(agentId, flavorCustomFlavors, flavorCcrFlavors).find(
-      (f) => f.id === agentFlavorId
+  const livePresetColor = useMemo(() => {
+    if (!agentPresetId || !agentId) return presetColor;
+    const preset = getMergedPresets(agentId, presetCustomPresets, presetCcrPresets).find(
+      (f) => f.id === agentPresetId
     );
-    return flavor?.color ?? flavorColor;
-  }, [agentFlavorId, agentId, flavorCustomFlavors, flavorCcrFlavors, flavorColor]);
+    return preset?.color ?? presetColor;
+  }, [agentPresetId, agentId, presetCustomPresets, presetCcrPresets, presetColor]);
 
   const pingedIdSelector = useMemo(
     () => (state: ReturnType<typeof usePanelStore.getState>) => state.pingedId === id,
@@ -656,7 +656,7 @@ function TerminalPaneComponent({
       kind={kind}
       type={type}
       agentId={agentId}
-      flavorColor={liveFlavorColor}
+      presetColor={livePresetColor}
       isFocused={isFocused}
       isMaximized={isMaximized}
       location={location}

@@ -8,21 +8,21 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
-  getFlavorRowByName,
-} from "../helpers/flavors";
+  getPresetRowByName,
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
-test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
+test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-launch-env" });
+    const fixtureDir = createFixtureRepo({ name: "preset-launch-env" });
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
       fixtureDir,
-      "Flavor Launch Env Test"
+      "Preset Launch Env Test"
     );
   });
 
@@ -35,17 +35,17 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await navigateToAgentSettings(ctx.window, "claude");
   };
 
-  test("63. CCR flavor with model shows ANTHROPIC_MODEL env key in flavor row", async () => {
+  test("63. CCR preset with model shows ANTHROPIC_MODEL env key in preset row", async () => {
     writeCcrConfig([{ id: "env-model", name: "Env Model", model: "claude-sonnet-4" }]);
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = await getFlavorRowByName(ctx.window, "Env Model");
+    const row = await getPresetRowByName(ctx.window, "Env Model");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
   });
 
-  test("64. CCR flavor with baseUrl shows ANTHROPIC_BASE_URL env key", async () => {
+  test("64. CCR preset with baseUrl shows ANTHROPIC_BASE_URL env key", async () => {
     writeCcrConfig([
       {
         id: "env-url",
@@ -57,31 +57,31 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = await getFlavorRowByName(ctx.window, "Env Url");
+    const row = await getPresetRowByName(ctx.window, "Env Url");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_BASE_URL")).toBeVisible({ timeout: T_SHORT });
   });
 
-  test("65. Selecting vanilla option (empty value) clears flavor overrides", async () => {
-    writeCcrConfig([{ id: "vanilla-test", name: "Vanilla Test", model: "vanilla-model" }]);
+  test("65. Selecting default option (empty value) clears preset overrides", async () => {
+    writeCcrConfig([{ id: "default-test", name: "Default Test", model: "default-model" }]);
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_MEDIUM });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.flavor.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.defaultSelect);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");
-    const vanillaOption = options.locator(SEL.flavor.vanillaOption);
-    if ((await vanillaOption.count()) > 0) {
+    const defaultOption = options.locator(SEL.preset.defaultOption);
+    if ((await defaultOption.count()) > 0) {
       await select.selectOption({ value: "" });
       await ctx.window.waitForTimeout(T_SETTLE);
       await expect(select).toHaveValue("", { timeout: T_SHORT });
     }
   });
 
-  test("66. Flavor with 3 env vars shows all keys in row", async () => {
+  test("66. Preset with 3 env vars shows all keys in row", async () => {
     writeCcrConfig([
       {
         id: "multi-env",
@@ -94,28 +94,28 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = await getFlavorRowByName(ctx.window, "Multi Env");
+    const row = await getPresetRowByName(ctx.window, "Multi Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
     await expect(row.getByText("ANTHROPIC_BASE_URL")).toBeVisible({ timeout: T_SHORT });
     await expect(row.getByText("ANTHROPIC_API_KEY")).toBeVisible({ timeout: T_SHORT });
   });
 
-  test("67. Select flavor then switch to vanilla clears default selection", async () => {
+  test("67. Select preset then switch to default clears default selection", async () => {
     writeCcrConfig([{ id: "select-a", name: "Select A", model: "select-a-model" }]);
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_MEDIUM });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.flavor.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.defaultSelect);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");
     const allTexts = await options.allTextContents();
-    const flavorLabel = allTexts.find((t) => t.includes("Select A"));
-    if (flavorLabel) {
-      await select.selectOption({ label: flavorLabel });
+    const presetLabel = allTexts.find((t) => t.includes("Select A"));
+    if (presetLabel) {
+      await select.selectOption({ label: presetLabel });
       await ctx.window.waitForTimeout(T_SETTLE);
 
       const val = await select.inputValue();
@@ -127,7 +127,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     }
   });
 
-  test("68. Env var display uses font-mono truncated text in flavor row", async () => {
+  test("68. Env var display uses font-mono truncated text in preset row", async () => {
     writeCcrConfig([
       {
         id: "mono-env",
@@ -139,7 +139,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const row = await getFlavorRowByName(ctx.window, "Mono Env");
+    const row = await getPresetRowByName(ctx.window, "Mono Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
 
     const envText = row.locator("span.font-mono, code.font-mono");
@@ -153,7 +153,7 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     }
   });
 
-  test("69. Two flavors with same env key — select each and verify", async () => {
+  test("69. Two presets with same env key — select each and verify", async () => {
     writeCcrConfig([
       { id: "dup-first", name: "Dup First", model: "dup-model-a" },
       { id: "dup-second", name: "Dup Second", model: "dup-model-b" },
@@ -162,23 +162,23 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
 
     await goToClaudeSettings();
 
-    // Select first flavor and check its env key
-    const row1 = await getFlavorRowByName(ctx.window, "Dup First");
+    // Select first preset and check its env key
+    const row1 = await getPresetRowByName(ctx.window, "Dup First");
     await expect(row1).toBeVisible({ timeout: T_MEDIUM });
     await expect(row1.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
 
-    // Select second flavor and check its env key
-    const row2 = await getFlavorRowByName(ctx.window, "Dup Second");
+    // Select second preset and check its env key
+    const row2 = await getPresetRowByName(ctx.window, "Dup Second");
     await expect(row2).toBeVisible({ timeout: T_MEDIUM });
     await expect(row2.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
 
-    // Verify second is now the selected flavor via the trigger label.
-    const { getSelectedFlavorLabel } = await import("../helpers/flavors");
-    const label = await getSelectedFlavorLabel(ctx.window);
+    // Verify second is now the selected preset via the trigger label.
+    const { getSelectedPresetLabel } = await import("../helpers/presets");
+    const label = await getSelectedPresetLabel(ctx.window);
     expect(label).toContain("Dup Second");
   });
 
-  test("70. Settings section shows env keys correctly for created flavor", async () => {
+  test("70. Settings section shows env keys correctly for created preset", async () => {
     writeCcrConfig([
       {
         id: "section-env",
@@ -191,10 +191,10 @@ test.describe.serial("Flavors: Launch Env Overrides (63–70)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const section = ctx.window.locator(SEL.flavor.section);
+    const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_MEDIUM });
 
-    const row = await getFlavorRowByName(ctx.window, "Section Env");
+    const row = await getPresetRowByName(ctx.window, "Section Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
 
     const rowText = await row.textContent();

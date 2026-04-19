@@ -12,8 +12,8 @@ import {
   type TerminalInstance,
 } from "@/store";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
-import { getMergedFlavors } from "@/config/agents";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
+import { getMergedPresets } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
@@ -183,26 +183,26 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     [terminal.id, openDockTerminal, closeDockTerminal]
   );
 
-  const flavorCustomFlavors = useAgentSettingsStore((s) =>
-    terminal.agentId ? s.settings?.agents?.[terminal.agentId]?.customFlavors : undefined
+  const presetCustomPresets = useAgentSettingsStore((s) =>
+    terminal.agentId ? s.settings?.agents?.[terminal.agentId]?.customPresets : undefined
   );
-  const flavorCcrFlavors = useCcrFlavorsStore((s) =>
-    terminal.agentId ? s.ccrFlavorsByAgent[terminal.agentId] : undefined
+  const presetCcrPresets = useCcrPresetsStore((s) =>
+    terminal.agentId ? s.ccrPresetsByAgent[terminal.agentId] : undefined
   );
   const brandColor = useMemo(() => {
-    const vanilla = getBrandColorHex(terminal.agentId ?? terminal.type);
-    if (!terminal.agentFlavorId || !terminal.agentId) return vanilla;
-    const flavor = getMergedFlavors(terminal.agentId, flavorCustomFlavors, flavorCcrFlavors).find(
-      (f) => f.id === terminal.agentFlavorId
+    const fallbackColor = getBrandColorHex(terminal.agentId ?? terminal.type);
+    if (!terminal.agentPresetId || !terminal.agentId) return fallbackColor;
+    const preset = getMergedPresets(terminal.agentId, presetCustomPresets, presetCcrPresets).find(
+      (f) => f.id === terminal.agentPresetId
     );
-    return flavor?.color ?? terminal.agentFlavorColor ?? vanilla;
+    return preset?.color ?? terminal.agentPresetColor ?? fallbackColor;
   }, [
     terminal.agentId,
     terminal.type,
-    terminal.agentFlavorId,
-    terminal.agentFlavorColor,
-    flavorCustomFlavors,
-    flavorCcrFlavors,
+    terminal.agentPresetId,
+    terminal.agentPresetColor,
+    presetCustomPresets,
+    presetCcrPresets,
   ]);
 
   const isWorking = terminal.agentState === "working";

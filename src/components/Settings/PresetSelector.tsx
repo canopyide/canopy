@@ -2,48 +2,48 @@ import { useMemo, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { AgentFlavor } from "@/config/agents";
+import type { AgentPreset } from "@/config/agents";
 
 /**
- * Flavor selector — replaces the native `<select>` + `<optgroup>` that can't
+ * Preset selector — replaces the native `<select>` + `<optgroup>` that can't
  * render color swatches inline. Uses a Popover listbox following the
- * AgentSelectorDropdown pattern, so we get color dots per flavor name and
+ * AgentSelectorDropdown pattern, so we get color dots per preset name and
  * grouped sections ("CCR Routes" / "Custom") with proper visual separation.
  *
- * No search input — flavor lists are small (typically 2-6 items). If this
+ * No search input — preset lists are small (typically 2-6 items). If this
  * grows past ~15 the AgentSelectorDropdown filter pattern can be ported.
  */
 
-export interface FlavorSelectorProps {
-  selectedFlavorId: string | undefined;
-  allFlavors: AgentFlavor[];
-  ccrFlavors: AgentFlavor[];
-  customFlavors: AgentFlavor[];
-  onChange: (flavorId: string | undefined) => void;
+export interface PresetSelectorProps {
+  selectedPresetId: string | undefined;
+  allPresets: AgentPreset[];
+  ccrPresets: AgentPreset[];
+  customPresets: AgentPreset[];
+  onChange: (presetId: string | undefined) => void;
   agentColor: string;
 }
 
-type Item = { id: string; label: string; color: string; source: "vanilla" | "ccr" | "custom" };
+type Item = { id: string; label: string; color: string; source: "default" | "ccr" | "custom" };
 
 function stripCcrPrefix(name: string): string {
   return name.replace(/^CCR:\s*/, "");
 }
 
-export function FlavorSelector({
-  selectedFlavorId,
-  allFlavors: _allFlavors,
-  ccrFlavors,
-  customFlavors,
+export function PresetSelector({
+  selectedPresetId,
+  allPresets: _allPresets,
+  ccrPresets,
+  customPresets,
   onChange,
   agentColor,
-}: FlavorSelectorProps) {
+}: PresetSelectorProps) {
   const [open, setOpen] = useState(false);
 
   const selectedItem = useMemo((): Item => {
-    if (!selectedFlavorId) {
-      return { id: "", label: "Vanilla (no overrides)", color: agentColor, source: "vanilla" };
+    if (!selectedPresetId) {
+      return { id: "", label: "Default (no overrides)", color: agentColor, source: "default" };
     }
-    const ccr = ccrFlavors.find((f) => f.id === selectedFlavorId);
+    const ccr = ccrPresets.find((f) => f.id === selectedPresetId);
     if (ccr) {
       return {
         id: ccr.id,
@@ -52,7 +52,7 @@ export function FlavorSelector({
         source: "ccr",
       };
     }
-    const custom = customFlavors.find((f) => f.id === selectedFlavorId);
+    const custom = customPresets.find((f) => f.id === selectedPresetId);
     if (custom) {
       return {
         id: custom.id,
@@ -61,10 +61,10 @@ export function FlavorSelector({
         source: "custom",
       };
     }
-    // Stale selection — fall back to vanilla presentation but don't clear
+    // Stale selection — fall back to default presentation but don't clear
     // state here (the parent clears stale IDs on launch).
-    return { id: "", label: "Vanilla (no overrides)", color: agentColor, source: "vanilla" };
-  }, [selectedFlavorId, ccrFlavors, customFlavors, agentColor]);
+    return { id: "", label: "Default (no overrides)", color: agentColor, source: "default" };
+  }, [selectedPresetId, ccrPresets, customPresets, agentColor]);
 
   const handleSelect = (id: string) => {
     onChange(id || undefined);
@@ -84,7 +84,7 @@ export function FlavorSelector({
             "hover:border-daintree-accent/50 transition-colors",
             "focus:outline-none focus:ring-2 focus:ring-daintree-accent/50"
           )}
-          data-testid="flavor-selector-trigger"
+          data-testid="preset-selector-trigger"
         >
           <span
             className="w-2.5 h-2.5 rounded-full shrink-0 border border-daintree-border/60"
@@ -114,46 +114,46 @@ export function FlavorSelector({
         sideOffset={4}
         className="p-1"
         style={{ width: "var(--radix-popover-trigger-width)" }}
-        data-testid="flavor-selector-listbox"
+        data-testid="preset-selector-listbox"
       >
-        <div role="listbox" aria-label="Flavor" className="overflow-y-auto max-h-80">
-          <FlavorOption
+        <div role="listbox" aria-label="Preset" className="overflow-y-auto max-h-80">
+          <PresetOption
             id=""
-            label="Vanilla (no overrides)"
+            label="Default (no overrides)"
             color={agentColor}
-            isSelected={!selectedFlavorId}
+            isSelected={!selectedPresetId}
             onSelect={handleSelect}
-            testid="flavor-option-vanilla"
+            testid="preset-option-default"
           />
-          {ccrFlavors.length > 0 && (
+          {ccrPresets.length > 0 && (
             <>
               <Divider label="CCR Routes" />
-              {ccrFlavors.map((f) => (
-                <FlavorOption
+              {ccrPresets.map((f) => (
+                <PresetOption
                   key={f.id}
                   id={f.id}
                   label={stripCcrPrefix(f.name)}
                   color={f.color ?? agentColor}
                   badge="CCR"
-                  isSelected={selectedFlavorId === f.id}
+                  isSelected={selectedPresetId === f.id}
                   onSelect={handleSelect}
-                  testid={`flavor-option-${f.id}`}
+                  testid={`preset-option-${f.id}`}
                 />
               ))}
             </>
           )}
-          {customFlavors.length > 0 && (
+          {customPresets.length > 0 && (
             <>
               <Divider label="Custom" />
-              {customFlavors.map((f) => (
-                <FlavorOption
+              {customPresets.map((f) => (
+                <PresetOption
                   key={f.id}
                   id={f.id}
                   label={f.name}
                   color={f.color ?? agentColor}
-                  isSelected={selectedFlavorId === f.id}
+                  isSelected={selectedPresetId === f.id}
                   onSelect={handleSelect}
-                  testid={`flavor-option-${f.id}`}
+                  testid={`preset-option-${f.id}`}
                 />
               ))}
             </>
@@ -168,14 +168,14 @@ function Divider({ label }: { label: string }) {
   return (
     <div
       className="px-2 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-daintree-text/40"
-      data-testid={`flavor-group-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      data-testid={`preset-group-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       {label}
     </div>
   );
 }
 
-function FlavorOption({
+function PresetOption({
   id,
   label,
   color,

@@ -145,7 +145,7 @@ export interface HydrationOptions {
     agentSessionId?: string;
     agentLaunchFlags?: string[];
     agentModelId?: string;
-    agentFlavorId?: string;
+    agentPresetId?: string;
     extensionState?: Record<string, unknown>;
     restore?: boolean;
     bypassLimits?: boolean;

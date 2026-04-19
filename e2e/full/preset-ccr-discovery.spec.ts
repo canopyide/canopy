@@ -8,10 +8,10 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
-  getFlavorOptionLabels,
-  getFlavorRowByName,
+  getPresetOptionLabels,
+  getPresetRowByName,
   type CcrModelEntry,
-} from "../helpers/flavors";
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
@@ -22,15 +22,15 @@ const closeSettings = async () => {
   await ctx.window.waitForTimeout(T_SETTLE);
 };
 
-test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
+test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
   test.beforeAll(async () => {
     writeCcrConfig([
       { id: "deepseek", name: "DeepSeek V3", model: "deepseek-v3" },
       { id: "gpt5", name: "GPT-5", model: "gpt-5.4" },
     ]);
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-ccr" });
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Flavor CCR Test");
+    const fixtureDir = createFixtureRepo({ name: "preset-ccr" });
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset CCR Test");
   });
 
   test.afterAll(async () => {
@@ -38,28 +38,28 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
     if (ctx?.app) await closeApp(ctx.app);
   });
 
-  test("1. CCR config with models shows flavors in toolbar split-button", async () => {
+  test("1. CCR config with models shows presets in toolbar split-button", async () => {
     writeCcrConfig([
       { id: "deepseek", name: "DeepSeek V3", model: "deepseek-v3" },
       { id: "gpt5", name: "GPT-5", model: "gpt-5.4" },
     ]);
 
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
 
-    // The FlavorSelector lists the CCR models without the "CCR: " prefix
+    // The PresetSelector lists the CCR models without the "CCR: " prefix
     // (that's stripped by stripCcrPrefix in the component).
-    const labels = await getFlavorOptionLabels(ctx.window);
+    const labels = await getPresetOptionLabels(ctx.window);
     expect(labels.some((l) => l.includes("DeepSeek V3"))).toBe(true);
     expect(labels.some((l) => l.includes("GPT-5"))).toBe(true);
 
     await closeSettings();
   });
 
-  test("2. No CCR config means no flavor chevron on Claude button", async () => {
+  test("2. No CCR config means no preset chevron on Claude button", async () => {
     removeCcrConfig();
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.autoBadge)).toHaveCount(
+    await expect(ctx.window.locator(SEL.preset.section).locator(SEL.preset.autoBadge)).toHaveCount(
       0,
       { timeout: T_CCR }
     );
@@ -67,11 +67,11 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
     await closeSettings();
   });
 
-  test("3. Empty CCR config {} produces no flavors", async () => {
+  test("3. Empty CCR config {} produces no presets", async () => {
     writeCcrConfig([]);
     await navigateToAgentSettings(ctx.window, "claude");
-    const autoFlavors = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.autoBadge);
-    await expect(autoFlavors).toHaveCount(0, { timeout: T_CCR });
+    const autoPresets = ctx.window.locator(SEL.preset.section).locator(SEL.preset.autoBadge);
+    await expect(autoPresets).toHaveCount(0, { timeout: T_CCR });
 
     await closeSettings();
   });
@@ -86,8 +86,8 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
       },
     ]);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
-    const row = await getFlavorRowByName(ctx.window, "Routed Model");
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
+    const row = await getPresetRowByName(ctx.window, "Routed Model");
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
     await expect(row.getByText("ANTHROPIC_BASE_URL")).toBeVisible({ timeout: T_SHORT });
 
@@ -99,8 +99,8 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
       { id: "keyed", name: "Keyed Model", model: "test-model", apiKeyEnv: "MY_API_KEY" },
     ]);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
-    const row = await getFlavorRowByName(ctx.window, "Keyed Model");
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
+    const row = await getPresetRowByName(ctx.window, "Keyed Model");
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
     await expect(row.getByText("ANTHROPIC_API_KEY")).toBeVisible({ timeout: T_SHORT });
 
@@ -116,8 +116,8 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
-    const labels = await getFlavorOptionLabels(ctx.window);
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
+    const labels = await getPresetOptionLabels(ctx.window);
     expect(labels.some((l) => l.includes("Valid"))).toBe(true);
     expect(labels.some((l) => l.includes("Bad Entry"))).toBe(false);
 
@@ -125,7 +125,7 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
   });
 
   test("7. Invalid CCR JSON does not crash the app", async () => {
-    writeCcrConfig([{ id: "before" }] as import("../helpers/flavors").CcrModelEntry[]);
+    writeCcrConfig([{ id: "before" }] as import("../helpers/presets").CcrModelEntry[]);
     const { writeFileSync, mkdirSync } = await import("fs");
     const { join, dirname } = await import("path");
     const configPath = process.env.DAINTREE_CCR_CONFIG_PATH;
@@ -139,51 +139,51 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
     await closeSettings();
   });
 
-  test("8. CCR flavors show 'auto' badge", async () => {
+  test("8. CCR presets show 'auto' badge", async () => {
     writeCcrConfig([{ id: "autobadge", name: "Autobadge Test", model: "auto-model" }]);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
-    const row = await getFlavorRowByName(ctx.window, "Autobadge Test");
-    await expect(row.locator(SEL.flavor.autoBadge)).toBeVisible({ timeout: T_SHORT });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
+    const row = await getPresetRowByName(ctx.window, "Autobadge Test");
+    await expect(row.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
 
     await closeSettings();
   });
 
-  test("9. CCR flavors are read-only (no Edit/Delete buttons)", async () => {
+  test("9. CCR presets are read-only (no Edit/Delete buttons)", async () => {
     writeCcrConfig([{ id: "readonly-test", name: "Readonly Test", model: "ro-model" }]);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
-    const row = await getFlavorRowByName(ctx.window, "Readonly Test");
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
+    const row = await getPresetRowByName(ctx.window, "Readonly Test");
     // CCR detail views only expose a Duplicate button; Edit/Delete are absent.
-    await expect(row.locator(SEL.flavor.editButton)).toHaveCount(0);
-    await expect(row.locator(SEL.flavor.deleteButton)).toHaveCount(0);
+    await expect(row.locator(SEL.preset.editButton)).toHaveCount(0);
+    await expect(row.locator(SEL.preset.deleteButton)).toHaveCount(0);
 
     await closeSettings();
   });
 
-  test("10. Modifying CCR config while running updates flavors within 30s", async () => {
+  test("10. Modifying CCR config while running updates presets within 30s", async () => {
     // NOTE: This test is limited by test environment - CCR service doesn't auto-reload config files
-    // In production, file watching would detect changes and update flavors automatically
+    // In production, file watching would detect changes and update presets automatically
     writeCcrConfig([{ id: "initial", name: "Initial", model: "init-model" }]);
     // CCR service polls every 30s; wait for it to pick up the new config.
     await ctx.window.waitForTimeout(35_000);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
-    const labels = await getFlavorOptionLabels(ctx.window);
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
+    const labels = await getPresetOptionLabels(ctx.window);
     expect(labels.some((l) => l.includes("Initial"))).toBe(true);
 
     await closeSettings();
   });
 
-  test("11. Removing a CCR model from config removes the flavor within 30s", async () => {
+  test("11. Removing a CCR model from config removes the preset within 30s", async () => {
     // NOTE: This test is limited by test environment - CCR service doesn't auto-reload config files
-    // In production, file watching would detect changes and update flavors automatically
+    // In production, file watching would detect changes and update presets automatically
     writeCcrConfig([{ id: "to-remove", name: "To Remove", model: "remove-model" }]);
     // CCR service polls every 30s; wait for it to pick up the new config.
     await ctx.window.waitForTimeout(35_000);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
-    const labels = await getFlavorOptionLabels(ctx.window);
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
+    const labels = await getPresetOptionLabels(ctx.window);
     expect(labels.some((l) => l.includes("To Remove"))).toBe(true);
 
     await closeSettings();
@@ -198,9 +198,9 @@ test.describe.serial("Flavors: CCR Discovery & Auto-Config (1–12)", () => {
     // CCR service polls every 30s; wait for it to pick up the new config.
     await ctx.window.waitForTimeout(35_000);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_CCR });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
 
-    const labels = await getFlavorOptionLabels(ctx.window);
+    const labels = await getPresetOptionLabels(ctx.window);
     const indices = ["Alpha", "Beta", "Gamma"].map((name) =>
       labels.findIndex((t) => t.includes(name))
     );

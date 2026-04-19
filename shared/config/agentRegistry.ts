@@ -136,19 +136,19 @@ export interface AgentAuthCheck {
   fallback?: "installed" | "ready";
 }
 
-export interface AgentFlavor {
+export interface AgentPreset {
   id: string;
   name: string;
   description?: string;
   env?: Record<string, string>;
   args?: string[];
-  /** Per-flavor override: when set, overrides the agent-level dangerousEnabled setting */
+  /** Per-preset override: when set, overrides the agent-level dangerousEnabled setting */
   dangerousEnabled?: boolean;
-  /** Per-flavor override: extra CLI flags merged on top of agent-level customFlags */
+  /** Per-preset override: extra CLI flags merged on top of agent-level customFlags */
   customFlags?: string;
-  /** Per-flavor override: when set, overrides the agent-level inlineMode setting */
+  /** Per-preset override: when set, overrides the agent-level inlineMode setting */
   inlineMode?: boolean;
-  /** Optional brand color (CSS hex) used to tint the agent icon for this flavor */
+  /** Optional brand color (CSS hex) used to tint the agent icon for this preset */
   color?: string;
 }
 
@@ -296,20 +296,20 @@ export interface AgentConfig {
    */
   supportsWsl?: boolean;
   /**
-   * Available flavors for this agent — variants sharing the same base CLI
+   * Available presets for this agent — variants sharing the same base CLI
    * but differing in env overrides, args, or routing (e.g. CCR-routed models).
    * Populated at runtime by services like CcrConfigService.
    */
-  flavors?: AgentFlavor[];
+  presets?: AgentPreset[];
   /**
-   * ID of the flavor to use when none is explicitly selected.
-   * If omitted, the first flavor in the array is the default.
+   * ID of the preset to use when none is explicitly selected.
+   * If omitted, the first preset in the array is the default.
    */
-  defaultFlavorId?: string;
+  defaultPresetId?: string;
   /**
    * Suggested environment variable overrides for this agent, shown as UI hints
-   * in the flavor and global-env editors.
-   * `defaultValue` is pre-populated when a new flavor is created for this agent.
+   * in the preset and global-env editors.
+   * `defaultValue` is pre-populated when a new preset is created for this agent.
    */
   envSuggestions?: Array<{ key: string; hint: string; defaultValue?: string }>;
 }
@@ -1449,20 +1449,20 @@ export function getAgentDisplayTitle(agentId: string, modelId?: string): string 
   return model ? `${baseName} (${model.shortLabel})` : baseName;
 }
 
-export function getAgentFlavor(agentId: string, flavorId?: string): AgentFlavor | undefined {
+export function getAgentPreset(agentId: string, presetId?: string): AgentPreset | undefined {
   const config = getEffectiveAgentConfig(agentId);
-  if (!config?.flavors?.length) return undefined;
-  if (!flavorId) {
-    const defaultId = config.defaultFlavorId;
-    if (defaultId) return config.flavors.find((f) => f.id === defaultId);
-    return config.flavors[0];
+  if (!config?.presets?.length) return undefined;
+  if (!presetId) {
+    const defaultId = config.defaultPresetId;
+    if (defaultId) return config.presets.find((f) => f.id === defaultId);
+    return config.presets[0];
   }
-  return config.flavors.find((f) => f.id === flavorId);
+  return config.presets.find((f) => f.id === presetId);
 }
 
-export function setAgentFlavors(agentId: string, flavors: AgentFlavor[]): void {
+export function setAgentPresets(agentId: string, presets: AgentPreset[]): void {
   const config = AGENT_REGISTRY[agentId];
   if (config) {
-    (config as { flavors?: AgentFlavor[] }).flavors = flavors;
+    (config as { presets?: AgentPreset[] }).presets = presets;
   }
 }

@@ -44,10 +44,10 @@ export interface AddPanelOptionsBase {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time for per-panel model selection */
   agentModelId?: string;
-  /** Flavor ID selected at launch time for per-panel flavor selection */
-  agentFlavorId?: string;
-  /** Flavor brand color (hex) captured at launch time for per-panel icon tinting */
-  agentFlavorColor?: string;
+  /** Preset ID selected at launch time for per-panel preset selection */
+  agentPresetId?: string;
+  /** Preset brand color (hex) captured at launch time for per-panel icon tinting */
+  agentPresetColor?: string;
 }
 
 /** Options for creating a terminal panel */

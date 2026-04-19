@@ -126,14 +126,14 @@ describe("EnvVarEditor", () => {
     expect(queryByTestId("env-editor-error-empty")).toBeNull();
   });
 
-  it("context key change reseeds draft rows (switching between flavors)", () => {
+  it("context key change reseeds draft rows (switching between presets)", () => {
     const { rerender, getAllByTestId } = render(
-      <EnvVarEditor env={{ ALPHA: "1" }} onChange={onChange} contextKey="flavor-a" />
+      <EnvVarEditor env={{ ALPHA: "1" }} onChange={onChange} contextKey="preset-a" />
     );
     expect(getAllByTestId("env-editor-key")).toHaveLength(1);
 
     rerender(
-      <EnvVarEditor env={{ BETA: "2", GAMMA: "3" }} onChange={onChange} contextKey="flavor-b" />
+      <EnvVarEditor env={{ BETA: "2", GAMMA: "3" }} onChange={onChange} contextKey="preset-b" />
     );
     const keyInputs = getAllByTestId("env-editor-key") as HTMLInputElement[];
     expect(keyInputs).toHaveLength(2);

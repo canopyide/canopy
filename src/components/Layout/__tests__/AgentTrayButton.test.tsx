@@ -96,15 +96,15 @@ vi.mock("@/hooks", () => ({
   useKeybindingDisplay: () => null,
 }));
 
-let mockCcrFlavorsByAgent: Record<string, Array<{ id: string; name: string }>> = {};
-let mockMergedFlavorsFn: (
+let mockCcrPresetsByAgent: Record<string, Array<{ id: string; name: string }>> = {};
+let mockMergedPresetsFn: (
   agentId: string
 ) => Array<{ id: string; name: string; color?: string }> = () => [];
 
-vi.mock("@/store/ccrFlavorsStore", () => ({
-  useCcrFlavorsStore: (
-    selector: (s: { ccrFlavorsByAgent: Record<string, unknown[]> }) => unknown
-  ) => selector({ ccrFlavorsByAgent: mockCcrFlavorsByAgent }),
+vi.mock("@/store/ccrPresetsStore", () => ({
+  useCcrPresetsStore: (
+    selector: (s: { ccrPresetsByAgent: Record<string, unknown[]> }) => unknown
+  ) => selector({ ccrPresetsByAgent: mockCcrPresetsByAgent }),
 }));
 
 vi.mock("@shared/config/agentIds", () => ({
@@ -119,7 +119,7 @@ vi.mock("@/config/agents", () => ({
       <span data-testid={`agent-icon-${id}`} data-brand={props.brandColor} />
     ),
   }),
-  getMergedFlavors: (agentId: string) => mockMergedFlavorsFn(agentId),
+  getMergedPresets: (agentId: string) => mockMergedPresetsFn(agentId),
 }));
 
 vi.mock("@/lib/colorUtils", () => ({
@@ -277,8 +277,8 @@ describe("AgentTrayButton", () => {
     mockSeenAgentIds = [];
     mockWelcomeCardDismissed = true;
     mockOnboardingLoaded = true;
-    mockCcrFlavorsByAgent = {};
-    mockMergedFlavorsFn = () => [];
+    mockCcrPresetsByAgent = {};
+    mockMergedPresetsFn = () => [];
   });
 
   afterEach(() => {
@@ -810,16 +810,16 @@ describe("AgentTrayButton", () => {
     expect(setFocusedMock).not.toHaveBeenCalled();
   });
 
-  // ── Flavor split-button keyboard accessibility ────────────────────────────
-  // The SplitLaunchItem in the tray dropdown must launch vanilla on Enter,
+  // ── Preset split-button keyboard accessibility ────────────────────────────
+  // The SplitLaunchItem in the tray dropdown must launch default on Enter,
   // not open the submenu. Without an onKeyDown interceptor on the SubTrigger,
   // Radix's default behavior opens the submenu, making the primary-launch
   // action inaccessible to keyboard users.
   describe("SplitLaunchItem keyboard accessibility", () => {
-    function arrangeAgentWithFlavors() {
+    function arrangeAgentWithPresets() {
       const availability = { claude: "ready" } as unknown as CliAvailability;
       mockSettings = settingsWith({ claude: { pinned: false } });
-      mockMergedFlavorsFn = (agentId: string) =>
+      mockMergedPresetsFn = (agentId: string) =>
         agentId === "claude"
           ? [
               { id: "ccr-pro", name: "CCR: Pro", color: "#e06c75" },
@@ -829,8 +829,8 @@ describe("AgentTrayButton", () => {
       return availability;
     }
 
-    it("Enter on the submenu trigger launches vanilla (flavorId: null)", () => {
-      const availability = arrangeAgentWithFlavors();
+    it("Enter on the submenu trigger launches default (presetId: null)", () => {
+      const availability = arrangeAgentWithPresets();
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
@@ -838,13 +838,13 @@ describe("AgentTrayButton", () => {
 
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
-        { agentId: "claude", flavorId: null },
+        { agentId: "claude", presetId: null },
         { source: "user" }
       );
     });
 
-    it("Space on the submenu trigger also launches vanilla", () => {
-      const availability = arrangeAgentWithFlavors();
+    it("Space on the submenu trigger also launches default", () => {
+      const availability = arrangeAgentWithPresets();
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
@@ -852,13 +852,13 @@ describe("AgentTrayButton", () => {
 
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
-        { agentId: "claude", flavorId: null },
+        { agentId: "claude", presetId: null },
         { source: "user" }
       );
     });
 
     it("other keys (ArrowRight, Tab) do NOT trigger launch", () => {
-      const availability = arrangeAgentWithFlavors();
+      const availability = arrangeAgentWithPresets();
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
@@ -868,8 +868,8 @@ describe("AgentTrayButton", () => {
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
-    it("groups CCR and custom flavors when both present", () => {
-      const availability = arrangeAgentWithFlavors();
+    it("groups CCR and custom presets when both present", () => {
+      const availability = arrangeAgentWithPresets();
       const { queryAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
 
       const labels = queryAllByTestId("menu-label");
@@ -878,10 +878,10 @@ describe("AgentTrayButton", () => {
       expect(labelTexts).toContain("Custom");
     });
 
-    it("does NOT render group labels when only one flavor category is present", () => {
+    it("does NOT render group labels when only one preset category is present", () => {
       const availability = { claude: "ready" } as unknown as CliAvailability;
       mockSettings = settingsWith({ claude: { pinned: false } });
-      mockMergedFlavorsFn = () => [{ id: "user-alpha", name: "Alpha" }];
+      mockMergedPresetsFn = () => [{ id: "user-alpha", name: "Alpha" }];
 
       const { queryByText } = render(<AgentTrayButton agentAvailability={availability} />);
       expect(queryByText("CCR Routes")).toBeNull();

@@ -4,38 +4,38 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
-import { removeCcrConfig, navigateToAgentSettings, addCustomFlavor } from "../helpers/flavors";
+import { removeCcrConfig, navigateToAgentSettings, addCustomPreset } from "../helpers/presets";
 
 let ctx: AppContext;
 
 /**
- * Tests 107–112: Panel-level flavor behavior.
+ * Tests 107–112: Panel-level preset behavior.
  *
  * These tests verify that:
- * - A panel launched with a flavor shows "AgentName (FlavorName)" in its tab title.
- * - Duplicating a flavored panel preserves the title and produces a second tab.
- * - Moving a flavored panel to the dock keeps the flavor color on the dock icon.
- * - After an Electron reload the flavored panel's title is restored.
+ * - A panel launched with a preset shows "AgentName (PresetName)" in its tab title.
+ * - Duplicating a paneled panel preserves the title and produces a second tab.
+ * - Moving a paneled panel to the dock keeps the preset color on the dock icon.
+ * - After an Electron reload the paneled panel's title is restored.
  *
  * All tests are guarded: they require Claude to be in a ready state (binary
  * installed + authenticated). They skip gracefully in CI environments where
  * the agent is not available.
  */
-test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
+test.describe.serial("Presets: Panel Behavior (107–112)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-panel-behavior" });
+    const fixtureDir = createFixtureRepo({ name: "preset-panel-behavior" });
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
       fixtureDir,
-      "Flavor Panel Behavior Test"
+      "Preset Panel Behavior Test"
     );
 
-    // Add a named custom flavor so we have a predictable title
+    // Add a named custom preset so we have a predictable title
     await navigateToAgentSettings(ctx.window, "claude");
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
     await ctx.window.locator(SEL.settings.closeButton).click();
     await ctx.window.waitForTimeout(T_SETTLE);
@@ -48,7 +48,7 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
 
   /**
    * Returns true if a Claude submenu trigger is present in the tray (i.e. agent
-   * is ready and has flavors configured).  Leaves the tray open on success.
+   * is ready and has presets configured).  Leaves the tray open on success.
    */
   const openTrayAndCheckReady = async (): Promise<boolean> => {
     const trayBtn = ctx.window.locator('[aria-label^="Agent tray"]');
@@ -68,10 +68,10 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
   };
 
   /**
-   * Launches Claude with the first available non-vanilla flavor via the tray
+   * Launches Claude with the first available non-default preset via the tray
    * submenu.  Returns false if the agent is not ready or submenu is unavailable.
    */
-  const launchClaudeWithFirstFlavor = async (): Promise<boolean> => {
+  const launchClaudeWithFirstPreset = async (): Promise<boolean> => {
     const ready = await openTrayAndCheckReady();
     if (!ready) {
       await closeTray();
@@ -90,7 +90,7 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
       return false;
     }
 
-    // Click the first NON-vanilla item (index 1+)
+    // Click the first NON-default item (index 1+)
     const items = submenuContent.locator('[role="menuitem"]');
     const count = await items.count();
     if (count < 2) {
@@ -103,36 +103,36 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
     return true;
   };
 
-  test("107. Flavored panel tab title shows 'Claude (FlavorName)' format", async () => {
-    const launched = await launchClaudeWithFirstFlavor();
+  test("107. Panel with preset tab title shows 'Claude (PresetName)' format", async () => {
+    const launched = await launchClaudeWithFirstPreset();
     if (!launched) return;
 
     // Wait for a tab to appear with "(…)" in the title
-    const tabWithFlavor = ctx.window
+    const tabWithPreset = ctx.window
       .locator(SEL.panel.tabList)
       .locator('[role="tab"]', { hasText: /Claude \(.+\)/ });
 
-    await expect(tabWithFlavor.first())
+    await expect(tabWithPreset.first())
       .toBeVisible({ timeout: T_MEDIUM })
       .catch(() => {
         // Panel may have opened but title format differs — soft fail
       });
   });
 
-  test("108. Duplicate panel inherits the same flavor tab title", async () => {
-    // Find any open Claude tab with a flavor title
-    const flavorTab = ctx.window
+  test("108. Duplicate panel inherits the same preset tab title", async () => {
+    // Find any open Claude tab with a preset title
+    const presetTab = ctx.window
       .locator(SEL.panel.tabList)
       .locator('[role="tab"]', { hasText: /Claude \(.+\)/ })
       .first();
 
-    if (!(await flavorTab.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
+    if (!(await presetTab.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
 
     // Read the original title
-    const originalTitle = (await flavorTab.textContent()) ?? "";
+    const originalTitle = (await presetTab.textContent()) ?? "";
 
     // Click the tab to focus it, then open overflow menu
-    await flavorTab.click();
+    await presetTab.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
     const overflowBtn = ctx.window.locator(SEL.panel.overflowMenu);
@@ -150,28 +150,28 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
     await dupItem.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    // There should now be a second tab with the same flavor title
-    const allFlavorTabs = ctx.window
+    // There should now be a second tab with the same preset title
+    const allPresetTabs = ctx.window
       .locator(SEL.panel.tabList)
       .locator('[role="tab"]', { hasText: originalTitle.trim() });
 
-    const tabCount = await allFlavorTabs.count();
+    const tabCount = await allPresetTabs.count();
     expect(tabCount).toBeGreaterThanOrEqual(2);
   });
 
   test("109. Duplicate creates a distinct panel (different tab index)", async () => {
-    const flavorTabs = ctx.window
+    const presetTabs = ctx.window
       .locator(SEL.panel.tabList)
       .locator('[role="tab"]', { hasText: /Claude \(.+\)/ });
 
-    const count = await flavorTabs.count();
+    const count = await presetTabs.count();
     // Tests 107–108 only produce tabs when the Claude agent is ready on the
     // host (binary + auth). In a CI/e2e environment without Claude available,
     // both upstream tests soft-return and no tabs exist — accept that as a
     // valid state rather than failing on environment availability.
     if (count >= 2) {
-      const id0 = await flavorTabs.nth(0).getAttribute("data-panel-id");
-      const id1 = await flavorTabs.nth(1).getAttribute("data-panel-id");
+      const id0 = await presetTabs.nth(0).getAttribute("data-panel-id");
+      const id1 = await presetTabs.nth(1).getAttribute("data-panel-id");
       expect(id0 === id1).toBe(false);
     } else {
       expect(count).toBeGreaterThanOrEqual(0);
@@ -179,14 +179,14 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
   });
 
   test("110. Panel moved to dock still shows in dock container", async () => {
-    const flavorTab = ctx.window
+    const presetTab = ctx.window
       .locator(SEL.panel.tabList)
       .locator('[role="tab"]', { hasText: /Claude \(.+\)/ })
       .first();
 
-    if (!(await flavorTab.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
+    if (!(await presetTab.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
 
-    await flavorTab.click();
+    await presetTab.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
     const minimizeBtn = ctx.window.locator(SEL.panel.minimize);
@@ -204,7 +204,7 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
     expect(dockCount).toBeGreaterThanOrEqual(1);
   });
 
-  test("111. Dock icon for flavored panel carries a color style attribute", async () => {
+  test("111. Dock icon for paneled panel carries a color style attribute", async () => {
     const dock = ctx.window.locator(SEL.dock.container);
     if (!(await dock.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
 
@@ -213,7 +213,7 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
     if (!(await iconEl.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
 
     const style = (await iconEl.getAttribute("style")) ?? "";
-    // A flavor color is injected as an inline style (fill or color)
+    // A preset color is injected as an inline style (fill or color)
     const hasColorStyle = style.includes("color") || style.includes("fill");
     // Soft assertion — we verify the element carries style rather than asserting a specific hex
     expect(typeof style).toBe("string");
@@ -222,15 +222,15 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
     }
   });
 
-  test("112. After Electron reload, flavored panel title is restored", async () => {
-    const flavorTabBefore = ctx.window
+  test("112. After Electron reload, paneled panel title is restored", async () => {
+    const presetTabBefore = ctx.window
       .locator(SEL.panel.tabList)
       .locator('[role="tab"]', { hasText: /Claude \(.+\)/ })
       .first();
 
-    if (!(await flavorTabBefore.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
+    if (!(await presetTabBefore.isVisible({ timeout: T_SHORT }).catch(() => false))) return;
 
-    const titleBefore = ((await flavorTabBefore.textContent()) ?? "").trim();
+    const titleBefore = ((await presetTabBefore.textContent()) ?? "").trim();
 
     // Trigger reload via the app (Ctrl+R / Cmd+R reloads the renderer)
     const mod = process.platform === "darwin" ? "Meta" : "Control";
@@ -242,13 +242,13 @@ test.describe.serial("Flavors: Panel Behavior (107–112)", () => {
     ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    // The flavored panel tab should reappear with the same title
-    const flavorTabAfter = ctx.window
+    // The paneled panel tab should reappear with the same title
+    const presetTabAfter = ctx.window
       .locator(SEL.panel.tabList)
       .locator('[role="tab"]', { hasText: titleBefore })
       .first();
 
-    await expect(flavorTabAfter)
+    await expect(presetTabAfter)
       .toBeVisible({ timeout: T_MEDIUM })
       .catch(() => {
         // Panel may not have been serialized — soft fail for this environment

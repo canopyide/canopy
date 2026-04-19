@@ -26,15 +26,15 @@ import {
 import { getBrandColorHex } from "@/lib/colorUtils";
 import {
   getAgentConfig,
-  getMergedFlavors,
+  getMergedPresets,
   type AgentIconProps,
-  type AgentFlavor,
+  type AgentPreset,
 } from "@/config/agents";
 import { actionService } from "@/services/ActionService";
 import { useActionMruStore } from "@/store/actionMruStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useShallow } from "zustand/react/shallow";
@@ -62,7 +62,7 @@ type AgentRow = {
   pinned: boolean;
   dominantState: AgentState | null;
   isNew: boolean;
-  flavors?: AgentFlavor[];
+  presets?: AgentPreset[];
 };
 
 const ACTIVE_AGENT_STATES: ReadonlySet<AgentState | undefined> = new Set<AgentState | undefined>([
@@ -78,13 +78,13 @@ function buildAgentRow(
   pinned: boolean,
   dominantState: AgentState | null,
   isNew: boolean,
-  customFlavors?: AgentFlavor[],
-  ccrFlavors?: AgentFlavor[]
+  customPresets?: AgentPreset[],
+  ccrPresets?: AgentPreset[]
 ): AgentRow | null {
   const config = getAgentConfig(id);
   if (!config) return null;
-  const flavors = getMergedFlavors(id, customFlavors, ccrFlavors);
-  const hasFlavors = flavors.length > 1;
+  const presets = getMergedPresets(id, customPresets, ccrPresets);
+  const hasPresets = presets.length > 1;
   return {
     id,
     name: config.name,
@@ -92,7 +92,7 @@ function buildAgentRow(
     pinned,
     dominantState,
     isNew,
-    flavors: hasFlavors ? flavors : undefined,
+    presets: hasPresets ? presets : undefined,
   };
 }
 
@@ -111,7 +111,7 @@ function RunningDot({ state }: { state: AgentState | null }) {
 
 type SplitLaunchItemProps = {
   row: AgentRow;
-  onLaunch: (agentId: BuiltInAgentId, flavorId?: string | null) => void;
+  onLaunch: (agentId: BuiltInAgentId, presetId?: string | null) => void;
 };
 
 function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
@@ -130,10 +130,10 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
     return () => el.removeEventListener("pointerdown", handler, true);
   }, [row.id, onLaunch]);
 
-  // Keyboard: Enter/Space on the SubTrigger must launch vanilla (primary action)
+  // Keyboard: Enter/Space on the SubTrigger must launch default (primary action)
   // rather than Radix's default of opening the submenu. ArrowRight still opens
-  // the submenu for picking a specific flavor. Without this, keyboard users
-  // cannot trigger the left-side vanilla launch at all.
+  // the submenu for picking a specific preset. Without this, keyboard users
+  // cannot trigger the left-side default launch at all.
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -142,9 +142,9 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
     }
   };
 
-  const ccrFlavors = (row.flavors ?? []).filter((f) => f.id.startsWith("ccr-"));
-  const customFlavors = (row.flavors ?? []).filter((f) => !f.id.startsWith("ccr-"));
-  const hasBothGroups = ccrFlavors.length > 0 && customFlavors.length > 0;
+  const ccrPresets = (row.presets ?? []).filter((f) => f.id.startsWith("ccr-"));
+  const customPresets = (row.presets ?? []).filter((f) => !f.id.startsWith("ccr-"));
+  const hasBothGroups = ccrPresets.length > 0 && customPresets.length > 0;
 
   return (
     <DropdownMenuSub>
@@ -152,7 +152,7 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
         className="p-0 [&>svg:last-child]:hidden overflow-hidden"
         data-testid="submenu-trigger"
         onKeyDown={handleKeyDown}
-        aria-label={`${row.name} (press Enter to launch, Right Arrow for flavors)`}
+        aria-label={`${row.name} (press Enter to launch, Right Arrow for presets)`}
       >
         <span ref={leftAreaRef} className="flex flex-1 items-center gap-2 px-2.5 py-1.5">
           <span className="inline-flex h-4 w-4 items-center justify-center shrink-0">
@@ -172,32 +172,32 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
           <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
             <row.Icon brandColor={getBrandColorHex(row.id)} />
           </span>
-          Vanilla
+          Default
         </DropdownMenuItem>
-        {ccrFlavors.length > 0 && (
+        {ccrPresets.length > 0 && (
           <>
             {hasBothGroups && <DropdownMenuSeparator />}
             {hasBothGroups && <DropdownMenuLabel>CCR Routes</DropdownMenuLabel>}
-            {ccrFlavors.map((flavor) => (
-              <DropdownMenuItem key={flavor.id} onSelect={() => onLaunch(row.id, flavor.id)}>
+            {ccrPresets.map((preset) => (
+              <DropdownMenuItem key={preset.id} onSelect={() => onLaunch(row.id, preset.id)}>
                 <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
-                  <row.Icon brandColor={flavor.color ?? getBrandColorHex(row.id)} />
+                  <row.Icon brandColor={preset.color ?? getBrandColorHex(row.id)} />
                 </span>
-                {flavor.name.replace(/^CCR:\s*/, "")}
+                {preset.name.replace(/^CCR:\s*/, "")}
               </DropdownMenuItem>
             ))}
           </>
         )}
-        {customFlavors.length > 0 && (
+        {customPresets.length > 0 && (
           <>
             {hasBothGroups && <DropdownMenuSeparator />}
             {hasBothGroups && <DropdownMenuLabel>Custom</DropdownMenuLabel>}
-            {customFlavors.map((flavor) => (
-              <DropdownMenuItem key={flavor.id} onSelect={() => onLaunch(row.id, flavor.id)}>
+            {customPresets.map((preset) => (
+              <DropdownMenuItem key={preset.id} onSelect={() => onLaunch(row.id, preset.id)}>
                 <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
-                  <row.Icon brandColor={flavor.color ?? getBrandColorHex(row.id)} />
+                  <row.Icon brandColor={preset.color ?? getBrandColorHex(row.id)} />
                 </span>
-                {flavor.name}
+                {preset.name}
               </DropdownMenuItem>
             ))}
           </>
@@ -212,7 +212,7 @@ export function AgentTrayButton({
   "data-toolbar-item": dataToolbarItem,
 }: AgentTrayButtonProps) {
   const agentSettings = useAgentSettingsStore((s) => s.settings);
-  const ccrFlavorsByAgent = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent);
+  const ccrPresetsByAgent = useCcrPresetsStore((s) => s.ccrPresetsByAgent);
   const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
 
   const getSortedActionMruList = useActionMruStore(useShallow((s) => s.getSortedActionMruList));
@@ -356,15 +356,15 @@ export function AgentTrayButton({
     for (const id of BUILT_IN_AGENT_IDS) {
       const pinned = isAgentPinned(agentSettings?.agents?.[id]);
       const dominant = agentDominantStates.get(id) ?? null;
-      const customFlavors = agentSettings?.agents?.[id]?.customFlavors;
-      const ccrFlavors = ccrFlavorsByAgent[id];
+      const customPresets = agentSettings?.agents?.[id]?.customPresets;
+      const ccrPresets = ccrPresetsByAgent[id];
       const row = buildAgentRow(
         id,
         pinned,
         dominant,
         newAgentIds.has(id),
-        customFlavors,
-        ccrFlavors
+        customPresets,
+        ccrPresets
       );
       if (!row) continue;
 
@@ -406,14 +406,14 @@ export function AgentTrayButton({
     agentDominantStates,
     getSortedActionMruList,
     newAgentIds,
-    ccrFlavorsByAgent,
+    ccrPresetsByAgent,
   ]);
 
-  const handleLaunch = useCallback((agentId: BuiltInAgentId, flavorId?: string | null) => {
+  const handleLaunch = useCallback((agentId: BuiltInAgentId, presetId?: string | null) => {
     setOpen(false);
     void actionService.dispatch(
       "agent.launch",
-      { agentId, ...(flavorId !== undefined ? { flavorId } : {}) },
+      { agentId, ...(presetId !== undefined ? { presetId } : {}) },
       { source: "user" }
     );
   }, []);
@@ -470,7 +470,7 @@ export function AgentTrayButton({
   const showFallback = !isAvailabilityLoading && !hasAnyContent && fallbackSetup.length > 0;
 
   const renderLaunchItem = (row: AgentRow) => {
-    if (row.flavors && row.flavors.length > 0) {
+    if (row.presets && row.presets.length > 0) {
       return <SplitLaunchItem key={`launch-${row.id}`} row={row} onLaunch={handleLaunch} />;
     }
 
@@ -606,7 +606,7 @@ function LaunchRow({
   stopPointer,
 }: {
   row: AgentRow;
-  onLaunch: (agentId: BuiltInAgentId, flavorId?: string) => void;
+  onLaunch: (agentId: BuiltInAgentId, presetId?: string) => void;
   onKeyDown: (e: KeyboardEvent<HTMLDivElement>, row: AgentRow) => void;
   onTogglePin: (row: AgentRow) => void;
   stopPointer: (e: ReactPointerEvent) => void;

@@ -16,87 +16,98 @@ function makePanel(overrides: Partial<PtyPanelData> = {}): PtyPanelData {
   } as PtyPanelData;
 }
 
-describe("serializePtyPanel — agentFlavorId", () => {
-  it("includes agentFlavorId in the snapshot when set", () => {
-    const panel = makePanel({ agentFlavorId: "user-abc123" });
+describe("serializePtyPanel — agentPresetId", () => {
+  it("includes agentPresetId in the snapshot when set", () => {
+    const panel = makePanel({ agentPresetId: "user-abc123" });
     const snapshot = serializePtyPanel(panel);
-    expect(snapshot.agentFlavorId).toBe("user-abc123");
+    expect(snapshot.agentPresetId).toBe("user-abc123");
   });
 
-  it("includes CCR flavor IDs as well as custom ones", () => {
-    const panel = makePanel({ agentFlavorId: "ccr-some-route" });
+  it("includes CCR preset IDs as well as custom ones", () => {
+    const panel = makePanel({ agentPresetId: "ccr-some-route" });
     const snapshot = serializePtyPanel(panel);
-    expect(snapshot.agentFlavorId).toBe("ccr-some-route");
+    expect(snapshot.agentPresetId).toBe("ccr-some-route");
   });
 
-  it("omits agentFlavorId when it is undefined", () => {
-    const panel = makePanel({ agentFlavorId: undefined });
+  it("omits agentPresetId when it is undefined", () => {
+    const panel = makePanel({ agentPresetId: undefined });
     const snapshot = serializePtyPanel(panel);
-    expect("agentFlavorId" in snapshot).toBe(false);
+    expect("agentPresetId" in snapshot).toBe(false);
   });
 
-  it("omits agentFlavorId when it is an empty string", () => {
-    const panel = makePanel({ agentFlavorId: "" });
+  it("omits agentPresetId when it is an empty string", () => {
+    const panel = makePanel({ agentPresetId: "" });
     const snapshot = serializePtyPanel(panel);
-    expect("agentFlavorId" in snapshot).toBe(false);
+    expect("agentPresetId" in snapshot).toBe(false);
   });
 });
 
-describe("serializePtyPanel — other fields are unaffected by agentFlavorId", () => {
-  it("still serializes agentSessionId alongside agentFlavorId", () => {
+describe("serializePtyPanel — other fields are unaffected by agentPresetId", () => {
+  it("still serializes agentSessionId alongside agentPresetId", () => {
     const panel = makePanel({
-      agentFlavorId: "user-xyz",
+      agentPresetId: "user-xyz",
       agentSessionId: "sess-999",
     });
     const snapshot = serializePtyPanel(panel);
-    expect(snapshot.agentFlavorId).toBe("user-xyz");
+    expect(snapshot.agentPresetId).toBe("user-xyz");
     expect(snapshot.agentSessionId).toBe("sess-999");
   });
 
-  it("still serializes agentModelId alongside agentFlavorId", () => {
+  it("still serializes agentModelId alongside agentPresetId", () => {
     const panel = makePanel({
-      agentFlavorId: "user-xyz",
+      agentPresetId: "user-xyz",
       agentModelId: "claude-sonnet-4-6",
     });
     const snapshot = serializePtyPanel(panel);
-    expect(snapshot.agentFlavorId).toBe("user-xyz");
+    expect(snapshot.agentPresetId).toBe("user-xyz");
     expect(snapshot.agentModelId).toBe("claude-sonnet-4-6");
   });
 
-  it("still serializes agentLaunchFlags alongside agentFlavorId", () => {
+  it("still serializes agentLaunchFlags alongside agentPresetId", () => {
     const panel = makePanel({
-      agentFlavorId: "user-xyz",
+      agentPresetId: "user-xyz",
       agentLaunchFlags: ["--dangerously-skip-permissions"],
     });
     const snapshot = serializePtyPanel(panel);
-    expect(snapshot.agentFlavorId).toBe("user-xyz");
+    expect(snapshot.agentPresetId).toBe("user-xyz");
     expect(snapshot.agentLaunchFlags).toEqual(["--dangerously-skip-permissions"]);
   });
 });
 
-// ── adversarial: agentFlavorColor must survive the serialise/restore round-trip ─
-// Bug: serializePtyPanel does not write agentFlavorColor into the snapshot.
-// After an Electron reload the panel re-opens with agentFlavorColor=undefined,
-// so the dock icon loses its tint and falls back to the vanilla brand color —
-// even when the flavor is still present in settings.
+// ── adversarial: agentPresetColor must survive the serialise/restore round-trip ─
+// Bug: serializePtyPanel does not write agentPresetColor into the snapshot.
+// After an Electron reload the panel re-opens with agentPresetColor=undefined,
+// so the dock icon loses its tint and falls back to the default brand color —
+// even when the preset is still present in settings.
 
-describe("serializePtyPanel — agentFlavorColor (Bug: not serialized)", () => {
-  it("includes agentFlavorColor in the snapshot when set", () => {
-    const panel = makePanel({ agentFlavorColor: "#ff6600" });
+describe("serializePtyPanel — agentPresetColor (Bug: not serialized)", () => {
+  it("includes agentPresetColor in the snapshot when set", () => {
+    const panel = makePanel({ agentPresetColor: "#ff6600" });
     const snapshot = serializePtyPanel(panel);
-    expect(snapshot.agentFlavorColor).toBe("#ff6600");
+    expect(snapshot.agentPresetColor).toBe("#ff6600");
   });
 
-  it("omits agentFlavorColor when it is undefined", () => {
-    const panel = makePanel({ agentFlavorColor: undefined });
+  it("omits agentPresetColor when it is undefined", () => {
+    const panel = makePanel({ agentPresetColor: undefined });
     const snapshot = serializePtyPanel(panel);
+    expect("agentPresetColor" in snapshot).toBe(false);
+  });
+
+  it("serializes both agentPresetId and agentPresetColor together", () => {
+    const panel = makePanel({ agentPresetId: "user-abc", agentPresetColor: "#aabbcc" });
+    const snapshot = serializePtyPanel(panel);
+    expect(snapshot.agentPresetId).toBe("user-abc");
+    expect(snapshot.agentPresetColor).toBe("#aabbcc");
+  });
+
+  // Forward-only write contract for issue #5459: the serializer must never
+  // emit the legacy agentFlavorId / agentFlavorColor keys. The hydration path
+  // (statePatcher.ts) tolerates them on read for backward compat, but writes
+  // must be clean so old keys age out of project JSON on the next save.
+  it("never writes legacy agentFlavorId or agentFlavorColor keys", () => {
+    const panel = makePanel({ agentPresetId: "user-abc", agentPresetColor: "#aabbcc" });
+    const snapshot = serializePtyPanel(panel) as Record<string, unknown>;
+    expect("agentFlavorId" in snapshot).toBe(false);
     expect("agentFlavorColor" in snapshot).toBe(false);
-  });
-
-  it("serializes both agentFlavorId and agentFlavorColor together", () => {
-    const panel = makePanel({ agentFlavorId: "user-abc", agentFlavorColor: "#aabbcc" });
-    const snapshot = serializePtyPanel(panel);
-    expect(snapshot.agentFlavorId).toBe("user-abc");
-    expect(snapshot.agentFlavorColor).toBe("#aabbcc");
   });
 });

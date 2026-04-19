@@ -6,19 +6,19 @@ import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_SETTLE } from "../helpers/timeouts";
 import {
   navigateToAgentSettings,
-  addCustomFlavor,
+  addCustomPreset,
   removeCcrConfig,
   writeCcrConfig,
-} from "../helpers/flavors";
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
-test.describe.serial("Flavors: Custom Delete (45–52)", () => {
+test.describe.serial("Presets: Custom Delete (45–52)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-del" });
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Flavor Del Test");
+    const fixtureDir = createFixtureRepo({ name: "preset-del" });
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Del Test");
   });
 
   test.afterAll(async () => {
@@ -30,38 +30,38 @@ test.describe.serial("Flavors: Custom Delete (45–52)", () => {
     await navigateToAgentSettings(ctx.window, "claude");
   };
 
-  test("45. Trash icon removes custom flavor from section", async () => {
+  test("45. Trash icon removes custom preset from section", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first();
+    const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first();
     await delBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const section = ctx.window.locator(SEL.flavor.section);
+    const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_SHORT });
   });
 
-  test("46. Deleted flavor removed from toolbar dropdown", async () => {
+  test("46. Deleted preset removed from toolbar dropdown", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first();
+    const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first();
     await delBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const chevron = ctx.window.locator(SEL.flavor.toolbarChevron);
+    const chevron = ctx.window.locator(SEL.preset.toolbarChevron);
     if (await chevron.isVisible().catch(() => false)) {
       await chevron.click();
     }
   });
 
-  test("47. Deleted flavor removed from agent tray sub-menu", async () => {
+  test("47. Deleted preset removed from agent tray sub-menu", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
-    const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first();
+    await addCustomPreset(ctx.window);
+    const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first();
     await delBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
@@ -77,83 +77,83 @@ test.describe.serial("Flavors: Custom Delete (45–52)", () => {
     await ctx.window.waitForTimeout(T_SETTLE);
   });
 
-  test("48. Delete button not shown for CCR flavors", async () => {
+  test("48. Delete button not shown for CCR presets", async () => {
     writeCcrConfig([{ id: "ccr-nodel", model: "nodel-model" }]);
     await ctx.window.waitForTimeout(35_000);
     await goToClaudeSettings();
-    const ccrRow = ctx.window.locator(SEL.flavor.section).locator("div.flex.items-center.border", {
+    const ccrRow = ctx.window.locator(SEL.preset.section).locator("div.flex.items-center.border", {
       hasText: "ccr-nodel",
     });
     if (await ccrRow.isVisible().catch(() => false)) {
-      await expect(ccrRow.locator(SEL.flavor.deleteButton)).toHaveCount(0);
+      await expect(ccrRow.locator(SEL.preset.deleteButton)).toHaveCount(0);
     }
   });
 
-  test("49. Deleting the default flavor resets to vanilla", async () => {
+  test("49. Deleting the default preset resets to default", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    // addCustomFlavor auto-selects the new flavor, so the detail view
+    // addCustomPreset auto-selects the new preset, so the detail view
     // already shows it. Just delete via the Delete button in that view.
-    const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first();
+    const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first();
     await expect(delBtn).toBeVisible({ timeout: T_SHORT });
     await delBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    // The trigger label collapses to "Vanilla (no overrides)" on delete.
-    const trigger = ctx.window.locator(SEL.flavor.selectorTrigger);
+    // The trigger label collapses to "Default (no overrides)" on delete.
+    const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     if (await trigger.isVisible().catch(() => false)) {
       const label = (await trigger.textContent())?.trim() ?? "";
-      expect(label).toContain("Vanilla");
+      expect(label).toContain("Default");
     }
   });
 
-  test("50. Deleting all custom flavors hides section if no CCR", async () => {
+  test("50. Deleting all custom presets hides section if no CCR", async () => {
     removeCcrConfig();
-    // Let the CCR 30s poll clear previously-seeded CCR flavors before we
-    // try to verify a single-Vanilla state.
+    // Let the CCR 30s poll clear previously-seeded CCR presets before we
+    // try to verify a single-Default state.
     await ctx.window.waitForTimeout(35_000);
     await goToClaudeSettings();
     // New Popover UI only shows one Delete button at a time (the selected
-    // flavor's), so iterate until no more delete buttons render.
-    const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first();
+    // preset's), so iterate until no more delete buttons render.
+    const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first();
     for (let i = 0; i < 50; i++) {
       const visible = await delBtn.isVisible({ timeout: 500 }).catch(() => false);
       if (!visible) break;
       await delBtn.click();
       await ctx.window.waitForTimeout(T_SETTLE);
     }
-    // After removing all custom flavors AND clearing CCR config, the
-    // FlavorSelector Popover is unmounted entirely (the empty-state only
+    // After removing all custom presets AND clearing CCR config, the
+    // PresetSelector Popover is unmounted entirely (the empty-state only
     // renders an Add button). Verify the trigger is absent; if it's still
-    // present a residual CCR flavor leaked through — accept that with a
+    // present a residual CCR preset leaked through — accept that with a
     // soft check since CCR sync isn't deterministic in E2E timing.
-    const trigger = ctx.window.locator(SEL.flavor.selectorTrigger);
+    const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     const triggerVisible = await trigger.isVisible({ timeout: 1500 }).catch(() => false);
     if (triggerVisible) {
-      const { countFlavorOptions } = await import("../helpers/flavors");
-      const remaining = await countFlavorOptions(ctx.window);
+      const { countPresetOptions } = await import("../helpers/presets");
+      const remaining = await countPresetOptions(ctx.window);
       expect(remaining).toBeGreaterThanOrEqual(1);
     } else {
       // Add button should still be visible in the empty state.
       await expect(
-        ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.addButton)
+        ctx.window.locator(SEL.preset.section).locator(SEL.preset.addButton)
       ).toBeVisible({ timeout: T_SHORT });
     }
   });
 
   test("51. Deletion persists after closing Settings", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
     const customBefore = await ctx.window
-      .locator(SEL.flavor.section)
-      .locator(SEL.flavor.customBadge)
+      .locator(SEL.preset.section)
+      .locator(SEL.preset.customBadge)
       .count();
 
-    await ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first().click();
+    await ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first().click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await ctx.window.locator(SEL.settings.closeButton).click();
@@ -161,18 +161,18 @@ test.describe.serial("Flavors: Custom Delete (45–52)", () => {
     await goToClaudeSettings();
 
     const customAfter = await ctx.window
-      .locator(SEL.flavor.section)
-      .locator(SEL.flavor.customBadge)
+      .locator(SEL.preset.section)
+      .locator(SEL.preset.customBadge)
       .count();
     expect(customAfter).toBeLessThan(customBefore);
   });
 
-  test("52. Deleting flavor while agent running with it does not crash", async () => {
+  test("52. Deleting preset while agent running with it does not crash", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first();
+    const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first();
     await delBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 

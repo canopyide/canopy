@@ -8,17 +8,17 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
-  addCustomFlavor,
-} from "../helpers/flavors";
+  addCustomPreset,
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
-test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
+test.describe.serial("Presets: Onboarding/Wizard Integration (83–88)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-wizard" });
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Flavor Wizard Test");
+    const fixtureDir = createFixtureRepo({ name: "preset-wizard" });
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Wizard Test");
   });
 
   test.afterAll(async () => {
@@ -26,7 +26,7 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     if (ctx?.app) await closeApp(ctx.app);
   });
 
-  test("83. Write CCR config with 2 models, open wizard, verify Claude shows flavor count badge", async () => {
+  test("83. Write CCR config with 2 models, open wizard, verify Claude shows preset count badge", async () => {
     writeCcrConfig([
       { id: "deepseek", name: "DeepSeek V3", model: "deepseek-v3" },
       { id: "gpt5", name: "GPT-5", model: "gpt-5.4" },
@@ -44,19 +44,19 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
       .first();
     await expect(wizardDialog).toBeVisible({ timeout: T_MEDIUM });
 
-    // agent-card-* and flavor-count-badge only render on the "Complete" step;
+    // agent-card-* and preset-count-badge only render on the "Complete" step;
     // navigating there requires real agent installation. Skip gracefully if
     // the current step doesn't expose the cards (dev/CI environment without
     // agent binaries).
     const claudeCard = wizardDialog.locator('[data-testid="agent-card-claude"]');
     const visible = await claudeCard.isVisible({ timeout: T_SHORT }).catch(() => false);
     if (visible) {
-      const flavorBadge = claudeCard.locator("[data-testid='flavor-count-badge']");
-      await expect(flavorBadge).toBeVisible({ timeout: T_SHORT });
+      const presetBadge = claudeCard.locator("[data-testid='preset-count-badge']");
+      await expect(presetBadge).toBeVisible({ timeout: T_SHORT });
     }
   });
 
-  test("84. In the wizard Complete step, verify flavor badges appear next to agent names", async () => {
+  test("84. In the wizard Complete step, verify preset badges appear next to agent names", async () => {
     const wizardDialog = ctx.window
       .locator('[role="dialog"]')
       .filter({ hasText: /^Agent Setup/ })
@@ -72,7 +72,7 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     if (await completeStep.isVisible({ timeout: T_SHORT }).catch(() => false)) {
       const claudeEntry = completeStep.locator("li, [data-agent-id='claude']").first();
       await expect(claudeEntry).toBeVisible({ timeout: T_SHORT });
-      const badge = claudeEntry.locator("[data-testid='flavor-count-badge']");
+      const badge = claudeEntry.locator("[data-testid='preset-count-badge']");
       await expect(badge).toBeVisible({ timeout: T_SHORT });
     }
 
@@ -83,7 +83,7 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     }
   });
 
-  test("85. Verify flavor badge text shows correct count like '2 flavors'", async () => {
+  test("85. Verify preset badge text shows correct count like '2 presets'", async () => {
     await ctx.window.evaluate(() =>
       window.dispatchEvent(new CustomEvent("daintree:open-agent-setup-wizard"))
     );
@@ -100,9 +100,9 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     const claudeCard = wizardDialog.locator('[data-testid="agent-card-claude"]');
     const visible = await claudeCard.isVisible({ timeout: T_SHORT }).catch(() => false);
     if (visible) {
-      const flavorBadge = claudeCard.locator("[data-testid='flavor-count-badge']");
-      await expect(flavorBadge).toBeVisible({ timeout: T_SHORT });
-      await expect(flavorBadge).toContainText("2 flavor", { timeout: T_SHORT });
+      const presetBadge = claudeCard.locator("[data-testid='preset-count-badge']");
+      await expect(presetBadge).toBeVisible({ timeout: T_SHORT });
+      await expect(presetBadge).toContainText("2 preset", { timeout: T_SHORT });
     }
 
     const closeButton = wizardDialog.locator('button:has-text("Close"), button:has-text("Done")');
@@ -112,7 +112,7 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     }
   });
 
-  test("86. Verify Gemini does NOT show a flavor badge (no CCR flavors)", async () => {
+  test("86. Verify Gemini does NOT show a preset badge (no CCR presets)", async () => {
     await ctx.window.evaluate(() =>
       window.dispatchEvent(new CustomEvent("daintree:open-agent-setup-wizard"))
     );
@@ -125,7 +125,7 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
 
     const geminiCard = wizardDialog.locator('[data-testid="agent-card-gemini"]');
     if (await geminiCard.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-      const badge = geminiCard.locator("[data-testid='flavor-count-badge']");
+      const badge = geminiCard.locator("[data-testid='preset-count-badge']");
       await expect(badge).not.toBeVisible({ timeout: T_SHORT });
     }
 
@@ -136,7 +136,7 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     }
   });
 
-  test("87. Complete wizard pinning an agent with flavors, verify agent is pinned and flavors still available", async () => {
+  test("87. Complete wizard pinning an agent with presets, verify agent is pinned and presets still available", async () => {
     await ctx.window.evaluate(() =>
       window.dispatchEvent(new CustomEvent("daintree:open-agent-setup-wizard"))
     );
@@ -178,22 +178,22 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     }
 
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_MEDIUM });
-    // The Popover lists CCR flavors with the "CCR:" prefix stripped.
-    const { getFlavorOptionLabels } = await import("../helpers/flavors");
-    const labels = await getFlavorOptionLabels(ctx.window);
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
+    // The Popover lists CCR presets with the "CCR:" prefix stripped.
+    const { getPresetOptionLabels } = await import("../helpers/presets");
+    const labels = await getPresetOptionLabels(ctx.window);
     expect(labels.some((l) => l.includes("DeepSeek V3"))).toBe(true);
   });
 
-  test("88. Add custom flavors to Claude, open wizard, verify AgentCard shows badge for custom flavors too", async () => {
+  test("88. Add custom presets to Claude, open wizard, verify AgentCard shows badge for custom presets too", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
 
     const nameInput = ctx.window.locator(
-      `${SEL.flavor.section} input[placeholder*="name" i], ${SEL.flavor.section} input[aria-label*="name" i]`
+      `${SEL.preset.section} input[placeholder*="name" i], ${SEL.preset.section} input[aria-label*="name" i]`
     );
     if (await nameInput.isVisible({ timeout: T_SHORT }).catch(() => false)) {
-      await nameInput.fill("My Custom Flavor");
+      await nameInput.fill("My Custom Preset");
       await ctx.window.keyboard.press("Enter");
     }
     await ctx.window.waitForTimeout(T_SETTLE);
@@ -213,9 +213,9 @@ test.describe.serial("Flavors: Onboarding/Wizard Integration (83–88)", () => {
     const claudeCard = wizardDialog.locator('[data-testid="agent-card-claude"]');
     const claudeCardVisible = await claudeCard.isVisible({ timeout: T_SHORT }).catch(() => false);
     if (claudeCardVisible) {
-      const flavorBadge = claudeCard.locator("[data-testid='flavor-count-badge']");
-      await expect(flavorBadge).toBeVisible({ timeout: T_SHORT });
-      await expect(flavorBadge).toContainText("flavor", { timeout: T_SHORT });
+      const presetBadge = claudeCard.locator("[data-testid='preset-count-badge']");
+      await expect(presetBadge).toBeVisible({ timeout: T_SHORT });
+      await expect(presetBadge).toContainText("preset", { timeout: T_SHORT });
     }
 
     const closeButton = wizardDialog.locator('button:has-text("Close"), button:has-text("Done")');

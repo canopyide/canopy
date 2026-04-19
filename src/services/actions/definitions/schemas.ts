@@ -75,7 +75,7 @@ export const CopyTreeOptionsSchema = z.object({
   charLimit: z.number().int().positive().optional(),
 });
 
-export const AgentFlavorSchema = z.object({
+export const AgentPresetSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().optional(),
@@ -90,7 +90,7 @@ export const AgentSettingsEntrySchema = z
     customFlags: z.string().optional(),
     dangerousArgs: z.string().optional(),
     dangerousEnabled: z.boolean().optional(),
-    flavorId: z.string().optional(),
-    customFlavors: z.array(AgentFlavorSchema).optional(),
+    presetId: z.string().optional(),
+    customPresets: z.array(AgentPresetSchema).optional(),
   })
   .catchall(z.unknown());

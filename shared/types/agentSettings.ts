@@ -89,10 +89,10 @@ export interface AgentSettingsEntry {
   shareClipboardDirectory?: boolean;
   /** Override the default model for this agent in assistant/help contexts (e.g., "claude-opus-4-6") */
   assistantModelId?: string;
-  /** Selected flavor ID for this agent (persisted per-agent across sessions) */
-  flavorId?: string;
-  /** User-defined custom flavors for this agent (persisted, editable from Settings) */
-  customFlavors?: Array<{
+  /** Selected preset ID for this agent (persisted per-agent across sessions) */
+  presetId?: string;
+  /** User-defined custom presets for this agent (persisted, editable from Settings) */
+  customPresets?: Array<{
     id: string;
     name: string;
     description?: string;
@@ -104,8 +104,8 @@ export interface AgentSettingsEntry {
     color?: string;
   }>;
   /**
-   * Environment variables applied to every launch of this agent, regardless of flavor.
-   * Flavor-level env overrides these when keys overlap.
+   * Environment variables applied to every launch of this agent, regardless of preset.
+   * Preset-level env overrides these when keys overlap.
    */
   globalEnv?: Record<string, string>;
   [key: string]: unknown;
@@ -200,8 +200,8 @@ export interface GenerateAgentCommandOptions {
   modelId?: string;
   /** Additional CLI arguments from recipe terminal (whitespace-separated string) */
   recipeArgs?: string;
-  /** Additional CLI arguments from agent flavor (whitespace-separated string) */
-  flavorArgs?: string;
+  /** Additional CLI arguments from agent preset (whitespace-separated string) */
+  presetArgs?: string;
 }
 
 /**
@@ -260,9 +260,9 @@ export function generateAgentCommand(
     parts.push("--model", options.modelId);
   }
 
-  // Add flavor-level args (env overrides applied separately via spawn env)
-  if (options?.flavorArgs) {
-    for (const token of options.flavorArgs.trim().split(/\s+/).filter(Boolean)) {
+  // Add preset-level args (env overrides applied separately via spawn env)
+  if (options?.presetArgs) {
+    for (const token of options.presetArgs.trim().split(/\s+/).filter(Boolean)) {
       if (token.startsWith("-")) {
         parts.push(token);
       } else {

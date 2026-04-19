@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
-import { FlavorColorPicker } from "../FlavorColorPicker";
+import { PresetColorPicker } from "../PresetColorPicker";
 
 vi.mock("lucide-react", () => ({
   Check: () => <span data-testid="check-icon" />,
@@ -16,7 +16,7 @@ vi.mock("@/components/ui/popover", () => ({
   PopoverContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-describe("FlavorColorPicker", () => {
+describe("PresetColorPicker", () => {
   let onChange: ReturnType<typeof vi.fn<(color: string | undefined) => void>>;
 
   beforeEach(() => {
@@ -25,27 +25,27 @@ describe("FlavorColorPicker", () => {
 
   it("trigger swatch reflects the current color", () => {
     const { getByTestId } = render(
-      <FlavorColorPicker color="#ff0000" onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888" />
     );
-    const trigger = getByTestId("flavor-color-picker-trigger");
+    const trigger = getByTestId("preset-color-picker-trigger");
     expect(trigger.querySelector("span")?.getAttribute("style")).toContain("rgb(255, 0, 0)");
   });
 
   it("trigger swatch falls back to agentColor when color is undefined", () => {
     const { getByTestId } = render(
-      <FlavorColorPicker color={undefined} onChange={onChange} agentColor="#0000ff" />
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#0000ff" />
     );
-    const trigger = getByTestId("flavor-color-picker-trigger");
+    const trigger = getByTestId("preset-color-picker-trigger");
     expect(trigger.querySelector("span")?.getAttribute("style")).toContain("rgb(0, 0, 255)");
   });
 
   it("clicking a palette swatch invokes onChange with that hex", () => {
     const { container } = render(
-      <FlavorColorPicker color={undefined} onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
     );
     // Find the first palette swatch button by data-testid prefix.
     const swatch = container.querySelector(
-      '[data-testid^="flavor-color-swatch-"]'
+      '[data-testid^="preset-color-swatch-"]'
     ) as HTMLButtonElement;
     expect(swatch).toBeTruthy();
     fireEvent.click(swatch);
@@ -56,18 +56,18 @@ describe("FlavorColorPicker", () => {
 
   it("clicking Clear invokes onChange with undefined (inherit)", () => {
     const { getByTestId } = render(
-      <FlavorColorPicker color="#ff0000" onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888" />
     );
-    fireEvent.click(getByTestId("flavor-color-clear"));
+    fireEvent.click(getByTestId("preset-color-clear"));
     expect(onChange).toHaveBeenCalledWith(undefined);
   });
 
   it("Custom… button programmatically opens the native color input", () => {
     const { getByTestId } = render(
-      <FlavorColorPicker color={undefined} onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
     );
     // Spy on the hidden input's click handler — confirm the click propagates.
-    const customBtn = getByTestId("flavor-color-custom") as HTMLButtonElement;
+    const customBtn = getByTestId("preset-color-custom") as HTMLButtonElement;
     const nativeInput = customBtn.parentElement?.querySelector(
       'input[type="color"]'
     ) as HTMLInputElement;
@@ -79,9 +79,9 @@ describe("FlavorColorPicker", () => {
 
   it("selected palette swatch is marked aria-pressed", () => {
     const { getByTestId } = render(
-      <FlavorColorPicker color="#e06c75" onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color="#e06c75" onChange={onChange} agentColor="#888" />
     );
-    const swatch = getByTestId("flavor-color-swatch-e06c75");
+    const swatch = getByTestId("preset-color-swatch-e06c75");
     expect(swatch.getAttribute("aria-pressed")).toBe("true");
   });
 });

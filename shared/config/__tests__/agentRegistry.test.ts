@@ -11,8 +11,8 @@ import {
   isUserDefinedAgent,
   getAgentModelConfig,
   getAgentDisplayTitle,
-  getAgentFlavor,
-  setAgentFlavors,
+  getAgentPreset,
+  setAgentPresets,
   ASSISTANT_FAST_MODELS,
   type AgentConfig,
 } from "../agentRegistry.js";
@@ -585,47 +585,47 @@ describe("getAgentDisplayTitle", () => {
   });
 });
 
-describe("getAgentFlavor", () => {
+describe("getAgentPreset", () => {
   afterEach(() => {
-    setAgentFlavors("claude", []);
+    setAgentPresets("claude", []);
   });
 
-  it("returns undefined when agent has no flavors", () => {
-    expect(getAgentFlavor("claude")).toBeUndefined();
+  it("returns undefined when agent has no presets", () => {
+    expect(getAgentPreset("claude")).toBeUndefined();
   });
 
-  it("returns first flavor when no flavorId specified", () => {
-    setAgentFlavors("claude", [
-      { id: "vanilla", name: "Vanilla" },
+  it("returns first preset when no presetId specified", () => {
+    setAgentPresets("claude", [
+      { id: "default", name: "Default" },
       { id: "ccr-deep", name: "CCR DeepSeek" },
     ]);
-    const flavor = getAgentFlavor("claude");
-    expect(flavor?.id).toBe("vanilla");
+    const preset = getAgentPreset("claude");
+    expect(preset?.id).toBe("default");
   });
 
-  it("returns flavor matching flavorId", () => {
-    setAgentFlavors("claude", [
-      { id: "vanilla", name: "Vanilla" },
+  it("returns preset matching presetId", () => {
+    setAgentPresets("claude", [
+      { id: "default", name: "Default" },
       { id: "ccr-deep", name: "CCR DeepSeek" },
     ]);
-    const flavor = getAgentFlavor("claude", "ccr-deep");
-    expect(flavor?.name).toBe("CCR DeepSeek");
+    const preset = getAgentPreset("claude", "ccr-deep");
+    expect(preset?.name).toBe("CCR DeepSeek");
   });
 
-  it("returns defaultFlavorId flavor when set", () => {
-    setAgentFlavors("claude", [
-      { id: "vanilla", name: "Vanilla" },
+  it("returns defaultPresetId preset when set", () => {
+    setAgentPresets("claude", [
+      { id: "default", name: "Default" },
       { id: "ccr-deep", name: "CCR DeepSeek" },
     ]);
     const config = getEffectiveAgentConfig("claude");
-    config!.defaultFlavorId = "ccr-deep";
-    const flavor = getAgentFlavor("claude");
-    expect(flavor?.id).toBe("ccr-deep");
-    delete config!.defaultFlavorId;
+    config!.defaultPresetId = "ccr-deep";
+    const preset = getAgentPreset("claude");
+    expect(preset?.id).toBe("ccr-deep");
+    delete config!.defaultPresetId;
   });
 
   it("returns undefined for unknown agent", () => {
-    expect(getAgentFlavor("nonexistent-agent")).toBeUndefined();
+    expect(getAgentPreset("nonexistent-agent")).toBeUndefined();
   });
 });
 

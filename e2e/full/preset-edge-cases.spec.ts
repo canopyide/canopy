@@ -6,23 +6,23 @@ import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 import {
   navigateToAgentSettings,
-  addCustomFlavor,
+  addCustomPreset,
   removeCcrConfig,
-  countFlavorOptions,
-} from "../helpers/flavors";
+  countPresetOptions,
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
-test.describe.serial("Flavors: Edge Cases & Resilience (97–100)", () => {
+test.describe.serial("Presets: Edge Cases & Resilience (97–100)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-edge" });
+    const fixtureDir = createFixtureRepo({ name: "preset-edge" });
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
       fixtureDir,
-      "Flavor Edge Case Test"
+      "Preset Edge Case Test"
     );
   });
 
@@ -35,53 +35,53 @@ test.describe.serial("Flavors: Edge Cases & Resilience (97–100)", () => {
     await navigateToAgentSettings(ctx.window, "claude");
   };
 
-  test("97. Adding 50 custom flavors does not crash or freeze Settings", async () => {
+  test("97. Adding 50 custom presets does not crash or freeze Settings", async () => {
     await goToClaudeSettings();
 
     for (let i = 0; i < 50; i++) {
-      await addCustomFlavor(ctx.window);
+      await addCustomPreset(ctx.window);
     }
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const section = ctx.window.locator(SEL.flavor.section);
+    const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_MEDIUM });
 
-    // With the Popover-based FlavorSelector the per-flavor "custom" badge only
-    // renders for the currently-selected flavor in the detail view, so counting
+    // With the Popover-based PresetSelector the per-preset "custom" badge only
+    // renders for the currently-selected preset in the detail view, so counting
     // badges would always yield 1. Open the listbox and count options instead
-    // (Vanilla + 50 custom entries = 51).
-    const optionCount = await countFlavorOptions(ctx.window);
+    // (Default + 50 custom entries = 51).
+    const optionCount = await countPresetOptions(ctx.window);
     expect(optionCount).toBeGreaterThanOrEqual(50);
   });
 
-  test("98. Flavor name with shell metacharacters does not crash", async () => {
+  test("98. Preset name with shell metacharacters does not crash", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const editBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.editButton).last();
+    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).last();
     await expect(editBtn).toBeVisible({ timeout: T_SHORT });
 
     ctx.window.once("dialog", (dialog) => dialog.accept("'; echo pwned; '"));
     await editBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_SHORT });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_SHORT });
   });
 
-  test("99. Rapid add/delete 10 flavors — no duplicate entries", async () => {
+  test("99. Rapid add/delete 10 presets — no duplicate entries", async () => {
     await goToClaudeSettings();
 
     const customBadgesBefore = ctx.window
-      .locator(SEL.flavor.section)
-      .locator(SEL.flavor.customBadge);
+      .locator(SEL.preset.section)
+      .locator(SEL.preset.customBadge);
     const countBefore = await customBadgesBefore.count();
 
     for (let i = 0; i < 10; i++) {
-      await addCustomFlavor(ctx.window);
+      await addCustomPreset(ctx.window);
       await ctx.window.waitForTimeout(100);
 
-      const deleteButtons = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton);
+      const deleteButtons = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton);
       const deleteCount = await deleteButtons.count();
       if (deleteCount > 0) {
         ctx.window.once("dialog", (dialog) => dialog.accept());
@@ -91,22 +91,22 @@ test.describe.serial("Flavors: Edge Cases & Resilience (97–100)", () => {
     }
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const section = ctx.window.locator(SEL.flavor.section);
+    const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_MEDIUM });
 
-    const customBadgesAfter = section.locator(SEL.flavor.customBadge);
+    const customBadgesAfter = section.locator(SEL.preset.customBadge);
     const countAfter = await customBadgesAfter.count();
     expect(countAfter).toBeLessThanOrEqual(countBefore + 10);
     expect(countAfter).toBeGreaterThanOrEqual(0);
   });
 
-  test("100. Corrupt customFlavors data does not crash settings page", async () => {
+  test("100. Corrupt customPresets data does not crash settings page", async () => {
     try {
       await ctx.window.evaluate(() => {
         const _stores = Object.keys(window).filter(
           (k) => k.startsWith("__CANOPY") || k.includes("store")
         );
-        const event = new CustomEvent("flavor-test-inject", {
+        const event = new CustomEvent("preset-test-inject", {
           detail: [{ name: "corrupt-no-id" }],
         });
         window.dispatchEvent(event);
@@ -117,7 +117,7 @@ test.describe.serial("Flavors: Edge Cases & Resilience (97–100)", () => {
 
     await goToClaudeSettings();
 
-    const section = ctx.window.locator(SEL.flavor.section);
+    const section = ctx.window.locator(SEL.preset.section);
     const sectionVisible = await section.isVisible({ timeout: T_MEDIUM }).catch(() => false);
 
     const settingsHeading = ctx.window.locator(SEL.settings.heading);

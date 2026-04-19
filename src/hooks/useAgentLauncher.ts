@@ -8,7 +8,7 @@ import { isElectronAvailable } from "./useElectron";
 
 import { agentSettingsClient, systemClient } from "@/clients";
 import { useHomeDir } from "@/hooks/app/useHomeDir";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import type { AgentSettings, CliAvailability } from "@shared/types";
 import { generateAgentCommand, buildAgentLaunchFlags } from "@shared/types";
@@ -16,7 +16,7 @@ import {
   getAgentConfig,
   isRegisteredAgent,
   getAgentDisplayTitle,
-  getMergedFlavor,
+  getMergedPreset,
   sanitizeAgentEnv,
 } from "@/config/agents";
 
@@ -29,7 +29,7 @@ export interface LaunchAgentOptions {
   prompt?: string;
   interactive?: boolean;
   modelId?: string;
-  flavorId?: string | null;
+  presetId?: string | null;
 }
 
 export interface UseAgentLauncherReturn {
@@ -165,45 +165,45 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
       let command: string | undefined;
       let launchFlags: string[] | undefined;
-      let flavorEnv: Record<string, string> | undefined;
-      let flavor: import("../../shared/config/agentRegistry").AgentFlavor | undefined;
+      let presetEnv: Record<string, string> | undefined;
+      let preset: import("../../shared/config/agentRegistry").AgentPreset | undefined;
       if (agentConfig) {
         const entry = agentSettings?.agents?.[agentId] ?? {};
-        // null = explicitly vanilla — skip flavor lookup entirely
-        // undefined = use saved flavorId (or default if none saved)
-        const explicitVanilla = launchOptions?.flavorId === null;
-        const resolvedFlavorId = explicitVanilla
+        // null = explicitly default — skip preset lookup entirely
+        // undefined = use saved presetId (or default if none saved)
+        const explicitDefault = launchOptions?.presetId === null;
+        const resolvedPresetId = explicitDefault
           ? undefined
-          : (launchOptions?.flavorId ?? entry.flavorId);
-        const ccrFlavors = useCcrFlavorsStore.getState().ccrFlavorsByAgent[agentId];
-        flavor =
-          isAgent && !explicitVanilla
-            ? getMergedFlavor(agentId, resolvedFlavorId, entry.customFlavors, ccrFlavors)
+          : (launchOptions?.presetId ?? entry.presetId);
+        const ccrPresets = useCcrPresetsStore.getState().ccrPresetsByAgent[agentId];
+        preset =
+          isAgent && !explicitDefault
+            ? getMergedPreset(agentId, resolvedPresetId, entry.customPresets, ccrPresets)
             : undefined;
 
-        // Stale flavorId cleanup: if saved flavor no longer exists, clear it
-        if (resolvedFlavorId && !flavor) {
+        // Stale presetId cleanup: if saved preset no longer exists, clear it
+        if (resolvedPresetId && !preset) {
           const { useAgentSettingsStore: settingsStore } =
             await import("@/store/agentSettingsStore");
-          void settingsStore.getState().updateAgent(agentId, { flavorId: undefined });
+          void settingsStore.getState().updateAgent(agentId, { presetId: undefined });
         }
 
-        // Merge: global env (base) overridden by flavor env (flavor wins on conflicts)
+        // Merge: global env (base) overridden by preset env (preset wins on conflicts)
         const sanitizedGlobal = sanitizeAgentEnv(entry.globalEnv as Record<string, unknown>);
-        const sanitizedFlavor = flavor?.env;
-        if (sanitizedGlobal || sanitizedFlavor) {
-          flavorEnv = { ...sanitizedGlobal, ...sanitizedFlavor };
+        const sanitizedPreset = preset?.env;
+        if (sanitizedGlobal || sanitizedPreset) {
+          presetEnv = { ...sanitizedGlobal, ...sanitizedPreset };
         }
 
-        // Merge per-flavor behavioral overrides on top of agent-level settings
-        const effectiveEntry = flavor
+        // Merge per-preset behavioral overrides on top of agent-level settings
+        const effectiveEntry = preset
           ? {
               ...entry,
-              ...(flavor.dangerousEnabled !== undefined && {
-                dangerousEnabled: flavor.dangerousEnabled,
+              ...(preset.dangerousEnabled !== undefined && {
+                dangerousEnabled: preset.dangerousEnabled,
               }),
-              ...(flavor.customFlags !== undefined && { customFlags: flavor.customFlags }),
-              ...(flavor.inlineMode !== undefined && { inlineMode: flavor.inlineMode }),
+              ...(preset.customFlags !== undefined && { customFlags: preset.customFlags }),
+              ...(preset.inlineMode !== undefined && { inlineMode: preset.inlineMode }),
             }
           : entry;
 
@@ -223,7 +223,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
           interactive: launchOptions?.interactive ?? true,
           clipboardDirectory,
           modelId: launchOptions?.modelId,
-          flavorArgs: flavor?.args?.join(" "),
+          presetArgs: preset?.args?.join(" "),
         });
 
         // Capture process-level flags for session resume persistence
@@ -244,7 +244,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         return null;
       }
 
-      const flavorTitle = isAgent && flavor ? `${title} (${flavor.name})` : title;
+      const presetTitle = isAgent && preset ? `${title} (${preset.name})` : title;
 
       const options: AddPanelOptions = isAgent
         ? {
@@ -252,15 +252,15 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
             type: agentId as import("@shared/types/panel").TerminalType,
             agentId,
             command: command as string,
-            title: flavorTitle,
+            title: presetTitle,
             cwd,
             worktreeId: targetWorktreeId || undefined,
             location: launchOptions?.location,
             agentLaunchFlags: launchFlags,
             agentModelId: launchOptions?.modelId,
-            agentFlavorId: flavor?.id,
-            agentFlavorColor: flavor?.color,
-            env: flavorEnv,
+            agentPresetId: preset?.id,
+            agentPresetColor: preset?.color,
+            env: presetEnv,
           }
         : {
             kind: "terminal",

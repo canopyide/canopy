@@ -18,8 +18,8 @@ export function serializePtyPanel(t: PtySerializeInput): Partial<PanelSnapshot> 
     ...(t.agentSessionId && { agentSessionId: t.agentSessionId }),
     ...(t.agentLaunchFlags?.length && { agentLaunchFlags: t.agentLaunchFlags }),
     ...(t.agentModelId && { agentModelId: t.agentModelId }),
-    ...(t.agentFlavorId && { agentFlavorId: t.agentFlavorId }),
-    ...(t.agentFlavorColor && { agentFlavorColor: t.agentFlavorColor }),
+    ...(t.agentPresetId && { agentPresetId: t.agentPresetId }),
+    ...(t.agentPresetColor && { agentPresetColor: t.agentPresetColor }),
     ...(t.agentState && { agentState: t.agentState }),
     ...(t.lastStateChange !== undefined && { lastStateChange: t.lastStateChange }),
   };

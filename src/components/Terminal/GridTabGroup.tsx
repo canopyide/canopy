@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useEffect, useEffectEvent, useRef } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
-import { getMergedFlavors } from "@/config/agents";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
+import { getMergedPresets } from "@/config/agents";
 import { GridPanel } from "./GridPanel";
 import type { TabGroup } from "@/types";
 import type { TabInfo } from "@/components/Panel/TabButton";
@@ -152,20 +152,20 @@ export const GridTabGroup = React.memo(function GridTabGroup({
   }, [panels, activeTabId]);
 
   const agentSettings = useAgentSettingsStore((s) => s.settings);
-  const ccrFlavorsByAgent = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent);
+  const ccrPresetsByAgent = useCcrPresetsStore((s) => s.ccrPresetsByAgent);
 
   // Build tabs array for PanelHeader
   const tabs: TabInfo[] = useMemo(() => {
     return panels.map((p) => {
-      let flavorColor = p.agentFlavorColor;
-      if (p.agentId && p.agentFlavorId) {
-        const flavors = getMergedFlavors(
+      let presetColor = p.agentPresetColor;
+      if (p.agentId && p.agentPresetId) {
+        const presets = getMergedPresets(
           p.agentId,
-          agentSettings?.agents?.[p.agentId]?.customFlavors,
-          ccrFlavorsByAgent[p.agentId]
+          agentSettings?.agents?.[p.agentId]?.customPresets,
+          ccrPresetsByAgent[p.agentId]
         );
-        const live = flavors.find((f) => f.id === p.agentFlavorId);
-        if (live) flavorColor = live.color ?? flavorColor;
+        const live = presets.find((f) => f.id === p.agentPresetId);
+        if (live) presetColor = live.color ?? presetColor;
       }
       return {
         id: p.id,
@@ -176,10 +176,10 @@ export const GridTabGroup = React.memo(function GridTabGroup({
         kind: p.kind ?? "terminal",
         agentState: p.agentState,
         isActive: p.id === activeTabId,
-        flavorColor,
+        presetColor,
       };
     });
-  }, [panels, activeTabId, agentSettings, ccrFlavorsByAgent]);
+  }, [panels, activeTabId, agentSettings, ccrPresetsByAgent]);
 
   // Check if this group is currently focused
   const isGroupFocused = useMemo(() => panels.some((p) => p.id === focusedId), [panels, focusedId]);

@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 /**
- * Flavor color picker — replaces the hidden native `<input type="color">` that
+ * Preset color picker — replaces the hidden native `<input type="color">` that
  * opened macOS NSColorPanel (a heavyweight floating window that obscured the
  * settings panel and offered no "reset" affordance).
  *
@@ -29,7 +29,7 @@ const PALETTE = [
   "#abb2bf", // light gray
 ] as const;
 
-export interface FlavorColorPickerProps {
+export interface PresetColorPickerProps {
   /** Current color (hex) or undefined to inherit from the agent's default. */
   color: string | undefined;
   /** Called with the new hex color, or undefined to clear/inherit. */
@@ -40,12 +40,12 @@ export interface FlavorColorPickerProps {
   ariaLabel?: string;
 }
 
-export function FlavorColorPicker({
+export function PresetColorPicker({
   color,
   onChange,
   agentColor,
-  ariaLabel = "Pick flavor color",
-}: FlavorColorPickerProps) {
+  ariaLabel = "Pick preset color",
+}: PresetColorPickerProps) {
   const [open, setOpen] = useState(false);
   const nativeInputRef = useRef<HTMLInputElement>(null);
 
@@ -68,7 +68,7 @@ export function FlavorColorPicker({
           className="shrink-0 rounded-full ring-1 ring-transparent hover:ring-daintree-accent/50 focus-visible:ring-daintree-accent focus-visible:outline-none transition-all"
           aria-label={ariaLabel}
           title={ariaLabel}
-          data-testid="flavor-color-picker-trigger"
+          data-testid="preset-color-picker-trigger"
         >
           <span
             className="block w-4 h-4 rounded-full border border-daintree-border/60"
@@ -80,7 +80,7 @@ export function FlavorColorPicker({
         align="start"
         sideOffset={6}
         className="w-auto p-2 space-y-2"
-        data-testid="flavor-color-picker-popover"
+        data-testid="preset-color-picker-popover"
       >
         <div className="grid grid-cols-5 gap-1">
           {PALETTE.map((c) => {
@@ -97,7 +97,7 @@ export function FlavorColorPicker({
                 aria-label={`Color ${c}`}
                 aria-pressed={isSelected}
                 onClick={() => handleSelect(c)}
-                data-testid={`flavor-color-swatch-${c.replace("#", "")}`}
+                data-testid={`preset-color-swatch-${c.replace("#", "")}`}
               >
                 {isSelected && (
                   <Check
@@ -115,7 +115,7 @@ export function FlavorColorPicker({
             type="button"
             className="flex items-center gap-1 text-[11px] text-daintree-text/60 hover:text-daintree-text transition-colors"
             onClick={() => handleSelect(undefined)}
-            data-testid="flavor-color-clear"
+            data-testid="preset-color-clear"
           >
             <X size={11} />
             Clear
@@ -124,7 +124,7 @@ export function FlavorColorPicker({
             type="button"
             className="text-[11px] text-daintree-accent hover:text-daintree-accent/80 transition-colors"
             onClick={handleCustomClick}
-            data-testid="flavor-color-custom"
+            data-testid="preset-color-custom"
           >
             Custom…
           </button>

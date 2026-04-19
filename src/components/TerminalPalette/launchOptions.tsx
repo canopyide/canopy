@@ -18,14 +18,14 @@ export function getLaunchOptions(): LaunchOption[] {
   const agentOptions: LaunchOption[] = BUILT_IN_AGENT_IDS.map((id) => {
     const config = AGENT_REGISTRY[id];
     const Icon = resolveAgentIcon(config?.iconId ?? id);
-    const flavorCount = config?.flavors?.length ?? 0;
+    const presetCount = config?.presets?.length ?? 0;
     const description = config?.tooltip ?? "";
-    const flavorSuffix = flavorCount > 0 ? ` (${flavorCount} flavors)` : "";
+    const presetSuffix = presetCount > 0 ? ` (${presetCount} presets)` : "";
     return {
       id,
       type: id as TerminalType,
       label: config?.name ?? id,
-      description: `${description}${flavorSuffix}`.trim(),
+      description: `${description}${presetSuffix}`.trim(),
       icon: <Icon className="w-4 h-4" brandColor={getBrandColorHex(id)} />,
     };
   });

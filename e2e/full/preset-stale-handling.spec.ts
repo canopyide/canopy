@@ -6,22 +6,22 @@ import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 import {
   navigateToAgentSettings,
-  addCustomFlavor,
+  addCustomPreset,
   writeCcrConfig,
   removeCcrConfig,
-  getSelectedFlavorLabel,
-  getFlavorOptionLabels,
-  getFlavorRowByName,
-} from "../helpers/flavors";
+  getSelectedPresetLabel,
+  getPresetOptionLabels,
+  getPresetRowByName,
+} from "../helpers/presets";
 
 let ctx: AppContext;
 
-test.describe.serial("Flavors: Stale Flavor Handling (71–76)", () => {
+test.describe.serial("Presets: Stale Preset Handling (71–76)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "flavor-stale" });
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Flavor Stale Test");
+    const fixtureDir = createFixtureRepo({ name: "preset-stale" });
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Stale Test");
   });
 
   test.afterAll(async () => {
@@ -34,101 +34,101 @@ test.describe.serial("Flavors: Stale Flavor Handling (71–76)", () => {
   };
 
   const selectCustomAsDefault = async () => {
-    const trigger = ctx.window.locator(SEL.flavor.selectorTrigger);
+    const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     if (await trigger.isVisible().catch(() => false)) {
-      const labels = await getFlavorOptionLabels(ctx.window);
-      const customLabel = labels.find((o) => o.includes("New Flavor"));
+      const labels = await getPresetOptionLabels(ctx.window);
+      const customLabel = labels.find((o) => o.includes("New Preset"));
       if (customLabel) {
-        await getFlavorRowByName(ctx.window, customLabel);
+        await getPresetRowByName(ctx.window, customLabel);
         await ctx.window.waitForTimeout(T_SETTLE);
       }
     }
   };
 
-  const deleteFirstCustomFlavor = async () => {
-    // The delete button only renders for the currently-selected custom flavor's
+  const deleteFirstCustomPreset = async () => {
+    // The delete button only renders for the currently-selected custom preset's
     // detail view. Wait for it to be visible before clicking so timing races
     // fail fast instead of stuck on a silent 30s timeout.
-    const delBtn = ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.deleteButton).first();
+    const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).first();
     await expect(delBtn).toBeVisible({ timeout: T_SHORT });
     await delBtn.click();
     await ctx.window.waitForTimeout(T_SETTLE);
   };
 
-  test("71. Delete default flavor shows no error", async () => {
+  test("71. Delete default preset shows no error", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await selectCustomAsDefault();
-    await deleteFirstCustomFlavor();
+    await deleteFirstCustomPreset();
 
     await expect(ctx.window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_SHORT });
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_SHORT });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_SHORT });
   });
 
-  test("72. Deleting default flavor resets defaultSelect to empty", async () => {
+  test("72. Deleting default preset resets defaultSelect to empty", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await selectCustomAsDefault();
-    await deleteFirstCustomFlavor();
+    await deleteFirstCustomPreset();
 
-    // The Popover trigger falls back to the Vanilla label when the selected
-    // flavor is deleted — no inputValue to read on a <button>.
-    const trigger = ctx.window.locator(SEL.flavor.selectorTrigger);
+    // The Popover trigger falls back to the Default label when the selected
+    // preset is deleted — no inputValue to read on a <button>.
+    const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     if (await trigger.isVisible().catch(() => false)) {
-      const label = await getSelectedFlavorLabel(ctx.window);
-      expect(label).toContain("Vanilla");
+      const label = await getSelectedPresetLabel(ctx.window);
+      expect(label).toContain("Default");
     }
   });
 
-  test("73. Stale default flavor does not prevent settings from loading", async () => {
+  test("73. Stale default preset does not prevent settings from loading", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
     await selectCustomAsDefault();
 
-    await deleteFirstCustomFlavor();
+    await deleteFirstCustomPreset();
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
-    await expect(ctx.window.locator(SEL.flavor.section)).toBeVisible({ timeout: T_SHORT });
+    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_SHORT });
   });
 
-  test("74. Deleted default flavor remains vanilla after settings reopen", async () => {
+  test("74. Deleted default preset remains default after settings reopen", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
     await selectCustomAsDefault();
 
-    await deleteFirstCustomFlavor();
+    await deleteFirstCustomPreset();
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await ctx.window.locator(SEL.settings.closeButton).click();
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await goToClaudeSettings();
-    const trigger = ctx.window.locator(SEL.flavor.selectorTrigger);
+    const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     if (await trigger.isVisible().catch(() => false)) {
-      const label = await getSelectedFlavorLabel(ctx.window);
-      expect(label).toContain("Vanilla");
+      const label = await getSelectedPresetLabel(ctx.window);
+      expect(label).toContain("Default");
     }
   });
 
-  test("75. Removing CCR config with CCR default flavor defaults to vanilla", async () => {
+  test("75. Removing CCR config with CCR default preset defaults to default", async () => {
     writeCcrConfig([{ id: "ccr-stale", name: "CCR Stale", model: "stale-model" }]);
     await ctx.window.waitForTimeout(35_000);
 
     await goToClaudeSettings();
-    const trigger = ctx.window.locator(SEL.flavor.selectorTrigger);
+    const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     if (await trigger.isVisible().catch(() => false)) {
-      const labels = await getFlavorOptionLabels(ctx.window);
+      const labels = await getPresetOptionLabels(ctx.window);
       const ccrLabel = labels.find((o) => o.includes("CCR Stale"));
       if (ccrLabel) {
-        await getFlavorRowByName(ctx.window, ccrLabel);
+        await getPresetRowByName(ctx.window, ccrLabel);
         await ctx.window.waitForTimeout(T_SETTLE);
       }
     }
@@ -138,27 +138,27 @@ test.describe.serial("Flavors: Stale Flavor Handling (71–76)", () => {
 
     await goToClaudeSettings();
     if (await trigger.isVisible().catch(() => false)) {
-      const label = await getSelectedFlavorLabel(ctx.window);
-      expect(label).toContain("Vanilla");
+      const label = await getSelectedPresetLabel(ctx.window);
+      expect(label).toContain("Default");
     }
   });
 
-  test("76. Add custom flavor, set default, delete it, verify vanilla", async () => {
+  test("76. Add custom preset, set default, delete it, verify default", async () => {
     await goToClaudeSettings();
-    await addCustomFlavor(ctx.window);
+    await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
 
     await expect(
-      ctx.window.locator(SEL.flavor.section).locator(SEL.flavor.customBadge).first()
+      ctx.window.locator(SEL.preset.section).locator(SEL.preset.customBadge).first()
     ).toBeVisible({ timeout: T_SHORT });
 
     await selectCustomAsDefault();
-    await deleteFirstCustomFlavor();
+    await deleteFirstCustomPreset();
 
-    const trigger = ctx.window.locator(SEL.flavor.selectorTrigger);
+    const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     if (await trigger.isVisible().catch(() => false)) {
-      const label = await getSelectedFlavorLabel(ctx.window);
-      expect(label).toContain("Vanilla");
+      const label = await getSelectedPresetLabel(ctx.window);
+      expect(label).toContain("Default");
     }
   });
 });

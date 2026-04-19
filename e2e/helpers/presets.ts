@@ -11,7 +11,7 @@ import { SEL } from "./selectors";
 const CCR_DIR = mkdtempSync(join(tmpdir(), "daintree-ccr-"));
 const CCR_CONFIG_PATH = join(CCR_DIR, "config.json");
 // Pre-seed the env so launchApp's `{ ...process.env, ... }` picks it up
-// without every flavor spec needing to thread the variable by hand.
+// without every preset spec needing to thread the variable by hand.
 process.env.DAINTREE_CCR_CONFIG_PATH = CCR_CONFIG_PATH;
 
 export interface CcrModelEntry {
@@ -73,16 +73,16 @@ export async function navigateToAgentSettings(
 }
 
 /**
- * Selects the named flavor in the FlavorSelector Popover listbox and returns
+ * Selects the named preset in the PresetSelector Popover listbox and returns
  * the detail-view panel that appears below the selector. With the
- * selector+detail design only one flavor's detail is visible at a time;
- * call this function sequentially for each flavor you need to inspect.
+ * selector+detail design only one preset's detail is visible at a time;
+ * call this function sequentially for each preset you need to inspect.
  */
-export async function getFlavorRowByName(
+export async function getPresetRowByName(
   window: import("@playwright/test").Page,
   name: string
 ): Promise<import("@playwright/test").Locator> {
-  const trigger = window.locator(SEL.flavor.selectorTrigger);
+  const trigger = window.locator(SEL.preset.selectorTrigger);
   await trigger.waitFor({ state: "visible", timeout: 10_000 });
   // Playwright recommends hover() before click() for Radix Popover triggers
   // — prevents race on Windows where focus events can close the popover
@@ -90,7 +90,7 @@ export async function getFlavorRowByName(
   await trigger.hover();
   await trigger.click();
 
-  const listbox = window.locator(SEL.flavor.selectorListbox);
+  const listbox = window.locator(SEL.preset.selectorListbox);
   await expect(listbox).toBeVisible({ timeout: 5000 });
 
   // Match options by substring rather than exact text — CCR options also
@@ -107,26 +107,26 @@ export async function getFlavorRowByName(
   // Return the detail-view panel (the first bordered panel below the selector).
   return window
     .locator(
-      `${SEL.flavor.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-canopy-border, ${SEL.flavor.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-daintree-border`
+      `${SEL.preset.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-canopy-border, ${SEL.preset.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-daintree-border`
     )
     .first();
 }
 
 /**
- * Reads the currently selected flavor label from the FlavorSelector trigger.
+ * Reads the currently selected preset label from the PresetSelector trigger.
  * Use this in place of `select.inputValue()` or option-checked assertions.
  */
-export async function getSelectedFlavorLabel(
+export async function getSelectedPresetLabel(
   window: import("@playwright/test").Page
 ): Promise<string> {
-  const trigger = window.locator(SEL.flavor.selectorTrigger);
+  const trigger = window.locator(SEL.preset.selectorTrigger);
   return (await trigger.textContent())?.trim() ?? "";
 }
 
-export async function addCustomFlavor(window: import("@playwright/test").Page): Promise<void> {
-  const section = window.locator(SEL.flavor.section);
-  await section.locator(SEL.flavor.addButton).click();
-  // Wait for the IPC round-trip to settle so the new flavor is in the store
+export async function addCustomPreset(window: import("@playwright/test").Page): Promise<void> {
+  const section = window.locator(SEL.preset.section);
+  await section.locator(SEL.preset.addButton).click();
+  // Wait for the IPC round-trip to settle so the new preset is in the store
   // before the caller proceeds. Reading back the agentSettings store is the
   // cheapest way to confirm the write landed without blowing the popover
   // open twice per helper call.
@@ -134,14 +134,14 @@ export async function addCustomFlavor(window: import("@playwright/test").Page): 
 }
 
 /**
- * Opens the FlavorSelector popover, counts the options, and closes the popover.
+ * Opens the PresetSelector popover, counts the options, and closes the popover.
  * Replaces the old native `<select>` `option` count queries — the new Popover
  * listbox is only mounted while open.
  */
-export async function countFlavorOptions(window: import("@playwright/test").Page): Promise<number> {
-  const trigger = window.locator(SEL.flavor.selectorTrigger);
+export async function countPresetOptions(window: import("@playwright/test").Page): Promise<number> {
+  const trigger = window.locator(SEL.preset.selectorTrigger);
   await trigger.click();
-  const listbox = window.locator(SEL.flavor.selectorListbox);
+  const listbox = window.locator(SEL.preset.selectorListbox);
   await expect(listbox).toBeVisible({ timeout: 5000 });
   const n = await listbox.locator('[role="option"]').count();
   await window.keyboard.press("Escape");
@@ -150,15 +150,15 @@ export async function countFlavorOptions(window: import("@playwright/test").Page
 }
 
 /**
- * Opens the FlavorSelector popover and returns the visible option labels. The
+ * Opens the PresetSelector popover and returns the visible option labels. The
  * popover is closed before returning.
  */
-export async function getFlavorOptionLabels(
+export async function getPresetOptionLabels(
   window: import("@playwright/test").Page
 ): Promise<string[]> {
-  const trigger = window.locator(SEL.flavor.selectorTrigger);
+  const trigger = window.locator(SEL.preset.selectorTrigger);
   await trigger.click();
-  const listbox = window.locator(SEL.flavor.selectorListbox);
+  const listbox = window.locator(SEL.preset.selectorListbox);
   await expect(listbox).toBeVisible({ timeout: 5000 });
   const labels = await listbox.locator('[role="option"]').allTextContents();
   await window.keyboard.press("Escape");

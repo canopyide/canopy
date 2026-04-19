@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
-import { getAgentConfig, getMergedFlavors } from "@/config/agents";
+import { getAgentConfig, getMergedPresets } from "@/config/agents";
 import { useKeybindingDisplay } from "@/hooks";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { actionService } from "@/services/ActionService";
@@ -30,7 +30,7 @@ import type { BuiltInAgentId } from "@shared/config/agentIds";
 import type { AgentAvailabilityState, AgentState } from "@shared/types";
 import { isAgentReady, isAgentInstalled } from "../../../shared/utils/agentAvailability";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
-import { useCcrFlavorsStore } from "@/store/ccrFlavorsStore";
+import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useShallow } from "zustand/react/shallow";
@@ -63,7 +63,7 @@ export function AgentButton({
   const { worktrees } = useWorktrees();
   const displayCombo = useKeybindingDisplay(`agent.${type}`);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
-  const ccrFlavors = useCcrFlavorsStore((s) => s.ccrFlavorsByAgent[type]);
+  const ccrPresets = useCcrPresetsStore((s) => s.ccrPresetsByAgent[type]);
 
   const panelsById = usePanelStore(useShallow((s) => s.panelsById));
   const panelIds = usePanelStore(useShallow((s) => s.panelIds));
@@ -98,14 +98,14 @@ export function AgentButton({
   const dominantState = activeSession?.dominantState ?? null;
 
   const entry = agentSettings?.agents?.[type] ?? {};
-  const flavors = getMergedFlavors(type, entry.customFlavors, ccrFlavors);
-  // Only show the split/chevron UI when there are at least 2 flavors; a single
-  // flavor is implicitly the default and doesn't warrant a picker.
-  const hasFlavors = flavors.length >= 2;
-  const savedFlavorId = agentSettings?.agents?.[type]?.flavorId;
-  const ccrFlavorGroup = flavors.filter((f) => f.id.startsWith("ccr-"));
-  const customFlavorGroup = flavors.filter((f) => !f.id.startsWith("ccr-"));
-  const hasBothFlavorGroups = ccrFlavorGroup.length > 0 && customFlavorGroup.length > 0;
+  const presets = getMergedPresets(type, entry.customPresets, ccrPresets);
+  // Only show the split/chevron UI when there are at least 2 presets; a single
+  // preset is implicitly the default and doesn't warrant a picker.
+  const hasPresets = presets.length >= 2;
+  const savedPresetId = agentSettings?.agents?.[type]?.presetId;
+  const ccrPresetGroup = presets.filter((f) => f.id.startsWith("ccr-"));
+  const customPresetGroup = presets.filter((f) => !f.id.startsWith("ccr-"));
+  const hasBothPresetGroups = ccrPresetGroup.length > 0 && customPresetGroup.length > 0;
 
   const tooltipDetails = config.tooltip ? ` — ${config.tooltip}` : "";
   const shortcut = displayCombo ? ` (${displayCombo})` : "";
@@ -132,13 +132,13 @@ export function AgentButton({
 
   const handleClick = () => {
     if (isReady) {
-      // MRU semantics: primary-button click launches with the saved flavor if
-      // one is stored (user's last pick), otherwise vanilla (no flavorId).
-      // Passing `flavorId: null` would force explicit vanilla and override a
+      // MRU semantics: primary-button click launches with the saved preset if
+      // one is stored (user's last pick), otherwise default (no presetId).
+      // Passing `presetId: null` would force explicit default and override a
       // saved default — we want undefined fallthrough to useAgentLauncher.
       void actionService.dispatch(
         "agent.launch",
-        savedFlavorId ? { agentId: type, flavorId: savedFlavorId } : { agentId: type },
+        savedPresetId ? { agentId: type, presetId: savedPresetId } : { agentId: type },
         { source: "user" }
       );
     } else {
@@ -169,7 +169,7 @@ export function AgentButton({
     </div>
   );
 
-  if (!hasFlavors) {
+  if (!hasPresets) {
     return (
       <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -319,18 +319,18 @@ export function AgentButton({
                         "hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))] focus-visible:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))]",
                         !isReady && !isLoading && "opacity-60"
                       )}
-                      aria-label={`Choose ${config.name} flavor`}
+                      aria-label={`Choose ${config.name} preset`}
                     >
                       <ChevronDown className="h-3 w-3 opacity-70" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" sideOffset={4} className="min-w-[12rem]">
                     <DropdownMenuItem
-                      className={cn(!savedFlavorId && "font-medium")}
+                      className={cn(!savedPresetId && "font-medium")}
                       onSelect={() => {
                         void actionService.dispatch(
                           "agent.launch",
-                          { agentId: type, flavorId: null },
+                          { agentId: type, presetId: null },
                           { source: "user" }
                         );
                       }}
@@ -338,52 +338,52 @@ export function AgentButton({
                       <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
                         <config.icon brandColor={getBrandColorHex(type)} />
                       </span>
-                      Vanilla
+                      Default
                     </DropdownMenuItem>
-                    {ccrFlavorGroup.length > 0 && (
+                    {ccrPresetGroup.length > 0 && (
                       <>
-                        {hasBothFlavorGroups && <DropdownMenuSeparator />}
-                        {hasBothFlavorGroups && <DropdownMenuLabel>CCR Routes</DropdownMenuLabel>}
-                        {ccrFlavorGroup.map((flavor) => (
+                        {hasBothPresetGroups && <DropdownMenuSeparator />}
+                        {hasBothPresetGroups && <DropdownMenuLabel>CCR Routes</DropdownMenuLabel>}
+                        {ccrPresetGroup.map((preset) => (
                           <DropdownMenuItem
-                            key={flavor.id}
-                            className={cn(savedFlavorId === flavor.id && "font-medium")}
+                            key={preset.id}
+                            className={cn(savedPresetId === preset.id && "font-medium")}
                             onSelect={() => {
                               void actionService.dispatch(
                                 "agent.launch",
-                                { agentId: type, flavorId: flavor.id },
+                                { agentId: type, presetId: preset.id },
                                 { source: "user" }
                               );
                             }}
                           >
                             <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
-                              <config.icon brandColor={flavor.color ?? getBrandColorHex(type)} />
+                              <config.icon brandColor={preset.color ?? getBrandColorHex(type)} />
                             </span>
-                            {flavor.name.replace(/^CCR:\s*/, "")}
+                            {preset.name.replace(/^CCR:\s*/, "")}
                           </DropdownMenuItem>
                         ))}
                       </>
                     )}
-                    {customFlavorGroup.length > 0 && (
+                    {customPresetGroup.length > 0 && (
                       <>
-                        {hasBothFlavorGroups && <DropdownMenuSeparator />}
-                        {hasBothFlavorGroups && <DropdownMenuLabel>Custom</DropdownMenuLabel>}
-                        {customFlavorGroup.map((flavor) => (
+                        {hasBothPresetGroups && <DropdownMenuSeparator />}
+                        {hasBothPresetGroups && <DropdownMenuLabel>Custom</DropdownMenuLabel>}
+                        {customPresetGroup.map((preset) => (
                           <DropdownMenuItem
-                            key={flavor.id}
-                            className={cn(savedFlavorId === flavor.id && "font-medium")}
+                            key={preset.id}
+                            className={cn(savedPresetId === preset.id && "font-medium")}
                             onSelect={() => {
                               void actionService.dispatch(
                                 "agent.launch",
-                                { agentId: type, flavorId: flavor.id },
+                                { agentId: type, presetId: preset.id },
                                 { source: "user" }
                               );
                             }}
                           >
                             <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
-                              <config.icon brandColor={flavor.color ?? getBrandColorHex(type)} />
+                              <config.icon brandColor={preset.color ?? getBrandColorHex(type)} />
                             </span>
-                            {flavor.name}
+                            {preset.name}
                           </DropdownMenuItem>
                         ))}
                       </>
@@ -421,23 +421,23 @@ export function AgentButton({
         >
           Launch {config.name} in Dock
         </ContextMenuItem>
-        {hasFlavors && (
+        {hasPresets && (
           <ContextMenuSub>
-            <ContextMenuSubTrigger disabled={!isReady}>Launch with Flavor</ContextMenuSubTrigger>
+            <ContextMenuSubTrigger disabled={!isReady}>Launch with Preset</ContextMenuSubTrigger>
             <ContextMenuSubContent data-testid="context-submenu-content">
-              {flavors.map((flavor) => (
+              {presets.map((preset) => (
                 <ContextMenuItem
-                  key={flavor.id}
+                  key={preset.id}
                   onSelect={() =>
                     void actionService.dispatch(
                       "agent.launch",
-                      { agentId: type, flavorId: flavor.id },
+                      { agentId: type, presetId: preset.id },
                       { source: "context-menu" }
                     )
                   }
                 >
-                  {flavor.name}
-                  {savedFlavorId === flavor.id ? " ✓" : ""}
+                  {preset.name}
+                  {savedPresetId === preset.id ? " ✓" : ""}
                 </ContextMenuItem>
               ))}
             </ContextMenuSubContent>

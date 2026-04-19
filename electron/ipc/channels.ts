@@ -607,9 +607,9 @@ export const CHANNELS = {
   APP_RELOAD_CONFIG: "app:reload-config",
   APP_CONFIG_RELOADED: "app:config-reloaded",
 
-  // Agent flavor channels
-  AGENT_FLAVORS_UPDATED: "agent-flavors:updated",
-  AGENT_CAPABILITIES_GET_CCR_FLAVORS: "agent-capabilities:get-ccr-flavors",
+  // Agent preset channels
+  AGENT_PRESETS_UPDATED: "agent-presets:updated",
+  AGENT_CAPABILITIES_GET_CCR_PRESETS: "agent-capabilities:get-ccr-presets",
 
   // Performance capture channels
   PERF_FLUSH_RENDERER_MARKS: "perf:flush-renderer-marks",

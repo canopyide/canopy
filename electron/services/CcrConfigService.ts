@@ -1,8 +1,8 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
-import type { AgentFlavor } from "../../shared/config/agentRegistry.js";
-import { setAgentFlavors } from "../../shared/config/agentRegistry.js";
+import type { AgentPreset } from "../../shared/config/agentRegistry.js";
+import { setAgentPresets } from "../../shared/config/agentRegistry.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 
@@ -26,26 +26,26 @@ interface CcrConfig {
 const CCR_CONFIG_PATH =
   process.env.DAINTREE_CCR_CONFIG_PATH ?? join(homedir(), ".claude-code-router", "config.json");
 
-function flavorsChanged(prev: AgentFlavor[] | null, next: AgentFlavor[]): boolean {
+function presetsChanged(prev: AgentPreset[] | null, next: AgentPreset[]): boolean {
   if (!prev) return next.length > 0;
   if (prev.length !== next.length) return true;
   // Deep compare: id/name/env/args/color/description. Environment and routing
   // fields (ANTHROPIC_MODEL, ANTHROPIC_BASE_URL, API keys) are encoded in each
-  // flavor's env map — if those change in ~/.claude-code-router/config.json we
+  // preset's env map — if those change in ~/.claude-code-router/config.json we
   // must rebroadcast so the renderer doesn't keep launching with stale baseUrl.
-  // JSON.stringify is sufficient for the small flavor count and sidesteps the
+  // JSON.stringify is sufficient for the small preset count and sidesteps the
   // field-by-field drift risk.
   try {
     return JSON.stringify(prev) !== JSON.stringify(next);
   } catch {
-    // Circular structures shouldn't occur in AgentFlavor but be defensive.
+    // Circular structures shouldn't occur in AgentPreset but be defensive.
     return true;
   }
 }
 
 export class CcrConfigService {
   private static instance: CcrConfigService | null = null;
-  private cachedFlavors: AgentFlavor[] | null = null;
+  private cachedPresets: AgentPreset[] | null = null;
   private pendingBroadcast = true;
   private watchAbortController: AbortController | null = null;
 
@@ -56,26 +56,26 @@ export class CcrConfigService {
     return CcrConfigService.instance;
   }
 
-  async loadAndApply(): Promise<AgentFlavor[]> {
-    const flavors = await this.discoverFlavors();
-    const changed = flavorsChanged(this.cachedFlavors, flavors);
-    setAgentFlavors("claude", flavors);
-    this.cachedFlavors = flavors;
+  async loadAndApply(): Promise<AgentPreset[]> {
+    const presets = await this.discoverPresets();
+    const changed = presetsChanged(this.cachedPresets, presets);
+    setAgentPresets("claude", presets);
+    this.cachedPresets = presets;
     if (changed || this.pendingBroadcast) {
       this.pendingBroadcast = false;
       try {
-        broadcastToRenderer(CHANNELS.AGENT_FLAVORS_UPDATED, {
+        broadcastToRenderer(CHANNELS.AGENT_PRESETS_UPDATED, {
           agentId: "claude",
-          flavors,
+          presets,
         });
       } catch {
         // Broadcast may fail during shutdown or before windows are ready
       }
     }
-    return flavors;
+    return presets;
   }
 
-  async discoverFlavors(): Promise<AgentFlavor[]> {
+  async discoverPresets(): Promise<AgentPreset[]> {
     try {
       const raw = await readFile(CCR_CONFIG_PATH, "utf-8");
       const config: CcrConfig = JSON.parse(raw);
@@ -86,14 +86,14 @@ export class CcrConfigService {
 
       return config.models
         .filter((entry) => entry.id || entry.model)
-        .map((entry) => this.entryToFlavor(entry));
+        .map((entry) => this.entryToPreset(entry));
     } catch {
       return [];
     }
   }
 
-  getFlavors(): AgentFlavor[] {
-    return this.cachedFlavors ?? [];
+  getPresets(): AgentPreset[] {
+    return this.cachedPresets ?? [];
   }
 
   startWatching(): void {
@@ -118,7 +118,7 @@ export class CcrConfigService {
     this.watchAbortController = null;
   }
 
-  private entryToFlavor(entry: CcrModelEntry): AgentFlavor {
+  private entryToPreset(entry: CcrModelEntry): AgentPreset {
     const id = entry.id ?? entry.model ?? "unknown";
     const name = entry.name ?? entry.model ?? id;
     const env: Record<string, string> = {};

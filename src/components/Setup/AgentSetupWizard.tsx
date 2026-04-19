@@ -873,7 +873,7 @@ function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
             const agent = AGENT_REGISTRY[id];
             if (!agent) return null;
             const Icon = agent.icon;
-            const flavorCount = agent.flavors?.length ?? 0;
+            const presetCount = agent.presets?.length ?? 0;
 
             return (
               <div
@@ -883,12 +883,12 @@ function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
               >
                 <Icon size={18} brandColor={agent.color} />
                 <span className="text-sm text-daintree-text font-medium">{agent.name}</span>
-                {flavorCount > 1 && (
+                {presetCount > 1 && (
                   <span
-                    data-testid="flavor-count-badge"
+                    data-testid="preset-count-badge"
                     className="text-[10px] text-daintree-accent font-medium bg-daintree-accent/10 px-1.5 py-0.5 rounded"
                   >
-                    {flavorCount} flavors
+                    {presetCount} presets
                   </span>
                 )}
                 {agent.shortcut && (
