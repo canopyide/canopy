@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { isMac } from "@/lib/platform";
 import { keybindingService, normalizeKeyForBinding } from "@/services/KeybindingService";
+import { actionService } from "@/services/ActionService";
+import { useNotificationStore } from "@/store/notificationStore";
 
 const CHORD_TIMEOUT_MS = 1000;
 
@@ -128,6 +130,37 @@ export function SettingsShortcutCapture({
     onCancel();
   };
 
+  const handleUnbindConflict = async (conflict: { actionId: string; description?: string }) => {
+    const { actionId } = conflict;
+
+    const result = await actionService.dispatch(
+      "keybinding.removeOverride",
+      { actionId },
+      { source: "user" }
+    );
+
+    if (!result.ok) {
+      console.error("Failed to remove conflicting keybinding:", result.error);
+      return;
+    }
+
+    useNotificationStore.getState().addNotification({
+      type: "success",
+      message: `Unbound ${conflict.description || conflict.actionId}`,
+      duration: 5000,
+      action: {
+        label: "Undo",
+        onClick: async () => {
+          await actionService.dispatch(
+            "keybinding.setOverride",
+            { actionId, combo: [capturedCombo!] },
+            { source: "user" }
+          );
+        },
+      },
+    });
+  };
+
   const isChord = capturedCombos.length > 1;
 
   return (
@@ -165,11 +198,27 @@ export function SettingsShortcutCapture({
       </div>
 
       {conflicts.length > 0 && (
-        <div className="flex items-start gap-2 text-status-warning text-sm">
-          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>
-            Conflicts with: {conflicts.map((c) => c.description || c.actionId).join(", ")}
-          </span>
+        <div className="space-y-2">
+          <div className="flex items-start gap-2 text-status-warning text-sm">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>Conflicts with:</span>
+          </div>
+          <div className="space-y-1 pl-6">
+            {conflicts.map((conflict) => (
+              <div key={conflict.actionId} className="flex items-center gap-2 text-sm">
+                <span className="text-daintree-text/80">
+                  {conflict.description || conflict.actionId}
+                </span>
+                <button
+                  onClick={() => handleUnbindConflict(conflict)}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-daintree-accent hover:bg-daintree-accent/10 rounded transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  <span>Unbind</span>
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
