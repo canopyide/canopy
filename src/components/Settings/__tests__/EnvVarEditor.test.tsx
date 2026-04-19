@@ -140,6 +140,65 @@ describe("EnvVarEditor", () => {
     expect(keyInputs.map((el) => el.value)).toEqual(expect.arrayContaining(["BETA", "GAMMA"]));
   });
 
+  describe("literal secret warning", () => {
+    it("warns when a value looks like a literal API key", () => {
+      const { getAllByTestId, getByTestId } = renderEditor({ ANTHROPIC_API_KEY: "" });
+      const valueInput = getAllByTestId("env-editor-value")[0] as HTMLInputElement;
+
+      fireEvent.change(valueInput, {
+        target: { value: "sk-ant-abcdefghijklmnopqrstuvwxyz123456" },
+      });
+
+      expect(getByTestId("env-editor-warning-secret")).toBeTruthy();
+    });
+
+    it("does NOT warn when the value is a ${ENV_VAR} safe-form reference", () => {
+      const { getAllByTestId, queryByTestId } = renderEditor({ ANTHROPIC_API_KEY: "" });
+      const valueInput = getAllByTestId("env-editor-value")[0] as HTMLInputElement;
+
+      fireEvent.change(valueInput, { target: { value: "${ANTHROPIC_API_KEY}" } });
+
+      expect(queryByTestId("env-editor-warning-secret")).toBeNull();
+    });
+
+    it("warning does not block commit — literal secret still persists on blur", () => {
+      const { getAllByTestId, getByTestId } = renderEditor({ ANTHROPIC_API_KEY: "" });
+      const valueInput = getAllByTestId("env-editor-value")[0] as HTMLInputElement;
+
+      const literal = "sk-ant-abcdefghijklmnopqrstuvwxyz123456";
+      fireEvent.change(valueInput, { target: { value: literal } });
+      fireEvent.blur(valueInput);
+
+      expect(getByTestId("env-editor-warning-secret")).toBeTruthy();
+      expect(onChange).toHaveBeenLastCalledWith({ ANTHROPIC_API_KEY: literal });
+    });
+
+    it("warning clears when the value changes to a safe-form reference", () => {
+      const { getAllByTestId, queryByTestId } = renderEditor({ ANTHROPIC_API_KEY: "" });
+      const valueInput = getAllByTestId("env-editor-value")[0] as HTMLInputElement;
+
+      fireEvent.change(valueInput, {
+        target: { value: "sk-ant-abcdefghijklmnopqrstuvwxyz123456" },
+      });
+      expect(queryByTestId("env-editor-warning-secret")).not.toBeNull();
+
+      fireEvent.change(valueInput, { target: { value: "${ANTHROPIC_API_KEY}" } });
+      expect(queryByTestId("env-editor-warning-secret")).toBeNull();
+    });
+
+    it("warning is row-scoped in a multi-row editor", () => {
+      const { getAllByTestId, queryAllByTestId } = renderEditor({ FOO: "", BAR: "" });
+      const valueInputs = getAllByTestId("env-editor-value") as HTMLInputElement[];
+
+      fireEvent.change(valueInputs[1]!, {
+        target: { value: "sk-ant-abcdefghijklmnopqrstuvwxyz123456" },
+      });
+
+      const warnings = queryAllByTestId("env-editor-warning-secret");
+      expect(warnings).toHaveLength(1);
+    });
+  });
+
   it("datalist is rendered when suggestions + datalistId provided", () => {
     const { container } = render(
       <EnvVarEditor
