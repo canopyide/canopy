@@ -101,6 +101,13 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
         if (liveMatch) {
           collapsedOntoId = liveMatch.id;
           const incomingHasActions = (notification.actions?.length ?? 0) > 0;
+          // `action` uses key-presence (not ??) so a caller can explicitly
+          // clear the slot by passing `action: undefined`. This matters for
+          // stage regressions (e.g. Update Ready → Update Available) where
+          // the prior toast's "Restart to Update" button must NOT carry over
+          // onto a downloading-again state. Unset keys still preserve the
+          // existing action (the default "missing = preserve" semantic).
+          const actionResolved = "action" in notification ? notification.action : liveMatch.action;
           return {
             notifications: state.notifications.map((n) =>
               n.id === liveMatch.id
@@ -112,7 +119,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
                     title: notification.title ?? n.title,
                     inboxMessage: notification.inboxMessage ?? n.inboxMessage,
                     duration: notification.duration ?? n.duration,
-                    action: notification.action ?? n.action,
+                    action: actionResolved,
                     actions: incomingHasActions ? notification.actions : n.actions,
                     onDismiss: notification.onDismiss ?? n.onDismiss,
                     historyEntryId: notification.historyEntryId ?? n.historyEntryId,

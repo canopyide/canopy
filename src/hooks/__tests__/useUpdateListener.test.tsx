@@ -413,6 +413,46 @@ describe("useUpdateListener", () => {
     expect(notifyDismissMock).not.toHaveBeenCalled();
   });
 
+  it("clears the restart action when update-available fires after update-ready (stage regression)", () => {
+    renderHook(() => useUpdateListener());
+
+    // Notify calls pass `action: undefined` explicitly so the store's
+    // collapse path wipes any "Restart to Update" button left over from a
+    // prior Update Ready toast — the user must not be offered a restart
+    // into a stale build while a newer one is still downloading.
+    act(() => {
+      capturedAvailable!({ version: "2.5.0" });
+    });
+    expect(notifyMock.mock.calls[0]![0]).toHaveProperty("action", undefined);
+  });
+
+  it("pending ref upgrades to downloaded but never downgrades back to available", () => {
+    const { rerender } = renderHook(({ suppress }) => useUpdateListener(suppress), {
+      initialProps: { suppress: true },
+    });
+
+    act(() => {
+      capturedDownloaded!({ version: "2.5.0" });
+    });
+    // Simulated quiet-period re-check: an "available" event arrives AFTER
+    // the download already completed. The pending slot must keep the
+    // "downloaded" state so the user is still shown "Update Ready" when
+    // toasts unmute, not a stale "Update Available: downloading..." view.
+    act(() => {
+      capturedAvailable!({ version: "2.5.0" });
+    });
+
+    rerender({ suppress: false });
+
+    expect(addNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "success",
+        title: "Update Ready",
+      })
+    );
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
   it("still creates the Update Ready toast after the Available toast was dismissed", () => {
     renderHook(() => useUpdateListener());
 

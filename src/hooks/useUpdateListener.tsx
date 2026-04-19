@@ -67,6 +67,11 @@ export function useUpdateListener(suppressToasts = false): void {
         priority: "high",
         duration: 0,
         correlationId: UPDATE_CORRELATION_ID,
+        // Explicit undefined: if a prior "Update Ready" toast is live (stage
+        // regression), clear its "Restart to Update" action so the user does
+        // not accidentally restart into a stale build while a newer one is
+        // still downloading.
+        action: undefined,
         onDismiss: () => {
           void window.electron?.update
             ?.notifyDismiss?.(version)
@@ -81,7 +86,13 @@ export function useUpdateListener(suppressToasts = false): void {
 
     const cleanupAvailable = window.electron.update.onUpdateAvailable((info) => {
       if (suppressRef.current) {
-        pendingUpdateRef.current = { version: info.version, downloaded: false };
+        // Never downgrade a pending "downloaded" to "available" — a follow-up
+        // re-check during the startup quiet period must not roll the stored
+        // state back so the user is still told "Update Ready" once toasts
+        // unmute.
+        if (!pendingUpdateRef.current?.downloaded) {
+          pendingUpdateRef.current = { version: info.version, downloaded: false };
+        }
         return;
       }
       // Repeats and re-checks collapse onto the same toast via correlationId;
@@ -96,6 +107,10 @@ export function useUpdateListener(suppressToasts = false): void {
         priority: "high",
         duration: 0,
         correlationId: UPDATE_CORRELATION_ID,
+        // Explicit undefined: see the pending-update effect above — same
+        // rationale (stage regression from Update Ready must not leave the
+        // restart action attached to a downloading-again toast).
+        action: undefined,
         // Forwarded to main only when the user explicitly closes the toast —
         // MAX_VISIBLE_TOASTS eviction and programmatic dismissals bypass this.
         onDismiss: () => {

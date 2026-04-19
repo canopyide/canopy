@@ -319,6 +319,37 @@ describe("notificationStore — correlationId collapse", () => {
     expect(notifications.every((n) => n.count === undefined)).toBe(true);
   });
 
+  it("preserves existing action when incoming omits the action key entirely", () => {
+    const action = { label: "Retry", onClick: () => {} };
+    const id = addToast({ correlationId: "entity-a", message: "first", action });
+
+    addToast({ correlationId: "entity-a", message: "second" });
+
+    const n = getState().notifications.find((x) => x.id === id)!;
+    expect(n.action).toBe(action);
+  });
+
+  it("clears the existing action when the incoming payload explicitly passes action: undefined", () => {
+    const action = { label: "Restart", onClick: () => {} };
+    const id = addToast({ correlationId: "entity-a", message: "first", action });
+
+    addToast({ correlationId: "entity-a", message: "second", action: undefined });
+
+    const n = getState().notifications.find((x) => x.id === id)!;
+    expect(n.action).toBeUndefined();
+  });
+
+  it("replaces the existing action when the incoming payload provides a new one", () => {
+    const first = { label: "Retry", onClick: () => {} };
+    const second = { label: "Cancel", onClick: () => {} };
+    const id = addToast({ correlationId: "entity-a", message: "m", action: first });
+
+    addToast({ correlationId: "entity-a", message: "m2", action: second });
+
+    const n = getState().notifications.find((x) => x.id === id)!;
+    expect(n.action).toBe(second);
+  });
+
   it("does not mark history entries unseen when collapsing", () => {
     const entryId = useNotificationHistoryStore.getState().addEntry({
       type: "info",
