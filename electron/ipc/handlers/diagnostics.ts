@@ -2,7 +2,7 @@ import { app, dialog, shell } from "electron";
 import os from "node:os";
 import v8 from "node:v8";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
-import { promises as fs } from "node:fs";
+import { promises as fs, createWriteStream } from "node:fs";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import archiver from "archiver";
@@ -34,7 +34,7 @@ async function writeBundleZip(zipPath: string, jsonContent: string): Promise<voi
   const logFile = getLogFilePath();
 
   return new Promise((resolve, reject) => {
-    const output = require("node:fs").createWriteStream(zipPath);
+    const output = createWriteStream(zipPath);
     const archive = archiver("zip", { zlib: { level: 6 } });
 
     output.on("close", resolve);
@@ -147,7 +147,7 @@ export function registerDiagnosticsHandlers(deps: HandlerDependencies): () => vo
   handlers.push(typedHandle(CHANNELS.SYSTEM_GET_HARDWARE_INFO, handleGetHardwareInfo));
 
   const handleDownloadDiagnostics = async (): Promise<boolean> => {
-    const payload = await collectDiagnosticsWithKeys(deps);
+    const { payload } = await collectDiagnosticsWithKeys(deps);
     const json = JSON.stringify(payload, null, 2);
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -180,7 +180,7 @@ export function registerDiagnosticsHandlers(deps: HandlerDependencies): () => vo
   const handleSaveDiagnosticsBundle = async (
     savePayload: DiagnosticsBundleSavePayload
   ): Promise<boolean> => {
-    const { payload, sectionKeys } = await collectDiagnosticsWithKeys(deps);
+    const { payload } = await collectDiagnosticsWithKeys(deps);
     const filtered = filterSections(payload, savePayload.enabledSections);
     let json = safeStringify(filtered, 2);
     json = applyReplacements(json, savePayload.replacements as ReplacementRule[]);
