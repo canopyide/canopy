@@ -877,6 +877,8 @@ export async function setupWindowServices(
   const { armRestoreQuota } = await import("../ipc/utils.js");
   armRestoreQuota(50, 120_000);
 
+  // Under DAINTREE_EARLY_RENDERER=1 the RENDERER_READY mark can fire before
+  // this point, since the renderer is loading concurrently with workspace init.
   markPerformance(PERF_MARKS.SERVICE_INIT_COMPLETE);
   // Default path: renderer load happens here, after workspace + PTY are ready.
   // With DAINTREE_EARLY_RENDERER=1 this is a no-op (already started above).
