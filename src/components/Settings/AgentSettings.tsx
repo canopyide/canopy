@@ -378,7 +378,7 @@ export function AgentSettings({
                   const customFlags = activeEntry.customFlags ?? "";
                   return (
                     <>
-                      <div id="agents-skip-permissions" className="space-y-1.5">
+                      <div id="agents-skip-permissions-default" className="space-y-1.5">
                         <SettingsSwitchCard
                           variant="compact"
                           title="Skip Permissions"
@@ -403,7 +403,7 @@ export function AgentSettings({
                         )}
                       </div>
                       {supportsInlineMode && (
-                        <div id="agents-inline-mode">
+                        <div id="agents-inline-mode-default">
                           <SettingsSwitchCard
                             variant="compact"
                             title="Inline Mode"
@@ -419,7 +419,7 @@ export function AgentSettings({
                           />
                         </div>
                       )}
-                      <div id="agents-custom-args" className="space-y-1.5">
+                      <div id="agents-custom-args-default" className="space-y-1.5">
                         <label className="text-sm font-medium text-daintree-text">
                           Custom Arguments
                         </label>
@@ -625,42 +625,48 @@ export function AgentSettings({
 
               // ── custom preset behavioral overrides ────────────────────────
               // Only rendered inside the custom-preset detail panel. Reads
-              // from the preset and writes via handleUpdatePreset.
+              // from the preset, falling back to agent-level defaults when
+              // the preset omits an override. Writes via handleUpdatePreset.
 
-              const skipPerms = selectedPreset!.dangerousEnabled ?? false;
+              const presetSkipPerms =
+                selectedPreset?.dangerousEnabled ?? activeEntry.dangerousEnabled ?? false;
 
-              const inlineMode = selectedPreset!.inlineMode ?? activeEntry.inlineMode ?? true;
+              const presetInlineMode = selectedPreset?.inlineMode ?? activeEntry.inlineMode ?? true;
 
-              const customFlags = selectedPreset!.customFlags ?? "";
+              const presetCustomFlags =
+                selectedPreset?.customFlags ?? activeEntry.customFlags ?? "";
 
-              const onSkipPermsToggle = () => {
-                handleUpdatePreset(selectedPreset!.id, { dangerousEnabled: !skipPerms });
+              const onPresetSkipPermsToggle = () => {
+                if (!selectedPreset) return;
+                handleUpdatePreset(selectedPreset.id, { dangerousEnabled: !presetSkipPerms });
               };
 
-              const onInlineModeToggle = () => {
-                handleUpdatePreset(selectedPreset!.id, { inlineMode: !inlineMode });
+              const onPresetInlineModeToggle = () => {
+                if (!selectedPreset) return;
+                handleUpdatePreset(selectedPreset.id, { inlineMode: !presetInlineMode });
               };
 
-              const onCustomFlagsChange = (value: string) => {
+              const onPresetCustomFlagsChange = (value: string) => {
+                if (!selectedPreset) return;
                 const updated = (activeEntry.customPresets ?? []).map((f) =>
-                  f.id === selectedPreset!.id ? { ...f, customFlags: value } : f
+                  f.id === selectedPreset.id ? { ...f, customFlags: value } : f
                 );
                 void updateAgent(activeAgent.id, { customPresets: updated });
               };
 
               const behavioralSettings = (
                 <div className="space-y-3">
-                  <div id="agents-skip-permissions" className="space-y-1.5">
+                  <div id="agents-skip-permissions-preset" className="space-y-1.5">
                     <SettingsSwitchCard
                       variant="compact"
                       title="Skip Permissions"
-                      subtitle="Auto-approve all file, command, and network actions"
-                      isEnabled={skipPerms}
-                      onChange={onSkipPermsToggle}
-                      ariaLabel={`Skip permissions for ${activeAgent.name}`}
+                      subtitle="Override the default setting for this preset"
+                      isEnabled={presetSkipPerms}
+                      onChange={onPresetSkipPermsToggle}
+                      ariaLabel={`Skip permissions override for ${activeAgent.name}`}
                       colorScheme="danger"
                     />
-                    {skipPerms && defaultDangerousArg && (
+                    {presetSkipPerms && defaultDangerousArg && (
                       <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] bg-status-error/10 border border-status-error/20">
                         <code className="text-xs text-status-error font-mono">
                           {defaultDangerousArg}
@@ -671,30 +677,30 @@ export function AgentSettings({
                   </div>
 
                   {supportsInlineMode && (
-                    <div id="agents-inline-mode">
+                    <div id="agents-inline-mode-preset">
                       <SettingsSwitchCard
                         variant="compact"
                         title="Inline Mode"
-                        subtitle="Disable fullscreen TUI for better resize handling and scrollback"
-                        isEnabled={inlineMode}
-                        onChange={onInlineModeToggle}
-                        ariaLabel={`Inline mode for ${activeAgent.name}`}
+                        subtitle="Override the default setting for this preset"
+                        isEnabled={presetInlineMode}
+                        onChange={onPresetInlineModeToggle}
+                        ariaLabel={`Inline mode override for ${activeAgent.name}`}
                       />
                     </div>
                   )}
 
-                  <div id="agents-custom-args" className="space-y-1.5">
+                  <div id="agents-custom-args-preset" className="space-y-1.5">
                     <label className="text-sm font-medium text-daintree-text">
                       Custom Arguments
                     </label>
                     <input
                       className="w-full rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-daintree-accent/50 placeholder:text-text-muted"
-                      value={customFlags}
-                      onChange={(e) => onCustomFlagsChange(e.target.value)}
+                      value={presetCustomFlags}
+                      onChange={(e) => onPresetCustomFlagsChange(e.target.value)}
                       placeholder="--verbose --max-tokens=4096"
                     />
                     <p className="text-xs text-daintree-text/40 select-text">
-                      Extra CLI flags appended when launching
+                      Extra CLI flags for this preset
                     </p>
                   </div>
                 </div>
