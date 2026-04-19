@@ -557,7 +557,7 @@ export function AgentTrayButton({
                   {showDiscoveryBadge && (
                     <span
                       data-testid="agent-tray-discovery-badge"
-                      className="absolute top-0 right-0 size-1.5 rounded-full bg-sky-400 ring-1 ring-daintree-sidebar"
+                      className="absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
                       aria-hidden="true"
                     />
                   )}
@@ -677,7 +677,7 @@ function LaunchRow({
       {row.isNew && (
         <span
           data-testid={`agent-tray-new-pill-${row.id}`}
-          className="ml-2 shrink-0 rounded border border-sky-400/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300"
+          className="ml-2 shrink-0 rounded border border-status-info/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-status-info"
         >
           New
         </span>
