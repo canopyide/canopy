@@ -241,7 +241,15 @@ export class WorkspaceHostProcess extends EventEmitter {
 
     console.log(`[WorkspaceHost:${this.serviceName}] Manual restart initiated`);
     this.startHost();
-    this.emit("restarted");
+
+    // Only signal "restarted" when the fork actually produced a child —
+    // `startHost()` emits `host-crash` on fork failure and leaves `child`
+    // null; emitting `restarted` in that case would poison
+    // `reloadProjectAfterRestart` by awaiting a `waitForReady()` that will
+    // never resolve.
+    if (this.child !== null) {
+      this.emit("restarted");
+    }
   }
 
   dispose(): void {

@@ -103,11 +103,19 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
     },
 
     setFatalError(message: string) {
-      // Clear `isInitialized` alongside setting the error so the next
-      // `fetchInitialState` treats the post-restart fetch as a cold start
-      // instead of a silent wake refresh — otherwise fetch errors on the
-      // restarted host would be swallowed.
-      set({ error: message, isInitialized: false, isReconnecting: false });
+      // Also clear `isLoading` so the sidebar renders the error branch (and
+      // its Restart Service button) even when the host crashes before the
+      // first snapshot hydrates — otherwise `SidebarContent` keeps showing
+      // "Loading worktrees…" and the restart action is never surfaced.
+      // `isInitialized` is reset so the next `fetchInitialState` treats the
+      // post-restart fetch as a cold start rather than a silent wake refresh
+      // (which swallows fetch errors).
+      set({
+        error: message,
+        isInitialized: false,
+        isReconnecting: false,
+        isLoading: false,
+      });
     },
 
     setReconnecting(reconnecting: boolean) {
