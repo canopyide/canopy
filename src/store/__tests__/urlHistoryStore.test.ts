@@ -86,11 +86,15 @@ describe("urlHistoryStore", () => {
     expect(entries![0]!.favicon).toBe("https://example.com/favicon.ico");
   });
 
-  it("updateFavicon is a no-op for non-existent URL", () => {
+  it("updateFavicon creates entry for non-existent URL", () => {
     const store = useUrlHistoryStore.getState();
     store.recordVisit("proj1", "http://localhost:3000/", "Title");
     store.updateFavicon("proj1", "http://localhost:5000/", "https://other.com/favicon.ico");
-    expect(useUrlHistoryStore.getState().entries["proj1"]![0]!.favicon).toBeUndefined();
+    const entries = useUrlHistoryStore.getState().entries["proj1"]!;
+    expect(entries).toHaveLength(2);
+    expect(entries.find((e) => e.url === "http://localhost:5000/")!.favicon).toBe(
+      "https://other.com/favicon.ico"
+    );
   });
 
   it("removeUrl removes a specific entry by URL", () => {

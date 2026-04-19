@@ -382,14 +382,21 @@ export function BrowserPane({
       const detail = event as Event & { favicons?: string[] };
       if (!projectId || !detail.favicons?.length) return;
       const favicon = detail.favicons[0]!;
+      // Skip oversized data URLs that could exceed localStorage quota
+      if (favicon.startsWith("data:") && favicon.length > 8192) return;
+      // Capture URL at event time to avoid race with navigation
+      let capturedUrl: string;
+      try {
+        capturedUrl = webview.getURL();
+      } catch {
+        return;
+      }
+      if (!capturedUrl || capturedUrl === "about:blank") return;
       if (faviconDebounceTimer) clearTimeout(faviconDebounceTimer);
+      const url = capturedUrl;
       faviconDebounceTimer = setTimeout(() => {
         faviconDebounceTimer = null;
-        try {
-          useUrlHistoryStore.getState().updateFavicon(projectId, webview.getURL(), favicon);
-        } catch {
-          // webview may be detached
-        }
+        useUrlHistoryStore.getState().updateFavicon(projectId, url, favicon);
       }, 200);
     };
 

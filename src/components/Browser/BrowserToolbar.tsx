@@ -99,7 +99,7 @@ export function BrowserToolbar({
   );
 
   const suggestions = useMemo(
-    () => (isEditing && projectId ? getFrecencySuggestions(projectEntries, "") : []),
+    () => (isEditing && projectId ? getFrecencySuggestions(projectEntries, inputValue) : []),
     [isEditing, projectId, projectEntries, inputValue]
   );
 
@@ -523,14 +523,23 @@ export function BrowserToolbar({
                 )}
               >
                 {entry.favicon ? (
-                  <img
-                    src={entry.favicon}
-                    alt=""
-                    className="w-4 h-4 shrink-0 rounded-sm object-contain"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
+                  <span className="relative w-4 h-4 shrink-0">
+                    <img
+                      src={entry.favicon}
+                      alt=""
+                      className="w-4 h-4 rounded-sm object-contain"
+                      onError={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        img.style.display = "none";
+                        const fallback = img.nextElementSibling;
+                        if (fallback) (fallback as HTMLElement).style.display = "";
+                      }}
+                    />
+                    <Globe
+                      className="w-4 h-4 text-daintree-text/30 absolute inset-0"
+                      style={{ display: "none" }}
+                    />
+                  </span>
                 ) : (
                   <Globe className="w-4 h-4 shrink-0 text-daintree-text/30" />
                 )}

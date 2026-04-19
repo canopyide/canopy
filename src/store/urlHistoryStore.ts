@@ -93,13 +93,14 @@ export const useUrlHistoryStore = create<UrlHistoryState>()(
 
       updateFavicon: (projectId, url, favicon) =>
         set((state) => {
-          const projectEntries = state.entries[projectId];
-          if (!projectEntries) return state;
+          const projectEntries = [...(state.entries[projectId] ?? [])];
           const index = projectEntries.findIndex((e) => e.url === url);
-          if (index < 0) return state;
-          const updated = [...projectEntries];
-          updated[index] = { ...updated[index]!, favicon };
-          return { entries: { ...state.entries, [projectId]: updated } };
+          if (index >= 0) {
+            projectEntries[index] = { ...projectEntries[index]!, favicon };
+          } else {
+            projectEntries.push({ url, title: "", visitCount: 0, lastVisitAt: 0, favicon });
+          }
+          return { entries: { ...state.entries, [projectId]: projectEntries } };
         }),
 
       removeUrl: (projectId, url) =>
