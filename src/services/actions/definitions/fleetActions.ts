@@ -14,6 +14,7 @@ import { useFleetDeckStore } from "@/store/fleetDeckStore";
 import { useFleetSavedScopesStore } from "@/store/fleetSavedScopesStore";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { useProjectStore } from "@/store/projectStore";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { terminalClient } from "@/clients";
 import { executeFleetBroadcast } from "@/components/Fleet/fleetExecution";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -343,7 +344,8 @@ export function registerFleetActions(actions: ActionRegistry): void {
         return;
       }
       if (scope.filter) {
-        const ids = collectEligibleIds(scope.filter.scope as "current" | "all", null);
+        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+        const ids = collectEligibleIds(scope.filter.scope as "current" | "all", activeWorktreeId);
         useFleetArmingStore.getState().armIds(ids);
       }
     },

@@ -7,6 +7,7 @@ import { useFleetArmingStore, collectEligibleIds } from "@/store/fleetArmingStor
 import { usePanelStore } from "@/store/panelStore";
 import type { FleetDeckScope } from "@/store/fleetDeckStore";
 import { useProjectStore } from "@/store/projectStore";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 
 export function FleetScopeBar(): ReactElement | null {
   const { scopes } = useFleetSavedScopesStore(useShallow((s) => ({ scopes: s.scopes })));
@@ -33,7 +34,8 @@ export function FleetScopeBar(): ReactElement | null {
         return;
       }
       if (scopeItem.filter) {
-        let ids = collectEligibleIds(scopeItem.filter.scope as FleetDeckScope, null);
+        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+        let ids = collectEligibleIds(scopeItem.filter.scope as FleetDeckScope, activeWorktreeId);
         if (scopeItem.filter.stateFilter && scopeItem.filter.stateFilter !== "all") {
           const { panelsById } = usePanelStore.getState();
           ids = ids.filter((id) => panelsById[id]?.agentState === scopeItem.filter!.stateFilter);
