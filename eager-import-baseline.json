@@ -154,17 +154,17 @@
     },
     {
       "file": "electron/ipc/handlers/git-write.ts",
-      "line": 306,
+      "line": 225,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/ipc/handlers/git-write.ts",
-      "line": 350,
+      "line": 269,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/ipc/handlers/git-write.ts",
-      "line": 355,
+      "line": 274,
       "pattern": "sync-store-get"
     },
     {
@@ -1104,32 +1104,32 @@
     },
     {
       "file": "electron/services/TelemetryService.ts",
-      "line": 233,
+      "line": 227,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/services/TelemetryService.ts",
-      "line": 241,
+      "line": 235,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/services/TelemetryService.ts",
-      "line": 249,
+      "line": 243,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/services/TelemetryService.ts",
-      "line": 256,
+      "line": 250,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/services/TelemetryService.ts",
-      "line": 363,
+      "line": 299,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/services/TelemetryService.ts",
-      "line": 413,
+      "line": 349,
       "pattern": "sync-store-get"
     },
     {
