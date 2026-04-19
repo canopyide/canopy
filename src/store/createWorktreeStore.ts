@@ -18,6 +18,12 @@ export function getCurrentViewStore(): WorktreeViewStoreApi {
   return _currentViewStore;
 }
 
+// Non-throwing variant for callers that can legitimately run before the
+// provider mounts (e.g. action-manifest listing during initial render).
+export function getCurrentViewStoreOrNull(): WorktreeViewStoreApi | null {
+  return _currentViewStore;
+}
+
 export interface WorktreeViewState {
   worktrees: Map<string, WorktreeSnapshot>;
   version: number;

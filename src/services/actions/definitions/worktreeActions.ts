@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ActionContext, ActionId } from "@shared/types/actions";
 import { actionService } from "@/services/ActionService";
 import { copyTreeClient, githubClient, systemClient, worktreeClient } from "@/clients";
-import { getCurrentViewStore } from "@/store/createWorktreeStore";
+import { getCurrentViewStore, getCurrentViewStoreOrNull } from "@/store/createWorktreeStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { DEFAULT_COPYTREE_FORMAT } from "@/lib/copyTreeFormat";
 import { notify } from "@/lib/notify";
@@ -116,7 +116,10 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    isEnabled: () => getCurrentViewStore().getState().error !== null,
+    isEnabled: () => {
+      const store = getCurrentViewStoreOrNull();
+      return store !== null && store.getState().error !== null;
+    },
     run: async () => {
       await worktreeClient.restartService();
     },

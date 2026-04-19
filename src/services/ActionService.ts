@@ -216,8 +216,24 @@ export class ActionService {
     definition: AnyActionDefinition,
     context: ActionContext
   ): ActionManifestEntry {
-    const enabled = definition.isEnabled?.(context) ?? true;
-    const disabledReason = enabled ? undefined : definition.disabledReason?.(context);
+    // Fail closed if isEnabled throws: a single broken action must not crash
+    // ActionService.list(), which runs during initial render and would take
+    // the whole React tree down.
+    let enabled = true;
+    try {
+      enabled = definition.isEnabled?.(context) ?? true;
+    } catch (err) {
+      logWarn("Action isEnabled threw", { actionId: definition.id, error: err });
+      enabled = false;
+    }
+    let disabledReason: string | undefined;
+    if (!enabled) {
+      try {
+        disabledReason = definition.disabledReason?.(context);
+      } catch (err) {
+        logWarn("Action disabledReason threw", { actionId: definition.id, error: err });
+      }
+    }
 
     return {
       id: definition.id,
