@@ -117,10 +117,11 @@ export function AgentSettings({
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [addDialogAgentId, setAddDialogAgentId] = useState<string | null>(null);
 
-  const handleCreatePreset = (presetData: Omit<AgentPreset, "id">) => {
+  const handleCreatePreset = async (presetData: Omit<AgentPreset, "id">) => {
     if (!addDialogAgentId) return;
     const now = Date.now();
-    const entry = getAgentSettingsEntry(effectiveSettings, addDialogAgentId);
+    const freshSettings = useAgentSettingsStore.getState().settings ?? DEFAULT_AGENT_SETTINGS;
+    const entry = getAgentSettingsEntry(freshSettings, addDialogAgentId);
     const existing = entry.customPresets ?? [];
     let id = `user-${now}`;
     if (existing.some((f) => f.id === id)) {
@@ -129,10 +130,15 @@ export function AgentSettings({
       id = `user-${now}-${suffix}`;
     }
     const updated = [...existing, { ...presetData, id }];
-    void (async () => {
+    try {
       await updateAgent(addDialogAgentId, { customPresets: updated, presetId: id });
       onSettingsChange?.();
-    })();
+      lastAddTimeRef.current = now;
+      setIsAddDialogOpen(false);
+      setAddDialogAgentId(null);
+    } catch (error) {
+      console.error("[AgentSettings] Failed to create preset:", error);
+    }
   };
 
   // Reset preset-editing state when switching between agent subtabs. Without
@@ -527,14 +533,6 @@ export function AgentSettings({
               // ── handlers ──────────────────────────────────────────────────
 
               const openAddDialog = () => {
-                const now = Date.now();
-                const e2eMode =
-                  typeof window !== "undefined" && window.__DAINTREE_E2E_MODE__ === true;
-                if (!e2eMode && now - lastAddTimeRef.current < 12000) {
-                  console.warn("Rate limit exceeded for preset creation");
-                  return;
-                }
-                lastAddTimeRef.current = now;
                 setAddDialogAgentId(activeAgent.id);
                 setIsAddDialogOpen(true);
               };

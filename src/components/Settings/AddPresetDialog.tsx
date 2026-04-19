@@ -9,7 +9,7 @@ interface AddPresetDialogProps {
   onClose: () => void;
   agentId: string;
   currentPreset: AgentPreset | null;
-  onCreate: (preset: Omit<AgentPreset, "id">) => void;
+  onCreate: (preset: Omit<AgentPreset, "id">) => void | Promise<void>;
 }
 
 export function AddPresetDialog({
@@ -70,8 +70,6 @@ export function AddPresetDialog({
         }
         break;
     }
-
-    onClose();
   };
 
   const canCreate = choice !== "template" || !!selectedTemplate;

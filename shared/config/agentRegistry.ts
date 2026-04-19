@@ -523,7 +523,8 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       {
         id: "anthropic-native",
         name: "Anthropic (native)",
-        description: "Direct connection to Anthropic's API. Requires ANTHROPIC_API_KEY.",
+        description:
+          "Direct connection to Anthropic's API. Requires ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN.",
         env: {
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
         },
