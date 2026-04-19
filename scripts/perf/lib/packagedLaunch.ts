@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import type { PerfMarkName } from "../../../shared/perf/marks";
 import { PERF_MARKS } from "../../../shared/perf/marks";
 
 export interface PackagedLaunchResult {

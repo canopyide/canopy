@@ -10,7 +10,6 @@ import { assertMatrixCoverage, getScenariosForMode } from "./scenarios";
 import type {
   BaselineSummary,
   ComparisonAggregate,
-  ComparisonResult,
   PerfMode,
   PerfRunSummary,
   ScenarioAggregate,
