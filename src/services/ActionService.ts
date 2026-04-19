@@ -168,11 +168,11 @@ export class ActionService {
       if (
         REPEATABLE_SOURCES.has(source) &&
         !definition.nonRepeatable &&
-        definition.danger !== "confirm"
+        definition.danger === "safe"
       ) {
-        // danger:"confirm" actions rely on originating UI dialogs (e.g. WorktreeDeleteDialog)
-        // to gather consent — replaying them from a keybinding would bypass that UI and
-        // silently repeat a destructive operation. Exclude from capture entirely.
+        // Only danger:"safe" actions are eligible for repeat. Confirm-gated actions
+        // rely on originating UI dialogs for consent — replaying them from a keybinding
+        // would silently bypass that UI and repeat a destructive op.
         this.lastAction = { actionId, args: cloneArgsForReplay(validatedArgs) };
       }
       void this.emitActionDispatchedEvent({
