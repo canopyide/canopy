@@ -85,7 +85,12 @@ function scoreSubsequence(lowerQuery: string, field: string, lowerField: string)
   return Math.max(0, score);
 }
 
-function scoreTitle(lowerQuery: string, title: string, lowerTitle: string, acronym: string): number {
+function scoreTitle(
+  lowerQuery: string,
+  title: string,
+  lowerTitle: string,
+  acronym: string
+): number {
   let score = scoreSubsequence(lowerQuery, title, lowerTitle);
   if (acronym.length > 0 && lowerQuery.length >= 2) {
     if (acronym === lowerQuery) {
@@ -116,9 +121,7 @@ export function scoreAction(query: string, item: SearchableAction): number {
   if (titleScore === 0 && categoryRaw === 0 && descriptionRaw === 0) return 0;
 
   return (
-    titleScore * TITLE_WEIGHT +
-    categoryRaw * CATEGORY_WEIGHT +
-    descriptionRaw * DESCRIPTION_WEIGHT
+    titleScore * TITLE_WEIGHT + categoryRaw * CATEGORY_WEIGHT + descriptionRaw * DESCRIPTION_WEIGHT
   );
 }
 
