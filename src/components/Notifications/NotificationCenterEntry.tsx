@@ -1,8 +1,14 @@
-import { CheckCircle2, XCircle, Info, AlertTriangle, X } from "lucide-react";
+import { CheckCircle2, XCircle, Info, AlertTriangle, MoreHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 import { actionService } from "@/services/ActionService";
 import type { ActionId } from "@shared/types/actions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const TYPE_CONFIG = {
   success: { icon: CheckCircle2, className: "text-status-success" },
@@ -105,6 +111,31 @@ export function NotificationCenterEntry({
             aria-hidden="true"
             className="h-1.5 w-1.5 rounded-full bg-daintree-accent shrink-0"
           />
+        )}
+        {entry.context?.projectId && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Notification options"
+                onClick={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+              >
+                <MoreHorizontal className="h-3 w-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={4}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const projectId = entry.context?.projectId;
+                  if (!projectId) return;
+                  void actionService.dispatch("project.muteNotifications", { projectId });
+                }}
+              >
+                Mute project notifications
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         {onDismiss && (
           <button

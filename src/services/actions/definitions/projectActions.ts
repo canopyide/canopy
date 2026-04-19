@@ -227,6 +227,43 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     },
   }));
 
+  actions.set("project.muteNotifications", () => ({
+    id: "project.muteNotifications",
+    title: "Mute Project Notifications",
+    description: "Suppress future agent completion and waiting notifications for a project",
+    category: "project",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ projectId: z.string().min(1) }),
+    run: async (args: unknown) => {
+      const { projectId } = args as { projectId: string };
+      try {
+        const current = await projectClient.getSettings(projectId);
+        await projectClient.saveSettings(projectId, {
+          ...current,
+          notificationOverrides: {
+            ...current.notificationOverrides,
+            completedEnabled: false,
+            waitingEnabled: false,
+          },
+        });
+        notify({
+          type: "success",
+          message: "Project notifications muted",
+          priority: "low",
+        });
+      } catch (error) {
+        notify({
+          type: "error",
+          title: "Failed to mute notifications",
+          message: error instanceof Error ? error.message : "Unknown error",
+          duration: 5000,
+        });
+      }
+    },
+  }));
+
   actions.set("project.detectRunners", () => ({
     id: "project.detectRunners",
     title: "Detect Runners",

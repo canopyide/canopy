@@ -905,6 +905,105 @@ describe("notify()", () => {
     });
   });
 
+  describe("context — propagates projectId through history and toast", () => {
+    it("stores context on the history entry", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Project event",
+        priority: "high",
+        context: { projectId: "proj-1" },
+      });
+      const entry = useNotificationHistoryStore.getState().entries[0];
+      expect(entry!.context).toEqual({ projectId: "proj-1" });
+    });
+
+    it("stores context on the active toast notification", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Project event",
+        priority: "high",
+        context: { projectId: "proj-1", worktreeId: "wt-2" },
+      });
+      const notification = useNotificationStore.getState().notifications[0];
+      expect(notification!.context).toEqual({ projectId: "proj-1", worktreeId: "wt-2" });
+    });
+
+    it("stores context on grid-bar history entries", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Inline bar",
+        placement: "grid-bar",
+        context: { projectId: "proj-2" },
+      });
+      const entry = useNotificationHistoryStore.getState().entries[0];
+      expect(entry!.context).toEqual({ projectId: "proj-2" });
+    });
+
+    it("omits context on history entry when none supplied", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "info", message: "No ctx", priority: "high" });
+      const entry = useNotificationHistoryStore.getState().entries[0];
+      expect(entry!.context).toBeUndefined();
+    });
+
+    it("clears context on coalesce when the incoming projectId differs from the existing one", () => {
+      // Regression: the combined toast no longer represents a single project,
+      // so the "Mute project notifications" affordance must disappear rather
+      // than silently dispatch with the first project's ID.
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Project A hibernated",
+        priority: "high",
+        context: { projectId: "A" },
+        coalesce: {
+          key: "hibernation:project",
+          windowMs: 10_000,
+          buildMessage: (count) => `${count} projects hibernated`,
+        },
+      });
+      notify({
+        type: "info",
+        message: "Project B hibernated",
+        priority: "high",
+        context: { projectId: "B" },
+        coalesce: {
+          key: "hibernation:project",
+          windowMs: 10_000,
+          buildMessage: (count) => `${count} projects hibernated`,
+        },
+      });
+
+      const notifications = useNotificationStore.getState().notifications;
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]!.context).toBeUndefined();
+    });
+
+    it("preserves context on coalesce when the incoming projectId matches", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const payload = {
+        type: "info" as const,
+        message: "Same project",
+        priority: "high" as const,
+        context: { projectId: "A" },
+        coalesce: {
+          key: "same-proj",
+          windowMs: 10_000,
+          buildMessage: (count: number) => `${count} events`,
+        },
+      };
+      notify(payload);
+      notify(payload);
+
+      const notifications = useNotificationStore.getState().notifications;
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]!.context).toEqual({ projectId: "A" });
+    });
+  });
+
   describe("combo — escalating messages on rapid repeats", () => {
     const comboPayload = (message = "Agent spawned") => ({
       type: "success" as const,

@@ -38,6 +38,16 @@ export interface Notification {
   /** Links this toast to its notification history entry for overflow tracking */
   historyEntryId?: string;
   /**
+   * Origin context for this notification. Populated by callers that want to
+   * enable contextual affordances (e.g. "Mute this project") on the toast and
+   * in the notification center. Shape mirrors NotificationHistoryEntry.context.
+   */
+  context?: {
+    projectId?: string;
+    worktreeId?: string;
+    panelId?: string;
+  };
+  /**
    * Fires exactly once when the user closes the toast via the close button
    * (or an action button). Does NOT fire on MAX_VISIBLE_TOASTS eviction or on
    * programmatic dismissNotification from elsewhere — only on the user-driven
