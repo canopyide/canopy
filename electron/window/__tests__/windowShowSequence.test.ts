@@ -4,13 +4,15 @@ type Handler = (...args: unknown[]) => void;
 type ListenerMap = Map<string, Handler[]>;
 
 function createMockAppView(listeners: ListenerMap) {
+  const register = (event: string, handler: Handler) => {
+    if (!listeners.has(event)) listeners.set(event, []);
+    listeners.get(event)!.push(handler);
+  };
   return {
     setBackgroundColor: vi.fn(),
     webContents: {
-      once: vi.fn((event: string, handler: Handler) => {
-        if (!listeners.has(event)) listeners.set(event, []);
-        listeners.get(event)!.push(handler);
-      }),
+      on: vi.fn(register),
+      once: vi.fn(register),
       loadURL: vi.fn(),
     },
   };
@@ -44,7 +46,7 @@ function buildLoadRenderer({ win, appView, windowBg, injectSkeletonCss }: SetupA
     if (win.isDestroyed() || rendererLoadRequested) return;
     rendererLoadRequested = true;
 
-    appWebContents.once("dom-ready", () => {
+    appWebContents.on("dom-ready", () => {
       injectSkeletonCss(appWebContents);
     });
 
@@ -101,7 +103,7 @@ describe("window show sequence", () => {
     expect(listeners.has("did-finish-load")).toBe(false);
   });
 
-  it("registers a one-shot dom-ready listener for skeleton CSS injection", () => {
+  it("registers a persistent dom-ready listener for skeleton CSS injection", () => {
     const listeners: ListenerMap = new Map();
     const win = createMockWindow();
     const appView = createMockAppView(listeners);
@@ -125,6 +127,33 @@ describe("window show sequence", () => {
     domReadyHandlers[0]();
     expect(injectSkeletonCss).toHaveBeenCalledOnce();
     expect(injectSkeletonCss).toHaveBeenCalledWith(appView.webContents);
+  });
+
+  it("re-injects skeleton CSS on every dom-ready so crash-reloads stay themed", () => {
+    const listeners: ListenerMap = new Map();
+    const win = createMockWindow();
+    const appView = createMockAppView(listeners);
+    const injectSkeletonCss = vi.fn();
+
+    const loadRenderer = buildLoadRenderer({
+      win,
+      appView,
+      windowBg: "#0e0e0d",
+      injectSkeletonCss,
+    });
+
+    loadRenderer("startup");
+
+    const domReadyHandlers = listeners.get("dom-ready") ?? [];
+    expect(domReadyHandlers).toHaveLength(1);
+
+    // First load
+    domReadyHandlers[0]();
+    // Renderer crash → appWebContents.reload() → second dom-ready
+    domReadyHandlers[0]();
+
+    expect(injectSkeletonCss).toHaveBeenCalledTimes(2);
+    expect(appView.webContents.on).toHaveBeenCalledWith("dom-ready", expect.any(Function));
   });
 
   it("does not set a fallback timer — window is already shown", () => {

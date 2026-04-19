@@ -296,8 +296,10 @@ export function setupBrowserWindow(
     rendererLoadRequested = true;
 
     // insertCSS is navigation-scoped, so re-inject once the new document has
-    // parsed. The skeleton's inline fallbacks cover the gap before dom-ready.
-    appWebContents.once("dom-ready", () => {
+    // parsed. Listen for every dom-ready (not once) so the skeleton survives
+    // renderer-crash auto-reloads. Inline fallbacks in index.html cover the
+    // gap before dom-ready fires.
+    appWebContents.on("dom-ready", () => {
       injectSkeletonCss(appWebContents);
     });
 
