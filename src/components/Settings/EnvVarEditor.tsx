@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { looksLikeSecret } from "@/utils/secretDetection";
 
 /**
  * Inline env var CRUD editor with validation.
@@ -252,6 +253,7 @@ export function EnvVarEditor({
         const touched = !!touchedKeys[row.rowId];
         const isEmptyKey = touched && trimmedKey === "";
         const isDuplicate = trimmedKey !== "" && duplicateKeys.has(trimmedKey);
+        const hasSecretWarning = looksLikeSecret(row.value);
         return (
           <div key={row.rowId} className="space-y-0.5">
             <div className="flex items-center gap-1 font-mono text-[11px]">
@@ -273,7 +275,12 @@ export function EnvVarEditor({
               />
               <span className="text-daintree-text/30">=</span>
               <input
-                className="flex-1 bg-daintree-bg border border-border-strong rounded px-1.5 py-0.5 text-daintree-accent/80 focus:outline-none focus:border-daintree-accent transition-colors"
+                className={cn(
+                  "flex-1 bg-daintree-bg border rounded px-1.5 py-0.5 text-daintree-accent/80 focus:outline-none transition-colors",
+                  hasSecretWarning
+                    ? "border-amber-500/60 focus:border-amber-500"
+                    : "border-border-strong focus:border-daintree-accent"
+                )}
                 value={row.value}
                 placeholder={valuePlaceholder}
                 onChange={(e) => handleValueChange(row.rowId, e.target.value)}
@@ -299,6 +306,14 @@ export function EnvVarEditor({
                 data-testid={isEmptyKey ? "env-editor-error-empty" : "env-editor-error-duplicate"}
               >
                 {isEmptyKey ? "Key required" : "Duplicate key"}
+              </p>
+            )}
+            {hasSecretWarning && (
+              <p
+                className="text-[10px] pl-0.5 text-amber-500"
+                data-testid="env-editor-warning-secret"
+              >
+                {"Looks like a secret. Prefer a ${ENV_VAR} reference to your shell environment."}
               </p>
             )}
           </div>
