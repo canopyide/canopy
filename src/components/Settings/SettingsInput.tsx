@@ -40,18 +40,19 @@ export function SettingsInput({
       .filter(Boolean)
       .join(" ") || undefined;
 
-  const scopeBadge =
-    scope && scope !== "project" ? (
-      <span
-        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-          scope === "global"
+  const scopeBadge = scope ? (
+    <span
+      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+        scope === "project"
+          ? "bg-daintree-accent/10 text-daintree-accent dark:bg-daintree-accent/20"
+          : scope === "global"
             ? "bg-blue-500/10 text-blue-500 dark:bg-blue-500/20"
             : "bg-text-secondary/10 text-text-secondary dark:bg-text-secondary/20"
-        }`}
-      >
-        {scope === "global" ? "Global" : "Default"}
-      </span>
-    ) : null;
+      }`}
+    >
+      {scope === "project" ? "Project" : scope === "global" ? "Global" : "Default"}
+    </span>
+  ) : null;
 
   return (
     <div className="group flex flex-col gap-2">

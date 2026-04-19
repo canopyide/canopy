@@ -28,12 +28,25 @@ interface ProjectNotificationsTabProps {
 
 export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotificationsTabProps) {
   const [globalSettings, setGlobalSettings] = useState<NotificationSettings | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.electron?.notification
-      ?.getSettings()
-      .then(setGlobalSettings)
-      .catch(() => {});
+    if (!window.electron?.notification) return;
+
+    let mounted = true;
+    window.electron.notification
+      .getSettings()
+      .then((settings) => {
+        if (mounted) setGlobalSettings(settings);
+      })
+      .catch((err) => {
+        console.error("[ProjectNotificationsTab] Failed to load global settings:", err);
+        if (mounted) setGlobalError("Failed to load global settings");
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const setOverride = useCallback(
@@ -55,6 +68,34 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
   const handlePreview = (soundFile: string) => {
     window.electron?.notification?.playSound(soundFile).catch(() => {});
   };
+
+  if (!window.electron?.notification) {
+    return <div className="text-sm text-daintree-text/50">Notification API not available</div>;
+  }
+
+  if (globalError) {
+    return (
+      <div className="text-sm text-status-error">
+        {globalError}{" "}
+        <button
+          type="button"
+          onClick={() => {
+            setGlobalError(null);
+            window.electron.notification
+              .getSettings()
+              .then(setGlobalSettings)
+              .catch((err) => {
+                console.error("[ProjectNotificationsTab] Retry failed:", err);
+                setGlobalError("Failed to load global settings");
+              });
+          }}
+          className="text-daintree-accent underline hover:text-daintree-accent/80"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (!globalSettings) {
     return <div className="text-sm text-daintree-text/50">Loading global settings…</div>;
