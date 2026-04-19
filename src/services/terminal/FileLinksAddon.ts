@@ -14,13 +14,17 @@ const FILE_PATH_REGEX =
 
 const WINDOWS_ABS = /^(?:[a-zA-Z]:[\\/]|\\\\)/;
 
+export type HoverCallback = (link: ILink | null) => void;
+
 export class FileLinksAddon implements ILinkProvider {
   private _terminal: Terminal;
   private _getCwd: () => string;
+  private _onHover?: HoverCallback;
 
-  constructor(terminal: Terminal, getCwd: () => string) {
+  constructor(terminal: Terminal, getCwd: () => string, onHover?: HoverCallback) {
     this._terminal = terminal;
     this._getCwd = getCwd;
+    this._onHover = onHover;
   }
 
   provideLinks(bufferLineNumber: number, callback: (links: ILink[] | undefined) => void): void {
@@ -65,7 +69,8 @@ export class FileLinksAddon implements ILinkProvider {
           resolved.absolutePath,
           resolved.line,
           resolved.col,
-          this._getCwd()
+          this._getCwd(),
+          this._onHover
         )
       );
     }
@@ -125,7 +130,8 @@ class FileLink implements ILink {
     private _absolutePath: string,
     private _line?: number,
     private _col?: number,
-    private _rootPath?: string
+    private _rootPath?: string,
+    private _onHover?: HoverCallback
   ) {}
 
   activate(event: MouseEvent, _text: string): void {
@@ -166,9 +172,13 @@ class FileLink implements ILink {
     }
   }
 
-  hover?(_event: MouseEvent, _text: string): void {}
+  hover?(_event: MouseEvent, _text: string): void {
+    this._onHover?.(this);
+  }
 
-  leave?(_event: MouseEvent, _text: string): void {}
+  leave?(_event: MouseEvent, _text: string): void {
+    this._onHover?.(null);
+  }
 
   dispose?(): void {}
 }

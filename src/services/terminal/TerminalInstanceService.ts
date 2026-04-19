@@ -1,4 +1,4 @@
-import { Terminal } from "@xterm/xterm";
+import { Terminal, ILink, IBufferRange } from "@xterm/xterm";
 import { isMac } from "@/lib/platform";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier, TerminalType } from "@/types";
@@ -232,6 +232,7 @@ class TerminalInstanceService {
             }
             managed.webLinksAddon = null;
           }
+          managed.hoveredLink = null;
         } else {
           restoreScrollback(managed);
 
@@ -244,8 +245,14 @@ class TerminalInstanceService {
           }
           if (!managed.fileLinksDisposable) {
             try {
-              managed.fileLinksDisposable = createFileLinksAddon(managed.terminal, () =>
-                (this.cwdProviders.get(id) ?? (() => ""))()
+              managed.fileLinksDisposable = createFileLinksAddon(
+                managed.terminal,
+                () => (this.cwdProviders.get(id) ?? (() => ""))(),
+                (link) => {
+                  const current = this.instances.get(id);
+                  if (!current) return;
+                  current.hoveredLink = link;
+                }
               );
             } catch (err) {
               logWarn("Failed to recreate FileLinksAddon", { id, error: err });
@@ -253,8 +260,21 @@ class TerminalInstanceService {
           }
           if (!managed.webLinksAddon) {
             try {
-              managed.webLinksAddon = createWebLinksAddon(managed.terminal, (event, uri) =>
-                this.linkHandler.openLink(uri, id, event)
+              managed.webLinksAddon = createWebLinksAddon(
+                managed.terminal,
+                (event, uri) => this.linkHandler.openLink(uri, id, event),
+                {
+                  hover: (_event, text) => {
+                    const current = this.instances.get(id);
+                    if (!current) return;
+                    current.hoveredLink = this.makeSyntheticLink(text, null, id);
+                  },
+                  leave: () => {
+                    const current = this.instances.get(id);
+                    if (!current) return;
+                    current.hoveredLink = null;
+                  },
+                }
               );
             } catch (err) {
               logWarn("Failed to recreate WebLinksAddon", { id, error: err });
@@ -287,6 +307,48 @@ class TerminalInstanceService {
 
   notifyUserInput(id: string, data = ""): void {
     this.onUserInput(id, data);
+  }
+
+  /**
+   * Returns the text of the currently-hovered link, if any. Used by the
+   * right-click context menu to show "Open Link"/"Copy Link Address" based
+   * on the same detection xterm uses (WebLinksAddon, FileLinksAddon, OSC 8).
+   */
+  getHoveredLinkText(id: string): string | null {
+    return this.instances.get(id)?.hoveredLink?.text ?? null;
+  }
+
+  /**
+   * Opens the currently-hovered link by delegating to its own activate()
+   * method. File links route through the actionService (file.view); URL and
+   * OSC 8 links route through TerminalLinkHandler (localhost → browser panel
+   * when modifier pressed, external open otherwise).
+   */
+  openHoveredLink(id: string, event?: MouseEvent): void {
+    const managed = this.instances.get(id);
+    const link = managed?.hoveredLink;
+    if (!link) return;
+    const mouseEvent = event ?? new MouseEvent("click");
+    try {
+      link.activate(mouseEvent, link.text);
+    } catch (error) {
+      logWarn("Failed to activate hovered link", { id, error });
+    }
+  }
+
+  /**
+   * Builds a synthetic ILink for WebLinksAddon and OSC 8 link sources (which
+   * don't expose an ILink natively). activate() routes through the link
+   * handler so localhost URLs hit the browser-panel path when needed.
+   */
+  private makeSyntheticLink(text: string, range: IBufferRange | null, terminalId: string): ILink {
+    return {
+      range: range ?? { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } },
+      text,
+      activate: (event: MouseEvent, uri: string) => {
+        this.linkHandler.openLink(uri, terminalId, event);
+      },
+    };
   }
 
   /**
@@ -639,10 +701,20 @@ class TerminalInstanceService {
       this.linkHandler.openLink(url, id, event);
     };
 
+    const setHoveredLink = (link: ILink | null) => {
+      const current = this.instances.get(id);
+      if (!current) return;
+      current.hoveredLink = link;
+    };
+
     const terminalOptions = {
       ...options,
       linkHandler: {
         activate: (event: MouseEvent, text: string) => openLink(text, event),
+        hover: (_event: MouseEvent, text: string, range: IBufferRange) => {
+          setHoveredLink(this.makeSyntheticLink(text, range, id));
+        },
+        leave: () => setHoveredLink(null),
       },
     };
 
@@ -651,7 +723,12 @@ class TerminalInstanceService {
     const addons = setupTerminalAddons(
       terminal,
       () => (this.cwdProviders.get(id) ?? (() => ""))(),
-      (event, uri) => openLink(uri, event)
+      (event, uri) => openLink(uri, event),
+      (link) => setHoveredLink(link),
+      {
+        hover: (_event, text) => setHoveredLink(this.makeSyntheticLink(text, null, id)),
+        leave: () => setHoveredLink(null),
+      }
     );
 
     const hostElement = document.createElement("div");
@@ -697,6 +774,7 @@ class TerminalInstanceService {
       agentState: undefined,
       agentStateSubscribers,
       ...addons,
+      hoveredLink: null,
       hostElement,
       isOpened: false,
       listeners,
@@ -1281,6 +1359,7 @@ class TerminalInstanceService {
       }
     }
     managed.terminal.blur();
+    managed.hoveredLink = null;
     managed.lastDetachAt = Date.now();
     managed.isDetached = true;
   }
@@ -1306,6 +1385,7 @@ class TerminalInstanceService {
     }
 
     managed.terminal.blur();
+    managed.hoveredLink = null;
     managed.lastDetachAt = Date.now();
   }
 

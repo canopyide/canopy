@@ -178,4 +178,54 @@ describe("FileLinksAddon", () => {
       });
     });
   });
+
+  describe("hover tracking", () => {
+    it("invokes onHover with the link on hover() and null on leave()", () => {
+      return new Promise<void>((resolve) => {
+        const terminal = createMockTerminal();
+        const getCwd = () => "/home/user/project";
+        const calls: Array<unknown> = [];
+        const addon = new FileLinksAddon(terminal, getCwd, (link) => calls.push(link));
+
+        const line = createMockLine("Error at src/App.tsx:10");
+        vi.mocked(terminal.buffer.active.getLine).mockReturnValue(line);
+
+        addon.provideLinks(1, (links) => {
+          expect(links).toBeDefined();
+          const link = links![0]!;
+          const mouseEvent = new Event("mousemove") as unknown as MouseEvent;
+
+          link.hover?.(mouseEvent, link.text);
+          expect(calls.length).toBe(1);
+          expect(calls[0]).toBe(link);
+
+          link.leave?.(mouseEvent, link.text);
+          expect(calls.length).toBe(2);
+          expect(calls[1]).toBeNull();
+
+          resolve();
+        });
+      });
+    });
+
+    it("works without an onHover callback (backwards compatible)", () => {
+      return new Promise<void>((resolve) => {
+        const terminal = createMockTerminal();
+        const getCwd = () => "/home/user/project";
+        const addon = new FileLinksAddon(terminal, getCwd);
+
+        const line = createMockLine("src/App.tsx:10");
+        vi.mocked(terminal.buffer.active.getLine).mockReturnValue(line);
+
+        addon.provideLinks(1, (links) => {
+          expect(links).toBeDefined();
+          const link = links![0]!;
+          const mouseEvent = new Event("mousemove") as unknown as MouseEvent;
+          expect(() => link.hover?.(mouseEvent, link.text)).not.toThrow();
+          expect(() => link.leave?.(mouseEvent, link.text)).not.toThrow();
+          resolve();
+        });
+      });
+    });
+  });
 });

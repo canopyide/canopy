@@ -1,4 +1,4 @@
-import { Terminal, IDisposable, IMarker } from "@xterm/xterm";
+import { Terminal, IDisposable, IMarker, ILink } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { ImageAddon } from "@xterm/addon-image";
@@ -26,6 +26,10 @@ export interface ManagedTerminal {
   searchAddon: SearchAddon;
   fileLinksDisposable: IDisposable | null;
   webLinksAddon: WebLinksAddon | null;
+  // Currently-hovered link (tracked via xterm addon hover/leave callbacks).
+  // Read synchronously by the right-click context menu so it reflects the
+  // same detection xterm uses for plain URLs, file paths, and OSC 8 links.
+  hoveredLink: ILink | null;
   hostElement: HTMLDivElement;
   isOpened: boolean;
   listeners: Array<() => void>;
