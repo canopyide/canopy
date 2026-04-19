@@ -1564,7 +1564,40 @@ class TerminalInstanceService {
   focus(id: string): void {
     const managed = this.instances.get(id);
     if (!managed || managed.isHibernated) return;
-    managed.terminal.focus();
+
+    const terminal = managed.terminal;
+    const buffer = terminal.buffer.active;
+    const savedViewportY = buffer.viewportY;
+    const wasAtBottom = savedViewportY >= buffer.baseY;
+
+    // xterm 6.0 wraps `.xterm-screen` in a VS-Code-derived SmoothScrollableElement
+    // whose internal `_handleScroll` mirrors native `scrollTop` changes back into
+    // `buffer.ydisp`. `CoreBrowserTerminal.focus()` calls
+    // `textarea.focus({ preventScroll: true })`, but Chromium bypasses that flag
+    // when IME composition initializes or the Selection API touches the textarea
+    // synchronously after focus. When the bypass fires, the browser runs
+    // `scrollIntoView` to reveal the helper textarea (styled `top: 0; left: -9999em`
+    // by default), yanking the scroll wrapper to y=0 — which xterm mirrors back
+    // into ydisp=0, flashing the terminal to the top of scrollback for one frame.
+    // The flash is only visible on taller terminals where the scroll distance
+    // from cursor to row 0 is large enough to perceive. Smooth-scroll is disabled
+    // (smoothScrollDuration=0), so the scroll sync is synchronous — restoring
+    // ydisp inline here runs before any render commits.
+    managed._suppressScrollTracking = true;
+    try {
+      terminal.focus();
+
+      const curBuffer = terminal.buffer.active;
+      if (wasAtBottom) {
+        if (curBuffer.viewportY < curBuffer.baseY) {
+          terminal.scrollToBottom();
+        }
+      } else if (curBuffer.viewportY !== savedViewportY) {
+        terminal.scrollToLine(savedViewportY);
+      }
+    } finally {
+      managed._suppressScrollTracking = false;
+    }
   }
 
   resetRenderer(id: string): void {

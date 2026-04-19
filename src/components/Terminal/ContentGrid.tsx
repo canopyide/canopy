@@ -574,7 +574,7 @@ export function ContentGrid({
         e.stopPropagation();
         const instance = terminalInstanceService.get(focusedId);
         if (instance) {
-          instance.terminal.focus();
+          terminalInstanceService.focus(focusedId);
           useMacroFocusStore.getState().clearFocus();
         }
         return;
