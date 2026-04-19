@@ -66,18 +66,12 @@ describe("action.repeatLast", () => {
     const run = vi.fn().mockResolvedValue("ok");
     actionService.register(repeatableAction("test.repeatable", run));
 
-    await actionService.dispatch(
-      "test.repeatable" as ActionId,
-      { foo: 1 },
-      { source: "user" }
-    );
+    await actionService.dispatch("test.repeatable" as ActionId, { foo: 1 }, { source: "user" });
     expect(run).toHaveBeenCalledTimes(1);
 
-    const result = await actionService.dispatch(
-      "action.repeatLast" as ActionId,
-      undefined,
-      { source: "keybinding" }
-    );
+    const result = await actionService.dispatch("action.repeatLast" as ActionId, undefined, {
+      source: "keybinding",
+    });
 
     expect(result.ok).toBe(true);
     expect(run).toHaveBeenCalledTimes(2);
@@ -85,11 +79,9 @@ describe("action.repeatLast", () => {
   });
 
   it("returns an error when no action has been dispatched yet", async () => {
-    const result = await actionService.dispatch(
-      "action.repeatLast" as ActionId,
-      undefined,
-      { source: "keybinding" }
-    );
+    const result = await actionService.dispatch("action.repeatLast" as ActionId, undefined, {
+      source: "keybinding",
+    });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -126,11 +118,9 @@ describe("action.repeatLast", () => {
     });
     expect(first.ok).toBe(false);
 
-    await actionService.dispatch(
-      "test.repeatable" as ActionId,
-      undefined,
-      { source: "user" }
-    ).catch(() => {}); // not registered — ignored
+    await actionService
+      .dispatch("test.repeatable" as ActionId, undefined, { source: "user" })
+      .catch(() => {}); // not registered — ignored
 
     // Seed a successful capture, then replace with a now-failing action at the same id
     const successRun = vi.fn().mockResolvedValue("ok");
@@ -146,11 +136,9 @@ describe("action.repeatLast", () => {
     // @ts-expect-error — seed lastAction directly (replay target exists but now throws)
     actionService.lastAction = { actionId: "test.ok", args: { a: 1 } };
 
-    const result = await actionService.dispatch(
-      "action.repeatLast" as ActionId,
-      undefined,
-      { source: "keybinding" }
-    );
+    const result = await actionService.dispatch("action.repeatLast" as ActionId, undefined, {
+      source: "keybinding",
+    });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
