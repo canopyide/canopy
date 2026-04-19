@@ -1,5 +1,6 @@
 import os from "os";
 import PQueue from "p-queue";
+import { execFile } from "child_process";
 import { mkdir, writeFile, stat, readFile } from "fs/promises";
 import { join as pathJoin, dirname, resolve as pathResolve, isAbsolute } from "path";
 import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
@@ -32,6 +33,61 @@ import { waitForPathExists } from "../utils/fs.js";
 // Configuration
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = 2000;
 const DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS = 10000;
+
+// Hard ceiling on the `git lfs version` probe. `git` is already on PATH, so a
+// healthy probe returns in milliseconds; the 3 s cap only matters on slow/
+// network-mounted filesystems or misconfigured shells. On timeout we treat LFS
+// as unavailable rather than delay the load-project-result event (precedent:
+// #4852 — don't block startup on optional probes).
+const LFS_PROBE_TIMEOUT_MS = 3000;
+
+/**
+ * Probe whether `git lfs` is installed on the user's PATH. Uses raw `execFile`
+ * (not simple-git / hardenedGit) because LFS availability is a read-only CLI
+ * check that has nothing to do with the project's git repo; routing it through
+ * hardenedGit would strip credential helpers for no reason. Returns `false` on
+ * any error, non-matching stdout, or timeout.
+ */
+export function probeGitLfsAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const child = execFile(
+      "git",
+      ["lfs", "version"],
+      { timeout: LFS_PROBE_TIMEOUT_MS, windowsHide: true },
+      (err, stdout) => {
+        if (err) {
+          done(false);
+          return;
+        }
+        done(/^git-lfs\//.test(stdout.trim()));
+      }
+    );
+
+    // Defence in depth: if execFile's timeout fails to fire (e.g. child is
+    // detached from the event loop), cap the wait ourselves.
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // Best-effort — process may already have exited.
+      }
+      done(false);
+    }, LFS_PROBE_TIMEOUT_MS + 500);
+
+    child.on("exit", () => clearTimeout(timer));
+    child.on("error", () => {
+      clearTimeout(timer);
+      done(false);
+    });
+  });
+}
 
 async function ensureNoteFile(worktreePath: string): Promise<void> {
   const gitDir = getGitDir(worktreePath);
@@ -181,9 +237,16 @@ export class WorkspaceService {
       const rawWorktrees = await this.listService.list();
       const worktrees = this.listService.mapToWorktrees(rawWorktrees);
 
-      await this.syncMonitors(worktrees, this.activeWorktreeId, this.mainBranch, undefined, true);
+      // Run the LFS probe concurrently with monitor sync so we don't add its
+      // 3s worst case on top of sync latency. The probe is a read-only CLI
+      // check (no PATH side-effects); its result travels on the load-project
+      // event so the renderer can warn proactively when a repo uses LFS.
+      const [, lfsAvailable] = await Promise.all([
+        this.syncMonitors(worktrees, this.activeWorktreeId, this.mainBranch, undefined, true),
+        probeGitLfsAvailable(),
+      ]);
 
-      this.sendEvent({ type: "load-project-result", requestId, success: true });
+      this.sendEvent({ type: "load-project-result", requestId, success: true, lfsAvailable });
 
       void Promise.allSettled([this.initializePRService(), this.refreshAll()]).then((results) => {
         const [prResult, refreshResult] = results;

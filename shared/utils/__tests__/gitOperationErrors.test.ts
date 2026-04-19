@@ -72,6 +72,20 @@ describe("classifyGitError — table-driven", () => {
       "lfs-missing",
       "Smudge error: Error downloading file.bin: external filter 'git-lfs filter-process' failed",
     ],
+    [
+      "lfs-quota-exceeded",
+      "batch response: This repository exceeded its LFS budget. Please contact the owner.",
+    ],
+    [
+      "lfs-quota-exceeded",
+      "batch response: This repository is over its data quota. Please contact the owner.",
+    ],
+    ["lfs-quota-exceeded", "You have reached the free storage limit of 10 GiB for Git LFS"],
+    ["lfs-quota-exceeded", "VS403658: You cannot upload more than 10 GB of Git LFS files"],
+    [
+      "lfs-quota-exceeded",
+      "fatal: unable to access 'https://dev.azure.com/org/_git/repo.git/': The requested URL returned error: HTTP 413 LFS upload too large",
+    ],
     ["config-missing", "fatal: The current branch feature/foo has no upstream branch."],
     ["config-missing", "fatal: no upstream configured for branch 'feature/foo'"],
     ["config-missing", "fatal: unable to read config file '/etc/gitconfig': Permission denied"],
@@ -152,6 +166,36 @@ describe("classifyGitError — ordering and normalization", () => {
     expect(classifyGitError(msg)).toBe("auth-failed");
   });
 
+  it("prefers lfs-quota-exceeded over lfs-missing when both signals appear", () => {
+    // Regardless of PATTERNS order, a quota signal is the more actionable root
+    // cause when a user sees both (the filter-process failure is a downstream
+    // consequence of the quota block, not a missing binary).
+    const msg =
+      "Smudge error: external filter 'git-lfs filter-process' failed\n" +
+      "batch response: This repository exceeded its LFS budget";
+    expect(classifyGitError(msg)).toBe("lfs-quota-exceeded");
+  });
+
+  it("prefers lfs-quota-exceeded over auth-failed on HTTP 403 batch responses (GitHub LFS)", () => {
+    // Regression: GitHub's LFS batch API returns HTTP 403 when the repo exceeds
+    // its LFS quota. Before the ordering fix, `auth-failed` matched the 403
+    // fragment first and users saw "Sign in with GitHub" instead of a quota
+    // explanation. The quota signal must win the tie.
+    const msg =
+      "batch response: This repository exceeded its LFS budget. Please contact the owner.\n" +
+      "error: failed to push some refs to 'https://github.com/acme/media.git'\n" +
+      "fatal: unable to access 'https://github.com/acme/media.git/': The requested URL returned error: 403";
+    expect(classifyGitError(msg)).toBe("lfs-quota-exceeded");
+  });
+
+  it("does not classify a general GitLab namespace storage-limit message as lfs-quota-exceeded", () => {
+    // The regex arm for `reached ... free storage limit` requires an LFS token
+    // nearby so that a plain namespace-level storage warning does not
+    // misclassify as LFS-specific.
+    const msg = "You have reached the free storage limit of 5 GiB for your namespace";
+    expect(classifyGitError(msg)).toBe("unknown");
+  });
+
   it("combines CRLF, remote-stripping, and ordering for hook rejection", () => {
     const msg =
       "remote:  ! [remote rejected] main -> main (pre-receive hook declined)\r\n" +
@@ -213,6 +257,7 @@ describe("getGitRecoveryHint", () => {
       "push-rejected-policy",
       "pathspec-invalid",
       "lfs-missing",
+      "lfs-quota-exceeded",
       "hook-rejected",
       "system-io-error",
     ];

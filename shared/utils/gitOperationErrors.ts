@@ -35,6 +35,25 @@ const PATTERNS: ReadonlyArray<readonly [GitOperationReason, RegExp]> = [
   ["not-a-repository", /fatal: not a git repository/i],
   ["dubious-ownership", /fatal: detected dubious ownership in repository at/i],
   [
+    // MUST run before `auth-failed`: GitHub's LFS batch API returns HTTP 403
+    // when a repo exceeds its LFS quota, so the quota-specific batch response
+    // co-occurs with the same "URL returned error: 403" fragment that
+    // `auth-failed` matches. The quota signal is the more actionable root
+    // cause, so it has to win the tie. Do not reorder without updating the
+    // "prefers lfs-quota-exceeded over auth-failed" test.
+    //
+    // LFS storage/bandwidth quota signals across major providers:
+    //   - GitHub (current): "batch response: This repository exceeded its LFS budget"
+    //   - GitHub (classic): "batch response: This repository is over its data quota"
+    //   - GitLab:           "reached ... free storage limit ... Git LFS"
+    //   - Azure DevOps:     VS403658 or HTTP 413 on LFS pushes
+    //
+    // The GitLab arm requires an "LFS"/"git-lfs" token nearby so that a plain
+    // namespace-level storage limit message does not misclassify as LFS.
+    "lfs-quota-exceeded",
+    /batch response:.*(?:exceeded.*LFS budget|over.*data quota|LFS budget)|reached.*free storage limit.*(?:Git LFS|git[- ]lfs|LFS)|(?:Git LFS|git[- ]lfs|LFS).*reached.*free storage limit|HTTP 413.*LFS|VS403658:/i,
+  ],
+  [
     "auth-failed",
     // HTTPS 401/403/407 (auth/perm/proxy-auth) as well as the direct SSH/HTTPS messages.
     /Authentication failed|Permission denied \(publickey\)|could not read Username for|unable to access.*: The requested URL returned error: 40[137]/i,
@@ -114,6 +133,8 @@ const RECOVERY_HINTS: Record<GitOperationReason, string | undefined> = {
     "The remote rejected this push (protected branch, hook, or size limit). Contact the repo admin.",
   "pathspec-invalid": "The specified ref or path does not exist.",
   "lfs-missing": "Git LFS objects are missing — install git-lfs and run 'git lfs pull'.",
+  "lfs-quota-exceeded":
+    "This repository has exceeded its Git LFS storage or bandwidth quota. Contact the repo owner or upgrade the plan.",
   "hook-rejected": "A server-side hook rejected the push. See the server output for details.",
   "system-io-error": "A filesystem or permissions problem prevented the git operation.",
   unknown: undefined,

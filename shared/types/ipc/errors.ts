@@ -55,6 +55,7 @@ export type GitOperationReason =
   | "push-rejected-policy"
   | "pathspec-invalid"
   | "lfs-missing"
+  | "lfs-quota-exceeded"
   | "hook-rejected"
   | "system-io-error"
   | "unknown";
