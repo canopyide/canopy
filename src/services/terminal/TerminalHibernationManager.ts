@@ -192,7 +192,12 @@ export class TerminalHibernationManager {
     const writeParsedDisposable = terminal.onWriteParsed(() => {
       this.deps.notifyParsed(id);
       if (managed && !managed.isUserScrolledBack && !managed.isAltBuffer) {
-        this.deps.scrollToBottomSafe(managed);
+        if (!managed.terminal.hasSelection()) {
+          this.deps.scrollToBottomSafe(managed);
+        } else {
+          managed.isUserScrolledBack = true;
+          this.deps.updateScrollState(id, true);
+        }
       }
       this.deps.onWriteParsedReflow?.(managed);
     });

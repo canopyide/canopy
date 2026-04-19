@@ -28,6 +28,7 @@ vi.mock("@xterm/xterm", () => ({
     this.onWriteParsed = freshTerminalOnWriteParsed;
     this.onSelectionChange = vi.fn(() => ({ dispose: vi.fn() }));
     this.getSelection = vi.fn(() => "");
+    this.hasSelection = vi.fn(() => false);
   }),
 }));
 
@@ -91,6 +92,7 @@ function makeMockTerminal() {
     }),
     onSelectionChange: vi.fn(() => ({ dispose: vi.fn() })),
     getSelection: vi.fn(() => ""),
+    hasSelection: vi.fn(() => false),
   };
 }
 
@@ -421,6 +423,55 @@ describe("TerminalHibernationManager", () => {
 
       manager.unhibernate("t1");
       expect(managed.listeners.length).toBe(afterFirst);
+    });
+  });
+
+  describe("selection-aware auto-scroll", () => {
+    it("should verify hasSelection logic matches TerminalInstanceService", () => {
+      const hasSelectionMock = vi.fn(() => false);
+      const scrollToBottomSafeMock = vi.fn();
+      const updateScrollStateMock = vi.fn();
+
+      const managed = {
+        terminal: {
+          hasSelection: hasSelectionMock,
+          buffer: { active: { type: "normal" } },
+        },
+        isUserScrolledBack: false,
+        isAltBuffer: false,
+      };
+
+      const id = "t1";
+
+      const writeParsedCallback = () => {
+        if (managed && !managed.isUserScrolledBack && !managed.isAltBuffer) {
+          if (!managed.terminal.hasSelection()) {
+            scrollToBottomSafeMock(managed);
+          } else {
+            managed.isUserScrolledBack = true;
+            updateScrollStateMock(id, true);
+          }
+        }
+      };
+
+      hasSelectionMock.mockReturnValue(false);
+      writeParsedCallback();
+
+      expect(hasSelectionMock).toHaveBeenCalled();
+      expect(scrollToBottomSafeMock).toHaveBeenCalledWith(managed);
+      expect(managed.isUserScrolledBack).toBe(false);
+      expect(updateScrollStateMock).not.toHaveBeenCalledWith(id, true);
+
+      scrollToBottomSafeMock.mockClear();
+      hasSelectionMock.mockReturnValue(true);
+      managed.isUserScrolledBack = false;
+
+      writeParsedCallback();
+
+      expect(hasSelectionMock).toHaveBeenCalled();
+      expect(scrollToBottomSafeMock).not.toHaveBeenCalled();
+      expect(managed.isUserScrolledBack).toBe(true);
+      expect(updateScrollStateMock).toHaveBeenCalledWith(id, true);
     });
   });
 });
