@@ -39,13 +39,11 @@ export interface FindInNoteState {
   }) => void;
 }
 
-const HIDDEN_PANEL: { dom: HTMLElement; destroy?: () => void } = {
-  dom: (() => {
-    const d = typeof document !== "undefined" ? document.createElement("div") : ({} as HTMLElement);
-    if (typeof document !== "undefined") d.style.display = "none";
-    return d;
-  })(),
-};
+function createHiddenPanel(): { dom: HTMLElement } {
+  const dom = document.createElement("div");
+  dom.style.display = "none";
+  return { dom };
+}
 
 function countMatches(
   query: SearchQuery,
@@ -88,6 +86,17 @@ export function useFindInNote(
   const openRef = useRef<() => void>(() => {});
 
   const open = useCallback(() => {
+    // Re-open the underlying CM search panel so match highlights render.
+    // close() calls closeSearchPanel() which nulls out panel state; without
+    // reopening it here, highlights stay dark on the second+ open.
+    const view = editorViewRef.current;
+    if (view) {
+      try {
+        openSearchPanel(view);
+      } catch {
+        // View detached; ignore
+      }
+    }
     setIsOpen((prev) => {
       if (prev) {
         requestAnimationFrame(() => {
@@ -98,7 +107,7 @@ export function useFindInNote(
       }
       return true;
     });
-  }, []);
+  }, [editorViewRef]);
 
   useEffect(() => {
     openRef.current = open;
@@ -203,6 +212,11 @@ export function useFindInNote(
       );
       if (!update.docChanged && !update.selectionSet && !queryChanged) return;
       const cur = getSearchQuery(update.state);
+      if (!cur.search) {
+        setMatchCount(0);
+        setActiveMatch(0);
+        return;
+      }
       const { count, active } = countMatches(cur, update.state);
       setMatchCount(count);
       setActiveMatch(active);
@@ -213,7 +227,7 @@ export function useFindInNote(
   const searchExtension = useMemo<Extension>(
     () => [
       editorSearchHighlightTheme,
-      search({ createPanel: () => HIDDEN_PANEL }),
+      search({ createPanel: createHiddenPanel }),
       Prec.highest(
         keymap.of([
           {

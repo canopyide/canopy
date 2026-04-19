@@ -10,6 +10,7 @@ import {
   setSearchQuery,
   getSearchQuery,
   openSearchPanel,
+  searchPanelOpen,
 } from "@codemirror/search";
 import { useFindInNote } from "../useFindInNote";
 
@@ -214,5 +215,19 @@ describe("useFindInNote", () => {
     });
 
     expect(result.current.matchCount).toBe(3);
+  });
+
+  it("reopens the CM search panel on open after close (regression: highlights persist)", () => {
+    view = createRealEditorView("hello hello");
+    const { result } = renderFindHook(true, view);
+
+    act(() => result.current.open());
+    expect(searchPanelOpen(view!.state)).toBe(true);
+
+    act(() => result.current.close());
+    expect(searchPanelOpen(view!.state)).toBe(false);
+
+    act(() => result.current.open());
+    expect(searchPanelOpen(view!.state)).toBe(true);
   });
 });
