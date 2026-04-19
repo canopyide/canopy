@@ -102,8 +102,11 @@ describe("useNoteEditor", () => {
     );
   });
 
-  it("detects conflict on write", async () => {
-    vi.mocked(notesClient.write).mockResolvedValue({ error: "conflict" });
+  it("surfaces conflict copy path after a dual-preservation save", async () => {
+    vi.mocked(notesClient.write).mockResolvedValue({
+      lastModified: 9000,
+      conflictPath: "test-note (conflict 2026-04-19).md",
+    });
 
     const { result } = renderHook(() => useNoteEditor(defaultProps()));
 
@@ -119,11 +122,57 @@ describe("useNoteEditor", () => {
       await vi.advanceTimersByTimeAsync(500);
     });
 
-    expect(result.current.hasConflict).toBe(true);
+    expect(result.current.conflictCopyPath).toBe("test-note (conflict 2026-04-19).md");
+    expect(result.current.noteLastModified).toBe(9000);
   });
 
-  it("reloads note and clears conflict", async () => {
-    vi.mocked(notesClient.write).mockResolvedValue({ error: "conflict" });
+  it("keeps saving after a conflict was preserved", async () => {
+    vi.mocked(notesClient.write).mockResolvedValue({
+      lastModified: 9000,
+      conflictPath: "test-note (conflict 2026-04-19).md",
+    });
+
+    const { result } = renderHook(() => useNoteEditor(defaultProps()));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    act(() => {
+      result.current.handleContentChange("first");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(result.current.conflictCopyPath).toBe("test-note (conflict 2026-04-19).md");
+
+    vi.mocked(notesClient.write).mockClear();
+    vi.mocked(notesClient.write).mockResolvedValue({ lastModified: 10000 });
+
+    // A second edit should still trigger a save (no read-only lockout).
+    act(() => {
+      result.current.handleContentChange("second");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(notesClient.write).toHaveBeenCalled();
+    expect(notesClient.write).toHaveBeenCalledWith(
+      "/notes/n1.md",
+      "second",
+      expect.any(Object),
+      9000
+    );
+    expect(result.current.noteLastModified).toBe(10000);
+  });
+
+  it("dismissConflictNotice clears the preserved-path banner", async () => {
+    vi.mocked(notesClient.write).mockResolvedValue({
+      lastModified: 9000,
+      conflictPath: "test-note (conflict 2026-04-19).md",
+    });
 
     const { result } = renderHook(() => useNoteEditor(defaultProps()));
 
@@ -137,18 +186,13 @@ describe("useNoteEditor", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(result.current.hasConflict).toBe(true);
+    expect(result.current.conflictCopyPath).not.toBeNull();
 
-    vi.mocked(notesClient.read).mockResolvedValue(
-      makeContent({ content: "reloaded", lastModified: 7000 })
-    );
-
-    await act(async () => {
-      await result.current.handleReloadNote();
+    act(() => {
+      result.current.dismissConflictNotice();
     });
 
-    expect(result.current.hasConflict).toBe(false);
-    expect(result.current.noteContent).toBe("reloaded");
+    expect(result.current.conflictCopyPath).toBeNull();
   });
 
   it("flushes pending save on unmount", async () => {
@@ -288,8 +332,11 @@ describe("useNoteEditor", () => {
     expect(result.current.getLatestContent()).toBe("latest value");
   });
 
-  it("flushSave detects conflict", async () => {
-    vi.mocked(notesClient.write).mockResolvedValue({ error: "conflict" });
+  it("flushSave surfaces conflict copy path", async () => {
+    vi.mocked(notesClient.write).mockResolvedValue({
+      lastModified: 9000,
+      conflictPath: "test-note (conflict 2026-04-19).md",
+    });
 
     const { result } = renderHook(() => useNoteEditor(defaultProps()));
 
@@ -305,7 +352,7 @@ describe("useNoteEditor", () => {
       await result.current.flushSave();
     });
 
-    expect(result.current.hasConflict).toBe(true);
+    expect(result.current.conflictCopyPath).toBe("test-note (conflict 2026-04-19).md");
   });
 
   it("flushSave sets lastSelectedNoteId for non-empty content", async () => {

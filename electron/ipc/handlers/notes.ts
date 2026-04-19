@@ -108,14 +108,24 @@ export function registerNotesHandlers(_deps: HandlerDependencies): () => void {
       broadcastUpdate({ notePath, title: validatedMetadata.title, action: "updated" });
       return result;
     } catch (error) {
-      if (error instanceof NoteConflictError) {
-        return {
-          error: "conflict" as const,
-          message: error.message,
-          currentLastModified: error.currentLastModified,
-        };
+      if (!(error instanceof NoteConflictError)) {
+        throw error;
       }
-      throw error;
+
+      // External modification detected. Preserve the disk version to a sibling
+      // file, then force-save the user's buffer to the original path so their
+      // unsaved edits are not lost.
+      const { conflictPath } = await service.createConflictCopy(notePath);
+      broadcastUpdate({
+        notePath: conflictPath,
+        title: `${validatedMetadata.title} (conflict)`,
+        action: "created",
+      });
+
+      const result = await service.write(notePath, content, validatedMetadata);
+      broadcastUpdate({ notePath, title: validatedMetadata.title, action: "updated" });
+
+      return { ...result, conflictPath };
     }
   };
   handlers.push(typedHandle(CHANNELS.NOTES_WRITE, handleNotesWrite));

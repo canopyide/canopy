@@ -36,7 +36,7 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
     setNoteContent: vi.fn(),
     setNoteMetadata: vi.fn(),
     setNoteLastModified: vi.fn(),
-    setHasConflict: vi.fn(),
+    dismissConflictNotice: vi.fn(),
     setEditingNoteId: vi.fn(),
     setIsEditingHeaderTitle: vi.fn(),
     setHeaderTitleEdit: vi.fn(),

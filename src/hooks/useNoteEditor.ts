@@ -16,12 +16,16 @@ export interface UseNoteEditorReturn {
   noteLastModified: number | null;
   setNoteLastModified: (ts: number | null) => void;
   isLoadingContent: boolean;
-  hasConflict: boolean;
-  setHasConflict: (v: boolean) => void;
+  /**
+   * When set, a previous save preserved the external on-disk version at this
+   * relative path; the user's buffer continues to save to the original file.
+   * Non-null means an unacknowledged conflict banner is showing.
+   */
+  conflictCopyPath: string | null;
+  dismissConflictNotice: () => void;
   handleContentChange: (value: string) => void;
   handleAddTag: (tag: string) => Promise<void>;
   handleRemoveTag: (tag: string) => Promise<void>;
-  handleReloadNote: () => Promise<void>;
   flushSave: () => Promise<void>;
   getLatestContent: () => string;
   tagInput: string;
@@ -38,14 +42,13 @@ export function useNoteEditor({
   const [noteMetadata, setNoteMetadata] = useState<NoteMetadata | null>(null);
   const [noteLastModified, setNoteLastModified] = useState<number | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
-  const [hasConflict, setHasConflict] = useState(false);
+  const [conflictCopyPath, setConflictCopyPath] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestContentRef = useRef(noteContent);
   const latestMetadataRef = useRef(noteMetadata);
   const latestLastModifiedRef = useRef(noteLastModified);
-  const latestHasConflictRef = useRef(hasConflict);
   const latestSelectedNoteRef = useRef(selectedNote);
 
   // Keep refs in sync after commit
@@ -53,7 +56,6 @@ export function useNoteEditor({
     latestContentRef.current = noteContent;
     latestMetadataRef.current = noteMetadata;
     latestLastModifiedRef.current = noteLastModified;
-    latestHasConflictRef.current = hasConflict;
     latestSelectedNoteRef.current = selectedNote;
   });
 
@@ -70,9 +72,8 @@ export function useNoteEditor({
         const content = latestContentRef.current;
         const metadata = latestMetadataRef.current;
         const lastMod = latestLastModifiedRef.current;
-        const conflict = latestHasConflictRef.current;
 
-        if (notePath && metadata && !conflict) {
+        if (notePath && metadata) {
           notesClient
             .write(notePath, content, metadata, lastMod ?? undefined)
             .catch((e) => console.error("Failed to flush save:", e));
@@ -89,7 +90,7 @@ export function useNoteEditor({
       setNoteContent("");
       setNoteMetadata(null);
       setNoteLastModified(null);
-      setHasConflict(false);
+      setConflictCopyPath(null);
       return;
     }
 
@@ -97,7 +98,7 @@ export function useNoteEditor({
     setNoteMetadata(null);
     setNoteLastModified(null);
     setIsLoadingContent(true);
-    setHasConflict(false);
+    setConflictCopyPath(null);
 
     notesClient
       .read(note.path)
@@ -123,6 +124,21 @@ export function useNoteEditor({
     };
   }, [selectedNote?.id]);
 
+  const applyWriteResult = useCallback(
+    (result: { lastModified?: number; conflictPath?: string }, noteId: string) => {
+      if (result.lastModified) {
+        setNoteLastModified(result.lastModified);
+        if (latestContentRef.current.trim()) {
+          setLastSelectedNoteId(noteId);
+        }
+      }
+      if (result.conflictPath) {
+        setConflictCopyPath(result.conflictPath);
+      }
+    },
+    [setLastSelectedNoteId]
+  );
+
   const handleContentChange = useCallback(
     (value: string) => {
       setNoteContent(value);
@@ -130,7 +146,7 @@ export function useNoteEditor({
 
       const note = latestSelectedNoteRef.current;
       const metadata = latestMetadataRef.current;
-      if (!note || !metadata || latestHasConflictRef.current) return;
+      if (!note || !metadata) return;
 
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -145,21 +161,13 @@ export function useNoteEditor({
             latestMetadataRef.current!,
             latestLastModifiedRef.current ?? undefined
           );
-
-          if (result.error === "conflict") {
-            setHasConflict(true);
-          } else if (result.lastModified) {
-            setNoteLastModified(result.lastModified);
-            if (latestContentRef.current.trim()) {
-              setLastSelectedNoteId(note.id);
-            }
-          }
+          applyWriteResult(result, note.id);
         } catch (e) {
           console.error("Failed to save note:", e);
         }
       }, 500);
     },
-    [setLastSelectedNoteId]
+    [applyWriteResult]
   );
 
   const flushSave = useCallback(async () => {
@@ -169,7 +177,7 @@ export function useNoteEditor({
 
     const note = latestSelectedNoteRef.current;
     const metadata = latestMetadataRef.current;
-    if (!note || !metadata || latestHasConflictRef.current) return;
+    if (!note || !metadata) return;
 
     try {
       const result = await notesClient.write(
@@ -178,38 +186,18 @@ export function useNoteEditor({
         metadata,
         latestLastModifiedRef.current ?? undefined
       );
-      if (result.error === "conflict") {
-        setHasConflict(true);
-      } else if (result.lastModified) {
-        setNoteLastModified(result.lastModified);
-        if (latestContentRef.current.trim()) {
-          setLastSelectedNoteId(note.id);
-        }
-      }
+      applyWriteResult(result, note.id);
     } catch (e) {
       console.error("Failed to flush save:", e);
     }
-  }, [setLastSelectedNoteId]);
+  }, [applyWriteResult]);
 
   const getLatestContent = useCallback(() => {
     return latestContentRef.current;
   }, []);
 
-  const handleReloadNote = useCallback(async () => {
-    const note = latestSelectedNoteRef.current;
-    if (!note) return;
-    setHasConflict(false);
-    setIsLoadingContent(true);
-    try {
-      const content = await notesClient.read(note.path);
-      setNoteContent(content.content);
-      setNoteMetadata(content.metadata);
-      setNoteLastModified(content.lastModified);
-    } catch (e) {
-      console.error("Failed to reload note:", e);
-    } finally {
-      setIsLoadingContent(false);
-    }
+  const dismissConflictNotice = useCallback(() => {
+    setConflictCopyPath(null);
   }, []);
 
   const handleAddTag = useCallback(
@@ -239,10 +227,11 @@ export function useNoteEditor({
           updatedMetadata,
           latestLastModifiedRef.current ?? undefined
         );
-        if (result.error === "conflict") {
-          setHasConflict(true);
-        } else if (result.lastModified) {
+        if (result.lastModified) {
           setNoteLastModified(result.lastModified);
+        }
+        if (result.conflictPath) {
+          setConflictCopyPath(result.conflictPath);
         }
         await refresh();
       } catch (e) {
@@ -279,10 +268,11 @@ export function useNoteEditor({
           updatedMetadata,
           latestLastModifiedRef.current ?? undefined
         );
-        if (result.error === "conflict") {
-          setHasConflict(true);
-        } else if (result.lastModified) {
+        if (result.lastModified) {
           setNoteLastModified(result.lastModified);
+        }
+        if (result.conflictPath) {
+          setConflictCopyPath(result.conflictPath);
         }
         await refresh();
       } catch (e) {
@@ -313,12 +303,11 @@ export function useNoteEditor({
     noteLastModified,
     setNoteLastModified,
     isLoadingContent,
-    hasConflict,
-    setHasConflict,
+    conflictCopyPath,
+    dismissConflictNotice,
     handleContentChange,
     handleAddTag,
     handleRemoveTag,
-    handleReloadNote,
     flushSave,
     getLatestContent,
     tagInput,

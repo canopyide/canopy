@@ -284,6 +284,59 @@ export class NotesService {
     return { lastModified: stats.mtimeMs };
   }
 
+  /**
+   * Reads the current disk version of the note and writes it to a dated
+   * sibling file. Used to preserve an externally-modified version when the
+   * user is about to force-save their in-memory buffer to the original path.
+   *
+   * The returned relative path points to the preserved on-disk content; it
+   * carries its own frontmatter with a fresh id and a `(conflict YYYY-MM-DD)`
+   * title suffix so it appears in the notes list without collisions.
+   */
+  async createConflictCopy(notePath: string): Promise<{ conflictPath: string }> {
+    const original = await this.read(notePath);
+
+    const posixDir = path.posix.dirname(notePath.replace(/\\/g, "/"));
+    const relDir = posixDir === "." ? "" : posixDir;
+    const base = path.posix.basename(notePath.replace(/\\/g, "/"), ".md");
+    const date = new Date().toISOString().slice(0, 10);
+    const notesDir = path.resolve(this.getNotesDir());
+
+    let conflictRelativePath = "";
+    for (let i = 0; i < 1000; i++) {
+      const suffix = i === 0 ? "" : `-${i + 1}`;
+      const conflictName = `${base} (conflict ${date}${suffix}).md`;
+      const candidateRelative = relDir ? `${relDir}/${conflictName}` : conflictName;
+      const candidateAbs = path.join(notesDir, relDir, conflictName);
+      try {
+        await fs.access(candidateAbs);
+      } catch {
+        conflictRelativePath = candidateRelative;
+        break;
+      }
+    }
+
+    if (!conflictRelativePath) {
+      throw new Error("Failed to generate a unique conflict copy filename");
+    }
+
+    const conflictMetadata: NoteMetadata = {
+      id: nanoid(),
+      title: `${original.metadata.title} (conflict ${date})`,
+      scope: original.metadata.scope,
+      ...(original.metadata.worktreeId !== undefined && {
+        worktreeId: original.metadata.worktreeId,
+      }),
+      createdAt: original.metadata.createdAt,
+      ...(original.metadata.tags &&
+        original.metadata.tags.length > 0 && { tags: original.metadata.tags }),
+    };
+
+    await this.write(conflictRelativePath, original.content, conflictMetadata);
+
+    return { conflictPath: conflictRelativePath };
+  }
+
   async list(): Promise<NoteListItem[]> {
     const notesDir = this.getNotesDir();
 
