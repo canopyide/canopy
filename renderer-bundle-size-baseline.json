@@ -1,0 +1,335 @@
+{
+  "entryChunk": "index",
+  "chunks": {
+    "ActionService": {
+      "raw": 140,
+      "gzip": 126
+    },
+    "AgentCard": {
+      "raw": 13055,
+      "gzip": 4730
+    },
+    "AgentSettings": {
+      "raw": 47654,
+      "gzip": 13343
+    },
+    "App": {
+      "raw": 1178684,
+      "gzip": 323235
+    },
+    "BrowserPane": {
+      "raw": 27889,
+      "gzip": 8770
+    },
+    "CommitList": {
+      "raw": 10792,
+      "gzip": 4080
+    },
+    "ConfirmDialog": {
+      "raw": 1553,
+      "gzip": 847
+    },
+    "DevPreviewPane": {
+      "raw": 25107,
+      "gzip": 8122
+    },
+    "EnvironmentSettingsTab": {
+      "raw": 5478,
+      "gzip": 2200
+    },
+    "FileViewerModal": {
+      "raw": 795,
+      "gzip": 413
+    },
+    "GitHubDropdownSkeletons": {
+      "raw": 7301,
+      "gzip": 2327
+    },
+    "GitHubResourceList": {
+      "raw": 34175,
+      "gzip": 11079
+    },
+    "GitHubSettingsTab": {
+      "raw": 7419,
+      "gzip": 2350
+    },
+    "HybridInputBar": {
+      "raw": 106416,
+      "gzip": 32123
+    },
+    "IntegrationsTab": {
+      "raw": 11133,
+      "gzip": 3191
+    },
+    "KeyboardShortcuts": {
+      "raw": 11114,
+      "gzip": 4044
+    },
+    "KeyboardShortcutsTab": {
+      "raw": 9159,
+      "gzip": 3248
+    },
+    "McpServerSettingsTab": {
+      "raw": 8618,
+      "gzip": 2773
+    },
+    "NewWorktreeDialog": {
+      "raw": 55486,
+      "gzip": 15516
+    },
+    "NotesPane": {
+      "raw": 787,
+      "gzip": 405
+    },
+    "NotificationSettingsTab": {
+      "raw": 14307,
+      "gzip": 4545
+    },
+    "PaletteStrip": {
+      "raw": 571,
+      "gzip": 401
+    },
+    "PortalSettingsTab": {
+      "raw": 13930,
+      "gzip": 4802
+    },
+    "PrivacyDataTab": {
+      "raw": 11185,
+      "gzip": 3604
+    },
+    "RecipeEditor": {
+      "raw": 19122,
+      "gzip": 5178
+    },
+    "SearchablePalette": {
+      "raw": 11365,
+      "gzip": 4876
+    },
+    "SettingsCheckbox": {
+      "raw": 3185,
+      "gzip": 1470
+    },
+    "SettingsDialog": {
+      "raw": 196240,
+      "gzip": 47483
+    },
+    "SettingsSection": {
+      "raw": 1472,
+      "gzip": 815
+    },
+    "SettingsSelect": {
+      "raw": 2186,
+      "gzip": 976
+    },
+    "SettingsSubtabBar": {
+      "raw": 1810,
+      "gzip": 955
+    },
+    "SettingsSwitchCard": {
+      "raw": 5633,
+      "gzip": 2337
+    },
+    "SettingsValidationRegistry": {
+      "raw": 1213,
+      "gzip": 680
+    },
+    "Spinner": {
+      "raw": 575,
+      "gzip": 393
+    },
+    "TerminalAppearanceTab": {
+      "raw": 35566,
+      "gzip": 10894
+    },
+    "TerminalInstanceService": {
+      "raw": 187465,
+      "gzip": 49345
+    },
+    "TerminalSettingsTab": {
+      "raw": 22356,
+      "gzip": 6454
+    },
+    "ToolbarSettingsTab": {
+      "raw": 12500,
+      "gzip": 4762
+    },
+    "TroubleshootingTab": {
+      "raw": 10829,
+      "gzip": 3531
+    },
+    "VoiceInputButton": {
+      "raw": 22576,
+      "gzip": 7358
+    },
+    "VoiceInputSettingsTab": {
+      "raw": 22332,
+      "gzip": 7630
+    },
+    "WorktreeSettingsTab": {
+      "raw": 8313,
+      "gzip": 2370
+    },
+    "YarnIcon": {
+      "raw": 40836,
+      "gzip": 13678
+    },
+    "agentRegistry": {
+      "raw": 19223,
+      "gzip": 4776
+    },
+    "agentSettingsStore": {
+      "raw": 4789,
+      "gzip": 1644
+    },
+    "agents": {
+      "raw": 15451,
+      "gzip": 5153
+    },
+    "appClient": {
+      "raw": 364,
+      "gzip": 195
+    },
+    "clients": {
+      "raw": 18718,
+      "gzip": 4651
+    },
+    "createWorktreeStore": {
+      "raw": 628,
+      "gzip": 339
+    },
+    "editorSearchTheme": {
+      "raw": 1265,
+      "gzip": 514
+    },
+    "envVars": {
+      "raw": 76,
+      "gzip": 94
+    },
+    "fleetComposerFocus": {
+      "raw": 217,
+      "gzip": 178
+    },
+    "index": {
+      "raw": 425113,
+      "gzip": 128446
+    },
+    "logger": {
+      "raw": 597,
+      "gzip": 305
+    },
+    "memoryLeakConfigStore": {
+      "raw": 304,
+      "gzip": 198
+    },
+    "notificationSettingsStore": {
+      "raw": 1659,
+      "gzip": 529
+    },
+    "notify": {
+      "raw": 5775,
+      "gzip": 2102
+    },
+    "panelStore": {
+      "raw": 717,
+      "gzip": 378
+    },
+    "persistedStoreRegistry": {
+      "raw": 547,
+      "gzip": 300
+    },
+    "popover": {
+      "raw": 1821,
+      "gzip": 1013
+    },
+    "projectStore": {
+      "raw": 98286,
+      "gzip": 23407
+    },
+    "pulseStore": {
+      "raw": 3310,
+      "gzip": 1178
+    },
+    "renderer": {
+      "raw": 71,
+      "gzip": 86
+    },
+    "rolldown-runtime": {
+      "raw": 817,
+      "gzip": 469
+    },
+    "safeStorage": {
+      "raw": 3645,
+      "gzip": 1442
+    },
+    "svgSanitizer": {
+      "raw": 1863,
+      "gzip": 960
+    },
+    "terminalInputStore": {
+      "raw": 5478,
+      "gzip": 1593
+    },
+    "ttlCache": {
+      "raw": 1068,
+      "gzip": 502
+    },
+    "useFindInPage": {
+      "raw": 20604,
+      "gzip": 7020
+    },
+    "useNewWorktreeProjectSettings": {
+      "raw": 6742,
+      "gzip": 2685
+    },
+    "usePluginToolbarButtons": {
+      "raw": 797,
+      "gzip": 513
+    },
+    "utils": {
+      "raw": 218,
+      "gzip": 192
+    },
+    "vendor": {
+      "raw": 927613,
+      "gzip": 290977
+    },
+    "vendor-editor": {
+      "raw": 1764459,
+      "gzip": 601286
+    },
+    "vendor-icons": {
+      "raw": 45164,
+      "gzip": 13641
+    },
+    "vendor-motion": {
+      "raw": 123956,
+      "gzip": 39966
+    },
+    "vendor-xterm": {
+      "raw": 575947,
+      "gzip": 150789
+    },
+    "vendor-zod": {
+      "raw": 69498,
+      "gzip": 18534
+    },
+    "voiceInputSettingsEvents": {
+      "raw": 134,
+      "gzip": 130
+    },
+    "worktreeStore": {
+      "raw": 587,
+      "gzip": 322
+    }
+  },
+  "totals": {
+    "js": {
+      "raw": 6434763,
+      "gzip": 1959156
+    },
+    "css": {
+      "raw": 294973,
+      "gzip": 58880
+    }
+  }
+}

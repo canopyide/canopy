@@ -4,6 +4,7 @@ import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import {
   getDevServerConfig,
   getDevServerOrigins,
@@ -169,6 +170,72 @@ function cspTransformPlugin(): Plugin {
   };
 }
 
+// Emits dist/renderer-bundle-size-report.json after the build completes with
+// per-chunk and total JS/CSS sizes (raw + gzip). Used by the CI bundle size
+// budget gate to catch silent regressions from dependency upgrades or
+// accidental full-library imports.
+function rendererBundleSizePlugin(): Plugin {
+  const reportPath = path.join(process.cwd(), "dist", "renderer-bundle-size-report.json");
+
+  return {
+    name: "renderer-bundle-size-report",
+    apply: "build",
+    writeBundle(_options, bundle) {
+      const chunks: Record<string, { raw: number; gzip: number }> = {};
+      let entryChunkName: string | null = null;
+      let totalJsRaw = 0;
+      let totalJsGzip = 0;
+      let totalCssRaw = 0;
+      let totalCssGzip = 0;
+
+      for (const output of Object.values(bundle)) {
+        if (output.type === "chunk") {
+          const name = output.name || output.fileName;
+          const raw = Buffer.byteLength(output.code, "utf8");
+          const gz = gzipSync(Buffer.from(output.code, "utf8"), { level: 9 }).byteLength;
+          chunks[name] = { raw, gzip: gz };
+          totalJsRaw += raw;
+          totalJsGzip += gz;
+          if (output.isEntry && !entryChunkName) {
+            entryChunkName = name;
+          }
+        } else if (output.type === "asset" && output.fileName.endsWith(".css")) {
+          const src = output.source;
+          const buf = typeof src === "string" ? Buffer.from(src, "utf8") : Buffer.from(src);
+          const raw = buf.byteLength;
+          const gz = gzipSync(buf, { level: 9 }).byteLength;
+          totalCssRaw += raw;
+          totalCssGzip += gz;
+        }
+      }
+
+      const sortedChunks = Object.keys(chunks)
+        .sort()
+        .reduce<Record<string, { raw: number; gzip: number }>>((acc, k) => {
+          acc[k] = chunks[k];
+          return acc;
+        }, {});
+
+      mkdirSync(path.dirname(reportPath), { recursive: true });
+      writeFileSync(
+        reportPath,
+        JSON.stringify(
+          {
+            entryChunk: entryChunkName,
+            chunks: sortedChunks,
+            totals: {
+              js: { raw: totalJsRaw, gzip: totalJsGzip },
+              css: { raw: totalCssRaw, gzip: totalCssGzip },
+            },
+          },
+          null,
+          2
+        ) + "\n"
+      );
+    },
+  };
+}
+
 export default defineConfig(({ command, mode }) => {
   const { logger: compilerLogger, plugin: compilerReportPlugin } =
     reactCompilerReportPlugin(command);
@@ -202,6 +269,7 @@ export default defineConfig(({ command, mode }) => {
       tailwindcss(),
       cspTransformPlugin(),
       compilerReportPlugin,
+      rendererBundleSizePlugin(),
     ],
     base: "./",
     build: {
