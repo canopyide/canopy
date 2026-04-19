@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, fireEvent, screen } from "@testing-library/react";
+import { render, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { BrowserToolbar } from "../BrowserToolbar";
 
