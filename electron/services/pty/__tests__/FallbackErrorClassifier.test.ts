@@ -103,6 +103,17 @@ describe("classifyExitOutput: short-circuits", () => {
     expect(classifyExitOutput({ recentOutput: output, wasKilled: true })).toBe("clean");
   });
 
+  it("returns 'clean' for exit code 0 even with matching error text in tail (retry-then-succeed)", () => {
+    const output =
+      "API Error: 503 Service Unavailable\nRetrying in 2s…\nTask completed successfully\nDone.";
+    expect(classifyExitOutput({ recentOutput: output, exitCode: 0 })).toBe("clean");
+  });
+
+  it("returns 'clean' for exit code 0 with UNAVAILABLE in the tail", () => {
+    const output = "Error: UNAVAILABLE: dns resolution failed\nRecovered.\nTask complete!";
+    expect(classifyExitOutput({ recentOutput: output, exitCode: 0 })).toBe("clean");
+  });
+
   it("strips ANSI sequences before matching", () => {
     const output = "\x1b[31mAPI Error: 500\x1b[0m Internal server error";
     expect(classifyExitOutput({ recentOutput: output })).toBe("connection");

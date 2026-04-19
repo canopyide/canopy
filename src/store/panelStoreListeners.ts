@@ -98,6 +98,11 @@ async function handleFallbackTriggered(data: {
   if (!panel) return;
   if (panel.isRestarting) return;
 
+  // Drop stale duplicate events: if the panel has already advanced past the
+  // preset this event refers to, the exit was from a now-replaced process
+  // and advancing the chain again would skip a preset.
+  if (panel.agentPresetId !== fromPresetId) return;
+
   const originalPresetId = panel.originalPresetId ?? data.originalPresetId ?? fromPresetId;
 
   // Resolve the original preset's fallbacks[] chain from the agent settings store

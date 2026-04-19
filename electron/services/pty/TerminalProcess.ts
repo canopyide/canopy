@@ -1315,7 +1315,9 @@ export class TerminalProcess {
       ) {
         const cls = classifyExitOutput({
           recentOutput: this.forensicsBuffer.getRecentOutput(),
-          exitCode: exitCode ?? 0,
+          // Pass through as-is so a null/undefined code (crash, signal) does
+          // NOT short-circuit the scan. Only an explicit exit 0 skips the tail.
+          exitCode: exitCode,
           wasKilled: terminal.wasKilled,
         });
         if (shouldTriggerFallback(cls)) {

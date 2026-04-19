@@ -82,6 +82,11 @@ export interface ClassifyInput {
  */
 export function classifyExitOutput(input: ClassifyInput): FallbackExitClass {
   if (input.wasKilled) return "clean";
+  // A clean exit means the agent handled the error itself and chose to quit —
+  // scanning the tail for leftover "UNAVAILABLE" / "5xx" chatter would produce
+  // false positives, e.g. an agent that retried a 503, succeeded, and then
+  // exited normally.
+  if (input.exitCode === 0) return "clean";
   const stripped = stripAnsiCodes(input.recentOutput ?? "");
   if (!stripped.trim()) return "clean";
 

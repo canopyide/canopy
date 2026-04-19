@@ -853,6 +853,20 @@ export const createRestartActions = (
       }))
     );
 
+    // Snapshot pre-mutation preset fields for rollback on spawn failure.
+    // Without this, a failed respawn leaves the panel permanently stamped as
+    // "using fallback N" while no process is running, corrupting any retry
+    // that reads fallbackChainIndex.
+    const priorSnapshot = {
+      command: terminal.command,
+      agentPresetId: terminal.agentPresetId,
+      agentPresetColor: terminal.agentPresetColor,
+      originalPresetId: terminal.originalPresetId,
+      isUsingFallback: terminal.isUsingFallback,
+      fallbackChainIndex: terminal.fallbackChainIndex,
+      agentLaunchFlags: terminal.agentLaunchFlags,
+    };
+
     try {
       const [agentSettings, tmpDir] = await Promise.all([
         agentSettingsClient.get(),
@@ -896,9 +910,15 @@ export const createRestartActions = (
         modelId: terminal.agentModelId,
         presetArgs: nextPreset.args?.join(" "),
       });
-      const nextLaunchFlags = buildAgentLaunchFlags(effectiveEntry, effectiveAgentId, {
+      const baseLaunchFlags = buildAgentLaunchFlags(effectiveEntry, effectiveAgentId, {
         modelId: terminal.agentModelId,
       });
+      // Merge preset args into persisted launch flags so a later restart
+      // (via restartTerminal) using buildLaunchCommandFromFlags reproduces
+      // the exact same preset spawn, not a settings-default one.
+      const nextLaunchFlags = nextPreset.args?.length
+        ? [...baseLaunchFlags, ...nextPreset.args]
+        : baseLaunchFlags;
 
       // Capture live terminal dimensions before teardown
       const managedInstance = terminalInstanceService.get(id);
@@ -1005,6 +1025,11 @@ export const createRestartActions = (
         updateTerminal(state, id, (t) => ({
           ...t,
           isRestarting: false,
+          // Restore pre-mutation fields so fallbackChainIndex and presetId
+          // accurately reflect "we are NOT running the next preset". Without
+          // rollback, any subsequent fallback trigger would jump past this
+          // preset even though the PTY never started.
+          ...priorSnapshot,
           restartError: {
             message: errorMessage,
             timestamp: Date.now(),
