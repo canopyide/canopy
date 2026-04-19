@@ -96,6 +96,34 @@ jobs:
       - name: Check compiler bailout budget
         run: npm run compiler-budget:check
 
+  eager-import-budget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build eager-import metafile
+        run: npm run import-budget:build
+
+      - name: Check eager-import budget
+        run: npm run import-budget:check
+
   build:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -135,7 +163,7 @@ jobs:
   # Insulates against matrix/job name changes breaking required checks.
   ci-ok:
     if: always()
-    needs: [check, test, compiler-budget]
+    needs: [check, test, compiler-budget, eager-import-budget]
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
