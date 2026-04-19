@@ -780,12 +780,15 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     return { success: true };
   };
 
-  const handleReloadIgnoringCache = async (webContentsId: unknown): Promise<void> => {
-    if (typeof webContentsId !== "number") {
-      throw new Error("Invalid arguments: webContentsId must be number");
+  const handleReloadIgnoringCache = async (
+    webContentsId: unknown,
+    panelId: unknown
+  ): Promise<void> => {
+    if (typeof webContentsId !== "number" || typeof panelId !== "string") {
+      throw new Error("Invalid arguments: webContentsId must be number, panelId must be string");
     }
 
-    if (!getWebviewDialogService().getPanelId(webContentsId)) return;
+    if (getWebviewDialogService().getPanelId(webContentsId) !== panelId) return;
 
     const wc = webContents.fromId(webContentsId);
     if (!wc || wc.isDestroyed()) return;

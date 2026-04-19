@@ -915,7 +915,7 @@ export interface ElectronAPI {
       callback: (payload: { paneId: string; navigationGeneration: number }) => void
     ): () => void;
     /** Reload a webview bypassing HTTP cache */
-    reloadIgnoringCache(webContentsId: number): Promise<void>;
+    reloadIgnoringCache(webContentsId: number, panelId: string): Promise<void>;
   };
   hibernation: {
     getConfig(): Promise<HibernationConfig>;

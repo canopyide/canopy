@@ -486,11 +486,11 @@ export function BrowserPane({
     if (!webview || !isWebviewReady) return;
     try {
       const wcId = (webview as unknown as { getWebContentsId(): number }).getWebContentsId();
-      void window.electron.webview.reloadIgnoringCache(wcId);
+      void window.electron.webview.reloadIgnoringCache(wcId, id);
     } catch {
       webview.reload();
     }
-  }, [isWebviewReady]);
+  }, [isWebviewReady, id]);
 
   const handleCaptureScreenshot = useCallback(async () => {
     const webview = webviewRef.current;

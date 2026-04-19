@@ -2360,8 +2360,8 @@ const api: ElectronAPI = {
     onConsoleContextCleared: (
       callback: (payload: { paneId: string; navigationGeneration: number }) => void
     ): (() => void) => _typedOn(CHANNELS.WEBVIEW_CONSOLE_CONTEXT_CLEARED, callback),
-    reloadIgnoringCache: (webContentsId: number): Promise<void> =>
-      _unwrappingInvoke(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, webContentsId),
+    reloadIgnoringCache: (webContentsId: number, panelId: string): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, webContentsId, panelId),
   },
 
   // Hibernation API

@@ -1868,7 +1868,7 @@ export interface IpcInvokeMap {
     result: import("./webviewConsole.js").CdpGetPropertiesResult;
   };
   "webview:reload-ignoring-cache": {
-    args: [webContentsId: number];
+    args: [webContentsId: number, panelId: string];
     result: void;
   };
 
