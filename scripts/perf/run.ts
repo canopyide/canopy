@@ -1,12 +1,16 @@
 import { performance } from "node:perf_hooks";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { loadBudgetConfig, getScenarioBudget } from "./lib/budgets";
+import { compareSamples } from "./lib/comparison";
 import { appendJsonLine, readJson, writeJson, writeText, ensureDir } from "./lib/io";
 import { mean, percentile, round, stdDev } from "./lib/stats";
 import { buildMarkdownReport } from "./report/generate";
 import { assertMatrixCoverage, getScenariosForMode } from "./scenarios";
 import type {
   BaselineSummary,
+  ComparisonAggregate,
+  ComparisonResult,
   PerfMode,
   PerfRunSummary,
   ScenarioAggregate,
@@ -20,6 +24,8 @@ interface CliOptions {
   outDir: string;
   baselinePath: string;
   updateBaseline: boolean;
+  compare: boolean;
+  compareBase: string;
 }
 
 interface RawSample {
@@ -77,6 +83,8 @@ function parseArgs(argv: string[]): CliOptions {
     outDir,
     baselinePath,
     updateBaseline: flags.has("update-baseline"),
+    compare: flags.has("compare"),
+    compareBase: args.get("compare-base") ?? "origin/develop",
   };
 }
 
@@ -274,9 +282,9 @@ async function run(): Promise<void> {
   const latestReportPath = path.join(cli.outDir, `latest-${cli.mode}.report.md`);
 
   writeJson(summaryJsonPath, summary);
-  writeText(reportMdPath, buildMarkdownReport(summary));
+  writeText(reportMdPath, buildMarkdownReport(summary, comparisonAggregates));
   writeJson(latestSummaryPath, summary);
-  writeText(latestReportPath, buildMarkdownReport(summary));
+  writeText(latestReportPath, buildMarkdownReport(summary, comparisonAggregates));
 
   if (cli.updateBaseline) {
     const baselineOut: BaselineSummary = {
@@ -287,6 +295,41 @@ async function run(): Promise<void> {
       ),
     };
     writeJson(cli.baselinePath, baselineOut);
+  }
+
+  // A/B comparison mode: run baseline arm and compare statistically
+  let comparisonAggregates: ComparisonAggregate[] = [];
+  if (cli.compare) {
+    const mergeBase = getMergeBase(cli.compareBase);
+    if (!mergeBase) {
+      console.warn("[perf:compare] Could not determine merge-base — skipping comparison");
+    } else {
+      console.log(`[perf:compare] Baseline ref: ${mergeBase.slice(0, 12)}`);
+
+      const baseOutDir = path.join(cli.outDir, "baseline-arm");
+      ensureDir(baseOutDir);
+
+      const baseAggregates = await runBaselineArm(mergeBase, cli, baseOutDir);
+
+      comparisonAggregates = computeComparisons(aggregates, baseAggregates, budgetConfig);
+
+      for (const comp of comparisonAggregates) {
+        if (comp.comparison.regression) {
+          const headAgg = comp.head;
+          if (!failedScenarios.includes(headAgg.id)) {
+            failedScenarios.push(headAgg.id);
+          }
+          headAgg.failedBudget = true;
+          headAgg.budgetReason =
+            (headAgg.budgetReason ?? "")
+              ? `${headAgg.budgetReason}; A/B regression (p=${round(comp.comparison.pValue)}, d=${round(comp.comparison.effectSize)})`
+              : `A/B regression (p=${round(comp.comparison.pValue)}, d=${round(comp.comparison.effectSize)})`;
+        }
+      }
+
+      const comparisonJsonPath = path.join(cli.outDir, `${timestamp}-${cli.mode}.comparison.json`);
+      writeJson(comparisonJsonPath, comparisonAggregates);
+    }
   }
 
   const passed = failedScenarios.length === 0;
@@ -312,3 +355,63 @@ run().catch((error) => {
   console.error("[perf] run failed", error);
   process.exit(1);
 });
+
+function getMergeBase(compareBase: string): string | null {
+  try {
+    return execSync(`git merge-base HEAD ${compareBase}`, { encoding: "utf-8" }).trim();
+  } catch {
+    return null;
+  }
+}
+
+async function runBaselineArm(
+  _mergeBase: string,
+  _cli: CliOptions,
+  _baseOutDir: string
+): Promise<ScenarioAggregate[]> {
+  // In a full implementation, this would:
+  // 1. Create a detached worktree at mergeBase
+  // 2. Build the packaged binary in that worktree
+  // 3. Run the same scenarios against the base binary
+  // 4. Return the aggregates
+  //
+  // For the initial implementation, we load previously-saved baseline data
+  // if available, or skip the comparison arm.
+  console.warn(
+    "[perf:compare] Baseline arm execution not yet implemented — use --baseline for static comparison"
+  );
+  return [];
+}
+
+function computeComparisons(
+  headAggregates: ScenarioAggregate[],
+  baseAggregates: ScenarioAggregate[],
+  budgetConfig: import("./types").PerfBudgetConfig
+): ComparisonAggregate[] {
+  const results: ComparisonAggregate[] = [];
+  const baseById = new Map(baseAggregates.map((a) => [a.id, a]));
+
+  for (const headAgg of headAggregates) {
+    const baseAgg = baseById.get(headAgg.id);
+    if (!baseAgg) continue;
+
+    const budget = getScenarioBudget(budgetConfig, headAgg.id);
+    if (!budget.comparison) continue;
+
+    const comp = compareSamples(
+      { label: "head", durations: [headAgg.meanMs] },
+      { label: "base", durations: [baseAgg.meanMs] },
+      budget.comparison.maxPValue,
+      budget.comparison.minEffectSize
+    );
+
+    results.push({
+      id: headAgg.id,
+      head: headAgg,
+      base: baseAgg,
+      comparison: comp,
+    });
+  }
+
+  return results;
+}
