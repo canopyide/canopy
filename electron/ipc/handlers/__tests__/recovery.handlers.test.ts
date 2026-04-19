@@ -15,7 +15,7 @@ const shellMock = vi.hoisted(() => ({
 }));
 
 const browserWindowMock = vi.hoisted(() => ({
-  fromWebContents: vi.fn(() => null),
+  fromWebContents: vi.fn<() => null | { isDestroyed: () => boolean }>(() => null),
 }));
 
 const fsMock = vi.hoisted(() => ({
