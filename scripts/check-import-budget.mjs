@@ -55,8 +55,12 @@ function validateBaseline(baseline) {
   if (!baseline || typeof baseline !== "object" || Array.isArray(baseline)) {
     errs.push("baseline must be a JSON object");
   } else {
-    if (typeof baseline.count !== "number" || baseline.count < 0) {
-      errs.push("`count` must be a non-negative number");
+    if (
+      typeof baseline.count !== "number" ||
+      !Number.isFinite(baseline.count) ||
+      baseline.count < 0
+    ) {
+      errs.push("`count` must be a finite non-negative number");
     }
     if (!Array.isArray(baseline.allowlist)) {
       errs.push("`allowlist` must be an array of file paths");

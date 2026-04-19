@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   walkEagerGraph,
   scanSyncViolations,
@@ -190,10 +190,31 @@ describe("scanSyncViolations", () => {
   });
 
   it("returns empty array when file can't be read", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = scanSyncViolations(["electron/missing.ts"], "/root", () => {
       throw new Error("ENOENT");
     });
     expect(result).toEqual([]);
+    warnSpy.mockRestore();
+  });
+
+  it("returns violations for readable files even when sibling is unreadable", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const files = {
+      "electron/readable.ts": "const a = fs.readFileSync('/x');\n",
+    };
+    const result = scanSyncViolations(
+      ["electron/readable.ts", "electron/missing.ts"],
+      "/root",
+      (absPath: string) => {
+        for (const [rel, body] of Object.entries(files)) {
+          if (absPath.endsWith(rel)) return body;
+        }
+        throw new Error("ENOENT");
+      }
+    );
+    expect(result).toEqual([{ file: "electron/readable.ts", line: 1, pattern: "sync-fs" }]);
+    warnSpy.mockRestore();
   });
 });
 
@@ -322,6 +343,26 @@ describe("compareToBaseline", () => {
     expect(r.ok).toBe(true);
     expect(r.notices.some((n) => n.kind === "unused-allowlist")).toBe(true);
   });
+
+  it("ignores baseline.syncViolations — allowlist is the sole gate", () => {
+    // A file that's in syncViolations but NOT in allowlist must still fail.
+    // This pins the policy: the snapshot is informational, enforcement is
+    // allowlist-only.
+    const r = compareToBaseline(
+      {
+        count: 10,
+        moduleCount: 10,
+        violations: [{ file: "electron/sneaky.ts", line: 5, pattern: "sync-fs" }],
+      },
+      {
+        count: 10,
+        allowlist: [],
+        syncViolations: [{ file: "electron/sneaky.ts", line: 5, pattern: "sync-fs" }],
+      }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors[0].kind).toBe("new-sync-violation");
+  });
 });
 
 describe("formatBaseline", () => {
@@ -352,5 +393,18 @@ describe("formatBaseline", () => {
       syncViolations: [],
     });
     expect(result.allowlist).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("sorts violations by pattern when file and line match", () => {
+    const result = formatBaseline({
+      count: 1,
+      moduleCount: 1,
+      allowlist: [],
+      syncViolations: [
+        { file: "a.ts", line: 5, pattern: "sync-store-get" },
+        { file: "a.ts", line: 5, pattern: "sync-fs" },
+      ],
+    });
+    expect(result.syncViolations.map((v) => v.pattern)).toEqual(["sync-fs", "sync-store-get"]);
   });
 });

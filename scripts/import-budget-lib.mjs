@@ -83,7 +83,10 @@ export function scanSyncViolations(files, root, readFile) {
     let source;
     try {
       source = reader(`${root}/${file}`);
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[import-budget] could not read ${file} for sync-call scan: ${err?.message ?? err}`
+      );
       continue;
     }
     for (const { name, re } of SYNC_PATTERNS) {
@@ -105,10 +108,12 @@ export function scanSyncViolations(files, root, readFile) {
  *
  * Gate:
  * - `count` must not exceed `baseline.count` (strict upper bound).
- * - Every file in `violations` must either be in `baseline.allowlist` OR its
- *   violation count must be <= the violation count in `baseline.syncViolations`
- *   for the same file (we only gate by file, so: known-allowlisted file OK,
- *   new file with violations NOT OK).
+ * - Every file in `current.violations` must be in `baseline.allowlist`. Any
+ *   file not on the allowlist fails CI regardless of how many calls it has.
+ *
+ * `baseline.syncViolations` is a checked-in snapshot of the allowed call sites
+ * for humans to diff — it does NOT gate CI. The allowlist is the sole gate.
+ * This keeps line-number refactors from churning the baseline.
  *
  * @param {{ count: number, violations: {file:string, line:number, pattern:string}[], moduleCount: number }} current
  * @param {{ count: number, allowlist: string[], syncViolations: {file:string, line:number, pattern:string}[] }} baseline
