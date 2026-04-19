@@ -524,6 +524,10 @@ export function setupBrowserWindow(
 
   function getRecoveryUrl(reason: string, exitCode: number): string {
     const params = new URLSearchParams({ reason, exitCode: String(exitCode) });
+    const backupTimestamp = getCrashRecoveryService().getLastBackupTimestamp();
+    if (backupTimestamp !== null) {
+      params.set("backupTimestamp", String(backupTimestamp));
+    }
     if (process.env.NODE_ENV === "development") {
       const devServerUrl = getDevServerUrl();
       return `${devServerUrl}/recovery.html?${params}`;

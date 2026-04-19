@@ -844,6 +844,28 @@ describe("CrashRecoveryService", () => {
     });
   });
 
+  describe("getLastBackupTimestamp", () => {
+    it("returns null when no backup file exists", () => {
+      const svc = makeService();
+      svc.initialize();
+      expect(svc.getLastBackupTimestamp()).toBeNull();
+    });
+
+    it("returns mtimeMs when backup file exists", () => {
+      const backupDir = path.join(userData, "backups");
+      fs.mkdirSync(backupDir, { recursive: true });
+      const backupPath = path.join(backupDir, "session-state.json");
+      fs.writeFileSync(backupPath, JSON.stringify({ capturedAt: Date.now(), appState: {} }));
+
+      const svc = makeService();
+      svc.initialize();
+
+      const ts = svc.getLastBackupTimestamp();
+      const stat = fs.statSync(backupPath);
+      expect(ts).toBe(stat.mtimeMs);
+    });
+  });
+
   describe("resetToFresh", () => {
     it("resets appState to clean workspace defaults", () => {
       storeMock.get.mockReturnValue({ autoRestoreOnCrash: false });
