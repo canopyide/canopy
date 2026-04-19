@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useState, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import {
   buildFleetTargetPreviews,
@@ -23,8 +23,8 @@ export function FleetDryRunDialog({
   onSend,
   onClose,
 }: FleetDryRunDialogProps): ReactElement {
-  const armOrderKey = useFleetArmingStore((s) => s.armOrder.join(","));
-  const previews = useMemo(() => buildFleetTargetPreviews(draft), [draft, armOrderKey]);
+  useFleetArmingStore((s) => s.armOrder); // subscribe so re-renders when armed set changes
+  const previews = buildFleetTargetPreviews(draft);
   const eligible = previews.filter((p) => !p.excluded);
 
   const [overrides, setOverrides] = useState<Record<string, string>>({});
