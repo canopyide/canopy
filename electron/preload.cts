@@ -867,6 +867,7 @@ const CHANNELS = {
   WEBVIEW_GET_CONSOLE_PROPERTIES: "webview:get-console-properties",
   WEBVIEW_CONSOLE_MESSAGE: "webview:console-message",
   WEBVIEW_CONSOLE_CONTEXT_CLEARED: "webview:console-context-cleared",
+  WEBVIEW_RELOAD_IGNORING_CACHE: "webview:reload-ignoring-cache",
 
   // Hibernation channels
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
