@@ -218,22 +218,34 @@ export function AgentInstallSection({
   }
 
   const blocked = isAgentBlocked(availability);
-  const showAuthHeader = authMissing || availability === "installed";
+  // WSL-capped `installed` is a distinct case from `ready + authConfirmed:
+  // false` — the binary exists in WSL but direct launch from the PTY host
+  // isn't wired yet, so sign-in copy would mislead. Keep them separate.
+  const showWslNotice = availability === "installed";
+  const showAuthNudge = authMissing;
+
+  const headerLabel = blocked
+    ? "Blocked"
+    : showWslNotice
+      ? "Not launchable"
+      : showAuthNudge
+        ? "Authentication"
+        : "Installation";
+
+  const headerDescription = blocked
+    ? `${agentName} CLI was found but couldn't run — check your security software or file permissions`
+    : showWslNotice
+      ? `${agentName} CLI was detected in WSL, but Daintree can't launch WSL binaries directly yet — install a native Windows binary if available`
+      : showAuthNudge
+        ? `${agentName} CLI found but not signed in — launching will prompt for login`
+        : `${agentName} CLI not found`;
 
   return (
     <div id="agents-installation" className="space-y-3 pt-4 border-t border-daintree-border">
       <div className="flex items-center justify-between">
         <div>
-          <h5 className="text-sm font-medium text-daintree-text">
-            {blocked ? "Blocked" : showAuthHeader ? "Authentication" : "Installation"}
-          </h5>
-          <p className="text-xs text-daintree-text/50 select-text">
-            {blocked
-              ? `${agentName} CLI was found but couldn't run — check your security software or file permissions`
-              : showAuthHeader
-                ? `${agentName} CLI found but not signed in — launching will prompt for login`
-                : `${agentName} CLI not found`}
-          </p>
+          <h5 className="text-sm font-medium text-daintree-text">{headerLabel}</h5>
+          <p className="text-xs text-daintree-text/50 select-text">{headerDescription}</p>
         </div>
         <Button
           size="sm"

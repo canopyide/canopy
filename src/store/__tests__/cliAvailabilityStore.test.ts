@@ -330,7 +330,7 @@ describe("cliAvailabilityStore", () => {
       expect(state.details.cursor?.authConfirmed).toBe(false);
     });
 
-    it("leaves details as an empty map when getDetails IPC rejects", async () => {
+    it("leaves details as an empty map when getDetails IPC rejects on first init", async () => {
       refreshMock.mockResolvedValueOnce(installedAvail);
       getDetailsMock.mockRejectedValueOnce(new Error("ipc failed"));
 
@@ -340,6 +340,26 @@ describe("cliAvailabilityStore", () => {
       // Availability must still land; details failure is best-effort.
       expect(state.availability).toEqual(installedAvail);
       expect(state.details).toEqual({});
+      expect(state.error).toBeNull();
+    });
+
+    it("preserves previous details when a subsequent getDetails IPC fails", async () => {
+      // First refresh populates details.
+      refreshMock.mockResolvedValueOnce(installedAvail);
+      getDetailsMock.mockResolvedValueOnce({
+        claude: { state: "ready", resolvedPath: "/a", via: "which", authConfirmed: false },
+      });
+      await useCliAvailabilityStore.getState().initialize();
+      expect(useCliAvailabilityStore.getState().details.claude?.authConfirmed).toBe(false);
+
+      // Second refresh: availability ok, getDetails throws. Stale authConfirmed
+      // must survive so a transient error doesn't suppress the sign-in nudge.
+      refreshMock.mockResolvedValueOnce(installedAvail);
+      getDetailsMock.mockRejectedValueOnce(new Error("ipc blip"));
+      await useCliAvailabilityStore.getState().refresh(true);
+
+      const state = useCliAvailabilityStore.getState();
+      expect(state.details.claude?.authConfirmed).toBe(false);
       expect(state.error).toBeNull();
     });
 

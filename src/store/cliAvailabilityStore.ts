@@ -128,20 +128,20 @@ let refreshPromise: Promise<void> | null = null;
 // "Needs Setup" nudge for an agent whose availability already arrived as
 // ready. `getDetails` reads the cache populated by the same `refresh` call,
 // so no extra probe is triggered.
+//
+// `details` is `null` when the IPC call failed — callers keep the previous
+// value rather than wiping the store (a transient getDetails failure
+// shouldn't silently suppress the sign-in nudge).
 async function fetchAvailabilityAndDetails(): Promise<{
   availability: CliAvailability;
-  details: AgentCliDetails;
+  details: AgentCliDetails | null;
 }> {
   const availability = await cliAvailabilityClient.refresh();
-  // Details are best-effort — a failure here must not break the availability
-  // flow. Consumers treat `undefined` authConfirmed as "no nudge".
-  let details: AgentCliDetails = {};
   try {
-    details = await cliAvailabilityClient.getDetails();
+    return { availability, details: await cliAvailabilityClient.getDetails() };
   } catch {
-    // Leave details empty; availability still drives launch behavior.
+    return { availability, details: null };
   }
-  return { availability, details };
 }
 
 export const useCliAvailabilityStore = create<CliAvailabilityStore>()(
@@ -191,7 +191,10 @@ export const useCliAvailabilityStore = create<CliAvailabilityStore>()(
             saveCache(availability, now);
             set({
               availability,
-              details,
+              // Only overwrite details when the IPC succeeded — `null` means
+              // preserve previous (none on init, but same code path runs in
+              // refresh where stale values matter for the nudge UX).
+              ...(details === null ? {} : { details }),
               isLoading: false,
               isInitialized: true,
               lastCheckedAt: now,
@@ -244,7 +247,9 @@ export const useCliAvailabilityStore = create<CliAvailabilityStore>()(
             saveCache(availability, now);
             set({
               availability,
-              details,
+              // Preserve previous details when getDetails IPC failed so a
+              // transient error doesn't wipe the authConfirmed nudge.
+              ...(details === null ? {} : { details }),
               isRefreshing: false,
               error: null,
               lastCheckedAt: now,
