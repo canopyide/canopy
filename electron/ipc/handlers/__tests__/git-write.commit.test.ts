@@ -168,6 +168,64 @@ describe("scanStagedFilesForConflictMarkers", () => {
     await expect(scanStagedFilesForConflictMarkers(git as never)).rejects.toThrow(
       /Unresolved conflict markers found in bad\.ts/
     );
+    expect(git.show).not.toHaveBeenCalledWith([":other.ts"]);
+  });
+
+  it("blocks a first-line marker that follows a UTF-8 BOM", async () => {
+    const git = makeFakeGit({
+      status: vi.fn().mockResolvedValue({ files: [stagedFile("bom.txt")] }),
+      show: vi.fn().mockResolvedValue("\uFEFF<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> b\n"),
+    });
+    await expect(scanStagedFilesForConflictMarkers(git as never)).rejects.toThrow(
+      /Unresolved conflict markers found in bom\.txt/
+    );
+  });
+
+  it("blocks when content is exactly at the 1 MB byte cap", async () => {
+    // Exactly STAGED_FILE_SIZE_CAP bytes (cap boundary) with the marker on
+    // its own line. `>` not `>=` means this must still be scanned.
+    const markerLine = "<<<<<<< HEAD\n";
+    const content = markerLine + "a".repeat(1_000_000 - markerLine.length);
+    const git = makeFakeGit({
+      status: vi.fn().mockResolvedValue({ files: [stagedFile("edge.txt")] }),
+      show: vi.fn().mockResolvedValue(content),
+    });
+    expect(Buffer.byteLength(content, "utf8")).toBe(1_000_000);
+    await expect(scanStagedFilesForConflictMarkers(git as never)).rejects.toThrow(
+      /Unresolved conflict markers/
+    );
+  });
+
+  it("skips content 1 byte over the cap", async () => {
+    // `>` not `>=` check: 1_000_001 bytes → skip silently, commit proceeds.
+    const content = "<<<<<<< HEAD\n" + "a".repeat(1_000_001 - "<<<<<<< HEAD\n".length);
+    const git = makeFakeGit({
+      status: vi.fn().mockResolvedValue({ files: [stagedFile("huge.txt")] }),
+      show: vi.fn().mockResolvedValue(content),
+    });
+    expect(Buffer.byteLength(content, "utf8")).toBe(1_000_001);
+    await expect(scanStagedFilesForConflictMarkers(git as never)).resolves.toBeUndefined();
+  });
+
+  it("propagates git.show rejections (does not silently permit)", async () => {
+    const git = makeFakeGit({
+      status: vi.fn().mockResolvedValue({ files: [stagedFile("src/foo.ts")] }),
+      show: vi.fn().mockRejectedValue(new Error("fatal: bad revision")),
+    });
+    await expect(scanStagedFilesForConflictMarkers(git as never)).rejects.toThrow(
+      /bad revision/
+    );
+  });
+
+  it("handles paths with spaces", async () => {
+    const git = makeFakeGit({
+      status: vi.fn().mockResolvedValue({ files: [stagedFile("dir/merge notes.ts")] }),
+      show: vi.fn().mockResolvedValue("<<<<<<< HEAD\n"),
+    });
+    await expect(scanStagedFilesForConflictMarkers(git as never)).rejects.toThrow(
+      /Unresolved conflict markers found in dir\/merge notes\.ts/
+    );
+    expect(git.show).toHaveBeenCalledWith([":dir/merge notes.ts"]);
   });
 });
 

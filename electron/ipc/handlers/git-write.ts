@@ -207,8 +207,13 @@ export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise
     if (binaryPaths.has(filePath)) continue;
     const content = await git.show([`:${filePath}`]);
     if (typeof content !== "string") continue;
-    if (content.length > STAGED_FILE_SIZE_CAP) continue;
-    if (CONFLICT_MARKER_RE.test(content)) {
+    // Compare against the UTF-8 byte length so a multibyte file isn't
+    // misclassified against a character-count cap.
+    if (Buffer.byteLength(content, "utf8") > STAGED_FILE_SIZE_CAP) continue;
+    // A leading UTF-8 BOM pushes a first-line `<<<<<<<` past the `^` anchor;
+    // strip it before testing so marker-on-line-1 files still block.
+    const probe = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+    if (CONFLICT_MARKER_RE.test(probe)) {
       throw new Error(
         `Unresolved conflict markers found in ${filePath}. Resolve all conflicts before committing.`
       );
