@@ -43,6 +43,17 @@ const CONFLICT_LABELS: Record<string, string> = {
   UD: "deleted by them",
 };
 
+// Cap text scans at 1 MB per staged file — above this, assume the file is
+// effectively machine-generated and skip. Matches the cap already used in
+// projectInRepoSettings.ts:81 for in-process file reads.
+const STAGED_FILE_SIZE_CAP = 1_000_000;
+
+// Line-anchored 7-char conflict markers (standard + diff3 ancestor). The
+// `<<<<<<<` and `>>>>>>>` anchors are definitive; `=======` and `|||||||` are
+// flagged as well to match VS Code's own marker detection. No `g` flag so
+// `.test()` stays stateless across sequential calls on different blobs.
+const CONFLICT_MARKER_RE = /^(?:<{7}|\|{7}|={7}|>{7})[ \t\r]?/m;
+
 async function pathExists(p: string): Promise<boolean> {
   return fs.promises
     .access(p)
@@ -141,6 +152,75 @@ export function parsePorcelainV2Conflicts(raw: string): ConflictedFileEntry[] {
   return entries;
 }
 
+/**
+ * Parse `git diff --cached --numstat` output into the set of staged paths that
+ * git reports as binary (added/deleted counts rendered as `-`). Binary blobs
+ * are skipped by the conflict-marker scan because regex matching on non-text
+ * bytes is meaningless and may produce false positives.
+ */
+function parseBinaryPathsFromNumstat(raw: string): Set<string> {
+  const binary = new Set<string>();
+  for (const line of raw.split("\n")) {
+    // Numstat format: "<added>\t<deleted>\t<path>". Binary → "-\t-\t<path>".
+    // Rename diffs may emit "{old => new}" in the path column; we key the set
+    // on whatever text appears after the second tab and compare using `has`
+    // on the post-rename path reported by status(), so renamed binary files
+    // may miss this set. That's tolerated: a binary will still fail the
+    // marker regex harmlessly on the subsequent `git.show`.
+    const tabIdx1 = line.indexOf("\t");
+    if (tabIdx1 === -1) continue;
+    const tabIdx2 = line.indexOf("\t", tabIdx1 + 1);
+    if (tabIdx2 === -1) continue;
+    if (line.slice(0, tabIdx2) !== "-\t-") continue;
+    const filePath = line.slice(tabIdx2 + 1);
+    if (filePath) binary.add(filePath);
+  }
+  return binary;
+}
+
+/**
+ * Block commits that would include unresolved merge conflict markers. Reads
+ * the staged (index) blob for each non-binary, non-deleted file via
+ * `git show :<path>`, which works on both normal and unborn branches. Throws
+ * a descriptive `Error` naming the first offending file; the IPC layer
+ * surfaces `.message` directly to the UI.
+ */
+export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise<void> {
+  const status = await git.status();
+  const candidates: string[] = [];
+  for (const file of status.files) {
+    const indexStatus = file.index;
+    if (!indexStatus || indexStatus === " " || indexStatus === "?" || indexStatus === "D") {
+      continue;
+    }
+    candidates.push(file.path);
+  }
+  if (candidates.length === 0) return;
+
+  // `--no-ext-diff` is mandatory: without it, a user-configured `diff.external`
+  // tool can break the numstat call (lesson #4221). Matches the pattern in
+  // handleGetWorkingDiff and utils/git.ts.
+  const numstatRaw = await git.diff(["--no-ext-diff", "--cached", "--numstat"]);
+  const binaryPaths = parseBinaryPathsFromNumstat(numstatRaw);
+
+  for (const filePath of candidates) {
+    if (binaryPaths.has(filePath)) continue;
+    const content = await git.show([`:${filePath}`]);
+    if (typeof content !== "string") continue;
+    // Compare against the UTF-8 byte length so a multibyte file isn't
+    // misclassified against a character-count cap.
+    if (Buffer.byteLength(content, "utf8") > STAGED_FILE_SIZE_CAP) continue;
+    // A leading UTF-8 BOM pushes a first-line `<<<<<<<` past the `^` anchor;
+    // strip it before testing so marker-on-line-1 files still block.
+    const probe = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+    if (CONFLICT_MARKER_RE.test(probe)) {
+      throw new Error(
+        `Unresolved conflict markers found in ${filePath}. Resolve all conflicts before committing.`
+      );
+    }
+  }
+}
+
 export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
@@ -221,6 +301,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     }
 
     const git = createHardenedGit(payload.cwd);
+    await scanStagedFilesForConflictMarkers(git);
     const result = await git.commit(payload.message.trim());
     if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
       soundService.play("git-commit");
