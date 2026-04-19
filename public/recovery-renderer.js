@@ -74,7 +74,8 @@
   var backupEl = document.getElementById("backup-line");
   if (backupEl && backupTimestamp) {
     var ts = Number(backupTimestamp);
-    if (isFinite(ts) && ts > 0) {
+    // 8.64e15 is the ECMAScript Date max; beyond it toLocaleString returns "Invalid Date"
+    if (isFinite(ts) && ts > 0 && ts <= 8640000000000000) {
       try {
         var formatted = new Date(ts).toLocaleString();
         backupEl.textContent = "A workspace backup is available from " + formatted + ".";
