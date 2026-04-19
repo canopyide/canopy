@@ -205,18 +205,14 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
                     <SettingsSelect
                       label="Delay"
                       description="Time to wait before escalating"
-                      value={effective("waitingEscalationDelayMs") as number}
-                      onChange={(e) =>
-                        setOverride("waitingEscalationDelayMs", Number(e.target.value))
-                      }
+                      value={String(effective("waitingEscalationDelayMs"))}
+                      onValueChange={(v) => setOverride("waitingEscalationDelayMs", Number(v))}
                       scope={scopeFor("waitingEscalationDelayMs")}
-                    >
-                      {ESCALATION_DELAY_OPTIONS.map(({ value, label }) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </SettingsSelect>
+                      options={ESCALATION_DELAY_OPTIONS.map(({ value, label }) => ({
+                        value: String(value),
+                        label,
+                      }))}
+                    />
                   </OverrideRow>
                 )}
               </div>
@@ -288,16 +284,14 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
                   <SettingsSelect
                     label={label}
                     value={effective(field) as string}
-                    onChange={(e) => setOverride(field, e.target.value)}
+                    onValueChange={(v) => setOverride(field, v)}
                     scope={scopeFor(field)}
                     className="flex-1"
-                  >
-                    {AVAILABLE_SOUNDS.map(({ file, label: soundLabel }) => (
-                      <option key={file} value={file}>
-                        {soundLabel}
-                      </option>
-                    ))}
-                  </SettingsSelect>
+                    options={AVAILABLE_SOUNDS.map(({ file, label: soundLabel }) => ({
+                      value: file,
+                      label: soundLabel,
+                    }))}
+                  />
                   <button
                     onClick={() => handlePreview(effective(field) as string)}
                     title={`Preview ${label.toLowerCase()}`}
