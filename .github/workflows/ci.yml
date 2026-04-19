@@ -129,7 +129,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
 
     steps:
       - name: Check out repository
@@ -171,16 +171,6 @@ jobs:
             npm run renderer-bundle-budget:check -- --override
           else
             npm run renderer-bundle-budget:check
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Comment PR with bundle size summary
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          if [ -f dist/renderer-bundle-size-summary.md ]; then
-            { echo '<!-- renderer-bundle-budget -->'; cat dist/renderer-bundle-size-summary.md; } | \
-              gh pr comment ${{ github.event.pull_request.number }} --body-file -
           fi
         env:
           GH_TOKEN: ${{ github.token }}
