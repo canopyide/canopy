@@ -64,7 +64,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const [sources, setSources] = useState<string[]>([]);
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
-  const pauseBoundaryIdRef = useRef<string | undefined>(undefined);
+  const pauseBoundaryTsRef = useRef<number | undefined>(undefined);
   const [copyMeta, setCopyMeta] = useState<LogEntryCopyMeta>(() => ({
     appVersion: "unknown",
     electronVersion: extractElectronVersion(),
@@ -89,9 +89,10 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   useEffect(() => {
     const bufferedLogs: LogEntryType[] = [];
     let hydrated = false;
+    let disposed = false;
 
     const unsubscribe = logsClient.onBatch((entries: LogEntryType[]) => {
-      if (!Array.isArray(entries) || entries.length === 0) return;
+      if (disposed || !Array.isArray(entries) || entries.length === 0) return;
 
       if (!hydrated) {
         bufferedLogs.push(...entries);
@@ -119,6 +120,8 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         return [];
       }),
     ]).then(([existingLogs, existingSources]) => {
+      if (disposed) return;
+
       const deduped = new Map<string, LogEntryType>();
       for (const log of existingLogs) deduped.set(log.id, log);
       for (const log of bufferedLogs) deduped.set(log.id, log);
@@ -138,6 +141,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
     });
 
     return () => {
+      disposed = true;
       unsubscribe();
     };
   }, [addLogs, setLogs, onSourcesChange]);
@@ -166,9 +170,9 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
       setAtBottom(bottom);
       if (bottom) {
         setNewCount(0);
-        pauseBoundaryIdRef.current = undefined;
+        pauseBoundaryTsRef.current = undefined;
       } else {
-        pauseBoundaryIdRef.current = mainLogs[mainLogs.length - 1]?.id;
+        pauseBoundaryTsRef.current = mainLogs[mainLogs.length - 1]?.timestamp;
         if (autoScroll) setAutoScroll(false);
       }
     },
@@ -177,20 +181,22 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
 
   useEffect(() => {
     if (atBottom) return;
-    const boundaryId = pauseBoundaryIdRef.current;
-    if (boundaryId === undefined) {
+    const boundaryTs = pauseBoundaryTsRef.current;
+    if (boundaryTs === undefined) {
       setNewCount(0);
       return;
     }
-    const idx = mainLogs.findIndex((l) => l.id === boundaryId);
-    const count = idx === -1 ? mainLogs.length : Math.max(0, mainLogs.length - idx - 1);
+    let count = 0;
+    for (const log of mainLogs) {
+      if (log.timestamp > boundaryTs) count++;
+    }
     setNewCount(count);
   }, [mainLogs, atBottom]);
 
   const scrollToBottom = useCallback(() => {
     setAutoScroll(true);
     setNewCount(0);
-    pauseBoundaryIdRef.current = undefined;
+    pauseBoundaryTsRef.current = undefined;
     virtuosoRef.current?.scrollToIndex({
       index: "LAST",
       behavior: "smooth",

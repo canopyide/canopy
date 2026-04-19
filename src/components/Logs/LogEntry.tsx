@@ -62,13 +62,15 @@ function buildCopyPayload(entry: LogEntryType, meta?: LogEntryCopyMeta): string 
   const header = meta
     ? `App: ${meta.appVersion} | Electron: ${meta.electronVersion} | OS: ${meta.platform}\n\n`
     : "";
-  const body = [`[${iso}] [${entry.level.toUpperCase()}]`];
-  if (entry.source) body[0] += ` [${entry.source}]`;
-  body.push(entry.message);
+  const headLine = entry.source
+    ? `[${iso}] [${entry.level.toUpperCase()}] [${entry.source}]`
+    : `[${iso}] [${entry.level.toUpperCase()}]`;
+  const body = [headLine, entry.message];
   if (entry.context && Object.keys(entry.context).length > 0) {
     body.push(safeStringify(entry.context, 2));
   }
-  return `${header}\`\`\`log\n${body.join("\n")}\n\`\`\``;
+  // Use tilde fence so any backtick blocks inside the log body don't break the outer fence.
+  return `${header}~~~log\n${body.join("\n")}\n~~~`;
 }
 
 function LogEntryComponent({ entry, isExpanded, onToggle, count = 1, copyMeta }: LogEntryProps) {

@@ -16,6 +16,9 @@ interface ParsedSearch {
   text: string;
 }
 
+// Keys are `\w+` only (alphanumerics + underscore). Hyphenated keys like `request-id`
+// won't be captured — `context.request-id:val` would parse as `id:val` and fall through
+// the unknown-key branch, leaving the full token in the remainder text.
 const TOKEN_REGEX = /(\w+(?:\.\w+)*):("[^"]*"|\S+)/g;
 
 function parseSearchTokens(search: string): ParsedSearch {

@@ -131,8 +131,24 @@ describe("filterLogs — search tokens", () => {
   });
 
   it("handles quoted values with spaces", () => {
-    const result = filterLogs(logs, { search: 'source:"WorkspaceService"' });
-    expect(result.map((l) => l.id)).toEqual(["log-3", "log-4"]);
+    const withSpaces: LogEntry[] = [
+      makeLogExplicit(10, { level: "error", message: "x", source: "Workspace Service" }),
+      makeLogExplicit(11, { level: "error", message: "x", source: "PtyManager" }),
+    ];
+    const result = filterLogs(withSpaces, { search: 'source:"Workspace Service"' });
+    expect(result.map((l) => l.id)).toEqual(["log-10"]);
+  });
+
+  it("leaves hyphenated context keys in the remainder text", () => {
+    const hyphenLogs: LogEntry[] = [
+      makeLogExplicit(0, {
+        level: "info",
+        message: "context.request-id:abc123 payload received",
+      }),
+      makeLogExplicit(1, { level: "info", message: "other event" }),
+    ];
+    const result = filterLogs(hyphenLogs, { search: "context.request-id:abc123" });
+    expect(result.map((l) => l.id)).toEqual(["log-0"]);
   });
 });
 
@@ -190,6 +206,27 @@ describe("collapseConsecutiveDuplicates", () => {
     const result = collapseConsecutiveDuplicates(logs);
     expect(result).toHaveLength(3);
     expect(result.every((r) => r.count === 1)).toBe(true);
+  });
+
+  it("collapses entries with differing context when level+message+source match", () => {
+    const logs = [
+      makeLogExplicit(0, {
+        level: "info",
+        message: "same",
+        source: "s1",
+        context: { requestId: "a" },
+      }),
+      makeLogExplicit(1, {
+        level: "info",
+        message: "same",
+        source: "s1",
+        context: { requestId: "b" },
+      }),
+    ];
+    const result = collapseConsecutiveDuplicates(logs);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.count).toBe(2);
+    expect(result[0]?.entry.id).toBe("log-0");
   });
 
   it("collapses 500 identical logs into one entry with count 500", () => {
