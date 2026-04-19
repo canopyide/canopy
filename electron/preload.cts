@@ -508,6 +508,7 @@ const CHANNELS = {
   WORKTREE_GET_ISSUE_ASSOCIATION: "worktree:get-issue-association",
   WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS: "worktree:get-all-issue-associations",
   WORKTREE_HOST_DISCONNECTED: "worktree:host-disconnected",
+  WORKTREE_RESTART_SERVICE: "worktree:restart-service",
 
   // Terminal channels
   TERMINAL_SPAWN: "terminal:spawn",
