@@ -1,17 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-const execFileMock =
-  vi.hoisted(
-    () =>
-      vi.fn<
-        (
-          cmd: string,
-          args: string[],
-          opts: unknown,
-          cb: (err: NodeJS.ErrnoException | null, stdout: string, stderr: string) => void
-        ) => { kill: () => void; on: (event: string, handler: () => void) => void }
-      >()
-  );
+const execFileMock = vi.hoisted(() =>
+  vi.fn<
+    (
+      cmd: string,
+      args: string[],
+      opts: unknown,
+      cb: (err: NodeJS.ErrnoException | null, stdout: string, stderr: string) => void
+    ) => { kill: () => void; on: (event: string, handler: () => void) => void }
+  >()
+);
 
 vi.mock("child_process", () => ({
   execFile: execFileMock,
@@ -50,11 +48,7 @@ vi.mock("../../services/projectStorePaths.js", () => ({
 
 import { probeGitLfsAvailable } from "../WorkspaceService.js";
 
-type ExecFileCallback = (
-  err: NodeJS.ErrnoException | null,
-  stdout: string,
-  stderr: string
-) => void;
+type ExecFileCallback = (err: NodeJS.ErrnoException | null, stdout: string, stderr: string) => void;
 
 function mockExecFile(
   handler: (cb: ExecFileCallback) => void,
@@ -95,7 +89,9 @@ describe("probeGitLfsAvailable", () => {
 
   it("returns false when `git lfs` subcommand is not installed (non-zero exit)", async () => {
     mockExecFile((cb) => {
-      const err = Object.assign(new Error("git: 'lfs' is not a git command"), { code: 1 });
+      const err = Object.assign(new Error("git: 'lfs' is not a git command"), {
+        code: "1",
+      }) as NodeJS.ErrnoException;
       cb(err, "", "git: 'lfs' is not a git command. See 'git --help'.");
     });
 
