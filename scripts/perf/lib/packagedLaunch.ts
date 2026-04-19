@@ -66,6 +66,7 @@ export function findPackagedExecutable(projectRoot: string): string | null {
   if (!fs.existsSync(releaseDir)) return null;
 
   const variant = process.env.BUILD_VARIANT ?? "daintree";
+  const productName = variant === "canopy" ? "Canopy" : PRODUCT_NAME;
 
   try {
     const entries = fs.readdirSync(releaseDir);
