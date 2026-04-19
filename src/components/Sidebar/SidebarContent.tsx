@@ -943,7 +943,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  {createTooltipWithShortcut("Fleet Deck", "Cmd+Shift+B")}
+                  {createTooltipWithShortcut("Fleet Deck", "Cmd+Alt+Shift+B")}
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
