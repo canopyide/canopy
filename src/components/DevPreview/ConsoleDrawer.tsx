@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { Suspense, useState, useCallback, useEffect } from "react";
 import { ChevronUp, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -147,12 +147,14 @@ export function ConsoleDrawer({
         aria-hidden={!isOpen}
       >
         <div className="h-[300px] bg-surface-canvas">
-          <XtermAdapter
-            terminalId={terminalId}
-            getRefreshTier={getRefreshTier}
-            restoreOnAttach={true}
-            className="!rounded-none !px-0 !pt-0 !pb-0"
-          />
+          <Suspense fallback={null}>
+            <XtermAdapter
+              terminalId={terminalId}
+              getRefreshTier={getRefreshTier}
+              restoreOnAttach={true}
+              className="!rounded-none !px-0 !pt-0 !pb-0"
+            />
+          </Suspense>
         </div>
       </div>
     </div>

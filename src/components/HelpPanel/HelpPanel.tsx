@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { X, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
@@ -275,12 +275,14 @@ export function HelpPanel() {
       <div ref={contentRef} className="flex-1 flex flex-col min-h-0 relative">
         {showTerminal ? (
           <div className="absolute inset-0">
-            <XtermAdapter
-              terminalId={terminalId}
-              terminalType={(agentId ?? "terminal") as TerminalType}
-              getRefreshTier={getRefreshTier}
-              cwd={terminal.cwd}
-            />
+            <Suspense fallback={null}>
+              <XtermAdapter
+                terminalId={terminalId}
+                terminalType={(agentId ?? "terminal") as TerminalType}
+                getRefreshTier={getRefreshTier}
+                cwd={terminal.cwd}
+              />
+            </Suspense>
           </div>
         ) : (
           <HelpAgentPicker onSelectAgent={handleSelectAgent} />
