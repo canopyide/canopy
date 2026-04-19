@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentPreset } from "@/config/agents";
+import { resolveEffectivePresetId, type AgentSettingsEntry } from "@shared/types";
 
 // ── mocks ────────────────────────────────────────────────────────────────────
 
@@ -38,17 +39,39 @@ import { getMergedPreset } from "@/config/agents";
 
 function resolvePresetForLaunch(
   presetId: string | null | undefined,
-  entry: { presetId?: string; customPresets?: AgentPreset[] },
+  entry: AgentSettingsEntry,
   ccrPresets: AgentPreset[] | undefined,
   agentId: string,
   isAgent: boolean,
-  projectPresets?: AgentPreset[] | undefined
+  projectPresets?: AgentPreset[] | undefined,
+  worktreeId?: string | null
 ): AgentPreset | undefined {
   const explicitDefault = presetId === null;
-  const resolvedPresetId = explicitDefault ? undefined : (presetId ?? entry.presetId);
-  return isAgent && !explicitDefault
-    ? getMergedPreset(agentId, resolvedPresetId, entry.customPresets, ccrPresets, projectPresets)
-    : undefined;
+  const savedPresetId = resolveEffectivePresetId(entry, worktreeId);
+  const resolvedPresetId = explicitDefault ? undefined : (presetId ?? savedPresetId);
+  const primary =
+    isAgent && !explicitDefault
+      ? getMergedPreset(agentId, resolvedPresetId, entry.customPresets, ccrPresets, projectPresets)
+      : undefined;
+  if (primary) return primary;
+
+  // Mirror of the launch-time fallback in useAgentLauncher.ts: a stale
+  // worktree-scoped override falls through to the agent-level default so
+  // a deleted scoped pick doesn't silently drop the launch's preset.
+  const scopedId =
+    worktreeId && entry.worktreePresets ? entry.worktreePresets[worktreeId] : undefined;
+  if (
+    isAgent &&
+    !explicitDefault &&
+    presetId === undefined &&
+    scopedId &&
+    scopedId === resolvedPresetId &&
+    entry.presetId &&
+    entry.presetId !== scopedId
+  ) {
+    return getMergedPreset(agentId, entry.presetId, entry.customPresets, ccrPresets, projectPresets);
+  }
+  return undefined;
 }
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
@@ -197,5 +220,173 @@ describe("stale preset handling: getMergedPreset returns undefined", () => {
       true
     );
     expect(result).toBeUndefined();
+  });
+});
+
+describe("worktree-scoped preset resolution", () => {
+  it("worktree override wins over agent-level default", () => {
+    getMergedPresetMock.mockReturnValue(CUSTOM_PRESET);
+    resolvePresetForLaunch(
+      undefined,
+      { presetId: "user-global", worktreePresets: { "wt-A": "user-111" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-A"
+    );
+    expect(getMergedPresetMock).toHaveBeenCalledWith(
+      "claude",
+      "user-111",
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
+  it("falls back to agent-level default when no override exists for this worktree", () => {
+    getMergedPresetMock.mockReturnValue(CUSTOM_PRESET);
+    resolvePresetForLaunch(
+      undefined,
+      { presetId: "user-global", worktreePresets: { "wt-A": "user-111" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-B"
+    );
+    expect(getMergedPresetMock).toHaveBeenCalledWith(
+      "claude",
+      "user-global",
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
+  it("returns undefined when neither scope has a preset", () => {
+    resolvePresetForLaunch(undefined, {}, undefined, "claude", true, undefined, "wt-A");
+    expect(getMergedPresetMock).toHaveBeenCalledWith(
+      "claude",
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
+  it("null sentinel ignores both worktree override and agent-level default", () => {
+    resolvePresetForLaunch(
+      null,
+      { presetId: "user-global", worktreePresets: { "wt-A": "user-111" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-A"
+    );
+    expect(getMergedPresetMock).not.toHaveBeenCalled();
+  });
+
+  it("explicit string presetId overrides both scopes", () => {
+    getMergedPresetMock.mockReturnValue(CUSTOM_PRESET);
+    resolvePresetForLaunch(
+      "user-explicit",
+      { presetId: "user-global", worktreePresets: { "wt-A": "user-111" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-A"
+    );
+    expect(getMergedPresetMock).toHaveBeenCalledWith(
+      "claude",
+      "user-explicit",
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
+  it("worktreeId of null/undefined disables scoped lookup", () => {
+    getMergedPresetMock.mockReturnValue(CUSTOM_PRESET);
+    resolvePresetForLaunch(
+      undefined,
+      { presetId: "user-global", worktreePresets: { "wt-A": "user-111" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      null
+    );
+    expect(getMergedPresetMock).toHaveBeenCalledWith(
+      "claude",
+      "user-global",
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
+  it("stale worktree override falls back to the agent-level default for the current launch", () => {
+    getMergedPresetMock.mockImplementation((_agentId, presetId) =>
+      presetId === "user-global" ? CUSTOM_PRESET : undefined
+    );
+    const result = resolvePresetForLaunch(
+      undefined,
+      { presetId: "user-global", worktreePresets: { "wt-A": "deleted-id" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-A"
+    );
+    expect(result).toBe(CUSTOM_PRESET);
+  });
+
+  it("returns undefined when both worktree override and agent default are stale", () => {
+    getMergedPresetMock.mockReturnValue(undefined);
+    const result = resolvePresetForLaunch(
+      undefined,
+      { presetId: "also-deleted", worktreePresets: { "wt-A": "deleted-id" } },
+      undefined,
+      "claude",
+      true,
+      undefined,
+      "wt-A"
+    );
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("resolveEffectivePresetId helper", () => {
+  it("returns worktree override when present", () => {
+    expect(
+      resolveEffectivePresetId(
+        { presetId: "global", worktreePresets: { "wt-A": "scoped" } },
+        "wt-A"
+      )
+    ).toBe("scoped");
+  });
+
+  it("falls back to agent-level default when no override for this worktree", () => {
+    expect(
+      resolveEffectivePresetId(
+        { presetId: "global", worktreePresets: { "wt-A": "scoped" } },
+        "wt-B"
+      )
+    ).toBe("global");
+  });
+
+  it("returns agent-level default when worktreeId is null", () => {
+    expect(resolveEffectivePresetId({ presetId: "global" }, null)).toBe("global");
+  });
+
+  it("returns undefined for an empty entry", () => {
+    expect(resolveEffectivePresetId({}, "wt-A")).toBeUndefined();
+  });
+
+  it("returns undefined when the entry itself is null", () => {
+    expect(resolveEffectivePresetId(null, "wt-A")).toBeUndefined();
   });
 });

@@ -12,7 +12,11 @@ import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import type { AgentSettings, CliAvailability } from "@shared/types";
-import { generateAgentCommand, buildAgentLaunchFlags } from "@shared/types";
+import {
+  generateAgentCommand,
+  buildAgentLaunchFlags,
+  resolveEffectivePresetId,
+} from "@shared/types";
 import {
   getAgentConfig,
   isRegisteredAgent,
@@ -171,14 +175,18 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       if (agentConfig) {
         const entry = agentSettings?.agents?.[agentId] ?? {};
         // null = explicitly default — skip preset lookup entirely
-        // undefined = use saved presetId (or default if none saved)
+        // undefined = use saved preset for this worktree (or agent-level
+        //   default, or nothing). Worktree-scoped override wins over the
+        //   agent-level `presetId` so switching worktrees doesn't silently
+        //   surface another worktree's pick.
         const explicitDefault = launchOptions?.presetId === null;
+        const savedPresetId = resolveEffectivePresetId(entry, targetWorktreeId);
         const resolvedPresetId = explicitDefault
           ? undefined
-          : (launchOptions?.presetId ?? entry.presetId);
+          : (launchOptions?.presetId ?? savedPresetId);
         const ccrPresets = useCcrPresetsStore.getState().ccrPresetsByAgent[agentId];
         const projectPresets = useProjectPresetsStore.getState().presetsByAgent[agentId];
-        preset =
+        const primaryPreset =
           isAgent && !explicitDefault
             ? getMergedPreset(
                 agentId,
@@ -188,12 +196,49 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
                 projectPresets
               )
             : undefined;
+        preset = primaryPreset;
 
-        // Stale presetId cleanup: if saved preset no longer exists, clear it
-        if (resolvedPresetId && !preset) {
+        // Fallback for this launch: if the worktree-scoped pick is stale but
+        // the agent-level default is still valid, use the agent default now.
+        // Without this, a deleted scoped preset would launch preset-free even
+        // when a valid global fallback exists. The stale scoped slot is still
+        // cleared below so the next launch resolves directly against global.
+        const scopedId =
+          targetWorktreeId && entry.worktreePresets
+            ? entry.worktreePresets[targetWorktreeId]
+            : undefined;
+        if (
+          !primaryPreset &&
+          isAgent &&
+          !explicitDefault &&
+          launchOptions?.presetId === undefined &&
+          scopedId &&
+          scopedId === resolvedPresetId &&
+          entry.presetId &&
+          entry.presetId !== scopedId
+        ) {
+          preset = getMergedPreset(
+            agentId,
+            entry.presetId,
+            entry.customPresets,
+            ccrPresets,
+            projectPresets
+          );
+        }
+
+        // Stale presetId cleanup: clear whichever scope held the vanished ID.
+        // The worktree slot wins at resolution time, so only fall through to
+        // clearing the agent-level default when that's what the launch used.
+        if (resolvedPresetId && !primaryPreset) {
           const { useAgentSettingsStore: settingsStore } =
             await import("@/store/agentSettingsStore");
-          void settingsStore.getState().updateAgent(agentId, { presetId: undefined });
+          if (scopedId && scopedId === resolvedPresetId && targetWorktreeId) {
+            void settingsStore
+              .getState()
+              .updateWorktreePreset(agentId, targetWorktreeId, undefined);
+          } else if (entry.presetId && entry.presetId === resolvedPresetId) {
+            void settingsStore.getState().updateAgent(agentId, { presetId: undefined });
+          }
         }
 
         // Merge: global env (base) overridden by preset env (preset wins on conflicts)

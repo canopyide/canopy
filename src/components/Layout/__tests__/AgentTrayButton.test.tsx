@@ -6,6 +6,7 @@ import type { ActionFrecencyEntry } from "@shared/types/actions";
 
 const dispatchMock = vi.fn();
 const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
+const updateWorktreePresetMock = vi.fn().mockResolvedValue(undefined);
 const setFocusedMock = vi.fn();
 const refreshAvailabilityMock = vi.fn().mockResolvedValue(undefined);
 let openChangeSpy: ((open: boolean) => void) | null = null;
@@ -47,11 +48,16 @@ vi.mock("@/services/ActionService", () => ({
 type MockAgentStoreState = {
   settings: AgentSettings | null;
   setAgentPinned: typeof setAgentPinnedMock;
+  updateWorktreePreset: typeof updateWorktreePresetMock;
 };
 
 vi.mock("@/store/agentSettingsStore", () => ({
   useAgentSettingsStore: (selector: (s: MockAgentStoreState) => unknown) =>
-    selector({ settings: mockSettings, setAgentPinned: setAgentPinnedMock }),
+    selector({
+      settings: mockSettings,
+      setAgentPinned: setAgentPinnedMock,
+      updateWorktreePreset: updateWorktreePresetMock,
+    }),
 }));
 
 vi.mock("@/store/actionMruStore", () => ({
@@ -266,6 +272,7 @@ describe("AgentTrayButton", () => {
   beforeEach(() => {
     dispatchMock.mockClear();
     setAgentPinnedMock.mockClear();
+    updateWorktreePresetMock.mockClear();
     setFocusedMock.mockClear();
     refreshAvailabilityMock.mockClear();
     openChangeSpy = null;
@@ -892,6 +899,53 @@ describe("AgentTrayButton", () => {
       const { queryByText } = render(<AgentTrayButton agentAvailability={availability} />);
       expect(queryByText("CCR Routes")).toBeNull();
       expect(queryByText("Custom")).toBeNull();
+    });
+  });
+
+  describe("worktree-scoped preset persistence", () => {
+    function arrangeAgentWithPresets() {
+      const availability = { claude: "ready" } as unknown as CliAvailability;
+      mockSettings = settingsWith({ claude: { pinned: false } });
+      mockMergedPresetsFn = (agentId: string) =>
+        agentId === "claude"
+          ? [
+              { id: "user-alpha", name: "Alpha" },
+              { id: "user-beta", name: "Beta" },
+            ]
+          : [];
+      return availability;
+    }
+
+    it("Default keyboard launch clears the scoped override and dispatches presetId: null", () => {
+      mockActiveWorktreeId = "wt-A";
+      const availability = arrangeAgentWithPresets();
+      const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+      const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
+
+      fireEvent.keyDown(submenuTrigger, { key: "Enter" });
+
+      expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", undefined);
+      expect(dispatchMock).toHaveBeenCalledWith(
+        "agent.launch",
+        { agentId: "claude", presetId: null },
+        { source: "user" }
+      );
+    });
+
+    it("does not persist the scope when no active worktree is set", () => {
+      mockActiveWorktreeId = null;
+      const availability = arrangeAgentWithPresets();
+      const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+      const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
+
+      fireEvent.keyDown(submenuTrigger, { key: "Enter" });
+
+      expect(updateWorktreePresetMock).not.toHaveBeenCalled();
+      expect(dispatchMock).toHaveBeenCalledWith(
+        "agent.launch",
+        { agentId: "claude", presetId: null },
+        { source: "user" }
+      );
     });
   });
 });
