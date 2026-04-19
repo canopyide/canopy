@@ -1,4 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import path from "node:path";
+
+// On Windows, `path.resolve("/Users/foo/my repo")` prepends the current
+// drive letter ("C:\Users\foo\my repo") and the handler normalizes
+// backslashes to forward slashes. Deriving the expected value the same way
+// keeps assertions correct on both POSIX and Windows runners.
+const resolvedSlashed = (p: string): string => path.resolve(p).replace(/\\/g, "/");
 
 const ipcMainMock = vi.hoisted(() => ({
   handle: vi.fn(),
@@ -98,7 +105,7 @@ describe("git:mark-safe-directory handler", () => {
     await handler(null, "/Users/foo/my repo");
     expect(execFileMock).toHaveBeenCalledWith(
       "git",
-      ["config", "--global", "--add", "safe.directory", "/Users/foo/my repo"],
+      ["config", "--global", "--add", "safe.directory", resolvedSlashed("/Users/foo/my repo")],
       expect.objectContaining({ env: expect.objectContaining({ LC_ALL: "C" }) }),
       expect.any(Function)
     );
@@ -124,7 +131,7 @@ describe("git:mark-safe-directory handler", () => {
     await handler(null, "/Users/foo/missing-repo");
     expect(execFileMock).toHaveBeenCalledWith(
       "git",
-      ["config", "--global", "--add", "safe.directory", "/Users/foo/missing-repo"],
+      ["config", "--global", "--add", "safe.directory", resolvedSlashed("/Users/foo/missing-repo")],
       expect.any(Object),
       expect.any(Function)
     );

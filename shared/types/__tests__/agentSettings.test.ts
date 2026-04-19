@@ -1,10 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   buildResumeCommand,
   buildAgentLaunchFlags,
   buildLaunchCommandFromFlags,
   generateAgentCommand,
 } from "../agentSettings.js";
+
+// Force POSIX shell-escape semantics so the hardcoded single-quote assertions
+// below hold on Windows CI. The Windows double-quote branch is exercised via
+// the `platform` override in shellEscape's own unit tests.
+function forcePosixPlatform() {
+  const original = process.platform;
+  beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  });
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: original, configurable: true });
+  });
+}
 
 describe("buildResumeCommand", () => {
   it("builds claude resume command with --resume flag", () => {
@@ -272,6 +285,8 @@ describe("generateAgentCommand with recipeArgs", () => {
 });
 
 describe("buildLaunchCommandFromFlags", () => {
+  forcePosixPlatform();
+
   it("joins flag-style tokens raw", () => {
     const cmd = buildLaunchCommandFromFlags("claude", "claude", [
       "--dangerously-skip-permissions",

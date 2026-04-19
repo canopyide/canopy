@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/utils/logger", () => ({
   logWarn: vi.fn(),
@@ -341,6 +341,17 @@ describe("buildArgsForReconnectedFallback", () => {
 });
 
 describe("buildArgsForRespawn", () => {
+  // Force POSIX shell-escape semantics so the hardcoded single-quote
+  // assertions below hold on Windows CI. The Windows double-quote branch is
+  // covered by shellEscape's own unit tests.
+  const originalPlatform = process.platform;
+  beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  });
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+  });
+
   it("builds respawn args with resume command for agent with session", () => {
     const saved = {
       id: "t1",
