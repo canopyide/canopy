@@ -70,6 +70,8 @@ export function FleetDryRunDialog({
       }
 
       onSend(result.failureCount > 0 ? result.failedIds : undefined);
+    } catch (err) {
+      throw err;
     } finally {
       setIsSending(false);
     }
