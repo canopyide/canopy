@@ -55,14 +55,14 @@ Read the named entry point before scoping.
 | Signal                                                    | Start reading                                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Terminal render, input, xterm behavior                    | `src/components/Terminal/TerminalPane.tsx`, `electron/pty-host/`                            |
-| Agent state wrong (idle/working/waiting/directing)        | `src/services/terminal/TerminalAgentStateController.ts`, `shared/config/agentStateMachine*` |
+| Agent state wrong (idle/working/waiting/directing)        | `src/services/terminal/TerminalAgentStateController.ts`, `electron/services/AgentStateMachine.ts` |
 | Worktree status stale, not refreshing                     | `electron/workspace-host/WorktreeLifecycleService.ts`, `WorktreeMonitor.ts`                 |
 | IPC error, renderer can't reach main                      | `electron/ipc/channels.ts`, `electron/ipc/handlers.ts`                                      |
 | Panel state, layout, kind, persistence                    | `src/store/panelStore.ts`, `shared/config/panelKindRegistry.ts`                             |
 | Keybinding not firing, menu item missing                  | `src/services/actions/actionDefinitions.ts`, `shared/types/keymap.ts`, `electron/menu.ts`   |
 | Theme token, color, semantic styling                      | `shared/theme/semantic.ts`, `shared/theme/builtInThemes/`                                   |
 | Multi-window, project view, LRU                           | `electron/window/ProjectViewManager.ts`, `electron/window/WindowRegistry.ts`                |
-| Memory, event loop lag, resource profile                  | `electron/services/resource/ResourceProfileService.ts`, `shared/perf/`                      |
+| Memory, event loop lag, resource profile                  | `electron/services/ResourceProfileService.ts`, `shared/perf/`                                |
 | Notifications / Pulse / Portal / Commands — see which one | _Anti-patterns → Four "on-screen" systems_                                                  |
 | Browser panel, dev-preview                                | `src/panels/browser/`, `src/panels/dev-preview/`                                            |
 | Settings persistence                                      | `src/components/Settings/`, `electron/services/persistence/`                                |
@@ -139,7 +139,7 @@ These five spine patterns cross layers. A plan that names only the "primary" fil
 2. `shared/types/ipc/maps.ts` (or domain file) + `shared/types/ipc/index.ts` — entry in `IpcInvokeMap` or `IpcEventMap`
 3. `electron/schemas/<domain>.ts` — Zod schema for payload
 4. `electron/ipc/handlers/<domain>.ts` — `typedHandle(CHANNELS.NAME, …)`
-5. `electron/ipc/handlers.ts` — register domain handler in `registerAllHandlers()`
+5. `electron/ipc/handlers.ts` — register domain handler in `registerIpcHandlers()`
 6. `electron/preload.cts` — expose on `contextBridge`
 7. `src/types/electron.d.ts` — declare on `window.electron`
 
