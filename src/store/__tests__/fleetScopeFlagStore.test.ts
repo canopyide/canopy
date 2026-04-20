@@ -22,6 +22,20 @@ describe("fleetScopeFlagStore", () => {
     resetStore();
   });
 
+  describe("initial state", () => {
+    it("defaults to scoped mode, unhydrated, before any user interaction", async () => {
+      // Load the module fresh so we observe the real initial state instead of
+      // whatever resetStore() seeded between tests.
+      vi.resetModules();
+      const { useFleetScopeFlagStore: freshStore } = await import(
+        "../fleetScopeFlagStore"
+      );
+      const state = freshStore.getState();
+      expect(state.mode).toBe("scoped");
+      expect(state.isHydrated).toBe(false);
+    });
+  });
+
   describe("hydrate", () => {
     it("applies persisted 'scoped' value and marks hydrated", () => {
       useFleetScopeFlagStore.getState().hydrate("scoped");
@@ -79,10 +93,22 @@ describe("fleetScopeFlagStore", () => {
       );
     });
 
-    it("is a no-op when mode is unchanged", async () => {
-      useFleetScopeFlagStore.getState().setMode("legacy");
+    it("is a no-op when mode is unchanged (from scoped default)", async () => {
+      useFleetScopeFlagStore.setState({ mode: "scoped", isHydrated: false });
+      setStateMock.mockClear();
+      useFleetScopeFlagStore.getState().setMode("scoped");
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(setStateMock).not.toHaveBeenCalled();
+    });
+
+    it("persists when flipping from scoped default to legacy", async () => {
+      useFleetScopeFlagStore.setState({ mode: "scoped", isHydrated: false });
+      setStateMock.mockClear();
+      useFleetScopeFlagStore.getState().setMode("legacy");
+      expect(useFleetScopeFlagStore.getState().mode).toBe("legacy");
+      await vi.waitFor(() =>
+        expect(setStateMock).toHaveBeenCalledWith({ fleetScopeMode: "legacy" })
+      );
     });
 
     it("marks hydrated so later async hydrate does not clobber", () => {
