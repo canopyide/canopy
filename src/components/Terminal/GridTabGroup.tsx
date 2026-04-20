@@ -86,6 +86,7 @@ export function gridTabGroupPropsAreEqual(
           a.reconnectError !== b.reconnectError ||
           a.spawnError !== b.spawnError ||
           a.detectedProcessId !== b.detectedProcessId ||
+          a.agentLaunchFlags !== b.agentLaunchFlags ||
           a.browserUrl !== b.browserUrl ||
           a.notePath !== b.notePath ||
           a.noteId !== b.noteId ||

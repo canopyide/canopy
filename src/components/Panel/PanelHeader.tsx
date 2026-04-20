@@ -516,6 +516,7 @@ function PanelHeaderComponent({
                         presetColor={tab.presetColor}
                         isUsingFallback={tab.isUsingFallback}
                         fallbackTooltip={tab.fallbackTooltip}
+                        hasDangerousFlags={tab.hasDangerousFlags}
                         onClick={() => onTabClick?.(tab.id)}
                         onClose={() => onTabClose?.(tab.id)}
                         onRename={
@@ -614,6 +615,7 @@ function PanelHeaderComponent({
                     presetColor={tab.presetColor}
                     isUsingFallback={tab.isUsingFallback}
                     fallbackTooltip={tab.fallbackTooltip}
+                    hasDangerousFlags={tab.hasDangerousFlags}
                     onClick={() => onTabClick?.(tab.id)}
                     onClose={() => onTabClose?.(tab.id)}
                     onRename={onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined}
