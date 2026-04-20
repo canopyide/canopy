@@ -143,6 +143,7 @@ export interface HydrationOptions {
     agentModelId?: string;
     agentPresetId?: string;
     extensionState?: Record<string, unknown>;
+    pluginId?: string;
     restore?: boolean;
     bypassLimits?: boolean;
   }) => Promise<string>;
@@ -655,10 +656,13 @@ export async function hydrateAppState(
                       }
                     }
                   } else {
-                    // Skip persisted panels whose kind is no longer registered
-                    // (e.g., the "notes" kind removed in #5616). Restoring them
-                    // would create "Unknown Panel Type" ghost panels.
-                    if (!getPanelKindConfig(kind)) {
+                    // Unregistered kind. If the panel carries a pluginId it was
+                    // contributed by a plugin that's currently disabled or gone —
+                    // restore it so the renderer can surface a PluginMissingPanel
+                    // placeholder (#5580). Panels without a pluginId (e.g. the
+                    // "notes" built-in removed in #5616) are skipped to avoid
+                    // "Unknown Panel Type" ghosts.
+                    if (!getPanelKindConfig(kind) && !saved.pluginId) {
                       logHydrationInfo(
                         `Skipping persisted panel with unregistered kind: ${saved.id} (${kind})`
                       );
