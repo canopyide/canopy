@@ -696,6 +696,13 @@ export class DevPreviewSessionService {
 
     const sessionKey = createSessionKey(session.projectId, session.panelId);
     const port = await this.allocatePort(sessionKey);
+    // dispose() can fire while allocatePort awaits its net probe. Guard here
+    // so we don't spawn a terminal on a disposed service; roll back the
+    // reservation to avoid a stale portRegistry entry after disposal cleared it.
+    if (this.disposed) {
+      this.portRegistry.delete(sessionKey);
+      return;
+    }
     const assignedUrl = `http://localhost:${port}`;
 
     const spawnEnv: Record<string, string> = { ...session.env, PORT: String(port) };

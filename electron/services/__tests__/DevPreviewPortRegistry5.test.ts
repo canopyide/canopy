@@ -26,6 +26,7 @@
 
 import http from "node:http";
 import https from "node:https";
+import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DevPreviewSessionService } from "../DevPreviewSessionService.js";
 import type { PtyClient } from "../PtyClient.js";
@@ -177,6 +178,47 @@ describe("DevPreviewSessionService — real-life robustness invariants (adversar
 
     // A disposed service must not fire onStateChanged.
     expect(broadcasts).toHaveLength(0);
+  });
+
+  it("BUG-Y-RACE: dispose() during in-flight allocatePort net probe does not spawn a terminal", async () => {
+    // Override net.createServer once so the listen callback is deferred. This
+    // simulates dispose() firing while allocatePort() is awaiting its probe.
+    let releaseProbe!: () => void;
+    const probeGate = new Promise<void>((resolve) => {
+      releaseProbe = resolve;
+    });
+    vi.mocked(net.createServer).mockImplementationOnce(() => {
+      type Cb = () => void;
+      const srv = {
+        once: vi.fn((_event: string, _cb: Cb) => srv),
+        listen: vi.fn((_port: number, _host: string, cb: Cb) => {
+          probeGate.then(() => cb());
+          return srv;
+        }),
+        close: vi.fn((cb?: Cb) => {
+          cb?.();
+          return srv;
+        }),
+        address: vi.fn(() => ({ port: _nextPort++ })),
+      };
+      return srv as unknown as net.Server;
+    });
+
+    // Start ensure — it enters spawnSessionTerminal and awaits allocatePort.
+    const ensurePromise = service.ensure({ ...base, worktreeId: "wt-1" });
+
+    // Yield to let the allocation reach the net probe.
+    await Promise.resolve();
+
+    // Dispose mid-flight.
+    service.dispose();
+
+    // Release the probe so allocatePort resolves after disposal.
+    releaseProbe();
+    await ensurePromise;
+
+    // No spawn should have fired for this disposed service.
+    expect(ptyClient.spawn).not.toHaveBeenCalled();
   });
 
   it("BUG-Y3: restart() after dispose() does not spawn a terminal", async () => {
