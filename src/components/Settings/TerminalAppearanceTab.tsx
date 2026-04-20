@@ -32,6 +32,7 @@ const APPEARANCE_SUBTABS: SettingsSubtabItem[] = [
 interface TerminalAppearanceTabProps {
   activeSubtab: string | null;
   onSubtabChange: (id: string) => void;
+  onClose?: () => void;
 }
 
 const FONT_FAMILY_OPTIONS: Array<{ id: string; label: string; value: string }> = [
@@ -50,6 +51,7 @@ const FONT_FAMILY_OPTIONS: Array<{ id: string; label: string; value: string }> =
 export function TerminalAppearanceTab({
   activeSubtab,
   onSubtabChange,
+  onClose,
 }: TerminalAppearanceTabProps) {
   const effectiveSubtab =
     activeSubtab && APPEARANCE_SUBTABS.some((t) => t.id === activeSubtab) ? activeSubtab : "app";
@@ -152,7 +154,7 @@ export function TerminalAppearanceTab({
               title="App Theme"
               description="Choose the overall visual theme for the application."
             >
-              <AppThemePicker />
+              <AppThemePicker onClose={onClose} />
             </SettingsSection>
 
             <SettingsSection
