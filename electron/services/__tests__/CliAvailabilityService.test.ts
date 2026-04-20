@@ -1076,6 +1076,55 @@ describe("CliAvailabilityService", () => {
       const details = service.getDetails();
       expect(details!.gemini?.state).toBe("missing");
       expect(details!.gemini?.resolvedPath).toBeNull();
+
+      // Explicit non-invocation guard — the old probe shelled out to `npx`
+      // and reported `ready` off `~/.npm/_npx` cache hits. Ensure no
+      // execFile call targets `npx` under the new implementation.
+      const npxCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "npx");
+      expect(npxCalls).toHaveLength(0);
+    });
+
+    it("probes `<prefix>\\<cmd>.cmd` on Windows (no bin subdirectory)", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32", writable: true });
+      try {
+        mockedExecFileSync.mockImplementation(() => {
+          throw Object.assign(new Error("not found"), { code: "ENOENT" });
+        });
+
+        mockedExecFile.mockImplementation(((...args: unknown[]) => {
+          const file = args[0] as string;
+          const callback = args.find(
+            (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+          );
+          if (file === "npm") {
+            queueMicrotask(() => callback?.(null, "C\\:\\Users\\test\\AppData\\Roaming\\npm\n"));
+          } else {
+            const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+            queueMicrotask(() => callback?.(err));
+          }
+          return {} as never;
+        }) as never);
+
+        // Windows shim convention: <prefix>\<cmd>.cmd (no bin/ segment).
+        const geminiShim = join("C\\:\\Users\\test\\AppData\\Roaming\\npm", "gemini.cmd");
+        mockedAccess.mockImplementation(async (p) => {
+          if (String(p) === geminiShim) return;
+          throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        });
+
+        const result = await service.checkAvailability();
+        expect(result.gemini).toBe("ready");
+
+        const details = service.getDetails();
+        expect(details!.gemini?.via).toBe("npm-global");
+        expect(details!.gemini?.resolvedPath).toBe(geminiShim);
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+      }
     });
 
     it("classifies shim EACCES as 'blocked'", async () => {
@@ -1135,43 +1184,31 @@ describe("CliAvailabilityService", () => {
       expect(details!.gemini?.state).toBe("missing");
     });
 
-    it("skips npm-global probe for agents without npmGlobalPackage", async () => {
+    it("fires exactly one npm-global probe per agent with npmGlobalPackage", async () => {
+      // Shell probe misses for all agents, so every agent walks the full
+      // fallback chain. Only the 3 agents declaring npmGlobalPackage
+      // (claude, gemini, codex) should reach the npm-global layer — the
+      // other 4 (opencode, cursor, kiro, copilot) must not trigger npm.
       mockedExecFileSync.mockImplementation(() => {
         throw Object.assign(new Error("not found"), { code: "ENOENT" });
       });
-
-      // Track which commands triggered an `npm config get prefix` call.
-      const probeCommands = new Set<string>();
-      let activeCommand = "";
-      mockedExecFileSync.mockImplementation((_file, args) => {
-        activeCommand = (args as string[])?.[0] ?? "";
-        throw Object.assign(new Error("not found"), { code: "ENOENT" });
-      });
       mockedExecFile.mockImplementation(((...args: unknown[]) => {
-        const file = args[0] as string;
         const callback = args.find(
           (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
         );
-        if (file === "npm") {
-          probeCommands.add(activeCommand);
-          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
-          queueMicrotask(() => callback?.(err));
-        } else {
-          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
-          queueMicrotask(() => callback?.(err));
-        }
+        const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+        queueMicrotask(() => callback?.(err));
         return {} as never;
       }) as never);
 
       await service.checkAvailability();
 
-      // Agents with npmGlobalPackage are claude/gemini/codex. Agents without
-      // (opencode/cursor/kiro/copilot) must NOT trigger an npm probe.
-      expect(mockedExecFile.mock.calls.filter((c) => c[0] === "npm").length).toBeGreaterThan(0);
-      expect(probeCommands.has("cursor-agent")).toBe(false);
-      expect(probeCommands.has("kiro-cli")).toBe(false);
-      expect(probeCommands.has("copilot")).toBe(false);
-      expect(probeCommands.has("opencode")).toBe(false);
+      const npmCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "npm");
+      expect(npmCalls).toHaveLength(3);
+      // Deterministic probe form — guards against arg-drift regressions.
+      for (const call of npmCalls) {
+        expect(call[1]).toEqual(["config", "get", "prefix"]);
+      }
     });
   });
 
