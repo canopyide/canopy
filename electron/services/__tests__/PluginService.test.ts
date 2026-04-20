@@ -158,14 +158,14 @@ describe("PluginManifestSchema permissions field", () => {
     }
   });
 
-  it("accepts custom permission strings", () => {
+  it("rejects custom (non-built-in) permission strings", () => {
     const result = PluginManifestSchema.safeParse({
       ...validBase,
       permissions: ["custom:my-perm", "org.specific:do-thing"],
     });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.permissions).toEqual(["custom:my-perm", "org.specific:do-thing"]);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path[0] === "permissions")).toBe(true);
     }
   });
 
@@ -180,21 +180,29 @@ describe("PluginManifestSchema permissions field", () => {
     }
   });
 
-  it("trims whitespace from permission strings", () => {
+  it("rejects whitespace-padded permission strings (no implicit trim)", () => {
     const result = PluginManifestSchema.safeParse({
       ...validBase,
       permissions: ["  fs:project-read  "],
     });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.permissions).toEqual(["fs:project-read"]);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path[0] === "permissions")).toBe(true);
     }
   });
 
-  it("rejects whitespace-only permission strings after trim", () => {
+  it("rejects whitespace-only permission strings", () => {
     const result = PluginManifestSchema.safeParse({
       ...validBase,
       permissions: ["   "],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects permission strings containing newline characters", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: ["fs:project-read\n"],
     });
     expect(result.success).toBe(false);
   });
@@ -1418,13 +1426,16 @@ describe("deprecated renderer field", () => {
 
 describe("permissions declaration logging", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     logSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it("logs declared permissions when plugin has permissions", async () => {
@@ -1506,9 +1517,30 @@ describe("permissions declaration logging", () => {
     expect(plugins[0].manifest.permissions).toEqual([]);
   });
 
-  it("trims newlines from permission strings before logging", async () => {
-    await writePlugin("newline-perm", {
-      name: "acme.newline-perm",
+  it("rejects plugins that declare unknown permissions and does not log them", async () => {
+    await writePlugin("unknown-perm", {
+      name: "acme.unknown-perm",
+      version: "1.0.0",
+      permissions: ["shell:exec", "invalid:perm"],
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    expect(service.listPlugins()).toEqual([]);
+    const permLogs = logSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("declares permissions")
+    );
+    expect(permLogs).toHaveLength(0);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid manifest"),
+      expect.any(Array)
+    );
+  });
+
+  it("rejects plugins with newline characters in permission strings", async () => {
+    await writePlugin("padded-perm", {
+      name: "acme.padded-perm",
       version: "1.0.0",
       permissions: ["fs:project-read\n", "agent:invoke\r"],
     });
@@ -1516,12 +1548,31 @@ describe("permissions declaration logging", () => {
     const service = new PluginService(tmpDir);
     await service.initialize();
 
-    expect(service.listPlugins()).toHaveLength(1);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("fs:project-read, agent:invoke"));
-    // Zod trim() strips trailing whitespace; stored manifest is clean
-    expect(service.listPlugins()[0].manifest.permissions).toEqual([
-      "fs:project-read",
-      "agent:invoke",
-    ]);
+    expect(service.listPlugins()).toEqual([]);
+    const permLogs = logSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("declares permissions")
+    );
+    expect(permLogs).toHaveLength(0);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid manifest"),
+      expect.any(Array)
+    );
+  });
+
+  it("rejects plugins where any one permission in a mixed array is invalid", async () => {
+    await writePlugin("mixed-perm", {
+      name: "acme.mixed-perm",
+      version: "1.0.0",
+      permissions: ["fs:project-read", "invalid:perm", "git:read"],
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    expect(service.listPlugins()).toEqual([]);
+    const permLogs = logSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("declares permissions")
+    );
+    expect(permLogs).toHaveLength(0);
   });
 });

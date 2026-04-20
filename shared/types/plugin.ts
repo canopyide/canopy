@@ -36,7 +36,7 @@ export const BUILT_IN_PLUGIN_PERMISSIONS = [
 
 export type BuiltInPluginPermission = (typeof BUILT_IN_PLUGIN_PERMISSIONS)[number];
 
-export type PluginPermission = BuiltInPluginPermission | (string & {});
+export type PluginPermission = BuiltInPluginPermission;
 
 export interface MenuItemContribution {
   label: string;

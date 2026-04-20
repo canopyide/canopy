@@ -1,5 +1,6 @@
 import * as semver from "semver";
 import { z } from "zod";
+import { BUILT_IN_PLUGIN_PERMISSIONS } from "../../shared/types/plugin.js";
 import type {
   PluginManifest,
   PanelContribution,
@@ -40,7 +41,7 @@ export const MenuItemContributionSchema = z.object({
   accelerator: z.string().optional(),
 });
 
-export const PluginPermissionSchema = z.string().trim().min(1);
+export const PluginPermissionSchema = z.enum(BUILT_IN_PLUGIN_PERMISSIONS);
 
 export const PluginManifestSchema = z.object({
   name: z.string().min(1).max(64).regex(SCOPED_PLUGIN_NAME_PATTERN, {
