@@ -6,6 +6,7 @@ import type {
   DevPreviewSessionRequest,
   DevPreviewStopByPanelRequest,
   DevPreviewStateChangedPayload,
+  DevPreviewGetByWorktreeRequest,
 } from "../../../shared/types/ipc/devPreview.js";
 import { DevPreviewSessionService } from "../../services/DevPreviewSessionService.js";
 import { getHibernationService } from "../../services/HibernationService.js";
@@ -42,6 +43,14 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     return sessionService.getState(request);
   };
   handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_GET_STATE, handleGetState));
+
+  const handleGetByWorktree = async (request: DevPreviewGetByWorktreeRequest) => {
+    if (!request || typeof request.worktreeId !== "string" || !request.worktreeId.trim()) {
+      throw new Error("worktreeId is required");
+    }
+    return sessionService.getByWorktree(request.worktreeId);
+  };
+  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE, handleGetByWorktree));
 
   const unsubHibernation = getHibernationService().onProjectHibernated((projectId) => {
     sessionService.stopByProject(projectId).catch((err) => {

@@ -433,6 +433,7 @@ export const CHANNELS = {
   DEV_PREVIEW_STOP: "dev-preview:stop",
   DEV_PREVIEW_STOP_BY_PANEL: "dev-preview:stop-by-panel",
   DEV_PREVIEW_GET_STATE: "dev-preview:get-state",
+  DEV_PREVIEW_GET_BY_WORKTREE: "dev-preview:get-by-worktree",
   DEV_PREVIEW_STATE_CHANGED: "dev-preview:state-changed",
 
   COMMANDS_LIST: "commands:list",

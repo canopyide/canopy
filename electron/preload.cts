@@ -56,6 +56,7 @@ import type {
   DevPreviewStopByPanelRequest,
   DevPreviewSessionState,
   DevPreviewStateChangedPayload,
+  DevPreviewGetByWorktreeRequest,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 import type {
@@ -671,6 +672,7 @@ const CHANNELS = {
   DEV_PREVIEW_STOP: "dev-preview:stop",
   DEV_PREVIEW_STOP_BY_PANEL: "dev-preview:stop-by-panel",
   DEV_PREVIEW_GET_STATE: "dev-preview:get-state",
+  DEV_PREVIEW_GET_BY_WORKTREE: "dev-preview:get-by-worktree",
   DEV_PREVIEW_STATE_CHANGED: "dev-preview:state-changed",
 
   // App state channels
@@ -2135,6 +2137,14 @@ const api: ElectronAPI = {
 
     getState: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
       _unwrappingInvoke(CHANNELS.DEV_PREVIEW_GET_STATE, request) as Promise<DevPreviewSessionState>,
+
+    getByWorktree: (
+      request: DevPreviewGetByWorktreeRequest
+    ): Promise<DevPreviewSessionState | null> =>
+      _unwrappingInvoke(
+        CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE,
+        request
+      ) as Promise<DevPreviewSessionState | null>,
 
     onStateChanged: (callback: (payload: DevPreviewStateChangedPayload) => void) =>
       _typedOn(CHANNELS.DEV_PREVIEW_STATE_CHANGED, callback),

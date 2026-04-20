@@ -138,6 +138,7 @@ import type {
   DevPreviewStopByPanelRequest,
   DevPreviewSessionState,
   DevPreviewStateChangedPayload,
+  DevPreviewGetByWorktreeRequest,
 } from "./devPreview.js";
 import type {
   CommandContext,
@@ -760,6 +761,7 @@ export interface ElectronAPI {
     stop(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
     stopByPanel(request: DevPreviewStopByPanelRequest): Promise<void>;
     getState(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
+    getByWorktree(request: DevPreviewGetByWorktreeRequest): Promise<DevPreviewSessionState | null>;
     onStateChanged(callback: (data: DevPreviewStateChangedPayload) => void): () => void;
   };
   git: {
