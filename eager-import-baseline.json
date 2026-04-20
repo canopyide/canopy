@@ -1,6 +1,6 @@
 {
-  "count": 1417,
-  "moduleCount": 1417,
+  "count": 1366,
+  "moduleCount": 1366,
   "allowlist": [
     "electron/ipc/errorHandlers.ts",
     "electron/ipc/handlers/agentCapabilities.ts",
@@ -150,7 +150,7 @@
     },
     {
       "file": "electron/ipc/handlers/demo.ts",
-      "line": 285,
+      "line": 225,
       "pattern": "sync-fs"
     },
     {
@@ -270,12 +270,12 @@
     },
     {
       "file": "electron/ipc/handlers/worktree/lifecycle.ts",
-      "line": 97,
+      "line": 112,
       "pattern": "sync-store-get"
     },
     {
       "file": "electron/ipc/handlers/worktree/lifecycle.ts",
-      "line": 101,
+      "line": 116,
       "pattern": "sync-store-get"
     },
     {
@@ -695,17 +695,17 @@
     },
     {
       "file": "electron/services/DevPreviewSessionService.ts",
-      "line": 952,
+      "line": 1077,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/services/DevPreviewSessionService.ts",
-      "line": 953,
+      "line": 1078,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/services/DevPreviewSessionService.ts",
-      "line": 954,
+      "line": 1079,
       "pattern": "sync-fs"
     },
     {
@@ -1370,42 +1370,42 @@
     },
     {
       "file": "electron/store.ts",
-      "line": 384,
+      "line": 376,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/store.ts",
-      "line": 386,
+      "line": 378,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/store.ts",
-      "line": 401,
+      "line": 393,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/store.ts",
-      "line": 413,
+      "line": 405,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/store.ts",
-      "line": 414,
+      "line": 406,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/store.ts",
-      "line": 416,
+      "line": 408,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/store.ts",
-      "line": 427,
+      "line": 419,
       "pattern": "sync-fs"
     },
     {
       "file": "electron/store.ts",
-      "line": 428,
+      "line": 420,
       "pattern": "sync-fs"
     },
     {
