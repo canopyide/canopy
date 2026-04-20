@@ -186,24 +186,10 @@ class TerminalInstanceService {
       },
       onPostWake: (id) => this.handlePostWake(id),
       onTierApplied: (id, tier, managed) => {
-        // Hibernation timer management
-        if (
-          tier === TerminalRefreshTier.BACKGROUND &&
-          (managed.kind !== "agent" ||
-            managed.canonicalAgentState === "completed" ||
-            managed.canonicalAgentState === "exited")
-        ) {
-          if (!managed.hibernationTimer && !managed.isHibernated) {
-            managed.hibernationTimer = setTimeout(() => {
-              managed.hibernationTimer = undefined;
-              this.hibernate(id);
-            }, HIBERNATION_DELAY_MS);
-          }
+        if (this.isHibernationEligible(tier, managed) && !managed.isVisible) {
+          this.scheduleHibernation(id, managed);
         } else {
-          if (managed.hibernationTimer) {
-            clearTimeout(managed.hibernationTimer);
-            managed.hibernationTimer = undefined;
-          }
+          this.cancelHibernation(managed);
         }
 
         if (tier === TerminalRefreshTier.BACKGROUND) {
@@ -551,6 +537,11 @@ class TerminalInstanceService {
       managed.lastActiveTime = Date.now();
 
       if (isVisible) {
+        // Revealing an on-screen terminal — make sure it doesn't get hibernated.
+        // Tier may still be BACKGROUND (non-focused split view), so applying
+        // the renderer policy alone isn't enough to clear the timer.
+        this.cancelHibernation(managed);
+
         if (managed.isAttaching) {
           return;
         }
@@ -582,6 +573,13 @@ class TerminalInstanceService {
             current.terminal.refresh(0, current.terminal.rows - 1);
           }
         });
+      } else {
+        // Going offscreen. If we're already in a hibernation-eligible tier,
+        // onTierApplied won't fire to start the timer — do it here instead.
+        const tier = managed.lastAppliedTier ?? managed.getRefreshTier?.();
+        if (tier !== undefined && this.isHibernationEligible(tier, managed)) {
+          this.scheduleHibernation(id, managed);
+        }
       }
     }
   }
@@ -1886,6 +1884,34 @@ class TerminalInstanceService {
 
   unhibernate(id: string): void {
     this.hibernationManager.unhibernate(id);
+  }
+
+  private isHibernationEligible(tier: TerminalRefreshTier, managed: ManagedTerminal): boolean {
+    if (tier !== TerminalRefreshTier.BACKGROUND) return false;
+    return (
+      managed.kind !== "agent" ||
+      managed.canonicalAgentState === "completed" ||
+      managed.canonicalAgentState === "exited"
+    );
+  }
+
+  private scheduleHibernation(id: string, managed: ManagedTerminal): void {
+    if (managed.hibernationTimer || managed.isHibernated) return;
+    managed.hibernationTimer = setTimeout(() => {
+      managed.hibernationTimer = undefined;
+      const current = this.instances.get(id);
+      // A terminal that became visible (or was revived) between schedule and
+      // fire should not be hibernated — the user is looking at it.
+      if (!current || current.isVisible || current.isHibernated) return;
+      this.hibernate(id);
+    }, HIBERNATION_DELAY_MS);
+  }
+
+  private cancelHibernation(managed: ManagedTerminal): void {
+    if (managed.hibernationTimer) {
+      clearTimeout(managed.hibernationTimer);
+      managed.hibernationTimer = undefined;
+    }
   }
 
   destroy(id: string): void {
