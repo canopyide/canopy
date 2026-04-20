@@ -465,9 +465,15 @@ describe("PluginService", () => {
 
       const plugins = service.listPlugins();
       expect(plugins).toHaveLength(1);
-      expect(plugins[0].manifest.description).toBe("first");
+      // Initialize loads plugins concurrently via Promise.allSettled; the winner
+      // is whichever finishes first, which depends on fs.readFile completion
+      // order. The contract being tested is "first wins, duplicates rejected" —
+      // not which directory happens to win on a given filesystem.
+      const winner = plugins[0].manifest.description;
+      expect(winner === "first" || winner === "second").toBe(true);
+      const loser = winner === "first" ? "dir-b" : "dir-a";
       expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Duplicate plugin name "acme.same-name" in dir-b')
+        expect.stringContaining(`Duplicate plugin name "acme.same-name" in ${loser}`)
       );
     } finally {
       errorSpy.mockRestore();
