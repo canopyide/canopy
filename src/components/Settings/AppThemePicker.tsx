@@ -252,8 +252,8 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
   );
 
   const handleChangeTheme = useCallback(() => {
-    onClose?.();
-  }, [onClose]);
+    window.dispatchEvent(new CustomEvent("daintree:open-theme-browser"));
+  }, []);
 
   return (
     <div className="space-y-3">
