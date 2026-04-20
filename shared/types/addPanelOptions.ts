@@ -89,19 +89,6 @@ export interface BrowserPanelOptions extends AddPanelOptionsBase {
   browserConsoleOpen?: boolean;
 }
 
-/** Options for creating a notes panel */
-export interface NotesPanelOptions extends AddPanelOptionsBase {
-  kind: "notes";
-  /** Path to the note file (relative to project root) */
-  notePath?: string;
-  /** Unique identifier for the note */
-  noteId?: string;
-  /** Note scope: worktree-specific or project-wide */
-  scope?: "worktree" | "project";
-  /** Note creation timestamp */
-  createdAt?: number;
-}
-
 /** Options for creating a dev-preview panel */
 export interface DevPreviewPanelOptions extends AddPanelOptionsBase {
   kind: "dev-preview";
@@ -146,5 +133,4 @@ export type AddPanelOptions =
   | TerminalPanelOptions
   | AgentPanelOptions
   | BrowserPanelOptions
-  | NotesPanelOptions
   | DevPreviewPanelOptions;

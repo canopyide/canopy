@@ -288,22 +288,6 @@ describe("useActionPalette", () => {
       expect(result.current.results[0]!.id).toBe("browser.close");
     });
 
-    it("boosts notes and panel categories when a notes panel is focused", async () => {
-      listMock.mockReturnValue([
-        makeEntry("terminal.close", "Close", true, "terminal"),
-        makeEntry("notes.close", "Close", true, "notes"),
-      ]);
-      getContextMock.mockReturnValue({ focusedTerminalKind: "notes" });
-
-      const { result } = renderHook(() => useActionPalette());
-      act(() => result.current.open());
-      act(() => result.current.setQuery("close"));
-
-      await waitFor(() => expect(result.current.results.length).toBe(2), { timeout: 2000 });
-
-      expect(result.current.results[0]!.id).toBe("notes.close");
-    });
-
     it("boosts worktree, git, and github categories when a worktree is focused", async () => {
       // Fixture order puts browser.open first so only the boost can push it to the back.
       listMock.mockReturnValue([

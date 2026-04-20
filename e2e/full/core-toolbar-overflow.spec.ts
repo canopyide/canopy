@@ -71,7 +71,6 @@ test.describe.serial("Core: Toolbar Overflow", () => {
         settings: 4,
         "notification-center": 4,
         "github-stats": 5,
-        notes: 5,
         "copy-tree": 5,
         problems: 5,
       };
@@ -113,9 +112,9 @@ test.describe.serial("Core: Toolbar Overflow", () => {
     // The overflow computation should hide low-priority items
     expect(overflowResult.overflowTriggered).toBe(true);
     if (overflowResult.overflowTriggered) {
-      // Priority 5 items (github-stats, notes, copy-tree, problems) should overflow first
+      // Priority 5 items (github-stats, copy-tree, problems) should overflow first
       expect(overflowResult.overflowed).toContain("problems");
-      expect(overflowResult.overflowed).toContain("notes");
+      expect(overflowResult.overflowed).toContain("copy-tree");
       // Priority 1 items should remain visible
       expect(overflowResult.visible).toContain("sidebar-toggle");
     }

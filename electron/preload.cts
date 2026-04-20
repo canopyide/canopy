@@ -655,17 +655,6 @@ const CHANNELS = {
   GITHUB_TOKEN_HEALTH_CHANGED: "github:token-health-changed",
   GITHUB_GET_TOKEN_HEALTH: "github:get-token-health",
 
-  // Notes channels
-  NOTES_CREATE: "notes:create",
-  NOTES_READ: "notes:read",
-  NOTES_WRITE: "notes:write",
-  NOTES_LIST: "notes:list",
-  NOTES_DELETE: "notes:delete",
-  NOTES_SEARCH: "notes:search",
-  NOTES_UPDATED: "notes:updated",
-  NOTES_WRITE_ATTACHMENT: "notes:write-attachment",
-  NOTES_GET_DIR: "notes:get-dir",
-
   // Dev Preview channels
   DEV_PREVIEW_ENSURE: "dev-preview:ensure",
   DEV_PREVIEW_RESTART: "dev-preview:restart",
@@ -2078,47 +2067,6 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.GITHUB_TOKEN_HEALTH_CHANGED, callback),
 
     getTokenHealth: () => _unwrappingInvoke(CHANNELS.GITHUB_GET_TOKEN_HEALTH),
-  },
-
-  // Notes API
-  notes: {
-    create: (title: string, scope: "worktree" | "project", worktreeId?: string) =>
-      _unwrappingInvoke(CHANNELS.NOTES_CREATE, title, scope, worktreeId),
-
-    read: (notePath: string) => _unwrappingInvoke(CHANNELS.NOTES_READ, notePath),
-
-    write: (
-      notePath: string,
-      content: string,
-      metadata: {
-        id: string;
-        title: string;
-        scope: "worktree" | "project";
-        worktreeId?: string;
-        createdAt: number;
-        tags?: string[];
-      },
-      expectedLastModified?: number
-    ) => _unwrappingInvoke(CHANNELS.NOTES_WRITE, notePath, content, metadata, expectedLastModified),
-
-    list: () => _unwrappingInvoke(CHANNELS.NOTES_LIST),
-
-    delete: (notePath: string) => _unwrappingInvoke(CHANNELS.NOTES_DELETE, notePath),
-
-    search: (query: string) => _unwrappingInvoke(CHANNELS.NOTES_SEARCH, query),
-
-    writeAttachment: (data: Uint8Array, mimeType: string, originalName?: string) =>
-      _unwrappingInvoke(CHANNELS.NOTES_WRITE_ATTACHMENT, data, mimeType, originalName),
-
-    getDir: () => _unwrappingInvoke(CHANNELS.NOTES_GET_DIR),
-
-    onUpdated: (
-      callback: (data: {
-        notePath: string;
-        title: string;
-        action: "created" | "updated" | "deleted";
-      }) => void
-    ) => _typedOn(CHANNELS.NOTES_UPDATED, callback),
   },
 
   // Dev Preview API

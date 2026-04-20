@@ -1286,102 +1286,6 @@ export interface IpcInvokeMap {
     result: { success: boolean };
   };
 
-  // Notes channels
-  "notes:create": {
-    args: [title: string, scope: "worktree" | "project", worktreeId?: string];
-    result: {
-      metadata: {
-        id: string;
-        title: string;
-        scope: "worktree" | "project";
-        worktreeId?: string;
-        createdAt: number;
-        tags?: string[];
-      };
-      content: string;
-      path: string;
-      lastModified: number;
-    };
-  };
-  "notes:read": {
-    args: [notePath: string];
-    result: {
-      metadata: {
-        id: string;
-        title: string;
-        scope: "worktree" | "project";
-        worktreeId?: string;
-        createdAt: number;
-        tags?: string[];
-      };
-      content: string;
-      path: string;
-      lastModified: number;
-    };
-  };
-  "notes:write": {
-    args: [
-      notePath: string,
-      content: string,
-      metadata: {
-        id: string;
-        title: string;
-        scope: "worktree" | "project";
-        worktreeId?: string;
-        createdAt: number;
-        tags?: string[];
-      },
-      expectedLastModified?: number,
-    ];
-    result: {
-      lastModified?: number;
-      conflictPath?: string;
-    };
-  };
-  "notes:list": {
-    args: [];
-    result: {
-      id: string;
-      title: string;
-      path: string;
-      scope: "worktree" | "project";
-      worktreeId?: string;
-      createdAt: number;
-      modifiedAt: number;
-      preview: string;
-      tags: string[];
-    }[];
-  };
-  "notes:delete": {
-    args: [notePath: string];
-    result: void;
-  };
-  "notes:search": {
-    args: [query: string];
-    result: {
-      notes: {
-        id: string;
-        title: string;
-        path: string;
-        scope: "worktree" | "project";
-        worktreeId?: string;
-        createdAt: number;
-        modifiedAt: number;
-        preview: string;
-        tags: string[];
-      }[];
-      query: string;
-    };
-  };
-  "notes:write-attachment": {
-    args: [data: Uint8Array, mimeType: string, originalName?: string];
-    result: { relativePath: string; isNew: boolean };
-  };
-  "notes:get-dir": {
-    args: [];
-    result: string;
-  };
-
   // Plugin channels
   "plugin:list": {
     args: [];
@@ -2383,13 +2287,6 @@ export interface IpcEventMap {
 
   // Dev Preview events
   "dev-preview:state-changed": DevPreviewStateChangedPayload;
-
-  // Notes events
-  "notes:updated": {
-    notePath: string;
-    title: string;
-    action: "created" | "updated" | "deleted";
-  };
 
   // Webview console events
   "webview:console-message": import("./webviewConsole.js").SerializedConsoleRow;

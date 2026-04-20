@@ -30,7 +30,6 @@ import { initBuiltInPanelKinds } from "../registry";
 
 type PtyData = Extract<PanelInstance, { kind: "terminal" | "agent" }>;
 type BrowserData = Extract<PanelInstance, { kind: "browser" }>;
-type NotesData = Extract<PanelInstance, { kind: "notes" }>;
 type DevPreviewData = Extract<PanelInstance, { kind: "dev-preview" }>;
 
 const PERSISTED_PTY_FIELDS = [
@@ -53,13 +52,6 @@ const PERSISTED_BROWSER_FIELDS = [
   "browserConsoleOpen",
 ] as const satisfies readonly (keyof BrowserData)[];
 
-const PERSISTED_NOTES_FIELDS = [
-  "notePath",
-  "noteId",
-  "scope",
-  "createdAt",
-] as const satisfies readonly (keyof NotesData)[];
-
 const PERSISTED_DEV_PREVIEW_FIELDS = [
   "cwd",
   "devCommand",
@@ -74,7 +66,6 @@ const BUILT_IN_KINDS = [
   "terminal",
   "agent",
   "browser",
-  "notes",
   "dev-preview",
 ] as const satisfies readonly BuiltInPanelKind[];
 
@@ -130,14 +121,6 @@ const browserFixture: TerminalInstance = {
   browserConsoleOpen: false,
 };
 
-const notesFixture: TerminalInstance = {
-  ...baseFields("notes"),
-  notePath: "notes/test.md",
-  noteId: "note-123",
-  scope: "worktree",
-  createdAt: 1_700_000_000_000,
-};
-
 const devPreviewFixture: TerminalInstance = {
   ...baseFields("dev-preview"),
   type: "terminal",
@@ -157,15 +140,6 @@ const savedBrowser: SavedTerminalData = {
   browserHistory: browserHistoryFixture,
   browserZoom: 1.5,
   browserConsoleOpen: false,
-};
-
-const savedNotes: SavedTerminalData = {
-  id: "panel-notes",
-  kind: "notes",
-  notePath: "notes/test.md",
-  noteId: "note-123",
-  scope: "worktree",
-  createdAt: 1_700_000_000_000,
 };
 
 const savedDevPreview: SavedTerminalData = {
@@ -240,11 +214,6 @@ describe("panel serializer field coverage", () => {
     assertCovers("browser serializer", output, PERSISTED_BROWSER_FIELDS);
   });
 
-  it("notes serializer covers every persisted notes field", () => {
-    const output = getPanelKindConfig("notes")!.serialize!(notesFixture) as Record<string, unknown>;
-    assertCovers("notes serializer", output, PERSISTED_NOTES_FIELDS);
-  });
-
   it("dev-preview serializer covers every persisted dev-preview field (devCommand → command)", () => {
     const output = getPanelKindConfig("dev-preview")!.serialize!(devPreviewFixture) as Record<
       string,
@@ -262,13 +231,6 @@ describe("panel deserializer field coverage", () => {
     expect(deserializer, "browser deserializer must be registered").toBeDefined();
     const output = deserializer!(savedBrowser) as Record<string, unknown>;
     assertCovers("browser deserializer", output, PERSISTED_BROWSER_FIELDS);
-  });
-
-  it("notes deserializer covers every persisted notes field", () => {
-    const deserializer = getDeserializer("notes");
-    expect(deserializer, "notes deserializer must be registered").toBeDefined();
-    const output = deserializer!(savedNotes) as Record<string, unknown>;
-    assertCovers("notes deserializer", output, PERSISTED_NOTES_FIELDS);
   });
 
   it("dev-preview deserializer covers every persisted dev-preview field (cwd + exitBehavior via base args)", () => {

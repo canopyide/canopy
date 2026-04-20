@@ -88,18 +88,6 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     showInPalette: true,
     searchAliases: ["web", "chrome", "internet", "www"],
   },
-  notes: {
-    id: "notes",
-    name: "Notes",
-    iconId: "sticky-note",
-    color: PANEL_KIND_BRAND_COLORS.notes,
-    hasPty: false,
-    canRestart: false,
-    canConvert: false,
-    keepAliveOnProjectSwitch: true,
-    showInPalette: true,
-    searchAliases: ["md", "markdown", "text", "memo"],
-  },
   "dev-preview": {
     id: "dev-preview",
     name: "Dev Preview",
@@ -292,7 +280,7 @@ export function panelKindKeepsAliveOnProjectSwitch(kind: PanelKind): boolean {
  * Get all built-in panel kinds.
  */
 export function getBuiltInPanelKinds(): BuiltInPanelKind[] {
-  return ["terminal", "agent", "browser", "notes", "dev-preview"];
+  return ["terminal", "agent", "browser", "dev-preview"];
 }
 
 /**

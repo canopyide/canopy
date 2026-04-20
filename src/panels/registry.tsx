@@ -4,7 +4,6 @@ import { getPanelKindConfig } from "@shared/config/panelKindRegistry";
 import type {
   PtyPanelData,
   BrowserPanelData,
-  NotesPanelData,
   DevPreviewPanelData,
   TerminalType,
 } from "@shared/types/panel";
@@ -12,14 +11,12 @@ import type {
   TerminalPanelOptions,
   AgentPanelOptions,
   BrowserPanelOptions,
-  NotesPanelOptions,
   DevPreviewPanelOptions,
 } from "@shared/types/addPanelOptions";
 import type { PanelSnapshot } from "@shared/types/project";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BrowserPaneSkeleton } from "@/components/Browser/BrowserPaneSkeleton";
-import { NotesPaneSkeleton } from "@/components/Notes/NotesPaneSkeleton";
 
 import { serializePtyPanel } from "./terminal/serializer";
 import { createTerminalDefaults } from "./terminal/defaults";
@@ -27,8 +24,6 @@ import { serializeAgent } from "./agent/serializer";
 import { createAgentDefaults } from "./agent/defaults";
 import { serializeBrowser } from "./browser/serializer";
 import { createBrowserDefaults } from "./browser/defaults";
-import { serializeNotes } from "./notes/serializer";
-import { createNotesDefaults } from "./notes/defaults";
 import { serializeDevPreview } from "./dev-preview/serializer";
 import { createDevPreviewDefaults } from "./dev-preview/defaults";
 
@@ -58,9 +53,6 @@ export interface PanelKindDefinition extends PanelKindConfig {
 const LazyBrowserPane = lazy(() =>
   import("@/components/Browser/BrowserPane").then((m) => ({ default: m.BrowserPane }))
 );
-const LazyNotesPane = lazy(() =>
-  import("@/components/Notes/NotesPane").then((m) => ({ default: m.NotesPane }))
-);
 const LazyDevPreviewPane = lazy(() =>
   import("@/components/DevPreview/DevPreviewPane").then((m) => ({ default: m.DevPreviewPane }))
 );
@@ -71,17 +63,6 @@ function BrowserPaneWrapper(props: any) {
     <ErrorBoundary variant="component" componentName="BrowserPane">
       <Suspense fallback={<BrowserPaneSkeleton />}>
         <LazyBrowserPane {...props} />
-      </Suspense>
-    </ErrorBoundary>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function NotesPaneWrapper(props: any) {
-  return (
-    <ErrorBoundary variant="component" componentName="NotesPane">
-      <Suspense fallback={<NotesPaneSkeleton />}>
-        <LazyNotesPane {...props} />
       </Suspense>
     </ErrorBoundary>
   );
@@ -109,7 +90,6 @@ interface BuiltInPanelMap {
   terminal: PtyPanelData & { createdAt?: number };
   agent: PtyPanelData & { createdAt?: number };
   browser: BrowserPanelData;
-  notes: NotesPanelData;
   "dev-preview": DevPreviewPanelData & { createdAt?: number; type?: TerminalType };
 }
 
@@ -117,7 +97,6 @@ interface BuiltInPanelOptionsMap {
   terminal: TerminalPanelOptions;
   agent: AgentPanelOptions;
   browser: BrowserPanelOptions;
-  notes: NotesPanelOptions;
   "dev-preview": DevPreviewPanelOptions;
 }
 
@@ -132,7 +111,6 @@ const BUILT_IN_SERIALIZE_DEFAULTS = {
   terminal: { serialize: serializePtyPanel, createDefaults: createTerminalDefaults },
   agent: { serialize: serializeAgent, createDefaults: createAgentDefaults },
   browser: { serialize: serializeBrowser, createDefaults: createBrowserDefaults },
-  notes: { serialize: serializeNotes, createDefaults: createNotesDefaults },
   "dev-preview": { serialize: serializeDevPreview, createDefaults: createDevPreviewDefaults },
 } satisfies BuiltInSerializeDefaults;
 
@@ -164,7 +142,6 @@ const PANEL_KIND_DEFINITION_REGISTRY: Record<string, PanelKindDefinition> = {
   terminal: { ...requirePanelKindConfig("terminal"), component: TerminalPane },
   agent: { ...requirePanelKindConfig("agent"), component: TerminalPane },
   browser: { ...requirePanelKindConfig("browser"), component: BrowserPaneWrapper },
-  notes: { ...requirePanelKindConfig("notes"), component: NotesPaneWrapper },
   "dev-preview": { ...requirePanelKindConfig("dev-preview"), component: DevPreviewPaneWrapper },
 };
 

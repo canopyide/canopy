@@ -75,14 +75,6 @@ export interface TerminalState {
   browserHistory?: import("../browser.js").BrowserHistory;
   /** Zoom factor for browser/dev-preview panes */
   browserZoom?: number;
-  /** Path to note file (kind === 'notes') */
-  notePath?: string;
-  /** Note ID (kind === 'notes') */
-  noteId?: string;
-  /** Note scope (kind === 'notes') */
-  scope?: "worktree" | "project";
-  /** Note creation timestamp (kind === 'notes') */
-  createdAt?: number;
   /** Dev command override for dev-preview panels */
   devCommand?: string;
   /** Dev server status for dev-preview panels */

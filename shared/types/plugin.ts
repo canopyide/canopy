@@ -32,8 +32,6 @@ export const BUILT_IN_PLUGIN_PERMISSIONS = [
   "clipboard:read",
   "clipboard:write",
   "shell:exec",
-  "notes:read",
-  "notes:write",
 ] as const;
 
 export type BuiltInPluginPermission = (typeof BUILT_IN_PLUGIN_PERMISSIONS)[number];

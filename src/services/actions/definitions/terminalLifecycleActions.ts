@@ -1,6 +1,5 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import { z } from "zod";
-import { actionService } from "@/services/ActionService";
 import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/terminal/TerminalInstanceService";
 import { fireWatchNotification } from "@/lib/watchNotification";
@@ -353,36 +352,6 @@ export function registerTerminalLifecycleActions(
         } else {
           state.watchPanel(targetId);
         }
-      }
-    },
-  }));
-
-  actions.set("terminal.deleteNote", () => ({
-    id: "terminal.deleteNote",
-    title: "Delete Note",
-    description: "Delete the note file and remove the panel",
-    category: "terminal",
-    kind: "command",
-    danger: "confirm",
-    scope: "renderer",
-    argsSchema: z.object({
-      terminalId: z.string(),
-      notePath: z.string(),
-      noteTitle: z.string().optional(),
-    }),
-    run: async (args: unknown) => {
-      const { terminalId, notePath, noteTitle } = args as {
-        terminalId: string;
-        notePath: string;
-        noteTitle?: string;
-      };
-      const result = await actionService.dispatch(
-        "notes.delete",
-        { notePath, noteTitle },
-        { source: "context-menu" }
-      );
-      if (result.ok) {
-        usePanelStore.getState().removePanel(terminalId);
       }
     },
   }));

@@ -167,7 +167,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
       layout: {
         // Mix of agent IDs and non-agent IDs so we can test both branches.
         leftButtons: ["agent-tray", "claude", "gemini", "terminal"],
-        rightButtons: ["notes", "settings"],
+        rightButtons: ["copy-tree", "settings"],
         hiddenButtons: [],
       },
       launcher: { alwaysShowDevServer: false, defaultSelection: undefined },

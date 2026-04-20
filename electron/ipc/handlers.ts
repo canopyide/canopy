@@ -27,7 +27,6 @@ import { registerFilesHandlers } from "./handlers/files.js";
 import { registerSlashCommandHandlers } from "./handlers/slashCommands.js";
 import { registerGeminiHandlers } from "./handlers/gemini.js";
 import { registerEventsHandlers } from "./handlers/events.js";
-import { registerNotesHandlers } from "./handlers/notes.js";
 import { registerDevPreviewHandlers } from "./handlers/devPreview.js";
 import { registerCommandHandlers } from "./handlers/commands.js";
 import { registerAppAgentHandlers } from "./handlers/appAgent.js";
@@ -124,7 +123,6 @@ export function registerIpcHandlers(deps: HandlerDependencies): () => void {
     register(() => registerNotificationHandlers(deps));
     register(() => registerGeminiHandlers());
     register(() => registerEventsHandlers(deps));
-    register(() => registerNotesHandlers(deps));
     register(() => registerDevPreviewHandlers(deps));
     register(() => registerCommandHandlers());
     register(() => registerAppAgentHandlers(deps));

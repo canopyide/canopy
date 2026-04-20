@@ -11,13 +11,6 @@ const DESERIALIZERS: Record<string, PanelKindDeserializer> = {
     browserConsoleOpen: saved.browserConsoleOpen,
   }),
 
-  notes: (saved) => ({
-    notePath: saved.notePath,
-    noteId: saved.noteId,
-    scope: saved.scope as "worktree" | "project" | undefined,
-    createdAt: saved.createdAt,
-  }),
-
   "dev-preview": (saved) => {
     const devCommandCandidate = saved.devCommand?.trim();
     const devCommand = devCommandCandidate || saved.command?.trim() || undefined;

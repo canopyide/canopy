@@ -6,7 +6,6 @@ export type PaletteId =
   | "worktree"
   | "panel"
   | "action"
-  | "notes"
   | "project-switcher"
   | "quick-create"
   | "prompt-history"

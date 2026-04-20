@@ -64,7 +64,6 @@ export type {
   TerminalPanelOptions,
   AgentPanelOptions,
   BrowserPanelOptions,
-  NotesPanelOptions,
   DevPreviewPanelOptions,
   ExtensionPanelOptions,
   AddPanelOptions,

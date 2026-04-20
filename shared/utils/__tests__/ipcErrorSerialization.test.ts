@@ -209,8 +209,8 @@ describe("round-trip serialization", () => {
 
   it("round-trips an Error with context and custom properties", () => {
     const original = Object.assign(new Error("conflict"), {
-      name: "NoteConflictError",
-      context: { noteId: "n-1" },
+      name: "ConflictError",
+      context: { resourceId: "r-1" },
       currentLastModified: 12345,
     });
     const restored = deserializeError(serializeError(original)) as Error & {
@@ -218,8 +218,8 @@ describe("round-trip serialization", () => {
       currentLastModified: number;
     };
 
-    expect(restored.name).toBe("NoteConflictError");
-    expect(restored.context).toEqual({ noteId: "n-1" });
+    expect(restored.name).toBe("ConflictError");
+    expect(restored.context).toEqual({ resourceId: "r-1" });
     expect(restored.currentLastModified).toBe(12345);
   });
 

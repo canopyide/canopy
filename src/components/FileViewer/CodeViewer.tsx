@@ -13,8 +13,8 @@ import { EditorView, Decoration, type DecorationSet, keymap } from "@codemirror/
 import { type Extension, StateEffect, StateField } from "@codemirror/state";
 import { LanguageDescription } from "@codemirror/language";
 import { search, openSearchPanel, gotoLine } from "@codemirror/search";
-import { daintreeTheme } from "@/components/Notes/editorTheme";
-import { editorSearchHighlightTheme } from "@/components/Notes/editorSearchTheme";
+import { daintreeTheme } from "./editorTheme";
+import { editorSearchHighlightTheme } from "./editorSearchTheme";
 import { cn } from "@/lib/utils";
 
 export interface CodeViewerHandle {

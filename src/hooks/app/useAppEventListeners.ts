@@ -3,9 +3,6 @@ import { useHelpPanelStore, usePaletteStore, useThemeBrowserStore } from "@/stor
 
 export function useAppEventListeners() {
   useEffect(() => {
-    const handleOpenNotesPalette = () => {
-      usePaletteStore.getState().openPalette("notes");
-    };
     const handleOpenThemePalette = () => {
       usePaletteStore.getState().openPalette("theme");
     };
@@ -21,12 +18,10 @@ export function useAppEventListeners() {
       useThemeBrowserStore.getState().open();
     };
 
-    window.addEventListener("daintree:open-notes-palette", handleOpenNotesPalette);
     window.addEventListener("daintree:open-theme-palette", handleOpenThemePalette);
     window.addEventListener("daintree:open-log-level-palette", handleOpenLogLevelPalette);
     window.addEventListener("daintree:open-theme-browser", handleOpenThemeBrowser);
     return () => {
-      window.removeEventListener("daintree:open-notes-palette", handleOpenNotesPalette);
       window.removeEventListener("daintree:open-theme-palette", handleOpenThemePalette);
       window.removeEventListener("daintree:open-log-level-palette", handleOpenLogLevelPalette);
       window.removeEventListener("daintree:open-theme-browser", handleOpenThemeBrowser);

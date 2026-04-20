@@ -736,14 +736,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Project",
   },
   {
-    actionId: "notes.openPalette",
-    combo: "Cmd+Shift+N",
-    scope: "global",
-    priority: 0,
-    description: "Open notes palette",
-    category: "Notes",
-  },
-  {
     actionId: "app.theme.pick",
     combo: "Cmd+K T",
     scope: "global",

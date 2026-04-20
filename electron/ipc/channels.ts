@@ -418,16 +418,6 @@ export const CHANNELS = {
   GEMINI_GET_STATUS: "gemini:get-status",
   GEMINI_ENABLE_ALTERNATE_BUFFER: "gemini:enable-alternate-buffer",
 
-  NOTES_CREATE: "notes:create",
-  NOTES_READ: "notes:read",
-  NOTES_WRITE: "notes:write",
-  NOTES_LIST: "notes:list",
-  NOTES_DELETE: "notes:delete",
-  NOTES_SEARCH: "notes:search",
-  NOTES_UPDATED: "notes:updated",
-  NOTES_WRITE_ATTACHMENT: "notes:write-attachment",
-  NOTES_GET_DIR: "notes:get-dir",
-
   DEV_PREVIEW_ENSURE: "dev-preview:ensure",
   DEV_PREVIEW_RESTART: "dev-preview:restart",
   DEV_PREVIEW_STOP: "dev-preview:stop",

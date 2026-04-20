@@ -28,7 +28,6 @@ import {
   LayoutGrid,
   Rocket,
   RotateCcw,
-  StickyNote,
   Puzzle,
 } from "lucide-react";
 import { CopyTreeIcon } from "@/components/icons";
@@ -113,11 +112,6 @@ const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
     label: "Notifications",
     icon: <Bell className="h-4 w-4" />,
     description: "Notification history dropdown",
-  },
-  notes: {
-    label: "Notes",
-    icon: <StickyNote className="h-4 w-4" />,
-    description: "Open notes palette",
   },
   "copy-tree": {
     label: "Copy Context",

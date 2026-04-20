@@ -8,7 +8,6 @@ import {
   SquareTerminal,
   Globe,
   Monitor,
-  StickyNote,
 } from "lucide-react";
 import { DaintreeAgentIcon } from "@/components/icons";
 import { AppDialog } from "../ui/AppDialog";
@@ -35,8 +34,6 @@ function getPanelIcon(kind: string) {
       return <DaintreeAgentIcon className="h-3.5 w-3.5" />;
     case "browser":
       return <Globe className="h-3.5 w-3.5" />;
-    case "notes":
-      return <StickyNote className="h-3.5 w-3.5" />;
     case "dev-preview":
       return <Monitor className="h-3.5 w-3.5" />;
     default:

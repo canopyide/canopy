@@ -63,7 +63,7 @@ export interface StoreSchema {
     };
     terminals: Array<{
       id: string;
-      kind?: "terminal" | "agent" | "browser" | "notes" | "dev-preview" | string;
+      kind?: "terminal" | "agent" | "browser" | "dev-preview" | string;
       type?: BuiltInTerminalType;
       agentId?: string;
       title: string;
@@ -76,10 +76,6 @@ export interface StoreSchema {
       };
       isInputLocked?: boolean;
       browserUrl?: string;
-      notePath?: string;
-      noteId?: string;
-      scope?: "worktree" | "project";
-      createdAt?: number;
       devCommand?: string;
       browserConsoleOpen?: boolean;
       devPreviewConsoleOpen?: boolean;

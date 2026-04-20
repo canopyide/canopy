@@ -97,7 +97,6 @@ import { SendToAgentPalette } from "./components/Terminal/SendToAgentPalette";
 import { useSendToAgentPalette } from "./hooks/useSendToAgentPalette";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { PanelLimitConfirmDialog } from "./components/Terminal/PanelLimitConfirmDialog";
-import { NotesPalette } from "./components/Notes";
 import { ThemePalette } from "./components/ThemePalette";
 import { LogLevelPalette } from "./components/LogLevelPalette";
 
@@ -261,7 +260,6 @@ function App() {
 
   useThemeBrowserSettingsBridge(isSettingsOpen, setIsSettingsOpen);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
-  const isNotesPaletteOpen = usePaletteStore((state) => state.activePaletteId === "notes");
   const isThemePaletteOpen = usePaletteStore((state) => state.activePaletteId === "theme");
   const isLogLevelPaletteOpen = usePaletteStore((state) => state.activePaletteId === "log-level");
   const {
@@ -358,10 +356,6 @@ function App() {
     },
     [launchAgent, activeWorktreeId, availability, switchProject, currentProject?.id]
   );
-
-  const closeNotesPalette = useCallback(() => {
-    usePaletteStore.getState().closePalette("notes");
-  }, []);
 
   const closeThemePalette = useCallback(() => {
     usePaletteStore.getState().closePalette("theme");
@@ -704,8 +698,6 @@ function App() {
         isConfirmLoading={projectSwitcherPalette.isStoppingProject}
         variant="destructive"
       />
-
-      <NotesPalette isOpen={isNotesPaletteOpen} onClose={closeNotesPalette} />
 
       <ThemePalette isOpen={isThemePaletteOpen} onClose={closeThemePalette} />
 

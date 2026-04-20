@@ -6,7 +6,6 @@ export const SEL = {
     openBrowser: '[aria-label="Open Browser"]',
     openDevPreview: '[aria-label="Open Dev Preview"]',
     copyContext: '[aria-label="Copy Context"]',
-    notesButton: '[aria-label="Open notes palette"]',
     projectSwitcherTrigger: '[data-testid="project-switcher-trigger"]',
     portalToggle: '[aria-label*="context portal"]',
   },
@@ -135,20 +134,6 @@ export const SEL = {
   },
   trash: {
     container: '[data-testid="trash-container"]',
-  },
-  notes: {
-    palette: '[data-testid="notes-palette"]',
-    createButton: '[aria-label="Create new note"]',
-    searchInput: 'input[placeholder="Search notes..."]',
-    listbox: '[role="listbox"]',
-    option: '[role="option"]',
-    deleteButton: '[aria-label="Delete note"]',
-    closeButton: '[aria-label="Close"]',
-    editToggle: '[aria-label="Edit"]',
-    previewToggle: '[aria-label="Preview"]',
-    editor: ".cm-content",
-    preview: ".prose",
-    tagInput: 'input[placeholder="Add tags..."]',
   },
   pulse: {
     heatmap: '[data-testid="pulse-heatmap"]',

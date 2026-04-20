@@ -79,10 +79,6 @@ export function gridPanelPropsAreEqual(prev: GridPanelProps, next: GridPanelProp
       a.spawnError !== b.spawnError ||
       a.detectedProcessId !== b.detectedProcessId ||
       a.browserUrl !== b.browserUrl ||
-      a.notePath !== b.notePath ||
-      a.noteId !== b.noteId ||
-      a.scope !== b.scope ||
-      a.createdAt !== b.createdAt ||
       a.isRestarting !== b.isRestarting ||
       a.runtimeStatus !== b.runtimeStatus ||
       a.isInputLocked !== b.isInputLocked ||

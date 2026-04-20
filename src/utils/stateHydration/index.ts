@@ -16,7 +16,7 @@ import type { ActionFrecencyEntry } from "@shared/types/actions";
 import { keybindingService } from "@/services/KeybindingService";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelPersistence } from "@/store/persistence/panelPersistence";
-import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+import { getPanelKindConfig, panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 import { logDebug, logInfo, logWarn, logError } from "@/utils/logger";
 import { PERF_MARKS } from "@shared/perf/marks";
@@ -130,10 +130,6 @@ export interface HydrationOptions {
     browserUrl?: string; // URL for browser panes
     browserHistory?: import("@shared/types/browser").BrowserHistory;
     browserZoom?: number;
-    notePath?: string; // Path to note file (kind === 'notes')
-    noteId?: string; // Note ID (kind === 'notes')
-    scope?: "worktree" | "project"; // Note scope (kind === 'notes')
-    createdAt?: number; // Note creation timestamp (kind === 'notes')
     devCommand?: string; // Dev command override for dev-preview panels
     devServerStatus?: "stopped" | "starting" | "installing" | "running" | "error";
     devServerUrl?: string | null;
@@ -659,6 +655,15 @@ export async function hydrateAppState(
                       }
                     }
                   } else {
+                    // Skip persisted panels whose kind is no longer registered
+                    // (e.g., the "notes" kind removed in #5616). Restoring them
+                    // would create "Unknown Panel Type" ghost panels.
+                    if (!getPanelKindConfig(kind)) {
+                      logHydrationInfo(
+                        `Skipping persisted panel with unregistered kind: ${saved.id} (${kind})`
+                      );
+                      return;
+                    }
                     logHydrationInfo(`Recreating ${kind} panel: ${saved.id}`);
                     const nonPtyId = await addPanel(
                       buildArgsForNonPtyRecreation(saved, kind, projectRoot || "")
@@ -677,7 +682,7 @@ export async function hydrateAppState(
           const ptyPriorityTasks = panelTasks.filter((t) => t.isPty && t.priority === 0);
           const ptyBackgroundTasks = panelTasks.filter((t) => t.isPty && t.priority === 1);
 
-          // Restore all non-PTY panels concurrently (browser, notes, dev-preview).
+          // Restore all non-PTY panels concurrently (browser, dev-preview).
           // These only perform synchronous store mutations, so no throttling is needed.
           // The begin/flush wrapper collapses the N addPanel mutations into one store
           // commit, reducing this phase from N re-renders to 1.

@@ -26,7 +26,7 @@ export const TerminalLocationSchema = z.enum(["grid", "dock", "trash", "backgrou
  * Schema for panel/terminal kind - distinguishes built-in panel types.
  */
 export const PanelKindSchema = z.union([
-  z.enum(["terminal", "agent", "browser", "notes", "dev-preview"]),
+  z.enum(["terminal", "agent", "browser", "dev-preview"]),
   z.string(), // Allow extension-provided kinds
 ]);
 
@@ -37,7 +37,7 @@ export const PanelKindSchema = z.union([
  * Uses passthrough() to preserve unknown fields for forward compatibility with extensions.
  *
  * PTY-backed panels (terminal, agent, dev-preview) require `type` and `cwd`.
- * Non-PTY panels (browser, notes) have these fields optional since they don't spawn processes.
+ * Non-PTY panels (browser) have these fields optional since they don't spawn processes.
  */
 export const AppStateTerminalEntrySchema = z
   .object({
@@ -56,10 +56,6 @@ export const AppStateTerminalEntrySchema = z
       .optional(),
     isInputLocked: z.boolean().optional(),
     browserUrl: z.string().optional(),
-    notePath: z.string().optional(),
-    noteId: z.string().optional(),
-    scope: z.enum(["worktree", "project"]).optional(),
-    createdAt: z.number().optional(),
     devCommand: z.string().optional(),
     devServerStatus: z.enum(["stopped", "starting", "installing", "running", "error"]).optional(),
     devServerUrl: z.string().optional(),
@@ -77,15 +73,13 @@ export const AppStateTerminalEntrySchema = z
   .refine(
     (data) => {
       // PTY-backed panels require type and cwd
-      // Non-PTY panels (browser, notes) don't need them
+      // Non-PTY panels (browser) don't need them
 
       // Infer kind from content fields if missing (backwards compatibility)
       let kind = data.kind;
       if (!kind) {
         if (data.browserUrl !== undefined) {
           kind = "browser";
-        } else if (data.notePath !== undefined || data.noteId !== undefined) {
-          kind = "notes";
         } else if (data.devCommand !== undefined) {
           kind = "dev-preview";
         } else {
@@ -109,7 +103,7 @@ export const AppStateTerminalEntrySchema = z
  * Uses passthrough() to preserve unknown fields for forward compatibility with extensions.
  *
  * PTY-backed panels (terminal, agent, dev-preview) require `type` and `cwd`.
- * Non-PTY panels (browser, notes) have these fields optional since they don't spawn processes.
+ * Non-PTY panels (browser) have these fields optional since they don't spawn processes.
  */
 export const TerminalSnapshotSchema = z
   .object({
@@ -123,10 +117,6 @@ export const TerminalSnapshotSchema = z
     location: TerminalLocationSchema,
     command: z.string().optional(),
     browserUrl: z.string().optional(),
-    notePath: z.string().optional(),
-    noteId: z.string().optional(),
-    scope: z.enum(["worktree", "project"]).optional(),
-    createdAt: z.number().optional(),
     devCommand: z.string().optional(),
     devServerStatus: z.enum(["stopped", "starting", "installing", "running", "error"]).optional(),
     devServerUrl: z.string().optional(),
@@ -145,15 +135,13 @@ export const TerminalSnapshotSchema = z
   .refine(
     (data) => {
       // PTY-backed panels require type and cwd
-      // Non-PTY panels (browser, notes) don't need them
+      // Non-PTY panels (browser) don't need them
 
       // Infer kind from content fields if missing (backwards compatibility)
       let kind = data.kind;
       if (!kind) {
         if (data.browserUrl !== undefined) {
           kind = "browser";
-        } else if (data.notePath !== undefined || data.noteId !== undefined) {
-          kind = "notes";
         } else if (data.devCommand !== undefined) {
           kind = "dev-preview";
         } else {

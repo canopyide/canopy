@@ -212,13 +212,11 @@ describe("PluginManifestSchema permissions field", () => {
     expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("clipboard:read");
     expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("clipboard:write");
     expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("shell:exec");
-    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("notes:read");
-    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("notes:write");
   });
 
-  it("BUILT_IN_PLUGIN_PERMISSIONS has exactly 14 unique entries", () => {
-    expect(BUILT_IN_PLUGIN_PERMISSIONS).toHaveLength(14);
-    expect(new Set(BUILT_IN_PLUGIN_PERMISSIONS).size).toBe(14);
+  it("BUILT_IN_PLUGIN_PERMISSIONS has exactly 12 unique entries", () => {
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toHaveLength(12);
+    expect(new Set(BUILT_IN_PLUGIN_PERMISSIONS).size).toBe(12);
   });
 
   it("rejects null permissions value", () => {

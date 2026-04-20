@@ -170,10 +170,6 @@ export function getBoostedCategories(context: RankContext | undefined): Set<stri
         boosted.add("browser");
         boosted.add("panel");
         break;
-      case "notes":
-        boosted.add("notes");
-        boosted.add("panel");
-        break;
       case "dev-preview":
         boosted.add("devserver");
         boosted.add("panel");

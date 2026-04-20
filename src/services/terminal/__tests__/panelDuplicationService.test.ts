@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TerminalInstance } from "@/store";
 import type { AddPanelOptions } from "@/store/slices/panelRegistry/types";
-import type {
-  BrowserPanelOptions,
-  NotesPanelOptions,
-  DevPreviewPanelOptions,
-} from "@shared/types/addPanelOptions";
+import type { BrowserPanelOptions, DevPreviewPanelOptions } from "@shared/types/addPanelOptions";
 
 vi.mock("@/clients", () => ({
   agentSettingsClient: {
@@ -284,24 +280,7 @@ describe("panelDuplicationService", () => {
     const result = (await buildPanelDuplicateOptions(panel, "grid")) as BrowserPanelOptions;
 
     expect(result.browserUrl).toBe("https://example.com");
-    expect((result as unknown as Record<string, unknown>).notePath).toBeUndefined();
     expect((result as unknown as Record<string, unknown>).devCommand).toBeUndefined();
-  });
-
-  it("includes notes fields for notes panels", async () => {
-    const panel = makePanel({
-      kind: "notes",
-      notePath: "/notes/readme.md",
-      noteId: "note-123",
-      scope: "worktree",
-    } as Partial<TerminalInstance>);
-
-    const result = (await buildPanelDuplicateOptions(panel, "dock")) as NotesPanelOptions;
-
-    expect(result.notePath).toBe("/notes/readme.md");
-    expect(result.noteId).toBe("note-123");
-    expect(result.scope).toBe("worktree");
-    expect(result.createdAt).toBeGreaterThan(0);
   });
 
   it("includes devCommand and browserUrl for dev-preview panels", async () => {
