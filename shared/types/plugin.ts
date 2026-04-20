@@ -19,6 +19,27 @@ export interface ToolbarButtonContribution {
 
 export type MenuItemLocation = "terminal" | "file" | "view" | "help";
 
+export const BUILT_IN_PLUGIN_PERMISSIONS = [
+  "fs:project-read",
+  "fs:project-write",
+  "fs:user-data-read",
+  "fs:user-data-write",
+  "network:fetch",
+  "agent:invoke",
+  "agent:read",
+  "git:read",
+  "git:write",
+  "clipboard:read",
+  "clipboard:write",
+  "shell:exec",
+  "notes:read",
+  "notes:write",
+] as const;
+
+export type BuiltInPluginPermission = (typeof BUILT_IN_PLUGIN_PERMISSIONS)[number];
+
+export type PluginPermission = BuiltInPluginPermission | (string & {});
+
 export interface MenuItemContribution {
   label: string;
   actionId: string;
@@ -39,6 +60,7 @@ export interface PluginManifest {
   engines?: {
     daintree?: string;
   };
+  permissions?: PluginPermission[];
   contributes: {
     panels: PanelContribution[];
     toolbarButtons: ToolbarButtonContribution[];
