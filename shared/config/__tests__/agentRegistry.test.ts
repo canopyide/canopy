@@ -897,6 +897,36 @@ describe("ASSISTANT_FAST_MODELS", () => {
   });
 });
 
+describe("claude providerTemplates descriptions", () => {
+  const expected: Record<string, string> = {
+    "anthropic-native": "Direct Anthropic API connection.",
+    zai: "Anthropic-compatible via Z.AI.",
+    openrouter: "Model routing via OpenRouter.",
+    deepseek: "OpenAI-compatible via DeepSeek.",
+    ollama: "Local models via Ollama — no API key needed.",
+    "custom-openai": "Custom OpenAI-compatible endpoint.",
+  };
+
+  it("has all six provider templates with the expected ids", () => {
+    const templates = getAgentConfig("claude")?.providerTemplates ?? [];
+    const ids = templates.map((t) => t.id);
+    expect(ids).toEqual(Object.keys(expected));
+  });
+
+  it.each(Object.entries(expected))("%s has the short caption copy", (id, description) => {
+    const template = getAgentConfig("claude")?.providerTemplates?.find((t) => t.id === id);
+    expect(template?.description).toBe(description);
+  });
+
+  it("all descriptions fit a short caption (<= 60 chars)", () => {
+    const templates = getAgentConfig("claude")?.providerTemplates ?? [];
+    for (const template of templates) {
+      expect(template.description).toBeTruthy();
+      expect(template.description!.length).toBeLessThanOrEqual(60);
+    }
+  });
+});
+
 describe("opencode detection patterns", () => {
   function compileAgentPatterns(agentId: string, key: string): RegExp[] {
     const config = getAgentConfig(agentId);

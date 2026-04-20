@@ -528,8 +528,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       {
         id: "anthropic-native",
         name: "Anthropic (native)",
-        description:
-          "Direct connection to Anthropic's API. Requires ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN.",
+        description: "Direct Anthropic API connection.",
         env: {
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
         },
@@ -537,7 +536,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       {
         id: "zai",
         name: "Z.AI",
-        description: "Route through Z.AI's Anthropic-compatible endpoint.",
+        description: "Anthropic-compatible via Z.AI.",
         env: {
           ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
           ANTHROPIC_DEFAULT_OPUS_MODEL: "glm-5.1",
@@ -550,7 +549,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       {
         id: "openrouter",
         name: "OpenRouter",
-        description: "Route through OpenRouter's API endpoint.",
+        description: "Model routing via OpenRouter.",
         env: {
           ANTHROPIC_BASE_URL: "https://openrouter.ai/api/v1",
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -559,7 +558,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       {
         id: "deepseek",
         name: "DeepSeek",
-        description: "Route through DeepSeek's OpenAI-compatible endpoint.",
+        description: "OpenAI-compatible via DeepSeek.",
         env: {
           ANTHROPIC_BASE_URL: "https://api.deepseek.com/v1",
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -568,7 +567,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       {
         id: "ollama",
         name: "Ollama (local)",
-        description: "Connect to a local Ollama instance. No API key required.",
+        description: "Local models via Ollama — no API key needed.",
         env: {
           ANTHROPIC_BASE_URL: "http://localhost:11434/v1",
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -577,7 +576,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       {
         id: "custom-openai",
         name: "Custom (OpenAI-compatible)",
-        description: "Any OpenAI-compatible endpoint. Set base URL and model aliases manually.",
+        description: "Custom OpenAI-compatible endpoint.",
         env: {
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
         },
