@@ -30,24 +30,33 @@ describe("fleetScopeFlagStore", () => {
       expect(state.isHydrated).toBe(true);
     });
 
-    it("falls back to 'legacy' when persisted value is undefined", () => {
+    it("falls back to 'scoped' when persisted value is undefined", () => {
       useFleetScopeFlagStore.getState().hydrate(undefined);
+      const state = useFleetScopeFlagStore.getState();
+      expect(state.mode).toBe("scoped");
+      expect(state.isHydrated).toBe(true);
+    });
+
+    it("preserves explicit 'legacy' opt-in from persisted state", () => {
+      // Soak-period contract: users who previously opted into legacy keep it
+      // until the legacy paths are removed in the follow-up PR.
+      useFleetScopeFlagStore.getState().hydrate("legacy");
       const state = useFleetScopeFlagStore.getState();
       expect(state.mode).toBe("legacy");
       expect(state.isHydrated).toBe(true);
     });
 
-    it("normalizes malformed values to 'legacy'", () => {
-      // Defensive path — legacy persisted values or mid-migration garbage
-      // should not enable scoped mode.
+    it("normalizes malformed values to 'scoped'", () => {
+      // Defensive path — only the exact string "legacy" survives; any other
+      // garbage (wrong case, null, numbers) lands on the new default.
       useFleetScopeFlagStore.getState().hydrate("SCOPED" as never);
-      expect(useFleetScopeFlagStore.getState().mode).toBe("legacy");
+      expect(useFleetScopeFlagStore.getState().mode).toBe("scoped");
       resetStore();
       useFleetScopeFlagStore.getState().hydrate(null as never);
-      expect(useFleetScopeFlagStore.getState().mode).toBe("legacy");
+      expect(useFleetScopeFlagStore.getState().mode).toBe("scoped");
       resetStore();
       useFleetScopeFlagStore.getState().hydrate(42 as never);
-      expect(useFleetScopeFlagStore.getState().mode).toBe("legacy");
+      expect(useFleetScopeFlagStore.getState().mode).toBe("scoped");
     });
 
     it("is idempotent — later hydrate calls cannot clobber user interaction", () => {
