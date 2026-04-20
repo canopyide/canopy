@@ -39,9 +39,8 @@ export function PluginMissingPanel({ pluginId, kind, onRemove }: PluginMissingPa
       <div className="max-w-sm text-center">
         <p className="text-sm font-medium text-text-primary">Plugin unavailable</p>
         <p className="mt-1 text-xs text-text-muted">
-          This panel requires the{" "}
-          <span className="font-mono text-text-primary">{displayName}</span> plugin, which is not
-          currently active. Re-enable the plugin to restore the panel.
+          This panel requires the <span className="font-mono text-text-primary">{displayName}</span>{" "}
+          plugin, which is not currently active. Re-enable the plugin to restore the panel.
         </p>
       </div>
       <button
