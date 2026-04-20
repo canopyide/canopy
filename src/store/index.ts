@@ -56,6 +56,8 @@ export {
   HELP_PANEL_DEFAULT_WIDTH,
 } from "./helpPanelStore";
 
+export { useThemeBrowserStore } from "./themeBrowserStore";
+
 export { useUIStore } from "./uiStore";
 
 export { usePaletteStore } from "./paletteStore";

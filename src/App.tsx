@@ -62,6 +62,7 @@ import {
   useSettingsDialog,
   useWorktreeOverview,
   useAppEventListeners,
+  useThemeBrowserSettingsBridge,
   useErrorRetry,
   useActiveWorktreeSync,
 } from "./hooks/app";
@@ -257,6 +258,8 @@ function App() {
   useEffect(() => {
     if (isSettingsOpen) setHasOpenedSettings(true);
   }, [isSettingsOpen]);
+
+  useThemeBrowserSettingsBridge(isSettingsOpen, setIsSettingsOpen);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const isNotesPaletteOpen = usePaletteStore((state) => state.activePaletteId === "notes");
   const isThemePaletteOpen = usePaletteStore((state) => state.activePaletteId === "theme");

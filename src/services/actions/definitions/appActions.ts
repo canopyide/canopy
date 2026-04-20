@@ -142,6 +142,20 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
     },
   }));
 
+  actions.set("app.theme.browser.open", () => ({
+    id: "app.theme.browser.open",
+    title: "Change Theme...",
+    description: "Open the theme browser to preview and commit a new theme",
+    category: "app",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    nonRepeatable: true,
+    run: async () => {
+      window.dispatchEvent(new CustomEvent("daintree:open-theme-browser"));
+    },
+  }));
+
   actions.set("app.theme.toggle", () => ({
     id: "app.theme.toggle",
     title: "Toggle Dark/Light Theme",
