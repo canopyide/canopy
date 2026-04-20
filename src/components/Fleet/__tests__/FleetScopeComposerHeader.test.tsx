@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { FleetScopeComposerHeader } from "../FleetScopeComposerHeader";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
+import { useFleetDeckStore } from "@/store/fleetDeckStore";
 import { usePanelStore } from "@/store/panelStore";
 
 function resetStores() {
@@ -19,6 +20,7 @@ function resetStores() {
     lastFailedIds: [],
     lastBroadcastPrompt: "",
   });
+  useFleetDeckStore.setState({ isOpen: false });
   usePanelStore.setState({ panelsById: {}, panelIds: [] });
 }
 
@@ -59,5 +61,17 @@ describe("FleetScopeComposerHeader", () => {
     } finally {
       HTMLTextAreaElement.prototype.focus = originalFocus;
     }
+  });
+
+  it("suppresses its own FleetComposer when the Fleet Deck is open", () => {
+    // The deck renders its own FleetComposer; double-mounting would cause
+    // the single-slot focus registry to be hijacked by whichever mounts
+    // second, misdirecting terminal.focusFleetComposer.
+    useFleetArmingStore.getState().armIds(["a"]);
+    useFleetDeckStore.setState({ isOpen: true });
+    render(<FleetScopeComposerHeader agentCount={1} worktreeCount={1} />);
+    expect(screen.queryByTestId("fleet-composer")).toBeNull();
+    // The label is still shown so users know they are in broadcast context.
+    expect(screen.getByText("Broadcasting to 1 agent across 1 worktree")).toBeTruthy();
   });
 });

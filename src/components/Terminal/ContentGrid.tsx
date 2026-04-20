@@ -745,7 +745,7 @@ export function ContentGrid({
     for (const t of fleetPanels) {
       if (t.worktreeId) ids.add(t.worktreeId);
     }
-    return Math.max(ids.size, 1);
+    return ids.size;
   }, [fleetPanels]);
 
   const fleetGridCols = useMemo(() => {
