@@ -14,6 +14,9 @@ import type {
   PluginActionContribution,
   PluginActionDescriptor,
 } from "../../shared/types/plugin.js";
+import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
+import { toPluginWorktreeSnapshot } from "../../shared/utils/pluginWorktreeSnapshot.js";
+import type { WorkspaceClient } from "./WorkspaceClient.js";
 import {
   registerPanelKind,
   unregisterPluginPanelKinds,
@@ -43,12 +46,28 @@ interface LoadedPlugin {
 
 const ACTIVATE_TIMEOUT_MS = 5000;
 
+type WorkspaceWorktreeEvent = "worktree-update" | "worktree-activated" | "worktree-removed";
+
 export class PluginService {
   private plugins = new Map<string, LoadedPlugin>();
   private handlerMap = new Map<string, PluginIpcHandler>();
   private cleanupMap = new Map<string, () => void>();
   private pluginActions = new Map<string, PluginActionDescriptor>();
   private pluginActionOwners = new Map<string, Set<string>>();
+  private pluginEventCleanups = new Map<string, Array<() => void>>();
+  private workspaceClient: WorkspaceClient | null = null;
+  /**
+   * Event subscriptions registered during plugin `activate()` when the
+   * WorkspaceClient did not yet exist. Replayed in `setWorkspaceClient()`
+   * so early-boot subscriptions attach to the real client instead of being
+   * silently dropped.
+   */
+  private pendingWorktreeSubs: Array<{
+    pluginId: string;
+    event: WorkspaceWorktreeEvent;
+    handler: () => void;
+    activate: (client: WorkspaceClient) => void;
+  }> = [];
   private initialized = false;
   private pluginsRoot: string;
   private appVersion: string;
@@ -56,6 +75,24 @@ export class PluginService {
   constructor(pluginsRoot?: string, appVersion?: string) {
     this.pluginsRoot = pluginsRoot ?? path.join(os.homedir(), ".daintree", "plugins");
     this.appVersion = appVersion ?? app.getVersion();
+  }
+
+  /**
+   * Inject the WorkspaceClient after it's been created. PluginService may be
+   * initialized before WorkspaceClient in the startup sequence, so we can't
+   * take it in the constructor. Safe to call multiple times; the latest
+   * reference wins. When set for the first time, replays any pending event
+   * subscriptions that were registered during early plugin activate().
+   */
+  setWorkspaceClient(client: WorkspaceClient | null): void {
+    this.workspaceClient = client;
+    if (client && this.pendingWorktreeSubs.length > 0) {
+      const pending = this.pendingWorktreeSubs;
+      this.pendingWorktreeSubs = [];
+      for (const sub of pending) {
+        sub.activate(client);
+      }
+    }
   }
 
   async initialize(): Promise<void> {
@@ -259,6 +296,70 @@ export class PluginService {
         }
         broadcastToRenderer(`plugin:${pluginId}:${channel}`, payload);
       },
+      getActiveWorktree: async () => {
+        const snapshots = await this.fetchAllWorktreeSnapshots();
+        const active = snapshots.find((s) => s.isCurrent === true);
+        return active ? toPluginWorktreeSnapshot(active) : null;
+      },
+      getWorktrees: async () => {
+        const snapshots = await this.fetchAllWorktreeSnapshots();
+        return snapshots.map(toPluginWorktreeSnapshot);
+      },
+      onDidChangeActiveWorktree: (callback) => {
+        if (revoked) {
+          throw new Error(
+            `Plugin "${pluginId}" host revoked: onDidChangeActiveWorktree called after activate() returned or timed out`
+          );
+        }
+        return this.subscribeWorktreeEvent(pluginId, "worktree-activated", async () => {
+          if (!this.plugins.has(pluginId)) return;
+          try {
+            const snapshots = await this.fetchAllWorktreeSnapshots();
+            // Re-check after the async fetch so a racing unloadPlugin()
+            // doesn't fire the callback into a disposed plugin closure.
+            if (!this.plugins.has(pluginId)) return;
+            const active = snapshots.find((s) => s.isCurrent === true);
+            callback(active ? toPluginWorktreeSnapshot(active) : null);
+          } catch (err) {
+            console.error(
+              `[PluginService] onDidChangeActiveWorktree callback for "${pluginId}" failed:`,
+              err
+            );
+          }
+        });
+      },
+      onDidChangeWorktrees: (callback) => {
+        if (revoked) {
+          throw new Error(
+            `Plugin "${pluginId}" host revoked: onDidChangeWorktrees called after activate() returned or timed out`
+          );
+        }
+        const emit = async (): Promise<void> => {
+          if (!this.plugins.has(pluginId)) return;
+          try {
+            const snapshots = await this.fetchAllWorktreeSnapshots();
+            if (!this.plugins.has(pluginId)) return;
+            callback(snapshots.map(toPluginWorktreeSnapshot));
+          } catch (err) {
+            console.error(
+              `[PluginService] onDidChangeWorktrees callback for "${pluginId}" failed:`,
+              err
+            );
+          }
+        };
+        // Fires on both add/update and remove so plugins' cached lists stay
+        // correct after deletions. Each subscription is tracked separately
+        // so a single disposer stops both.
+        const disposeUpdate = this.subscribeWorktreeEvent(pluginId, "worktree-update", emit);
+        const disposeRemove = this.subscribeWorktreeEvent(pluginId, "worktree-removed", emit);
+        let disposed = false;
+        return () => {
+          if (disposed) return;
+          disposed = true;
+          disposeUpdate();
+          disposeRemove();
+        };
+      },
     };
     return {
       host,
@@ -266,6 +367,81 @@ export class PluginService {
         revoked = true;
       },
     };
+  }
+
+  private async fetchAllWorktreeSnapshots(): Promise<WorktreeSnapshot[]> {
+    const client = this.workspaceClient;
+    if (!client) return [];
+    try {
+      return await client.getAllStatesAsync();
+    } catch (err) {
+      console.error("[PluginService] Failed to fetch worktree snapshots:", err);
+      return [];
+    }
+  }
+
+  /**
+   * Register a listener on WorkspaceClient for the given event and track it
+   * against the plugin so `unloadPlugin()` can dispose it. Returns a disposer
+   * that removes just this subscription; safe to call multiple times.
+   *
+   * If WorkspaceClient is not yet wired (early plugin activate during boot),
+   * the subscription is queued in `pendingWorktreeSubs` and replayed when
+   * `setWorkspaceClient()` is later called. The returned disposer handles
+   * both the queued and the live state.
+   */
+  private subscribeWorktreeEvent(
+    pluginId: string,
+    event: WorkspaceWorktreeEvent,
+    handler: () => void
+  ): () => void {
+    let boundClient: WorkspaceClient | null = null;
+    let pendingRecord: (typeof this.pendingWorktreeSubs)[number] | null = null;
+    let disposed = false;
+
+    const dispose = (): void => {
+      if (disposed) return;
+      disposed = true;
+      if (boundClient) {
+        boundClient.off(event, handler);
+      } else if (pendingRecord) {
+        const idx = this.pendingWorktreeSubs.indexOf(pendingRecord);
+        if (idx >= 0) this.pendingWorktreeSubs.splice(idx, 1);
+      }
+      const list = this.pluginEventCleanups.get(pluginId);
+      if (!list) return;
+      const idx = list.indexOf(dispose);
+      if (idx >= 0) list.splice(idx, 1);
+      if (list.length === 0) this.pluginEventCleanups.delete(pluginId);
+    };
+
+    let list = this.pluginEventCleanups.get(pluginId);
+    if (!list) {
+      list = [];
+      this.pluginEventCleanups.set(pluginId, list);
+    }
+    list.push(dispose);
+
+    const client = this.workspaceClient;
+    if (client) {
+      client.on(event, handler);
+      boundClient = client;
+    } else {
+      pendingRecord = {
+        pluginId,
+        event,
+        handler,
+        activate: (c: WorkspaceClient) => {
+          if (disposed) return;
+          c.on(event, handler);
+          boundClient = c;
+          pendingRecord = null;
+        },
+      };
+      this.pendingWorktreeSubs.push(pendingRecord);
+    }
+
+    return dispose;
   }
 
   private async runActivate(
@@ -351,12 +527,31 @@ export class PluginService {
       }
       this.cleanupMap.delete(pluginId);
     }
+    this.flushPluginEventCleanups(pluginId);
     this.removeHandlers(pluginId);
     this.unregisterPluginActions(pluginId);
     unregisterPluginMenuItems(pluginId);
     unregisterPluginToolbarButtons(pluginId);
     unregisterPluginPanelKinds(pluginId);
     this.plugins.delete(pluginId);
+  }
+
+  private flushPluginEventCleanups(pluginId: string): void {
+    const list = this.pluginEventCleanups.get(pluginId);
+    if (!list || list.length === 0) {
+      this.pluginEventCleanups.delete(pluginId);
+      return;
+    }
+    // Snapshot & clear before invoking so each dispose() call (which mutates
+    // the list via splice) doesn't interfere with iteration.
+    this.pluginEventCleanups.delete(pluginId);
+    for (const dispose of [...list]) {
+      try {
+        dispose();
+      } catch (err) {
+        console.error(`[PluginService] Event cleanup for "${pluginId}" threw during unload:`, err);
+      }
+    }
   }
 
   listPlugins(): LoadedPluginInfo[] {
