@@ -465,6 +465,26 @@ describe("MigrationRunner", () => {
       migration019.up(store as never);
       expect(store.data.appState).toBeUndefined();
     });
+
+    it("runs end-to-end through MigrationRunner on a v18 store", async () => {
+      const store = createMockStore(storePath, {
+        _schemaVersion: 18,
+        appState: {
+          sidebarWidth: 350,
+          fleetDeckOpen: true,
+          fleetDeckAlwaysPreview: false,
+          fleetDeckQuorumThreshold: 4,
+        },
+      });
+      const runner = new MigrationRunner(store as never);
+      await runner.runMigrations([migration019]);
+      const after = store.data.appState as Record<string, unknown>;
+      expect(store.data._schemaVersion).toBe(19);
+      expect("fleetDeckOpen" in after).toBe(false);
+      expect("fleetDeckAlwaysPreview" in after).toBe(false);
+      expect("fleetDeckQuorumThreshold" in after).toBe(false);
+      expect(after.sidebarWidth).toBe(350);
+    });
   });
 
   it("LATEST_SCHEMA_VERSION matches the highest version in the migrations barrel", () => {

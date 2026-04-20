@@ -165,6 +165,9 @@ export function registerTerminalInputActions(
     keywords: ["broadcast", "fleet", "multi"],
     run: async () => {
       useFleetArmingStore.getState().armAll("current");
+      // Guard against a stuck-scope state when the worktree has no eligible
+      // agents to arm — see useWorktreeActions.handleBroadcastToAgents.
+      if (useFleetArmingStore.getState().armedIds.size === 0) return;
       const flag = useFleetScopeFlagStore.getState();
       if (flag.isHydrated && flag.mode === "scoped") {
         useWorktreeSelectionStore.getState().enterFleetScope();
