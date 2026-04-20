@@ -16,7 +16,7 @@ import type { ActionFrecencyEntry } from "@shared/types/actions";
 import { keybindingService } from "@/services/KeybindingService";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelPersistence } from "@/store/persistence/panelPersistence";
-import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+import { getPanelKindConfig, panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 import { logDebug, logInfo, logWarn, logError } from "@/utils/logger";
 import { PERF_MARKS } from "@shared/perf/marks";
@@ -655,6 +655,15 @@ export async function hydrateAppState(
                       }
                     }
                   } else {
+                    // Skip persisted panels whose kind is no longer registered
+                    // (e.g., the "notes" kind removed in #5616). Restoring them
+                    // would create "Unknown Panel Type" ghost panels.
+                    if (!getPanelKindConfig(kind)) {
+                      logHydrationInfo(
+                        `Skipping persisted panel with unregistered kind: ${saved.id} (${kind})`
+                      );
+                      return;
+                    }
                     logHydrationInfo(`Recreating ${kind} panel: ${saved.id}`);
                     const nonPtyId = await addPanel(
                       buildArgsForNonPtyRecreation(saved, kind, projectRoot || "")
