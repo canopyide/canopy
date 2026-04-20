@@ -82,7 +82,8 @@ export function gridPanelPropsAreEqual(prev: GridPanelProps, next: GridPanelProp
       a.isRestarting !== b.isRestarting ||
       a.runtimeStatus !== b.runtimeStatus ||
       a.isInputLocked !== b.isInputLocked ||
-      a.extensionState !== b.extensionState
+      a.extensionState !== b.extensionState ||
+      a.pluginId !== b.pluginId
     ) {
       return false;
     }
