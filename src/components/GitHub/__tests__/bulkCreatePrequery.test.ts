@@ -26,7 +26,7 @@ describe("resolveIssuePrequeries", () => {
     const getAvailableBranch = vi.fn().mockResolvedValue("feature/issue-1");
     const getDefaultPath = vi.fn().mockResolvedValue("/path/to/issue-1");
 
-    const { results, failedNumbers } = await resolveIssuePrequeries({
+    const { results, failedItems } = await resolveIssuePrequeries({
       rootPath: "/repo",
       items: [mockPlanned(1)],
       existingBranches: null,
@@ -37,7 +37,7 @@ describe("resolveIssuePrequeries", () => {
 
     expect(results.size).toBe(1);
     expect(results.get(1)).toEqual({ branch: "feature/issue-1", path: "/path/to/issue-1" });
-    expect(failedNumbers.size).toBe(0);
+    expect(failedItems.length).toBe(0);
     expect(getAvailableBranch).toHaveBeenCalledWith("/repo", "feature/issue-1");
     expect(getDefaultPath).toHaveBeenCalledWith("/repo", "feature/issue-1");
   });
@@ -46,7 +46,7 @@ describe("resolveIssuePrequeries", () => {
     const getAvailableBranch = vi.fn((_, name) => Promise.resolve(name));
     const getDefaultPath = vi.fn((_, branch) => Promise.resolve(`/path/${branch}`));
 
-    const { results, failedNumbers } = await resolveIssuePrequeries({
+    const { results, failedItems } = await resolveIssuePrequeries({
       rootPath: "/repo",
       items: [mockPlanned(1), mockPlanned(2), mockPlanned(3)],
       existingBranches: null,
@@ -59,7 +59,7 @@ describe("resolveIssuePrequeries", () => {
     expect(results.get(1)).toEqual({ branch: "feature/issue-1", path: "/path/feature/issue-1" });
     expect(results.get(2)).toEqual({ branch: "feature/issue-2", path: "/path/feature/issue-2" });
     expect(results.get(3)).toEqual({ branch: "feature/issue-3", path: "/path/feature/issue-3" });
-    expect(failedNumbers.size).toBe(0);
+    expect(failedItems.length).toBe(0);
   });
 
   it("applies deterministic suffixes for colliding branch names", async () => {
@@ -112,7 +112,7 @@ describe("resolveIssuePrequeries", () => {
     });
     const getDefaultPath = vi.fn().mockResolvedValue("/path");
 
-    const { results, failedNumbers } = await resolveIssuePrequeries({
+    const { results, failedItems } = await resolveIssuePrequeries({
       rootPath: "/repo",
       items: [mockPlanned(1), mockPlanned(2), mockPlanned(3)],
       existingBranches: null,
@@ -122,7 +122,7 @@ describe("resolveIssuePrequeries", () => {
     });
 
     expect(results.size).toBe(2);
-    expect(failedNumbers.has(2)).toBe(true);
+    expect(failedItems.some((f) => f.number === 2)).toBe(true);
     expect(results.get(1)).toBeDefined();
     expect(results.get(3)).toBeDefined();
   });
@@ -137,7 +137,7 @@ describe("resolveIssuePrequeries", () => {
     const getDefaultPath = vi.fn().mockResolvedValue("/path");
 
     let isStale = false;
-    const { results: _, failedNumbers } = await resolveIssuePrequeries({
+    const { results: _, failedItems } = await resolveIssuePrequeries({
       rootPath: "/repo",
       items: [mockPlanned(1), mockPlanned(2), mockPlanned(3)],
       existingBranches: null,
@@ -150,12 +150,12 @@ describe("resolveIssuePrequeries", () => {
       isStale = true;
     }, 5);
 
-    expect(failedNumbers.size).toBeGreaterThanOrEqual(0);
+    expect(failedItems.length).toBeGreaterThanOrEqual(0);
     expect(callCount).toBeGreaterThan(0);
   });
 
   it("returns empty results for zero items", async () => {
-    const { results, failedNumbers } = await resolveIssuePrequeries({
+    const { results, failedItems } = await resolveIssuePrequeries({
       rootPath: "/repo",
       items: [],
       existingBranches: null,
@@ -165,7 +165,7 @@ describe("resolveIssuePrequeries", () => {
     });
 
     expect(results.size).toBe(0);
-    expect(failedNumbers.size).toBe(0);
+    expect(failedItems.length).toBe(0);
   });
 
   it("filters out skipped and non-issue items", async () => {
@@ -193,7 +193,7 @@ describe("resolveIssuePrequeries", () => {
     const getAvailableBranch = vi.fn().mockResolvedValue("branch");
     const getDefaultPath = vi.fn().mockRejectedValue(new Error("Path lookup failed"));
 
-    const { results, failedNumbers } = await resolveIssuePrequeries({
+    const { results, failedItems } = await resolveIssuePrequeries({
       rootPath: "/repo",
       items: [mockPlanned(1)],
       existingBranches: null,
@@ -203,7 +203,7 @@ describe("resolveIssuePrequeries", () => {
     });
 
     expect(results.size).toBe(0);
-    expect(failedNumbers.has(1)).toBe(true);
+    expect(failedItems.some((f) => f.number === 1)).toBe(true);
   });
 
   it("calls onProgress callback with completion stats", async () => {

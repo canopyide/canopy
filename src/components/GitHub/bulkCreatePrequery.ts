@@ -31,7 +31,7 @@ export interface PrequeryOptions {
 
 export interface PrequeryOutput {
   results: Map<number, PrequeryResult>;
-  failedNumbers: Set<number>;
+  failedItems: Array<{ number: number; error: Error }>;
 }
 
 async function withTimeout<T>(
@@ -87,12 +87,10 @@ async function resolveIssuePrequeries({
   const inputOrder = issueItems.map((p) => p.item.number);
 
   if (inputOrder.length === 0) {
-    return { results: new Map(), failedNumbers: new Set() };
+    return { results: new Map(), failedItems: [] };
   }
 
   const results = new Map<number, PrequeryResult>();
-  const failedNumbers = new Set<number>();
-
   const branchQueue = new PQueue({ concurrency: PREQUERY_CONCURRENCY });
   const candidateBranches = new Map<number, string>();
   const branchErrors = new Array<{ number: number; error: Error }>();
@@ -117,16 +115,14 @@ async function resolveIssuePrequeries({
   );
 
   await Promise.all(branchPromises);
-  if (isStaleRun()) return { results, failedNumbers };
-
-  for (const { number, error: _ } of branchErrors) {
-    failedNumbers.add(number);
-  }
+  if (isStaleRun()) return { results, failedItems: branchErrors };
 
   const uniqueBranches = resolveBranchUniqueness(candidateBranches, inputOrder);
 
   const pathQueue = new PQueue({ concurrency: PREQUERY_CONCURRENCY });
   const pathErrors = new Array<{ number: number; error: Error }>();
+
+  const failedNumbers = new Set(branchErrors.map((e) => e.number));
 
   const pathPromises = inputOrder
     .filter((n) => !failedNumbers.has(n) && uniqueBranches.has(n))
@@ -151,15 +147,11 @@ async function resolveIssuePrequeries({
     );
 
   await Promise.all(pathPromises);
-  if (isStaleRun()) return { results, failedNumbers };
-
-  for (const { number, error: _ } of pathErrors) {
-    failedNumbers.add(number);
-  }
+  if (isStaleRun()) return { results, failedItems: [...branchErrors, ...pathErrors] };
 
   onProgress?.(results.size, inputOrder.length);
 
-  return { results, failedNumbers };
+  return { results, failedItems: [...branchErrors, ...pathErrors] };
 }
 
 export { resolveIssuePrequeries };

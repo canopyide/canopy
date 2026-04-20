@@ -584,21 +584,10 @@ export function BulkCreateWorktreeDialog({
       // Two-phase approach: (1) resolve branch candidates with bounded concurrency,
       // (2) apply deterministic uniqueness suffixes in input order, (3) resolve paths
       // with bounded concurrency using final unique branch names.
-      const existingWorktrees = getCurrentViewStore().getState().worktrees;
-      const existingBranchSet = new Set(
-        Array.from(existingWorktrees.values())
-          .map((wt) => wt.branch)
-          .filter((b): b is string => b !== undefined)
-      );
-
-      const prequeryInput = toCreate.filter((planned) => {
-        if (planned.mode !== "issue") return false;
-        if (existingBranchSet.has(planned.branchName)) return false;
-        return true;
-      });
+      const prequeryInput = toCreate.filter((p) => p.mode === "issue");
 
       if (prequeryInput.length > 0) {
-        const { results, failedNumbers } = await resolveIssuePrequeries({
+        const { results, failedItems: prequeryFailures } = await resolveIssuePrequeries({
           rootPath,
           items: prequeryInput,
           existingBranches: null,
@@ -613,13 +602,13 @@ export function BulkCreateWorktreeDialog({
           precomputed.set(number, { branch, path });
         }
 
-        for (const number of failedNumbers) {
+        for (const { number, error } of prequeryFailures) {
           prequeryFailed.add(number);
           failedItems.add(number);
           dispatchProgress({
             type: "ITEM_FAILED",
             issueNumber: number,
-            error: "Prequery failed",
+            error: normalizeError(error),
             attempts: 1,
             failedStep: "worktree",
           });
@@ -648,8 +637,12 @@ export function BulkCreateWorktreeDialog({
 
               if (!worktreeId) {
                 const worktrees = getCurrentViewStore().getState().worktrees;
+                const pre = precomputed.get(itemNumber);
+                const searchBranches = pre
+                  ? [pre.branch, planned.branchName]
+                  : [planned.branchName];
                 for (const wt of worktrees.values()) {
-                  if (wt.branch && wt.branch === planned.branchName) {
+                  if (wt.branch && searchBranches.includes(wt.branch)) {
                     worktreeId = wt.worktreeId;
                     worktreePath = wt.path;
                     resolvedBranch = wt.branch;
