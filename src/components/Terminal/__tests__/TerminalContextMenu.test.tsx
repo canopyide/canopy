@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { AGENT_IDS, getAgentConfig } from "@/config/agents";
 import type { CliAvailability } from "@shared/types";
 import type { MenuItemOption } from "@shared/types";
-import { buildCreateNoteArgs } from "../TerminalContextMenu";
 import { computeGridSelectedAgentIds } from "../contentGridAgentFilter";
 
 describe("TerminalContextMenu - Convert To Submenu", () => {
@@ -281,37 +280,5 @@ describe("TerminalContextMenu - Convert To Submenu", () => {
       expect(firstAgent).toBeDefined();
       expect(secondAgent).toBeDefined();
     });
-  });
-});
-
-describe("buildCreateNoteArgs", () => {
-  it("builds note with selection text and worktree", () => {
-    const result = buildCreateNoteArgs("Claude", "feature/login", "console.log('hello')", "wt-1");
-    expect(result.title).toMatch(/^Note from Claude — /);
-    expect(result.content).toContain("**Agent:** Claude");
-    expect(result.content).toContain("**Worktree:** feature/login");
-    expect(result.content).toContain("**Time:**");
-    expect(result.content).toContain("> console.log('hello')");
-    expect(result.scope).toBe("worktree");
-    expect(result.worktreeId).toBe("wt-1");
-  });
-
-  it("omits quote block when selection is empty", () => {
-    const result = buildCreateNoteArgs("Gemini", "main", "", "wt-2");
-    expect(result.content).toContain("**Agent:** Gemini");
-    expect(result.content).not.toContain(">");
-    expect(result.scope).toBe("worktree");
-  });
-
-  it("falls back to project scope when no worktreeId", () => {
-    const result = buildCreateNoteArgs("Claude", undefined, "selected text", undefined);
-    expect(result.scope).toBe("project");
-    expect(result.worktreeId).toBeUndefined();
-    expect(result.content).not.toContain("**Worktree:**");
-  });
-
-  it("handles multiline selection text", () => {
-    const result = buildCreateNoteArgs("Claude", "main", "line1\nline2\nline3", "wt-1");
-    expect(result.content).toContain("> line1\n> line2\n> line3");
   });
 });

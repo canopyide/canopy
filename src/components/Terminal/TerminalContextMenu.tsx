@@ -25,7 +25,6 @@ import {
   Link,
   Lock,
   Maximize2,
-  NotebookPen,
   Minimize2,
   OctagonX,
   Pencil,
@@ -33,7 +32,6 @@ import {
   RefreshCw,
   Repeat2,
   RotateCcw,
-  Search,
   Send,
   SquareTerminal,
   Trash2,
@@ -59,45 +57,6 @@ import {
 
 const ICON_CLASS = "w-3.5 h-3.5 mr-2 shrink-0";
 
-export interface CreateNoteArgs {
-  title: string;
-  content: string;
-  scope: "worktree" | "project";
-  worktreeId?: string;
-}
-
-export function buildCreateNoteArgs(
-  agentName: string,
-  worktreeName: string | undefined,
-  selectionText: string,
-  worktreeId: string | undefined
-): CreateNoteArgs {
-  const timestamp = new Date().toLocaleString();
-  const title = `Note from ${agentName} — ${timestamp}`;
-
-  const lines: string[] = [];
-  lines.push(`**Agent:** ${agentName}`);
-  if (worktreeName) lines.push(`**Worktree:** ${worktreeName}`);
-  lines.push(`**Time:** ${timestamp}`);
-
-  if (selectionText) {
-    lines.push("");
-    lines.push(
-      selectionText
-        .split("\n")
-        .map((line) => `> ${line}`)
-        .join("\n")
-    );
-  }
-
-  return {
-    title,
-    content: lines.join("\n"),
-    scope: worktreeId ? "worktree" : "project",
-    worktreeId,
-  };
-}
-
 interface TerminalContextMenuProps {
   terminalId: string;
   children: React.ReactNode;
@@ -105,7 +64,7 @@ interface TerminalContextMenuProps {
 }
 
 /**
- * Right-click context menu for panel headers (terminal, agent, browser, notes, dev-preview).
+ * Right-click context menu for panel headers (terminal, agent, browser, dev-preview).
  * Used by both DockedTerminalItem and PanelHeader.
  */
 export function TerminalContextMenu({
@@ -135,7 +94,6 @@ export function TerminalContextMenu({
   const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
 
   const [hasSelection, setHasSelection] = useState(false);
-  const [selectionText, setSelectionText] = useState("");
   const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
 
   const handleContextMenu = useCallback(
@@ -148,7 +106,6 @@ export function TerminalContextMenu({
       }
       const selection = managed.terminal.getSelection();
       setHasSelection(!!selection);
-      setSelectionText(selection);
       setHoveredUrl(terminalInstanceService.getHoveredLinkText(terminalId));
     },
     [terminalId]
@@ -312,54 +269,9 @@ export function TerminalContextMenu({
             );
           }
           break;
-        case "delete-note":
-          if (terminal.notePath) {
-            void actionService.dispatch(
-              "terminal.deleteNote",
-              {
-                terminalId,
-                notePath: terminal.notePath,
-                noteTitle: terminal.title,
-              },
-              { source: "context-menu", confirmed: true }
-            );
-          }
-          break;
-        case "reveal-in-palette":
-          if (terminal.notePath) {
-            void actionService.dispatch(
-              "notes.reveal",
-              { notePath: terminal.notePath },
-              { source: "context-menu" }
-            );
-          }
-          break;
-        case "create-note": {
-          const agentConfig = terminal.agentId ? getAgentConfig(terminal.agentId) : null;
-          const agentName = agentConfig?.name ?? terminal.agentId ?? "Agent";
-          const currentWorktree = worktrees.find((wt) => wt.id === terminal.worktreeId);
-          const worktreeName = currentWorktree
-            ? (currentWorktree.isMainWorktree
-                ? currentWorktree.name
-                : currentWorktree.branch || currentWorktree.name
-              ).trim() || undefined
-            : undefined;
-          const noteArgs = buildCreateNoteArgs(
-            agentName,
-            worktreeName,
-            selectionText,
-            terminal.worktreeId
-          );
-          void actionService.dispatch(
-            "notes.create",
-            { ...noteArgs, openPanel: true },
-            { source: "context-menu" }
-          );
-          break;
-        }
       }
     },
-    [terminal, terminalId, selectionText, worktrees]
+    [terminal, terminalId]
   );
 
   const currentAgentId =
@@ -383,7 +295,6 @@ export function TerminalContextMenu({
   }
 
   const isBrowser = terminal.kind === "browser";
-  const isNotes = terminal.kind === "notes";
   const isDevPreview = terminal.kind === "dev-preview";
   const hasPty = terminal.kind ? panelKindHasPty(terminal.kind) : true;
 
@@ -497,51 +408,6 @@ export function TerminalContextMenu({
           <ContextMenuItem destructive onSelect={() => handleAction("kill")}>
             <OctagonX className={ICON_CLASS} aria-hidden="true" />
             Remove Browser
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-    );
-  }
-
-  if (isNotes) {
-    const hasNotePath = Boolean(terminal.notePath);
-    return (
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div className="contents" data-context-trigger={terminalId}>
-            {children}
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          {layoutSection}
-          <ContextMenuSeparator />
-          <ContextMenuItem disabled={!hasNotePath} onSelect={() => handleAction("rename")}>
-            <Pencil className={ICON_CLASS} aria-hidden="true" />
-            Rename Note
-          </ContextMenuItem>
-          <ContextMenuItem
-            disabled={!hasNotePath}
-            onSelect={() => handleAction("reveal-in-palette")}
-          >
-            <Search className={ICON_CLASS} aria-hidden="true" />
-            Reveal in Notes Palette
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => handleAction("background")}>
-            <ArrowDownFromLine className={ICON_CLASS} aria-hidden="true" />
-            Send to Background
-          </ContextMenuItem>
-          <ContextMenuItem
-            destructive
-            disabled={!hasNotePath}
-            onSelect={() => handleAction("delete-note")}
-          >
-            <Trash2 className={ICON_CLASS} aria-hidden="true" />
-            Delete Note
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => handleAction("trash")}>
-            <Trash2 className={ICON_CLASS} aria-hidden="true" />
-            Close Note
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -716,12 +582,6 @@ export function TerminalContextMenu({
             )}
             {isWatched ? "Cancel Watch" : "Watch Terminal"}
             <ContextMenuShortcut>{mac ? "⌘⇧W" : "Ctrl+⇧W"}</ContextMenuShortcut>
-          </ContextMenuItem>
-        )}
-        {terminal.agentId && (
-          <ContextMenuItem onSelect={() => handleAction("create-note")}>
-            <NotebookPen className={ICON_CLASS} aria-hidden="true" />
-            Create Note
           </ContextMenuItem>
         )}
         {showConvertTo && (

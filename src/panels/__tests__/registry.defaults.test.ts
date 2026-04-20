@@ -30,44 +30,6 @@ describe("panelKindRegistry createDefaults (co-located)", () => {
     expect(result.browserConsoleOpen).toBe(true);
   });
 
-  it("notes factory omits notePath and noteId when not provided", () => {
-    const config = getPanelKindConfig("notes")!;
-    const result = config.createDefaults!({ kind: "notes" } as AddPanelOptions);
-    expect(result.notePath).toBeUndefined();
-    expect(result.noteId).toBeUndefined();
-    expect(result.scope).toBe("project");
-    expect(result.createdAt).toBeGreaterThan(0);
-    expect(result.cwd).toBeUndefined();
-    expect(result.cols).toBeUndefined();
-    expect(result.rows).toBeUndefined();
-  });
-
-  it("notes factory omits notePath and noteId when provided empty strings", () => {
-    const config = getPanelKindConfig("notes")!;
-    const result = config.createDefaults!({
-      kind: "notes",
-      notePath: "",
-      noteId: "",
-    } as AddPanelOptions);
-    expect(result.notePath).toBeUndefined();
-    expect(result.noteId).toBeUndefined();
-  });
-
-  it("notes factory preserves provided fields", () => {
-    const config = getPanelKindConfig("notes")!;
-    const result = config.createDefaults!({
-      kind: "notes",
-      notePath: "/notes/test.md",
-      noteId: "note-123",
-      scope: "worktree",
-      createdAt: 1000,
-    } as AddPanelOptions);
-    expect(result.notePath).toBe("/notes/test.md");
-    expect(result.noteId).toBe("note-123");
-    expect(result.scope).toBe("worktree");
-    expect(result.createdAt).toBe(1000);
-  });
-
   it("dev-preview factory returns kind-specific fields", () => {
     const config = getPanelKindConfig("dev-preview")!;
     const result = config.createDefaults!({

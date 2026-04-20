@@ -12,7 +12,6 @@ beforeAll(() => {
 
 type PtyData = Extract<PanelInstance, { kind: "terminal" | "agent" }>;
 type BrowserData = Extract<PanelInstance, { kind: "browser" }>;
-type NotesData = Extract<PanelInstance, { kind: "notes" }>;
 type DevPreviewData = Extract<PanelInstance, { kind: "dev-preview" }>;
 
 // Persisted-field union per kind. The arbitrary spec is bound via `satisfies`
@@ -43,8 +42,6 @@ type PersistedBrowserFields =
   | "browserHistory"
   | "browserZoom"
   | "browserConsoleOpen";
-
-type PersistedNotesFields = "notePath" | "noteId" | "scope" | "createdAt";
 
 type PersistedDevPreviewFields =
   | "cwd"
@@ -111,13 +108,6 @@ const browserArbSpec = {
   browserConsoleOpen: fc.option(fc.boolean(), { nil: undefined }),
 } satisfies { [K in PersistedBrowserFields]-?: fc.Arbitrary<BrowserData[K]> };
 
-const notesArbSpec = {
-  notePath: fc.string(),
-  noteId: fc.string(),
-  scope: fc.constantFrom("worktree" as const, "project" as const),
-  createdAt: fc.integer({ min: 0 }),
-} satisfies { [K in PersistedNotesFields]-?: fc.Arbitrary<NotesData[K]> };
-
 const devPreviewArbSpec = {
   cwd: fc.string(),
   devCommand: fc.option(fc.string(), { nil: undefined }),
@@ -130,7 +120,6 @@ const devPreviewArbSpec = {
 
 const ptyArb = fc.record(ptyArbSpec);
 const browserArb = fc.record(browserArbSpec);
-const notesArb = fc.record(notesArbSpec);
 const devPreviewArb = fc.record(devPreviewArbSpec);
 
 function basePanel(
@@ -215,19 +204,6 @@ describe("panel serializer round-trip (property tests)", () => {
         expect(restored.browserConsoleOpen).toBe(fields.browserConsoleOpen);
       }
     );
-  });
-
-  describe("notes", () => {
-    test.prop([notesArb])("deserialize(serialize(x)) preserves all persisted fields", (fields) => {
-      const input: TerminalInstance = { ...basePanel("notes"), ...fields };
-      const saved = getPanelKindConfig("notes")!.serialize!(input) as SavedTerminalData;
-      const restored = getDeserializer("notes")!(saved);
-
-      expect(restored.notePath).toBe(fields.notePath);
-      expect(restored.noteId).toBe(fields.noteId);
-      expect(restored.scope).toBe(fields.scope);
-      expect(restored.createdAt).toBe(fields.createdAt);
-    });
   });
 
   describe("dev-preview", () => {

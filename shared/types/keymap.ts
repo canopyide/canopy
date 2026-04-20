@@ -161,9 +161,6 @@ export type BuiltInKeyAction =
   | "portal.nextTab"
   | "portal.prevTab"
 
-  // Notes actions
-  | "notes.openPalette"
-
   // Action palette
   | "action.palette"
   | "action.palette.open"
@@ -332,7 +329,6 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "portal.closeTab",
   "portal.nextTab",
   "portal.prevTab",
-  "notes.openPalette",
   "action.palette",
   "action.palette.open",
   "action.repeatLast",

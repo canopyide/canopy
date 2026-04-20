@@ -130,10 +130,6 @@ export interface HydrationOptions {
     browserUrl?: string; // URL for browser panes
     browserHistory?: import("@shared/types/browser").BrowserHistory;
     browserZoom?: number;
-    notePath?: string; // Path to note file (kind === 'notes')
-    noteId?: string; // Note ID (kind === 'notes')
-    scope?: "worktree" | "project"; // Note scope (kind === 'notes')
-    createdAt?: number; // Note creation timestamp (kind === 'notes')
     devCommand?: string; // Dev command override for dev-preview panels
     devServerStatus?: "stopped" | "starting" | "installing" | "running" | "error";
     devServerUrl?: string | null;
@@ -677,7 +673,7 @@ export async function hydrateAppState(
           const ptyPriorityTasks = panelTasks.filter((t) => t.isPty && t.priority === 0);
           const ptyBackgroundTasks = panelTasks.filter((t) => t.isPty && t.priority === 1);
 
-          // Restore all non-PTY panels concurrently (browser, notes, dev-preview).
+          // Restore all non-PTY panels concurrently (browser, dev-preview).
           // These only perform synchronous store mutations, so no throttling is needed.
           // The begin/flush wrapper collapses the N addPanel mutations into one store
           // commit, reducing this phase from N re-renders to 1.

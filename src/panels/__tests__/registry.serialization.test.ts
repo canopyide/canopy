@@ -112,27 +112,6 @@ describe("panelKindRegistry serialize hooks (co-located)", () => {
     });
   });
 
-  describe("notes", () => {
-    it("serializes note fields", () => {
-      const config = getPanelKindConfig("notes");
-      const result = config!.serialize!(
-        makePanel({
-          kind: "notes",
-          notePath: "/notes/test.md",
-          noteId: "note-1",
-          scope: "project",
-          createdAt: 1234567890,
-        })
-      );
-      expect(result).toEqual({
-        notePath: "/notes/test.md",
-        noteId: "note-1",
-        scope: "project",
-        createdAt: 1234567890,
-      });
-    });
-  });
-
   describe("dev-preview", () => {
     it("serializes dev-preview fields with devCommand as command", () => {
       const config = getPanelKindConfig("dev-preview");

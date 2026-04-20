@@ -88,10 +88,6 @@ export function gridTabGroupPropsAreEqual(
           a.detectedProcessId !== b.detectedProcessId ||
           a.agentLaunchFlags !== b.agentLaunchFlags ||
           a.browserUrl !== b.browserUrl ||
-          a.notePath !== b.notePath ||
-          a.noteId !== b.noteId ||
-          a.scope !== b.scope ||
-          a.createdAt !== b.createdAt ||
           a.isRestarting !== b.isRestarting ||
           a.runtimeStatus !== b.runtimeStatus ||
           a.isInputLocked !== b.isInputLocked

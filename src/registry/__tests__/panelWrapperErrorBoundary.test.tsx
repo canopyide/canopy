@@ -55,7 +55,7 @@ describe("Panel wrapper ErrorBoundary + Suspense nesting", () => {
     }
 
     render(
-      <ErrorBoundary variant="component" componentName="NotesPane">
+      <ErrorBoundary variant="component" componentName="DevPreviewPane">
         <Suspense fallback={<div>Loading...</div>}>
           <GoodPanel />
         </Suspense>

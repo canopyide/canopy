@@ -21,7 +21,6 @@ const DEFAULT_RIGHT_BUTTONS: ToolbarButtonId[] = [
   "voice-recording",
   "github-stats",
   "notification-center",
-  "notes",
   "copy-tree",
   "settings",
   "problems",
@@ -153,7 +152,7 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
     }),
     {
       name: "daintree-toolbar-preferences",
-      version: 5,
+      version: 6,
       storage: createSafeJSONStorage(),
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
@@ -214,6 +213,20 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
           if (layout?.hiddenButtons) {
             const agentIds = new Set<string>(BUILT_IN_AGENT_IDS);
             layout.hiddenButtons = layout.hiddenButtons.filter((id) => !agentIds.has(id));
+          }
+        }
+        if (version < 6) {
+          // The Notes panel feature was removed (#5616). Strip any persisted
+          // "notes" entries from button lists so existing users don't see a
+          // ghost button referring to a missing kind.
+          const layout = state.layout as
+            | { leftButtons?: string[]; rightButtons?: string[]; hiddenButtons?: string[] }
+            | undefined;
+          if (layout) {
+            const drop = (buttons?: string[]) => buttons?.filter((id) => id !== "notes");
+            layout.leftButtons = drop(layout.leftButtons);
+            layout.rightButtons = drop(layout.rightButtons);
+            layout.hiddenButtons = drop(layout.hiddenButtons);
           }
         }
         return state as unknown as ToolbarPreferencesState;

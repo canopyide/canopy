@@ -92,15 +92,6 @@ function buildBrowserOptions(panel: TerminalInstance) {
   };
 }
 
-function buildNotesOptions(panel: TerminalInstance) {
-  return {
-    notePath: panel.notePath,
-    noteId: panel.noteId,
-    scope: panel.scope,
-    createdAt: Date.now(),
-  };
-}
-
 function buildDevPreviewOptions(panel: TerminalInstance) {
   return {
     devCommand: panel.devCommand,
@@ -151,18 +142,6 @@ export function buildPanelSnapshotOptions(panel: TerminalInstance): AddPanelOpti
       exitBehavior: panel.exitBehavior,
       isInputLocked: panel.isInputLocked,
       ...buildBrowserOptions(panel),
-    };
-  }
-
-  if (kind === "notes") {
-    return {
-      kind: "notes",
-      type: panel.type,
-      cwd: panel.cwd || "",
-      worktreeId: panel.worktreeId,
-      exitBehavior: panel.exitBehavior,
-      isInputLocked: panel.isInputLocked,
-      ...buildNotesOptions(panel),
     };
   }
 
@@ -254,19 +233,6 @@ export async function buildPanelDuplicateOptions(
       exitBehavior: sourcePanel.exitBehavior,
       isInputLocked: sourcePanel.isInputLocked,
       ...buildBrowserOptions(sourcePanel),
-    };
-  }
-
-  if (kind === "notes") {
-    return {
-      kind: "notes",
-      type: sourcePanel.type,
-      cwd: sourcePanel.cwd || "",
-      worktreeId: sourcePanel.worktreeId,
-      location: targetLocation,
-      exitBehavior: sourcePanel.exitBehavior,
-      isInputLocked: sourcePanel.isInputLocked,
-      ...buildNotesOptions(sourcePanel),
     };
   }
 

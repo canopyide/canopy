@@ -89,14 +89,6 @@ export interface PanelSnapshot {
   devPreviewConsoleOpen?: boolean;
   /** Active viewport preset for dev-preview responsive emulation */
   viewportPreset?: ViewportPresetId;
-  /** Path to note file (kind === 'notes') */
-  notePath?: string;
-  /** Note ID (kind === 'notes') */
-  noteId?: string;
-  /** Note scope (kind === 'notes') */
-  scope?: "worktree" | "project";
-  /** Note creation timestamp (kind === 'notes') */
-  createdAt?: number;
   /** Behavior when terminal exits */
   exitBehavior?: PanelExitBehavior;
   /** Captured agent session ID from graceful shutdown (used for session resume) */

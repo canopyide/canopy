@@ -87,7 +87,6 @@ reports/
 *.AppImage
 *.deb
 *.rpm
-.daintree/notes/
 .daintree/daintree-remote
 
 # Planning docs (private)

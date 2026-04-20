@@ -3,7 +3,7 @@ import type { BuiltInAgentId } from "../config/agentIds.js";
 import type { BrowserHistory } from "./browser.js";
 
 /** Built-in panel kinds */
-export type BuiltInPanelKind = "terminal" | "agent" | "browser" | "notes" | "dev-preview";
+export type BuiltInPanelKind = "terminal" | "agent" | "browser" | "dev-preview";
 
 /**
  * Panel kind: distinguishes between default terminals, agent-driven terminals, browser panels,
@@ -64,13 +64,7 @@ export interface DockRenderState {
 
 /** Type guard to check if a panel kind is a built-in kind */
 export function isBuiltInPanelKind(kind: PanelKind): kind is BuiltInPanelKind {
-  return (
-    kind === "terminal" ||
-    kind === "agent" ||
-    kind === "browser" ||
-    kind === "notes" ||
-    kind === "dev-preview"
-  );
+  return kind === "terminal" || kind === "agent" || kind === "browser" || kind === "dev-preview";
 }
 
 /**
@@ -285,18 +279,6 @@ export interface BrowserPanelData extends BasePanelData {
   browserConsoleOpen?: boolean;
 }
 
-export interface NotesPanelData extends BasePanelData {
-  kind: "notes";
-  /** Path to the note file (relative to project root) */
-  notePath: string;
-  /** Unique identifier for the note (from frontmatter) */
-  noteId: string;
-  /** Note scope: worktree-specific or project-wide */
-  scope: "worktree" | "project";
-  /** Timestamp when note was created (milliseconds since epoch) */
-  createdAt: number;
-}
-
 /** Viewport preset IDs for dev-preview responsive emulation */
 export type ViewportPresetId = "iphone" | "pixel" | "ipad";
 
@@ -328,7 +310,7 @@ export interface DevPreviewPanelData extends BasePanelData {
   viewportPreset?: ViewportPresetId;
 }
 
-export type PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData | DevPreviewPanelData;
+export type PanelInstance = PtyPanelData | BrowserPanelData | DevPreviewPanelData;
 
 export function isPtyPanel(panel: PanelInstance | TerminalInstance): panel is PtyPanelData {
   const kind = panel.kind ?? "terminal";
@@ -338,10 +320,6 @@ export function isPtyPanel(panel: PanelInstance | TerminalInstance): panel is Pt
 export function isBrowserPanel(panel: PanelInstance | TerminalInstance): panel is BrowserPanelData {
   const kind = panel.kind ?? "terminal";
   return kind === "browser";
-}
-
-export function isNotesPanel(panel: PanelInstance): panel is NotesPanelData {
-  return panel.kind === "notes";
 }
 
 export function isDevPreviewPanel(
@@ -356,7 +334,7 @@ export function isDevPreviewPanel(
  * New code should use the PanelInstance discriminated union.
  *
  * Note: PTY-specific fields (cwd, cols, rows) are optional to support
- * non-PTY panels like browser and notes.
+ * non-PTY panels like browser.
  */
 export interface TerminalInstance {
   id: string;
@@ -407,10 +385,6 @@ export interface TerminalInstance {
   browserZoom?: number;
   /** Whether the browser console drawer is open */
   browserConsoleOpen?: boolean;
-  notePath?: string;
-  noteId?: string;
-  scope?: "worktree" | "project";
-  createdAt?: number;
   /** Dev command override for dev-preview panels */
   devCommand?: string;
   /** Dev server status for dev-preview panels */
@@ -427,6 +401,8 @@ export interface TerminalInstance {
   viewportPreset?: ViewportPresetId;
   /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
   exitBehavior?: PanelExitBehavior;
+  /** Legacy persisted creation timestamp (milliseconds since epoch) */
+  createdAt?: number;
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
   /** Detected process icon ID for dynamic terminal icons (transient, not persisted) */

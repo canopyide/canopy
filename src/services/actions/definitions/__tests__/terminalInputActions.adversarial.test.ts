@@ -231,7 +231,7 @@ describe("terminalInputActions adversarial", () => {
     expect(terminalInstanceMock.notifyUserInput).not.toHaveBeenCalled();
   });
 
-  it("sendToAgent ignores non-PTY panels like browser/notes", async () => {
+  it("sendToAgent ignores non-PTY panels like browser", async () => {
     setPanelState({
       focusedId: "b1",
       panelsById: { b1: { kind: "browser" } },

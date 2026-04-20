@@ -200,10 +200,6 @@ describe("Terminal Entry Validation Schemas", () => {
         location: "dock",
         command: "claude --model sonnet-4",
         browserUrl: "http://localhost:3000",
-        notePath: "/notes/test.md",
-        noteId: "note-789",
-        scope: "worktree",
-        createdAt: Date.now(),
       };
 
       const result = TerminalSnapshotSchema.safeParse(snapshot);
@@ -224,23 +220,6 @@ describe("Terminal Entry Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("accepts notes panel snapshot", () => {
-      const snapshot = {
-        id: "notes-123",
-        kind: "notes",
-        title: "Notes",
-        cwd: "/Users/test",
-        location: "grid",
-        notePath: "/notes/test.md",
-        noteId: "note-123",
-        scope: "project",
-        createdAt: 1704067200000,
-      };
-
-      const result = TerminalSnapshotSchema.safeParse(snapshot);
-      expect(result.success).toBe(true);
-    });
-
     it("accepts browser panel snapshot without cwd", () => {
       const snapshot = {
         id: "browser-123",
@@ -248,26 +227,6 @@ describe("Terminal Entry Validation Schemas", () => {
         title: "Browser",
         location: "grid",
         browserUrl: "https://example.com",
-      };
-
-      const result = TerminalSnapshotSchema.safeParse(snapshot);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.cwd).toBeUndefined();
-        expect(result.data).toMatchObject(snapshot);
-      }
-    });
-
-    it("accepts notes panel snapshot without cwd", () => {
-      const snapshot = {
-        id: "notes-123",
-        kind: "notes",
-        title: "Notes",
-        location: "grid",
-        notePath: "/notes/test.md",
-        noteId: "note-123",
-        scope: "project",
-        createdAt: 1704067200000,
       };
 
       const result = TerminalSnapshotSchema.safeParse(snapshot);
@@ -346,20 +305,6 @@ describe("Terminal Entry Validation Schemas", () => {
         title: "Terminal",
         cwd: "/Users/test",
         location: "grid",
-      };
-
-      const result = TerminalSnapshotSchema.safeParse(snapshot);
-      expect(result.success).toBe(false);
-    });
-
-    it("rejects snapshot with invalid scope", () => {
-      const snapshot = {
-        id: "notes-123",
-        kind: "notes",
-        title: "Notes",
-        cwd: "/Users/test",
-        location: "grid",
-        scope: "invalid",
       };
 
       const result = TerminalSnapshotSchema.safeParse(snapshot);

@@ -100,8 +100,7 @@ const TIPS: TipEntry[] = [
     id: "panel-palette",
     message: (
       <>
-        Press <Kbd>⌘N</Kbd> to open the panel palette — add terminals, browsers, notes, or dev
-        previews
+        Press <Kbd>⌘N</Kbd> to open the panel palette — add terminals, browsers, or dev previews
       </>
     ),
     actionId: "panel.palette",

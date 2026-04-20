@@ -221,7 +221,7 @@ export const createCorePanelActions = (
     const requestedKind = options.kind ?? (options.agentId ? "agent" : "terminal");
     const legacyType = options.type || "terminal";
 
-    // Handle panels that use custom UI (browser, notes, dev-preview, extensions) separately
+    // Handle panels that use custom UI (browser, dev-preview, extensions) separately
     if (!panelKindUsesTerminalUi(requestedKind)) {
       const id =
         options.requestedId ||

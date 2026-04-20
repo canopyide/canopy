@@ -343,7 +343,7 @@ describe("hydrateAppState", () => {
     expect(secondAddArg.devServerTerminalId).toBeUndefined();
   });
 
-  it("rehydrates non-terminal panels like browser and notes", async () => {
+  it("rehydrates non-terminal panels like browser", async () => {
     appClientMock.hydrate.mockResolvedValue({
       appState: {
         terminals: [
@@ -356,15 +356,12 @@ describe("hydrateAppState", () => {
             browserUrl: "http://localhost:5173",
           },
           {
-            id: "notes-1",
-            kind: "notes",
-            title: "Notes",
+            id: "browser-2",
+            kind: "browser",
+            title: "Docs",
             cwd: "/project",
             location: "dock",
-            notePath: "notes/today.md",
-            noteId: "note-1",
-            scope: "project",
-            createdAt: 123,
+            browserUrl: "http://localhost:4000",
           },
         ],
         sidebarWidth: 350,
@@ -398,12 +395,9 @@ describe("hydrateAppState", () => {
     expect(addPanel).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        kind: "notes",
-        requestedId: "notes-1",
-        notePath: "notes/today.md",
-        noteId: "note-1",
-        scope: "project",
-        createdAt: 123,
+        kind: "browser",
+        requestedId: "browser-2",
+        browserUrl: "http://localhost:4000",
       })
     );
   });
@@ -1656,12 +1650,12 @@ describe("hydrateAppState", () => {
             browserUrl: "http://localhost:3000",
           },
           {
-            id: "notes-1",
-            kind: "notes",
-            title: "Notes",
+            id: "browser-2",
+            kind: "browser",
+            title: "Docs",
             cwd: "/project",
             location: "grid",
-            noteId: "note-abc",
+            browserUrl: "http://localhost:4000",
           },
         ],
         sidebarWidth: 350,
@@ -1684,7 +1678,7 @@ describe("hydrateAppState", () => {
     const addPanel = vi
       .fn()
       .mockImplementation((opts: { kind?: string; requestedId?: string; existingId?: string }) => {
-        callOrder.push(opts.kind ?? "unknown");
+        callOrder.push(`${opts.kind ?? "unknown"}:${opts.requestedId ?? opts.existingId}`);
         return Promise.resolve(opts.requestedId ?? opts.existingId ?? "id");
       });
     const setActiveWorktree = vi.fn();
@@ -1700,13 +1694,13 @@ describe("hydrateAppState", () => {
 
     expect(addPanel).toHaveBeenCalledTimes(3);
 
-    // Non-PTY panels (browser, notes) should be restored before PTY panel (terminal)
-    const terminalIndex = callOrder.indexOf("terminal");
-    const browserIndex = callOrder.indexOf("browser");
-    const notesIndex = callOrder.indexOf("notes");
+    // Non-PTY panels (browser) should be restored before PTY panel (terminal)
+    const terminalIdx = callOrder.findIndex((c) => c.startsWith("terminal:"));
+    const browser1Idx = callOrder.indexOf("browser:browser-1");
+    const browser2Idx = callOrder.indexOf("browser:browser-2");
 
-    expect(browserIndex).toBeLessThan(terminalIndex);
-    expect(notesIndex).toBeLessThan(terminalIndex);
+    expect(browser1Idx).toBeLessThan(terminalIdx);
+    expect(browser2Idx).toBeLessThan(terminalIdx);
   });
 
   it("preserves order for all-non-PTY panel workspace", async () => {
@@ -1722,12 +1716,12 @@ describe("hydrateAppState", () => {
             browserUrl: "http://localhost:3000",
           },
           {
-            id: "notes-1",
-            kind: "notes",
-            title: "Notes 1",
+            id: "browser-2",
+            kind: "browser",
+            title: "Browser 2",
             cwd: "/project",
             location: "grid",
-            noteId: "note-1",
+            browserUrl: "http://localhost:4000",
           },
           {
             id: "dev-preview-1",
@@ -1767,7 +1761,7 @@ describe("hydrateAppState", () => {
       expect.objectContaining({ kind: "browser", requestedId: "browser-1" })
     );
     expect(addPanel.mock.calls[1]![0]).toEqual(
-      expect.objectContaining({ kind: "notes", requestedId: "notes-1" })
+      expect.objectContaining({ kind: "browser", requestedId: "browser-2" })
     );
     expect(addPanel.mock.calls[2]![0]).toEqual(
       expect.objectContaining({ kind: "dev-preview", requestedId: "dev-preview-1" })
@@ -1799,13 +1793,13 @@ describe("hydrateAppState", () => {
             browserUrl: "http://localhost:3000",
           },
           {
-            id: "notes-active",
-            kind: "notes",
-            title: "Active Notes",
+            id: "browser-active",
+            kind: "browser",
+            title: "Active Browser",
             cwd: "/project",
             worktreeId: "wt-active",
             location: "grid",
-            noteId: "note-1",
+            browserUrl: "http://localhost:4000",
           },
           {
             id: "term-bg",
@@ -1864,12 +1858,12 @@ describe("hydrateAppState", () => {
     expect(addPanel).toHaveBeenCalledTimes(4);
 
     // Both non-PTY panels (from different worktrees) should come before either PTY panel
-    const browserIdx = callOrder.findIndex((c) => c.startsWith("browser:"));
-    const notesIdx = callOrder.findIndex((c) => c.startsWith("notes:"));
+    const browserBgIdx = callOrder.indexOf("browser:browser-bg");
+    const browserActiveIdx = callOrder.indexOf("browser:browser-active");
     const firstPtyIdx = callOrder.findIndex((c) => c.startsWith("terminal:"));
 
-    expect(browserIdx).toBeLessThan(firstPtyIdx);
-    expect(notesIdx).toBeLessThan(firstPtyIdx);
+    expect(browserBgIdx).toBeLessThan(firstPtyIdx);
+    expect(browserActiveIdx).toBeLessThan(firstPtyIdx);
   });
 
   it("treats dev-preview with backend terminal as PTY-grouped", async () => {

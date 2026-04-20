@@ -17,7 +17,6 @@ import {
   Bell,
   Ellipsis,
   GitBranch,
-  StickyNote,
   Plug,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -86,7 +85,6 @@ export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenu
   "dev-server": { label: "Dev Preview", icon: Monitor },
   "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
   "notification-center": { label: "Notifications", icon: Bell },
-  notes: { label: "Notes", icon: StickyNote },
   "copy-tree": { label: "Copy Context", icon: CopyTreeIcon },
   settings: { label: "Settings", icon: SlidersHorizontal },
   problems: { label: "Problems", icon: AlertCircle },
@@ -172,7 +170,6 @@ export function Toolbar({
 
   const { handleCopyTree } = useWorktreeActions();
   const sidebarShortcut = useKeybindingDisplay("nav.toggleSidebar");
-  const notesShortcut = useKeybindingDisplay("notes.openPalette");
   const copyTreeShortcut = useKeybindingDisplay("worktree.copyTree");
 
   const handleOpenProjectSettings = useCallback(() => {
@@ -454,30 +451,6 @@ export function Toolbar({
         ),
         isAvailable: notificationsEnabled,
       },
-      notes: {
-        render: () => (
-          <TooltipProvider key="notes">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  data-toolbar-item=""
-                  onClick={() => actionService.dispatch("notes.create", {}, { source: "user" })}
-                  className={toolbarIconButtonClass}
-                  aria-label="Open notes palette"
-                >
-                  <StickyNote />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {createTooltipWithShortcut("Notes", notesShortcut)}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ),
-        isAvailable: true,
-      },
       "copy-tree": {
         render: () => (
           <TooltipProvider key="copy-tree">
@@ -588,7 +561,6 @@ export function Toolbar({
       effectiveAgentSettings,
       onLaunchAgent,
       sidebarShortcut,
-      notesShortcut,
       copyTreeShortcut,
       hasActiveVoiceRecording,
       currentProject,
@@ -746,9 +718,6 @@ export function Toolbar({
       },
       "notification-center": () => {
         useUIStore.getState().toggleNotificationCenter();
-      },
-      notes: () => {
-        void actionService.dispatch("notes.create", {}, { source: "user" });
       },
       "copy-tree": () => {
         void handleCopyTreeClick();

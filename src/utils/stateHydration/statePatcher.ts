@@ -31,9 +31,6 @@ export interface AddTerminalArgs extends AddPanelOptionsBase {
   browserHistory?: BrowserHistory;
   browserZoom?: number;
   browserConsoleOpen?: boolean;
-  notePath?: string;
-  noteId?: string;
-  scope?: "worktree" | "project";
   createdAt?: number;
   devCommand?: string;
   devServerStatus?: "stopped" | "starting" | "installing" | "running" | "error";
@@ -59,9 +56,6 @@ export interface SavedTerminalData {
   browserHistory?: BrowserHistory;
   browserZoom?: number;
   browserConsoleOpen?: boolean;
-  notePath?: string;
-  noteId?: string;
-  scope?: string;
   createdAt?: number;
   devCommand?: string;
   devPreviewConsoleOpen?: boolean;

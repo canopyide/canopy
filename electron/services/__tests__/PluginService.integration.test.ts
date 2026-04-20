@@ -247,7 +247,6 @@ describe("PluginService integration — panel contributions", () => {
       hasPty: false,
       showInPalette: true,
     });
-    expect(getPanelKindConfig("notes")).toMatchObject({ id: "notes", iconId: "sticky-note" });
     expect(getPanelKindConfig("dev-preview")).toMatchObject({
       id: "dev-preview",
       iconId: "monitor",

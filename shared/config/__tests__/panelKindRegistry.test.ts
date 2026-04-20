@@ -26,13 +26,12 @@ describe("panelKindRegistry metadata", () => {
     expect(panelKindUsesTerminalUi("agent")).toBe(true);
   });
 
-  it("browser and notes do not use terminal UI", () => {
+  it("browser does not use terminal UI", () => {
     expect(panelKindUsesTerminalUi("browser")).toBe(false);
-    expect(panelKindUsesTerminalUi("notes")).toBe(false);
   });
 
   it("returns config for all built-in kinds", () => {
-    for (const kind of ["terminal", "agent", "browser", "notes", "dev-preview"]) {
+    for (const kind of ["terminal", "agent", "browser", "dev-preview"]) {
       const config = getPanelKindConfig(kind);
       expect(config).toBeDefined();
       expect(config!.id).toBe(kind);
@@ -44,7 +43,7 @@ describe("panelKindRegistry metadata", () => {
   });
 });
 
-const BUILT_IN_KINDS = ["terminal", "agent", "browser", "notes", "dev-preview"] as const;
+const BUILT_IN_KINDS = ["terminal", "agent", "browser", "dev-preview"] as const;
 
 const makeExtensionConfig = (id: string, extensionId: string): PanelKindConfig => ({
   id,

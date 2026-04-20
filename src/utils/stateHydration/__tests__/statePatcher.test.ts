@@ -85,14 +85,6 @@ describe("inferKind", () => {
     expect(inferKind({ id: "t1", browserUrl: "https://example.com" })).toBe("browser");
   });
 
-  it("infers notes from notePath", () => {
-    expect(inferKind({ id: "t1", notePath: "/notes/a.md" })).toBe("notes");
-  });
-
-  it("infers notes from noteId", () => {
-    expect(inferKind({ id: "t1", noteId: "note-1" })).toBe("notes");
-  });
-
   it('infers assistant from title "Assistant"', () => {
     expect(inferKind({ id: "t1", title: "Assistant" })).toBe("assistant");
   });
@@ -728,28 +720,6 @@ describe("buildArgsForNonPtyRecreation", () => {
     expect(result.browserUrl).toBe("https://example.com");
     expect(result.browserConsoleOpen).toBe(true);
     expect(result.requestedId).toBe("b1");
-  });
-
-  it("builds notes panel args", () => {
-    const result = buildArgsForNonPtyRecreation(
-      {
-        id: "n1",
-        kind: "notes",
-        title: "Notes",
-        notePath: "/notes/a.md",
-        noteId: "note-1",
-        scope: "project",
-        createdAt: 12345,
-        location: "dock",
-      },
-      "notes",
-      "/project"
-    );
-    expect(result.kind).toBe("notes");
-    expect(result.notePath).toBe("/notes/a.md");
-    expect(result.noteId).toBe("note-1");
-    expect(result.scope).toBe("project");
-    expect(result.location).toBe("dock");
   });
 
   it("builds dev-preview panel args with devCommand fallback", () => {

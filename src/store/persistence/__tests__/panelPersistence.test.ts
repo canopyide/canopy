@@ -406,38 +406,6 @@ describe("PanelPersistence", () => {
     });
   });
 
-  describe("notes panels", () => {
-    it("preserves notes metadata for notes panels", async () => {
-      const client = createMockProjectClient();
-      const persistence = new PanelPersistence(client, { debounceMs: 100 });
-
-      const notesPanel = createMockTerminal({
-        id: "notes-1",
-        kind: "notes",
-        title: "My Notes",
-        notePath: "/notes/test.md",
-        noteId: "note-uuid",
-        scope: "project",
-        createdAt: 1234567890,
-        location: "grid",
-      });
-
-      persistence.save([notesPanel], projectId);
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(client.setTerminals).toHaveBeenCalledWith(projectId, [
-        expect.objectContaining({
-          id: "notes-1",
-          kind: "notes",
-          notePath: "/notes/test.md",
-          noteId: "note-uuid",
-          scope: "project",
-          createdAt: 1234567890,
-        }),
-      ]);
-    });
-  });
-
   describe("extension state", () => {
     it("persists extensionState for extension panels through snapshot round-trip", async () => {
       const client = createMockProjectClient();
@@ -558,7 +526,7 @@ describe("PanelPersistence", () => {
           location: "grid",
           // Kind-specific fields the (now-gone) serializer had written.
           browserUrl: "https://example.com",
-          notePath: "/notes/custom.md",
+          command: "npm run dev",
         },
       ]);
 
@@ -572,7 +540,7 @@ describe("PanelPersistence", () => {
           id: "ext-unknown",
           kind: "custom-widget",
           browserUrl: "https://example.com",
-          notePath: "/notes/custom.md",
+          command: "npm run dev",
         })
       );
     });
@@ -746,7 +714,7 @@ describe("PanelPersistence", () => {
           title: "Custom",
           location: "grid",
           browserUrl: "https://example.com",
-          notePath: "/notes/custom.md",
+          command: "npm run dev",
         },
       ]);
 
@@ -755,7 +723,7 @@ describe("PanelPersistence", () => {
       expect(prevMap?.get("ext-unknown")).toEqual(
         expect.objectContaining({
           browserUrl: "https://example.com",
-          notePath: "/notes/custom.md",
+          command: "npm run dev",
         })
       );
 
@@ -772,7 +740,7 @@ describe("PanelPersistence", () => {
           id: "ext-unknown",
           kind: "custom-widget",
           browserUrl: "https://example.com",
-          notePath: "/notes/custom.md",
+          command: "npm run dev",
         })
       );
     });
