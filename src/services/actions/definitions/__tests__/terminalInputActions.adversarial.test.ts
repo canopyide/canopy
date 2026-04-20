@@ -12,11 +12,14 @@ const bracketedMock = vi.hoisted(() => ({
   formatWithBracketedPaste: vi.fn((t: string) => `<BP>${t}</BP>`),
 }));
 const sendToAgentMock = vi.hoisted(() => ({ openSendToAgentPalette: vi.fn() }));
-const fleetDeckMock = vi.hoisted(() => ({
-  useFleetDeckStore: {
-    getState: vi.fn(() => ({
-      open: vi.fn(),
-    })),
+const fleetScopeFlagMock = vi.hoisted(() => ({
+  useFleetScopeFlagStore: {
+    getState: vi.fn(() => ({ mode: "legacy", isHydrated: false })),
+  },
+}));
+const worktreeSelectionMock = vi.hoisted(() => ({
+  useWorktreeSelectionStore: {
+    getState: vi.fn(() => ({ enterFleetScope: vi.fn() })),
   },
 }));
 const terminalInputStoreMock = vi.hoisted(() => ({
@@ -46,7 +49,8 @@ vi.mock("@/services/terminal/TerminalInstanceService", () => ({
 vi.mock("@/clients", () => ({ terminalClient: terminalClientMock }));
 vi.mock("@shared/utils/terminalInputProtocol", () => bracketedMock);
 vi.mock("@/hooks/useSendToAgentPalette", () => sendToAgentMock);
-vi.mock("@/store/fleetDeckStore", () => fleetDeckMock);
+vi.mock("@/store/fleetScopeFlagStore", () => fleetScopeFlagMock);
+vi.mock("@/store/worktreeStore", () => worktreeSelectionMock);
 vi.mock("@/store/terminalInputStore", () => terminalInputStoreMock);
 vi.mock("@/store/fleetArmingStore", () => fleetArmingMock);
 vi.mock("@shared/config/panelKindRegistry", () => ({

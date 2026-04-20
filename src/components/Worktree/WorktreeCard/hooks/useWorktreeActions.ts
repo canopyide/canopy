@@ -3,7 +3,6 @@ import type { WorktreeState } from "@/types";
 import { actionService } from "@/services/ActionService";
 import { useRecipeStore } from "@/store/recipeStore";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
-import { useFleetDeckStore } from "@/store/fleetDeckStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 
 export interface ConfirmDialogState {
@@ -102,7 +101,7 @@ export function useWorktreeActions({
   const handleBroadcastToAgents = useCallback(() => {
     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
     useFleetArmingStore.getState().armAll("current");
-    useFleetDeckStore.getState().open();
+    void actionService.dispatch("fleet.scope.enter", undefined, { source: "user" });
   }, [worktree.id]);
 
   const handleCopyTree = useCallback(async () => {
