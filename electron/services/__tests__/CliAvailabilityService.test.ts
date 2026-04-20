@@ -10,8 +10,8 @@ import { execFile, execFileSync } from "child_process";
 import { refreshPath } from "../../setup/environment.js";
 
 // Mock child_process. Both `execFileSync` (sync shell probe) and `execFile`
-// (async npx / WSL probes) are used by the service — mock both or the async
-// probes will call `undefined(...)` and throw TypeErrors at runtime.
+// (async npm-global / WSL probes) are used by the service — mock both or
+// the async probes will call `undefined(...)` and throw TypeErrors at runtime.
 //
 // `execFile` has an overloaded signature: (file, args, callback) or
 // (file, args, options, callback). The default mock invokes whichever
@@ -79,8 +79,8 @@ describe("CliAvailabilityService", () => {
     // clearAllMocks() clears call history but NOT implementations.
     const fs = await import("fs/promises");
     vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
-    // Default async execFile (npx / WSL probes) to "not found" — clearAllMocks
-    // wipes mock impls, so we reapply the factory default after each clear.
+    // Default async execFile (npm-global / WSL probes) to "not found" —
+    // clearAllMocks wipes mock impls, so we reapply the factory default after each clear.
     mockedExecFile.mockImplementation(defaultExecFileImpl as never);
     // Silence the diagnostic fallback log emitted by checkAuth() so
     // the test runner output stays clean. Individual tests re-access
@@ -123,7 +123,7 @@ describe("CliAvailabilityService", () => {
       }
 
       // Should have called execFileSync 7 times (once for each CLI).
-      // Fallback probes (native paths, npx, WSL) run via async execFile and
+      // Fallback probes (native paths, npm-global, WSL) run via async execFile and
       // only fire when the which/where probe returns missing — in this test
       // every agent succeeds on the first probe, so execFileSync count
       // matches the registry size exactly.
@@ -190,8 +190,16 @@ describe("CliAvailabilityService", () => {
         throw new Error("Command not found");
       });
 
-      // Auth file found (for claude)
-      mockedAccess.mockResolvedValue(undefined);
+      // Auth config files succeed; native-install bin probes (cursor-agent,
+      // opencode) must fail — otherwise the native-path fallback would flip
+      // them to "ready" and defeat the "only claude is available" premise.
+      mockedAccess.mockImplementation(async (p) => {
+        const pathStr = String(p);
+        if (pathStr.includes("/bin/") || pathStr.includes("cursor-agent.app")) {
+          throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        }
+        return undefined;
+      });
 
       const result = await service.checkAvailability();
 
@@ -980,28 +988,31 @@ describe("CliAvailabilityService", () => {
       });
       await service.refresh();
 
-      // With shell + native + npx all missing, state is "missing".
+      // With shell + native + npm-global all missing, state is "missing".
       expect(service.getDetails()!.claude?.state).toBe("missing");
       expect(service.getDetails()!.claude?.resolvedPath).toBeNull();
     });
   });
 
-  describe("npx fallback probe", () => {
-    it("detects agent via npx --prefer-offline --no <pkg> --version on cache hit", async () => {
-      // Shell probe misses for Gemini (no native paths either, so npx is the
-      // only remaining layer). Mock execFile to succeed only for Gemini's pkg.
+  describe("npm-global fallback probe", () => {
+    it("detects agent via `<npm prefix>/bin/<cmd>` shim when PATH + native paths miss", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      // Shell probe misses for every agent.
       mockedExecFileSync.mockImplementation(() => {
         throw Object.assign(new Error("not found"), { code: "ENOENT" });
       });
 
+      // Any `npm config get prefix` call returns a fake prefix; all other
+      // async execFile calls (WSL probes) ENOENT.
       mockedExecFile.mockImplementation(((...args: unknown[]) => {
-        const argv = args[1] as string[];
+        const file = args[0] as string;
         const callback = args.find(
           (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
         );
-        // Only @google/gemini-cli succeeds; everything else ENOENTs.
-        if (argv?.includes("@google/gemini-cli")) {
-          queueMicrotask(() => callback?.(null, "1.2.3"));
+        if (file === "npm") {
+          queueMicrotask(() => callback?.(null, "/Users/test/.npm-global\n"));
         } else {
           const err = Object.assign(new Error("not found"), { code: "ENOENT" });
           queueMicrotask(() => callback?.(err));
@@ -1009,72 +1020,226 @@ describe("CliAvailabilityService", () => {
         return {} as never;
       }) as never);
 
+      // Only the Gemini shim exists on disk.
+      const geminiShim = join("/Users/test/.npm-global", "bin", "gemini");
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === geminiShim) return;
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
       const result = await service.checkAvailability();
-      // npx-detected agents are now launchable (`ready`) — the npx probe
-      // confirms the binary is available via the cache, which is enough to
-      // route a launch through npx.
       expect(result.gemini).toBe("ready");
 
       const details = service.getDetails();
       expect(details!.gemini?.state).toBe("ready");
-      expect(details!.gemini?.via).toBe("npx");
-      expect(details!.gemini?.resolvedPath).toBe("npx:@google/gemini-cli");
+      expect(details!.gemini?.via).toBe("npm-global");
+      expect(details!.gemini?.resolvedPath).toBe(geminiShim);
 
-      // Verify the exact probe args used — guards against regressions in the
-      // deprecation-safe `--prefer-offline --no` invocation form.
-      const geminiCall = mockedExecFile.mock.calls.find((c) =>
-        (c[1] as string[])?.includes("@google/gemini-cli")
-      );
-      expect(geminiCall?.[1]).toEqual([
-        "--prefer-offline",
-        "--no",
-        "@google/gemini-cli",
-        "--version",
-      ]);
+      // Exact probe form — guards against regressions in `npm config get prefix`.
+      const npmCall = mockedExecFile.mock.calls.find((c) => c[0] === "npm");
+      expect(npmCall?.[1]).toEqual(["config", "get", "prefix"]);
     });
 
-    it("classifies npx EPERM as 'blocked' (endpoint security blocks npx itself)", async () => {
+    it("returns 'missing' on npx-cache-only hits (regression guard for #5641)", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      // Shell probe misses; simulate a system where `npx gemini` has been run
+      // (so ~/.npm/_npx is populated) but `npm install -g @google/gemini-cli`
+      // was never executed — the global bin shim does not exist.
       mockedExecFileSync.mockImplementation(() => {
         throw Object.assign(new Error("not found"), { code: "ENOENT" });
       });
 
       mockedExecFile.mockImplementation(((...args: unknown[]) => {
-        const callback = args.find((a): a is (err: unknown) => void => typeof a === "function");
-        const err = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
-        queueMicrotask(() => callback?.(err));
+        const file = args[0] as string;
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        if (file === "npm") {
+          queueMicrotask(() => callback?.(null, "/Users/test/.npm-global\n"));
+        } else {
+          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+          queueMicrotask(() => callback?.(err));
+        }
         return {} as never;
       }) as never);
 
+      // No shim files exist.
+      mockedAccess.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+
       const result = await service.checkAvailability();
-      // Every agent with an npxPackage hits EPERM at the npx layer → blocked.
-      // Agents without npxPackage (cursor, kiro, opencode, copilot) still
-      // report missing since they have no fallback.
-      expect(result.claude).toBe("blocked");
-      expect(result.gemini).toBe("blocked");
-      expect(result.codex).toBe("blocked");
+      expect(result.gemini).toBe("missing");
+      expect(result.claude).toBe("missing");
+      expect(result.codex).toBe("missing");
 
       const details = service.getDetails();
-      expect(details!.claude?.blockReason).toBe("security");
-      expect(details!.claude?.via).toBe("npx");
+      expect(details!.gemini?.state).toBe("missing");
+      expect(details!.gemini?.resolvedPath).toBeNull();
     });
 
-    it("skips npx probe for agents without npxPackage in the registry", async () => {
+    it("classifies shim EACCES as 'blocked'", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const file = args[0] as string;
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        if (file === "npm") {
+          queueMicrotask(() => callback?.(null, "/Users/test/.npm-global\n"));
+        } else {
+          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+          queueMicrotask(() => callback?.(err));
+        }
+        return {} as never;
+      }) as never);
+
+      const geminiShim = join("/Users/test/.npm-global", "bin", "gemini");
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === geminiShim) {
+          throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+        }
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      const result = await service.checkAvailability();
+      expect(result.gemini).toBe("blocked");
+
+      const details = service.getDetails();
+      expect(details!.gemini?.state).toBe("blocked");
+      expect(details!.gemini?.blockReason).toBe("permissions");
+      expect(details!.gemini?.via).toBe("npm-global");
+      expect(details!.gemini?.resolvedPath).toBe(geminiShim);
+    });
+
+    it("returns 'missing' when `npm config get prefix` itself fails (npm not installed)", async () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+      // Every async exec (including npm) fails with ENOENT — npm is not on PATH.
+      // The default mockedExecFile already behaves this way.
+
+      const result = await service.checkAvailability();
+      // No blocked state — a missing npm binary is not an endpoint-security
+      // scenario. All npm-backed agents fall through to "missing".
+      expect(result.gemini).toBe("missing");
+      expect(result.claude).toBe("missing");
+      expect(result.codex).toBe("missing");
+
+      const details = service.getDetails();
+      expect(details!.gemini?.state).toBe("missing");
+    });
+
+    it("skips npm-global probe for agents without npmGlobalPackage", async () => {
       mockedExecFileSync.mockImplementation(() => {
         throw Object.assign(new Error("not found"), { code: "ENOENT" });
       });
 
+      // Track which commands triggered an `npm config get prefix` call.
+      const probeCommands = new Set<string>();
+      let activeCommand = "";
+      mockedExecFileSync.mockImplementation((_file, args) => {
+        activeCommand = (args as string[])?.[0] ?? "";
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const file = args[0] as string;
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        if (file === "npm") {
+          probeCommands.add(activeCommand);
+          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+          queueMicrotask(() => callback?.(err));
+        } else {
+          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+          queueMicrotask(() => callback?.(err));
+        }
+        return {} as never;
+      }) as never);
+
       await service.checkAvailability();
 
-      // Agents with npxPackage: claude, gemini, codex → 3 npx probes.
-      // Cursor/Kiro/Opencode/Copilot must NOT appear in execFile calls.
-      const npxPackages = mockedExecFile.mock.calls
-        .map((c) => c[1] as string[])
-        .map((args) => args?.find((a) => a.startsWith("@") || a === "opencode-ai"))
-        .filter(Boolean);
-      expect(npxPackages).toEqual(
-        expect.arrayContaining(["@anthropic-ai/claude-code", "@google/gemini-cli", "@openai/codex"])
-      );
-      expect(npxPackages).toHaveLength(3);
+      // Agents with npmGlobalPackage are claude/gemini/codex. Agents without
+      // (opencode/cursor/kiro/copilot) must NOT trigger an npm probe.
+      expect(mockedExecFile.mock.calls.filter((c) => c[0] === "npm").length).toBeGreaterThan(0);
+      expect(probeCommands.has("cursor-agent")).toBe(false);
+      expect(probeCommands.has("kiro-cli")).toBe(false);
+      expect(probeCommands.has("copilot")).toBe(false);
+      expect(probeCommands.has("opencode")).toBe(false);
+    });
+  });
+
+  describe("extended native path coverage", () => {
+    it("detects cursor-agent via ~/.local/bin/cursor-agent when PATH misses", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      const cursorNative = join(homedir(), ".local/bin/cursor-agent");
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === cursorNative) return;
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      const result = await service.checkAvailability();
+      expect(result.cursor).toBe("ready");
+
+      const details = service.getDetails();
+      expect(details!.cursor?.via).toBe("native");
+      expect(details!.cursor?.resolvedPath).toBe(cursorNative);
+    });
+
+    it("detects cursor-agent via the macOS app-bundle sidecar when only Cursor.app is installed", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      const appBundleNative = "/Applications/Cursor.app/Contents/Resources/app/bin/cursor-agent";
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === appBundleNative) return;
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      const result = await service.checkAvailability();
+      expect(result.cursor).toBe("ready");
+
+      const details = service.getDetails();
+      expect(details!.cursor?.resolvedPath).toBe(appBundleNative);
+      expect(details!.cursor?.via).toBe("native");
+    });
+
+    it("detects opencode via ~/.opencode/bin/opencode (curl-installer fallback path)", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      const opencodeNative = join(homedir(), ".opencode/bin/opencode");
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === opencodeNative) return;
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      const result = await service.checkAvailability();
+      expect(result.opencode).toBe("ready");
+
+      const details = service.getDetails();
+      expect(details!.opencode?.via).toBe("native");
+      expect(details!.opencode?.resolvedPath).toBe(opencodeNative);
     });
   });
 
@@ -1088,7 +1253,7 @@ describe("CliAvailabilityService", () => {
       Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
     });
 
-    it("detects Codex via WSL when shell, native, and npx all miss", async () => {
+    it("detects Codex via WSL when shell, native, and npm-global all miss", async () => {
       mockedExecFileSync.mockImplementation(() => {
         throw Object.assign(new Error("not found"), { code: "ENOENT" });
       });
@@ -1142,12 +1307,11 @@ describe("CliAvailabilityService", () => {
 
       await service.checkAvailability();
 
-      // wsl.exe should never appear in execFile calls — only Codex has
-      // supportsWsl: true, and Codex's npx probe fails first under the
-      // default mock, but WSL probing requires reaching the WSL layer.
-      // Even for Codex, the WSL probe fires only if npx misses — default
-      // execFile returns ENOENT, so WSL *is* reached for Codex. Verify
-      // via the file arg that no NON-Codex agent triggered wsl.exe.
+      // wsl.exe should never appear in execFile calls for agents without
+      // supportsWsl: true. Codex has the flag, and its npm-global probe
+      // (via `npm config get prefix`) fails under the default mock, so WSL
+      // *is* reached for Codex. Verify via the file arg that no NON-Codex
+      // agent triggered wsl.exe.
       const wslCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "wsl.exe");
       // Two expected calls: --list (to enumerate distros) + one -d probe.
       // Those fire because Codex has supportsWsl. No agent besides Codex

@@ -307,15 +307,20 @@ export interface AgentConfig {
    */
   nativePaths?: string[];
   /**
-   * npm package name to use as a last-resort detection probe via
-   * `npx --prefer-offline --no <package> --version`. Only triggered when both
-   * PATH and native path probes return missing, to detect CLIs that exist in
-   * the npx cache but have no globally installed bin shim.
+   * npm package name to use as a last-resort detection probe. When PATH and
+   * native-path probes both miss, `CliAvailabilityService` queries
+   * `npm config get prefix` and checks whether the package's installed bin
+   * shim exists at `<prefix>/bin/<command>` (POSIX) or `<prefix>\<command>.cmd`
+   * (Windows). This positively confirms the binary is globally installed and
+   * launchable from a plain shell — unlike the earlier npx-cache probe, which
+   * produced false positives whenever the package had been run once via
+   * `npx <pkg>` (the ephemeral `~/.npm/_npx` cache hits even when no global
+   * bin shim exists).
    *
-   * Omit this field to opt out of the npx probe for agents where it's
-   * inappropriate (e.g. not distributed via npm).
+   * Omit this field to opt out of the npm-global probe for agents not
+   * distributed via npm.
    */
-  npxPackage?: string;
+  npmGlobalPackage?: string;
   /**
    * When `true`, CliAvailabilityService will additionally probe WSL on Windows
    * if all other probes fail. Used for agents (e.g. Codex) that may only be
@@ -362,7 +367,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     // install via the native installer are not mis-reported as "missing"
     // when ~/.local/bin isn't inherited by the Electron process PATH.
     nativePaths: ["~/.local/bin/claude", "%LOCALAPPDATA%\\claude-code\\bin\\claude.exe"],
-    npxPackage: "@anthropic-ai/claude-code",
+    npmGlobalPackage: "@anthropic-ai/claude-code",
     color: "#CC785C",
     iconId: "claude",
     supportsContextInjection: true,
@@ -583,7 +588,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     id: "gemini",
     name: "Gemini",
     command: "gemini",
-    npxPackage: "@google/gemini-cli",
+    npmGlobalPackage: "@google/gemini-cli",
     color: "#4285F4",
     iconId: "gemini",
     supportsContextInjection: true,
@@ -734,7 +739,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     id: "codex",
     name: "Codex",
     command: "codex",
-    npxPackage: "@openai/codex",
+    npmGlobalPackage: "@openai/codex",
     // Codex Windows packaging lags behind Linux — Windows users commonly
     // install via WSL. WSL probing surfaces the availability in diagnostics
     // even when no native Windows binary exists.
@@ -885,6 +890,10 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     id: "opencode",
     name: "OpenCode",
     command: "opencode",
+    // OpenCode's curl installer (https://opencode.ai/install) lands the binary
+    // under ~/.opencode/bin when ~/.local/bin and XDG_BIN_DIR are unset;
+    // otherwise it uses ~/.local/bin (already covered by getUnixFallbackPaths).
+    nativePaths: ["~/.opencode/bin/opencode", "~/.local/bin/opencode"],
     color: "#10b981",
     iconId: "opencode",
     supportsContextInjection: true,
@@ -1061,6 +1070,13 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     id: "cursor",
     name: "Cursor",
     command: "cursor-agent",
+    // Cursor's curl installer (https://cursor.com/install) places the binary
+    // at ~/.local/bin/cursor-agent on macOS/Linux. macOS users who have only
+    // the Cursor.app GUI get the CLI sidecar inside the app bundle.
+    nativePaths: [
+      "~/.local/bin/cursor-agent",
+      "/Applications/Cursor.app/Contents/Resources/app/bin/cursor-agent",
+    ],
     color: "#3ee6eb",
     iconId: "cursor",
     supportsContextInjection: true,

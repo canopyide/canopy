@@ -29,7 +29,7 @@ export interface SystemWakePayload {
 /**
  * Availability for an individual agent CLI.
  *
- * - `missing`: binary not found via any probe (PATH, native installer path, npx fallback).
+ * - `missing`: binary not found via any probe (PATH, native installer path, npm global bin).
  * - `installed`: binary found but cannot be launched directly (e.g. WSL-detected on
  *   Windows, where direct spawn isn't wired up yet). Agents whose binary is on PATH
  *   are always `ready`, regardless of whether a credential file was detected.
@@ -50,7 +50,7 @@ export type CliAvailability = Record<AgentId, AgentAvailabilityState>;
  * Which probe layer located the CLI binary. Populated alongside
  * {@link AgentCliDetail.resolvedPath} for the Settings diagnostics surface.
  */
-export type AgentCliProbeSource = "which" | "native" | "npx" | "wsl";
+export type AgentCliProbeSource = "which" | "native" | "npm-global" | "wsl";
 
 /**
  * Reason a binary exists but cannot be executed. Only set when
@@ -63,9 +63,7 @@ export type AgentCliBlockReason = "security" | "permissions";
  * type so the existing {@link CliAvailability} IPC surface stays unchanged.
  *
  * `resolvedPath` contract:
- * - For `which`/`native` probes: absolute filesystem path to the binary.
- * - For `npx`: synthetic `npx:<package-name>` (no real filesystem path —
- *   npx resolves the bin on each invocation).
+ * - For `which`/`native`/`npm-global` probes: absolute filesystem path to the binary.
  * - For `wsl`: synthetic `wsl:<distro>` (execution target, not a Windows path).
  * - `null` when the binary was not found or execution was blocked before
  *   a path could be resolved.
