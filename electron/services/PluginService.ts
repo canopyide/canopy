@@ -5,7 +5,13 @@ import { pathToFileURL } from "url";
 import { app } from "electron";
 import * as semver from "semver";
 import { PluginManifestSchema } from "../schemas/plugin.js";
-import type { PluginManifest, PluginIpcHandler } from "../../shared/types/plugin.js";
+import type {
+  PluginManifest,
+  PluginIpcHandler,
+  PluginIpcContext,
+  PluginHostApi,
+  PluginActivate,
+} from "../../shared/types/plugin.js";
 import {
   registerPanelKind,
   unregisterPluginPanelKinds,
@@ -27,9 +33,12 @@ interface LoadedPlugin {
   loadedAt: number;
 }
 
+const ACTIVATE_TIMEOUT_MS = 5000;
+
 export class PluginService {
   private plugins = new Map<string, LoadedPlugin>();
   private handlerMap = new Map<string, PluginIpcHandler>();
+  private cleanupMap = new Map<string, () => void>();
   private initialized = false;
   private pluginsRoot: string;
   private appVersion: string;
@@ -173,21 +182,73 @@ export class PluginService {
       registerPluginMenuItem(manifest.name, menuItem);
     }
 
-    if (plugin.resolvedMain) {
-      try {
-        await import(pathToFileURL(plugin.resolvedMain).href);
-      } catch (err) {
-        console.error(`[PluginService] Failed to load main entry for ${manifest.name}:`, err);
-      }
-    }
-
     if (this.plugins.has(manifest.name)) {
       console.warn(
         `[PluginService] Duplicate plugin name "${manifest.name}" in ${dirName}, overwriting previous`
       );
     }
     this.plugins.set(manifest.name, plugin);
+
+    if (plugin.resolvedMain) {
+      try {
+        const mod = (await import(pathToFileURL(plugin.resolvedMain).href)) as {
+          activate?: unknown;
+        };
+        if (typeof mod.activate === "function") {
+          const activate = mod.activate as PluginActivate;
+          const host = this.createHost(manifest.name);
+          const cleanup = await this.runActivate(manifest.name, activate, host);
+          if (typeof cleanup === "function") {
+            this.cleanupMap.set(manifest.name, cleanup);
+          }
+        }
+      } catch (err) {
+        console.error(`[PluginService] Failed to load main entry for ${manifest.name}:`, err);
+      }
+    }
+
     return plugin;
+  }
+
+  private createHost(pluginId: string): PluginHostApi {
+    return {
+      get pluginId() {
+        return pluginId;
+      },
+      registerHandler: (channel, handler) => {
+        this.registerHandler(pluginId, channel, handler);
+      },
+      broadcastToRenderer: (channel, payload) => {
+        if (typeof channel !== "string" || channel.includes(":")) {
+          throw new Error(
+            `Plugin broadcast channel must be a string without colons: ${String(channel)}`
+          );
+        }
+        broadcastToRenderer(`plugin:${pluginId}:${channel}`, payload);
+      },
+    };
+  }
+
+  private async runActivate(
+    pluginId: string,
+    activate: PluginActivate,
+    host: PluginHostApi
+  ): Promise<void | (() => void)> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(() => activate(host)),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new Error(`Plugin "${pluginId}" activate() timed out after ${ACTIVATE_TIMEOUT_MS}ms`)
+            );
+          }, ACTIVATE_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private resolveEntryPath(pluginDir: string, relativePath: string): string | null {
@@ -217,13 +278,18 @@ export class PluginService {
     this.handlerMap.set(key, handler);
   }
 
-  async dispatchHandler(pluginId: string, channel: string, args: unknown[]): Promise<unknown> {
+  async dispatchHandler(
+    pluginId: string,
+    channel: string,
+    ctx: PluginIpcContext,
+    args: unknown[]
+  ): Promise<unknown> {
     const key = `${pluginId}:${channel}`;
     const handler = this.handlerMap.get(key);
     if (!handler) {
       throw new Error(`No plugin handler registered for ${key}`);
     }
-    return await handler(...args);
+    return await handler(ctx, ...args);
   }
 
   removeHandlers(pluginId: string): void {
@@ -237,6 +303,15 @@ export class PluginService {
 
   unloadPlugin(pluginId: string): void {
     if (!this.plugins.has(pluginId)) return;
+    const cleanup = this.cleanupMap.get(pluginId);
+    if (cleanup) {
+      try {
+        cleanup();
+      } catch (err) {
+        console.error(`[PluginService] Cleanup callback for "${pluginId}" threw:`, err);
+      }
+      this.cleanupMap.delete(pluginId);
+    }
     this.removeHandlers(pluginId);
     unregisterPluginMenuItems(pluginId);
     unregisterPluginToolbarButtons(pluginId);

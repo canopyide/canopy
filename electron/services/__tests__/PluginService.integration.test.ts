@@ -39,6 +39,7 @@ vi.mock("../../ipc/utils.js", () => ({
 }));
 
 import { PluginService } from "../PluginService.js";
+import type { PluginIpcContext } from "../../../shared/types/plugin.js";
 import {
   clearPanelKindRegistry,
   getPanelKindConfig,
@@ -48,6 +49,16 @@ import {
   getToolbarButtonConfig,
 } from "../../../shared/config/toolbarButtonRegistry.js";
 import { clearPluginMenuRegistry, getPluginMenuItems } from "../pluginMenuRegistry.js";
+
+function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
+  return {
+    projectId: null,
+    worktreeId: null,
+    webContentsId: 0,
+    pluginId,
+    ...overrides,
+  };
+}
 
 type PluginManifestShape = {
   name: string;
@@ -465,12 +476,18 @@ describe("PluginService integration — handler dispatch", () => {
     await service.initialize();
     expect(service.hasPlugin("handler-plugin")).toBe(true);
 
-    service.registerHandler("handler-plugin", "ping", async (...args: unknown[]) => ({
-      pong: args,
-    }));
+    service.registerHandler(
+      "handler-plugin",
+      "ping",
+      async (ctx: PluginIpcContext, ...args: unknown[]) => ({
+        pong: args,
+        seenPluginId: ctx.pluginId,
+      })
+    );
 
-    const result = await service.dispatchHandler("handler-plugin", "ping", ["hello", 42]);
-    expect(result).toEqual({ pong: ["hello", 42] });
+    const ctx = makeCtx("handler-plugin", { webContentsId: 17 });
+    const result = await service.dispatchHandler("handler-plugin", "ping", ctx, ["hello", 42]);
+    expect(result).toEqual({ pong: ["hello", 42], seenPluginId: "handler-plugin" });
   });
 
   it("dispatchHandler rejects when plugin registered no handler for the channel", async () => {
@@ -482,9 +499,202 @@ describe("PluginService integration — handler dispatch", () => {
     const service = new PluginService(tmpDir, "0.0.0");
     await service.initialize();
 
-    await expect(service.dispatchHandler("silent-plugin", "nope", [])).rejects.toThrow(
-      "No plugin handler registered for silent-plugin:nope"
+    await expect(
+      service.dispatchHandler("silent-plugin", "nope", makeCtx("silent-plugin"), [])
+    ).rejects.toThrow("No plugin handler registered for silent-plugin:nope");
+  });
+});
+
+describe("PluginService integration — activate() lifecycle", () => {
+  async function writeActivateFixture(pluginDir: string, markerKey: string): Promise<string> {
+    const fileName = `activate-${randomUUID()}.mjs`;
+    const filePath = path.join(pluginDir, fileName);
+    await fs.writeFile(
+      filePath,
+      `export function activate(host) {
+  globalThis[${JSON.stringify(markerKey)}] = { pluginId: host.pluginId, called: true };
+  host.registerHandler("probe", (ctx, ...args) => ({ ctx, args }));
+  return () => {
+    globalThis[${JSON.stringify(markerKey)}].cleaned = true;
+  };
+}
+`
     );
+    return fileName;
+  }
+
+  it("calls exported activate(host) and registers handlers via host.registerHandler", async () => {
+    const markerKey = makeMarkerKey();
+    const pluginDir = await writePlugin("activating-plugin", {
+      name: "activating-plugin",
+      version: "1.0.0",
+    });
+    const mainFile = await writeActivateFixture(pluginDir, markerKey);
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "activating-plugin",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+
+    const marker = readMarker(markerKey) as { pluginId: string; called: boolean } | undefined;
+    expect(marker).toBeDefined();
+    expect(marker?.pluginId).toBe("activating-plugin");
+    expect(marker?.called).toBe(true);
+
+    const result = (await service.dispatchHandler(
+      "activating-plugin",
+      "probe",
+      makeCtx("activating-plugin", { webContentsId: 99 }),
+      ["hello"]
+    )) as { ctx: PluginIpcContext; args: unknown[] };
+    expect(result.ctx.pluginId).toBe("activating-plugin");
+    expect(result.ctx.webContentsId).toBe(99);
+    expect(result.args).toEqual(["hello"]);
+  });
+
+  it("invokes activate's returned cleanup before handlers are removed on unload", async () => {
+    const markerKey = makeMarkerKey();
+    const pluginDir = await writePlugin("cleanup-plugin", {
+      name: "cleanup-plugin",
+      version: "1.0.0",
+    });
+    const mainFile = await writeActivateFixture(pluginDir, markerKey);
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "cleanup-plugin",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+
+    const marker = readMarker(markerKey) as
+      | { pluginId: string; called: boolean; cleaned?: boolean }
+      | undefined;
+    expect(marker?.cleaned).toBeUndefined();
+
+    service.unloadPlugin("cleanup-plugin");
+
+    const afterMarker = readMarker(markerKey) as
+      | { pluginId: string; called: boolean; cleaned?: boolean }
+      | undefined;
+    expect(afterMarker?.cleaned).toBe(true);
+    expect(service.hasPlugin("cleanup-plugin")).toBe(false);
+  });
+
+  it("loads plugins that do not export activate without throwing", async () => {
+    const markerKey = makeMarkerKey();
+    const pluginDir = await writePlugin("no-activate", {
+      name: "no-activate",
+      version: "1.0.0",
+    });
+    const mainFile = `side-effect-${randomUUID()}.mjs`;
+    await fs.writeFile(
+      path.join(pluginDir, mainFile),
+      `globalThis[${JSON.stringify(markerKey)}] = true;\n`
+    );
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "no-activate",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const service = new PluginService(tmpDir, "0.0.0");
+      await service.initialize();
+
+      expect(service.hasPlugin("no-activate")).toBe(true);
+      expect(readMarker(markerKey)).toBe(true);
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("logs an error and still registers the plugin when activate throws", async () => {
+    const pluginDir = await writePlugin("throwing-activate", {
+      name: "throwing-activate",
+      version: "1.0.0",
+    });
+    const mainFile = `activate-throw-${randomUUID()}.mjs`;
+    await fs.writeFile(
+      path.join(pluginDir, mainFile),
+      `export function activate() { throw new Error("boom"); }\n`
+    );
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "throwing-activate",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const service = new PluginService(tmpDir, "0.0.0");
+      await service.initialize();
+
+      expect(service.hasPlugin("throwing-activate")).toBe(true);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to load main entry for throwing-activate"),
+        expect.anything()
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("host.registerHandler enforces the plugin's own namespace", async () => {
+    const markerKey = makeMarkerKey();
+    const pluginDir = await writePlugin("namespace-plugin", {
+      name: "namespace-plugin",
+      version: "1.0.0",
+    });
+    const mainFile = `namespace-${randomUUID()}.mjs`;
+    await fs.writeFile(
+      path.join(pluginDir, mainFile),
+      `export function activate(host) {
+  globalThis[${JSON.stringify(markerKey)}] = { pluginId: host.pluginId };
+  host.registerHandler("ping", () => "pong");
+}
+`
+    );
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "namespace-plugin",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+
+    const marker = readMarker(markerKey) as { pluginId: string } | undefined;
+    expect(marker?.pluginId).toBe("namespace-plugin");
+
+    const result = await service.dispatchHandler(
+      "namespace-plugin",
+      "ping",
+      makeCtx("namespace-plugin"),
+      []
+    );
+    expect(result).toBe("pong");
   });
 });
 
