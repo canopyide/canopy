@@ -237,7 +237,8 @@ describe("AppThemePicker Change theme button", () => {
   });
 
   it("renders the Change theme button with the current theme name in the hero", () => {
-    render(<AppThemePicker />);
+    const onClose = vi.fn();
+    render(<AppThemePicker onClose={onClose} />);
     expect(screen.getByRole("button", { name: /change theme/i })).toBeTruthy();
     expect(screen.getByText("Theme A")).toBeTruthy();
   });
@@ -249,10 +250,8 @@ describe("AppThemePicker Change theme button", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("does not throw when Change theme is clicked without an onClose prop", () => {
+  it("hides the Change theme button when onClose is not provided", () => {
     render(<AppThemePicker />);
-    expect(() =>
-      fireEvent.click(screen.getByRole("button", { name: /change theme/i }))
-    ).not.toThrow();
+    expect(screen.queryByRole("button", { name: /change theme/i })).toBeNull();
   });
 });

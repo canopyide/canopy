@@ -344,13 +344,15 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
 
         <div className="flex items-center justify-between px-3 py-2 border-t border-daintree-border bg-daintree-bg">
           <span className="text-xs text-daintree-text/60">Current theme</span>
-          <button
-            type="button"
-            onClick={handleChangeTheme}
-            className="text-xs font-medium text-daintree-accent hover:text-daintree-accent/80 transition-colors"
-          >
-            Change theme…
-          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={handleChangeTheme}
+              className="text-xs font-medium text-daintree-accent hover:text-daintree-accent/80 transition-colors"
+            >
+              Change theme…
+            </button>
+          )}
         </div>
       </div>
 
