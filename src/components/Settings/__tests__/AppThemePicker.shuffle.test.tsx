@@ -239,11 +239,22 @@ describe("AppThemePicker Change theme button", () => {
     expect(screen.getByText("Theme A")).toBeTruthy();
   });
 
-  it("calls onClose when the Change theme button is clicked", () => {
+  it("dispatches daintree:open-theme-browser when the Change theme button is clicked", () => {
     const onClose = vi.fn();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     render(<AppThemePicker onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: /change theme/i }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+
+    const openEvents = dispatchSpy.mock.calls
+      .map((call) => call[0])
+      .filter(
+        (event): event is CustomEvent =>
+          event instanceof CustomEvent && event.type === "daintree:open-theme-browser"
+      );
+    expect(openEvents).toHaveLength(1);
+    expect(onClose).not.toHaveBeenCalled();
+
+    dispatchSpy.mockRestore();
   });
 
   it("hides the Change theme button when onClose is not provided", () => {
