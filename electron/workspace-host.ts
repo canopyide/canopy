@@ -1,9 +1,13 @@
-// Silence EPIPE on stdout/stderr — the main process may close the pipe
-// at any time during shutdown or host restart.
+// Dead-fd errnos that must not propagate on GUI launch (AppImage/Wayland, no
+// terminal). EPIPE is a closed pipe; EIO is a disconnected pty (the primary
+// errno for AppImage desktop launches where fd 2 points to an orphaned pty
+// slave); EBADF is a closed fd; ECONNRESET is a socket-backed stdio reset.
+// ENOSPC is intentionally NOT swallowed — it's a real error condition.
+const STDIO_DEAD_CODES = new Set(["EPIPE", "EIO", "EBADF", "ECONNRESET"]);
 for (const stream of [process.stdout, process.stderr]) {
   if (stream && typeof stream.on === "function") {
     stream.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EPIPE") return;
+      if (err.code && STDIO_DEAD_CODES.has(err.code)) return;
       throw err;
     });
   }
