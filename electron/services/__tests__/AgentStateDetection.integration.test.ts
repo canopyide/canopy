@@ -257,7 +257,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      // states to transition to: "working", "waiting", "working", "completed"
+      // states to transition to: "working", "waiting", "working", "exited"
       // events: { type: "busy" }, { type: "prompt" }, { type: "busy" }, { type: "exit", code: 0 }
 
       const events = [
@@ -274,7 +274,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       const terminal = manager.getTerminal(id);
       expect(terminal).toBeDefined();
-      // Final state should be completed, but we just check if it's defined
+      // Final state should be exited, but we just check it's defined to avoid timing sensitivity
       expect(terminal?.agentState).toBeDefined();
     }, 10000);
 
