@@ -1150,6 +1150,9 @@ describe("createHost (plugin activation API)", () => {
       /host revoked: registerHandler/
     );
     expect(() => host.broadcastToRenderer("x", null)).toThrow(/host revoked: broadcastToRenderer/);
+  });
+});
+
 describe("Plugin action registry", () => {
   let service: PluginService;
 
