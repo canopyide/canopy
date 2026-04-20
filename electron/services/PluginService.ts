@@ -145,9 +145,8 @@ export class PluginService {
     }
 
     if (manifest.permissions.length > 0) {
-      const sanitized = manifest.permissions.map((p) => p.replace(/[\r\n]/g, " "));
       console.log(
-        `[PluginService] Plugin "${manifest.name}" declares permissions: ${sanitized.join(", ")}`
+        `[PluginService] Plugin "${manifest.name}" declares permissions: ${manifest.permissions.join(", ")}`
       );
     }
 
