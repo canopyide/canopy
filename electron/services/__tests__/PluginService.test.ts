@@ -875,7 +875,7 @@ describe("Plugin unload lifecycle", () => {
   });
 });
 
-describe("deprecated renderer field", () => {
+describe("unsandboxed warning", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -886,11 +886,11 @@ describe("deprecated renderer field", () => {
     warnSpy.mockRestore();
   });
 
-  it("warns when plugin manifest contains renderer field", async () => {
-    await writePlugin("renderer-deprecated", {
-      name: "acme.renderer-deprecated",
+  it("warns when a plugin with main is loaded", async () => {
+    await writePlugin("unsandboxed-main", {
+      name: "acme.unsandboxed-main",
       version: "1.0.0",
-      renderer: "dist/renderer.js",
+      main: "dist/main.js",
       engines: { daintree: "*" },
     });
 
@@ -899,13 +899,13 @@ describe("deprecated renderer field", () => {
 
     expect(service.listPlugins()).toHaveLength(1);
     expect(warnSpy).toHaveBeenCalledWith(
-      `[PluginService] Plugin "acme.renderer-deprecated" uses deprecated 'renderer' field. This field is no longer supported and will be ignored. Daintree plugins use main process entry points only; renderer-side plugins are not supported.`
+      `[PluginService] DANGER_UNSANDBOXED: Plugin "acme.unsandboxed-main" loaded with full Node.js access. Only install plugins you trust.`
     );
   });
 
-  it("does not warn when plugin manifest lacks renderer field", async () => {
-    await writePlugin("no-renderer", {
-      name: "acme.no-renderer",
+  it("warns when a plugin without main is loaded", async () => {
+    await writePlugin("unsandboxed-no-main", {
+      name: "acme.unsandboxed-no-main",
       version: "1.0.0",
       engines: { daintree: "*" },
     });
@@ -914,30 +914,15 @@ describe("deprecated renderer field", () => {
     await service.initialize();
 
     expect(service.listPlugins()).toHaveLength(1);
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      `[PluginService] DANGER_UNSANDBOXED: Plugin "acme.unsandboxed-no-main" loaded with full Node.js access. Only install plugins you trust.`
+    );
   });
 
-  it("does not include resolvedRenderer in listPlugins output", async () => {
-    await writePlugin("renderer-test", {
-      name: "acme.renderer-test",
+  it("does not warn for incompatible plugins that fail the engines.daintree gate", async () => {
+    await writePlugin("incompatible-unsandboxed", {
+      name: "acme.incompatible-unsandboxed",
       version: "1.0.0",
-      renderer: "dist/renderer.js",
-      engines: { daintree: "*" },
-    });
-
-    const service = new PluginService(tmpDir);
-    await service.initialize();
-
-    const plugins = service.listPlugins();
-    expect(plugins).toHaveLength(1);
-    expect(Object.keys(plugins[0])).not.toContain("resolvedRenderer");
-  });
-
-  it("does not warn for incompatible plugins that fail compatibility gate", async () => {
-    await writePlugin("incompatible-with-renderer", {
-      name: "acme.incompatible-with-renderer",
-      version: "1.0.0",
-      renderer: "dist/renderer.js",
       engines: { daintree: "^1.0.0" },
     });
 
@@ -945,28 +930,42 @@ describe("deprecated renderer field", () => {
     await service.initialize();
 
     expect(service.listPlugins()).toEqual([]);
-    expect(warnSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("uses deprecated 'renderer' field")
+    const unsandboxedWarns = warnSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("DANGER_UNSANDBOXED")
     );
+    expect(unsandboxedWarns).toHaveLength(0);
   });
 
-  it("warns once per load attempt even with both main and renderer", async () => {
-    await writePlugin("both-entries", {
-      name: "acme.both-entries",
+  it("does not warn about deprecated renderer field", async () => {
+    await writePlugin("no-renderer-warn", {
+      name: "acme.no-renderer-warn",
       version: "1.0.0",
-      main: "dist/main.js",
-      renderer: "dist/renderer.js",
       engines: { daintree: "*" },
     });
 
     const service = new PluginService(tmpDir);
     await service.initialize();
 
-    expect(service.listPlugins()).toHaveLength(1);
     const rendererWarns = warnSpy.mock.calls.filter(
       (call: unknown[]) =>
-        typeof call[0] === "string" && call[0].includes("uses deprecated 'renderer' field")
+        typeof call[0] === "string" && call[0].includes("deprecated 'renderer' field")
     );
-    expect(rendererWarns).toHaveLength(1);
+    expect(rendererWarns).toHaveLength(0);
+  });
+
+  it("warns exactly once per loaded plugin", async () => {
+    await writePlugin("single-warn", {
+      name: "acme.single-warn",
+      version: "1.0.0",
+      engines: { daintree: "*" },
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const unsandboxedWarns = warnSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("DANGER_UNSANDBOXED")
+    );
+    expect(unsandboxedWarns).toHaveLength(1);
   });
 });

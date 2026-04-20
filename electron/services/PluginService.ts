@@ -119,12 +119,6 @@ export class PluginService {
       );
     }
 
-    if (manifest.renderer) {
-      console.warn(
-        `[PluginService] Plugin "${manifest.name}" uses deprecated 'renderer' field. This field is no longer supported and will be ignored. Daintree plugins use main process entry points only; renderer-side plugins are not supported.`
-      );
-    }
-
     const plugin: LoadedPlugin = {
       manifest,
       dir: pluginDir,
@@ -172,6 +166,10 @@ export class PluginService {
     for (const menuItem of manifest.contributes.menuItems) {
       registerPluginMenuItem(manifest.name, menuItem);
     }
+
+    console.warn(
+      `[PluginService] DANGER_UNSANDBOXED: Plugin "${manifest.name}" loaded with full Node.js access. Only install plugins you trust.`
+    );
 
     if (plugin.resolvedMain) {
       try {

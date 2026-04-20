@@ -47,7 +47,6 @@ export const PluginManifestSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   main: z.string().optional(),
-  renderer: z.string().optional(),
   engines: z
     .object({
       daintree: z
