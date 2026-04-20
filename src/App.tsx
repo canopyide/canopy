@@ -1,4 +1,4 @@
-import { Profiler, Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Profiler, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import {
   isElectronAvailable,
@@ -124,6 +124,7 @@ import {
   useAgentPreferencesStore,
   usePaletteStore,
   useNotificationSettingsStore,
+  useThemeBrowserStore,
 } from "./store";
 import { useAgentSettingsStore } from "./store/agentSettingsStore";
 import { isAgentReady } from "../shared/utils/agentAvailability";
@@ -257,6 +258,27 @@ function App() {
   useEffect(() => {
     if (isSettingsOpen) setHasOpenedSettings(true);
   }, [isSettingsOpen]);
+
+  // Coordinate Settings <-> theme browser transitions. The browser is meant
+  // to be the sole theme surface while open: closing Settings on open keeps
+  // the app chrome visible for live preview. Closing the browser returns the
+  // user to Settings on the Appearance section so the just-committed theme
+  // is reflected in the picker hero.
+  const isThemeBrowserOpen = useThemeBrowserStore((s) => s.isOpen);
+  const prevThemeBrowserOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = prevThemeBrowserOpenRef.current;
+    prevThemeBrowserOpenRef.current = isThemeBrowserOpen;
+    if (!wasOpen && isThemeBrowserOpen) {
+      setIsSettingsOpen(false);
+    } else if (wasOpen && !isThemeBrowserOpen) {
+      window.dispatchEvent(
+        new CustomEvent("daintree:open-settings-tab", {
+          detail: { tab: "general", sectionId: "appearance-theme" },
+        })
+      );
+    }
+  }, [isThemeBrowserOpen, setIsSettingsOpen]);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const isNotesPaletteOpen = usePaletteStore((state) => state.activePaletteId === "notes");
   const isThemePaletteOpen = usePaletteStore((state) => state.activePaletteId === "theme");

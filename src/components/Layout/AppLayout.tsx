@@ -6,13 +6,20 @@ import { DiagnosticsDock } from "../Diagnostics";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { PortalDock, PortalVisibilityController } from "../Portal";
 import { HelpPanel } from "../HelpPanel";
+import { ThemeBrowser } from "../ThemeBrowser";
 import { ProjectSwitchOverlay } from "@/components/Project";
 import { FleetArmingRibbon, FleetDeck } from "@/components/Fleet";
 import { ChordIndicator } from "./ChordIndicator";
 import { DemoCaptureBridge, DemoCursor, DemoOverlay } from "../Demo";
 
 import { AllClearOverlay } from "../AllClearOverlay";
-import { useDiagnosticsStore, useDockStore, useFleetDeckStore, type PanelState } from "@/store";
+import {
+  useDiagnosticsStore,
+  useDockStore,
+  useFleetDeckStore,
+  useThemeBrowserStore,
+  type PanelState,
+} from "@/store";
 import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
@@ -60,6 +67,7 @@ export function AppLayout({
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const currentProject = useProjectStore((state) => state.currentProject);
   const layout = useLayoutState();
+  const themeBrowserOpen = useThemeBrowserStore((s) => s.isOpen);
   const showSidebar = !layout.isFocusMode && currentProject != null;
 
   useEffect(() => {
@@ -355,6 +363,18 @@ export function AppLayout({
                     }}
                   >
                     <HelpPanel />
+                  </div>
+                </ErrorBoundary>
+              )}
+              {themeBrowserOpen && (
+                <ErrorBoundary variant="section" componentName="ThemeBrowser">
+                  <div
+                    className="absolute top-0 bottom-0 z-40"
+                    style={{
+                      right: layout.portalOpen ? `${layout.portalWidth}px` : "0px",
+                    }}
+                  >
+                    <ThemeBrowser />
                   </div>
                 </ErrorBoundary>
               )}
