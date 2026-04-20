@@ -32,6 +32,7 @@ vi.hoisted(() => {
 });
 
 import { usePortalStore } from "../portalStore";
+import { useUIStore } from "../uiStore";
 import { PORTAL_MIN_WIDTH, PORTAL_MAX_WIDTH, PORTAL_DEFAULT_WIDTH } from "@shared/types";
 
 function createLocalStorageMock() {
@@ -213,5 +214,44 @@ describe("portalStore", () => {
   it("unmarkTabCreated is idempotent", () => {
     usePortalStore.getState().unmarkTabCreated("non-existent-tab");
     expect(() => usePortalStore.getState().unmarkTabCreated("non-existent-tab")).not.toThrow();
+  });
+
+  describe("toggle with overlay claims", () => {
+    beforeEach(() => {
+      useUIStore.setState({ overlayClaims: new Set<string>() });
+      usePortalStore.setState({ isOpen: false });
+    });
+
+    afterEach(() => {
+      useUIStore.setState({ overlayClaims: new Set<string>() });
+    });
+
+    it("opens the portal when there are no active claims", () => {
+      usePortalStore.getState().toggle();
+      expect(usePortalStore.getState().isOpen).toBe(true);
+    });
+
+    it("blocks the closed→open transition when a claim is active", () => {
+      useUIStore.getState().addOverlayClaim("settings");
+      usePortalStore.getState().toggle();
+      expect(usePortalStore.getState().isOpen).toBe(false);
+    });
+
+    it("allows closing the portal even when a claim is active", () => {
+      usePortalStore.setState({ isOpen: true });
+      useUIStore.getState().addOverlayClaim("settings");
+      usePortalStore.getState().toggle();
+      expect(usePortalStore.getState().isOpen).toBe(false);
+    });
+
+    it("opens the portal once the blocking claim is released", () => {
+      useUIStore.getState().addOverlayClaim("settings");
+      usePortalStore.getState().toggle();
+      expect(usePortalStore.getState().isOpen).toBe(false);
+
+      useUIStore.getState().removeOverlayClaim("settings");
+      usePortalStore.getState().toggle();
+      expect(usePortalStore.getState().isOpen).toBe(true);
+    });
   });
 });
