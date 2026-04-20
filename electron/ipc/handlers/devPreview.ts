@@ -44,17 +44,13 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
   };
   handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_GET_STATE, handleGetState));
 
-  const handleGetByWorktree = async (
-    _event: Electron.IpcMainInvokeEvent,
-    request: DevPreviewGetByWorktreeRequest
-  ) => {
+  const handleGetByWorktree = async (request: DevPreviewGetByWorktreeRequest) => {
     if (!request || typeof request.worktreeId !== "string" || !request.worktreeId.trim()) {
       throw new Error("worktreeId is required");
     }
     return sessionService.getByWorktree(request.worktreeId);
   };
-  ipcMain.handle(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE, handleGetByWorktree);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE));
+  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE, handleGetByWorktree));
 
   const unsubHibernation = getHibernationService().onProjectHibernated((projectId) => {
     sessionService.stopByProject(projectId).catch((err) => {
