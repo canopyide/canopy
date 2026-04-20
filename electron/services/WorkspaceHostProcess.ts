@@ -9,6 +9,13 @@ import type {
   WorkspaceClientConfig,
 } from "../../shared/types/workspace-host.js";
 import { GitHubAuth } from "./github/GitHubAuth.js";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("main:WorkspaceHost");
+const logInfo = (msg: string, ctx?: Record<string, unknown>) =>
+  ctx ? logger.info(msg, ctx) : logger.info(msg);
+const logWarn = (msg: string, ctx?: Record<string, unknown>) =>
+  ctx ? logger.warn(msg, ctx) : logger.warn(msg);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +54,13 @@ export class WorkspaceHostProcess extends EventEmitter {
   /** Replayed on every `ready` — the child's message listener isn't attached
    * until after `ready`, so pushing at fork time would silently drop. */
   private logLevelOverridesCache: Record<string, string> = {};
+
+  /** Buffers for line-splitting stdout/stderr from the forked host. Forking
+   * with `stdio:"pipe"` (instead of `"inherit"`) isolates the host from the
+   * main process's fd 2 — critical on AppImage GUI launches where fd 2 points
+   * to a dead pty that returns EIO on write. See issue #5588. */
+  private hostStdoutBuffer = "";
+  private hostStderrBuffer = "";
 
   constructor(projectPath: string, config: Required<WorkspaceClientConfig>) {
     super();
@@ -303,6 +317,79 @@ export class WorkspaceHostProcess extends EventEmitter {
     this.removeAllListeners();
   }
 
+  private forwardHostOutput(kind: "stdout" | "stderr", chunk: Buffer): void {
+    const text = chunk.toString("utf8");
+    if (kind === "stdout") {
+      this.hostStdoutBuffer += text;
+    } else {
+      this.hostStderrBuffer += text;
+    }
+
+    const MAX_BUFFER = 64 * 1024;
+    if (this.hostStdoutBuffer.length > MAX_BUFFER)
+      this.hostStdoutBuffer = this.hostStdoutBuffer.slice(-MAX_BUFFER);
+    if (this.hostStderrBuffer.length > MAX_BUFFER)
+      this.hostStderrBuffer = this.hostStderrBuffer.slice(-MAX_BUFFER);
+
+    const current = kind === "stdout" ? this.hostStdoutBuffer : this.hostStderrBuffer;
+    const lines = current.split(/\r?\n/);
+    const remainder = lines.pop() ?? "";
+    if (kind === "stdout") {
+      this.hostStdoutBuffer = remainder;
+    } else {
+      this.hostStderrBuffer = remainder;
+    }
+
+    for (const line of lines) {
+      const trimmed = line.trimEnd();
+      if (!trimmed) continue;
+      const message = `[WorkspaceHost] ${trimmed.length > 4000 ? `${trimmed.slice(0, 4000)}…` : trimmed}`;
+      if (kind === "stderr") {
+        logWarn(message);
+      } else {
+        logInfo(message);
+      }
+    }
+  }
+
+  private installHostLogForwarding(): void {
+    if (!this.child) return;
+    this.hostStdoutBuffer = "";
+    this.hostStderrBuffer = "";
+
+    const stdout = (this.child as unknown as { stdout?: NodeJS.ReadableStream }).stdout;
+    const stderr = (this.child as unknown as { stderr?: NodeJS.ReadableStream }).stderr;
+
+    stdout?.on("data", (chunk: Buffer) => this.forwardHostOutput("stdout", chunk));
+    stderr?.on("data", (chunk: Buffer) => this.forwardHostOutput("stderr", chunk));
+    // Swallow post-exit pipe errors so an unhandled Readable error can't
+    // surface as an uncaughtException after the host is already shutting down.
+    stdout?.on("error", () => {});
+    stderr?.on("error", () => {});
+    // Flush any partial line buffered at close — 'exit' fires before pipes
+    // fully drain, so the tail of a crash stack trace can arrive after the
+    // exit-time flush would otherwise clear the buffer.
+    stdout?.on("close", () => this.flushHostOutputBuffers());
+    stderr?.on("close", () => this.flushHostOutputBuffers());
+  }
+
+  private flushHostOutputBuffers(): void {
+    const stdoutRemainder = this.hostStdoutBuffer.trim();
+    if (stdoutRemainder) {
+      logInfo(
+        `[WorkspaceHost] ${stdoutRemainder.length > 4000 ? `${stdoutRemainder.slice(0, 4000)}…` : stdoutRemainder}`
+      );
+    }
+    const stderrRemainder = this.hostStderrBuffer.trim();
+    if (stderrRemainder) {
+      logWarn(
+        `[WorkspaceHost] ${stderrRemainder.length > 4000 ? `${stderrRemainder.slice(0, 4000)}…` : stderrRemainder}`
+      );
+    }
+    this.hostStdoutBuffer = "";
+    this.hostStderrBuffer = "";
+  }
+
   private startHost(): void {
     if (this.isDisposed) return;
 
@@ -327,7 +414,7 @@ export class WorkspaceHostProcess extends EventEmitter {
     try {
       this.child = utilityProcess.fork(hostPath, [], {
         serviceName: this.serviceName,
-        stdio: "inherit",
+        stdio: "pipe",
         cwd: os.homedir(),
         env: {
           ...(process.env as Record<string, string>),
@@ -346,12 +433,14 @@ export class WorkspaceHostProcess extends EventEmitter {
       return;
     }
 
+    this.installHostLogForwarding();
+
     this.child.on("message", (msg: WorkspaceHostEvent) => {
       this.handleHostEvent(msg);
     });
 
     this.child.on("error", (error) => {
-      console.error(`[WorkspaceHost:${this.serviceName}] Error event:`, error);
+      logWarn(`[WorkspaceHost:${this.serviceName}] Error event: ${String(error)}`);
       if (this.readyReject) {
         this.readyReject(new Error(`Workspace host error: ${String(error)}`));
         this.readyReject = null;
@@ -360,7 +449,8 @@ export class WorkspaceHostProcess extends EventEmitter {
     });
 
     this.child.on("exit", (code) => {
-      console.error(`[WorkspaceHost:${this.serviceName}] Exited with code ${code}`);
+      this.flushHostOutputBuffers();
+      logWarn(`[WorkspaceHost:${this.serviceName}] Exited with code ${code}`);
 
       if (this.healthCheckInterval) {
         clearInterval(this.healthCheckInterval);
