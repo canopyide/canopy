@@ -29,7 +29,10 @@ vi.mock("../pluginMenuRegistry.js", () => ({
 
 import { PluginService } from "../PluginService.js";
 import { PluginManifestSchema } from "../../schemas/plugin.js";
-import type { PluginIpcContext } from "../../../shared/types/plugin.js";
+import {
+  BUILT_IN_PLUGIN_PERMISSIONS,
+  type PluginIpcContext,
+} from "../../../shared/types/plugin.js";
 
 function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
   return {
@@ -122,6 +125,95 @@ describe("PluginManifestSchema name validation", () => {
       const nameIssue = result.error.issues.find((i) => i.path[0] === "name");
       expect(nameIssue?.message).toContain("publisher.name");
     }
+  });
+});
+
+describe("PluginManifestSchema permissions field", () => {
+  const validBase = { name: "acme.test", version: "1.0.0" };
+
+  it("defaults to empty array when omitted", () => {
+    const result = PluginManifestSchema.safeParse(validBase);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.permissions).toEqual([]);
+    }
+  });
+
+  it("accepts an empty permissions array", () => {
+    const result = PluginManifestSchema.safeParse({ ...validBase, permissions: [] });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.permissions).toEqual([]);
+    }
+  });
+
+  it("accepts built-in permission strings", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: ["fs:project-read", "network:fetch", "agent:invoke"],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.permissions).toEqual(["fs:project-read", "network:fetch", "agent:invoke"]);
+    }
+  });
+
+  it("accepts custom permission strings", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: ["custom:my-perm", "org.specific:do-thing"],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.permissions).toEqual(["custom:my-perm", "org.specific:do-thing"]);
+    }
+  });
+
+  it("rejects empty string in permissions array", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: ["fs:project-read", ""],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path[0] === "permissions")).toBe(true);
+    }
+  });
+
+  it("trims whitespace from permission strings", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: ["  fs:project-read  "],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.permissions).toEqual(["fs:project-read"]);
+    }
+  });
+
+  it("rejects whitespace-only permission strings after trim", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: ["   "],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("BUILT_IN_PLUGIN_PERMISSIONS contains all documented capabilities", () => {
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("fs:project-read");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("fs:project-write");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("fs:user-data-read");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("fs:user-data-write");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("network:fetch");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("agent:invoke");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("agent:read");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("git:read");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("git:write");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("clipboard:read");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("clipboard:write");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("shell:exec");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("notes:read");
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("notes:write");
   });
 });
 
@@ -1093,5 +1185,96 @@ describe("deprecated renderer field", () => {
         typeof call[0] === "string" && call[0].includes("uses deprecated 'renderer' field")
     );
     expect(rendererWarns).toHaveLength(1);
+  });
+});
+
+describe("permissions declaration logging", () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  it("logs declared permissions when plugin has permissions", async () => {
+    await writePlugin("perm-plugin", {
+      name: "acme.perm-plugin",
+      version: "1.0.0",
+      permissions: ["fs:project-read", "network:fetch"],
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Plugin "acme.perm-plugin" declares permissions: fs:project-read, network:fetch'
+      )
+    );
+  });
+
+  it("does not log when plugin has no permissions", async () => {
+    await writePlugin("no-perms", {
+      name: "acme.no-perms",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+    const permLogs = logSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("declares permissions")
+    );
+    expect(permLogs).toHaveLength(0);
+  });
+
+  it("does not log permissions for incompatible plugins", async () => {
+    await writePlugin("incompatible-perms", {
+      name: "acme.incompatible-perms",
+      version: "1.0.0",
+      permissions: ["fs:project-read"],
+      engines: { daintree: "^1.0.0" },
+    });
+
+    const service = new PluginService(tmpDir, "0.7.5");
+    await service.initialize();
+
+    expect(service.listPlugins()).toEqual([]);
+    const permLogs = logSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("declares permissions")
+    );
+    expect(permLogs).toHaveLength(0);
+  });
+
+  it("includes permissions in loaded plugin manifest", async () => {
+    await writePlugin("with-perms", {
+      name: "acme.with-perms",
+      version: "1.0.0",
+      permissions: ["git:read", "agent:invoke"],
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const plugins = service.listPlugins();
+    expect(plugins[0].manifest.permissions).toEqual(["git:read", "agent:invoke"]);
+  });
+
+  it("defaults permissions to empty array for plugins without the field", async () => {
+    await writePlugin("no-field", {
+      name: "acme.no-field",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const plugins = service.listPlugins();
+    expect(plugins[0].manifest.permissions).toEqual([]);
   });
 });

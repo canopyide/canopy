@@ -5,6 +5,7 @@ import type {
   PanelContribution,
   ToolbarButtonContribution,
   MenuItemContribution,
+  PluginPermission,
 } from "../../shared/types/plugin.js";
 
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
@@ -39,6 +40,8 @@ export const MenuItemContributionSchema = z.object({
   accelerator: z.string().optional(),
 });
 
+export const PluginPermissionSchema = z.string().trim().min(1);
+
 export const PluginManifestSchema = z.object({
   name: z.string().min(1).max(64).regex(SCOPED_PLUGIN_NAME_PATTERN, {
     error: 'Plugin name must be in publisher.name format (e.g. "acme.linear-context")',
@@ -60,6 +63,7 @@ export const PluginManifestSchema = z.object({
         .optional(),
     })
     .optional(),
+  permissions: z.array(PluginPermissionSchema).default([]),
   contributes: z
     .object({
       panels: z.array(PanelContributionSchema).default([]),
@@ -69,4 +73,10 @@ export const PluginManifestSchema = z.object({
     .default({ panels: [], toolbarButtons: [], menuItems: [] }),
 });
 
-export type { PluginManifest, PanelContribution, ToolbarButtonContribution, MenuItemContribution };
+export type {
+  PluginManifest,
+  PanelContribution,
+  ToolbarButtonContribution,
+  MenuItemContribution,
+  PluginPermission,
+};

@@ -134,6 +134,12 @@ export class PluginService {
       );
     }
 
+    if (manifest.permissions.length > 0) {
+      console.log(
+        `[PluginService] Plugin "${manifest.name}" declares permissions: ${manifest.permissions.join(", ")}`
+      );
+    }
+
     const plugin: LoadedPlugin = {
       manifest,
       dir: pluginDir,
