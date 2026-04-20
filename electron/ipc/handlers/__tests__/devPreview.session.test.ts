@@ -604,7 +604,13 @@ describe("dev preview session handlers", () => {
     >(CHANNELS.DEV_PREVIEW_ENSURE);
     const getByWorktreeHandler = getRegisteredHandle<
       [Electron.IpcMainInvokeEvent, Record<string, unknown>],
-      { panelId: string; worktreeId: string; status: string; assignedUrl: string | null } | null
+      {
+        panelId: string;
+        worktreeId: string;
+        status: string;
+        url: string | null;
+        assignedUrl: string | null;
+      } | null
     >(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE);
 
     expect(ensureHandler).toBeDefined();
