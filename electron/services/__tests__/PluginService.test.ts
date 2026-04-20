@@ -968,4 +968,19 @@ describe("unsandboxed warning", () => {
     );
     expect(unsandboxedWarns).toHaveLength(1);
   });
+
+  it("silently strips renderer field from legacy manifests", async () => {
+    await writePlugin("legacy-renderer", {
+      name: "acme.legacy-renderer",
+      version: "1.0.0",
+      renderer: "dist/renderer.js",
+      engines: { daintree: "*" },
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+    expect("renderer" in service.listPlugins()[0].manifest).toBe(false);
+  });
 });

@@ -459,11 +459,22 @@ describe("PluginService integration — main entry execution", () => {
 describe("PluginService integration — handler dispatch", () => {
   it("logs unsandboxed warning before main entry side-effects execute", async () => {
     const markerKey = makeMarkerKey();
+    const timeline: string[] = [];
     const pluginDir = await writePlugin("warn-order", {
       name: "acme.warn-order",
       version: "1.0.0",
     });
     const mainFile = await writeMainFixture(pluginDir, markerKey);
+
+    // Rewrite fixture to push to timeline instead of just incrementing a counter
+    const mainFilePath = path.join(pluginDir, mainFile);
+    const timelineKey = markerKey + "_timeline";
+    await fs.writeFile(
+      mainFilePath,
+      `globalThis[${JSON.stringify(markerKey)}] = (globalThis[${JSON.stringify(markerKey)}] ?? 0) + 1;\n` +
+        `globalThis[${JSON.stringify(timelineKey)}] = globalThis[${JSON.stringify(timelineKey)}] || [];\n` +
+        `globalThis[${JSON.stringify(timelineKey)}].push("import");\n`
+    );
 
     await fs.writeFile(
       path.join(pluginDir, "plugin.json"),
@@ -474,7 +485,11 @@ describe("PluginService integration — handler dispatch", () => {
       })
     );
 
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((msg: string) => {
+      if (typeof msg === "string" && msg.includes("DANGER_UNSANDBOXED")) {
+        timeline.push("warn");
+      }
+    });
     try {
       const service = new PluginService(tmpDir, "0.0.0");
       await service.initialize();
@@ -483,6 +498,16 @@ describe("PluginService integration — handler dispatch", () => {
       expect(warnSpy).toHaveBeenCalledWith(
         `[PluginService] DANGER_UNSANDBOXED: Plugin "acme.warn-order" loaded with full Node.js access. Only install plugins you trust.`
       );
+
+      const importTimeline = (globalThis as Record<string, unknown>)[timelineKey] as
+        | string[]
+        | undefined;
+      const fullTimeline = [...timeline, ...(importTimeline ?? [])];
+      const warnIdx = fullTimeline.indexOf("warn");
+      const importIdx = fullTimeline.indexOf("import");
+      expect(warnIdx).toBeGreaterThanOrEqual(0);
+      expect(importIdx).toBeGreaterThanOrEqual(0);
+      expect(warnIdx).toBeLessThan(importIdx);
     } finally {
       warnSpy.mockRestore();
     }
