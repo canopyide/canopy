@@ -33,16 +33,6 @@ import {
   BUILT_IN_PLUGIN_PERMISSIONS,
   type PluginIpcContext,
 } from "../../../shared/types/plugin.js";
-
-function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
-  return {
-    projectId: null,
-    worktreeId: null,
-    webContentsId: 0,
-    pluginId,
-    ...overrides,
-  };
-}
 import {
   registerPanelKind,
   unregisterPluginPanelKinds,
@@ -53,6 +43,16 @@ import {
 } from "../../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "../pluginMenuRegistry.js";
 import { CHANNELS } from "../../ipc/channels.js";
+
+function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
+  return {
+    projectId: null,
+    worktreeId: null,
+    webContentsId: 0,
+    pluginId,
+    ...overrides,
+  };
+}
 
 let tmpDir: string;
 
@@ -214,6 +214,35 @@ describe("PluginManifestSchema permissions field", () => {
     expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("shell:exec");
     expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("notes:read");
     expect(BUILT_IN_PLUGIN_PERMISSIONS).toContain("notes:write");
+  });
+
+  it("BUILT_IN_PLUGIN_PERMISSIONS has exactly 14 unique entries", () => {
+    expect(BUILT_IN_PLUGIN_PERMISSIONS).toHaveLength(14);
+    expect(new Set(BUILT_IN_PLUGIN_PERMISSIONS).size).toBe(14);
+  });
+
+  it("rejects null permissions value", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: null,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects scalar (non-array) permissions value", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: "git:read",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-string elements in permissions array", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      permissions: [1, "git:read"],
+    });
+    expect(result.success).toBe(false);
   });
 });
 
@@ -1276,5 +1305,24 @@ describe("permissions declaration logging", () => {
 
     const plugins = service.listPlugins();
     expect(plugins[0].manifest.permissions).toEqual([]);
+  });
+
+  it("trims newlines from permission strings before logging", async () => {
+    await writePlugin("newline-perm", {
+      name: "acme.newline-perm",
+      version: "1.0.0",
+      permissions: ["fs:project-read\n", "agent:invoke\r"],
+    });
+
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("fs:project-read, agent:invoke"));
+    // Zod trim() strips trailing whitespace; stored manifest is clean
+    expect(service.listPlugins()[0].manifest.permissions).toEqual([
+      "fs:project-read",
+      "agent:invoke",
+    ]);
   });
 });
