@@ -597,6 +597,85 @@ describe("dev preview session handlers", () => {
     expect(secondLookup.panelId).toBe(secondRequest.panelId);
   });
 
+  it("returns the session state for a known worktree via get-by-worktree", async () => {
+    const ensureHandler = getRegisteredHandle<
+      [Electron.IpcMainInvokeEvent, Record<string, unknown>],
+      { terminalId: string | null; panelId: string; projectId: string }
+    >(CHANNELS.DEV_PREVIEW_ENSURE);
+    const getByWorktreeHandler = getRegisteredHandle<
+      [Electron.IpcMainInvokeEvent, Record<string, unknown>],
+      { panelId: string; worktreeId: string; status: string; assignedUrl: string | null } | null
+    >(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE);
+
+    expect(ensureHandler).toBeDefined();
+    expect(getByWorktreeHandler).toBeDefined();
+
+    const ensured = await ensureHandler!({} as Electron.IpcMainInvokeEvent, {
+      panelId: "panel-wt-lookup",
+      projectId: "project-wt-lookup",
+      cwd: "/repo",
+      devCommand: "npm run dev",
+      worktreeId: "wt-lookup",
+    });
+    expect(ensured.terminalId).toBeTruthy();
+
+    scanOutputMock.mockReturnValue({ buffer: "", url: "http://localhost:5174/", error: null });
+    ptyClient.emitData(ensured.terminalId!, "ready");
+
+    await vi.waitFor(async () => {
+      const state = await getByWorktreeHandler!({} as Electron.IpcMainInvokeEvent, {
+        worktreeId: "wt-lookup",
+      });
+      expect(state?.status).toBe("running");
+      expect(state?.panelId).toBe("panel-wt-lookup");
+      expect(state?.worktreeId).toBe("wt-lookup");
+      expect(state?.url).toBe("http://localhost:5174/");
+      expect(state?.assignedUrl).toMatch(/^http:\/\/localhost:\d+/);
+    });
+  });
+
+  it("returns null from get-by-worktree for an unknown worktree", async () => {
+    const getByWorktreeHandler = getRegisteredHandle<
+      [Electron.IpcMainInvokeEvent, Record<string, unknown>],
+      unknown
+    >(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE);
+    expect(getByWorktreeHandler).toBeDefined();
+
+    const state = await getByWorktreeHandler!({} as Electron.IpcMainInvokeEvent, {
+      worktreeId: "wt-does-not-exist",
+    });
+    expect(state).toBeNull();
+  });
+
+  it("rejects get-by-worktree calls with missing or malformed request shape", async () => {
+    const getByWorktreeHandler = getRegisteredHandle<
+      [Electron.IpcMainInvokeEvent, unknown],
+      unknown
+    >(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE);
+    expect(getByWorktreeHandler).toBeDefined();
+
+    // Guards against the regression in #5615: bare string instead of { worktreeId }.
+    await expect(
+      getByWorktreeHandler!({} as Electron.IpcMainInvokeEvent, "wt-1" as unknown)
+    ).rejects.toThrow("worktreeId is required");
+
+    await expect(getByWorktreeHandler!({} as Electron.IpcMainInvokeEvent, null)).rejects.toThrow(
+      "worktreeId is required"
+    );
+
+    await expect(getByWorktreeHandler!({} as Electron.IpcMainInvokeEvent, {})).rejects.toThrow(
+      "worktreeId is required"
+    );
+
+    await expect(
+      getByWorktreeHandler!({} as Electron.IpcMainInvokeEvent, { worktreeId: "" })
+    ).rejects.toThrow("worktreeId is required");
+
+    await expect(
+      getByWorktreeHandler!({} as Electron.IpcMainInvokeEvent, { worktreeId: "   " })
+    ).rejects.toThrow("worktreeId is required");
+  });
+
   it("kills active dev preview terminals when handlers are cleaned up", async () => {
     const ensureHandler = getRegisteredHandle<
       [Electron.IpcMainInvokeEvent, Record<string, unknown>],
