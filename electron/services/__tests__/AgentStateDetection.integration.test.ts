@@ -455,7 +455,10 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       manager.onProjectSwitch(projectId);
       await sleep(100);
 
-      manager.transitionState(id, { type: "exit", code: 0 }, "activity", 1.0);
+      // First transition to working, then trigger a clean exit (exit events are no-ops from idle)
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
+      await sleep(100);
+      manager.transitionState(id, { type: "exit", code: 0 }, "exit", 1.0);
       await sleep(200);
 
       const terminal = manager.getTerminal(id);
