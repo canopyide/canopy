@@ -15,6 +15,8 @@ interface AppThemeState {
   preferredLightSchemeId: string;
   recentSchemeIds: string[];
   accentColorOverride: string | null;
+  previewSchemeId: string | null;
+  setPreviewSchemeId: (id: string | null) => void;
   setSelectedSchemeId: (id: string) => void;
   /**
    * Updates Zustand state for a deliberate scheme selection (selectedSchemeId
@@ -63,6 +65,9 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
   preferredLightSchemeId: "bondi",
   recentSchemeIds: [],
   accentColorOverride: null,
+  previewSchemeId: null,
+
+  setPreviewSchemeId: (id) => set({ previewSchemeId: id }),
 
   setSelectedSchemeId: (id) => {
     const { customSchemes } = useAppThemeStore.getState();
