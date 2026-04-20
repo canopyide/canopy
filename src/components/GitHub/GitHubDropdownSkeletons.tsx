@@ -41,7 +41,7 @@ export function GitHubResourceListSkeleton({
 
   return (
     <div
-      className="relative w-[450px] flex flex-col max-h-[500px]"
+      className="relative w-[450px] flex flex-col h-[500px]"
       role="status"
       aria-live="polite"
       aria-busy="true"

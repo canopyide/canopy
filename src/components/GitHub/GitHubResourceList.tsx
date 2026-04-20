@@ -655,7 +655,7 @@ export function GitHubResourceList({
   };
 
   return (
-    <div className="relative w-[450px] flex flex-col max-h-[500px]">
+    <div className="relative w-[450px] flex flex-col h-[500px]">
       <div className="p-3 border-b border-[var(--border-divider)] space-y-3 shrink-0">
         <div className="flex items-center gap-2">
           <div
