@@ -1158,6 +1158,7 @@ function SettingsDialogInner({
                         onSubtabChange={(id) =>
                           setActiveSubtabs((prev) => ({ ...prev, terminalAppearance: id }))
                         }
+                        onClose={handleClose}
                       />
                     </Suspense>
                   )}

@@ -193,23 +193,66 @@ describe("AppThemePicker image loading attributes", () => {
     });
   });
 
-  it("marks row thumbnail images as lazy-loaded with intrinsic dimensions", () => {
-    const { container } = render(<AppThemePicker />);
-    const thumbs = container.querySelectorAll<HTMLImageElement>("img[src*='/themes/thumb/']");
-    expect(thumbs.length).toBe(3);
-    thumbs.forEach((img) => {
-      expect(img.getAttribute("loading")).toBe("lazy");
-      expect(img.getAttribute("width")).toBe("80");
-      expect(img.getAttribute("height")).toBe("80");
-    });
-  });
-
-  it("leaves the selected hero preview image eager-loading", () => {
+  it("renders exactly one hero image for the current theme", () => {
     const { container } = render(<AppThemePicker />);
     const heroImgs = container.querySelectorAll<HTMLImageElement>(
       "img[src='/themes/theme-a.webp']"
     );
     expect(heroImgs.length).toBe(1);
     expect(heroImgs[0]!.getAttribute("loading")).not.toBe("lazy");
+  });
+
+  it("does not render row thumbnails after list removal", () => {
+    const { container } = render(<AppThemePicker />);
+    const thumbs = container.querySelectorAll<HTMLImageElement>("img[src*='/themes/thumb/']");
+    expect(thumbs.length).toBe(0);
+    const listboxes = container.querySelectorAll('[role="listbox"]');
+    expect(listboxes.length).toBe(0);
+  });
+});
+
+describe("AppThemePicker Change theme button", () => {
+  beforeEach(() => {
+    Object.assign(storeState, {
+      selectedSchemeId: "theme-a",
+      customSchemes: [],
+      recentSchemeIds: [],
+      followSystem: false,
+      preferredDarkSchemeId: "theme-a",
+      preferredLightSchemeId: "theme-a",
+      setSelectedSchemeId: vi.fn(),
+      commitSchemeSelection: vi.fn(),
+      setSelectedSchemeIdSilent: vi.fn(),
+      injectTheme: vi.fn(),
+      setFollowSystem: vi.fn(),
+      setPreferredDarkSchemeId: vi.fn(),
+      setPreferredLightSchemeId: vi.fn(),
+      setRecentSchemeIds: vi.fn(),
+      addCustomScheme: vi.fn(),
+      accentColorOverride: null,
+      setAccentColorOverride: vi.fn(),
+      previewSchemeId: null,
+      setPreviewSchemeId: vi.fn(),
+    });
+  });
+
+  it("renders the Change theme button with the current theme name in the hero", () => {
+    render(<AppThemePicker />);
+    expect(screen.getByRole("button", { name: /change theme/i })).toBeTruthy();
+    expect(screen.getByText("Theme A")).toBeTruthy();
+  });
+
+  it("calls onClose when the Change theme button is clicked", () => {
+    const onClose = vi.fn();
+    render(<AppThemePicker onClose={onClose} />);
+    fireEvent.click(screen.getByRole("button", { name: /change theme/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw when Change theme is clicked without an onClose prop", () => {
+    render(<AppThemePicker />);
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: /change theme/i }))
+    ).not.toThrow();
   });
 });
