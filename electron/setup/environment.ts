@@ -387,6 +387,23 @@ export function getUnixFallbackPaths(): string[] {
   const voltaHome = process.env["VOLTA_HOME"];
   candidates.push(voltaHome ? path.join(voltaHome, "bin") : path.join(home, ".volta/bin"));
 
+  // pnpm — env var override, then the platform-default bin dir. pnpm's
+  // installer writes the bin dir path directly (no `bin/` suffix).
+  const pnpmHome = process.env["PNPM_HOME"];
+  if (pnpmHome) {
+    candidates.push(pnpmHome);
+  } else {
+    candidates.push(
+      process.platform === "darwin"
+        ? path.join(home, "Library/pnpm")
+        : path.join(home, ".local/share/pnpm")
+    );
+  }
+
+  // Nix — user profile (single-user + home-manager) and system default profile.
+  candidates.push(path.join(home, ".nix-profile/bin"));
+  candidates.push("/nix/var/nix/profiles/default/bin");
+
   // Homebrew — Apple Silicon (ARM64) default prefix. Intel Homebrew lives
   // at /usr/local/bin which is usually already on PATH.
   candidates.push("/opt/homebrew/bin");

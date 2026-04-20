@@ -50,7 +50,7 @@ export class CliAvailabilityService {
   private static readonly CHECK_TIMEOUT_MS = 10_000;
   private static readonly AUTH_CHECK_TIMEOUT_MS = 3_000;
   private static readonly WHICH_TIMEOUT_MS = 5_000;
-  private static readonly NPX_TIMEOUT_MS = 4_000;
+  private static readonly NPM_PREFIX_TIMEOUT_MS = 4_000;
   private static readonly WSL_LIST_TIMEOUT_MS = 5_000;
   private static readonly WSL_PROBE_TIMEOUT_MS = 8_000;
   private static readonly VALID_COMMAND_RE = /^[a-zA-Z0-9._-]+$/;
@@ -322,17 +322,21 @@ export class CliAvailabilityService {
    *    `missing`).
    * 2. Absolute paths declared in `AgentConfig.nativePaths` — covers native
    *    installer locations not on Electron's PATH (e.g. `~/.local/bin/claude`).
-   * 3. `npx --prefer-offline --no <pkg>` — detects CLIs present in the npx
-   *    cache with no globally installed bin shim. Only fires when
-   *    `AgentConfig.npxPackage` is set.
+   * 3. npm global bin shim at `$(npm config get prefix)/bin/<cmd>` (POSIX) or
+   *    `<prefix>\<cmd>.cmd` (Windows). Only fires when
+   *    `AgentConfig.npmGlobalPackage` is set. Positively confirms the binary
+   *    was installed via `npm install -g` — supersedes the prior npx-cache
+   *    probe which false-positively reported "ready" whenever the package had
+   *    been executed once via `npx <pkg>`, populating `~/.npm/_npx` without
+   *    installing a launchable bin shim (issue #5641).
    * 4. WSL probe on Windows — only fires when `AgentConfig.supportsWsl` is
    *    true. Probes `wsl.exe --list --quiet` then `wsl.exe -d <distro> -e
    *    <cmd> --version` against the first listed distribution.
    *
    * A `blocked` result from the shell probe short-circuits the fallbacks:
    * the same endpoint security policy that blocked the PATH binary will
-   * typically also block the native-path or npx binary, so probing them
-   * would only mask the real problem.
+   * typically also block the native-path or npm-global binary, so probing
+   * them would only mask the real problem.
    */
   private async probeCommand(config: AgentConfig): Promise<ProbeResult> {
     const command = config.command;
@@ -358,10 +362,10 @@ export class CliAvailabilityService {
       }
     }
 
-    if (config.npxPackage) {
-      const npxProbe = await this.probeNpx(config.npxPackage);
-      if (npxProbe.status !== "missing") {
-        return npxProbe;
+    if (config.npmGlobalPackage) {
+      const npmProbe = await this.probeNpmGlobal(command);
+      if (npmProbe.status !== "missing") {
+        return npmProbe;
       }
     }
 
@@ -440,43 +444,76 @@ export class CliAvailabilityService {
     return { status: "missing" };
   }
 
-  private probeNpx(pkg: string): Promise<ProbeResult> {
-    // Basic package-name sanity. npm allows scopes, dots, hyphens, and
-    // underscores; we pass this through execFile (no shell) but still want
-    // to reject anything surprising so CLI output in logs stays predictable.
-    if (!/^(@[\w.-]+\/)?[\w.-]+$/.test(pkg)) {
-      return Promise.resolve({ status: "missing" });
-    }
-
+  /**
+   * Probe whether the agent's CLI is installed as a global npm bin shim.
+   * Runs `npm config get prefix` to find npm's install prefix, then checks
+   * for the bin shim at `<prefix>/bin/<command>` (POSIX) or
+   * `<prefix>\<command>.cmd` (Windows). The presence of this file means
+   * `<command>` is resolvable on the npm-global PATH — the same launch
+   * contract the PTY host relies on when spawning the bare command.
+   *
+   * This replaces the earlier `npx --prefer-offline --no <pkg>` probe, which
+   * succeeded on a hit in `~/.npm/_npx` (the ephemeral cache populated by any
+   * prior `npx <pkg>` invocation) even when no global bin shim was installed —
+   * producing "ready" states that led to silent launch failures (#5641).
+   *
+   * Error classification:
+   * - `npm` missing from PATH or `npm config get prefix` failing → `missing`.
+   *   A broken/absent npm install is not an endpoint-security scenario.
+   * - Shim file EACCES/EPERM → `blocked` (same semantics as `probeNativePaths`).
+   * - Shim file ENOENT → `missing`.
+   */
+  private probeNpmGlobal(command: string): Promise<ProbeResult> {
     return new Promise((resolve) => {
-      // `--no` (npm v9+) avoids any install prompt; `--prefer-offline` keeps
-      // the probe off the network when the package is cached. Some older
-      // npm versions expose the flag as `--no-install` — we pass both via
-      // argument order so the modern version wins without erroring.
       execFile(
-        "npx",
-        ["--prefer-offline", "--no", pkg, "--version"],
+        "npm",
+        ["config", "get", "prefix"],
         {
-          timeout: CliAvailabilityService.NPX_TIMEOUT_MS,
+          timeout: CliAvailabilityService.NPM_PREFIX_TIMEOUT_MS,
           windowsHide: true,
         },
-        (err) => {
-          if (!err) {
-            resolve({ status: "found", path: `npx:${pkg}`, via: "npx" });
+        async (err, stdout) => {
+          if (err) {
+            resolve({ status: "missing" });
             return;
           }
-          const code = (err as NodeJS.ErrnoException).code;
-          if (typeof code === "string" && SECURITY_ERROR_CODES.has(code)) {
-            resolve({
-              status: "blocked",
-              reason: "security",
-              via: "npx",
-              message: `npx probe for "${pkg}" failed with ${code} — likely blocked by security software`,
-            });
+          const prefix = String(stdout ?? "").trim();
+          if (!prefix || prefix === "undefined") {
+            resolve({ status: "missing" });
             return;
           }
-          // Non-zero exit, ENOENT (npx not on PATH), timeout — treat as missing.
-          resolve({ status: "missing" });
+
+          // Guard against a prefix that would slip by `path.join` — the
+          // command name is already validated against VALID_COMMAND_RE, but
+          // defensively reject a prefix containing NUL bytes (fs.access would
+          // throw) rather than passing it through.
+          if (prefix.includes("\0")) {
+            resolve({ status: "missing" });
+            return;
+          }
+
+          const shimPath =
+            process.platform === "win32"
+              ? join(prefix, `${command}.cmd`)
+              : join(prefix, "bin", command);
+
+          try {
+            await access(shimPath, constants.X_OK);
+            resolve({ status: "found", path: shimPath, via: "npm-global" });
+          } catch (accessErr) {
+            const code = (accessErr as NodeJS.ErrnoException | undefined)?.code;
+            if (typeof code === "string" && SECURITY_ERROR_CODES.has(code)) {
+              resolve({
+                status: "blocked",
+                reason: code === "EACCES" ? "permissions" : "security",
+                path: shimPath,
+                via: "npm-global",
+                message: `${shimPath} exists but execution failed with ${code} — check file permissions or security software allowlist`,
+              });
+              return;
+            }
+            resolve({ status: "missing" });
+          }
         }
       );
     });

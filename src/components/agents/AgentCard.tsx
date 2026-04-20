@@ -283,10 +283,10 @@ export function AgentInstallSection({
         >
           {detail.resolvedPath && (
             <div className="text-xs font-mono break-all text-daintree-text/70 select-text">
-              {detail.via === "npx"
-                ? "Available via npx cache"
-                : detail.via === "wsl"
-                  ? `Available via WSL (${detail.wslDistro ?? "distro"})`
+              {detail.via === "wsl"
+                ? `Available via WSL (${detail.wslDistro ?? "distro"})`
+                : detail.via === "npm-global"
+                  ? `npm global: ${detail.resolvedPath}`
                   : `Resolved path: ${detail.resolvedPath}`}
             </div>
           )}
