@@ -129,6 +129,7 @@ import type {
   DevPreviewStopByPanelRequest,
   DevPreviewSessionState,
   DevPreviewStateChangedPayload,
+  DevPreviewGetByWorktreeRequest,
 } from "./devPreview.js";
 import type { SanitizedTelemetryEvent, TelemetryPreviewState } from "./telemetryPreview.js";
 import type { ProjectPulse, PulseRangeDays } from "../pulse.js";
@@ -1422,6 +1423,10 @@ export interface IpcInvokeMap {
   "dev-preview:get-state": {
     args: [request: DevPreviewSessionRequest];
     result: DevPreviewSessionState;
+  };
+  "dev-preview:get-by-worktree": {
+    args: [request: DevPreviewGetByWorktreeRequest];
+    result: DevPreviewSessionState | null;
   };
 
   // Auto-update channels
