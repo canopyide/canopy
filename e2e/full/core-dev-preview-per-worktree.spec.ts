@@ -183,11 +183,11 @@ test.describe.serial("Core: Dev Preview — Per-Worktree Port Registry", () => {
 
     // Resolve both sessions through the full IPC stack.
     const mainSession = await window.evaluate(
-      (id: string) => window.electron.devPreview.getByWorktree(id),
+      (id: string) => window.electron.devPreview.getByWorktree({ worktreeId: id }),
       mainWorktreeId
     );
     const featureSession = await window.evaluate(
-      (id: string) => window.electron.devPreview.getByWorktree(id),
+      (id: string) => window.electron.devPreview.getByWorktree({ worktreeId: id }),
       featureWorktreeId
     );
 
@@ -232,7 +232,7 @@ test.describe.serial("Core: Dev Preview — Per-Worktree Port Registry", () => {
 
     // Feature worktree: session gone (null) or explicitly stopped.
     const featureAfter = await window.evaluate(
-      (id: string) => window.electron.devPreview.getByWorktree(id),
+      (id: string) => window.electron.devPreview.getByWorktree({ worktreeId: id }),
       featureWorktreeId
     );
     // stopByPanel deletes the session, so getByWorktree must return null.
@@ -240,7 +240,7 @@ test.describe.serial("Core: Dev Preview — Per-Worktree Port Registry", () => {
 
     // Main worktree: session untouched — still running with the same URL.
     const mainAfter = await window.evaluate(
-      (id: string) => window.electron.devPreview.getByWorktree(id),
+      (id: string) => window.electron.devPreview.getByWorktree({ worktreeId: id }),
       mainWorktreeId
     );
     expect(mainAfter?.status).toBe("running");
