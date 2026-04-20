@@ -186,15 +186,15 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      // First transition to working, then to completed (exit from idle doesn't work)
+      // First transition to working, then to exited (exit from idle doesn't work)
       manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(100);
 
-      const statePromise = waitForAgentStateChange(manager, id, 2000, "completed");
+      const statePromise = waitForAgentStateChange(manager, id, 2000, "exited");
       manager.transitionState(id, { type: "exit", code: 0 }, "activity", 1.0);
 
       const stateChange = await statePromise;
-      expect(stateChange.state).toBe("completed");
+      expect(stateChange.state).toBe("exited");
     }, 10000);
 
     it("should handle state transitions for different agent types", async () => {
@@ -447,7 +447,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       expect(terminalAfter?.lastStateChange).toBe(preservedLastStateChange);
     }, 10000);
 
-    it("should preserve completed state across project switches", async () => {
+    it("should preserve exited state across project switches", async () => {
       const projectId = "test-project-456";
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
@@ -460,15 +460,15 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       const terminal = manager.getTerminal(id);
       expect(terminal).toBeDefined();
-      expect(terminal?.agentState).toBe("completed");
+      expect(terminal?.agentState).toBe("exited");
 
       await sleep(500);
 
       const terminalAfter = manager.getTerminal(id);
-      expect(terminalAfter?.agentState).toBe("completed");
+      expect(terminalAfter?.agentState).toBe("exited");
     }, 10000);
 
-    it("should preserve failed state across project switches", async () => {
+    it("should preserve exited state across project switches (crash exit)", async () => {
       const projectId = "test-project-789";
       const id = await spawnShellTerminal(manager, { type: "gemini" });
       await sleep(500);
@@ -484,12 +484,12 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       const terminal = manager.getTerminal(id);
       expect(terminal).toBeDefined();
-      expect(terminal?.agentState).toBe("completed");
+      expect(terminal?.agentState).toBe("exited");
 
       await sleep(500);
 
       const terminalAfter = manager.getTerminal(id);
-      expect(terminalAfter?.agentState).toBe("completed");
+      expect(terminalAfter?.agentState).toBe("exited");
     }, 10000);
   });
 
@@ -627,7 +627,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       await sleep(100);
 
       const stateAfterExit = manager.getTerminal(terminalB);
-      expect(stateAfterExit?.agentState).toBe("completed");
+      expect(stateAfterExit?.agentState).toBe("exited");
     }, 10000);
   });
 });
