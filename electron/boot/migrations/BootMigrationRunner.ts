@@ -79,7 +79,8 @@ export class BootMigrationRunner {
           throw new Error(`Boot migration ${migration.id} failed: ${err.message}`, { cause: err });
         }
         throw new Error(
-          `Boot migration ${migration.id} failed after ${durationMs}ms: ${String(err)}`
+          `Boot migration ${migration.id} failed after ${durationMs}ms: ${String(err)}`,
+          { cause: err }
         );
       }
 

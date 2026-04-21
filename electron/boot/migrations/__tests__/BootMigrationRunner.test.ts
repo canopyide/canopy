@@ -302,7 +302,6 @@ describe("BootMigrationRunner", () => {
         id: "bad",
         description: "throws a string",
         up: () => {
-          // eslint-disable-next-line @typescript-eslint/only-throw-error
           throw "nope";
         },
       },
