@@ -13,7 +13,6 @@ import {
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { usePanelStore } from "@/store/panelStore";
 import { actionService } from "@/services/ActionService";
-import { keybindingService } from "@/services/KeybindingService";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import {
@@ -26,71 +25,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FleetComposer } from "./FleetComposer";
 
-interface PresetOption {
-  value: FleetArmStatePreset;
-  label: string;
-}
-
-const PRESETS: PresetOption[] = [
-  { value: "working", label: "Working" },
-  { value: "waiting", label: "Waiting" },
-  { value: "finished", label: "Finished" },
-];
-
-interface ArmedCounts {
-  live: number;
-  waiting: number;
-  workingOrRunning: number;
-  sessionLoss: number;
-}
-
 const DOUBLE_ESC_WINDOW_MS = 350;
 
-function useArmedCounts(): ArmedCounts {
-  return usePanelStore(
-    useShallow((state) => {
-      const armedIds = useFleetArmingStore.getState().armedIds;
-      let live = 0;
-      let waiting = 0;
-      let workingOrRunning = 0;
-      let sessionLoss = 0;
-      for (const id of armedIds) {
-        const t = state.panelsById[id];
-        if (!t) continue;
-        if (t.location === "trash" || t.location === "background") continue;
-        if (t.hasPty === false) continue;
-        live++;
-        if (t.agentState === "waiting") waiting++;
-        if (t.agentState === "working" || t.agentState === "running") workingOrRunning++;
-        if (t.agentSessionId) sessionLoss++;
-      }
-      return { live, waiting, workingOrRunning, sessionLoss };
-    })
-  );
-}
-
-type QuickActionId =
-  | "fleet.accept"
+type FleetConfirmActionId =
   | "fleet.reject"
   | "fleet.interrupt"
   | "fleet.restart"
   | "fleet.kill"
   | "fleet.trash";
-
-interface QuickAction {
-  id: QuickActionId;
-  label: string;
-  chordOverride?: string;
-}
-
-const QUICK_ACTIONS: QuickAction[] = [
-  { id: "fleet.accept", label: "Accept" },
-  { id: "fleet.reject", label: "Reject" },
-  { id: "fleet.interrupt", label: "Interrupt", chordOverride: "⌘⎋⎋" },
-  { id: "fleet.restart", label: "Restart" },
-  { id: "fleet.kill", label: "Kill" },
-  { id: "fleet.trash", label: "Trash" },
-];
 
 function buildConfirmMessage(
   kind: FleetPendingActionKind,
@@ -122,7 +64,6 @@ export function FleetArmingRibbon(): ReactElement | null {
   const clear = useFleetArmingStore((s) => s.clear);
   const armByState = useFleetArmingStore((s) => s.armByState);
   const armAll = useFleetArmingStore((s) => s.armAll);
-  const counts = useArmedCounts();
   const quickStateFilter = useWorktreeFilterStore((s) => s.quickStateFilter);
   const pending = useFleetPendingActionStore((s) => s.pending);
   const clearPending = useFleetPendingActionStore((s) => s.clear);
@@ -131,7 +72,7 @@ export function FleetArmingRibbon(): ReactElement | null {
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    if (armedCount === 0 && popoverOpen) {
+    if (armedCount < 2 && popoverOpen) {
       setPopoverOpen(false);
     }
   }, [armedCount, popoverOpen]);
@@ -189,7 +130,7 @@ export function FleetArmingRibbon(): ReactElement | null {
       }
       e.preventDefault();
       e.stopPropagation();
-      const actionId: QuickActionId =
+      const actionId: FleetConfirmActionId =
         pending.kind === "reject"
           ? "fleet.reject"
           : pending.kind === "interrupt"
@@ -331,33 +272,11 @@ export function FleetArmingRibbon(): ReactElement | null {
     </>
   );
 
-  if (armedCount === 0) {
-    return (
-      <div
-        className="flex items-center gap-1.5 border-b border-transparent px-3 py-1 text-[11px] text-daintree-text/40"
-        data-testid="fleet-arming-ribbon-discovery"
-      >
-        <span>Broadcast</span>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="Open broadcast selection menu"
-              className="rounded p-0.5 text-daintree-text/60 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
-              data-testid="fleet-selection-menu-trigger"
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" sideOffset={4}>
-            {selectionMenuItems}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    );
-  }
-
-  if (pending !== null) {
+  // Render confirmation before the armedCount<2 null guard so single-agent
+  // keybindings (fleet.restart / fleet.kill always require confirmation)
+  // stay reachable — and so draining 3→1 while a confirm is pending
+  // doesn't strand a live Enter listener with no visible UI.
+  if (armedCount > 0 && pending !== null) {
     const message = buildConfirmMessage(
       pending.kind,
       pending.targetCount,
@@ -393,19 +312,9 @@ export function FleetArmingRibbon(): ReactElement | null {
     );
   }
 
-  const isEligible = (id: QuickActionId): boolean => {
-    switch (id) {
-      case "fleet.accept":
-      case "fleet.reject":
-        return counts.waiting > 0;
-      case "fleet.interrupt":
-        return counts.workingOrRunning > 0 || counts.waiting > 0;
-      case "fleet.restart":
-      case "fleet.kill":
-      case "fleet.trash":
-        return counts.live > 0;
-    }
-  };
+  if (armedCount < 2) {
+    return null;
+  }
 
   const ribbonMotionProps = reduceMotion
     ? {
@@ -455,56 +364,6 @@ export function FleetArmingRibbon(): ReactElement | null {
               {selectionMenuItems}
             </DropdownMenuContent>
           </DropdownMenu>
-          <div className="flex items-center gap-1" role="toolbar" aria-label="Arm by state">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.value}
-                type="button"
-                onClick={(e) => {
-                  armByState(preset.value, "current", e.shiftKey);
-                }}
-                className={cn(
-                  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] transition-colors",
-                  "bg-tint/[0.08] text-daintree-text/80 hover:bg-tint/[0.14] hover:text-daintree-text"
-                )}
-                aria-label={`Arm ${preset.label.toLowerCase()} agents (shift to extend)`}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1" role="toolbar" aria-label="Fleet quick actions">
-            {QUICK_ACTIONS.map((action) => {
-              const eligible = isEligible(action.id);
-              const chord =
-                action.chordOverride ?? keybindingService.getDisplayCombo(action.id) ?? "";
-              return (
-                <button
-                  key={action.id}
-                  type="button"
-                  disabled={!eligible}
-                  onClick={() => {
-                    void actionService.dispatch(action.id, undefined, { source: "user" });
-                  }}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] transition-colors",
-                    eligible
-                      ? "bg-tint/[0.08] text-daintree-text/80 hover:bg-tint/[0.14] hover:text-daintree-text"
-                      : "cursor-not-allowed bg-tint/[0.04] text-daintree-text/30"
-                  )}
-                  aria-label={`${action.label} armed agents (${chord})`}
-                  data-testid={`fleet-quick-${action.id.replace("fleet.", "")}`}
-                >
-                  <span>{action.label}</span>
-                  {chord ? (
-                    <kbd className="rounded border border-daintree-text/20 bg-tint/[0.06] px-1 font-mono text-[10px] leading-tight">
-                      {chord}
-                    </kbd>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
           <div className="ml-auto flex items-center gap-1.5">
             <button
               type="button"
