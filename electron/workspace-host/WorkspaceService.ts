@@ -462,7 +462,15 @@ export class WorkspaceService {
       void this.extractIssueNumberAsync(monitor, wt.branch, wt.name);
     }
 
-    void this.initResourceConfigAsync(monitor, wt.path);
+    void (async () => {
+      await this.initResourceConfigAsync(monitor, wt.path);
+      // Emit a secondary update if config was loaded and monitor is running.
+      // This ensures the renderer receives the resource config metadata even when
+      // initResourceConfigAsync completes after the initial snapshot was emitted.
+      if (monitor.isRunning && monitor.hasResourceConfig) {
+        this.emitUpdate(monitor);
+      }
+    })();
   }
 
   private async initResourceConfigAsync(
