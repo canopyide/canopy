@@ -634,3 +634,85 @@ describe("TerminalFocusSlice - focusNextBlockedDock", () => {
     expect(state.activeDockTerminalId).toBe("d1");
   });
 });
+
+describe("TerminalFocusSlice - setFocused ping gating", () => {
+  const mockTerminals: TerminalInstance[] = [
+    {
+      id: "term-1",
+      title: "Terminal 1",
+      type: "claude",
+      cwd: "/test",
+      location: "grid",
+      agentState: "idle",
+      isVisible: true,
+      cols: 80,
+      rows: 24,
+      worktreeId: "worktree-1",
+    },
+    {
+      id: "term-2",
+      title: "Terminal 2",
+      type: "terminal",
+      cwd: "/test",
+      location: "grid",
+      agentState: "idle",
+      isVisible: true,
+      cols: 80,
+      rows: 24,
+      worktreeId: "worktree-1",
+    },
+  ] as TerminalInstance[];
+
+  const getTerminals = vi.fn(() => mockTerminals);
+
+  let state: TerminalFocusSlice;
+  let setState: any;
+  let getState: any;
+  let pingSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setState = vi.fn((updater) => {
+      const currentState = getState();
+      const updates = typeof updater === "function" ? updater(currentState) : updater;
+      state = { ...currentState, ...updates };
+    });
+    getState = vi.fn(() => state);
+    state = createTerminalFocusSlice(getTerminals, mockGetActiveWorktreeId)(
+      setState,
+      getState,
+      {} as never
+    );
+    // Spy on pingTerminal so we can assert without running the 1600ms timer.
+    pingSpy = vi.fn();
+    state.pingTerminal = pingSpy as unknown as TerminalFocusSlice["pingTerminal"];
+  });
+
+  it("pings on initial focus (no previously focused terminal)", () => {
+    state.setFocused("term-1", true);
+    expect(pingSpy).toHaveBeenCalledWith("term-1");
+  });
+
+  it("pings when focus moves to a different terminal", () => {
+    state.setFocused("term-1", true);
+    pingSpy.mockClear();
+
+    state.setFocused("term-2", true);
+    expect(pingSpy).toHaveBeenCalledWith("term-2");
+  });
+
+  it("does not ping when re-focusing the already-focused terminal", () => {
+    state.setFocused("term-1", true);
+    pingSpy.mockClear();
+
+    state.setFocused("term-1", true);
+    expect(pingSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not ping when shouldPing is false, even on focus change", () => {
+    state.setFocused("term-1", false);
+    expect(pingSpy).not.toHaveBeenCalled();
+    state.setFocused("term-2", false);
+    expect(pingSpy).not.toHaveBeenCalled();
+  });
+});

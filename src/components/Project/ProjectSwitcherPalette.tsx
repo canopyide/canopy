@@ -84,7 +84,7 @@ const StatusDot = memo(function StatusDot({ project }: { project: SearchableProj
   if (hasActive) {
     return (
       <div
-        className="w-1.5 h-1.5 rounded-full bg-daintree-accent animate-agent-pulse shrink-0"
+        className="w-1.5 h-1.5 rounded-full bg-daintree-accent animate-activity-pulse shrink-0"
         aria-label="Agents working"
       />
     );

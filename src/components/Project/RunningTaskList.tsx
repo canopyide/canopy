@@ -283,8 +283,8 @@ function StatusDot({ status }: { status: TaskStatus }) {
     <span
       className={cn(
         "h-1.5 w-1.5 rounded-full shrink-0",
-        status === "running" && "bg-status-success animate-agent-pulse",
-        status === "restarting" && "bg-status-warning animate-agent-pulse",
+        status === "running" && "bg-status-success animate-activity-pulse",
+        status === "restarting" && "bg-status-warning animate-activity-pulse",
         status === "success" && "bg-status-success",
         status === "failed" && "bg-status-error"
       )}

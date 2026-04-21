@@ -111,6 +111,7 @@ export const createTerminalFocusSlice =
       preMaximizeLayout: null,
       setFocused: (id, shouldPing = false) => {
         if (id) {
+          const previousFocusedId = get().focusedId;
           const terminal = getTerminals().find((t) => t.id === id);
           if (terminal?.location === "dock") {
             set({ focusedId: id, activeDockTerminalId: id });
@@ -122,7 +123,9 @@ export const createTerminalFocusSlice =
           if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
             terminalInstanceService.wake(id);
           }
-          if (shouldPing) {
+          // Only ping when selection actually changes — re-focusing the already
+          // selected terminal should be a no-op visually (no 1.6s ping loop).
+          if (shouldPing && id !== previousFocusedId) {
             get().pingTerminal(id);
           }
         } else {

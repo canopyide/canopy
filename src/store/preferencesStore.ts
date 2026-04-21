@@ -18,6 +18,8 @@ interface PreferencesState {
   setDockDensity: (density: DockDensity) => void;
   assignWorktreeToSelf: boolean;
   setAssignWorktreeToSelf: (value: boolean) => void;
+  reduceAnimations: boolean;
+  setReduceAnimations: (value: boolean) => void;
   lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined>;
   setLastSelectedWorktreeRecipeIdByProject: (
     projectId: string,
@@ -40,6 +42,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       setDockDensity: (density) => set({ dockDensity: density }),
       assignWorktreeToSelf: false,
       setAssignWorktreeToSelf: (value) => set({ assignWorktreeToSelf: value }),
+      reduceAnimations: false,
+      setReduceAnimations: (value) => set({ reduceAnimations: value }),
       lastSelectedWorktreeRecipeIdByProject: {},
       setLastSelectedWorktreeRecipeIdByProject: (projectId, id) =>
         set((state) => ({
@@ -52,7 +56,7 @@ export const usePreferencesStore = create<PreferencesState>()(
     {
       name: "daintree-preferences",
       storage: createSafeJSONStorage(),
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         if (version === 0 || version === undefined) {
           if (persisted && typeof persisted === "object") {
@@ -76,6 +80,12 @@ export const usePreferencesStore = create<PreferencesState>()(
             state.dockDensity ??= "normal";
           }
         }
+        if (version < 4) {
+          if (persisted && typeof persisted === "object") {
+            const state = persisted as Record<string, unknown>;
+            state.reduceAnimations ??= false;
+          }
+        }
         return persisted as PreferencesState;
       },
     }
@@ -86,5 +96,5 @@ registerPersistedStore({
   storeId: "preferencesStore",
   store: usePreferencesStore,
   persistedStateType:
-    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
+    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
 });
