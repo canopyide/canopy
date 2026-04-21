@@ -287,27 +287,29 @@ export const WorktreeCard = React.memo(function WorktreeCard({
     dominantAgentState,
   } = useWorktreeTerminals(worktree.id);
 
-  // Border accent flash — fires once when the dominant agent state for this
-  // card transitions to a meaningful value. Mirrors the AgentStatusIndicator
-  // pattern: prevRef seeded to current (no flash on mount), animationend
-  // clears the latch, and a 250ms safety timeout covers reduced-motion.
+  // Border accent flash — fires once when the dominant *execution* state for
+  // this card meaningfully changes. `directing` is excluded because it's
+  // driven by the user's local typing cycle (start typing → directing,
+  // submit/clear → null), which would flash the card on every keystroke
+  // rather than on real agent activity. The flashKey counter remounts the
+  // overlay on each transition so back-to-back changes restart the
+  // animation rather than dropping silently.
   const prevAgentStateRef = useRef(dominantAgentState);
-  const [isBorderFlashing, setIsBorderFlashing] = useState(false);
+  const [flashKey, setFlashKey] = useState(0);
 
   useEffect(() => {
-    if (prevAgentStateRef.current !== dominantAgentState) {
+    const prev = prevAgentStateRef.current;
+    if (prev !== dominantAgentState) {
       prevAgentStateRef.current = dominantAgentState;
-      if (dominantAgentState !== null) {
-        setIsBorderFlashing(true);
+      if (
+        dominantAgentState !== null &&
+        dominantAgentState !== "directing" &&
+        prev !== "directing"
+      ) {
+        setFlashKey((k) => k + 1);
       }
     }
   }, [dominantAgentState]);
-
-  useEffect(() => {
-    if (!isBorderFlashing) return;
-    const timer = setTimeout(() => setIsBorderFlashing(false), 300);
-    return () => clearTimeout(timer);
-  }, [isBorderFlashing]);
   const setFocused = usePanelStore((state) => state.setFocused);
   const pingTerminal = usePanelStore((state) => state.pingTerminal);
   const openDockTerminal = usePanelStore((state) => state.openDockTerminal);
@@ -710,14 +712,14 @@ export const WorktreeCard = React.memo(function WorktreeCard({
               )}
             />
           )}
-          {isBorderFlashing && (
+          {flashKey > 0 && (
             <div
+              key={flashKey}
               className={cn(
                 "absolute inset-0 z-20 pointer-events-none border border-accent-primary animate-border-flash",
                 variant === "grid" && "rounded-lg"
               )}
               aria-hidden="true"
-              onAnimationEnd={() => setIsBorderFlashing(false)}
             />
           )}
           {chipState !== null && (

@@ -1289,10 +1289,13 @@ body,
     will-change: auto;
   }
 
-  /* Label swap retains opacity-only crossfade — no transform, no blur. */
+  /* Label swap under reduced motion — animation removed entirely. The swap
+   * still happens (the new value renders), it just snaps into place rather
+   * than crossfading. WCAG 2.3.3: remove motion, don't just speed it up.
+   */
   .animate-label-swap-out,
   .animate-label-swap-in {
-    animation-name: none;
+    animation: none;
     transform: none !important;
     filter: none !important;
     will-change: auto;
@@ -1300,12 +1303,6 @@ body,
 
   .animate-label-swap-out {
     opacity: 0;
-    transition: opacity var(--duration-150) linear;
-  }
-
-  .animate-label-swap-in {
-    opacity: 1;
-    transition: opacity var(--duration-150) linear;
   }
 
   *:focus-visible {
@@ -1353,7 +1350,7 @@ body[data-reduce-animations="true"]
 }
 
 body[data-reduce-animations="true"] :is(.animate-label-swap-out, .animate-label-swap-in) {
-  animation-name: none;
+  animation: none;
   transform: none !important;
   filter: none !important;
   will-change: auto;
@@ -1361,12 +1358,6 @@ body[data-reduce-animations="true"] :is(.animate-label-swap-out, .animate-label-
 
 body[data-reduce-animations="true"] .animate-label-swap-out {
   opacity: 0;
-  transition: opacity var(--duration-150) linear;
-}
-
-body[data-reduce-animations="true"] .animate-label-swap-in {
-  opacity: 1;
-  transition: opacity var(--duration-150) linear;
 }
 
 body[data-reduce-animations="true"] *:focus-visible {

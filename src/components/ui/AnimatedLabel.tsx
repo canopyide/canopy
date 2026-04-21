@@ -19,20 +19,28 @@ export interface AnimatedLabelProps {
 /**
  * Crossfade primitive for short labels and ticking counts. Both the outgoing
  * and incoming spans live in the same CSS grid cell so the wrapper width is
- * the natural max of the two — no layout shift during the swap. The outgoing
- * span gets `aria-hidden` so screen readers only announce the live label.
+ * the natural max of the two — no layout shift during the swap.
+ *
+ * Accessibility: the outgoing span is `aria-hidden`. The current span has no
+ * live-region attributes — callers own their own announcement strategy
+ * (PanelHeader uses `role="status"` on its container, FleetArmingRibbon
+ * uses an explicit announcer store), so adding `aria-live` here would
+ * double-announce.
  */
 export function AnimatedLabel({ label, animateKey, className, textClassName }: AnimatedLabelProps) {
   const key = animateKey ?? label;
   const prevKeyRef = useRef(key);
   const prevLabelRef = useRef(label);
-  const [isAnimating, setIsAnimating] = useState(false);
+  // generation increments on every change so React remounts the spans and
+  // restarts the keyframe animation even when a new transition arrives
+  // inside the previous one's animation window.
+  const [generation, setGeneration] = useState(0);
   const [outgoing, setOutgoing] = useState<string | null>(null);
 
   useEffect(() => {
     if (prevKeyRef.current !== key) {
       setOutgoing(prevLabelRef.current);
-      setIsAnimating(true);
+      setGeneration((g) => g + 1);
       prevKeyRef.current = key;
       prevLabelRef.current = label;
     } else {
@@ -41,39 +49,33 @@ export function AnimatedLabel({ label, animateKey, className, textClassName }: A
   }, [key, label]);
 
   // Safety cleanup — under reduced-motion the keyframe animation is replaced
-  // by a short opacity transition, so `animationend` may not fire from the
-  // outgoing span in the same way. The 250ms timeout matches the canonical
-  // pattern in AgentStatusIndicator and prevents the latch from sticking.
+  // with a static state so `animationend` never fires from the outgoing span.
+  // The 250ms timeout matches the canonical pattern in AgentStatusIndicator
+  // and prevents the outgoing label from latching in the DOM.
   useEffect(() => {
-    if (!isAnimating) return;
-    const timer = setTimeout(() => {
-      setIsAnimating(false);
-      setOutgoing(null);
-    }, 250);
+    if (outgoing === null) return;
+    const timer = setTimeout(() => setOutgoing(null), 250);
     return () => clearTimeout(timer);
-  }, [isAnimating]);
+  }, [outgoing, generation]);
 
-  const handleAnimationEnd = () => {
-    setIsAnimating(false);
-    setOutgoing(null);
-  };
+  const isAnimating = outgoing !== null;
+  const handleAnimationEnd = () => setOutgoing(null);
 
   return (
     <span className={cn("relative inline-grid align-baseline", className)}>
       <span
-        key={`current-${key}`}
+        key={`current-${generation}`}
         className={cn(
           "[grid-area:1/1] inline-flex items-center justify-center",
           isAnimating && "animate-label-swap-in",
           textClassName
         )}
-        aria-live="polite"
       >
         {label}
       </span>
-      {isAnimating && outgoing !== null && outgoing !== label && (
+      {isAnimating && (
         <span
-          key={`prev-${key}`}
+          key={`prev-${generation}`}
           className={cn(
             "[grid-area:1/1] inline-flex items-center justify-center pointer-events-none animate-label-swap-out",
             textClassName

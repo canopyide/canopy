@@ -85,26 +85,21 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
   const detailsId = `worktree-${worktree.id}-details`;
   const detailsPanelId = `worktree-${worktree.id}-details-panel`;
 
-  // One-shot bump on file-count change. Pattern mirrors AgentStatusIndicator:
-  // prevRef seeded to current value (no bump on mount), onAnimationEnd clears
-  // the latch normally, and a 250ms safety timeout covers reduced-motion
-  // environments where animationend never fires.
+  // One-shot bump on file-count change. Counter increments on every change
+  // and is used as a `key` on the count span so back-to-back updates remount
+  // the node and restart the animation (a plain boolean latch would silently
+  // drop a second update arriving inside the 200ms animation window).
+  // prevRef seeded to current value so mount produces no bump.
   const changedFileCount = worktree.worktreeChanges?.changedFileCount ?? 0;
   const prevCountRef = useRef(changedFileCount);
-  const [isCountBumping, setIsCountBumping] = useState(false);
+  const [bumpKey, setBumpKey] = useState(0);
 
   useEffect(() => {
     if (prevCountRef.current !== changedFileCount) {
       prevCountRef.current = changedFileCount;
-      setIsCountBumping(true);
+      setBumpKey((k) => k + 1);
     }
   }, [changedFileCount]);
-
-  useEffect(() => {
-    if (!isCountBumping) return;
-    const timer = setTimeout(() => setIsCountBumping(false), 250);
-    return () => clearTimeout(timer);
-  }, [isCountBumping]);
 
   const rsLower = resourceStatus?.toLowerCase();
   const showResourceResume =
@@ -196,8 +191,8 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
               ) : hasChanges && worktree.worktreeChanges ? (
                 <span className="flex items-center gap-1.5 text-text-secondary">
                   <span
-                    className={cn("inline-block", isCountBumping && "animate-badge-bump")}
-                    onAnimationEnd={() => setIsCountBumping(false)}
+                    key={bumpKey}
+                    className={cn("inline-block", bumpKey > 0 && "animate-badge-bump")}
                   >
                     {worktree.worktreeChanges.changedFileCount} file
                     {worktree.worktreeChanges.changedFileCount !== 1 ? "s" : ""}

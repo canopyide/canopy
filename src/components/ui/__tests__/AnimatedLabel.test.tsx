@@ -21,6 +21,12 @@ describe("AnimatedLabel", () => {
     expect(animating).toBeNull();
   });
 
+  it("does not put aria-live on the current span (callers own announcements)", () => {
+    const { container } = render(<AnimatedLabel label="3" />);
+    const spans = container.querySelectorAll("span");
+    spans.forEach((s) => expect(s.getAttribute("aria-live")).toBeNull());
+  });
+
   it("swaps in/out classes when the label changes", () => {
     const { container, rerender } = render(<AnimatedLabel label="Copy" />);
     rerender(<AnimatedLabel label="Copied" />);
@@ -49,12 +55,14 @@ describe("AnimatedLabel", () => {
     expect(animating).toBeNull();
   });
 
-  it("animates when animateKey changes even if label stays the same", () => {
+  it("renders both spans when animateKey changes even with the same label", () => {
     const { container, rerender } = render(<AnimatedLabel label="3" animateKey="a" />);
     rerender(<AnimatedLabel label="3" animateKey="b" />);
 
-    const animating = container.querySelector(".animate-label-swap-in");
-    expect(animating).not.toBeNull();
+    const incoming = container.querySelector(".animate-label-swap-in");
+    const outgoing = container.querySelector(".animate-label-swap-out");
+    expect(incoming?.textContent).toBe("3");
+    expect(outgoing?.textContent).toBe("3");
   });
 
   it("clears animation classes after the safety timeout", () => {
@@ -76,22 +84,16 @@ describe("AnimatedLabel", () => {
     }
   });
 
-  it("re-animates on each subsequent label change", () => {
-    vi.useFakeTimers();
-    try {
-      const { container, rerender } = render(<AnimatedLabel label="1" />);
-      rerender(<AnimatedLabel label="2" />);
-      expect(container.querySelector(".animate-label-swap-in")?.textContent).toBe("2");
+  it("re-animates and remounts on each subsequent label change (no churn dropouts)", () => {
+    const { container, rerender } = render(<AnimatedLabel label="1" />);
+    rerender(<AnimatedLabel label="2" />);
+    expect(container.querySelector(".animate-label-swap-in")?.textContent).toBe("2");
+    expect(container.querySelector(".animate-label-swap-out")?.textContent).toBe("1");
 
-      act(() => {
-        vi.advanceTimersByTime(260);
-      });
-
-      rerender(<AnimatedLabel label="3" />);
-      expect(container.querySelector(".animate-label-swap-in")?.textContent).toBe("3");
-      expect(container.querySelector(".animate-label-swap-out")?.textContent).toBe("2");
-    } finally {
-      vi.useRealTimers();
-    }
+    // Second transition arrives before the first one finishes — must still
+    // animate to the latest label (3) without dropping the update.
+    rerender(<AnimatedLabel label="3" />);
+    expect(container.querySelector(".animate-label-swap-in")?.textContent).toBe("3");
+    expect(container.querySelector(".animate-label-swap-out")?.textContent).toBe("2");
   });
 });
