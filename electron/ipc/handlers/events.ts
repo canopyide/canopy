@@ -56,9 +56,7 @@ const EVENT_BUS_RELAYED_EVENTS = (
   >
 )
   .filter(([, mode]) => mode === "bus")
-  .map(([name]) => name) as Array<
-  Extract<keyof IpcEventBusMap, keyof DaintreeEventMap>
->;
+  .map(([name]) => name) as Array<Extract<keyof IpcEventBusMap, keyof DaintreeEventMap>>;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
