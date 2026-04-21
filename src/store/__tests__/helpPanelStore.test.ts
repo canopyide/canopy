@@ -98,7 +98,12 @@ describe("helpPanelStore persistence migration", () => {
 
     const written = backing.get(STORAGE_KEY);
     expect(written).toBeDefined();
-    const parsed = JSON.parse(written!) as { version: number };
+    const parsed = JSON.parse(written!) as {
+      version: number;
+      state: { width: number; preferredAgentId: string | null };
+    };
     expect(parsed.version).toBe(0);
+    expect(parsed.state.width).toBe(450);
+    expect(parsed.state.preferredAgentId).toBe("gemini");
   });
 });

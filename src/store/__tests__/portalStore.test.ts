@@ -372,7 +372,11 @@ describe("portalStore persistence migration", () => {
 
     const written = backing.get(STORAGE_KEY);
     expect(written).toBeDefined();
-    const parsed = JSON.parse(written!) as { version: number };
+    const parsed = JSON.parse(written!) as {
+      version: number;
+      state: { width: number };
+    };
     expect(parsed.version).toBe(0);
+    expect(parsed.state.width).toBe(620);
   });
 });

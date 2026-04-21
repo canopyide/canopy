@@ -75,7 +75,11 @@ describe("agentPreferencesStore persistence migration", () => {
 
     const written = backing.get(STORAGE_KEY);
     expect(written).toBeDefined();
-    const parsed = JSON.parse(written!) as { version: number };
+    const parsed = JSON.parse(written!) as {
+      version: number;
+      state: { defaultAgent?: string };
+    };
     expect(parsed.version).toBe(0);
+    expect(parsed.state.defaultAgent).toBe("gemini");
   });
 });

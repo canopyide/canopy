@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCommandHistoryStore } from "../commandHistoryStore";
+import { useCommandHistoryStore, type PromptHistoryEntry } from "../commandHistoryStore";
 
 describe("commandHistoryStore", () => {
   beforeEach(() => {
@@ -178,7 +178,12 @@ describe("commandHistoryStore persistence migration", () => {
 
     const written = backing.get(STORAGE_KEY);
     expect(written).toBeDefined();
-    const parsed = JSON.parse(written!) as { version: number };
+    const parsed = JSON.parse(written!) as {
+      version: number;
+      state: { history: Record<string, PromptHistoryEntry[]> };
+    };
     expect(parsed.version).toBe(0);
+    expect(parsed.state.history["proj1"]!.some((e) => e.prompt === "old")).toBe(true);
+    expect(parsed.state.history["proj1"]!.some((e) => e.prompt === "new")).toBe(true);
   });
 });

@@ -334,8 +334,13 @@ describe("urlHistoryStore persistence migration", () => {
 
     const written = backing.get(STORAGE_KEY);
     expect(written).toBeDefined();
-    const parsed = JSON.parse(written!) as { version: number };
+    const parsed = JSON.parse(written!) as {
+      version: number;
+      state: { entries: Record<string, UrlHistoryEntry[]> };
+    };
     expect(parsed.version).toBe(0);
+    expect(parsed.state.entries["proj1"]!.some((e) => e.url === "http://a.test/")).toBe(true);
+    expect(parsed.state.entries["proj1"]!.some((e) => e.url === "http://b.test/")).toBe(true);
   });
 });
 
