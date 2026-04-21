@@ -216,5 +216,19 @@ describe("FleetArmingRibbon", () => {
       render(<FleetArmingRibbon />);
       expect(screen.queryByTestId("fleet-composer")).toBeTruthy();
     });
+
+    it("renders exactly one FleetComposer in the ribbon when Fleet scope is active", () => {
+      // The pinned-header mount point was removed with the orphaned saved-scopes
+      // plumbing; the ribbon is now the sole composer host in every mode.
+      useFleetArmingStore.getState().armIds(["a"]);
+      useFleetScopeFlagStore.setState({ mode: "scoped", isHydrated: true });
+      useWorktreeSelectionStore.setState({
+        activeWorktreeId: "wt-1",
+        isFleetScopeActive: true,
+      });
+      render(<FleetArmingRibbon />);
+      expect(screen.queryAllByTestId("fleet-composer")).toHaveLength(1);
+      expect(screen.queryByTestId("fleet-arming-ribbon")).toBeTruthy();
+    });
   });
 });
