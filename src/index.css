@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+@source not "../.lessons/**/*";
 @import "./styles/components/toolbar.css";
 @import "./styles/components/settings.css";
 @import "./styles/components/pulse.css";
