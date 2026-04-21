@@ -303,10 +303,7 @@ describe("fleet.armMatchingFilter", () => {
   });
 
   it("replaces any prior armed set that falls outside the filter", async () => {
-    seedPanels([
-      makeAgent("a1", { worktreeId: "wt-1" }),
-      makeAgent("a2", { worktreeId: "wt-2" }),
-    ]);
+    seedPanels([makeAgent("a1", { worktreeId: "wt-1" }), makeAgent("a2", { worktreeId: "wt-2" })]);
     useFleetArmingStore.getState().armIds(["a2"]);
     const registry = await buildRegistry();
     await run(registry, "fleet.armMatchingFilter", { worktreeIds: ["wt-1"] });
