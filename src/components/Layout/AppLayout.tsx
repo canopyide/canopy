@@ -229,6 +229,7 @@ export function AppLayout({
 
   useEffect(() => {
     const handleFocusModeToggle = () => {
+      if (useUIStore.getState().hasOpenOverlays()) return;
       void handleToggleFocusModeRef.current();
     };
 
@@ -240,6 +241,7 @@ export function AppLayout({
 
   useEffect(() => {
     const handlePortalToggle = () => {
+      if (useUIStore.getState().hasOpenOverlays()) return;
       layout.togglePortal();
     };
 
@@ -248,7 +250,10 @@ export function AppLayout({
   }, [layout.togglePortal]);
 
   useEffect(() => {
-    const handleResetSidebarWidth = () => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+    const handleResetSidebarWidth = () => {
+      if (useUIStore.getState().hasOpenOverlays()) return;
+      setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+    };
     window.addEventListener("daintree:reset-sidebar-width", handleResetSidebarWidth);
     return () =>
       window.removeEventListener("daintree:reset-sidebar-width", handleResetSidebarWidth);
