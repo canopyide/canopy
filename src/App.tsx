@@ -136,8 +136,6 @@ import type { BuiltInPanelKind } from "./types";
 import type { TerminalType } from "@shared/types";
 import { actionService } from "./services/ActionService";
 import { voiceRecordingService } from "./services/VoiceRecordingService";
-import { terminalInstanceService } from "./services/terminal/TerminalInstanceService";
-import { SIDEBAR_TOGGLE_LOCK_MS } from "./lib/terminalLayout";
 import { useRenderProfiler } from "./utils/renderProfiler";
 
 import { SidebarContent, preloadNewWorktreeDialog, E2EFaultInjector } from "./components/Sidebar";
@@ -376,16 +374,6 @@ function App() {
   const { inject } = useContextInjection();
 
   const handleToggleSidebar = useCallback(() => {
-    const activeWtId = useWorktreeSelectionStore.getState().activeWorktreeId;
-    const storeState = usePanelStore.getState();
-    const gridIds: string[] = [];
-    for (const id of storeState.panelIds) {
-      const t = storeState.panelsById[id];
-      if (t && t.location !== "dock" && t.worktreeId === activeWtId) {
-        gridIds.push(t.id);
-      }
-    }
-    terminalInstanceService.suppressResizesDuringLayoutTransition(gridIds, SIDEBAR_TOGGLE_LOCK_MS);
     window.dispatchEvent(new CustomEvent("daintree:toggle-focus-mode"));
   }, []);
 

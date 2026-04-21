@@ -23,7 +23,14 @@ export const ABSOLUTE_MAX_GRID_TERMINALS = 16;
 
 export const GRID_TRANSITION_DURATION_MS = 200;
 export const GRID_FIT_DELAY_MS = GRID_TRANSITION_DURATION_MS + 50;
-export const SIDEBAR_TOGGLE_LOCK_MS = GRID_FIT_DELAY_MS;
+
+/**
+ * Sidebar width transition duration. Mirrors the `duration-[var(--duration-250)]`
+ * value applied in Sidebar.tsx. Used to gate PTY resize propagation so xterm
+ * doesn't deliver mid-animation fractional dimensions to the host.
+ */
+export const SIDEBAR_TRANSITION_MS = 250;
+export const SIDEBAR_TOGGLE_LOCK_MS = SIDEBAR_TRANSITION_MS;
 
 /**
  * Calculate the maximum number of panels that can fit in the grid
