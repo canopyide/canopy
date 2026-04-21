@@ -126,9 +126,12 @@ export function FleetArmingRibbon(): ReactElement | null {
 
   // Escape stack: confirmation cancel sits above the fleet-disarm entry, so
   // the first Escape while confirming clears the pending action and a
-  // second Escape disarms the fleet.
+  // second Escape disarms the fleet. The armed-list popover, when open,
+  // sits on top so the first Escape closes the list and a subsequent
+  // Escape disarms.
   useEscapeStack(pending !== null, clearPending);
   useEscapeStack(armedCount > 0 && pending === null, clear);
+  useEscapeStack(popoverOpen, () => setPopoverOpen(false));
 
   // If the armed set drains while a confirmation is pending (e.g., all
   // armed agents exit), collapse the confirmation so it can't execute
@@ -439,7 +442,6 @@ function ArmedCountChip({ armedCount, open, onOpenChange }: ArmedCountChipProps)
         side="bottom"
         align="start"
         sideOffset={6}
-        onEscapeKeyDown={(e) => e.preventDefault()}
         data-testid="fleet-armed-list"
         className="max-h-[320px] w-[260px] overflow-y-auto p-1"
       >

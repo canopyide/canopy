@@ -24,6 +24,7 @@ import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
+import { dispatchEscape, _resetForTests as resetEscapeStack } from "@/lib/escapeStack";
 import type { TerminalInstance } from "@shared/types";
 
 function resetStores() {
@@ -38,6 +39,7 @@ function resetStores() {
   usePanelStore.setState({ panelsById: {}, panelIds: [] });
   useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-1", isFleetScopeActive: false });
   useAnnouncerStore.setState({ polite: null, assertive: null });
+  resetEscapeStack();
 }
 
 function seed(terminals: TerminalInstance[]): void {
@@ -136,6 +138,26 @@ describe("FleetArmingRibbon", () => {
     const armed = useFleetArmingStore.getState().armedIds;
     expect(armed.has("t1")).toBe(false);
     expect(armed.has("t2")).toBe(true);
+  });
+
+  it("Escape with the popover open closes the list first, then disarms", () => {
+    seed([
+      { ...makeAgent("t1"), title: "frontend·main" } as TerminalInstance,
+      { ...makeAgent("t2"), title: "backend·main" } as TerminalInstance,
+    ]);
+    useFleetArmingStore.getState().armIds(["t1", "t2"]);
+    render(<FleetArmingRibbon />);
+    fireEvent.click(screen.getByTestId("fleet-armed-count-chip"));
+    // First dispatched Escape: popover closes, fleet stays armed.
+    act(() => {
+      dispatchEscape();
+    });
+    expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+    // Second dispatched Escape: fleet disarms.
+    act(() => {
+      dispatchEscape();
+    });
+    expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
   });
 
   it("preset buttons arm agents by state", () => {
