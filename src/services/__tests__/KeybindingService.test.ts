@@ -369,6 +369,25 @@ describe("KeybindingService", () => {
       const match = service.findMatchingAction(event);
       expect(match?.actionId).toBe("agent.focusNextAgent");
     });
+
+    it("exposes combo-less long-tail agents in the bindings enumeration so settings UI can rebind them", () => {
+      const service = new KeybindingService();
+      const all = service.getAllBindingsWithEffectiveCombos();
+      const entry = all.find((b) => b.actionId === "agent.kiro");
+
+      expect(entry).toBeDefined();
+      expect(entry?.effectiveCombo).toBe("");
+      expect(entry?.category).toBe("Agents");
+    });
+
+    it("surfaces a user override for a combo-less long-tail agent", async () => {
+      const service = new KeybindingService();
+      (service as unknown as { overrides: Map<string, string[]> }).overrides.set("agent.kiro", [
+        "Cmd+Alt+K",
+      ]);
+
+      expect(service.getEffectiveCombo("agent.kiro")).toBe("Cmd+Alt+K");
+    });
   });
 
   describe("registerBinding collision detection", () => {
@@ -421,6 +440,48 @@ describe("KeybindingService", () => {
 
       expect(warnSpy).not.toHaveBeenCalled();
       expect(service.getBinding("test.noop")).toBeDefined();
+
+      warnSpy.mockRestore();
+    });
+
+    it("allows same combo on scope-isolated non-global bindings", () => {
+      const service = new KeybindingService();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      service.registerBinding({
+        actionId: "test.portalOnly",
+        combo: "Cmd+Shift+F4",
+        scope: "portal",
+        priority: 0,
+      });
+      service.registerBinding({
+        actionId: "test.terminalOnly",
+        combo: "Cmd+Shift+F4",
+        scope: "terminal",
+        priority: 0,
+      });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(service.getBinding("test.portalOnly")).toBeDefined();
+      expect(service.getBinding("test.terminalOnly")).toBeDefined();
+
+      warnSpy.mockRestore();
+    });
+
+    it("still blocks collisions when one binding is global", () => {
+      const service = new KeybindingService();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      service.registerBinding({
+        actionId: "test.portalStealsClaude",
+        combo: "Cmd+Alt+C",
+        scope: "portal",
+        priority: 0,
+      });
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(service.getBinding("test.portalStealsClaude")).toBeUndefined();
+      expect(service.getBinding("agent.claude")?.combo).toBe("Cmd+Alt+C");
 
       warnSpy.mockRestore();
     });
