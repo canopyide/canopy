@@ -1497,6 +1497,50 @@ body[data-reduce-animations="true"] :is(.terminal-restoring, .terminal-trashing)
     0 0 0 1px color-mix(in oklab, var(--color-accent-primary) 20%, transparent);
 }
 
+/* Selection-menu hover preview (issue #5700): ~30% title-bar tint with a
+   100ms ease-out fade-in so the user sees which panes a hovered command
+   would arm. Hover-off removes the class → the element snaps back (instant),
+   matching the spec's "fade-in on hover, instant on hover-off" semantics.
+   Compositor-safe: animates opacity only via a ::after overlay so the pane's
+   own border-color transition isn't disturbed. */
+.panel-fleet-preview {
+  position: relative;
+}
+
+.panel-fleet-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--color-accent-primary) 60%, transparent);
+  background: color-mix(in oklab, var(--color-accent-primary) 8%, transparent);
+  opacity: 0;
+  animation: panel-fleet-preview-fade-in var(--duration-100) var(--ease-out-expo) forwards;
+  will-change: opacity;
+}
+
+@keyframes panel-fleet-preview-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-fleet-preview::after {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+body[data-reduce-animations="true"] .panel-fleet-preview::after {
+  animation: none;
+  opacity: 1;
+}
+
 /* Backwards compatibility for older selection class */
 .terminal-focused {
   border-color: color-mix(in oklab, var(--theme-border-strong) 84%, var(--theme-text-primary));

@@ -28,18 +28,25 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuItem: ({
     children,
     onSelect,
+    onFocus,
+    onBlur,
     disabled,
     destructive,
   }: {
     children: React.ReactNode;
     onSelect?: (e: Event) => void;
+    onFocus?: React.FocusEventHandler<HTMLDivElement>;
+    onBlur?: React.FocusEventHandler<HTMLDivElement>;
     disabled?: boolean;
     destructive?: boolean;
   }) => (
     <div
       role="menuitem"
+      tabIndex={0}
       data-disabled={disabled ? "true" : undefined}
       data-destructive={destructive ? "true" : undefined}
+      onFocus={onFocus}
+      onBlur={onBlur}
       onClick={(e) => {
         if (disabled) return;
         onSelect?.(e as unknown as Event);
@@ -69,10 +76,11 @@ function resetStores() {
     armOrder: [],
     armOrderById: {},
     lastArmedId: null,
+    previewIds: new Set<string>(),
   });
   useFleetPendingActionStore.setState({ pending: null });
   useFleetScopeFlagStore.setState({ mode: "legacy", isHydrated: true });
-  usePanelStore.setState({ panelsById: {}, panelIds: [], focusedId: null });
+  usePanelStore.setState({ panelsById: {}, panelIds: [], focusedId: null, pingedId: null });
   useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-1", isFleetScopeActive: false });
   useWorktreeFilterStore.setState({ quickStateFilter: "all" });
   useAnnouncerStore.setState({ polite: null, assertive: null });
@@ -159,6 +167,16 @@ describe("FleetArmingRibbon", () => {
     fireEvent.click(screen.getByTestId("fleet-exit"));
     expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
     expect(usePanelStore.getState().focusedId).toBe("t2");
+  });
+
+  it("exit chip click fires a one-shot ping on the primary pane for focus feedback", () => {
+    seed([makeAgent("t1"), makeAgent("t2")]);
+    useFleetArmingStore.getState().armIds(["t1", "t2"]);
+    render(<FleetArmingRibbon />);
+    expect(usePanelStore.getState().pingedId).toBeNull();
+    fireEvent.click(screen.getByTestId("fleet-exit"));
+    // pingedId is set synchronously; auto-clears after 1600ms.
+    expect(usePanelStore.getState().pingedId).toBe("t2");
   });
 
   it("count chip opens a popover listing armed terminal titles", () => {
@@ -586,6 +604,78 @@ describe("FleetArmingRibbon", () => {
       fireEvent.click(findMenuItem(/All working — this worktree/));
       const armed = useFleetArmingStore.getState().armedIds;
       expect([...armed].sort()).toEqual(["t1", "t2"]);
+    });
+
+    it("focusing 'All waiting — this worktree' sets previewIds to the waiting panes", () => {
+      seed([
+        makeAgent("t1", "working"),
+        makeAgent("t2", "waiting"),
+        { ...makeAgent("t3", "waiting"), worktreeId: "wt-2" } as TerminalInstance,
+      ]);
+      useFleetArmingStore.getState().armIds(["t1", "t3"]);
+      render(<FleetArmingRibbon />);
+      const item = findMenuItem(/All waiting — this worktree/);
+      act(() => {
+        item.focus();
+      });
+      const preview = useFleetArmingStore.getState().previewIds;
+      expect([...preview]).toEqual(["t2"]);
+    });
+
+    it("focusing 'All waiting — all worktrees' previews across every worktree", () => {
+      seed([
+        makeAgent("t1", "working"),
+        makeAgent("t2", "waiting"),
+        { ...makeAgent("t3", "waiting"), worktreeId: "wt-2" } as TerminalInstance,
+      ]);
+      // Ribbon hides at armedCount<2 — arm two so the selection menu renders.
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      render(<FleetArmingRibbon />);
+      const item = findMenuItem(/All waiting — all worktrees/);
+      act(() => {
+        item.focus();
+      });
+      const preview = useFleetArmingStore.getState().previewIds;
+      expect([...preview].sort()).toEqual(["t2", "t3"]);
+    });
+
+    it("blurring a menu item clears previewIds instantly", () => {
+      seed([makeAgent("t1", "waiting"), makeAgent("t2", "waiting")]);
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      render(<FleetArmingRibbon />);
+      const item = findMenuItem(/All waiting — this worktree/);
+      act(() => {
+        item.focus();
+      });
+      expect(useFleetArmingStore.getState().previewIds.size).toBeGreaterThan(0);
+      act(() => {
+        item.blur();
+      });
+      expect(useFleetArmingStore.getState().previewIds.size).toBe(0);
+    });
+
+    it("disabled 'Match active filter' does not set a preview on focus", () => {
+      seed([makeAgent("t1", "waiting"), makeAgent("t2", "waiting")]);
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      useWorktreeFilterStore.setState({ quickStateFilter: "all" });
+      render(<FleetArmingRibbon />);
+      const item = findMenuItem(/Match active filter/);
+      expect(item.getAttribute("data-disabled")).toBe("true");
+      act(() => {
+        item.focus();
+      });
+      expect(useFleetArmingStore.getState().previewIds.size).toBe(0);
+    });
+
+    it("fleet clear() also resets previewIds so stale hovers don't survive a disarm", () => {
+      seed([makeAgent("t1", "waiting"), makeAgent("t2", "waiting")]);
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      useFleetArmingStore.getState().setPreviewIds(["t1", "t2"]);
+      expect(useFleetArmingStore.getState().previewIds.size).toBe(2);
+      act(() => {
+        useFleetArmingStore.getState().clear();
+      });
+      expect(useFleetArmingStore.getState().previewIds.size).toBe(0);
     });
   });
 });

@@ -12,6 +12,7 @@ import { useDockBlockedState } from "@/components/Layout/useDockBlockedState";
 import { usePreferencesStore } from "@/store";
 import { useWorktreeColorMap } from "@/hooks/useWorktreeColorMap";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
+import { useFleetArmingStore } from "@/store/fleetArmingStore";
 
 /**
  * Base props for all panel types.
@@ -166,6 +167,12 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   const showGridAttention = location === "grid" && !isMaximized && (gridPanelCount ?? 2) > 1;
   const showGridAgentHighlights = usePreferencesStore((s) => s.showGridAgentHighlights);
 
+  // Fleet selection-menu hover preview. Set is ephemeral (only populated while
+  // a selection-menu item has focus), so the selector only flips true for the
+  // handful of panes that would be armed by the hovered command. Zustand's
+  // shallow equality means unaffected panes don't re-render.
+  const isFleetPreview = useFleetArmingStore((s) => s.previewIds.has(id));
+
   // Per-worktree color identity
   const worktreeColorMap = useWorktreeColorMap();
   const worktreeAccentColor = worktreeId ? worktreeColorMap?.[worktreeId] : undefined;
@@ -278,6 +285,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         data-panel-location={location}
         data-fleet-scope={isFleetScope || undefined}
         data-fleet-primary={(isFleetScope && isPrimary) || undefined}
+        data-fleet-preview={isFleetPreview || undefined}
         style={{
           contain: "content",
           ...(worktreeAccentColor
@@ -309,6 +317,11 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
             !isMaximized &&
             isFleetScope &&
             (isPrimary ? "panel-fleet-primary" : "panel-fleet-member"),
+          // Selection-menu hover preview (issue #5700): 100ms fade-in tint so
+          // the user sees which panes a hovered command would arm. Applied
+          // *last* so it wins over fleet / agent / focus borders — it's a
+          // transient "what-if" state.
+          location === "grid" && !isMaximized && isFleetPreview && "panel-fleet-preview",
           isTrashing && "terminal-trashing",
           className
         )}

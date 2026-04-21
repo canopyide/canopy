@@ -82,6 +82,7 @@ function resetAll(worktreeId = "wt-1") {
     armOrder: [],
     armOrderById: {},
     lastArmedId: null,
+    previewIds: new Set<string>(),
   });
   useFleetComposerStore.setState({ draft: "" });
   usePanelStore.setState({ panelsById: {}, panelIds: [] });
@@ -530,5 +531,119 @@ describe("FleetComposer (live keystroke capture)", () => {
       useFleetArmingStore.getState().clear();
     });
     expect(useFleetComposerStore.getState().draft).toBe("");
+  });
+
+  describe("commit flash", () => {
+    function installAnimateShim(): {
+      animate: ReturnType<typeof vi.fn>;
+      getAnimations: ReturnType<typeof vi.fn>;
+      animations: { cancel: ReturnType<typeof vi.fn> }[];
+    } {
+      const animations: { cancel: ReturnType<typeof vi.fn> }[] = [];
+      const animate = vi.fn(() => {
+        const anim = { cancel: vi.fn() };
+        animations.push(anim);
+        return anim;
+      });
+      const getAnimations = vi.fn(() => animations.slice());
+      // jsdom's HTMLElement does not implement the Web Animations API.
+      // Patch the prototype so every rendered element picks up our stubs.
+      Object.defineProperty(HTMLElement.prototype, "animate", {
+        configurable: true,
+        writable: true,
+        value: animate,
+      });
+      Object.defineProperty(HTMLElement.prototype, "getAnimations", {
+        configurable: true,
+        writable: true,
+        value: getAnimations,
+      });
+      return { animate, getAnimations, animations };
+    }
+
+    function restoreAnimateShim(): void {
+      delete (HTMLElement.prototype as unknown as { animate?: unknown }).animate;
+      delete (HTMLElement.prototype as unknown as { getAnimations?: unknown }).getAnimations;
+    }
+
+    afterEach(() => {
+      restoreAnimateShim();
+      document.body.removeAttribute("data-reduce-animations");
+    });
+
+    it("fires a WAAPI opacity flash on the commit-flash overlay after a keystroke broadcast", () => {
+      const { animate } = installAnimateShim();
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+
+      dispatchKeyDown(textarea, { key: "a" });
+
+      // Each keystroke dispatches writes + exactly one flash animation.
+      expect(animate).toHaveBeenCalledTimes(1);
+      const [keyframes, options] = animate.mock.calls[0]!;
+      expect(keyframes).toEqual([{ opacity: 0 }, { opacity: 0.55 }, { opacity: 0 }]);
+      expect(options).toMatchObject({ duration: 200, fill: "both" });
+    });
+
+    it("cancels any in-flight flash before starting a new one so rapid keystrokes don't stack", () => {
+      const { animate, animations } = installAnimateShim();
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+
+      dispatchKeyDown(textarea, { key: "a" });
+      dispatchKeyDown(textarea, { key: "b" });
+
+      expect(animate).toHaveBeenCalledTimes(2);
+      // The first animation must have been cancelled before the second started.
+      expect(animations[0]!.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT fire a flash when reduce-animations is active", () => {
+      const { animate } = installAnimateShim();
+      document.body.setAttribute("data-reduce-animations", "true");
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+
+      dispatchKeyDown(textarea, { key: "a" });
+
+      expect(animate).not.toHaveBeenCalled();
+    });
+
+    it("does NOT fire a flash when there are no armed targets (defensive)", () => {
+      const { animate } = installAnimateShim();
+      // Mount with two armed, then drain synchronously before dispatching.
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+      act(() => {
+        useFleetArmingStore.getState().clear();
+      });
+      // Composer has unmounted (armedCount === 0), so there's nothing to test
+      // against — the absence of a flash when the composer isn't mounted is
+      // trivially true. The meaningful guard is the `targets.length > 0` gate.
+      expect(textarea.isConnected).toBe(false);
+      expect(animate).not.toHaveBeenCalled();
+    });
+
+    it("fires a flash after a confirmed destructive paste reaches targets", async () => {
+      const { animate } = installAnimateShim();
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+
+      fireEvent.paste(textarea, {
+        clipboardData: {
+          getData: (type: string) => (type === "text/plain" ? "rm -rf dist" : ""),
+        },
+      });
+      fireEvent.click(await screen.findByTestId("fleet-composer-confirm-send"));
+
+      await waitFor(() => expect(submitMock).toHaveBeenCalledTimes(2));
+      // Flash fires once on the successful confirmed-paste path.
+      expect(animate).toHaveBeenCalled();
+    });
   });
 });

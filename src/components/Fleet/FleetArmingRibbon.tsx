@@ -5,7 +5,14 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { isMac } from "@/lib/platform";
 import { useEscapeStack } from "@/hooks";
-import { useFleetArmingStore, type FleetArmStatePreset } from "@/store/fleetArmingStore";
+import {
+  useFleetArmingStore,
+  collectEligibleIds,
+  isFleetArmEligible,
+  type FleetArmStatePreset,
+  type FleetArmScope,
+} from "@/store/fleetArmingStore";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 import {
   useFleetPendingActionStore,
@@ -28,6 +35,37 @@ import { FleetComposer } from "./FleetComposer";
 import { useFleetFocusPulse } from "./useFleetFocusPulse";
 
 const DOUBLE_ESC_WINDOW_MS = 350;
+
+/**
+ * Resolve the candidate id set for a given selection-menu preset so the hover
+ * preview can highlight the panes that *would* be armed. Mirrors the scope and
+ * filter logic used by `armByState` / `armAll` in `fleetArmingStore`, but is
+ * read-only: no store mutations.
+ */
+function resolvePreviewIdsForPreset(
+  preset: FleetArmStatePreset,
+  scope: FleetArmScope,
+  activeWorktreeId: string | null
+): string[] {
+  const panel = usePanelStore.getState();
+  const ids: string[] = [];
+  for (const id of panel.panelIds) {
+    const t = panel.panelsById[id];
+    if (!isFleetArmEligible(t)) continue;
+    if (scope === "current") {
+      if (!activeWorktreeId || t.worktreeId !== activeWorktreeId) continue;
+    }
+    const s = t.agentState ?? null;
+    const match =
+      preset === "working"
+        ? s === "working" || s === "running"
+        : preset === "waiting"
+          ? s === "waiting"
+          : s === "completed" || s === "exited";
+    if (match) ids.push(id);
+  }
+  return ids;
+}
 
 type FleetConfirmActionId =
   | "fleet.reject"
@@ -94,6 +132,10 @@ export function FleetArmingRibbon(): ReactElement | null {
     clear();
     if (target && usePanelStore.getState().panelsById[target]) {
       usePanelStore.getState().setFocused(target);
+      // Fire a one-shot pulse on the pane that now holds focus so the user
+      // sees where the selection collapsed to. Reuses the existing terminal
+      // ping infrastructure (already auto-clears and honors reduced motion).
+      usePanelStore.getState().pingTerminal(target);
     }
   }, [clear]);
 
@@ -255,10 +297,37 @@ export function FleetArmingRibbon(): ReactElement | null {
         : "Finished"
     : null;
 
+  // Preview handlers for the selection-menu items. Radix routes focus to the
+  // hovered item, so onFocus covers both pointer and keyboard navigation;
+  // onBlur clears the preview instantly (no timeout) so moving away from an
+  // item is felt as cancellation. State is pulled via `getState()` to avoid
+  // stale closures if the user mutates selections while the menu is open.
+  const previewByPreset = useCallback(
+    (preset: FleetArmStatePreset, scope: FleetArmScope) => () => {
+      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+      const ids = resolvePreviewIdsForPreset(preset, scope, activeWorktreeId);
+      useFleetArmingStore.getState().setPreviewIds(ids);
+    },
+    []
+  );
+  const previewAll = useCallback(
+    (scope: FleetArmScope) => () => {
+      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+      const ids = collectEligibleIds(scope, activeWorktreeId);
+      useFleetArmingStore.getState().setPreviewIds(ids);
+    },
+    []
+  );
+  const clearPreview = useCallback(() => {
+    useFleetArmingStore.getState().clearPreviewIds();
+  }, []);
+
   const selectionMenuItems = (
     <>
       <DropdownMenuLabel>Select by state</DropdownMenuLabel>
       <DropdownMenuItem
+        onFocus={previewByPreset("waiting", "current")}
+        onBlur={clearPreview}
         onSelect={() => {
           armByState("waiting", "current", false);
         }}
@@ -266,6 +335,8 @@ export function FleetArmingRibbon(): ReactElement | null {
         All waiting — this worktree
       </DropdownMenuItem>
       <DropdownMenuItem
+        onFocus={previewByPreset("waiting", "all")}
+        onBlur={clearPreview}
         onSelect={() => {
           armByState("waiting", "all", false);
         }}
@@ -273,6 +344,8 @@ export function FleetArmingRibbon(): ReactElement | null {
         All waiting — all worktrees
       </DropdownMenuItem>
       <DropdownMenuItem
+        onFocus={previewByPreset("working", "current")}
+        onBlur={clearPreview}
         onSelect={() => {
           armByState("working", "current", false);
         }}
@@ -280,6 +353,8 @@ export function FleetArmingRibbon(): ReactElement | null {
         All working — this worktree
       </DropdownMenuItem>
       <DropdownMenuItem
+        onFocus={previewByPreset("working", "all")}
+        onBlur={clearPreview}
         onSelect={() => {
           armByState("working", "all", false);
         }}
@@ -288,6 +363,8 @@ export function FleetArmingRibbon(): ReactElement | null {
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem
+        onFocus={previewAll("current")}
+        onBlur={clearPreview}
         onSelect={() => {
           armAll("current");
         }}
@@ -297,6 +374,8 @@ export function FleetArmingRibbon(): ReactElement | null {
       <DropdownMenuSeparator />
       <DropdownMenuItem
         disabled={filterPreset === null}
+        onFocus={filterPreset !== null ? previewByPreset(filterPreset, "current") : undefined}
+        onBlur={clearPreview}
         onSelect={() => {
           if (filterPreset === null) return;
           armByState(filterPreset, "current", false);

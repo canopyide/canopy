@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { logWarn } from "@/utils/logger";
@@ -9,6 +9,16 @@ export interface FleetLiveKeyCaptureOptions {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   enabled: boolean;
   onPasteConfirm: (text: string) => void;
+  /**
+   * Fired each time a keystroke or paste is dispatched to the armed targets.
+   * Keystrokes are fire-and-forget (PTY writes don't resolve), so this signals
+   * "dispatched to the broadcast layer", not "delivered". For paste, fires only
+   * when at least one target accepted the payload.
+   *
+   * Called synchronously relative to the DOM event — safe to trigger imperative
+   * animations from the callback.
+   */
+  onSend?: () => void;
 }
 
 /**
@@ -122,12 +132,16 @@ export function useFleetLiveKeyCapture({
   textareaRef,
   enabled,
   onPasteConfirm,
+  onSend,
 }: FleetLiveKeyCaptureOptions): void {
   const isComposingRef = useRef(false);
   const onPasteConfirmRef = useRef(onPasteConfirm);
-  useLayoutEffect(() => {
-    onPasteConfirmRef.current = onPasteConfirm;
-  }, [onPasteConfirm]);
+  onPasteConfirmRef.current = onPasteConfirm;
+  // Ref-forward onSend so an inline callback at the call site doesn't force a
+  // useEffect re-subscription on every parent render (the effect would tear
+  // down and re-add native listeners, dropping in-flight composition state).
+  const onSendRef = useRef(onSend);
+  onSendRef.current = onSend;
 
   useEffect(() => {
     if (!enabled) return;
@@ -147,6 +161,9 @@ export function useFleetLiveKeyCapture({
 
       const targets = resolveFleetBroadcastTargetIds();
       broadcastFleetKeySequence(sequence, targets);
+      // Fire the commit-flash signal only when at least one target received the
+      // payload — a flash with no active targets would be misleading feedback.
+      if (targets.length > 0) onSendRef.current?.();
     };
 
     const handleCompositionStart = () => {
@@ -163,6 +180,7 @@ export function useFleetLiveKeyCapture({
 
       const targets = resolveFleetBroadcastTargetIds();
       broadcastFleetKeySequence(data, targets);
+      if (targets.length > 0) onSendRef.current?.();
     };
 
     const handlePaste = (event: ClipboardEvent) => {
@@ -181,6 +199,10 @@ export function useFleetLiveKeyCapture({
       const targets = resolveFleetBroadcastTargetIds();
       void (async () => {
         const result = await broadcastFleetLiteralPaste(text, targets);
+        // Flash as soon as at least one target received the paste — parity with
+        // the toast, which treats partial success as "sent". Total failure path
+        // below skips the flash so the user isn't told a broken send succeeded.
+        if (result.successCount > 0) onSendRef.current?.();
         if (result.failureCount === 0) return;
         logWarn("[FleetComposer] benign paste broadcast had rejections", {
           failureCount: result.failureCount,

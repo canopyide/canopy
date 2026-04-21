@@ -18,6 +18,10 @@ interface FleetArmingState {
   armOrder: string[];
   armOrderById: Record<string, number>;
   lastArmedId: string | null;
+  // Ephemeral preview set — populated while the user hovers (or keyboard-focuses) a
+  // selection-menu item so the panes that *would* be armed are highlighted. Never
+  // persisted; cleared on blur and on any disarm path.
+  previewIds: Set<string>;
 
   armId: (id: string) => void;
   disarmId: (id: string) => void;
@@ -29,6 +33,8 @@ interface FleetArmingState {
   armMatchingFilter: (worktreeIds: string[]) => void;
   clear: () => void;
   prune: (validIds: Set<string>) => void;
+  setPreviewIds: (ids: readonly string[]) => void;
+  clearPreviewIds: () => void;
 }
 
 function rebuildOrderById(order: string[]): Record<string, number> {
@@ -83,6 +89,7 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
   armOrder: [],
   armOrderById: {},
   lastArmedId: null,
+  previewIds: new Set<string>(),
 
   armId: (id) =>
     set((s) => {
@@ -240,7 +247,32 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
       armOrder: [],
       armOrderById: {},
       lastArmedId: null,
+      previewIds: new Set<string>(),
     }),
+
+  // Always assigns a fresh Set so Zustand's shallow-equality selectors fire.
+  // Skips the state update if the requested preview is already identical to the
+  // live set — avoids re-rendering every subscriber when the keyboard-focus
+  // event re-fires the same `onFocus` handler (Radix can re-emit focus as the
+  // menu stabilizes after open).
+  setPreviewIds: (ids) =>
+    set((s) => {
+      const current = s.previewIds;
+      if (current.size === ids.length) {
+        let same = true;
+        for (const id of ids) {
+          if (!current.has(id)) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return {};
+      }
+      return { previewIds: new Set(ids) };
+    }),
+
+  clearPreviewIds: () =>
+    set((s) => (s.previewIds.size === 0 ? {} : { previewIds: new Set<string>() })),
 
   prune: (validIds) =>
     set((s) => {

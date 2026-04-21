@@ -10,6 +10,7 @@ function resetStore() {
     armOrder: [],
     armOrderById: {},
     lastArmedId: null,
+    previewIds: new Set<string>(),
   });
 }
 
@@ -453,6 +454,41 @@ describe("fleetArmingStore", () => {
       seedPanels([makeAgentTerminal("a"), makeAgentTerminal("b", { location: "trash" })]);
 
       expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a"]);
+    });
+  });
+
+  describe("previewIds (selection-menu hover preview)", () => {
+    it("starts empty and accepts a fresh Set on setPreviewIds", () => {
+      expect(useFleetArmingStore.getState().previewIds.size).toBe(0);
+      useFleetArmingStore.getState().setPreviewIds(["a", "b"]);
+      expect([...useFleetArmingStore.getState().previewIds].sort()).toEqual(["a", "b"]);
+    });
+
+    it("replaces (not merges) the previous preview set", () => {
+      useFleetArmingStore.getState().setPreviewIds(["a", "b"]);
+      useFleetArmingStore.getState().setPreviewIds(["c"]);
+      expect([...useFleetArmingStore.getState().previewIds]).toEqual(["c"]);
+    });
+
+    it("skips the update when the incoming set is identical (Zustand selector stability)", () => {
+      useFleetArmingStore.getState().setPreviewIds(["a", "b"]);
+      const before = useFleetArmingStore.getState().previewIds;
+      useFleetArmingStore.getState().setPreviewIds(["b", "a"]);
+      const after = useFleetArmingStore.getState().previewIds;
+      expect(after).toBe(before);
+    });
+
+    it("clearPreviewIds resets to an empty set", () => {
+      useFleetArmingStore.getState().setPreviewIds(["a", "b"]);
+      useFleetArmingStore.getState().clearPreviewIds();
+      expect(useFleetArmingStore.getState().previewIds.size).toBe(0);
+    });
+
+    it("clear() resets previewIds so stale hovers don't survive disarm", () => {
+      useFleetArmingStore.getState().armIds(["a", "b"]);
+      useFleetArmingStore.getState().setPreviewIds(["a", "b"]);
+      useFleetArmingStore.getState().clear();
+      expect(useFleetArmingStore.getState().previewIds.size).toBe(0);
     });
   });
 });

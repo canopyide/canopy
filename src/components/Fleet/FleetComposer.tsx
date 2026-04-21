@@ -30,6 +30,7 @@ export function FleetComposer(): ReactElement | null {
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const flashOverlayRef = useRef<HTMLDivElement | null>(null);
 
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [isSendingPaste, setIsSendingPaste] = useState(false);
@@ -53,10 +54,43 @@ export function FleetComposer(): ReactElement | null {
     setPendingPaste(text);
   }, []);
 
+  // Commit-flash: 200ms opacity pulse on the bar's border overlay, fired each
+  // time a keystroke or paste is dispatched to armed targets. Uses WAAPI so
+  // high-frequency keystrokes don't trigger React reconciliation. The overlay
+  // div is always mounted — we toggle opacity via animation, not element key.
+  const triggerCommitFlash = useCallback(() => {
+    const el = flashOverlayRef.current;
+    if (!el) return;
+    // Honor both the OS-level and the Daintree-level reduced-motion switches.
+    // Matches the selector-pair used in index.css for the CSS-class variants.
+    const body = typeof document !== "undefined" ? document.body : null;
+    if (
+      (typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
+      body?.dataset.reduceAnimations === "true"
+    ) {
+      return;
+    }
+    if (typeof el.animate !== "function") return;
+    // Cancel any in-flight flash before restarting so rapid keystrokes don't
+    // stack. `getAnimations()` is cheaper than the `void offsetWidth` reflow
+    // trick and avoids a synchronous layout.
+    if (typeof el.getAnimations === "function") {
+      for (const anim of el.getAnimations()) anim.cancel();
+    }
+    el.animate([{ opacity: 0 }, { opacity: 0.55 }, { opacity: 0 }], {
+      duration: 200,
+      easing: "ease-out",
+      fill: "both",
+    });
+  }, []);
+
   useFleetLiveKeyCapture({
     textareaRef,
     enabled: armedCount > 0,
     onPasteConfirm: handlePasteConfirm,
+    onSend: triggerCommitFlash,
   });
 
   const typedWarnings = useMemo(() => describeWarnings(draft), [draft]);
@@ -91,6 +125,7 @@ export function FleetComposer(): ReactElement | null {
       setDraft(currentDraft + text);
 
       const result = await broadcastFleetLiteralPaste(text, targets);
+      if (result.successCount > 0) triggerCommitFlash();
       if (result.failureCount > 0) {
         logWarn("[FleetComposer] paste broadcast had rejections", {
           failureCount: result.failureCount,
@@ -111,7 +146,7 @@ export function FleetComposer(): ReactElement | null {
       setPendingPaste(null);
       textareaRef.current?.focus();
     }
-  }, [pendingPaste, isSendingPaste]);
+  }, [pendingPaste, isSendingPaste, triggerCommitFlash]);
 
   const handleConfirmStripKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -133,9 +168,21 @@ export function FleetComposer(): ReactElement | null {
 
   return (
     <div
-      className="flex flex-col gap-1 border-b border-daintree-border px-3 py-1.5"
+      className="relative flex flex-col gap-1 border-b border-daintree-border px-3 py-1.5"
       data-testid="fleet-composer"
     >
+      {/* Commit-flash overlay. Compositor-only opacity animation via WAAPI —
+       * never re-rendered by React (opacity lives on the DOM node). Covers the
+       * composer's bottom edge so a successful send reads as "the input line
+       * glowed." `pointer-events-none` so it never intercepts clicks; Tailwind
+       * arbitrary-value `border-b-2` gives us the 2px accent edge. */}
+      <div
+        ref={flashOverlayRef}
+        aria-hidden="true"
+        data-testid="fleet-composer-commit-flash"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[var(--color-accent-primary)]"
+        style={{ opacity: 0, willChange: "opacity" }}
+      />
       <div className="flex items-start gap-2">
         <textarea
           ref={textareaRef}
