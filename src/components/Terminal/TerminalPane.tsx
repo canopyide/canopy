@@ -103,6 +103,10 @@ export interface TerminalPaneProps {
   // pane falls back to the stored TerminalInstance.isInputLocked flag.
   isInputLocked?: boolean;
   isFleetScope?: boolean;
+  // Marks the "primary" armed terminal in fleet scope (the most-recently-armed
+  // pane, which becomes the focus target on scope exit). Only meaningful when
+  // `isFleetScope` is true; swaps the broadcast overlay for a solid accent ring.
+  isPrimary?: boolean;
   // Tab support
   tabs?: import("@/components/Panel/TabButton").TabInfo[];
   onTabClick?: (tabId: string) => void;
@@ -143,6 +147,7 @@ function TerminalPaneComponent({
   ambientAgentState,
   isInputLocked: isInputLockedOverride,
   isFleetScope = false,
+  isPrimary = false,
   tabs,
   onTabClick,
   onTabClose,
@@ -713,6 +718,7 @@ function TerminalPaneComponent({
         "terminal-pane",
         isExited && "opacity-75 grayscale",
         isFleetScope && "fleet-broadcast-overlay",
+        isFleetScope && isPrimary && "fleet-broadcast-overlay-primary",
         isPinged &&
           allowPing &&
           (wasJustSelected ? "animate-terminal-ping-select" : "animate-terminal-ping")

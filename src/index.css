@@ -1409,6 +1409,16 @@ body[data-reduce-animations="true"] :is(.terminal-restoring, .terminal-trashing)
   border-radius: inherit;
 }
 
+/* Primary (most-recently-armed) pane in fleet scope — swaps the diagonal
+   stripes for a solid inset accent ring so the user can see which terminal
+   receives keyboard focus on scope exit. The base `.fleet-broadcast-overlay`
+   class MUST still be applied alongside this one; the `::after` override
+   suppresses the stripes via `background-image: none`. */
+.fleet-broadcast-overlay-primary::after {
+  background-image: none;
+  box-shadow: inset 0 0 0 2px var(--theme-tint);
+}
+
 /* Backwards compatibility for older selection class */
 .terminal-focused {
   border-color: color-mix(in oklab, var(--theme-border-strong) 84%, var(--theme-text-primary));
