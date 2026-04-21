@@ -22,6 +22,7 @@ interface FleetArmingState {
   extendTo: (id: string, orderedEligibleIds: string[]) => void;
   armByState: (state: FleetArmStatePreset, scope: FleetArmScope, extend: boolean) => void;
   armAll: (scope: FleetArmScope) => void;
+  armMatchingFilter: (worktreeIds: string[]) => void;
   clear: () => void;
   prune: (validIds: Set<string>) => void;
 }
@@ -207,6 +208,19 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
 
   armAll: (scope) => {
     const ids = collectEligibleIds(scope, getActiveWorktreeId());
+    get().armIds(ids);
+  },
+
+  armMatchingFilter: (worktreeIds) => {
+    const worktreeIdSet = new Set(worktreeIds);
+    const state = usePanelStore.getState();
+    const ids: string[] = [];
+    for (const id of state.panelIds) {
+      const t = state.panelsById[id];
+      if (!isFleetArmEligible(t)) continue;
+      if (!t.worktreeId || !worktreeIdSet.has(t.worktreeId)) continue;
+      ids.push(id);
+    }
     get().armIds(ids);
   },
 

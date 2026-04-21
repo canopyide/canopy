@@ -266,6 +266,43 @@ describe("fleet actions — threshold confirmation", () => {
   });
 });
 
+describe("fleet.armMatchingFilter", () => {
+  beforeEach(() => {
+    resetStores();
+    vi.clearAllMocks();
+  });
+
+  it("arms only eligible agents in the provided worktree ids", async () => {
+    seedPanels([
+      makeAgent("a1", { worktreeId: "wt-1" }),
+      makeAgent("a2", { worktreeId: "wt-2" }),
+      makeAgent("a3", { worktreeId: "wt-3" }),
+    ]);
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armMatchingFilter", { worktreeIds: ["wt-1", "wt-3"] });
+    expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a3"]);
+  });
+
+  it("is a no-op when worktreeIds is empty (does not clobber existing armed set)", async () => {
+    seedPanels([makeAgent("a1"), makeAgent("a2")]);
+    useFleetArmingStore.getState().armIds(["a1"]);
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armMatchingFilter", { worktreeIds: [] });
+    expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+  });
+
+  it("replaces any prior armed set that falls outside the filter", async () => {
+    seedPanels([
+      makeAgent("a1", { worktreeId: "wt-1" }),
+      makeAgent("a2", { worktreeId: "wt-2" }),
+    ]);
+    useFleetArmingStore.getState().armIds(["a2"]);
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armMatchingFilter", { worktreeIds: ["wt-1"] });
+    expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+  });
+});
+
 describe("fleet scope actions — flag gating", () => {
   beforeEach(async () => {
     resetStores();

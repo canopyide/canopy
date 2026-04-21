@@ -255,6 +255,68 @@ describe("fleetArmingStore", () => {
     });
   });
 
+  describe("armMatchingFilter", () => {
+    it("arms eligible agents only in the matching worktree set", () => {
+      seedPanels([
+        makeAgentTerminal("a1", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a2", { worktreeId: "wt-2" }),
+        makeAgentTerminal("a3", { worktreeId: "wt-3" }),
+      ]);
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1", "wt-3"]);
+      expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a3"]);
+    });
+
+    it("skips ineligible panels even when worktree matches", () => {
+      seedPanels([
+        makeAgentTerminal("a1", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a2", { worktreeId: "wt-1", location: "trash" }),
+        makeAgentTerminal("a3", { worktreeId: "wt-1", location: "background" }),
+        makeAgentTerminal("a4", { worktreeId: "wt-1", hasPty: false }),
+        makeAgentTerminal("a5", {
+          worktreeId: "wt-1",
+          kind: "terminal",
+          agentId: undefined,
+        }),
+      ]);
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+    });
+
+    it("empty worktreeIds arms nothing and clears any prior armed set", () => {
+      seedPanels([makeAgentTerminal("a1"), makeAgentTerminal("a2")]);
+      useFleetArmingStore.getState().armIds(["a1", "a2"]);
+      useFleetArmingStore.getState().armMatchingFilter([]);
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+    });
+
+    it("no eligible agents in matching worktrees leaves armed set empty", () => {
+      seedPanels([makeAgentTerminal("a1", { worktreeId: "wt-1" })]);
+      useFleetArmingStore.getState().armMatchingFilter(["wt-9"]);
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+    });
+
+    it("replaces the existing armed set rather than merging", () => {
+      seedPanels([
+        makeAgentTerminal("a1", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a2", { worktreeId: "wt-2" }),
+      ]);
+      useFleetArmingStore.getState().armIds(["a2"]);
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+    });
+
+    it("is idempotent — calling twice with the same ids produces the same set", () => {
+      seedPanels([
+        makeAgentTerminal("a1", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a2", { worktreeId: "wt-1" }),
+      ]);
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      const first = [...useFleetArmingStore.getState().armOrder];
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      expect(useFleetArmingStore.getState().armOrder).toEqual(first);
+    });
+  });
+
   describe("clear", () => {
     it("resets to empty state", () => {
       useFleetArmingStore.getState().armId("a");
