@@ -19,5 +19,5 @@
   },
   "include": ["preload.cts"],
   "exclude": ["node_modules"],
-  "references": [{ "path": "../shared/tsconfig.json" }]
+  "references": [{ "path": "../shared/tsconfig.json" }, { "path": "./tsconfig.json" }]
 }
