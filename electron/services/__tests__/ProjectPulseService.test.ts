@@ -528,6 +528,56 @@ describe("ProjectPulseService", () => {
     expect(revListCalls.length).toBe(0);
   });
 
+  it("renders heatmap cells with commits in shallow clone (regression for #5728)", async () => {
+    const baseTime = new Date("2025-01-15T12:00:00.000Z");
+    vi.setSystemTime(baseTime);
+
+    // Simulate the user-visible symptom from #5728: a long-lived repo cloned shallow.
+    // Commits exist across the last 30 days; the heatmap must show them, not collapse
+    // to 2 cells because the shallow boundary tricked rev-list into returning a recent SHA.
+    const commitTimestamps: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(baseTime);
+      date.setDate(date.getDate() - i);
+      commitTimestamps.push(Math.floor(date.getTime() / 1000));
+    }
+    const commitOutput = commitTimestamps.join("\n");
+
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "HEAD") return "deadbeef\n";
+      if (cmd === "rev-parse" && args.includes("--abbrev-ref")) return "main\n";
+      if (cmd === "rev-parse" && args.includes("--is-shallow-repository")) return "true\n";
+      if (cmd === "rev-list") return "shallowboundary\n";
+      if (cmd === "log") return commitOutput;
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: () => createGitStub(raw),
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    const pulse = await svc.getPulse({
+      worktreePath: "/repo",
+      worktreeId: "wt-shallow-active",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+
+    expect(pulse.heatmap).toHaveLength(60);
+    expect(pulse.commitsInRange).toBe(30);
+    expect(pulse.activeDays).toBe(30);
+    expect(pulse.heatmap.every((cell) => !cell.isBeforeProject)).toBe(true);
+    // Active cells must have count > 0 — the symptom was these getting filtered out entirely.
+    const activeCells = pulse.heatmap.filter((cell) => cell.count > 0);
+    expect(activeCells.length).toBe(30);
+  });
+
   it("marks early heatmap cells isBeforeProject for non-shallow repo younger than range", async () => {
     const baseTime = new Date("2025-01-15T12:00:00.000Z");
     vi.setSystemTime(baseTime);
