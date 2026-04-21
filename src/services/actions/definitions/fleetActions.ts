@@ -310,7 +310,6 @@ export function registerFleetActions(actions: ActionRegistry): void {
     argsSchema: z.object({ worktreeIds: z.array(z.string()) }),
     run: async (args: unknown) => {
       const worktreeIds = (args as { worktreeIds?: string[] } | undefined)?.worktreeIds ?? [];
-      if (worktreeIds.length === 0) return;
       useFleetArmingStore.getState().armMatchingFilter(worktreeIds);
     },
   }));

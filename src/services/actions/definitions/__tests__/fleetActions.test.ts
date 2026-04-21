@@ -291,6 +291,17 @@ describe("fleet.armMatchingFilter", () => {
     expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
   });
 
+  it("preserves prior armed set when filtered worktrees contain no eligible agents", async () => {
+    // Matches the sidebar case where the filter matches worktrees that
+    // happen to have no arm-eligible agent terminals — the button must
+    // not silently clear the user's selection.
+    seedPanels([makeAgent("a1", { worktreeId: "wt-1" })]);
+    useFleetArmingStore.getState().armIds(["a1"]);
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armMatchingFilter", { worktreeIds: ["wt-9"] });
+    expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+  });
+
   it("replaces any prior armed set that falls outside the filter", async () => {
     seedPanels([
       makeAgent("a1", { worktreeId: "wt-1" }),

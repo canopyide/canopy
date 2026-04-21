@@ -1002,7 +1002,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                Arm all eligible agents in these {filteredWorktrees.length} worktrees
+                Arm all eligible agents in the {filteredWorktrees.length} worktrees visible below
               </TooltipContent>
             </Tooltip>
           </div>

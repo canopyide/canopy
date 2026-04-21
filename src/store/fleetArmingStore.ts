@@ -212,6 +212,7 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
   },
 
   armMatchingFilter: (worktreeIds) => {
+    if (worktreeIds.length === 0) return;
     const worktreeIdSet = new Set(worktreeIds);
     const state = usePanelStore.getState();
     const ids: string[] = [];
@@ -221,6 +222,11 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
       if (!t.worktreeId || !worktreeIdSet.has(t.worktreeId)) continue;
       ids.push(id);
     }
+    // No eligible agents — leave the existing armed set alone rather than
+    // silently clearing it. The button is still visible whenever any
+    // worktrees match the filter; clicking it must not destroy the user's
+    // prior selection when the filtered subset has no arm-eligible agents.
+    if (ids.length === 0) return;
     get().armIds(ids);
   },
 
