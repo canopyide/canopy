@@ -614,7 +614,9 @@ describe("MigrationRunner", () => {
       mockProjectStore.getRecipes.mockResolvedValue([]);
       await migration003.up(store as never);
       expect(mockProjectStore.saveRecipes).toHaveBeenCalledTimes(1);
-      const [projectId, saved] = mockProjectStore.saveRecipes.mock.calls[0] ?? [];
+      const firstCall =
+        (mockProjectStore.saveRecipes.mock.calls as unknown as [unknown, unknown][][])[0] ?? [];
+      const [projectId, saved] = firstCall;
       expect(projectId).toBe("proj-1");
       const savedArr = saved as Array<Record<string, unknown>>;
       expect(savedArr).toHaveLength(1);
@@ -641,9 +643,9 @@ describe("MigrationRunner", () => {
       ]);
       await migration003.up(store as never);
       expect(mockProjectStore.saveRecipes).toHaveBeenCalledTimes(1);
-      const merged = mockProjectStore.saveRecipes.mock.calls[0]?.[1] as Array<
-        Record<string, unknown>
-      >;
+      const merged = (
+        mockProjectStore.saveRecipes.mock.calls as unknown as [unknown, unknown][][]
+      )[0]?.[1] as Array<Record<string, unknown>>;
       expect(merged).toHaveLength(2);
       expect(merged.map((r) => r.id).sort()).toEqual(["r1", "r2"]);
       expect((store.data.appState as Record<string, unknown>).recipes).toEqual([]);

@@ -77,7 +77,7 @@ describe("preferencesStore migration", () => {
       0
     );
     const store = await loadStore();
-    const state = store.getState() as Record<string, unknown>;
+    const state = store.getState() as unknown as Record<string, unknown>;
     expect(state.showProjectPulse).toBe(false);
     expect(state.showDeveloperTools).toBe(true);
     expect(state.lastSelectedWorktreeRecipeId).toBeUndefined();
@@ -135,7 +135,7 @@ describe("preferencesStore migration", () => {
       0
     );
     const store = await loadStore();
-    const state = store.getState() as Record<string, unknown>;
+    const state = store.getState() as unknown as Record<string, unknown>;
     expect(state.showProjectPulse).toBe(false);
     expect(state.lastSelectedWorktreeRecipeId).toBeUndefined();
     expect(state.lastSelectedWorktreeRecipeIdByProject).toEqual({});
