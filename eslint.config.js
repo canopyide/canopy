@@ -179,7 +179,10 @@ export default tseslint.config(
       "node_modules/**",
       "*.config.js",
       "*.config.cjs",
-      "*.config.ts",
+      // why: knip.config.ts is a tooling file not covered by any project
+      // tsconfig. Scope the TS-config ignore narrowly so vite/vitest/
+      // playwright configs remain linted.
+      "knip.config.ts",
       "scripts/**",
       "build/**",
       "public/**",

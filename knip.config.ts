@@ -16,7 +16,17 @@ const config: KnipConfig = {
     "src/main.tsx",
   ],
 
-  project: ["electron/**/*.{ts,cts}", "src/**/*.{ts,tsx}", "shared/**/*.ts"],
+  // Project files Knip considers part of the graph. Includes root-level
+  // *.config.ts (vite, vitest, playwright) and scripts/** so build-time and
+  // test-time imports are seen — without them Knip reports live devDeps
+  // like tailwindcss, fast-check, and wait-on as unused.
+  project: [
+    "electron/**/*.{ts,cts}",
+    "src/**/*.{ts,tsx}",
+    "shared/**/*.ts",
+    "scripts/**/*.{js,mjs,ts}",
+    "*.config.{ts,mts,cts,js,mjs,cjs}",
+  ],
 
   // why: ActionService dispatches via string IDs (see
   // src/services/ActionService.ts — `dispatch(actionId, ...)`). Knip cannot
