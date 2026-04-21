@@ -462,7 +462,7 @@ function PanelHeaderComponent({
     <div
       {...dragListeners}
       data-fleet-scope={isFleetScope || undefined}
-      data-fleet-primary={isPrimary || undefined}
+      data-fleet-primary={(isFleetScope && isPrimary) || undefined}
       className={cn(
         "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group",
         "h-8 border-b border-divider",
@@ -729,7 +729,9 @@ function PanelHeaderComponent({
                         "text-xs font-medium font-sans select-none transition-colors",
                         isFocused ? "text-daintree-text" : "text-daintree-text/70",
                         onTitleChange && "cursor-text hover:text-daintree-text",
-                        isPrimary && "text-accent-primary hover:text-accent-primary",
+                        isFleetScope &&
+                          isPrimary &&
+                          "text-accent-primary hover:text-accent-primary",
                         isPinged &&
                           !isMaximized &&
                           (wasJustSelected ? "animate-eco-title-select" : "animate-eco-title")

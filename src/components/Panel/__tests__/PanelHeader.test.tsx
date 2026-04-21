@@ -575,6 +575,20 @@ describe("PanelHeader", () => {
       expect(header.className).not.toContain("bg-surface-panel-elevated");
       expect(header.className).not.toContain("bg-overlay-subtle");
     });
+
+    it("does not leak isPrimary styling when isFleetScope is false", () => {
+      const { container } = render(
+        <PanelHeader {...makeProps({ isFleetScope: false, isPrimary: true })} />
+      );
+      const header = container.firstElementChild as HTMLElement;
+      expect(header.getAttribute("data-fleet-scope")).toBeNull();
+      expect(header.getAttribute("data-fleet-primary")).toBeNull();
+      expect(header.className).not.toContain("bg-surface-panel-elevated");
+      const title = screen
+        .getAllByText("Test Panel")
+        .find((el) => el.className.includes("font-medium"));
+      expect(title?.className).not.toContain("text-accent-primary");
+    });
   });
 
   describe("dangerous flags indicator", () => {

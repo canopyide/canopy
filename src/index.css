@@ -2114,11 +2114,16 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
     animation: none;
   }
 
-  .panel-fleet-member,
+  .panel-fleet-member {
+    border-color: Highlight;
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
   .panel-fleet-primary {
     border-color: Highlight;
-    outline: 2px solid Highlight;
-    outline-offset: -2px;
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
   }
 
   .terminal-pane {

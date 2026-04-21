@@ -277,7 +277,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         data-panel-id={id}
         data-panel-location={location}
         data-fleet-scope={isFleetScope || undefined}
-        data-fleet-primary={isPrimary || undefined}
+        data-fleet-primary={(isFleetScope && isPrimary) || undefined}
         style={{
           contain: "content",
           ...(worktreeAccentColor
