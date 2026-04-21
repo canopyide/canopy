@@ -1,11 +1,10 @@
 import { clipboard, nativeImage } from "electron";
-import { CHANNELS } from "../channels.js";
 import * as path from "node:path";
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as crypto from "node:crypto";
 import * as os from "node:os";
-import { typedHandle } from "../utils.js";
+import { defineIpcNamespace, op } from "../define.js";
 
 const CLIPBOARD_DIR_NAME = "daintree-clipboard";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -51,9 +50,138 @@ async function cleanupOldClipboardImages(): Promise<void> {
   }
 }
 
-export function registerClipboardHandlers(): () => void {
-  const handlers: Array<() => void> = [];
+async function handleSaveImage(): Promise<
+  { ok: true; filePath: string; thumbnailDataUrl: string } | { ok: false; error: string }
+> {
+  try {
+    const image = clipboard.readImage();
+    if (image.isEmpty()) {
+      return { ok: false, error: "No image in clipboard" };
+    }
 
+    const pngBuffer = image.toPNG();
+    const dir = getClipboardDir();
+    await fs.mkdir(dir, { recursive: true });
+
+    const id = crypto.randomBytes(3).toString("hex");
+    const filename = `clipboard-${Date.now()}-${id}.png`;
+    const filePath = path.join(dir, filename);
+    await fs.writeFile(filePath, pngBuffer);
+
+    const size = image.getSize();
+    const thumbHeight = 40;
+    const thumbWidth = Math.max(1, Math.round((size.width / size.height) * thumbHeight));
+    const thumbnail = image.resize({ width: thumbWidth, height: thumbHeight });
+    const thumbnailDataUrl = `data:image/png;base64,${thumbnail.toPNG().toString("base64")}`;
+
+    return { ok: true, filePath, thumbnailDataUrl };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+async function handleThumbnailFromPath(
+  filePath: string
+): Promise<
+  { ok: true; filePath: string; thumbnailDataUrl: string } | { ok: false; error: string }
+> {
+  try {
+    const image = nativeImage.createFromPath(filePath);
+    if (image.isEmpty()) {
+      return { ok: false, error: "Unsupported image format or file not found" };
+    }
+
+    const size = image.getSize();
+    const thumbHeight = 40;
+    const thumbWidth = Math.max(1, Math.round((size.width / size.height) * thumbHeight));
+    const thumbnail = image.resize({ width: thumbWidth, height: thumbHeight });
+    const thumbnailDataUrl = `data:image/png;base64,${thumbnail.toPNG().toString("base64")}`;
+
+    return { ok: true, filePath, thumbnailDataUrl };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+async function handleWriteImage(
+  pngData: Uint8Array
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const buffer = Buffer.from(pngData.buffer, pngData.byteOffset, pngData.byteLength);
+    const image = nativeImage.createFromBuffer(buffer);
+    if (image.isEmpty()) {
+      return { ok: false, error: "Invalid image data" };
+    }
+    clipboard.writeImage(image);
+    return { ok: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+function handleWriteText(text: string): { ok: true } | { ok: false; error: string } {
+  try {
+    if (typeof text !== "string") {
+      return { ok: false, error: "Text must be a string" };
+    }
+    clipboard.writeText(text);
+    return { ok: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+// Linux PRIMARY selection — underpins copy-on-select and middle-click paste.
+// The 'selection' clipboard type only exists on Linux; short-circuit elsewhere.
+function handleWriteSelection(text: string): { ok: true } | { ok: false; error: string } {
+  try {
+    if (process.platform !== "linux") {
+      return { ok: false, error: "PRIMARY selection is only available on Linux" };
+    }
+    if (typeof text !== "string") {
+      return { ok: false, error: "Text must be a string" };
+    }
+    if (text.length === 0) {
+      return { ok: false, error: "Text must not be empty" };
+    }
+    clipboard.writeText(text, "selection");
+    return { ok: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+function handleReadSelection(): { ok: true; text: string } | { ok: false; error: string } {
+  try {
+    if (process.platform !== "linux") {
+      return { ok: false, error: "PRIMARY selection is only available on Linux" };
+    }
+    const text = clipboard.readText("selection");
+    return { ok: true, text };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+export const clipboardNamespace = defineIpcNamespace({
+  name: "clipboard",
+  ops: {
+    saveImage: op("clipboard:save-image", handleSaveImage),
+    thumbnailFromPath: op("clipboard:thumbnail-from-path", handleThumbnailFromPath),
+    writeImage: op("clipboard:write-image", handleWriteImage),
+    writeText: op("clipboard:write-text", handleWriteText),
+    writeSelection: op("clipboard:write-selection", handleWriteSelection),
+    readSelection: op("clipboard:read-selection", handleReadSelection),
+  },
+});
+
+export function registerClipboardHandlers(): () => void {
   // Ensure the clipboard directory exists at startup so agents like Gemini
   // can reference it via --include-directories without errors (#4048)
   fs.mkdir(getClipboardDir(), { recursive: true }).catch((err) => {
@@ -62,131 +190,6 @@ export function registerClipboardHandlers(): () => void {
   cleanupOldClipboardImages().catch((err) => {
     console.warn("[clipboard] Cleanup failed unexpectedly:", err);
   });
-  const handleSaveImage = async (): Promise<
-    { ok: true; filePath: string; thumbnailDataUrl: string } | { ok: false; error: string }
-  > => {
-    try {
-      const image = clipboard.readImage();
-      if (image.isEmpty()) {
-        return { ok: false, error: "No image in clipboard" };
-      }
 
-      const pngBuffer = image.toPNG();
-      const dir = getClipboardDir();
-      await fs.mkdir(dir, { recursive: true });
-
-      const id = crypto.randomBytes(3).toString("hex");
-      const filename = `clipboard-${Date.now()}-${id}.png`;
-      const filePath = path.join(dir, filename);
-      await fs.writeFile(filePath, pngBuffer);
-
-      const size = image.getSize();
-      const thumbHeight = 40;
-      const thumbWidth = Math.max(1, Math.round((size.width / size.height) * thumbHeight));
-      const thumbnail = image.resize({ width: thumbWidth, height: thumbHeight });
-      const thumbnailDataUrl = `data:image/png;base64,${thumbnail.toPNG().toString("base64")}`;
-
-      return { ok: true, filePath, thumbnailDataUrl };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
-    }
-  };
-
-  const handleThumbnailFromPath = async (
-    filePath: string
-  ): Promise<
-    { ok: true; filePath: string; thumbnailDataUrl: string } | { ok: false; error: string }
-  > => {
-    try {
-      const image = nativeImage.createFromPath(filePath);
-      if (image.isEmpty()) {
-        return { ok: false, error: "Unsupported image format or file not found" };
-      }
-
-      const size = image.getSize();
-      const thumbHeight = 40;
-      const thumbWidth = Math.max(1, Math.round((size.width / size.height) * thumbHeight));
-      const thumbnail = image.resize({ width: thumbWidth, height: thumbHeight });
-      const thumbnailDataUrl = `data:image/png;base64,${thumbnail.toPNG().toString("base64")}`;
-
-      return { ok: true, filePath, thumbnailDataUrl };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
-    }
-  };
-
-  const handleWriteImage = async (
-    pngData: Uint8Array
-  ): Promise<{ ok: true } | { ok: false; error: string }> => {
-    try {
-      const buffer = Buffer.from(pngData.buffer, pngData.byteOffset, pngData.byteLength);
-      const image = nativeImage.createFromBuffer(buffer);
-      if (image.isEmpty()) {
-        return { ok: false, error: "Invalid image data" };
-      }
-      clipboard.writeImage(image);
-      return { ok: true };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
-    }
-  };
-
-  const handleWriteText = (text: string): { ok: true } | { ok: false; error: string } => {
-    try {
-      if (typeof text !== "string") {
-        return { ok: false, error: "Text must be a string" };
-      }
-      clipboard.writeText(text);
-      return { ok: true };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
-    }
-  };
-
-  // Linux PRIMARY selection — underpins copy-on-select and middle-click paste.
-  // The 'selection' clipboard type only exists on Linux; short-circuit elsewhere.
-  const handleWriteSelection = (text: string): { ok: true } | { ok: false; error: string } => {
-    try {
-      if (process.platform !== "linux") {
-        return { ok: false, error: "PRIMARY selection is only available on Linux" };
-      }
-      if (typeof text !== "string") {
-        return { ok: false, error: "Text must be a string" };
-      }
-      if (text.length === 0) {
-        return { ok: false, error: "Text must not be empty" };
-      }
-      clipboard.writeText(text, "selection");
-      return { ok: true };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
-    }
-  };
-
-  const handleReadSelection = (): { ok: true; text: string } | { ok: false; error: string } => {
-    try {
-      if (process.platform !== "linux") {
-        return { ok: false, error: "PRIMARY selection is only available on Linux" };
-      }
-      const text = clipboard.readText("selection");
-      return { ok: true, text };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
-    }
-  };
-
-  handlers.push(typedHandle(CHANNELS.CLIPBOARD_SAVE_IMAGE, handleSaveImage));
-  handlers.push(typedHandle(CHANNELS.CLIPBOARD_THUMBNAIL_FROM_PATH, handleThumbnailFromPath));
-  handlers.push(typedHandle(CHANNELS.CLIPBOARD_WRITE_IMAGE, handleWriteImage));
-  handlers.push(typedHandle(CHANNELS.CLIPBOARD_WRITE_TEXT, handleWriteText));
-  handlers.push(typedHandle(CHANNELS.CLIPBOARD_WRITE_SELECTION, handleWriteSelection));
-  handlers.push(typedHandle(CHANNELS.CLIPBOARD_READ_SELECTION, handleReadSelection));
-
-  return () => handlers.forEach((cleanup) => cleanup());
+  return clipboardNamespace.register();
 }

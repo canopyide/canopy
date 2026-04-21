@@ -48,28 +48,6 @@ async function extractInvokeMapKeys(): Promise<string[]> {
   return [...keys];
 }
 
-/**
- * Extract the inlined `const CHANNELS = { ... } as const;` block from preload.cts
- * and return its key→value map. The preload copy must mirror channels.ts by hand
- * (per lesson #4893 — the preload is bundled separately so it cannot import).
- */
-async function extractPreloadChannels(): Promise<Record<string, string>> {
-  const source = await readFile(PRELOAD_CTS, "utf8");
-  const start = source.indexOf("const CHANNELS = {");
-  if (start === -1) throw new Error("Could not locate inlined CHANNELS in preload.cts");
-  const end = source.indexOf("} as const;", start);
-  if (end === -1) throw new Error("Could not locate inlined CHANNELS closing brace");
-  const block = source.slice(start, end);
-
-  const entries: Record<string, string> = {};
-  for (const line of block.split("\n")) {
-    const match = line.match(/^\s{2}([A-Z0-9_]+):\s*"([^"]+)",?\s*$/);
-    if (!match) continue;
-    entries[match[1]!] = match[2]!;
-  }
-  return entries;
-}
-
 describe("IPC channel drift guardrails", () => {
   it("every IpcInvokeMap key resolves to a declared CHANNELS value", async () => {
     const invokeKeys = await extractInvokeMapKeys();
@@ -89,44 +67,22 @@ describe("IPC channel drift guardrails", () => {
     ).toEqual([]);
   });
 
-  it("preload inline CHANNELS mirrors electron/ipc/channels.ts key-for-key", async () => {
-    const preloadChannels = await extractPreloadChannels();
-    const canonical = CHANNELS as Readonly<Record<string, string>>;
+  it("preload imports CHANNELS from channels.ts — no hand-maintained inline copy", async () => {
+    const source = await readFile(PRELOAD_CTS, "utf8");
 
-    const canonicalKeys = new Set(Object.keys(canonical));
-    const preloadKeys = new Set(Object.keys(preloadChannels));
-
-    const missingInPreload = [...canonicalKeys].filter((k) => !preloadKeys.has(k));
-    const extraInPreload = [...preloadKeys].filter((k) => !canonicalKeys.has(k));
+    // esbuild bundles the preload, so it can (and must) consume the canonical
+    // CHANNELS export from electron/ipc/channels.ts. If the inline copy
+    // reappears, drift is possible again. #5691.
+    expect(
+      source,
+      'electron/preload.cts must `import { CHANNELS } from "./ipc/channels.js"` ' +
+        "rather than inlining a duplicate CHANNELS declaration."
+    ).toMatch(/^import\s*\{[^}]*\bCHANNELS\b[^}]*\}\s*from\s*["']\.\/ipc\/channels\.js["'];?$/m);
 
     expect(
-      missingInPreload,
-      "Channels declared in electron/ipc/channels.ts but missing from the inlined " +
-        "CHANNELS object in electron/preload.cts. Add them there too — the preload is " +
-        "bundled separately and cannot import at runtime (see lesson #4893)."
-    ).toEqual([]);
-
-    expect(
-      extraInPreload,
-      "Channels present in the preload inline copy but not in electron/ipc/channels.ts. " +
-        "Remove them from preload.cts or add them to channels.ts."
-    ).toEqual([]);
-
-    const valueMismatches: Array<{ key: string; canonical: string; preload: string }> = [];
-    for (const key of canonicalKeys) {
-      if (!preloadKeys.has(key)) continue;
-      if (canonical[key] !== preloadChannels[key]) {
-        valueMismatches.push({
-          key,
-          canonical: canonical[key]!,
-          preload: preloadChannels[key]!,
-        });
-      }
-    }
-
-    expect(
-      valueMismatches,
-      "Channel string values differ between channels.ts and preload.cts inline copy."
-    ).toEqual([]);
+      /\bconst\s+CHANNELS\s*=\s*\{/.test(source),
+      "electron/preload.cts must not declare its own `const CHANNELS = { ... }` — " +
+        "the single source of truth lives in electron/ipc/channels.ts."
+    ).toBe(false);
   });
 });
