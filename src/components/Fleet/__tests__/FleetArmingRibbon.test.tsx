@@ -1,6 +1,22 @@
 // @vitest-environment jsdom
+import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
+
+vi.mock("framer-motion", () => ({
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  motion: {
+    div: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+      ({ children, ...props }, ref) => (
+        <div ref={ref} {...props}>
+          {children}
+        </div>
+      )
+    ),
+  },
+  useReducedMotion: () => false,
+}));
+
 import { FleetArmingRibbon } from "../FleetArmingRibbon";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetPendingActionStore } from "@/store/fleetPendingActionStore";
@@ -66,21 +82,60 @@ describe("FleetArmingRibbon", () => {
     useFleetArmingStore.getState().armIds(["a", "b", "c"]);
     render(<FleetArmingRibbon />);
     expect(screen.getByTestId("fleet-arming-ribbon")).toBeTruthy();
-    expect(screen.getByText("3 agents armed")).toBeTruthy();
+    const chip = screen.getByTestId("fleet-armed-count-chip");
+    expect(chip.textContent).toContain("3");
+    expect(chip.textContent).toContain("agents armed");
   });
 
   it("uses singular 'agent' for a single armed terminal", () => {
     useFleetArmingStore.getState().armIds(["a"]);
     render(<FleetArmingRibbon />);
-    expect(screen.getByText("1 agent armed")).toBeTruthy();
+    const chip = screen.getByTestId("fleet-armed-count-chip");
+    expect(chip.textContent).toContain("1");
+    expect(chip.textContent).toContain("agent armed");
   });
 
-  it("clicking the close button disarms all", () => {
+  it("clicking the exit chip disarms all", () => {
     useFleetArmingStore.getState().armIds(["a", "b"]);
     render(<FleetArmingRibbon />);
-    const close = screen.getByLabelText("Disarm all");
-    fireEvent.click(close);
+    const exit = screen.getByTestId("fleet-exit");
+    fireEvent.click(exit);
     expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+  });
+
+  it("renders 'Exit' label and 'Esc' kbd on the exit chip", () => {
+    useFleetArmingStore.getState().armIds(["a"]);
+    render(<FleetArmingRibbon />);
+    const exit = screen.getByTestId("fleet-exit");
+    expect(exit.textContent).toContain("Exit");
+    expect(exit.textContent).toContain("Esc");
+  });
+
+  it("count chip opens a popover listing armed terminal titles", () => {
+    seed([
+      { ...makeAgent("t1"), title: "frontend·main" } as TerminalInstance,
+      { ...makeAgent("t2"), title: "backend·main" } as TerminalInstance,
+    ]);
+    useFleetArmingStore.getState().armIds(["t1", "t2"]);
+    render(<FleetArmingRibbon />);
+    fireEvent.click(screen.getByTestId("fleet-armed-count-chip"));
+    const list = screen.getByTestId("fleet-armed-list");
+    expect(list.textContent).toContain("frontend·main");
+    expect(list.textContent).toContain("backend·main");
+  });
+
+  it("per-row unarm button in the popover calls disarmId", () => {
+    seed([
+      { ...makeAgent("t1"), title: "frontend·main" } as TerminalInstance,
+      { ...makeAgent("t2"), title: "backend·main" } as TerminalInstance,
+    ]);
+    useFleetArmingStore.getState().armIds(["t1", "t2"]);
+    render(<FleetArmingRibbon />);
+    fireEvent.click(screen.getByTestId("fleet-armed-count-chip"));
+    fireEvent.click(screen.getByLabelText("Unarm frontend·main"));
+    const armed = useFleetArmingStore.getState().armedIds;
+    expect(armed.has("t1")).toBe(false);
+    expect(armed.has("t2")).toBe(true);
   });
 
   it("preset buttons arm agents by state", () => {
