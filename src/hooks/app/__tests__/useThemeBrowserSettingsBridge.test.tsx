@@ -1,41 +1,30 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import type { SettingsTab } from "@/components/Settings/SettingsDialog";
-import { useThemeBrowserStore } from "@/store";
+import { useSettingsStore, useThemeBrowserStore } from "@/store";
 import { useThemeBrowserSettingsBridge } from "../useThemeBrowserSettingsBridge";
 
 function Harness({
   isSettingsOpen,
   setIsSettingsOpen,
-  settingsTab,
-  settingsSubtab,
-  settingsSectionId,
 }: {
   isSettingsOpen: boolean;
   setIsSettingsOpen: (open: boolean) => void;
-  settingsTab?: SettingsTab;
-  settingsSubtab?: string;
-  settingsSectionId?: string;
 }) {
-  useThemeBrowserSettingsBridge(
-    isSettingsOpen,
-    setIsSettingsOpen,
-    settingsTab,
-    settingsSubtab,
-    settingsSectionId
-  );
+  useThemeBrowserSettingsBridge(isSettingsOpen, setIsSettingsOpen);
   return null;
 }
 
 describe("useThemeBrowserSettingsBridge", () => {
   beforeEach(() => {
     useThemeBrowserStore.setState({ isOpen: false });
+    useSettingsStore.setState({ activeTab: null, activeSubtab: null, activeSectionId: null });
   });
 
   afterEach(() => {
     cleanup();
     useThemeBrowserStore.setState({ isOpen: false });
+    useSettingsStore.setState({ activeTab: null, activeSubtab: null, activeSectionId: null });
   });
 
   it("closes Settings when the theme browser opens", () => {
@@ -53,21 +42,20 @@ describe("useThemeBrowserSettingsBridge", () => {
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     const setIsSettingsOpen = vi.fn();
 
-    // Start with Settings open — rendering triggers no transition (initial mount).
+    // Simulate being on general tab in Settings
+    useSettingsStore.setState({ activeTab: "general", activeSubtab: null, activeSectionId: null });
+
     const { rerender } = render(
       <Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} />
     );
 
-    // Open browser — ref captures `true` for isSettingsOpen.
     act(() => {
       useThemeBrowserStore.getState().open();
     });
     dispatchSpy.mockClear();
 
-    // Settings has now been closed by the bridge; rerender to reflect that.
     rerender(<Harness isSettingsOpen={false} setIsSettingsOpen={setIsSettingsOpen} />);
 
-    // Close browser.
     act(() => {
       useThemeBrowserStore.getState().close();
     });
@@ -85,16 +73,19 @@ describe("useThemeBrowserSettingsBridge", () => {
     dispatchSpy.mockRestore();
   });
 
-  it("restores the original tab when browser was opened from Settings", () => {
+  it("restores to terminalAppearance tab when browser was opened from that tab", () => {
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     const setIsSettingsOpen = vi.fn();
 
+    // Simulate being on terminalAppearance tab in Settings
+    useSettingsStore.setState({
+      activeTab: "terminalAppearance",
+      activeSubtab: null,
+      activeSectionId: null,
+    });
+
     const { rerender } = render(
-      <Harness
-        isSettingsOpen={true}
-        setIsSettingsOpen={setIsSettingsOpen}
-        settingsTab="terminalAppearance"
-      />
+      <Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} />
     );
 
     act(() => {
@@ -125,7 +116,6 @@ describe("useThemeBrowserSettingsBridge", () => {
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     const setIsSettingsOpen = vi.fn();
 
-    // Settings starts closed (e.g., opened via command palette).
     render(<Harness isSettingsOpen={false} setIsSettingsOpen={setIsSettingsOpen} />);
 
     act(() => {
@@ -159,9 +149,6 @@ describe("useThemeBrowserSettingsBridge", () => {
     });
     dispatchSpy.mockClear();
 
-    // Settings state flips to false (bridge closed it), then some unrelated
-    // effect flips it back. Those prop changes should NOT produce spurious
-    // close-side dispatches — the ref captured the moment-of-open value.
     rerender(<Harness isSettingsOpen={false} setIsSettingsOpen={setIsSettingsOpen} />);
     rerender(<Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} />);
 
@@ -179,10 +166,11 @@ describe("useThemeBrowserSettingsBridge", () => {
     const setIsSettingsOpen = vi.fn();
 
     const { rerender } = render(
-      <Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} settingsTab="general" />
+      <Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} />
     );
 
     // First open from general tab.
+    useSettingsStore.setState({ activeTab: "general", activeSubtab: null, activeSectionId: null });
     act(() => {
       useThemeBrowserStore.getState().open();
     });
@@ -201,13 +189,12 @@ describe("useThemeBrowserSettingsBridge", () => {
 
     // Reset and open again from terminalAppearance tab.
     dispatchSpy.mockClear();
-    rerender(
-      <Harness
-        isSettingsOpen={true}
-        setIsSettingsOpen={setIsSettingsOpen}
-        settingsTab="terminalAppearance"
-      />
-    );
+    rerender(<Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} />);
+    useSettingsStore.setState({
+      activeTab: "terminalAppearance",
+      activeSubtab: null,
+      activeSectionId: null,
+    });
     act(() => {
       useThemeBrowserStore.getState().open();
     });
@@ -225,6 +212,79 @@ describe("useThemeBrowserSettingsBridge", () => {
     const detail = settingsEvents[0]!.detail as { tab?: string; sectionId?: string };
     expect(detail.tab).toBe("terminalAppearance");
     expect(detail.sectionId).toBe("appearance-theme");
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("preserves subtab when present", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const setIsSettingsOpen = vi.fn();
+
+    useSettingsStore.setState({
+      activeTab: "terminal",
+      activeSubtab: "app",
+      activeSectionId: null,
+    });
+
+    const { rerender } = render(
+      <Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} />
+    );
+
+    act(() => {
+      useThemeBrowserStore.getState().open();
+    });
+    dispatchSpy.mockClear();
+    rerender(<Harness isSettingsOpen={false} setIsSettingsOpen={setIsSettingsOpen} />);
+    act(() => {
+      useThemeBrowserStore.getState().close();
+    });
+
+    const settingsEvents = dispatchSpy.mock.calls
+      .map((c) => c[0])
+      .filter(
+        (e): e is CustomEvent => e instanceof CustomEvent && e.type === "daintree:open-settings-tab"
+      );
+    expect(settingsEvents).toHaveLength(1);
+    const detail = settingsEvents[0]!.detail as {
+      tab?: string;
+      subtab?: string;
+      sectionId?: string;
+    };
+    expect(detail.tab).toBe("terminal");
+    expect(detail.subtab).toBe("app");
+    expect(detail.sectionId).toBe("appearance-theme");
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("falls back to general when activeTab is null", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const setIsSettingsOpen = vi.fn();
+
+    // Settings is open but no active tab set (e.g., just opened via menu, not yet rendered)
+    useSettingsStore.setState({ activeTab: null, activeSubtab: null, activeSectionId: null });
+
+    const { rerender } = render(
+      <Harness isSettingsOpen={true} setIsSettingsOpen={setIsSettingsOpen} />
+    );
+
+    act(() => {
+      useThemeBrowserStore.getState().open();
+    });
+    dispatchSpy.mockClear();
+    rerender(<Harness isSettingsOpen={false} setIsSettingsOpen={setIsSettingsOpen} />);
+    act(() => {
+      useThemeBrowserStore.getState().close();
+    });
+
+    const settingsEvents = dispatchSpy.mock.calls
+      .map((c) => c[0])
+      .filter(
+        (e): e is CustomEvent => e instanceof CustomEvent && e.type === "daintree:open-settings-tab"
+      );
+    expect(settingsEvents).toHaveLength(1);
+    const detail = settingsEvents[0]!.detail as { tab?: string };
+    expect(detail.tab).toBe("general");
 
     dispatchSpy.mockRestore();
   });

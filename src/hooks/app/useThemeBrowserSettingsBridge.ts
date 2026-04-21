@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { SettingsTab } from "@/components/Settings/SettingsDialog";
-import { useThemeBrowserStore } from "@/store";
+import { useThemeBrowserStore, useSettingsStore } from "@/store";
 
 /**
  * Coordinates Settings <-> theme browser transitions.
@@ -15,12 +14,11 @@ import { useThemeBrowserStore } from "@/store";
  */
 export function useThemeBrowserSettingsBridge(
   isSettingsOpen: boolean,
-  setIsSettingsOpen: (open: boolean) => void,
-  settingsTab?: SettingsTab,
-  settingsSubtab?: string,
-  settingsSectionId?: string
+  setIsSettingsOpen: (open: boolean) => void
 ) {
   const isThemeBrowserOpen = useThemeBrowserStore((s) => s.isOpen);
+  const activeTab = useSettingsStore((s) => s.activeTab);
+  const activeSubtab = useSettingsStore((s) => s.activeSubtab);
   const prevIsOpenRef = useRef(false);
   const openedFromSettingsRef = useRef(false);
   const originTargetRef = useRef<Parameters<typeof dispatchOriginTarget>[0] | null>(null);
@@ -31,11 +29,7 @@ export function useThemeBrowserSettingsBridge(
 
     if (!wasOpen && isThemeBrowserOpen) {
       openedFromSettingsRef.current = isSettingsOpen;
-      originTargetRef.current = {
-        tab: settingsTab,
-        subtab: settingsSubtab,
-        sectionId: settingsSectionId,
-      };
+      originTargetRef.current = { tab: activeTab, subtab: activeSubtab, sectionId: null };
       setIsSettingsOpen(false);
     } else if (wasOpen && !isThemeBrowserOpen) {
       if (openedFromSettingsRef.current) {
@@ -44,17 +38,10 @@ export function useThemeBrowserSettingsBridge(
       openedFromSettingsRef.current = false;
       originTargetRef.current = null;
     }
-  }, [
-    isThemeBrowserOpen,
-    isSettingsOpen,
-    setIsSettingsOpen,
-    settingsTab,
-    settingsSubtab,
-    settingsSectionId,
-  ]);
+  }, [isThemeBrowserOpen, isSettingsOpen, setIsSettingsOpen, activeTab, activeSubtab]);
 }
 
-type OriginTarget = { tab?: SettingsTab | null; subtab?: string | null; sectionId?: string | null };
+type OriginTarget = { tab: string | null; subtab: string | null; sectionId: string | null };
 
 function dispatchOriginTarget(origin: OriginTarget | null) {
   const tab = origin?.tab ?? "general";
