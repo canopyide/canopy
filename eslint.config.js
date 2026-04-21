@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactCompiler from "eslint-plugin-react-compiler";
+import unicorn from "eslint-plugin-unicorn";
 import prettier from "eslint-config-prettier";
 
 export default tseslint.config(
@@ -114,6 +115,40 @@ export default tseslint.config(
     },
   },
 
+  // Expiring TODOs — new `TODO [>=X.Y.Z]: ...` syntax fails lint once the
+  // package version catches up. Uses bracket syntax so it does not collide
+  // with existing `TODO(0.9.0)` parenthesis-format comments owned by #5150.
+  {
+    files: ["**/*.{ts,tsx,js,jsx,cts,mts}"],
+    plugins: {
+      unicorn,
+    },
+    rules: {
+      "unicorn/expiring-todo-comments": ["error", { ignoreDatesOnPullRequests: true }],
+    },
+  },
+
+  // Scaffold: no-restricted-syntax — uncomment and adapt to block a retired
+  // identifier (module export, global name, or property access) during a
+  // flag burn-down. Uses ESLint AST selectors.
+  // {
+  //   rules: {
+  //     "no-restricted-syntax": [
+  //       "error",
+  //       {
+  //         // why: <identifier> was retired in <version> — see <issue>.
+  //         selector: "Identifier[name='RetiredName']",
+  //         message: "RetiredName is retired. Use ReplacementName instead.",
+  //       },
+  //       {
+  //         // why: property access on a removed global.
+  //         selector: "MemberExpression[object.name='legacyGlobal']",
+  //         message: "legacyGlobal is retired. Use currentAPI instead.",
+  //       },
+  //     ],
+  //   },
+  // },
+
   // Prevent UI components from importing main-process types
   {
     files: ["src/components/**/*.{ts,tsx}"],
@@ -144,6 +179,7 @@ export default tseslint.config(
       "node_modules/**",
       "*.config.js",
       "*.config.cjs",
+      "*.config.ts",
       "scripts/**",
       "build/**",
       "public/**",
