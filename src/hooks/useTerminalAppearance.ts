@@ -81,6 +81,7 @@ export function useTerminalAppearance(): TerminalAppearanceState {
   // Subscribe to app theme so wrapperBackground + effectiveTheme re-compute on theme change.
   // Value is intentionally discarded — the subscription is what drives reactivity.
   useAppThemeStore((s) => s.selectedSchemeId);
+  useAppThemeStore((s) => s.previewSchemeId);
   const wrapperBackground = useTerminalColorSchemeStore(selectWrapperBackground);
   const effectiveTheme = useTerminalColorSchemeStore(selectEffectiveTheme);
   const screenReaderMode = useScreenReaderStore((s) => s.resolvedScreenReaderEnabled());
