@@ -603,7 +603,6 @@ describe("MigrationRunner", () => {
           welcomeCardDismissed: false,
           setupBannerDismissed: false,
         },
-        activationFunnel: {},
         orchestrationMilestones: {},
         shortcutHintCounts: {},
         updateChannel: "stable",

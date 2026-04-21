@@ -198,12 +198,6 @@ export interface StoreSchema {
       };
     };
   };
-  activationFunnel: {
-    firstAgentTaskStartedAt?: number;
-    firstAgentTaskCompletedAt?: number;
-    firstParallelAgentsAt?: number;
-    timeToFirstAgentTaskMs?: number;
-  };
   orchestrationMilestones: Record<string, boolean>;
   shortcutHintCounts: Record<string, number>;
   updateChannel: "stable" | "nightly";
@@ -340,7 +334,6 @@ const storeOptions = {
         },
       },
     },
-    activationFunnel: {},
     orchestrationMilestones: {},
     shortcutHintCounts: {},
     updateChannel: "stable" as const,

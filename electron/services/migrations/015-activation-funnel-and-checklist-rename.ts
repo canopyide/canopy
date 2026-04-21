@@ -15,15 +15,8 @@ interface OnboardingLike {
 export const migration015: Migration = {
   version: 15,
   description:
-    "Add activationFunnel store key and replace subscribedNewsletter checklist item with ranSecondParallelAgent (issue #5132)",
+    "Replace subscribedNewsletter checklist item with ranSecondParallelAgent (issue #5132)",
   up: (store) => {
-    const existingActivation = (store as unknown as { get: (k: string) => unknown }).get(
-      "activationFunnel"
-    );
-    if (typeof existingActivation !== "object" || existingActivation === null) {
-      store.set("activationFunnel", {} as never);
-    }
-
     const onboardingRaw = store.get("onboarding") as OnboardingLike | undefined;
     if (!onboardingRaw || !onboardingRaw.checklist) {
       return;

@@ -173,10 +173,7 @@ function runMigrationChain(fixture: ReturnType<typeof createHeavyMigrationFixtur
   }
   delete (state as Record<string, unknown>).telemetry;
 
-  // Migration 015 — Activation funnel and checklist rename (O(1))
-  if (typeof state.activationFunnel !== "object" || state.activationFunnel === null) {
-    state.activationFunnel = {};
-  }
+  // Migration 015 — Checklist rename (O(1))
   const onboarding015 = state.onboarding as Record<string, unknown> | undefined;
   if (onboarding015?.checklist) {
     const checklist = onboarding015.checklist as Record<string, unknown>;
