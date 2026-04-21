@@ -241,6 +241,34 @@ describe("FleetArmingRibbon", () => {
     expect(useFleetPendingActionStore.getState().pending).toBeNull();
   });
 
+  it("keeps the confirmation view visible when armed count drops to 1", () => {
+    // Ribbon hides the normal view at armedCount < 2, but confirmation must
+    // stay reachable: fleet.restart / fleet.kill always require confirmation
+    // and may be invoked via keybinding with a single agent armed. If the
+    // confirmation vanished on drain-to-one, the live window-level Enter
+    // listener would still fire the action against hidden UI.
+    useFleetArmingStore.getState().armIds(["a", "b", "c"]);
+    useFleetPendingActionStore.setState({
+      pending: { kind: "restart", targetCount: 3, sessionLossCount: 0 },
+    });
+    render(<FleetArmingRibbon />);
+    expect(screen.getByTestId("fleet-arming-ribbon")).toBeTruthy();
+    // Drain to 1 — the ribbon's main view is hidden, but pending is kept.
+    act(() => {
+      useFleetArmingStore.setState({
+        armedIds: new Set(["a"]),
+        armOrder: ["a"],
+        armOrderById: { a: 0 },
+        lastArmedId: "a",
+      });
+    });
+    expect(useFleetPendingActionStore.getState().pending).not.toBeNull();
+    expect(screen.getByTestId("fleet-arming-ribbon")).toBeTruthy();
+    expect(screen.getByTestId("fleet-arming-ribbon").getAttribute("data-pending-action")).toBe(
+      "restart"
+    );
+  });
+
   it("Cmd+Esc pressed twice within 350ms dispatches fleet.interrupt", async () => {
     seed([makeAgent("t1", "working"), makeAgent("t2", "working")]);
     useFleetArmingStore.getState().armIds(["t1", "t2"]);

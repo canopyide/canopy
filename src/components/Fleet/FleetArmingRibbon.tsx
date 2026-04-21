@@ -272,11 +272,11 @@ export function FleetArmingRibbon(): ReactElement | null {
     </>
   );
 
-  if (armedCount < 2) {
-    return null;
-  }
-
-  if (pending !== null) {
+  // Render confirmation before the armedCount<2 null guard so single-agent
+  // keybindings (fleet.restart / fleet.kill always require confirmation)
+  // stay reachable — and so draining 3→1 while a confirm is pending
+  // doesn't strand a live Enter listener with no visible UI.
+  if (armedCount > 0 && pending !== null) {
     const message = buildConfirmMessage(
       pending.kind,
       pending.targetCount,
@@ -310,6 +310,10 @@ export function FleetArmingRibbon(): ReactElement | null {
         </div>
       </div>
     );
+  }
+
+  if (armedCount < 2) {
+    return null;
   }
 
   const ribbonMotionProps = reduceMotion
