@@ -352,7 +352,7 @@ describe("FleetComposer", () => {
     expect(byId.b).toBe("checkout feature/y");
   });
 
-  it("drops silently-exited targets at submit time and toasts the actual count", async () => {
+  it("drops silently-exited targets at submit time and clears lastFailed state", async () => {
     usePanelStore.setState({
       panelsById: {
         a: makeAgent("a"),
@@ -369,10 +369,13 @@ describe("FleetComposer", () => {
 
     await waitFor(() => expect(submitMock).toHaveBeenCalledTimes(1));
     expect(submitMock.mock.calls[0]![0]).toBe("a");
-    await waitFor(() => {
-      const last = useNotificationStore.getState().notifications.at(-1)?.message ?? "";
-      expect(last).toBe("Sent to 1 agent");
-    });
+    // No success/warning toast should be emitted
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications.filter((n) => n.type === "success" || n.type === "warning")).toHaveLength(
+      0
+    );
+    // lastFailedIds should be empty (all succeeded)
+    expect(useFleetComposerStore.getState().lastFailedIds).toEqual([]);
   });
 
   it("does NOT clear draft when no live targets remain at submit", async () => {
@@ -395,7 +398,7 @@ describe("FleetComposer", () => {
     expect(useFleetComposerStore.getState().draft).toBe("please keep");
   });
 
-  it("partial failure surfaces the correct toast count", async () => {
+  it("partial failure surfaces retry button and stores failed IDs", async () => {
     submitMock.mockReset();
     submitMock.mockImplementationOnce(() => Promise.resolve());
     submitMock.mockImplementationOnce(() => Promise.reject(new Error("boom")));
@@ -405,10 +408,16 @@ describe("FleetComposer", () => {
     fireEvent.change(textarea, { target: { value: "x" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
-    await waitFor(() => {
-      const last = useNotificationStore.getState().notifications.at(-1)?.message ?? "";
-      expect(last).toBe("Sent to 1 agent (1 failed)");
-    });
+    await waitFor(() => expect(submitMock).toHaveBeenCalledTimes(2));
+    // No success/warning toast should be emitted
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications.filter((n) => n.type === "success" || n.type === "warning")).toHaveLength(
+      0
+    );
+    // lastFailedIds should contain the failed terminal
+    expect(useFleetComposerStore.getState().lastFailedIds).toEqual(["t2"]);
+    // Retry failed button should appear
+    expect(screen.getByTestId("fleet-composer-retry-failed")).toBeTruthy();
   });
 
   it("auto-clears draft when armedCount returns to zero", () => {
@@ -435,7 +444,7 @@ describe("FleetComposer", () => {
     expect(send.disabled).toBe(false);
   });
 
-  it("all submits reject — toasts 0 success / N failed, draft retained, history not recorded", async () => {
+  it("all submits reject — stores all as failed IDs, draft retained, history not recorded", async () => {
     submitMock.mockReset();
     submitMock.mockRejectedValue(new Error("boom"));
     armTwo();
@@ -445,11 +454,14 @@ describe("FleetComposer", () => {
     fireEvent.keyDown(textarea, { key: "Enter" });
 
     await waitFor(() => expect(submitMock).toHaveBeenCalledTimes(2));
-    await waitFor(() => {
-      const last = useNotificationStore.getState().notifications.at(-1)?.message ?? "";
-      expect(last).toBe("Sent to 0 agents (2 failed)");
-    });
+    // No success/warning toast should be emitted
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications.filter((n) => n.type === "success" || n.type === "warning")).toHaveLength(
+      0
+    );
     expect(useFleetComposerStore.getState().draft).toBe("fail it");
+    // lastFailedIds should contain both terminals
+    expect(useFleetComposerStore.getState().lastFailedIds).toEqual(["t1", "t2"]);
     const history = useCommandHistoryStore
       .getState()
       .getProjectHistory(FLEET_BROADCAST_HISTORY_KEY);

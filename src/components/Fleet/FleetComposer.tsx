@@ -167,33 +167,6 @@ export function FleetComposer(): ReactElement | null {
           clearLastFailed();
         }
 
-        useNotificationStore.getState().addNotification({
-          type: result.successCount > 0 ? "success" : "warning",
-          priority: "low",
-          message:
-            result.failureCount > 0
-              ? `Sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"} (${result.failureCount} failed)`
-              : `Sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"}`,
-          actions:
-            result.failureCount > 0
-              ? [
-                  {
-                    label: "Retry failed",
-                    onClick: () => {
-                      const failed = useFleetComposerStore.getState().lastFailedIds;
-                      if (failed.length === 0) return;
-                      useFleetArmingStore.getState().armIds(failed);
-                      if (useFleetComposerStore.getState().draft.trim() === "") {
-                        const lastPrompt = useFleetComposerStore.getState().lastBroadcastPrompt;
-                        useFleetComposerStore.getState().setDraft(lastPrompt);
-                      }
-                    },
-                    variant: "primary" as const,
-                  },
-                ]
-              : undefined,
-        });
-
         if (result.successCount > 0) {
           const armedIds = Array.from(useFleetArmingStore.getState().armedIds);
           useCommandHistoryStore

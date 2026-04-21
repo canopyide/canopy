@@ -29,6 +29,10 @@ vi.mock("@/services/TerminalInstanceService", () => ({
   },
 }));
 
+vi.mock("@/components/Fleet/fleetExecution", () => ({
+  executeFleetBroadcast: vi.fn(),
+}));
+
 vi.mock("@/store/persistence/panelPersistence", () => ({
   panelPersistence: {
     setProjectIdGetter: vi.fn(),
@@ -40,8 +44,11 @@ vi.mock("@/store/persistence/panelPersistence", () => ({
 const { useFleetArmingStore } = await import("@/store/fleetArmingStore");
 const { useFleetPendingActionStore } = await import("@/store/fleetPendingActionStore");
 const { usePanelStore } = await import("@/store/panelStore");
+const { useFleetComposerStore } = await import("@/store/fleetComposerStore");
+const { useNotificationStore } = await import("@/store/notificationStore");
 const { terminalClient } = await import("@/clients");
 const { registerFleetActions } = await import("../fleetActions");
+const { executeFleetBroadcast } = await import("@/components/Fleet/fleetExecution");
 
 type ActionRegistry = Awaited<
   ReturnType<typeof import("@/services/actions/actionDefinitions").createActionDefinitions>
@@ -85,6 +92,12 @@ function resetStores(): void {
     maximizedId: null,
     commandQueue: [],
   });
+  useFleetComposerStore.setState({
+    draft: "",
+    lastFailedIds: [],
+    lastBroadcastPrompt: "",
+  });
+  useNotificationStore.setState({ notifications: [] });
 }
 
 async function buildRegistry(): Promise<ActionRegistry> {
@@ -363,5 +376,132 @@ describe("fleet scope actions — flag gating", () => {
     useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-1" });
     await run(registry, "fleet.scope.enter");
     expect(useWorktreeSelectionStore.getState().isFleetScopeActive).toBe(true);
+  });
+});
+
+describe("fleet.retryFailed action", () => {
+  beforeEach(() => {
+    resetStores();
+    vi.clearAllMocks();
+  });
+
+  it("re-arms and resends to failed terminals, clears lastFailed on full success", async () => {
+    useFleetComposerStore.setState({
+      lastFailedIds: ["a", "b"],
+      lastBroadcastPrompt: "test prompt",
+    });
+
+    vi.mocked(executeFleetBroadcast).mockResolvedValue({
+      successCount: 2,
+      failureCount: 0,
+      failedIds: [],
+    });
+
+    const registry = await buildRegistry();
+    await run(registry, "fleet.retryFailed");
+
+    // Should have armed the previously failed terminals
+    expect(useFleetArmingStore.getState().armedIds).toEqual(new Set(["a", "b"]));
+    // Should have executed the broadcast
+    expect(executeFleetBroadcast).toHaveBeenCalledWith("test prompt", ["a", "b"]);
+    // Should have cleared lastFailedIds since all succeeded
+    expect(useFleetComposerStore.getState().lastFailedIds).toEqual([]);
+    // No success/warning toast should be emitted
+    expect(
+      useNotificationStore
+        .getState()
+        .notifications.filter((n) => n.type === "success" || n.type === "warning")
+    ).toHaveLength(0);
+  });
+
+  it("preserves lastFailedIds on partial retry failure, re-arms new failures", async () => {
+    useFleetComposerStore.setState({
+      lastFailedIds: ["a", "b"],
+      lastBroadcastPrompt: "test prompt",
+    });
+
+    vi.mocked(executeFleetBroadcast).mockResolvedValue({
+      successCount: 1,
+      failureCount: 1,
+      failedIds: ["b"],
+    });
+
+    const registry = await buildRegistry();
+    await run(registry, "fleet.retryFailed");
+
+    // Should have armed the previously failed terminals
+    expect(useFleetArmingStore.getState().armedIds).toEqual(new Set(["a", "b"]));
+    // Should have executed the broadcast
+    expect(executeFleetBroadcast).toHaveBeenCalledWith("test prompt", ["a", "b"]);
+    // Should have updated lastFailedIds to only the new failures
+    expect(useFleetComposerStore.getState().lastFailedIds).toEqual(["b"]);
+    // Should have updated the lastBroadcastPrompt
+    expect(useFleetComposerStore.getState().lastBroadcastPrompt).toBe("test prompt");
+    // No success/warning toast should be emitted
+    expect(
+      useNotificationStore
+        .getState()
+        .notifications.filter((n) => n.type === "success" || n.type === "warning")
+    ).toHaveLength(0);
+  });
+
+  it("uses current draft when available instead of lastBroadcastPrompt", async () => {
+    useFleetComposerStore.setState({
+      draft: "new prompt",
+      lastFailedIds: ["a", "b"],
+      lastBroadcastPrompt: "old prompt",
+    });
+
+    vi.mocked(executeFleetBroadcast).mockResolvedValue({
+      successCount: 2,
+      failureCount: 0,
+      failedIds: [],
+    });
+
+    const registry = await buildRegistry();
+    await run(registry, "fleet.retryFailed");
+
+    // Should use the current draft, not lastBroadcastPrompt
+    expect(executeFleetBroadcast).toHaveBeenCalledWith("new prompt", ["a", "b"]);
+    expect(useFleetComposerStore.getState().lastFailedIds).toEqual([]);
+  });
+
+  it("does nothing when no lastFailedIds are stored", async () => {
+    useFleetComposerStore.setState({
+      lastFailedIds: [],
+      lastBroadcastPrompt: "test prompt",
+    });
+
+    vi.mocked(executeFleetBroadcast).mockResolvedValue({
+      successCount: 0,
+      failureCount: 0,
+      failedIds: [],
+    });
+
+    const registry = await buildRegistry();
+    await run(registry, "fleet.retryFailed");
+
+    // Should not execute the broadcast
+    expect(executeFleetBroadcast).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when both draft and lastBroadcastPrompt are empty", async () => {
+    useFleetComposerStore.setState({
+      draft: "",
+      lastFailedIds: ["a", "b"],
+      lastBroadcastPrompt: "",
+    });
+
+    vi.mocked(executeFleetBroadcast).mockResolvedValue({
+      successCount: 0,
+      failureCount: 0,
+      failedIds: [],
+    });
+
+    const registry = await buildRegistry();
+    await run(registry, "fleet.retryFailed");
+
+    // Should not execute the broadcast
+    expect(executeFleetBroadcast).not.toHaveBeenCalled();
   });
 });
