@@ -303,7 +303,7 @@ describe("terminalInputActions adversarial", () => {
       return { armAll };
     }
 
-    it("arms current worktree and enters scope when scoped mode is hydrated", async () => {
+    it("arms current worktree but does NOT auto-enter fleet scope (scoped, hydrated)", async () => {
       const { armAll } = setArmed(3);
       fleetScopeFlagMock.useFleetScopeFlagStore.getState.mockReturnValue({
         mode: "scoped",
@@ -318,10 +318,10 @@ describe("terminalInputActions adversarial", () => {
       await run("terminal.bulkCommand");
 
       expect(armAll).toHaveBeenCalledWith("current");
-      expect(enterFleetScope).toHaveBeenCalled();
+      expect(enterFleetScope).not.toHaveBeenCalled();
     });
 
-    it("arms current worktree but does NOT enter scope in legacy mode", async () => {
+    it("arms current worktree without entering scope in legacy mode", async () => {
       const { armAll } = setArmed(2);
       fleetScopeFlagMock.useFleetScopeFlagStore.getState.mockReturnValue({
         mode: "legacy",
@@ -339,7 +339,7 @@ describe("terminalInputActions adversarial", () => {
       expect(enterFleetScope).not.toHaveBeenCalled();
     });
 
-    it("arms current worktree but does NOT enter scope before hydration", async () => {
+    it("arms current worktree without entering scope before hydration", async () => {
       const { armAll } = setArmed(1);
       fleetScopeFlagMock.useFleetScopeFlagStore.getState.mockReturnValue({
         mode: "scoped",
