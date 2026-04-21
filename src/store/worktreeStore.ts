@@ -17,6 +17,15 @@ export function setFleetArmedIdsGetter(getter: () => Set<string>): void {
   _getArmedIds = getter;
 }
 
+// Getter for the most-recently-armed terminal id ("primary") — injected by
+// fleetArmingStore for the same cyclic-import reason as `_getArmedIds`.
+// Consumed by `exitFleetScope` to restore keyboard focus to the primary
+// terminal after the fleet grid collapses.
+let _getLastArmedId: (() => string | null) | null = null;
+export function setFleetLastArmedIdGetter(getter: () => string | null): void {
+  _getLastArmedId = getter;
+}
+
 interface CreateDialogState {
   isOpen: boolean;
   initialIssue: GitHubIssue | null;
@@ -563,6 +572,9 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     if (!get().isFleetScopeActive) return;
     const restoreId = get()._previousActiveWorktreeId;
     const generation = get()._policyGeneration + 1;
+    // Snapshot the primary (most-recently-armed) terminal BEFORE `set()` so
+    // it's stable across the async focus-restore microtask below.
+    const primaryTerminalId = _getLastArmedId ? _getLastArmedId() : null;
     set({
       isFleetScopeActive: false,
       _previousActiveWorktreeId: null,
@@ -578,6 +590,42 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
         usePanelStore.setState({ preMaximizeLayout: null });
       })
       .catch(() => {});
+    // Focus the primary (most-recently-armed) terminal so the user lands on
+    // a known pane instead of whatever `focusedId` happened to be during
+    // fleet scope. Guarded by:
+    //   - generation: prevents a stale microtask from overwriting a newer
+    //     worktree switch.
+    //   - worktreeId match: the user's scope-exit intent is "restore the
+    //     pre-scope worktree". If the primary lives elsewhere, focusing it
+    //     would let `rendererStoreOrchestrator`'s focusedId subscription
+    //     call `selectWorktree(primary.worktreeId)` and undo the restore.
+    //   - location: skip trashed/backgrounded/docked primaries — a dock
+    //     focus would activate the dock rather than a grid pane, and
+    //     trashed/background terminals aren't valid focus targets.
+    if (primaryTerminalId && restoreId) {
+      void loadTerminalStoreModule()
+        .then(({ usePanelStore }) => {
+          if (get()._policyGeneration !== generation) return;
+          const terminal = usePanelStore.getState().panelsById[primaryTerminalId];
+          if (!terminal) return;
+          if (terminal.worktreeId !== restoreId) return;
+          if (
+            terminal.location === "trash" ||
+            terminal.location === "background" ||
+            terminal.location === "dock"
+          ) {
+            return;
+          }
+          usePanelStore.getState().setFocused(primaryTerminalId);
+        })
+        .catch((error) => {
+          logErrorWithContext(error, {
+            operation: "import_terminal_store_for_fleet_exit_focus",
+            component: "worktreeStore",
+            details: { primaryTerminalId },
+          });
+        });
+    }
     // Reconcile terminal streaming tiers: consumers may have mutated
     // activeWorktreeId during scope, so the renderer policy must be
     // reapplied for the restored worktree.

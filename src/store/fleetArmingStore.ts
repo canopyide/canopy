@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { usePanelStore } from "@/store/panelStore";
-import { useWorktreeSelectionStore, setFleetArmedIdsGetter } from "@/store/worktreeStore";
+import {
+  useWorktreeSelectionStore,
+  setFleetArmedIdsGetter,
+  setFleetLastArmedIdGetter,
+} from "@/store/worktreeStore";
 import { setFleetArmingClear } from "@/store/projectStore";
 import { isAgentTerminal } from "@/utils/terminalType";
 import type { TerminalInstance } from "@shared/types";
@@ -279,6 +283,7 @@ setFleetArmingClear(() => {
 // Using a getter-injection pattern (identical to `setFleetArmingClear`)
 // avoids an otherwise cyclic module import.
 setFleetArmedIdsGetter(() => useFleetArmingStore.getState().armedIds);
+setFleetLastArmedIdGetter(() => useFleetArmingStore.getState().lastArmedId);
 
 /**
  * Module-scope subscription: when panels are removed, relocated to trash/background,

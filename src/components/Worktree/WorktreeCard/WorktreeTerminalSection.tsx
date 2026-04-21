@@ -73,14 +73,19 @@ interface TerminalRowProps {
 function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
   const isArmed = useFleetArmingStore((s) => s.armedIds.has(term.id));
   const armBadge = useFleetArmingStore((s) => s.armOrderById[term.id]);
+  // Primary ("last armed") gets a solid accent ring — it's the terminal that
+  // will receive keyboard focus when fleet scope exits. Non-primary armed
+  // peers get a dashed ring so the distinction is visible at a glance.
+  const isPrimary = useFleetArmingStore((s) => s.lastArmedId === term.id);
 
   return (
     <div
       data-terminal-id={term.id}
       className={cn(
         "rounded-[var(--radius-md)]",
-        isArmed &&
-          "bg-daintree-accent/5 outline outline-2 outline-daintree-accent/70 outline-offset-[-2px]"
+        isArmed && "bg-daintree-accent/5 outline outline-2 outline-offset-[-2px]",
+        isArmed && isPrimary && "outline-solid outline-daintree-accent",
+        isArmed && !isPrimary && "outline-dashed outline-daintree-accent/70"
       )}
     >
       <div className="worktree-section-button group/termrow flex items-center justify-between gap-2.5 px-3 py-2 transition-colors">

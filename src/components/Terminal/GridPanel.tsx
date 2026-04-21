@@ -21,6 +21,10 @@ export interface GridPanelProps {
   // and let the caller disambiguate titles when the armed set spans multiple
   // worktrees. These are transient render-only flags; the store is untouched.
   isFleetScope?: boolean;
+  // Marks the "primary" armed terminal in fleet scope (the most-recently-armed
+  // one — `fleetArmingStore.lastArmedId`). Only meaningful when `isFleetScope`.
+  // Drives the solid accent ring overlay variant in TerminalPane.
+  isPrimary?: boolean;
   titleOverride?: string;
   // Tab support
   tabs?: TabInfo[];
@@ -49,6 +53,7 @@ export function gridPanelPropsAreEqual(prev: GridPanelProps, next: GridPanelProp
     prev.gridCols !== next.gridCols ||
     prev.ambientAgentState !== next.ambientAgentState ||
     prev.isFleetScope !== next.isFleetScope ||
+    prev.isPrimary !== next.isPrimary ||
     prev.titleOverride !== next.titleOverride ||
     prev.groupId !== next.groupId
   ) {
@@ -124,6 +129,7 @@ export const GridPanel = React.memo(function GridPanel({
   gridCols,
   ambientAgentState,
   isFleetScope = false,
+  isPrimary = false,
   titleOverride,
   tabs,
   groupId,
@@ -208,6 +214,7 @@ export const GridPanel = React.memo(function GridPanel({
           onAddTab: isFleetScope ? undefined : onAddTab,
           onTabReorder,
           ...(isFleetScope ? { isInputLocked: true, isFleetScope: true } : undefined),
+          ...(isFleetScope && isPrimary ? { isPrimary: true } : undefined),
           ...(titleOverride !== undefined ? { title: titleOverride } : undefined),
         },
       }),
@@ -231,6 +238,7 @@ export const GridPanel = React.memo(function GridPanel({
       onAddTab,
       onTabReorder,
       isFleetScope,
+      isPrimary,
       titleOverride,
     ]
   );
