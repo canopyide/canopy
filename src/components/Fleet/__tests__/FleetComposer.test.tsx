@@ -5,12 +5,18 @@ import { createStore } from "zustand/vanilla";
 import { FleetComposer } from "../FleetComposer";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import { useFleetIdleStore } from "@/store/fleetIdleStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useCommandHistoryStore } from "@/store/commandHistoryStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { setCurrentViewStore } from "@/store/createWorktreeStore";
 import type { WorktreeViewState, WorktreeViewActions } from "@/store/createWorktreeStore";
 import { FLEET_BROADCAST_HISTORY_KEY } from "../fleetBroadcast";
+import {
+  FLEET_IDLE_GRACE_MS,
+  FLEET_IDLE_RESCHEDULE_MS,
+  FLEET_IDLE_TIMEOUT_MS,
+} from "@/hooks/useFleetIdleTimer";
 import type { TerminalInstance, WorktreeSnapshot } from "@shared/types";
 
 const submitMock = vi.fn<(id: string, text: string) => Promise<void>>();
@@ -84,6 +90,7 @@ function resetAll(worktreeId = "wt-1") {
     lastArmedId: null,
   });
   useFleetComposerStore.setState({ draft: "" });
+  useFleetIdleStore.setState({ phase: "idle", warningStartedAt: null });
   usePanelStore.setState({ panelsById: {}, panelIds: [] });
   useCommandHistoryStore.setState({ history: {} });
   useNotificationStore.setState({ notifications: [] });
@@ -563,5 +570,193 @@ describe("FleetComposer", () => {
       ).toBe(1)
     );
     expect(useFleetComposerStore.getState().draft).toBe("second");
+  });
+
+  describe("idle timeout", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: false });
+    });
+
+    it("does not show the warning strip before the idle timeout fires", () => {
+      armTwo();
+      render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS - 1000);
+      });
+      expect(screen.queryByTestId("fleet-idle-warning")).toBeNull();
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+    });
+
+    it("shows the warning strip after the idle timeout fires", () => {
+      armTwo();
+      render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS);
+      });
+      expect(screen.getByTestId("fleet-idle-warning")).toBeTruthy();
+      expect(useFleetIdleStore.getState().phase).toBe("warning");
+    });
+
+    it("auto-exits broadcast mode when the grace period elapses without response", () => {
+      armTwo();
+      render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_GRACE_MS);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+    });
+
+    it("'Stay armed' dismisses the warning and restarts the idle timer", () => {
+      armTwo();
+      render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS);
+      });
+      fireEvent.click(screen.getByTestId("fleet-idle-stay"));
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+      expect(screen.queryByTestId("fleet-idle-warning")).toBeNull();
+      // Grace timer must be cleared — advancing past its original window must not auto-exit.
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_GRACE_MS);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+    });
+
+    it("'Exit' button clears the armed set immediately", () => {
+      armTwo();
+      render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS);
+      });
+      fireEvent.click(screen.getByTestId("fleet-idle-exit"));
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+    });
+
+    it("typing in the textarea resets the idle timer", () => {
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS - 1000);
+      });
+      fireEvent.change(textarea, { target: { value: "typing" } });
+      // Advance past the original timeout — warning should NOT fire because
+      // the timer was reset by the change event.
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+      expect(screen.queryByTestId("fleet-idle-warning")).toBeNull();
+    });
+
+    it("focusing the textarea resets the idle timer", () => {
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS - 1000);
+      });
+      fireEvent.focus(textarea);
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+    });
+
+    it("arm-set change while still armed resets the idle timer", () => {
+      armTwo();
+      render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS - 1000);
+      });
+      act(() => {
+        // New arming action — timer should reset.
+        useFleetArmingStore.getState().armIds(["t1"]);
+      });
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+      expect(screen.queryByTestId("fleet-idle-warning")).toBeNull();
+    });
+
+    it("armedCount → 0 clears timers and resets the phase", () => {
+      armTwo();
+      render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS);
+      });
+      expect(useFleetIdleStore.getState().phase).toBe("warning");
+
+      act(() => {
+        useFleetArmingStore.getState().clear();
+      });
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+
+      // No auto-exit callback should fire after clear — armed set stays empty.
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_GRACE_MS);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+    });
+
+    it("confirming state defers auto-exit but exits after the retry cap", () => {
+      armTwo();
+      render(<FleetComposer />);
+      const textarea = screen.getByTestId("fleet-composer-textarea") as HTMLTextAreaElement;
+
+      // Open the confirmation strip — triggers a submit attempt that calls
+      // resetIdleTimer(), so advance past the new idle window afterwards.
+      fireEvent.change(textarea, { target: { value: "rm -rf node_modules" } });
+      fireEvent.keyDown(textarea, { key: "Enter" });
+      expect(screen.getByTestId("fleet-composer-confirm")).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS);
+      });
+      // Warning appears; grace timer starts.
+      expect(useFleetIdleStore.getState().phase).toBe("warning");
+
+      // Grace fires but confirming is true → first reschedule.
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_GRACE_MS);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+
+      // Second reschedule.
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_RESCHEDULE_MS);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+
+      // Third fire — retry cap reached, exit regardless.
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_RESCHEDULE_MS);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+    });
+
+    it("unmount during warning phase cancels the pending auto-exit", () => {
+      armTwo();
+      const { unmount } = render(<FleetComposer />);
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_TIMEOUT_MS);
+      });
+      unmount();
+
+      // After unmount, advancing timers must not clear the armed set.
+      act(() => {
+        vi.advanceTimersByTime(FLEET_IDLE_GRACE_MS * 2);
+      });
+      expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+      expect(useFleetIdleStore.getState().phase).toBe("idle");
+    });
   });
 });
