@@ -11,9 +11,12 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
+import { useFleetIdleStore } from "@/store/fleetIdleStore";
 import { useCommandHistoryStore } from "@/store/commandHistoryStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useProjectStore } from "@/store/projectStore";
+import { FLEET_IDLE_GRACE_MS, useFleetIdleTimer } from "@/hooks/useFleetIdleTimer";
+import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
 import { logWarn } from "@/utils/logger";
 import {
   getFleetBroadcastHistoryKey,
@@ -76,11 +79,42 @@ export function FleetComposer(): ReactElement | null {
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const historySnapshotRef = useRef<string>("");
   const submittingRef = useRef<boolean>(false);
+  const isConfirmingRef = useRef<boolean>(false);
+  const isSubmittingRef = useRef<boolean>(false);
+  const isDryRunOpenRef = useRef<boolean>(false);
 
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isDryRunOpen, setIsDryRunOpen] = useState(false);
+
+  useEffect(() => {
+    isConfirmingRef.current = isConfirming;
+  }, [isConfirming]);
+
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
+
+  useEffect(() => {
+    isDryRunOpenRef.current = isDryRunOpen;
+  }, [isDryRunOpen]);
+
+  const { resetIdleTimer, exitNow } = useFleetIdleTimer({
+    isConfirmingRef,
+    isSubmittingRef,
+    isDryRunOpenRef,
+  });
+
+  const idlePhase = useFleetIdleStore((s) => s.phase);
+  const warningStartedAt = useFleetIdleStore((s) => s.warningStartedAt);
+  const tick = useGlobalSecondTicker();
+  const isWarning = idlePhase === "warning" && warningStartedAt !== null;
+  const graceSecondsRemaining = isWarning
+    ? Math.max(0, Math.ceil((warningStartedAt + FLEET_IDLE_GRACE_MS - Date.now()) / 1000))
+    : 0;
+  // Reference `tick` so the countdown re-renders each second; value not otherwise used.
+  void tick;
 
   useEffect(() => {
     const unregister = registerFleetComposerFocusHandler(() => {
@@ -115,6 +149,10 @@ export function FleetComposer(): ReactElement | null {
 
       const currentDraft = useFleetComposerStore.getState().draft;
       if (currentDraft.trim() === "") return;
+
+      // A submit attempt — successful or blocked by confirmation — counts as
+      // activity; reset the idle timer so the warning doesn't appear mid-flow.
+      resetIdleTimer();
 
       // alwaysPreview: when enabled, Enter opens the dry-run dialog instead of sending directly.
       if (!force && !isConfirming && useFleetComposerStore.getState().alwaysPreview) {
@@ -217,7 +255,7 @@ export function FleetComposer(): ReactElement | null {
         setIsSubmitting(false);
       }
     },
-    [clearDraft, clearLastFailed, historyKey, isConfirming, setLastFailed]
+    [clearDraft, clearLastFailed, historyKey, isConfirming, resetIdleTimer, setLastFailed]
   );
 
   const handleRetryFailed = useCallback(() => {
@@ -339,17 +377,48 @@ export function FleetComposer(): ReactElement | null {
         className="flex flex-col gap-1 border-b border-daintree-border px-3 py-1.5"
         data-testid="fleet-composer"
       >
+        {isWarning && (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="fleet-idle-warning"
+            className="flex items-center gap-2 rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200"
+          >
+            <span className="flex-1">
+              Still broadcasting? Auto-exiting in {graceSecondsRemaining}s
+            </span>
+            <button
+              type="button"
+              onClick={resetIdleTimer}
+              data-testid="fleet-idle-stay"
+              className="rounded-[var(--radius-md)] bg-amber-500/20 px-2 py-0.5 text-amber-100 transition-colors hover:bg-amber-500/30"
+            >
+              Stay armed
+            </button>
+            <button
+              type="button"
+              onClick={exitNow}
+              data-testid="fleet-idle-exit"
+              className="rounded-[var(--radius-md)] px-2 py-0.5 text-daintree-text/70 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
+            >
+              Exit
+            </button>
+          </div>
+        )}
         <div className="flex items-start gap-2">
           <textarea
             ref={textareaRef}
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
+              resetIdleTimer();
               if (historyIndex !== -1) {
                 setHistoryIndex(-1);
                 historySnapshotRef.current = "";
               }
             }}
+            onFocus={resetIdleTimer}
             onKeyDown={handleKeyDown}
             placeholder={placeholderBase}
             rows={1}
