@@ -31,27 +31,39 @@ describe("ResourceEnvironmentsSection", () => {
 
     const inputs = screen.getAllByRole("textbox");
 
-    const provisionInputs = inputs.filter((input) => input.value.includes("up -d"));
+    const provisionInputs = inputs.filter((input) =>
+      (input as HTMLInputElement).value.includes("up -d")
+    );
     expect(provisionInputs).toHaveLength(1);
     expect(provisionInputs[0]?.getAttribute("placeholder")).toBe("");
 
-    const teardownInputs = inputs.filter((input) => input.value.includes("down -v"));
+    const teardownInputs = inputs.filter((input) =>
+      (input as HTMLInputElement).value.includes("down -v")
+    );
     expect(teardownInputs).toHaveLength(1);
     expect(teardownInputs[0]?.getAttribute("placeholder")).toBe("");
 
-    const resumeInputs = inputs.filter((input) => input.value.includes("start"));
+    const resumeInputs = inputs.filter((input) =>
+      (input as HTMLInputElement).value.includes("start")
+    );
     expect(resumeInputs).toHaveLength(1);
     expect(resumeInputs[0]?.getAttribute("placeholder")).toBe("");
 
-    const pauseInputs = inputs.filter((input) => input.value.includes("stop"));
+    const pauseInputs = inputs.filter((input) =>
+      (input as HTMLInputElement).value.includes("stop")
+    );
     expect(pauseInputs).toHaveLength(1);
     expect(pauseInputs[0]?.getAttribute("placeholder")).toBe("");
 
-    const statusInputs = inputs.filter((input) => input.value.includes("ps --format json"));
+    const statusInputs = inputs.filter((input) =>
+      (input as HTMLInputElement).value.includes("ps --format json")
+    );
     expect(statusInputs).toHaveLength(1);
     expect(statusInputs[0]?.getAttribute("placeholder")).toBe("");
 
-    const connectInputs = inputs.filter((input) => input.value.includes("exec app bash"));
+    const connectInputs = inputs.filter((input) =>
+      (input as HTMLInputElement).value.includes("exec app bash")
+    );
     expect(connectInputs).toHaveLength(1);
     expect(connectInputs[0]?.getAttribute("placeholder")).toBe("");
   });
