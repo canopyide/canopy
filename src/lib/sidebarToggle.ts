@@ -18,7 +18,7 @@ export function gatedSidebarToggle(): void {
   const gridIds: string[] = [];
   for (const id of panelState.panelIds) {
     const panel = panelState.panelsById[id];
-    if (panel && panel.location !== "dock" && panel.worktreeId === activeWorktreeId) {
+    if (panel && panel.location === "grid" && panel.worktreeId === activeWorktreeId) {
       gridIds.push(panel.id);
     }
   }
