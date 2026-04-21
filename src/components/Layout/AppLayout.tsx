@@ -31,6 +31,7 @@ import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
 import { useLayoutState } from "@/hooks";
 import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
+import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -230,6 +231,7 @@ export function AppLayout({
   useEffect(() => {
     const handleFocusModeToggle = () => {
       if (useUIStore.getState().hasOpenOverlays()) return;
+      suppressSidebarResizes();
       void handleToggleFocusModeRef.current();
     };
 

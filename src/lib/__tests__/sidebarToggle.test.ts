@@ -19,7 +19,7 @@ vi.mock("@/store/worktreeStore", () => ({
   useWorktreeSelectionStore: { getState: getWorktreeSelectionStateMock },
 }));
 
-import { gatedSidebarToggle } from "../sidebarToggle";
+import { suppressSidebarResizes } from "../sidebarToggle";
 import { SIDEBAR_TOGGLE_LOCK_MS } from "../terminalLayout";
 
 type PanelFixture = {
@@ -36,12 +36,9 @@ function setup(panels: PanelFixture[], activeWorktreeId: string | null) {
   getWorktreeSelectionStateMock.mockReturnValue({ activeWorktreeId });
 }
 
-describe("gatedSidebarToggle", () => {
-  let dispatchSpy: ReturnType<typeof vi.spyOn>;
-
+describe("suppressSidebarResizes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dispatchSpy = vi.spyOn(window, "dispatchEvent");
   });
 
   it("suppresses resizes for grid panels of the active worktree", () => {
@@ -53,7 +50,7 @@ describe("gatedSidebarToggle", () => {
       "wt-a"
     );
 
-    gatedSidebarToggle();
+    suppressSidebarResizes();
 
     expect(suppressMock).toHaveBeenCalledTimes(1);
     expect(suppressMock).toHaveBeenCalledWith(["p-1", "p-2"], SIDEBAR_TOGGLE_LOCK_MS);
@@ -68,7 +65,7 @@ describe("gatedSidebarToggle", () => {
       "wt-a"
     );
 
-    gatedSidebarToggle();
+    suppressSidebarResizes();
 
     expect(suppressMock).toHaveBeenCalledWith(["p-grid"], SIDEBAR_TOGGLE_LOCK_MS);
   });
@@ -82,28 +79,9 @@ describe("gatedSidebarToggle", () => {
       "wt-a"
     );
 
-    gatedSidebarToggle();
+    suppressSidebarResizes();
 
     expect(suppressMock).toHaveBeenCalledWith(["p-active"], SIDEBAR_TOGGLE_LOCK_MS);
-  });
-
-  it("dispatches the daintree:toggle-focus-mode event", () => {
-    setup([], "wt-a");
-
-    gatedSidebarToggle();
-
-    const events: Event[] = dispatchSpy.mock.calls.map((args: unknown[]) => args[0] as Event);
-    const toggle = events.find((e: Event) => e.type === "daintree:toggle-focus-mode");
-    expect(toggle).toBeDefined();
-  });
-
-  it("still dispatches the toggle event when there are no grid panels", () => {
-    setup([{ id: "p-dock", location: "dock", worktreeId: "wt-a" }], "wt-a");
-
-    gatedSidebarToggle();
-
-    const events: Event[] = dispatchSpy.mock.calls.map((args: unknown[]) => args[0] as Event);
-    expect(events.some((e: Event) => e.type === "daintree:toggle-focus-mode")).toBe(true);
   });
 
   it("excludes trash and background panels from the suppression set", () => {
@@ -116,34 +94,15 @@ describe("gatedSidebarToggle", () => {
       "wt-a"
     );
 
-    gatedSidebarToggle();
+    suppressSidebarResizes();
 
     expect(suppressMock).toHaveBeenCalledWith(["p-grid"], SIDEBAR_TOGGLE_LOCK_MS);
-  });
-
-  it("suppresses resizes before dispatching the toggle event", () => {
-    setup([{ id: "p-1", location: "grid", worktreeId: "wt-a" }], "wt-a");
-
-    const order: string[] = [];
-    suppressMock.mockImplementation(() => {
-      order.push("suppress");
-    });
-    dispatchSpy.mockImplementation((event: Event) => {
-      if (event.type === "daintree:toggle-focus-mode") {
-        order.push("dispatch");
-      }
-      return true;
-    });
-
-    gatedSidebarToggle();
-
-    expect(order).toEqual(["suppress", "dispatch"]);
   });
 
   it("handles a null activeWorktreeId without crashing", () => {
     setup([{ id: "p-1", location: "grid", worktreeId: "wt-a" }], null);
 
-    expect(() => gatedSidebarToggle()).not.toThrow();
+    expect(() => suppressSidebarResizes()).not.toThrow();
     expect(suppressMock).toHaveBeenCalledWith([], SIDEBAR_TOGGLE_LOCK_MS);
   });
 });

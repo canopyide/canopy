@@ -136,7 +136,6 @@ import type { BuiltInPanelKind } from "./types";
 import type { TerminalType } from "@shared/types";
 import { actionService } from "./services/ActionService";
 import { voiceRecordingService } from "./services/VoiceRecordingService";
-import { gatedSidebarToggle } from "./lib/sidebarToggle";
 import { useRenderProfiler } from "./utils/renderProfiler";
 
 import { SidebarContent, preloadNewWorktreeDialog, E2EFaultInjector } from "./components/Sidebar";
@@ -375,7 +374,7 @@ function App() {
   const { inject } = useContextInjection();
 
   const handleToggleSidebar = useCallback(() => {
-    gatedSidebarToggle();
+    window.dispatchEvent(new CustomEvent("daintree:toggle-focus-mode"));
   }, []);
 
   useActionRegistry({
