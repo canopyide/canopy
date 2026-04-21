@@ -44,9 +44,9 @@ export function FleetDryRunDialog({
       const armedIds = Array.from(useFleetArmingStore.getState().armedIds);
       const projectId = useProjectStore.getState().currentProject?.id;
       const historyKey = getFleetBroadcastHistoryKey(projectId);
-      useCommandHistoryStore.getState().recordPrompt(historyKey, draft, null, { armedIds });
 
       if (result.successCount > 0) {
+        useCommandHistoryStore.getState().recordPrompt(historyKey, draft, null, { armedIds });
         useFleetComposerStore.getState().clearDraft();
       }
 
