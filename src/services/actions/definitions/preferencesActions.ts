@@ -93,6 +93,21 @@ export function registerPreferencesActions(
     },
   }));
 
+  actions.set("preferences.reduceAnimations.set", () => ({
+    id: "preferences.reduceAnimations.set",
+    title: "Set Reduce UI Animations",
+    description: "Minimize motion across the interface, independent of OS settings",
+    category: "preferences",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ value: z.boolean() }),
+    run: async (args: unknown) => {
+      const { value } = args as { value: boolean };
+      usePreferencesStore.getState().setReduceAnimations(value);
+    },
+  }));
+
   actions.set("window.toggleFullscreen", () => ({
     id: "window.toggleFullscreen",
     title: "Toggle Fullscreen",

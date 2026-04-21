@@ -404,6 +404,38 @@
     "Liberation Mono", "Courier New", monospace;
 }
 
+/* Motion token scale — single source of truth for durations and easings.
+ * Emitted to :root (plain @theme, not inline) so @keyframes rules can use var().
+ * Also generates Tailwind utilities (duration-*, ease-*) via the Tailwind v4
+ * theme namespace convention. Philosophy: every token is sub-300ms; interaction
+ * motion clarifies what happened, it never makes the user wait.
+ */
+@theme {
+  --duration-75: 75ms;
+  --duration-100: 100ms;
+  --duration-150: 150ms;
+  --duration-200: 200ms;
+  --duration-250: 250ms;
+  --duration-300: 300ms;
+  --ease-snappy: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring-critical: linear(
+    0,
+    0.007,
+    0.029 2.2%,
+    0.118 4.7%,
+    0.625 14.4%,
+    0.826 19%,
+    0.902 24%,
+    0.962 29.8%,
+    0.984 33.3%,
+    1.004 37.8%,
+    1.01 42.4%,
+    1.011 52.2%,
+    1.001
+  );
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 pre code.hljs {
   display: block;
   overflow-x: auto;
@@ -947,20 +979,28 @@ body,
   will-change: opacity, transform;
 }
 
-/* Agent status indicator pulse animation */
+/* Agent status indicator flash — single-shot scale+opacity on state transition.
+ * Previously infinite (1.5s loop), now a 150ms one-shot driven by the consumer
+ * toggling the class on state change (see AgentStatusIndicator).
+ */
 @keyframes agent-pulse {
-  0%,
+  0% {
+    opacity: 0.7;
+    transform: scale(0.92);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
   100% {
     opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
+    transform: scale(1);
   }
 }
 
 .animate-agent-pulse {
-  animation: agent-pulse 1.5s ease-in-out infinite;
-  will-change: opacity;
+  animation: agent-pulse var(--duration-150) var(--ease-out-expo) 1 both;
+  will-change: opacity, transform;
 }
 
 /* Organic breathing animation for waiting/loading states
@@ -1162,7 +1202,11 @@ body,
   will-change: opacity;
 }
 
-/* Respect user's motion preferences */
+/* Respect user's motion preferences — OS prefers-reduced-motion and the
+ * Daintree-level "Reduce UI animations" toggle (body[data-reduce-animations])
+ * both remove spatial motion while leaving opacity changes intact.
+ * WCAG 2.2 SC 2.3.3: remove motion, don't just speed it up.
+ */
 @media (prefers-reduced-motion: reduce) {
   .animate-activity-pulse,
   .animate-agent-pulse,
@@ -1182,12 +1226,10 @@ body,
     will-change: auto;
   }
 
-  /* Disable focus ring transitions for reduced motion */
   *:focus-visible {
     transition: none !important;
   }
 
-  /* Disable window-unfocused transitions for reduced motion */
   .animate-activity-pulse,
   .animate-agent-pulse,
   .animate-breathe,
@@ -1196,7 +1238,6 @@ body,
     transition: none;
   }
 
-  /* Disable button scale transforms for reduced motion */
   button,
   [role="button"],
   [type="button"],
@@ -1205,6 +1246,48 @@ body,
     transform: none !important;
     transition: none !important;
   }
+}
+
+body[data-reduce-animations="true"]
+  :is(
+    .animate-activity-pulse,
+    .animate-agent-pulse,
+    .animate-breathe,
+    .animate-spin-slow,
+    .animate-pulse-delayed,
+    .animate-pulse-immediate,
+    .status-working,
+    .animate-badge-bump,
+    .animate-activity-blip,
+    .animate-trash-pulse,
+    .animate-all-clear-flash,
+    .animate-diagnostics-flash
+  ) {
+  animation: none;
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] *:focus-visible {
+  transition: none !important;
+}
+
+body[data-reduce-animations="true"]
+  :is(
+    .animate-activity-pulse,
+    .animate-agent-pulse,
+    .animate-breathe,
+    .status-working,
+    .panel-state-working
+  ) {
+  transition: none;
+}
+
+body[data-reduce-animations="true"]
+  :is(button, [role="button"], [type="button"], [type="submit"], [type="reset"]) {
+  transform: none !important;
+  transition: none !important;
 }
 
 /* Terminal trash/restore animations */
@@ -1245,6 +1328,10 @@ body,
   }
 }
 
+body[data-reduce-animations="true"] :is(.terminal-restoring, .terminal-trashing) {
+  animation: none;
+}
+
 /* Terminal Selection State */
 .terminal-selected {
   border-color: color-mix(in oklab, var(--theme-border-strong) 92%, var(--theme-text-primary));
@@ -1267,25 +1354,15 @@ body,
     0 0 0 1px color-mix(in oklab, var(--color-activity-waiting) 10%, transparent);
 }
 
+/* Working state hint — static colored border. Was a 4s infinite breathe,
+ * which in peripheral vision across a multi-panel grid was a fatigue trigger
+ * (WCAG COGA). Status being a value doesn't justify continuous motion.
+ */
 .panel-state-working {
-  animation: panel-working-breathe 4s ease-in-out infinite;
-}
-
-@keyframes panel-working-breathe {
-  0%,
-  100% {
-    border-color: color-mix(in oklab, var(--color-activity-working) 25%, transparent);
-  }
-  50% {
-    border-color: color-mix(in oklab, var(--color-activity-working) 55%, transparent);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .panel-state-working {
-    animation: none;
-    border-color: color-mix(in oklab, var(--color-activity-working) 35%, transparent);
-  }
+  border-color: color-mix(in oklab, var(--color-activity-working) 35%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--color-activity-working) 12%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--color-activity-working) 8%, transparent);
 }
 
 /* Per-worktree color identity — left-edge stripe on grid panels */
@@ -1479,7 +1556,7 @@ body,
   will-change: text-shadow;
 }
 
-/* Respect reduced motion */
+/* Respect reduced motion — OS + Daintree toggle */
 @media (prefers-reduced-motion: reduce) {
   .animate-terminal-ping::before,
   .animate-terminal-ping::after,
@@ -1501,10 +1578,32 @@ body,
     text-shadow: none;
   }
 
-  /* Disable terminal glow transitions for reduced motion */
   .terminal-pane {
     transition: none !important;
   }
+}
+
+body[data-reduce-animations="true"] .animate-terminal-ping::before,
+body[data-reduce-animations="true"] .animate-terminal-ping::after,
+body[data-reduce-animations="true"] .animate-terminal-header-ping {
+  animation: none;
+  opacity: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-reduce-animations="true"] .animate-terminal-ping-select {
+  animation: none !important;
+  transition: none !important;
+}
+
+body[data-reduce-animations="true"] :is(.animate-eco-title, .animate-eco-title-select) {
+  animation: none;
+  text-shadow: none;
+}
+
+body[data-reduce-animations="true"] .terminal-pane {
+  transition: none !important;
 }
 
 /* GitHub Status Indicator Animations

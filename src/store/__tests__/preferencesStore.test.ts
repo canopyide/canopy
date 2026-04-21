@@ -167,4 +167,85 @@ describe("preferencesStore migration", () => {
     expect(state.assignWorktreeToSelf).toBe(true);
     expect(state.lastSelectedWorktreeRecipeIdByProject).toEqual({ "proj-1": "r1" });
   });
+
+  describe("reduceAnimations", () => {
+    it("defaults to false on a fresh install", async () => {
+      const store = await loadStore();
+      expect(store.getState().reduceAnimations).toBe(false);
+    });
+
+    it("setReduceAnimations updates the flag", async () => {
+      const store = await loadStore();
+      store.getState().setReduceAnimations(true);
+      expect(store.getState().reduceAnimations).toBe(true);
+      store.getState().setReduceAnimations(false);
+      expect(store.getState().reduceAnimations).toBe(false);
+    });
+
+    it("persists the value to localStorage", async () => {
+      const store = await loadStore();
+      store.getState().setReduceAnimations(true);
+      await vi.waitFor(() => {
+        const persisted = storageMock.getItem(STORAGE_KEY);
+        expect(persisted).not.toBeNull();
+        const parsed = JSON.parse(persisted!);
+        expect(parsed.state.reduceAnimations).toBe(true);
+      });
+    });
+
+    it("migrates v3 state (pre-reduceAnimations) to v4 with default false", async () => {
+      setStoredState(
+        {
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: true,
+          showDockAgentHighlights: false,
+          dockDensity: "comfortable",
+          assignWorktreeToSelf: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        3
+      );
+
+      const store = await loadStore();
+      const state = store.getState();
+      expect(state.reduceAnimations).toBe(false);
+      expect(state.dockDensity).toBe("comfortable");
+      expect(state.showGridAgentHighlights).toBe(true);
+    });
+
+    it("preserves an explicitly persisted true value across v4 migrations", async () => {
+      setStoredState(
+        {
+          reduceAnimations: true,
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        3
+      );
+
+      const store = await loadStore();
+      expect(store.getState().reduceAnimations).toBe(true);
+    });
+
+    it("migrates fresh v4 state (reduceAnimations absent) to default false", async () => {
+      setStoredState(
+        {
+          showProjectPulse: true,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        4
+      );
+
+      const store = await loadStore();
+      expect(store.getState().reduceAnimations).toBe(false);
+    });
+  });
 });

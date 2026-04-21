@@ -13,7 +13,13 @@ import { ChordIndicator } from "./ChordIndicator";
 import { DemoCaptureBridge, DemoCursor, DemoOverlay } from "../Demo";
 
 import { AllClearOverlay } from "../AllClearOverlay";
-import { useDiagnosticsStore, useDockStore, useThemeBrowserStore, type PanelState } from "@/store";
+import {
+  useDiagnosticsStore,
+  useDockStore,
+  usePreferencesStore,
+  useThemeBrowserStore,
+  type PanelState,
+} from "@/store";
 import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
@@ -62,6 +68,7 @@ export function AppLayout({
   const currentProject = useProjectStore((state) => state.currentProject);
   const layout = useLayoutState();
   const themeBrowserOpen = useThemeBrowserStore((s) => s.isOpen);
+  const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
   const showSidebar = !layout.isFocusMode && currentProject != null;
 
   useEffect(() => {
@@ -71,6 +78,17 @@ export function AppLayout({
       document.body.removeAttribute("data-performance-mode");
     }
   }, [layout.performanceMode]);
+
+  useEffect(() => {
+    if (reduceAnimations) {
+      document.body.setAttribute("data-reduce-animations", "true");
+    } else {
+      document.body.removeAttribute("data-reduce-animations");
+    }
+    return () => {
+      document.body.removeAttribute("data-reduce-animations");
+    };
+  }, [reduceAnimations]);
 
   const handleToggleProblems = () => {
     const dock = useDiagnosticsStore.getState();

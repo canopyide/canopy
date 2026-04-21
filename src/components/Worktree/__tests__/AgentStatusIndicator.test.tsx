@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, cleanup } from "@testing-library/react";
+import { act, render, cleanup } from "@testing-library/react";
 import { AgentStatusIndicator, getDominantAgentState } from "../AgentStatusIndicator";
 import type { AgentState } from "@/types";
 
@@ -43,6 +43,64 @@ describe("AgentStatusIndicator", () => {
     );
     expect(container.querySelector('[role="img"]')).toBeNull();
     expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("does not apply the flash class on first render (no pulse-on-mount)", () => {
+    const { container } = render(<AgentStatusIndicator state="working" />);
+    const el = container.querySelector('[role="img"]');
+    expect(el?.className).not.toContain("animate-agent-pulse");
+  });
+
+  it("applies the flash class when agent state transitions", () => {
+    const { container, rerender } = render(<AgentStatusIndicator state="working" />);
+    rerender(<AgentStatusIndicator state="completed" />);
+    const el = container.querySelector('[role="img"]');
+    expect(el?.className).toContain("animate-agent-pulse");
+  });
+
+  it("clears the flash class after the safety timeout fires", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(<AgentStatusIndicator state="working" />);
+      rerender(<AgentStatusIndicator state="completed" />);
+      let el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).toContain("animate-agent-pulse");
+
+      // Under reduced-motion CSS sets `animation: none`, so `animationend`
+      // never fires. The 250ms safety timeout must still clear the class so
+      // subsequent transitions can re-arm it.
+      act(() => {
+        vi.advanceTimersByTime(260);
+      });
+
+      el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).not.toContain("animate-agent-pulse");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-applies the flash class on each state transition (not a mount-only effect)", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(<AgentStatusIndicator state="working" />);
+      rerender(<AgentStatusIndicator state="running" />);
+      let el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).toContain("animate-agent-pulse");
+
+      // Let the first flash clear via the safety timeout, then trigger a
+      // second transition. If the latch bug returned, the class wouldn't
+      // remove and re-add.
+      act(() => {
+        vi.advanceTimersByTime(260);
+      });
+
+      rerender(<AgentStatusIndicator state="completed" />);
+      el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).toContain("animate-agent-pulse");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

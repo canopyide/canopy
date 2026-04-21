@@ -274,7 +274,7 @@ export function ProjectSwitcher() {
                     className={cn(
                       "absolute top-1 right-1 h-2 w-2 rounded-full ring-2 ring-[var(--color-surface-panel-elevated)]",
                       badgeStatus.color,
-                      badgeStatus.pulse && "animate-agent-pulse"
+                      badgeStatus.pulse && "animate-activity-pulse"
                     )}
                   />
                 )}

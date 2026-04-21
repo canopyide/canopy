@@ -79,6 +79,7 @@ export type BuiltInActionId =
   | "preferences.showDeveloperTools.set"
   | "preferences.showGridAgentHighlights.set"
   | "preferences.showDockAgentHighlights.set"
+  | "preferences.reduceAnimations.set"
   | "window.toggleFullscreen"
   | "window.reload"
   | "window.forceReload"

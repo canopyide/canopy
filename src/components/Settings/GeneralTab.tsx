@@ -11,6 +11,7 @@ import {
   Info,
   ExternalLink,
   RefreshCw,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon, ProjectPulseIcon } from "@/components/icons";
@@ -132,6 +133,7 @@ export function GeneralTab({
   const showDeveloperTools = usePreferencesStore((s) => s.showDeveloperTools);
   const showGridAgentHighlights = usePreferencesStore((s) => s.showGridAgentHighlights);
   const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);
+  const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
 
   useEffect(() => {
     let cancelled = false;
@@ -832,6 +834,31 @@ export function GeneralTab({
                 void actionService.dispatch(
                   "preferences.showDockAgentHighlights.set",
                   { show: false },
+                  { source: "user" }
+                )
+              }
+            />
+          </div>
+
+          <div id="general-reduce-animations">
+            <SettingsSwitchCard
+              icon={Gauge}
+              title="Reduce UI Animations"
+              subtitle="Minimize motion across the interface, independent of your OS reduce-motion setting."
+              isEnabled={reduceAnimations}
+              onChange={() =>
+                void actionService.dispatch(
+                  "preferences.reduceAnimations.set",
+                  { value: !reduceAnimations },
+                  { source: "user" }
+                )
+              }
+              ariaLabel="Reduce UI Animations Toggle"
+              isModified={reduceAnimations}
+              onReset={() =>
+                void actionService.dispatch(
+                  "preferences.reduceAnimations.set",
+                  { value: false },
                   { source: "user" }
                 )
               }

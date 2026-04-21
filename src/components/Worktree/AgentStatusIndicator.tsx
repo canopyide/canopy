@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import type { AgentState } from "@/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -15,7 +16,6 @@ const STATE_CONFIG: Record<
     bgColor?: string;
     borderColor?: string;
     glow?: string;
-    pulse: boolean;
     label: string;
     tooltip: string;
   }
@@ -23,7 +23,6 @@ const STATE_CONFIG: Record<
   working: {
     icon: "⟳",
     color: "status-working",
-    pulse: false,
     label: "working",
     tooltip: "Agent is working on your request",
   },
@@ -31,7 +30,6 @@ const STATE_CONFIG: Record<
     icon: "▶",
     color: "text-status-info",
     borderColor: "border-status-info",
-    pulse: false,
     label: "running",
     tooltip: "Process is running",
   },
@@ -40,21 +38,18 @@ const STATE_CONFIG: Record<
     color: "text-daintree-bg",
     bgColor: "bg-state-waiting",
     glow: "shadow-[0_0_8px_color-mix(in_srgb,var(--color-activity-waiting)_40%,transparent)]",
-    pulse: false,
     label: "waiting",
     tooltip: "Agent is waiting for your direction",
   },
   completed: {
     icon: "✓",
     color: "text-status-success",
-    pulse: false,
     label: "completed",
     tooltip: "Agent finished this task",
   },
   exited: {
     icon: "–",
     color: "text-daintree-text/40",
-    pulse: false,
     label: "exited",
     tooltip: "Process exited",
   },
@@ -62,13 +57,36 @@ const STATE_CONFIG: Record<
     icon: "✎",
     color: "text-status-info",
     borderColor: "border-status-info",
-    pulse: false,
     label: "directing",
     tooltip: "You are typing a prompt for this agent",
   },
 };
 
 export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorProps) {
+  const prevStateRef = useRef<AgentState | null | undefined>(state);
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  // Trigger a one-shot flash when the state actually changes — replaces the
+  // previous 1.5s infinite pulse. Status being a value doesn't deserve motion;
+  // status changing does. Skipped on first render (prevState seeded to current).
+  useEffect(() => {
+    if (prevStateRef.current !== state) {
+      prevStateRef.current = state;
+      setIsFlashing(true);
+    }
+  }, [state]);
+
+  // Safety cleanup — under reduced-motion CSS sets `animation: none`, so the
+  // `animationend` event never fires and `isFlashing` would latch true,
+  // preventing subsequent transitions from producing a class-remove/re-add
+  // cycle. The timeout is slightly longer than the animation so it only wins
+  // the race when `animationend` is suppressed.
+  useEffect(() => {
+    if (!isFlashing) return;
+    const timer = setTimeout(() => setIsFlashing(false), 250);
+    return () => clearTimeout(timer);
+  }, [isFlashing]);
+
   if (!state || state === "idle" || state === "waiting") {
     return null;
   }
@@ -89,11 +107,12 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
             config.borderColor && "border",
             config.borderColor,
             config.glow,
-            config.pulse && "animate-agent-pulse",
+            isFlashing && "animate-agent-pulse",
             className
           )}
           role="img"
           aria-label={`Agent status: ${config.label}`}
+          onAnimationEnd={() => setIsFlashing(false)}
         >
           {config.icon}
         </span>
