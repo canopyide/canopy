@@ -32,6 +32,15 @@ describe("decideSelectHandleAction", () => {
       type: "toggle",
     });
   });
+
+  it("shift wins over ⌘/Ctrl when both are held (handle always prefers range-extend)", () => {
+    expect(
+      decideSelectHandleAction({ shiftKey: true, metaKey: true, ctrlKey: false }, ["a", "b"])
+    ).toEqual({ type: "extend" });
+    expect(
+      decideSelectHandleAction({ shiftKey: true, metaKey: false, ctrlKey: true }, ["a", "b"])
+    ).toEqual({ type: "extend" });
+  });
 });
 
 describe("decideChromeAction", () => {
@@ -75,5 +84,20 @@ describe("decideChromeAction", () => {
     expect(
       decideChromeAction({ ...noMods, shiftKey: true }, { isEligible: true, isArmed: true })
     ).toEqual({ type: "bump-primary" });
+  });
+
+  it("⌘/Ctrl wins over shift when both are held (chrome toggle beats xterm selection)", () => {
+    expect(
+      decideChromeAction(
+        { shiftKey: true, metaKey: true, ctrlKey: false },
+        { isEligible: true, isArmed: false }
+      )
+    ).toEqual({ type: "toggle" });
+    expect(
+      decideChromeAction(
+        { shiftKey: true, metaKey: false, ctrlKey: true },
+        { isEligible: true, isArmed: true }
+      )
+    ).toEqual({ type: "toggle" });
   });
 });
