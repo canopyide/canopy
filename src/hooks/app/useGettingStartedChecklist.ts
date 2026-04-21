@@ -5,6 +5,19 @@ import { usePanelStore } from "@/store/panelStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { notify } from "@/lib/notify";
 import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
+import { ACTIVE_AGENT_STATES } from "@shared/types/agent";
+import type { TerminalInstance } from "@shared/types/panel";
+
+function countActiveAgentPanels(panelsById: Record<string, TerminalInstance>): number {
+  let count = 0;
+  for (const panel of Object.values(panelsById)) {
+    if (panel?.kind !== "agent") continue;
+    const state = panel.agentState;
+    if (state && ACTIVE_AGENT_STATES.has(state)) count += 1;
+    if (count >= 2) return count;
+  }
+  return count;
+}
 
 export interface GettingStartedChecklistState {
   visible: boolean;
@@ -37,6 +50,12 @@ function reconcileCurrentState(
   }
   if (!cl.items.createdWorktree && getCurrentViewStore().getState().worktrees.size > 1) {
     markItem("createdWorktree");
+  }
+  if (
+    !cl.items.ranSecondParallelAgent &&
+    countActiveAgentPanels(usePanelStore.getState().panelsById) >= 2
+  ) {
+    markItem("ranSecondParallelAgent");
   }
 }
 
@@ -151,9 +170,15 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
       }),
       usePanelStore.subscribe((state) => {
         const cl = getChecklist();
-        if (!cl || cl.dismissed || cl.items.launchedAgent) return;
-        if (state.panelIds.some((id) => state.panelsById[id]?.kind === "agent")) {
+        if (!cl || cl.dismissed) return;
+        if (
+          !cl.items.launchedAgent &&
+          state.panelIds.some((id) => state.panelsById[id]?.kind === "agent")
+        ) {
           markItem("launchedAgent");
+        }
+        if (!cl.items.ranSecondParallelAgent && countActiveAgentPanels(state.panelsById) >= 2) {
+          markItem("ranSecondParallelAgent");
         }
       }),
       viewStore.subscribe((state) => {
