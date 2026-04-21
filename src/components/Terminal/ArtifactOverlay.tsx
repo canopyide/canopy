@@ -499,5 +499,3 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
     </div>
   );
 }
-
-export default ArtifactOverlay;

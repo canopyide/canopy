@@ -965,5 +965,3 @@ function TerminalPaneComponent({
 }
 
 export const TerminalPane = React.memo(TerminalPaneComponent);
-
-export default TerminalPane;

@@ -429,5 +429,3 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
     applyAllPatches,
   };
 }
-
-export default useArtifacts;

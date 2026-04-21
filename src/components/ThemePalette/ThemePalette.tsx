@@ -205,5 +205,3 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
     />
   );
 }
-
-export default ThemePalette;

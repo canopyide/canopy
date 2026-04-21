@@ -1326,5 +1326,3 @@ export function ContentGrid({
     </div>
   );
 }
-
-export default ContentGrid;

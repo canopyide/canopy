@@ -125,5 +125,3 @@ export function WorktreePalette({
     />
   );
 }
-
-export default WorktreePalette;

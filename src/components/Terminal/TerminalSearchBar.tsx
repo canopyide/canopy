@@ -338,5 +338,3 @@ export function TerminalSearchBar({ terminalId, onClose, className }: TerminalSe
     </div>
   );
 }
-
-export default TerminalSearchBar;

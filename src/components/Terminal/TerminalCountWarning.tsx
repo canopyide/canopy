@@ -154,5 +154,3 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
     </div>
   );
 }
-
-export default TerminalCountWarning;

@@ -156,5 +156,3 @@ export function useErrors() {
     getTerminalErrors,
   };
 }
-
-export default useErrors;

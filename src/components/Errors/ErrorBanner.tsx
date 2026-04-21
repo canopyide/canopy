@@ -204,5 +204,3 @@ export function ErrorBanner({
     </div>
   );
 }
-
-export default ErrorBanner;

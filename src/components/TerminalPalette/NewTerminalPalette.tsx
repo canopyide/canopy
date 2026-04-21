@@ -151,5 +151,3 @@ export function NewTerminalPalette({
     </AppPaletteDialog>
   );
 }
-
-export default NewTerminalPalette;
