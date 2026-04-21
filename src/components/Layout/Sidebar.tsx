@@ -104,10 +104,13 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
           aria-label="Sidebar"
           data-macro-focus={isMacroFocused ? "true" : undefined}
           className={cn(
-            "relative shrink-0 flex flex-col outline-none",
+            "relative shrink-0 flex flex-col outline-none overflow-hidden",
             "surface-chrome",
             "border-r border-divider",
             "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
+            !isResizing &&
+              "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+            width === 0 && "pointer-events-none",
             className
           )}
           style={{ width }}
