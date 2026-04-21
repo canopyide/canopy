@@ -5,10 +5,7 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { logWarn } from "@/utils/logger";
 import { useNotificationStore } from "@/store/notificationStore";
-import {
-  getFleetBroadcastWarnings,
-  resolveFleetBroadcastTargetIds,
-} from "./fleetBroadcast";
+import { getFleetBroadcastWarnings, resolveFleetBroadcastTargetIds } from "./fleetBroadcast";
 import { broadcastFleetLiteralPaste } from "./fleetExecution";
 import { registerFleetComposerFocusHandler } from "./fleetComposerFocus";
 import { useFleetLiveKeyCapture } from "./useFleetLiveKeyCapture";

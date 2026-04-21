@@ -2,10 +2,7 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { usePanelStore } from "@/store/panelStore";
 import { terminalClient } from "@/clients";
 import { replaceRecipeVariables, type RecipeContext } from "@/utils/recipeVariables";
-import {
-  buildFleetBroadcastRecipeContext,
-  resolveFleetBroadcastTargetIds,
-} from "./fleetBroadcast";
+import { buildFleetBroadcastRecipeContext, resolveFleetBroadcastTargetIds } from "./fleetBroadcast";
 
 export interface FleetTargetPreview {
   terminalId: string;

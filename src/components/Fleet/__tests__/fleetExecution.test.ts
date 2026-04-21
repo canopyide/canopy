@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  broadcastFleetKeySequence,
-  broadcastFleetLiteralPaste,
-} from "../fleetExecution";
+import { broadcastFleetKeySequence, broadcastFleetLiteralPaste } from "../fleetExecution";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { usePanelStore } from "@/store/panelStore";
 import type { TerminalInstance } from "@shared/types";

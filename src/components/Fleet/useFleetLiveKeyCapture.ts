@@ -2,10 +2,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { logWarn } from "@/utils/logger";
-import {
-  needsFleetBroadcastConfirmation,
-  resolveFleetBroadcastTargetIds,
-} from "./fleetBroadcast";
+import { needsFleetBroadcastConfirmation, resolveFleetBroadcastTargetIds } from "./fleetBroadcast";
 import { broadcastFleetKeySequence, broadcastFleetLiteralPaste } from "./fleetExecution";
 
 export interface FleetLiveKeyCaptureOptions {
