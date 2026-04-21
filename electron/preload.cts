@@ -505,7 +505,10 @@ function _ensureEventBusWired(): void {
     if (typeof envelope.name !== "string") return;
     const subs = _eventBusSubscribers.get(envelope.name);
     if (!subs || subs.size === 0) return;
-    for (const cb of subs) {
+    // Snapshot before iterating: a subscriber may unsubscribe itself or
+    // another subscriber during dispatch; iterating the live Set would make
+    // delivery to surviving subscribers depend on insertion order.
+    for (const cb of [...subs]) {
       try {
         cb(envelope.payload);
       } catch (err) {
