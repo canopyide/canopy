@@ -112,6 +112,7 @@ export function AppPaletteDialog({
       )}
       style={{
         transitionDuration: isVisible ? `${UI_ENTER_DURATION}ms` : `${UI_EXIT_DURATION}ms`,
+        transitionTimingFunction: "linear",
       }}
       onClick={handleBackdropClick}
       role="dialog"
