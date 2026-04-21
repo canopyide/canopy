@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { WorktreeState } from "../../types";
 import type { GitHubIssue } from "@shared/types/github";
@@ -281,9 +281,35 @@ export const WorktreeCard = React.memo(function WorktreeCard({
     }
   }, [worktree.id]);
 
-  const { counts: terminalCounts, terminals: worktreeTerminals } = useWorktreeTerminals(
-    worktree.id
-  );
+  const {
+    counts: terminalCounts,
+    terminals: worktreeTerminals,
+    dominantAgentState,
+  } = useWorktreeTerminals(worktree.id);
+
+  // Border accent flash — fires once when the dominant *execution* state for
+  // this card meaningfully changes. `directing` is excluded because it's
+  // driven by the user's local typing cycle (start typing → directing,
+  // submit/clear → null), which would flash the card on every keystroke
+  // rather than on real agent activity. The flashKey counter remounts the
+  // overlay on each transition so back-to-back changes restart the
+  // animation rather than dropping silently.
+  const prevAgentStateRef = useRef(dominantAgentState);
+  const [flashKey, setFlashKey] = useState(0);
+
+  useEffect(() => {
+    const prev = prevAgentStateRef.current;
+    if (prev !== dominantAgentState) {
+      prevAgentStateRef.current = dominantAgentState;
+      if (
+        dominantAgentState !== null &&
+        dominantAgentState !== "directing" &&
+        prev !== "directing"
+      ) {
+        setFlashKey((k) => k + 1);
+      }
+    }
+  }, [dominantAgentState]);
   const setFocused = usePanelStore((state) => state.setFocused);
   const pingTerminal = usePanelStore((state) => state.pingTerminal);
   const openDockTerminal = usePanelStore((state) => state.openDockTerminal);
@@ -684,6 +710,16 @@ export const WorktreeCard = React.memo(function WorktreeCard({
                 "absolute inset-0 z-50 bg-accent-primary/10 border-2 border-accent-primary pointer-events-none animate-in fade-in duration-150",
                 variant === "grid" && "rounded-lg"
               )}
+            />
+          )}
+          {flashKey > 0 && (
+            <div
+              key={flashKey}
+              className={cn(
+                "absolute inset-0 z-20 pointer-events-none border border-accent-primary animate-border-flash",
+                variant === "grid" && "rounded-lg"
+              )}
+              aria-hidden="true"
             />
           )}
           {chipState !== null && (

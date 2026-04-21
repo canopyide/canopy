@@ -1,4 +1,5 @@
 import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WorktreeState } from "@/types";
 import type { RetryAction } from "@/store";
 import type { AppError } from "@/store/errorStore";
@@ -83,6 +84,22 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
   } = props;
   const detailsId = `worktree-${worktree.id}-details`;
   const detailsPanelId = `worktree-${worktree.id}-details-panel`;
+
+  // One-shot bump on file-count change. Counter increments on every change
+  // and is used as a `key` on the count span so back-to-back updates remount
+  // the node and restart the animation (a plain boolean latch would silently
+  // drop a second update arriving inside the 200ms animation window).
+  // prevRef seeded to current value so mount produces no bump.
+  const changedFileCount = worktree.worktreeChanges?.changedFileCount ?? 0;
+  const prevCountRef = useRef(changedFileCount);
+  const [bumpKey, setBumpKey] = useState(0);
+
+  useEffect(() => {
+    if (prevCountRef.current !== changedFileCount) {
+      prevCountRef.current = changedFileCount;
+      setBumpKey((k) => k + 1);
+    }
+  }, [changedFileCount]);
 
   const rsLower = resourceStatus?.toLowerCase();
   const showResourceResume =
@@ -173,7 +190,10 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                 <span className="text-status-error">{lifecycleLabel}</span>
               ) : hasChanges && worktree.worktreeChanges ? (
                 <span className="flex items-center gap-1.5 text-text-secondary">
-                  <span>
+                  <span
+                    key={bumpKey}
+                    className={cn("inline-block", bumpKey > 0 && "animate-badge-bump")}
+                  >
                     {worktree.worktreeChanges.changedFileCount} file
                     {worktree.worktreeChanges.changedFileCount !== 1 ? "s" : ""}
                   </span>
