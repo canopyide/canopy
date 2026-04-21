@@ -50,7 +50,7 @@ export function getTerminalAppearanceSnapshot(): TerminalAppearanceState {
     performanceMode,
     scrollbackLines,
     projectScrollback,
-    effectiveTheme: colorSchemeState.getEffectiveTheme(),
+    effectiveTheme: selectEffectiveTheme(colorSchemeState),
     wrapperBackground: selectWrapperBackground(colorSchemeState),
     screenReaderMode,
   };

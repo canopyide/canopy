@@ -202,6 +202,17 @@ export const useTerminalColorSchemeStore = create<TerminalColorSchemeState>()((s
 
   getEffectiveTheme: (): ITheme => {
     const state = get();
-    return computeEffectiveTheme(resolveActiveSchemeId(state), state.customSchemes);
+    const activeId = resolveActiveSchemeId(state);
+
+    if (activeId === "app-preview") {
+      const appPreviewSchemeId = useAppThemeStore.getState().previewSchemeId;
+      const appCustomSchemes = useAppThemeStore.getState().customSchemes;
+      return computeAppPreviewTheme(
+        appPreviewSchemeId ?? DEFAULT_APP_SCHEME_ID,
+        appCustomSchemes as AppColorScheme[]
+      );
+    }
+
+    return computeEffectiveTheme(activeId, state.customSchemes);
   },
 }));

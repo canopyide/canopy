@@ -543,5 +543,18 @@ describe("terminalColorSchemeStore", () => {
       const third = selectEffectiveTheme(useTerminalColorSchemeStore.getState());
       expect(third).toEqual(first);
     });
+
+    it("getEffectiveTheme returns app-preview theme when app preview is active", () => {
+      // Set terminal to dracula
+      useTerminalColorSchemeStore.getState().setSelectedSchemeId("dracula");
+
+      // Set app theme preview to bondi
+      useAppThemeStore.setState({ previewSchemeId: "bondi" });
+
+      // getEffectiveTheme should return the app-preview theme (bondi), not dracula
+      const bondiTheme = getTerminalThemeFromAppScheme(resolveAppTheme("bondi", []));
+      const terminalTheme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
+      expect(terminalTheme).toEqual(bondiTheme);
+    });
   });
 });
