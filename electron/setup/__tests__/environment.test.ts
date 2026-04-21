@@ -77,11 +77,8 @@ function getCandidatePaths(): string[] {
     .filter(
       (p) =>
         !p.includes("gpu-disabled.flag") &&
-        !p.includes(".rebrand-migrated") &&
         !p.includes("canopy-app-dev") &&
-        !p.includes("daintree-dev") &&
-        !p.endsWith("Canopy") &&
-        !p.endsWith("Daintree")
+        !p.includes("daintree-dev")
     );
 }
 
