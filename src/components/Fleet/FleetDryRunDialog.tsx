@@ -5,6 +5,7 @@ import {
   executeFleetBroadcast,
   type FleetTargetPreview,
 } from "./fleetExecution";
+import { useNotificationStore } from "@/store/notificationStore";
 import { useCommandHistoryStore } from "@/store/commandHistoryStore";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
@@ -47,10 +48,16 @@ export function FleetDryRunDialog({
 
       if (result.successCount > 0) {
         useCommandHistoryStore.getState().recordPrompt(historyKey, draft, null, { armedIds });
-        useFleetComposerStore.getState().clearDraft();
       }
 
       onSend(result.failureCount > 0 ? result.failedIds : undefined);
+    } catch (e) {
+      useNotificationStore.getState().addNotification({
+        type: "error",
+        priority: "high",
+        message: "Broadcast failed unexpectedly",
+      });
+      throw e;
     } finally {
       setIsSending(false);
     }
