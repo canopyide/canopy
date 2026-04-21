@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, cleanup } from "@testing-library/react";
+import { act, render, cleanup } from "@testing-library/react";
 import { AgentStatusIndicator, getDominantAgentState } from "../AgentStatusIndicator";
 import type { AgentState } from "@/types";
 
@@ -58,32 +58,49 @@ describe("AgentStatusIndicator", () => {
     expect(el?.className).toContain("animate-agent-pulse");
   });
 
-  it("wires an onAnimationEnd handler on the indicator element", () => {
-    const { container, rerender } = render(<AgentStatusIndicator state="working" />);
-    rerender(<AgentStatusIndicator state="completed" />);
-    const el = container.querySelector('[role="img"]') as HTMLElement;
-    expect(el.className).toContain("animate-agent-pulse");
-    // The CSS uses iteration-count:1 / fill-mode:both so the animation
-    // self-terminates after ~150ms. onAnimationEnd also clears the React
-    // state so the same class can be applied again on the next transition.
-    // We don't fireEvent here because React 19's delegated animationend
-    // handling in jsdom is flaky; the behavior is covered by visual QA.
-    const hasHandler = (el as unknown as { onanimationend?: unknown }).onanimationend;
-    // React attaches via synthetic events, not as a native property, so this
-    // just asserts we still have the class wired — the handler's presence is
-    // guaranteed by the render paths above.
-    expect(hasHandler === null || hasHandler === undefined).toBe(true);
+  it("clears the flash class after the safety timeout fires", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(<AgentStatusIndicator state="working" />);
+      rerender(<AgentStatusIndicator state="completed" />);
+      let el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).toContain("animate-agent-pulse");
+
+      // Under reduced-motion CSS sets `animation: none`, so `animationend`
+      // never fires. The 250ms safety timeout must still clear the class so
+      // subsequent transitions can re-arm it.
+      act(() => {
+        vi.advanceTimersByTime(260);
+      });
+
+      el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).not.toContain("animate-agent-pulse");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("re-applies the flash class on each state transition (not a mount-only effect)", () => {
-    const { container, rerender } = render(<AgentStatusIndicator state="working" />);
-    rerender(<AgentStatusIndicator state="running" />);
-    let el = container.querySelector('[role="img"]') as HTMLElement;
-    expect(el.className).toContain("animate-agent-pulse");
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(<AgentStatusIndicator state="working" />);
+      rerender(<AgentStatusIndicator state="running" />);
+      let el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).toContain("animate-agent-pulse");
 
-    rerender(<AgentStatusIndicator state="completed" />);
-    el = container.querySelector('[role="img"]') as HTMLElement;
-    expect(el.className).toContain("animate-agent-pulse");
+      // Let the first flash clear via the safety timeout, then trigger a
+      // second transition. If the latch bug returned, the class wouldn't
+      // remove and re-add.
+      act(() => {
+        vi.advanceTimersByTime(260);
+      });
+
+      rerender(<AgentStatusIndicator state="completed" />);
+      el = container.querySelector('[role="img"]') as HTMLElement;
+      expect(el.className).toContain("animate-agent-pulse");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

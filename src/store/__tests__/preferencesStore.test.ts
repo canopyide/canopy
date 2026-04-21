@@ -232,5 +232,20 @@ describe("preferencesStore migration", () => {
       const store = await loadStore();
       expect(store.getState().reduceAnimations).toBe(true);
     });
+
+    it("migrates fresh v4 state (reduceAnimations absent) to default false", async () => {
+      setStoredState(
+        {
+          showProjectPulse: true,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        4
+      );
+
+      const store = await loadStore();
+      expect(store.getState().reduceAnimations).toBe(false);
+    });
   });
 });

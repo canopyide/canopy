@@ -76,6 +76,17 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
     }
   }, [state]);
 
+  // Safety cleanup — under reduced-motion CSS sets `animation: none`, so the
+  // `animationend` event never fires and `isFlashing` would latch true,
+  // preventing subsequent transitions from producing a class-remove/re-add
+  // cycle. The timeout is slightly longer than the animation so it only wins
+  // the race when `animationend` is suppressed.
+  useEffect(() => {
+    if (!isFlashing) return;
+    const timer = setTimeout(() => setIsFlashing(false), 250);
+    return () => clearTimeout(timer);
+  }, [isFlashing]);
+
   if (!state || state === "idle" || state === "waiting") {
     return null;
   }
