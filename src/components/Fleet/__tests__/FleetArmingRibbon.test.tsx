@@ -436,6 +436,19 @@ describe("FleetArmingRibbon", () => {
       expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
     });
 
+    it("'Focus selection' dispatches fleet.scope.enter with source user", async () => {
+      useFleetArmingStore.getState().armIds(["a", "b"]);
+      const actionServiceModule = await import("@/services/ActionService");
+      const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+      render(<FleetArmingRibbon />);
+      fireEvent.click(findMenuItem(/Focus selection/));
+      const match = dispatchSpy.mock.calls.find((c) => c[0] === "fleet.scope.enter");
+      expect(match).toBeDefined();
+      expect(match?.[1]).toBeUndefined();
+      expect(match?.[2]).toEqual({ source: "user" });
+      dispatchSpy.mockRestore();
+    });
+
     it("'All working' arms agents in 'running' state alongside 'working'", () => {
       seed([makeAgent("t1", "working"), makeAgent("t2", "running")]);
       useFleetArmingStore.getState().armIds(["t1", "t2"]);

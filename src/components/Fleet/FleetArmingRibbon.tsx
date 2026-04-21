@@ -260,6 +260,13 @@ export function FleetArmingRibbon(): ReactElement | null {
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem
+            onSelect={() => {
+              void actionService.dispatch("fleet.scope.enter", undefined, { source: "user" });
+            }}
+          >
+            Focus selection
+          </DropdownMenuItem>
+          <DropdownMenuItem
             destructive
             onSelect={() => {
               clear();
