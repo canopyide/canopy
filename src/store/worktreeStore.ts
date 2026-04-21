@@ -7,6 +7,7 @@ import { logErrorWithContext } from "@/utils/errorContext";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
 import { setWorktreeSelectionStoreGetter } from "./projectStore";
+import { gatedSidebarToggle } from "@/lib/sidebarToggle";
 
 // Getter injected by fleetArmingStore at module init to break the import
 // cycle (fleetArmingStore imports worktreeStore). Returns the current armed
@@ -442,7 +443,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
   openCreateDialog: (initialIssue = null, options) => {
     if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+      gatedSidebarToggle();
     }
     set({
       createDialog: {
@@ -457,7 +458,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
   openCreateDialogForPR: (pr) => {
     if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+      gatedSidebarToggle();
     }
     set({
       createDialog: {
@@ -483,14 +484,14 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
   openBulkCreateDialog: (selectedIssues) => {
     if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+      gatedSidebarToggle();
     }
     set({ bulkCreateDialog: { isOpen: true, mode: "issue", selectedIssues, selectedPRs: [] } });
   },
 
   openBulkCreateDialogForPRs: (selectedPRs) => {
     if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+      gatedSidebarToggle();
     }
     set({ bulkCreateDialog: { isOpen: true, mode: "pr", selectedIssues: [], selectedPRs } });
   },
@@ -500,7 +501,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
   openQuickCreate: (context) => {
     if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+      gatedSidebarToggle();
     }
     set({
       quickCreate: {
