@@ -551,6 +551,7 @@ describe("preferences action hardening", () => {
       "help.launchAgent",
       "help.togglePanel",
       "modal.close",
+      "preferences.reduceAnimations.set",
       "app.quit",
       "app.forceQuit",
     ]);
