@@ -248,6 +248,13 @@ export function FleetArmingRibbon(): ReactElement | null {
     return () => window.removeEventListener("keydown", handler, true);
   }, [armedCount]);
 
+  // "Match active filter" maps the sidebar's quick-state filter (which is
+  // worktree-chip-state driven) to an agent-state preset 1:1 by name. In
+  // edge cases a worktree's chip state can differ from an individual
+  // agent's state (e.g. a worktree in "cleanup" with a still-waiting
+  // agent), so "finished" here arms agents in terminal states, not every
+  // agent under a "finished"-chip worktree. Acceptable — the menu arms
+  // by agent state throughout.
   const filterPreset: FleetArmStatePreset | null =
     quickStateFilter === "all" ? null : (quickStateFilter as FleetArmStatePreset);
   const filterLabel = filterPreset

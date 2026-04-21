@@ -464,5 +464,25 @@ describe("FleetArmingRibbon", () => {
       const labels = items.map((el) => el.textContent ?? "");
       expect(labels.every((label) => !/Clear selection/.test(label))).toBe(true);
     });
+
+    it("selecting from the discovery menu swaps into the armed ribbon", () => {
+      seed([makeAgent("t1", "waiting")]);
+      render(<FleetArmingRibbon />);
+      expect(screen.getByTestId("fleet-arming-ribbon-discovery")).toBeTruthy();
+      act(() => {
+        fireEvent.click(findMenuItem(/All waiting — this worktree/));
+      });
+      expect(screen.queryByTestId("fleet-arming-ribbon-discovery")).toBeNull();
+      expect(screen.getByTestId("fleet-arming-ribbon")).toBeTruthy();
+    });
+
+    it("'All working' arms agents in 'running' state alongside 'working'", () => {
+      seed([makeAgent("t1", "working"), makeAgent("t2", "running")]);
+      useFleetArmingStore.getState().armIds(["t1"]);
+      render(<FleetArmingRibbon />);
+      fireEvent.click(findMenuItem(/All working — this worktree/));
+      const armed = useFleetArmingStore.getState().armedIds;
+      expect([...armed].sort()).toEqual(["t1", "t2"]);
+    });
   });
 });
