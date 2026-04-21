@@ -6,12 +6,9 @@ import {
   useFleetPendingActionStore,
   type FleetPendingActionKind,
 } from "@/store/fleetPendingActionStore";
-import { useFleetComposerStore } from "@/store/fleetComposerStore";
 import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { terminalClient } from "@/clients";
-import { executeFleetBroadcast } from "@/components/Fleet/fleetExecution";
-import { useNotificationStore } from "@/store/notificationStore";
 import type { TerminalInstance } from "@shared/types";
 
 interface ArmedSnapshot {
@@ -283,21 +280,6 @@ export function registerFleetActions(actions: ActionRegistry): void {
     },
   }));
 
-  actions.set("fleet.dryRun", () => ({
-    id: "fleet.dryRun",
-    title: "Fleet: Dry-Run Preview",
-    description: "Open dry-run preview showing resolved payload per target before sending",
-    category: "terminal",
-    kind: "command",
-    danger: "safe",
-    scope: "renderer",
-    run: async () => {
-      const draft = useFleetComposerStore.getState().draft;
-      if (draft.trim().length === 0) return;
-      useFleetComposerStore.getState().requestDryRun();
-    },
-  }));
-
   actions.set("fleet.armMatchingFilter", () => ({
     id: "fleet.armMatchingFilter",
     title: "Fleet: Arm Agents Matching Filter",
@@ -311,40 +293,6 @@ export function registerFleetActions(actions: ActionRegistry): void {
     run: async (args: unknown) => {
       const worktreeIds = (args as { worktreeIds?: string[] } | undefined)?.worktreeIds ?? [];
       useFleetArmingStore.getState().armMatchingFilter(worktreeIds);
-    },
-  }));
-
-  actions.set("fleet.retryFailed", () => ({
-    id: "fleet.retryFailed",
-    title: "Fleet: Retry Failed",
-    description:
-      "Re-arm the terminals that failed in the last broadcast and re-send the last prompt",
-    category: "terminal",
-    kind: "command",
-    danger: "safe",
-    scope: "renderer",
-    run: async () => {
-      const { lastFailedIds, lastBroadcastPrompt, draft } = useFleetComposerStore.getState();
-      if (lastFailedIds.length === 0) return;
-      const prompt = draft.trim() || lastBroadcastPrompt;
-      if (!prompt) return;
-      // Arm the specific terminals that failed, not the current armed set
-      useFleetArmingStore.getState().armIds(lastFailedIds);
-
-      const result = await executeFleetBroadcast(prompt, lastFailedIds);
-      if (result.failureCount > 0) {
-        useFleetComposerStore.getState().setLastFailed(result.failedIds, prompt);
-      } else {
-        useFleetComposerStore.getState().clearLastFailed();
-      }
-      useNotificationStore.getState().addNotification({
-        type: result.failureCount > 0 ? "warning" : "success",
-        priority: "low",
-        message:
-          result.failureCount > 0
-            ? `Retry: ${result.successCount} succeeded, ${result.failureCount} still failing`
-            : `Retry: sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"}`,
-      });
     },
   }));
 }

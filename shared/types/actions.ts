@@ -299,8 +299,6 @@ export type BuiltInActionId =
   | "fleet.trash"
   | "fleet.scope.enter"
   | "fleet.scope.exit"
-  | "fleet.dryRun"
-  | "fleet.retryFailed"
   | "fleet.armMatchingFilter"
   | "terminal.focusFleetComposer";
 

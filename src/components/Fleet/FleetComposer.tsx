@@ -11,13 +11,9 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetComposerStore } from "@/store/fleetComposerStore";
-import { useFleetIdleStore } from "@/store/fleetIdleStore";
-import { usePanelStore } from "@/store/panelStore";
 import { useCommandHistoryStore } from "@/store/commandHistoryStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useProjectStore } from "@/store/projectStore";
-import { FLEET_IDLE_GRACE_MS, useFleetIdleTimer } from "@/hooks/useFleetIdleTimer";
-import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
 import { logWarn } from "@/utils/logger";
 import {
   getFleetBroadcastHistoryKey,
@@ -26,33 +22,11 @@ import {
   resolveFleetBroadcastTargetIds,
 } from "./fleetBroadcast";
 import { executeFleetBroadcast } from "./fleetExecution";
-import { FleetDryRunDialog } from "./FleetDryRunDialog";
 import { registerFleetComposerFocusHandler } from "./fleetComposerFocus";
 
 interface WarningReason {
   key: "destructive" | "overByteLimit" | "multiline";
   label: string;
-}
-
-/** Default threshold for quorum confirmation (number of targets). */
-const DEFAULT_QUORUM_THRESHOLD = 5;
-/** Default threshold for canary staged-broadcast (number of targets). */
-const DEFAULT_CANARY_THRESHOLD = 8;
-
-function getQuorumThreshold(): number {
-  try {
-    return useFleetComposerStore.getState().quorumThreshold;
-  } catch {
-    return DEFAULT_QUORUM_THRESHOLD;
-  }
-}
-
-function getCanaryThreshold(): number {
-  try {
-    return useFleetComposerStore.getState().canaryThreshold;
-  } catch {
-    return DEFAULT_CANARY_THRESHOLD;
-  }
 }
 
 function describeWarnings(text: string): WarningReason[] {
@@ -74,26 +48,8 @@ export function FleetComposer(): ReactElement | null {
     }))
   );
 
-  const { isCanaryPending, canarySentId, canaryPendingIds, clearCanary, startCanary } =
-    useFleetComposerStore(
-      useShallow((s) => ({
-        isCanaryPending: s.isCanaryPending,
-        canarySentId: s.canarySentId,
-        canaryPendingIds: s.canaryPendingIds,
-        clearCanary: s.clearCanary,
-        startCanary: s.startCanary,
-      }))
-    );
-
-  const dryRunRequested = useFleetComposerStore((s) => s.dryRunRequested);
-  const clearDryRunRequest = useFleetComposerStore((s) => s.clearDryRunRequest);
   const projectId = useProjectStore((s) => s.currentProject?.id);
-
   const historyKey = getFleetBroadcastHistoryKey(projectId);
-
-  const lastFailedIds = useFleetComposerStore((s) => s.lastFailedIds);
-  const setLastFailed = useFleetComposerStore((s) => s.setLastFailed);
-  const clearLastFailed = useFleetComposerStore((s) => s.clearLastFailed);
 
   const historyEntries = useCommandHistoryStore(useShallow((s) => s.getProjectHistory(historyKey)));
 
@@ -101,42 +57,10 @@ export function FleetComposer(): ReactElement | null {
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const historySnapshotRef = useRef<string>("");
   const submittingRef = useRef<boolean>(false);
-  const isConfirmingRef = useRef<boolean>(false);
-  const isSubmittingRef = useRef<boolean>(false);
-  const isDryRunOpenRef = useRef<boolean>(false);
 
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [isDryRunOpen, setIsDryRunOpen] = useState(false);
-
-  useEffect(() => {
-    isConfirmingRef.current = isConfirming;
-  }, [isConfirming]);
-
-  useEffect(() => {
-    isSubmittingRef.current = isSubmitting;
-  }, [isSubmitting]);
-
-  useEffect(() => {
-    isDryRunOpenRef.current = isDryRunOpen;
-  }, [isDryRunOpen]);
-
-  const { resetIdleTimer, exitNow } = useFleetIdleTimer({
-    isConfirmingRef,
-    isSubmittingRef,
-    isDryRunOpenRef,
-  });
-
-  const idlePhase = useFleetIdleStore((s) => s.phase);
-  const warningStartedAt = useFleetIdleStore((s) => s.warningStartedAt);
-  const tick = useGlobalSecondTicker();
-  const isWarning = idlePhase === "warning" && warningStartedAt !== null;
-  const graceSecondsRemaining = isWarning
-    ? Math.max(0, Math.ceil((warningStartedAt + FLEET_IDLE_GRACE_MS - Date.now()) / 1000))
-    : 0;
-  // Reference `tick` so the countdown re-renders each second; value not otherwise used.
-  void tick;
 
   useEffect(() => {
     const unregister = registerFleetComposerFocusHandler(() => {
@@ -153,118 +77,15 @@ export function FleetComposer(): ReactElement | null {
     }
   }, [isConfirming]);
 
-  useEffect(() => {
-    if (dryRunRequested && draft.trim().length > 0) {
-      clearDryRunRequest();
-      setIsDryRunOpen(true);
-    } else if (dryRunRequested) {
-      clearDryRunRequest();
-    }
-  }, [dryRunRequested, draft, clearDryRunRequest]);
-
   const warningReasons = useMemo(() => describeWarnings(draft), [draft]);
 
   const handleSubmit = useCallback(
-    async (options: { force?: boolean; targetIds?: string[] } = {}) => {
-      const { force = false, targetIds } = options;
+    async (options: { force?: boolean } = {}) => {
+      const { force = false } = options;
       if (submittingRef.current) return;
 
       const currentDraft = useFleetComposerStore.getState().draft;
       if (currentDraft.trim() === "") return;
-
-      // A submit attempt — successful or blocked by confirmation — counts as
-      // activity; reset the idle timer so the warning doesn't appear mid-flow.
-      resetIdleTimer();
-
-      // When a canary is pending, only explicit strip actions (Promote/Stop) or
-      // a force-send should proceed. A plain Enter / Send click would otherwise
-      // fall through — including into the alwaysPreview dry-run path below —
-      // and either double-send the canary target or re-prompt mid-review. The
-      // strip is the user's only forward path until they act on it.
-      const canaryPendingNow = useFleetComposerStore.getState().isCanaryPending;
-      if (canaryPendingNow && !force && targetIds === undefined) {
-        return;
-      }
-
-      // alwaysPreview: when enabled, Enter opens the dry-run dialog instead of sending directly.
-      if (!force && !isConfirming && useFleetComposerStore.getState().alwaysPreview) {
-        setIsDryRunOpen(true);
-        return;
-      }
-
-      // If a canary is pending and this is a force-send bypass, deliver only
-      // to the frozen remainder — the canary target already received it.
-      const canaryRemainderSnapshot = useFleetComposerStore.getState().canaryPendingIds;
-      const resolvedTargetIds =
-        targetIds ??
-        (force && canaryPendingNow ? canaryRemainderSnapshot : resolveFleetBroadcastTargetIds());
-
-      // Canary gate: when targets >= canaryThreshold and no force bypass, send
-      // to the first target only, then stage the remainder. Supersedes quorum.
-      if (
-        !force &&
-        !isConfirming &&
-        !canaryPendingNow &&
-        resolvedTargetIds.length >= getCanaryThreshold() &&
-        !needsFleetBroadcastConfirmation(currentDraft)
-      ) {
-        const canaryId = resolvedTargetIds[0];
-        if (canaryId === undefined) return;
-        const remainderIds = resolvedTargetIds.slice(1);
-
-        submittingRef.current = true;
-        setIsSubmitting(true);
-        try {
-          const result = await executeFleetBroadcast(currentDraft, [canaryId]);
-          if (result.failureCount > 0) {
-            logWarn("[FleetComposer] canary submit had rejection", {
-              failureCount: result.failureCount,
-              failedIds: result.failedIds,
-            });
-            setLastFailed(result.failedIds, currentDraft);
-            useNotificationStore.getState().addNotification({
-              type: "warning",
-              priority: "low",
-              message: "Canary send failed — remainder not staged",
-            });
-            return;
-          }
-          clearLastFailed();
-          startCanary({
-            canarySentId: canaryId,
-            remainingIds: remainderIds,
-            prompt: currentDraft,
-          });
-          useNotificationStore.getState().addNotification({
-            type: "success",
-            priority: "low",
-            message: `Canary sent — review output, then apply to ${remainderIds.length} remaining`,
-          });
-        } catch (e) {
-          useNotificationStore.getState().addNotification({
-            type: "error",
-            priority: "high",
-            message: "Canary broadcast failed unexpectedly",
-          });
-          throw e;
-        } finally {
-          submittingRef.current = false;
-          setIsSubmitting(false);
-        }
-        return;
-      }
-
-      // Quorum confirmation: when >=N targets, require explicit confirmation
-      // even if the payload itself isn't flagged as dangerous.
-      if (
-        !force &&
-        !isConfirming &&
-        resolvedTargetIds.length >= getQuorumThreshold() &&
-        !needsFleetBroadcastConfirmation(currentDraft)
-      ) {
-        setIsConfirming(true);
-        return;
-      }
 
       if (!force && needsFleetBroadcastConfirmation(currentDraft)) {
         setIsConfirming(true);
@@ -276,8 +97,8 @@ export function FleetComposer(): ReactElement | null {
       setIsSubmitting(true);
 
       try {
-        const actualTargetIds = resolvedTargetIds;
-        if (actualTargetIds.length === 0) {
+        const resolvedTargetIds = resolveFleetBroadcastTargetIds();
+        if (resolvedTargetIds.length === 0) {
           useNotificationStore.getState().addNotification({
             type: "warning",
             priority: "low",
@@ -286,16 +107,13 @@ export function FleetComposer(): ReactElement | null {
           return;
         }
 
-        const result = await executeFleetBroadcast(currentDraft, actualTargetIds);
+        const result = await executeFleetBroadcast(currentDraft, resolvedTargetIds);
 
         if (result.failureCount > 0) {
           logWarn("[FleetComposer] broadcast submit had rejections", {
             failureCount: result.failureCount,
             failedIds: result.failedIds,
           });
-          setLastFailed(result.failedIds, currentDraft);
-        } else {
-          clearLastFailed();
         }
 
         useNotificationStore.getState().addNotification({
@@ -305,24 +123,6 @@ export function FleetComposer(): ReactElement | null {
             result.failureCount > 0
               ? `Sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"} (${result.failureCount} failed)`
               : `Sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"}`,
-          actions:
-            result.failureCount > 0
-              ? [
-                  {
-                    label: "Retry failed",
-                    onClick: () => {
-                      const failed = useFleetComposerStore.getState().lastFailedIds;
-                      if (failed.length === 0) return;
-                      useFleetArmingStore.getState().armIds(failed);
-                      if (useFleetComposerStore.getState().draft.trim() === "") {
-                        const lastPrompt = useFleetComposerStore.getState().lastBroadcastPrompt;
-                        useFleetComposerStore.getState().setDraft(lastPrompt);
-                      }
-                    },
-                    variant: "primary" as const,
-                  },
-                ]
-              : undefined,
         });
 
         if (result.successCount > 0) {
@@ -336,10 +136,6 @@ export function FleetComposer(): ReactElement | null {
           setHistoryIndex(-1);
           historySnapshotRef.current = "";
         }
-
-        // A force-send completed while a canary was pending — staged state is
-        // now spent, clear it so the strip doesn't linger.
-        if (canaryPendingNow) clearCanary();
       } catch (e) {
         useNotificationStore.getState().addNotification({
           type: "error",
@@ -352,108 +148,14 @@ export function FleetComposer(): ReactElement | null {
         setIsSubmitting(false);
       }
     },
-    [
-      clearCanary,
-      clearDraft,
-      clearLastFailed,
-      historyKey,
-      isConfirming,
-      resetIdleTimer,
-      setLastFailed,
-      startCanary,
-    ]
+    [clearDraft, historyKey]
   );
-
-  const handlePromoteToRemaining = useCallback(async () => {
-    if (submittingRef.current) return;
-    const state = useFleetComposerStore.getState();
-    const remainingIds = state.canaryPendingIds;
-    const promptSnapshot = state.canaryPrompt;
-    const canarySent = state.canarySentId;
-    if (remainingIds.length === 0 || promptSnapshot === null) {
-      clearCanary();
-      return;
-    }
-
-    submittingRef.current = true;
-    setIsSubmitting(true);
-    try {
-      const result = await executeFleetBroadcast(promptSnapshot, remainingIds);
-
-      if (result.failureCount > 0) {
-        logWarn("[FleetComposer] canary promotion had rejections", {
-          failureCount: result.failureCount,
-          failedIds: result.failedIds,
-        });
-        setLastFailed(result.failedIds, promptSnapshot);
-      } else {
-        clearLastFailed();
-      }
-
-      useNotificationStore.getState().addNotification({
-        type: result.successCount > 0 ? "success" : "warning",
-        priority: "low",
-        message:
-          result.failureCount > 0
-            ? `Applied to ${result.successCount} agent${result.successCount === 1 ? "" : "s"} (${result.failureCount} failed)`
-            : `Applied to ${result.successCount} agent${result.successCount === 1 ? "" : "s"}`,
-      });
-
-      if (result.successCount > 0) {
-        // Record the full frozen cohort (canary + remainder) that actually
-        // received this prompt — not the live armed set, which may have
-        // shifted during the user's review window.
-        const cohort = canarySent !== null ? [canarySent, ...remainingIds] : remainingIds;
-        useCommandHistoryStore
-          .getState()
-          .recordPrompt(historyKey, promptSnapshot, null, { armedIds: cohort });
-        if (useFleetComposerStore.getState().draft === promptSnapshot) {
-          clearDraft();
-        }
-        setHistoryIndex(-1);
-        historySnapshotRef.current = "";
-      }
-      clearCanary();
-    } catch (e) {
-      clearCanary();
-      useNotificationStore.getState().addNotification({
-        type: "error",
-        priority: "high",
-        message: "Canary promotion failed unexpectedly",
-      });
-      throw e;
-    } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
-    }
-  }, [clearCanary, clearDraft, clearLastFailed, historyKey, setLastFailed]);
-
-  const handleStopCanary = useCallback(() => {
-    clearCanary();
-    textareaRef.current?.focus();
-  }, [clearCanary]);
-
-  const handleRetryFailed = useCallback(() => {
-    const failed = useFleetComposerStore.getState().lastFailedIds;
-    if (failed.length === 0) return;
-    useFleetArmingStore.getState().armIds(failed);
-    if (draft.trim() === "") {
-      const lastPrompt = useFleetComposerStore.getState().lastBroadcastPrompt;
-      if (lastPrompt) setDraft(lastPrompt);
-    }
-  }, [draft, setDraft]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.nativeEvent.isComposing) return;
 
       if (e.key === "Escape") {
-        if (isDryRunOpen) {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDryRunOpen(false);
-          return;
-        }
         if (draft.length > 0) {
           e.preventDefault();
           e.stopPropagation();
@@ -465,14 +167,6 @@ export function FleetComposer(): ReactElement | null {
       }
 
       if (e.key === "Enter") {
-        // Cmd/Ctrl+Shift+Enter → dry-run preview (check before shift passthrough)
-        if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
-          e.preventDefault();
-          if (draft.trim().length > 0) {
-            setIsDryRunOpen(true);
-          }
-          return;
-        }
         if (e.shiftKey) return; // newline passthrough
         e.preventDefault();
         const force = e.metaKey || e.ctrlKey;
@@ -513,7 +207,7 @@ export function FleetComposer(): ReactElement | null {
         }
       }
     },
-    [clearDraft, draft, handleSubmit, historyEntries, historyIndex, isDryRunOpen, setDraft]
+    [clearDraft, draft, handleSubmit, historyEntries, historyIndex, setDraft]
   );
 
   const handleConfirmStripKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
@@ -525,23 +219,6 @@ export function FleetComposer(): ReactElement | null {
     }
   }, []);
 
-  const handleDryRunSend = useCallback(
-    (failedIds?: string[]) => {
-      setIsDryRunOpen(false);
-      if (failedIds && failedIds.length > 0) {
-        const currentDraft =
-          useFleetComposerStore.getState().draft ||
-          useFleetComposerStore.getState().lastBroadcastPrompt;
-        setLastFailed(failedIds, currentDraft);
-      }
-    },
-    [setLastFailed]
-  );
-
-  const canaryTargetTitle = usePanelStore((s) =>
-    canarySentId !== null ? (s.panelsById[canarySentId]?.title ?? canarySentId) : null
-  );
-
   if (armedCount === 0) return null;
 
   const sendLabel = isSubmitting ? "Sending…" : "Send";
@@ -550,168 +227,82 @@ export function FleetComposer(): ReactElement | null {
       ? "Broadcast to 1 armed agent (Enter to send)"
       : `Broadcast to ${armedCount} armed agents (Enter to send)`;
 
-  const canaryRemainingCount = canaryPendingIds.length;
-
   return (
-    <>
-      <div
-        className="flex flex-col gap-1 border-b border-daintree-border px-3 py-1.5"
-        data-testid="fleet-composer"
-      >
-        {isWarning && (
-          <div
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            data-testid="fleet-idle-warning"
-            className="flex items-center gap-2 rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200"
-          >
-            <span className="flex-1">
-              Still broadcasting? Auto-exiting in {graceSecondsRemaining}s
-            </span>
-            <button
-              type="button"
-              onClick={resetIdleTimer}
-              data-testid="fleet-idle-stay"
-              className="rounded-[var(--radius-md)] bg-amber-500/20 px-2 py-0.5 text-amber-100 transition-colors hover:bg-amber-500/30"
-            >
-              Stay armed
-            </button>
-            <button
-              type="button"
-              onClick={exitNow}
-              data-testid="fleet-idle-exit"
-              className="rounded-[var(--radius-md)] px-2 py-0.5 text-daintree-text/70 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
-            >
-              Exit
-            </button>
-          </div>
-        )}
-        <div className="flex items-start gap-2">
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              resetIdleTimer();
-              if (historyIndex !== -1) {
-                setHistoryIndex(-1);
-                historySnapshotRef.current = "";
-              }
-            }}
-            onFocus={resetIdleTimer}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholderBase}
-            rows={1}
-            inert={isConfirming ? true : undefined}
-            aria-label="Broadcast to armed agents"
-            data-testid="fleet-composer-textarea"
-            className={cn(
-              "flex-1 resize-none rounded-[var(--radius-md)] border border-daintree-border bg-daintree-sidebar px-2 py-1 text-[12px] text-daintree-text",
-              "placeholder:italic placeholder:text-daintree-text/40",
-              "focus:border-daintree-accent focus:outline-none focus:ring-1 focus:ring-daintree-accent/30",
-              "min-h-[28px] max-h-[140px] overflow-y-auto"
-            )}
-          />
-          <div className="flex shrink-0 flex-col gap-1">
-            <button
-              type="button"
-              onClick={() => void handleSubmit({ force: false })}
-              disabled={draft.trim().length === 0 || isSubmitting || isCanaryPending}
-              data-testid="fleet-composer-send"
-              className="rounded-[var(--radius-md)] bg-daintree-accent px-2.5 py-1 text-[11px] text-text-inverse transition-colors hover:bg-daintree-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Send broadcast"
-            >
-              {sendLabel}
-            </button>
-            {lastFailedIds.length > 0 && !isSubmitting && (
-              <button
-                type="button"
-                onClick={handleRetryFailed}
-                data-testid="fleet-composer-retry-failed"
-                className="rounded-[var(--radius-md)] bg-amber-500/20 px-2.5 py-1 text-[11px] text-amber-100 transition-colors hover:bg-amber-500/30"
-              >
-                Retry failed
-              </button>
-            )}
-          </div>
-        </div>
-        {isConfirming && (
-          <div
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            data-testid="fleet-composer-confirm"
-            onKeyDown={handleConfirmStripKeyDown}
-            className="flex items-center gap-2 rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200"
-          >
-            <span className="flex-1">
-              Send to {armedCount} agent{armedCount === 1 ? "" : "s"} —{" "}
-              {warningReasons.map((r) => r.label).join(", ")}?
-            </span>
-            <button
-              type="button"
-              ref={cancelButtonRef}
-              onClick={() => {
-                setIsConfirming(false);
-                textareaRef.current?.focus();
-              }}
-              data-testid="fleet-composer-confirm-cancel"
-              className="rounded-[var(--radius-md)] px-2 py-0.5 text-daintree-text/70 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={() => void handleSubmit({ force: true })}
-              data-testid="fleet-composer-confirm-send"
-              className="rounded-[var(--radius-md)] bg-amber-500/20 px-2 py-0.5 text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Send anyway
-            </button>
-          </div>
-        )}
-        {isCanaryPending && (
-          <div
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            data-testid="fleet-composer-canary"
-            className="flex items-center gap-2 rounded-[var(--radius-md)] border border-sky-500/40 bg-sky-500/10 px-2 py-1 text-[11px] text-sky-100"
-          >
-            <span className="flex-1">
-              Sent to {canaryTargetTitle ?? "canary"} — review output, then apply to{" "}
-              {canaryRemainingCount} remaining agent
-              {canaryRemainingCount === 1 ? "" : "s"}.
-            </span>
-            <button
-              type="button"
-              onClick={handleStopCanary}
-              data-testid="fleet-composer-canary-stop"
-              className="rounded-[var(--radius-md)] px-2 py-0.5 text-daintree-text/70 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
-            >
-              Stop
-            </button>
-            <button
-              type="button"
-              disabled={isSubmitting || canaryRemainingCount === 0}
-              onClick={() => void handlePromoteToRemaining()}
-              data-testid="fleet-composer-canary-promote"
-              className="rounded-[var(--radius-md)] bg-sky-500/20 px-2 py-0.5 text-sky-100 transition-colors hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Apply to {canaryRemainingCount}
-            </button>
-          </div>
-        )}
-      </div>
-      {isDryRunOpen && (
-        <FleetDryRunDialog
-          draft={draft}
-          onSend={handleDryRunSend}
-          onClose={() => setIsDryRunOpen(false)}
+    <div
+      className="flex flex-col gap-1 border-b border-daintree-border px-3 py-1.5"
+      data-testid="fleet-composer"
+    >
+      <div className="flex items-start gap-2">
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (historyIndex !== -1) {
+              setHistoryIndex(-1);
+              historySnapshotRef.current = "";
+            }
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholderBase}
+          rows={1}
+          inert={isConfirming ? true : undefined}
+          aria-label="Broadcast to armed agents"
+          data-testid="fleet-composer-textarea"
+          className={cn(
+            "flex-1 resize-none rounded-[var(--radius-md)] border border-daintree-border bg-daintree-sidebar px-2 py-1 text-[12px] text-daintree-text",
+            "placeholder:italic placeholder:text-daintree-text/40",
+            "focus:border-daintree-accent focus:outline-none focus:ring-1 focus:ring-daintree-accent/30",
+            "min-h-[28px] max-h-[140px] overflow-y-auto"
+          )}
         />
+        <button
+          type="button"
+          onClick={() => void handleSubmit({ force: false })}
+          disabled={draft.trim().length === 0 || isSubmitting}
+          data-testid="fleet-composer-send"
+          className="shrink-0 rounded-[var(--radius-md)] bg-daintree-accent px-2.5 py-1 text-[11px] text-text-inverse transition-colors hover:bg-daintree-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Send broadcast"
+        >
+          {sendLabel}
+        </button>
+      </div>
+      {isConfirming && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="fleet-composer-confirm"
+          onKeyDown={handleConfirmStripKeyDown}
+          className="flex items-center gap-2 rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200"
+        >
+          <span className="flex-1">
+            Send to {armedCount} agent{armedCount === 1 ? "" : "s"} —{" "}
+            {warningReasons.map((r) => r.label).join(", ")}?
+          </span>
+          <button
+            type="button"
+            ref={cancelButtonRef}
+            onClick={() => {
+              setIsConfirming(false);
+              textareaRef.current?.focus();
+            }}
+            data-testid="fleet-composer-confirm-cancel"
+            className="rounded-[var(--radius-md)] px-2 py-0.5 text-daintree-text/70 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={() => void handleSubmit({ force: true })}
+            data-testid="fleet-composer-confirm-send"
+            className="rounded-[var(--radius-md)] bg-amber-500/20 px-2 py-0.5 text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Send anyway
+          </button>
+        </div>
       )}
-    </>
+    </div>
   );
 }
