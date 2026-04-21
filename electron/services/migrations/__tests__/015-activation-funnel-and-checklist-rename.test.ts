@@ -16,25 +16,9 @@ function makeStoreMock(data: Record<string, unknown>) {
   };
 }
 
-describe("migration015 — activation funnel + checklist rename", () => {
+describe("migration015 — checklist rename", () => {
   it("has version 15", () => {
     expect(migration015.version).toBe(15);
-  });
-
-  it("initializes activationFunnel to {} when missing", () => {
-    const store = makeStoreMock({});
-    migration015.up(store);
-    expect(store.set).toHaveBeenCalledWith("activationFunnel", {});
-  });
-
-  it("leaves an existing activationFunnel object untouched", () => {
-    const store = makeStoreMock({
-      activationFunnel: { firstAgentTaskStartedAt: 12345, timeToFirstAgentTaskMs: 5000 },
-    });
-    migration015.up(store);
-    // set should NOT be called for activationFunnel since it's already a non-null object
-    const setSpy = store.set as unknown as ReturnType<typeof vi.fn>;
-    expect(setSpy.mock.calls.filter((c: unknown[]) => c[0] === "activationFunnel")).toHaveLength(0);
   });
 
   it("renames checklist.items.subscribedNewsletter to ranSecondParallelAgent (reset to false regardless)", () => {
@@ -108,7 +92,6 @@ describe("migration015 — activation funnel + checklist rename", () => {
   it("does not throw on missing onboarding state", () => {
     const store = makeStoreMock({});
     expect(() => migration015.up(store)).not.toThrow();
-    expect(store._data.activationFunnel).toEqual({});
     expect(store._data.onboarding).toBeUndefined();
   });
 

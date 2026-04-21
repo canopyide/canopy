@@ -162,7 +162,6 @@ export function createHeavyMigrationFixture(): StoreSchema {
       welcomeCardDismissed: false,
       setupBannerDismissed: false,
     } as StoreSchema["onboarding"],
-    activationFunnel: {},
     orchestrationMilestones: {},
     shortcutHintCounts: {},
     updateChannel: "stable",

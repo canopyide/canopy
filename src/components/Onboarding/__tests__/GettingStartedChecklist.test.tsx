@@ -125,7 +125,7 @@ describe("GettingStartedChecklist", () => {
     });
   });
 
-  it("dispatches worktree.createDialog.open when 'Run two agents in parallel' is clicked and does NOT mark the item (auto-mark is owned by the activation funnel service)", () => {
+  it("dispatches worktree.createDialog.open when 'Run two agents in parallel' is clicked and does NOT mark the item (auto-marked by useGettingStartedChecklist when 2+ agents run concurrently)", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
 
     fireEvent.click(screen.getByRole("button", { name: /run two agents in parallel/i }));

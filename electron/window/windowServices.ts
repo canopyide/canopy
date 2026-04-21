@@ -24,7 +24,6 @@ import { taskQueueService } from "../services/TaskQueueService.js";
 import { store } from "../store.js";
 import { LATEST_SCHEMA_VERSION, MigrationRunner } from "../services/StoreMigrations.js";
 import { initializeTelemetry, setOnboardingCompleteTag } from "../services/TelemetryService.js";
-import { activationFunnelService } from "../services/ActivationFunnelService.js";
 import { GitHubAuth } from "../services/github/GitHubAuth.js";
 import { gitHubTokenHealthService } from "../services/github/GitHubTokenHealthService.js";
 import { secureStorage } from "../services/SecureStorage.js";
@@ -221,13 +220,6 @@ export interface SetupWindowServicesOptions {
   initialProjectId?: string;
   projectViewManager?: import("./ProjectViewManager.js").ProjectViewManager;
   initialAppView?: import("electron").WebContentsView;
-  /**
-   * Wall-clock ms at which the Electron process started (captured as early as
-   * possible in the entry point). Threaded through so the activation funnel
-   * service can compute `time_to_first_agent_task_ms` without reaching back
-   * into the main-module singleton.
-   */
-  appLaunchMs?: number;
 }
 
 export async function setupWindowServices(
@@ -333,7 +325,6 @@ export async function setupWindowServices(
     // Notifications (global singletons)
     agentNotificationService.initialize();
     preAgentSnapshotService.initialize();
-    activationFunnelService.initialize({ appLaunchMs: opts.appLaunchMs ?? Date.now() });
     getActionBreadcrumbService().initialize();
 
     // Auto-updater
@@ -1211,7 +1202,6 @@ export async function setupWindowServices(
     gitHubTokenHealthService.dispose();
     notificationService.dispose();
     agentNotificationService.dispose();
-    activationFunnelService.dispose();
     preAgentSnapshotService.dispose();
     autoUpdaterService.dispose();
   });
