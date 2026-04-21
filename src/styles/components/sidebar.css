@@ -27,3 +27,7 @@
     transition: none;
   }
 }
+
+body[data-reduce-animations="true"] .sidebar-worktree-card {
+  transition: none;
+}

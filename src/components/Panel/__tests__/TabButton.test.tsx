@@ -99,7 +99,7 @@ describe("TabButton", () => {
     const tooltipContent = screen.queryByText(
       "Launched with dangerous permissions — agent can modify files without prompting"
     );
-    expect(tooltipContent).toBeDefined();
+    expect(tooltipContent).not.toBeNull();
   });
 
   it("renders the active indicator element when isActive is true", () => {

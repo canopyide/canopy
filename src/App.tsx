@@ -123,6 +123,7 @@ import {
   useAgentPreferencesStore,
   usePaletteStore,
   useNotificationSettingsStore,
+  usePreferencesStore,
 } from "./store";
 import { useAgentSettingsStore } from "./store/agentSettingsStore";
 import { isAgentReady } from "../shared/utils/agentAvailability";
@@ -451,6 +452,7 @@ function App() {
   useFileDropGuard();
 
   const isSafeMode = useSafeModeStore((s) => s.safeMode);
+  const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
 
   if (!isElectronAvailable()) {
     return (
@@ -480,7 +482,7 @@ function App() {
   }
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={reduceAnimations ? "always" : "user"}>
       <ErrorBoundary variant="fullscreen" componentName="App">
         <E2EFaultInjector />
         {isSafeMode && <SafeModeBanner />}
