@@ -84,6 +84,8 @@ interface TerminalInfoResponse {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
+  everDetectedAgent?: boolean;
 }
 
 export interface PtyClientConfig {

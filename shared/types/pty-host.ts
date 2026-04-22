@@ -285,6 +285,8 @@ export interface PtyHostTerminalInfo {
   agentPresetId?: string;
   /** Original user-selected preset ID; unchanged across fallback hops. */
   originalAgentPresetId?: string;
+  /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
+  everDetectedAgent?: boolean;
 }
 
 /** Payload for agent:spawned event */

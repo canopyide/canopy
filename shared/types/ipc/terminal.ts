@@ -231,6 +231,8 @@ export interface TerminalInfoPayload {
   agentModelId?: string;
   /** Exit code when terminal has exited */
   exitCode?: number;
+  /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
+  everDetectedAgent?: boolean;
 }
 
 import type { TerminalActivityPayload } from "../terminal.js";
