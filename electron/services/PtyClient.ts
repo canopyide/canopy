@@ -59,6 +59,7 @@ import type { AgentStateChangeTrigger } from "../types/index.js";
 import type { AgentState, AgentId } from "../../shared/types/agent.js";
 import type { TerminalType, PanelKind } from "../../shared/types/panel.js";
 import type { ResourceProfile } from "../../shared/types/resourceProfile.js";
+import type { BuiltInAgentId } from "../../shared/config/agentIds.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +87,8 @@ interface TerminalInfoResponse {
   agentModelId?: string;
   /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
   everDetectedAgent?: boolean;
+  /** Runtime-detected agent identity (cleared when the agent exits). */
+  detectedAgentId?: BuiltInAgentId;
 }
 
 export interface PtyClientConfig {

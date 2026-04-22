@@ -770,6 +770,22 @@ describe("detectedAgentId propagation", () => {
     );
     expect(result.detectedAgentId).toBeUndefined();
   });
+
+  // Runtime detection must never be resurrected from saved JSON — the cold-start
+  // path relies on the backend detector to repopulate the field post-spawn.
+  it("buildArgsForRespawn does not carry detectedAgentId even if saved JSON somehow has one", () => {
+    const saved = {
+      id: "t1",
+      kind: "agent" as const,
+      agentId: "claude",
+      title: "Claude",
+      cwd: "/p",
+      location: "grid",
+    } as Parameters<typeof buildArgsForRespawn>[0] & { detectedAgentId?: string };
+    (saved as { detectedAgentId?: string }).detectedAgentId = "claude";
+    const result = buildArgsForRespawn(saved, "agent", "/p", { agents: {} }, false, undefined);
+    expect((result as { detectedAgentId?: string }).detectedAgentId).toBeUndefined();
+  });
 });
 
 describe("buildArgsForNonPtyRecreation", () => {
