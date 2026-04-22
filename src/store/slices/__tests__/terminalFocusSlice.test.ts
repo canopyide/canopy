@@ -729,6 +729,20 @@ describe("TerminalFocusSlice - focusNextAgent / focusPreviousAgent runtime ident
     expect(state.focusedId).toBe("fresh-agent");
   });
 
+  it("includes legacy type-only agents (no kind, TerminalType='claude')", () => {
+    // Legacy persisted panels predate `kind`; their identity comes from `type`.
+    // isAgentTerminal(kind ?? type, agentId) must still classify them as agents.
+    terminals = [
+      makeTerminal("legacy-agent", { kind: undefined, type: "claude" }),
+      makeTerminal("shell-1", { kind: "terminal" }),
+    ];
+    state.focusedId = "shell-1";
+
+    state.focusNextAgent(neverInTrash, validWorktrees);
+
+    expect(state.focusedId).toBe("legacy-agent");
+  });
+
   it("excludes an ex-agent panel whose runtime identity has cleared", () => {
     // Spawned as agent, detector fired then cleared on exit — no longer in cycle.
     terminals = [

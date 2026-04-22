@@ -261,6 +261,71 @@ describe("trashPanelGroup agent-aware focus", () => {
     expect(usePanelStore.getState().focusedId).toBe("agent-3");
   });
 
+  it("should not prefer another agent when trashing a group whose focused panel is a demoted ex-agent", () => {
+    usePanelStore.setState({
+      panelsById: {
+        "ex-agent": makeTerminal("ex-agent", "agent", "claude", undefined, undefined, true),
+        "agent-paired": makeTerminal("agent-paired", "agent", "gemini"),
+        "shell-1": makeTerminal("shell-1", "terminal"),
+        // Another live agent that would be preferred if wasAgent were true
+        "agent-live": makeTerminal("agent-live", "agent", "codex", undefined, "codex"),
+      },
+      panelIds: ["ex-agent", "agent-paired", "shell-1", "agent-live"],
+      tabGroups: new Map([
+        [
+          "group-1",
+          {
+            id: "group-1",
+            panelIds: ["ex-agent", "agent-paired"],
+            activeTabId: "ex-agent",
+            location: "grid" as const,
+          },
+        ],
+      ]),
+      focusedId: "ex-agent",
+    });
+
+    usePanelStore.getState().trashPanelGroup("ex-agent");
+
+    // Focused panel was a demoted ex-agent → wasAgent is false → pick first grid terminal
+    expect(usePanelStore.getState().focusedId).toBe("shell-1");
+  });
+
+  it("should prefer another agent when trashing a group whose focused panel is a promoted shell", () => {
+    usePanelStore.setState({
+      panelsById: {
+        "promoted-shell": makeTerminal(
+          "promoted-shell",
+          "terminal",
+          undefined,
+          undefined,
+          "claude"
+        ),
+        "plain-shell": makeTerminal("plain-shell", "terminal"),
+        "next-shell": makeTerminal("next-shell", "terminal"),
+        "live-agent": makeTerminal("live-agent", "agent", "gemini", undefined, "gemini"),
+      },
+      panelIds: ["promoted-shell", "plain-shell", "next-shell", "live-agent"],
+      tabGroups: new Map([
+        [
+          "group-1",
+          {
+            id: "group-1",
+            panelIds: ["promoted-shell", "plain-shell"],
+            activeTabId: "promoted-shell",
+            location: "grid" as const,
+          },
+        ],
+      ]),
+      focusedId: "promoted-shell",
+    });
+
+    usePanelStore.getState().trashPanelGroup("promoted-shell");
+
+    // Focused panel was a promoted shell running claude → wasAgent is true → prefer next agent
+    expect(usePanelStore.getState().focusedId).toBe("live-agent");
+  });
+
   it("should fall back to non-agent when no agents remain after group trash", () => {
     usePanelStore.setState({
       panelsById: {
