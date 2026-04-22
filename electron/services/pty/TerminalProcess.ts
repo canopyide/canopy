@@ -1430,6 +1430,13 @@ export class TerminalProcess {
       return;
     }
 
+    // Set when we clear a runtime agent detection on this tick so the block
+    // below can suppress a same-tick shell-headline emission that would
+    // otherwise overwrite the "Exited" completion cue emitted by
+    // updateAgentState. The next detector poll emits the shell headline
+    // instead. #5773
+    let justClearedDetection = false;
+
     if (result.detected && result.agentType) {
       const previousType = terminal.detectedAgentType;
       terminal.everDetectedAgent = true;
@@ -1501,6 +1508,7 @@ export class TerminalProcess {
           agentType: previousType,
           timestamp: Date.now(),
         });
+        justClearedDetection = true;
       }
       if (this.lastDetectedProcessIconId !== result.processIconId) {
         this.lastDetectedProcessIconId = result.processIconId;
@@ -1518,6 +1526,7 @@ export class TerminalProcess {
         terminal.detectedAgentType = undefined;
         terminal.type = "terminal";
         terminal.title = "Terminal";
+        justClearedDetection = true;
       }
 
       this.lastDetectedProcessIconId = undefined;
@@ -1533,7 +1542,15 @@ export class TerminalProcess {
       });
     }
 
-    if (!terminal.agentId) {
+    // Route to shell-style headlines when no live agent is running. This covers
+    // plain terminals (no agentId, no detection) and persisted agent panels
+    // whose agent exited (agentState === "exited") — which keep an active
+    // shell PTY and should surface shell activity rather than a stale
+    // "Agent working" headline. Skip on the exact tick we just emitted an
+    // "Exited" completion cue so it isn't overwritten. #5773
+    const hasLiveAgent =
+      !!terminal.detectedAgentType || (!!terminal.agentId && terminal.agentState !== "exited");
+    if (!justClearedDetection && !hasLiveAgent) {
       const lastCommand = result.currentCommand || this.semanticBufferManager.getLastCommand();
 
       const { headline, status, type } = this.headlineGenerator.generate({

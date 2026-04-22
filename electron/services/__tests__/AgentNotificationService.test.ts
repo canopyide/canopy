@@ -1077,6 +1077,255 @@ describe("AgentNotificationService", () => {
     });
   });
 
+  // #5773 — Runtime-detected agents (plain terminals where an agent CLI was
+  // detected at runtime, no persisted launch-time agentId) never fire
+  // agent:spawned. Spawn grace must be seeded from agent:detected so startup
+  // "waiting" states don't immediately produce notification sounds.
+  describe("agent:detected spawn grace (#5773)", () => {
+    it("seeds spawn grace from agent:detected so waiting sound is suppressed within grace window", () => {
+      mockStore({ waitingEnabled: true, soundEnabled: true });
+      // Advance past boot grace so only spawn grace matters
+      vi.advanceTimersByTime(10_000);
+
+      events.emit("agent:detected", {
+        terminalId: "term-1",
+        agentType: "claude",
+        processName: "claude",
+        timestamp: Date.now(),
+      });
+
+      // Within the 5s spawn grace window, a waiting event should not trigger sound
+      events.emit("agent:state-changed", {
+        state: "waiting" as const,
+        previousState: "working" as const,
+        terminalId: "term-1",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+      vi.advanceTimersByTime(200);
+
+      expect(soundServiceMock.playFile).not.toHaveBeenCalled();
+    });
+
+    it("does not seed grace when agent:detected lacks agentType (non-agent process)", () => {
+      mockStore({ waitingEnabled: true, soundEnabled: true });
+      vi.advanceTimersByTime(10_000);
+
+      // Non-agent process detection (npm/docker/etc.) — no agentType
+      events.emit("agent:detected", {
+        terminalId: "term-1",
+        processIconId: "npm",
+        processName: "npm",
+        timestamp: Date.now(),
+      });
+
+      events.emit("agent:state-changed", {
+        state: "waiting" as const,
+        previousState: "working" as const,
+        terminalId: "term-1",
+        agentId: "agent-1",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+      vi.advanceTimersByTime(200);
+
+      // No grace was seeded; waiting sound fires normally
+      expect(soundServiceMock.playFile).toHaveBeenCalled();
+    });
+
+    it("spawn grace expires after SPAWN_GRACE_PERIOD_MS — waiting sound resumes", () => {
+      mockStore({ waitingEnabled: true, soundEnabled: true });
+      vi.advanceTimersByTime(10_000);
+
+      events.emit("agent:detected", {
+        terminalId: "term-1",
+        agentType: "claude",
+        processName: "claude",
+        timestamp: Date.now(),
+      });
+
+      // Advance past the 5s spawn grace
+      vi.advanceTimersByTime(6_000);
+
+      events.emit("agent:state-changed", {
+        state: "waiting" as const,
+        previousState: "working" as const,
+        terminalId: "term-1",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+      vi.advanceTimersByTime(200);
+
+      expect(soundServiceMock.playFile).toHaveBeenCalled();
+    });
+
+    it("completion key is per-terminal — two runtime-detected terminals with same agent type both notify", () => {
+      // Two plain terminals both detect "claude" as their agent. Before the
+      // fix, both completion debounces shared the key "claude" and the
+      // second would cancel the first. Now the key is terminalId-first.
+      const appState = {
+        activeWorktreeId: "wt-1",
+        terminals: [
+          {
+            id: "term-1",
+            kind: "terminal",
+            agentId: "claude",
+            title: "Terminal 1",
+            location: "dock",
+            worktreeId: "wt-1",
+          },
+          {
+            id: "term-2",
+            kind: "terminal",
+            agentId: "claude",
+            title: "Terminal 2",
+            location: "dock",
+            worktreeId: "wt-1",
+          },
+        ],
+      };
+      mockStore({ completedEnabled: true }, appState);
+      agentNotificationService.syncWatchedPanels(["term-1", "term-2"]);
+
+      events.emit("agent:state-changed", {
+        state: "completed" as const,
+        previousState: "working" as const,
+        terminalId: "term-1",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+      events.emit("agent:state-changed", {
+        state: "completed" as const,
+        previousState: "working" as const,
+        terminalId: "term-2",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+
+      // Advance past the 2s completion debounce + 0ms flush timer
+      vi.advanceTimersByTime(2001);
+
+      // Both completions should be captured (grouped into one "Agents completed"
+      // burst rather than silently dropping one).
+      expect(notificationServiceMock.showWatchNotification).toHaveBeenCalledWith(
+        "Agents completed",
+        "2 agents finished their tasks",
+        expect.any(Object),
+        "notification:watch-navigate",
+        true
+      );
+    });
+
+    it("grace key is per-terminal — one terminal's interaction doesn't clear a sibling's grace", () => {
+      const appState = {
+        activeWorktreeId: "wt-1",
+        terminals: [
+          {
+            id: "term-1",
+            kind: "terminal",
+            agentId: "claude",
+            title: "Terminal 1",
+            location: "dock",
+            worktreeId: "wt-1",
+          },
+          {
+            id: "term-2",
+            kind: "terminal",
+            agentId: "claude",
+            title: "Terminal 2",
+            location: "dock",
+            worktreeId: "wt-1",
+          },
+        ],
+      };
+      mockStore({ waitingEnabled: true, soundEnabled: true }, appState);
+      agentNotificationService.syncWatchedPanels(["term-1", "term-2"]);
+      vi.advanceTimersByTime(10_000);
+
+      // Both terminals detect "claude" — each seeds its own grace entry
+      events.emit("agent:detected", {
+        terminalId: "term-1",
+        agentType: "claude",
+        processName: "claude",
+        timestamp: Date.now(),
+      });
+      events.emit("agent:detected", {
+        terminalId: "term-2",
+        agentType: "claude",
+        processName: "claude",
+        timestamp: Date.now(),
+      });
+
+      // Term-1 transitions waiting→working (user interacted), clearing ITS grace
+      events.emit("agent:state-changed", {
+        state: "waiting" as const,
+        previousState: "idle" as const,
+        terminalId: "term-1",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+      events.emit("agent:state-changed", {
+        state: "working" as const,
+        previousState: "waiting" as const,
+        terminalId: "term-1",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+
+      // Term-2 hits waiting — its grace is still active, so no sound should fire
+      soundServiceMock.playFile.mockClear();
+      events.emit("agent:state-changed", {
+        state: "waiting" as const,
+        previousState: "working" as const,
+        terminalId: "term-2",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+      vi.advanceTimersByTime(200);
+
+      expect(soundServiceMock.playFile).not.toHaveBeenCalled();
+    });
+
+    it("handles state-changed payload whose agentId is the detected type (no persisted agentId)", () => {
+      mockStore({ completedEnabled: true });
+
+      // Runtime-detected agent: agentId on the event carries detectedAgentType
+      events.emit("agent:state-changed", {
+        state: "completed" as const,
+        previousState: "working" as const,
+        terminalId: "term-1",
+        agentId: "claude",
+        timestamp: Date.now(),
+        trigger: "heuristic" as const,
+        confidence: 1,
+      });
+      vi.advanceTimersByTime(5000);
+
+      expect(notificationServiceMock.showWatchNotification).toHaveBeenCalledWith(
+        "Agent completed",
+        expect.stringContaining("claude"),
+        expect.objectContaining({ panelId: "term-1" }),
+        "notification:watch-navigate",
+        true
+      );
+    });
+  });
+
   describe("quiet hours suppression", () => {
     it("scheduled quiet hours suppresses completion watch notifications", () => {
       const realDate = global.Date;
