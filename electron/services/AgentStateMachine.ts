@@ -12,7 +12,7 @@ export type AgentEvent =
   | { type: "kill" }; // Intentional kill by user
 
 const VALID_TRANSITIONS: Record<AgentState, AgentState[]> = {
-  idle: ["working", "running"],
+  idle: ["working", "running", "exited"],
   working: ["waiting", "completed", "exited"],
   running: ["idle"], // Shell process state - managed by TerminalProcess, not this state machine
   waiting: ["working", "completed", "exited"],
@@ -81,7 +81,7 @@ export function nextAgentState(current: AgentState, event: AgentEvent): AgentSta
       break;
 
     case "exit":
-      if (current !== "idle" && current !== "exited") {
+      if (current !== "exited") {
         return "exited";
       }
       break;

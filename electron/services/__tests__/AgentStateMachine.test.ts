@@ -55,6 +55,10 @@ describe("AgentStateMachine", () => {
       expect(isValidTransition("exited", "completed")).toBe(false);
     });
 
+    it("should allow idle → exited (Issue #5767 — graceful agent exit detected from idle)", () => {
+      expect(isValidTransition("idle", "exited")).toBe(true);
+    });
+
     it("should not allow invalid transitions", () => {
       expect(isValidTransition("idle", "waiting")).toBe(false);
       expect(isValidTransition("idle", "completed")).toBe(false);
@@ -220,9 +224,9 @@ describe("AgentStateMachine", () => {
         expect(nextAgentState("completed", event)).toBe("exited");
       });
 
-      it("should not transition from idle on exit", () => {
+      it("should transition idle → exited on exit (Issue #5767 — graceful agent exit after silence timeout)", () => {
         const event: AgentEvent = { type: "exit", code: 0 };
-        expect(nextAgentState("idle", event)).toBe("idle");
+        expect(nextAgentState("idle", event)).toBe("exited");
       });
 
       it("should not transition from exited on exit (terminal state)", () => {
