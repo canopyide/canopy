@@ -337,6 +337,42 @@ describe("terminalStore process detection listeners", () => {
     cleanup();
   });
 
+  // End-to-end regression for #5765: a plain terminal that ran an agent must not
+  // be trashed on clean exit — the sticky flag is what the onExit handler reads.
+  it("does not trash a plain terminal on clean exit after an agent was detected", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+    const exit = handlers.exit;
+
+    detected?.({
+      terminalId: "term-1",
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+      timestamp: Date.now(),
+    });
+
+    exit?.("term-1", 0);
+
+    const panel = usePanelStore.getState().panelsById["term-1"];
+    expect(panel).toBeDefined();
+    expect(panel?.location).not.toBe("trash");
+    expect(panel?.everDetectedAgent).toBe(true);
+    cleanup();
+  });
+
+  it("still trashes a plain terminal on clean exit when no agent was ever detected", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const exit = handlers.exit;
+
+    exit?.("term-1", 0);
+
+    const panel = usePanelStore.getState().panelsById["term-1"];
+    // Either moved to trash (location === "trash") or removed entirely.
+    expect(panel === undefined || panel.location === "trash").toBe(true);
+    cleanup();
+  });
+
   it("is idempotent and does not register duplicate listeners", () => {
     const cleanupA = setupTerminalStoreListeners();
     const cleanupB = setupTerminalStoreListeners();

@@ -460,5 +460,6 @@ export function buildArgsForOrphanedTerminal(
     agentSessionId: terminal.agentSessionId,
     agentLaunchFlags: terminal.agentLaunchFlags,
     agentModelId: terminal.agentModelId,
+    everDetectedAgent: terminal.everDetectedAgent,
   };
 }
