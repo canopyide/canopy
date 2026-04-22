@@ -58,6 +58,11 @@ export function tryFleetBroadcastFromEditor(
         // now resolved.
         for (const id of targets) useFleetFailureStore.getState().dismissId(id);
       }
+      // Subtle audio confirmation that the prompt fanned out. Reuses the
+      // existing context-injected sound — semantically a fleet broadcast
+      // IS injecting the same context into N agents. SoundService handles
+      // dampening/throttling and respects the user's UI-feedback toggle.
+      window.electron?.notification?.playUiEvent("context-injected").catch(() => {});
     } finally {
       onSent();
     }

@@ -394,6 +394,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   // double-tap handler in FleetArmingRibbon that avoids the escape-stack
   // LIFO collision a chord binding would cause.
   {
+    actionId: "fleet.armFocused",
+    combo: "Cmd+J",
+    scope: "global",
+    priority: 0,
+    description: "Toggle arm focused pane (Join the fleet)",
+    category: "Fleet",
+  },
+  {
     actionId: "fleet.accept",
     combo: "Cmd+Y",
     scope: "global",

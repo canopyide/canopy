@@ -410,3 +410,74 @@ describe("fleet scope actions — flag gating", () => {
     expect(useWorktreeSelectionStore.getState().isFleetScopeActive).toBe(true);
   });
 });
+
+describe("fleet.armFocused", () => {
+  beforeEach(() => {
+    resetStores();
+    vi.clearAllMocks();
+  });
+
+  it("arms the focused eligible pane from an empty fleet", async () => {
+    seedPanels([makeAgent("a"), makeAgent("b")]);
+    usePanelStore.setState({ focusedId: "a" });
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armFocused");
+    const armed = useFleetArmingStore.getState().armedIds;
+    expect(armed.has("a")).toBe(true);
+    expect(armed.size).toBe(1);
+  });
+
+  it("disarms the focused pane when it is already armed", async () => {
+    seedPanels([makeAgent("a"), makeAgent("b")]);
+    useFleetArmingStore.getState().armIds(["a", "b"]);
+    usePanelStore.setState({ focusedId: "a" });
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armFocused");
+    const armed = useFleetArmingStore.getState().armedIds;
+    expect(armed.has("a")).toBe(false);
+    expect(armed.has("b")).toBe(true);
+    expect(armed.size).toBe(1);
+  });
+
+  it("no-ops when no pane is focused", async () => {
+    seedPanels([makeAgent("a"), makeAgent("b")]);
+    usePanelStore.setState({ focusedId: null });
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armFocused");
+    expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+  });
+
+  it("no-ops when the focused pane is not fleet-eligible", async () => {
+    // location: "trash" disqualifies via isFleetArmEligible — same gate the
+    // mouse path uses, so chord and click stay symmetric.
+    seedPanels([makeAgent("a", { location: "trash" })]);
+    usePanelStore.setState({ focusedId: "a" });
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armFocused");
+    expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+  });
+
+  it("builds up a fleet across successive focus changes", async () => {
+    // The keyboard workflow we're enabling: focus A, arm, focus B, arm,
+    // focus C, arm — ends up with a 3-pane fleet without touching the mouse.
+    seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c")]);
+    const registry = await buildRegistry();
+
+    usePanelStore.setState({ focusedId: "a" });
+    await run(registry, "fleet.armFocused");
+    usePanelStore.setState({ focusedId: "b" });
+    await run(registry, "fleet.armFocused");
+    usePanelStore.setState({ focusedId: "c" });
+    await run(registry, "fleet.armFocused");
+
+    const armed = useFleetArmingStore.getState().armedIds;
+    expect(armed.size).toBe(3);
+    expect(armed.has("a")).toBe(true);
+    expect(armed.has("b")).toBe(true);
+    expect(armed.has("c")).toBe(true);
+    // armOrder reflects the chronological add order, so the last-armed
+    // becomes the lastArmedId — important for the existing exit-fleet
+    // restore-focus behavior.
+    expect(useFleetArmingStore.getState().lastArmedId).toBe("c");
+  });
+});

@@ -319,4 +319,25 @@ export function registerFleetActions(actions: ActionRegistry): void {
       useFleetArmingStore.getState().armMatchingFilter(worktreeIds);
     },
   }));
+
+  actions.set("fleet.armFocused", () => ({
+    id: "fleet.armFocused",
+    title: "Fleet: Toggle Arm Focused Pane",
+    description:
+      "Toggle fleet membership on the focused agent terminal — keyboard equivalent of ⌘/⇧-clicking pane chrome",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      const focusedId = usePanelStore.getState().focusedId;
+      if (!focusedId) return;
+      const terminal = usePanelStore.getState().panelsById[focusedId];
+      // Match the mouse-path eligibility gate so chord and click behave
+      // identically: trashed/backgrounded/no-PTY panes can't enter the
+      // fleet from either entry point.
+      if (!isFleetArmEligible(terminal)) return;
+      useFleetArmingStore.getState().toggleId(focusedId);
+    },
+  }));
 }

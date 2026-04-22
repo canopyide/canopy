@@ -195,6 +195,12 @@ export function useFleetLiveBroadcast({ enabled }: FleetLiveBroadcastOptions): v
       const targets = resolveFleetBroadcastTargetIds();
       if (targets.length === 0) return;
       const result = await broadcastFleetLiteralPaste(text, targets);
+      // Same audio cue as Enter-broadcast — fan-out confirmation.
+      // Intentionally NOT wired into the raw keystroke fan-out
+      // (handleKeyDown / handleCompositionEnd) which would chime on
+      // every letter. Paste is a discrete bulk action; chiming once
+      // matches the user's mental model.
+      window.electron?.notification?.playUiEvent("context-injected").catch(() => {});
       if (result.failureCount === 0) {
         // A successful broadcast clears any stale failure dot on these
         // targets so the user isn't left with an out-of-date red dot from

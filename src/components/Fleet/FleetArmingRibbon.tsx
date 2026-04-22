@@ -524,6 +524,20 @@ function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps)
     })
   );
 
+  // Click a row → focus that pane (mouse path to "set primary"). Existing
+  // terminal-nav chords (⌘⌥Arrow, Ctrl+Tab, ⌘1-9) cover the keyboard path
+  // since focus already promotes any armed pane to primary. Closes the
+  // popover; the focus change triggers HybridInputBar's primary→follower
+  // mirror direction reversal automatically.
+  const focusArmedPane = useCallback(
+    (id: string) => {
+      if (!usePanelStore.getState().panelsById[id]) return;
+      usePanelStore.getState().setFocused(id);
+      onOpenChange(false);
+    },
+    [onOpenChange]
+  );
+
   const scope = useFleetWorktreeScope();
   const scopeAriaLabel = scope.worktreeCount > 1 ? ` across ${scope.worktreeCount} worktrees` : "";
   const label = `${armedCount} in fleet${scopeAriaLabel}`;
@@ -565,18 +579,20 @@ function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps)
             <li className="px-2 py-1 text-[12px] text-daintree-text/60">None</li>
           ) : (
             armOrder.map((id) => (
-              <li
-                key={id}
-                className="flex items-center gap-2 rounded px-2 py-1 hover:bg-tint/[0.08]"
-              >
-                <span className="flex-1 truncate text-[12px] text-daintree-text">
+              <li key={id} className="flex items-center gap-2 rounded hover:bg-tint/[0.08]">
+                <button
+                  type="button"
+                  onClick={() => focusArmedPane(id)}
+                  aria-label={`Focus ${panelsById[id] ?? id}`}
+                  className="flex-1 truncate px-2 py-1 text-left text-[12px] text-daintree-text"
+                >
                   {panelsById[id] ?? id}
-                </span>
+                </button>
                 <button
                   type="button"
                   onClick={() => disarmId(id)}
                   aria-label={`Unarm ${panelsById[id] ?? id}`}
-                  className="inline-flex shrink-0 items-center rounded p-0.5 text-daintree-text/50 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
+                  className="inline-flex shrink-0 items-center rounded p-0.5 mr-1 text-daintree-text/50 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
