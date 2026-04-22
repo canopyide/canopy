@@ -264,4 +264,150 @@ describe("Agent Classification Matrix", () => {
       expect(terminal?.agentState).toBeUndefined();
     }, 10000);
   });
+
+  describe("Runtime agent promotion and demotion", () => {
+    it("should start ActivityMonitor when a plain terminal is promoted to an agent", async () => {
+      const id = randomUUID();
+      manager.spawn(id, {
+        cwd: process.cwd(),
+        cols: 80,
+        rows: 24,
+        type: "terminal" as TerminalType,
+      });
+
+      await sleep(100);
+
+      // Sanity: plain shell starts without monitor, state, or analysis flag.
+      const before = manager.getTerminal(id);
+      expect(before?.analysisEnabled).toBe(false);
+      expect(before?.agentState).toBeUndefined();
+      expect(before?.detectedAgentType).toBeUndefined();
+
+      const simulated = manager.simulateAgentDetection(id, {
+        detected: true,
+        agentType: "claude" as TerminalType,
+        processName: "claude",
+      });
+      expect(simulated).toBe(true);
+
+      const after = manager.getTerminal(id);
+      expect(after?.analysisEnabled).toBe(true);
+      expect(after?.agentState).toBeDefined();
+      expect(after?.detectedAgentType).toBe("claude");
+      expect(after?.type).toBe("claude");
+    }, 10000);
+
+    it("should stop ActivityMonitor and clear analysisEnabled when the runtime agent exits", async () => {
+      const id = randomUUID();
+      manager.spawn(id, {
+        cwd: process.cwd(),
+        cols: 80,
+        rows: 24,
+        type: "terminal" as TerminalType,
+      });
+
+      await sleep(100);
+
+      manager.simulateAgentDetection(id, {
+        detected: true,
+        agentType: "claude" as TerminalType,
+        processName: "claude",
+      });
+
+      const promoted = manager.getTerminal(id);
+      expect(promoted?.analysisEnabled).toBe(true);
+      expect(promoted?.detectedAgentType).toBe("claude");
+
+      manager.simulateAgentDetection(id, {
+        detected: false,
+      });
+
+      const demoted = manager.getTerminal(id);
+      expect(demoted?.analysisEnabled).toBe(false);
+      expect(demoted?.detectedAgentType).toBeUndefined();
+      expect(demoted?.type).toBe("terminal");
+    }, 10000);
+
+    it("should demote a promoted terminal when a non-agent process replaces the agent", async () => {
+      const id = randomUUID();
+      manager.spawn(id, {
+        cwd: process.cwd(),
+        cols: 80,
+        rows: 24,
+        type: "terminal" as TerminalType,
+      });
+
+      await sleep(100);
+
+      manager.simulateAgentDetection(id, {
+        detected: true,
+        agentType: "claude" as TerminalType,
+        processName: "claude",
+      });
+      expect(manager.getTerminal(id)?.analysisEnabled).toBe(true);
+
+      manager.simulateAgentDetection(id, {
+        detected: true,
+        processIconId: "npm",
+        processName: "npm",
+      });
+
+      const demoted = manager.getTerminal(id);
+      expect(demoted?.analysisEnabled).toBe(false);
+      expect(demoted?.detectedAgentType).toBeUndefined();
+      expect(demoted?.type).toBe("terminal");
+    }, 10000);
+
+    it("should preserve analysisEnabled for spawn-time agent terminals when their agent exits", async () => {
+      const id = randomUUID();
+      manager.spawn(id, {
+        cwd: process.cwd(),
+        cols: 80,
+        rows: 24,
+        type: "claude" as TerminalType,
+      });
+
+      await sleep(2000);
+
+      // Spawn-time agent panels keep analysisEnabled=true even after the live
+      // agent exits — lifecycle unification here is runtime-only, and these
+      // panels remain classified as agent panels for the whole session.
+      manager.simulateAgentDetection(id, {
+        detected: false,
+      });
+
+      const info = manager.getTerminal(id);
+      expect(info?.analysisEnabled).toBe(true);
+    }, 10000);
+
+    it("should reconfigure the existing monitor when the detected agent type changes", async () => {
+      const id = randomUUID();
+      manager.spawn(id, {
+        cwd: process.cwd(),
+        cols: 80,
+        rows: 24,
+        type: "terminal" as TerminalType,
+      });
+
+      await sleep(100);
+
+      manager.simulateAgentDetection(id, {
+        detected: true,
+        agentType: "claude" as TerminalType,
+        processName: "claude",
+      });
+      expect(manager.getTerminal(id)?.type).toBe("claude");
+
+      manager.simulateAgentDetection(id, {
+        detected: true,
+        agentType: "gemini" as TerminalType,
+        processName: "gemini",
+      });
+
+      const info = manager.getTerminal(id);
+      expect(info?.analysisEnabled).toBe(true);
+      expect(info?.type).toBe("gemini");
+      expect(info?.detectedAgentType).toBe("gemini");
+    }, 10000);
+  });
 });

@@ -1138,7 +1138,7 @@ export class TerminalProcess {
   }
 
   startActivityMonitor(options?: { preserveState?: boolean }): void {
-    if (this.isAgentTerminal && !this.activityMonitor) {
+    if (!this.activityMonitor) {
       const ptyPid = this.terminalInfo.ptyProcess.pid;
       const processStateValidator = createProcessStateValidator(ptyPid, this.deps.processTreeCache);
 
@@ -1254,7 +1254,7 @@ export class TerminalProcess {
 
       terminal.lastOutputTime = Date.now();
 
-      if (this.isAgentTerminal && this.activityMonitor) {
+      if (this.activityMonitor) {
         this.activityMonitor.onData(data);
       }
 
@@ -1415,7 +1415,7 @@ export class TerminalProcess {
     this.callbacks.emitData(this.id, data);
   }
 
-  private handleAgentDetection(result: DetectionResult, spawnedAt: number): void {
+  handleAgentDetection(result: DetectionResult, spawnedAt: number): void {
     if (this.terminalInfo.spawnedAt !== spawnedAt) {
       console.warn(
         `[TerminalProcess] Rejected stale detection from old ProcessDetector ${this.id} ` +
@@ -1444,7 +1444,20 @@ export class TerminalProcess {
 
         const detection = getEffectiveAgentConfig(result.agentType)?.detection;
         const patternConfig = buildPatternConfig(detection, result.agentType);
-        this.activityMonitor?.reconfigure(result.agentType, patternConfig);
+        if (this.activityMonitor) {
+          this.activityMonitor.reconfigure(result.agentType, patternConfig);
+        } else {
+          // Runtime promotion: plain terminal now hosts an agent.
+          // Seed agent state before startPolling() fires its initial tick,
+          // then start the monitor BEFORE emitting "agent:detected" so the
+          // main-process monitor is live before the renderer IPC arrives.
+          if (terminal.agentState === undefined) {
+            terminal.agentState = "idle";
+            terminal.lastStateChange = Date.now();
+          }
+          terminal.analysisEnabled = true;
+          this.startActivityMonitor();
+        }
 
         if (!terminal.title || terminal.title === previousType || terminal.title === "Terminal") {
           const config = AGENT_REGISTRY[result.agentType];
@@ -1471,6 +1484,9 @@ export class TerminalProcess {
         terminal.type = "terminal";
         terminal.title = "Terminal";
         this.stopActivityMonitor();
+        if (!this.isAgentTerminal) {
+          terminal.analysisEnabled = false;
+        }
         events.emit("agent:exited", {
           terminalId: this.id,
           agentType: previousType,
@@ -1497,6 +1513,9 @@ export class TerminalProcess {
 
       this.lastDetectedProcessIconId = undefined;
       this.stopActivityMonitor();
+      if (!this.isAgentTerminal) {
+        terminal.analysisEnabled = false;
+      }
       events.emit("agent:exited", {
         terminalId: this.id,
         agentType: previousType,
