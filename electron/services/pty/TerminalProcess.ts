@@ -1424,9 +1424,7 @@ export class TerminalProcess {
       }
 
       this.lastDetectedProcessIconId = undefined;
-      if (previousType) {
-        this.stopActivityMonitor();
-      }
+      this.stopActivityMonitor();
       events.emit("agent:exited", {
         terminalId: this.id,
         agentType: previousType,

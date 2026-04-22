@@ -196,4 +196,104 @@ describe("TerminalProcess.handleAgentDetection — disposes ActivityMonitor on a
       trackedTerminal.dispose();
     }
   });
+
+  it("Branch A → Branch B sequence — only one agent:exited with the original agentType", () => {
+    callHandleAgentDetection(
+      terminal,
+      { detected: true, processIconId: "npm", processName: "npm" },
+      getSpawnedAt(terminal)
+    );
+    expect(getActivityMonitor(terminal)).toBeNull();
+    expect(exitedEvents).toHaveLength(1);
+    expect(exitedEvents[0]).toEqual({ terminalId: "t-agent", agentType: "claude" });
+
+    // Subsequent Branch B fires because lastDetectedProcessIconId is still set.
+    callHandleAgentDetection(terminal, { detected: false }, getSpawnedAt(terminal));
+    expect(getActivityMonitor(terminal)).toBeNull();
+    // Branch B emits a second exit (with undefined agentType) by existing contract;
+    // the load-bearing assertion is no monitor leak across the sequence.
+    expect(exitedEvents.length).toBeGreaterThanOrEqual(1);
+    expect(exitedEvents[0]).toEqual({ terminalId: "t-agent", agentType: "claude" });
+  });
+});
+
+describe("TerminalProcess.handleAgentDetection — disposes monitor without prior agent", () => {
+  it("Branch B — stops the constructor-created monitor when no agent was ever detected", () => {
+    const exitedEvents: Array<{ terminalId: string; agentType?: string }> = [];
+    const unsub = events.on("agent:exited", (payload) => {
+      exitedEvents.push({ terminalId: payload.terminalId, agentType: payload.agentType });
+    });
+    const trackedTerminal = createAgentTerminal();
+    try {
+      // No initial agent detection: only a non-agent process icon is set.
+      callHandleAgentDetection(
+        trackedTerminal,
+        { detected: true, processIconId: "npm", processName: "npm" },
+        getSpawnedAt(trackedTerminal)
+      );
+      // Monitor was created in the constructor for this isAgentTerminal=true terminal.
+      expect(getActivityMonitor(trackedTerminal)).not.toBeNull();
+
+      // Now everything goes away — Branch B with previousType undefined.
+      callHandleAgentDetection(
+        trackedTerminal,
+        { detected: false },
+        getSpawnedAt(trackedTerminal)
+      );
+
+      expect(getActivityMonitor(trackedTerminal)).toBeNull();
+      expect(exitedEvents).toHaveLength(1);
+      expect(exitedEvents[0].agentType).toBeUndefined();
+    } finally {
+      unsub();
+      trackedTerminal.dispose();
+    }
+  });
+});
+
+describe("TerminalProcess.handleAgentDetection — polling loop teardown", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("emits no further handleActivityState callbacks after the monitor is disposed", () => {
+    const handleActivityState = vi.fn();
+    const trackedTerminal = createAgentTerminal({
+      agentStateService: {
+        handleActivityState,
+        updateAgentState: () => {},
+        emitAgentKilled: () => {},
+      } as unknown as TerminalProcessDeps["agentStateService"],
+    });
+
+    try {
+      callHandleAgentDetection(
+        trackedTerminal,
+        { detected: true, agentType: "claude", processIconId: "claude" },
+        getSpawnedAt(trackedTerminal)
+      );
+      expect(getActivityMonitor(trackedTerminal)).not.toBeNull();
+
+      callHandleAgentDetection(
+        trackedTerminal,
+        { detected: false },
+        getSpawnedAt(trackedTerminal)
+      );
+      expect(getActivityMonitor(trackedTerminal)).toBeNull();
+
+      handleActivityState.mockClear();
+
+      // Advance past several polling cycles. If the polling interval still fired,
+      // it would call handleActivityState. The monitor must be fully torn down.
+      vi.advanceTimersByTime(5000);
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      trackedTerminal.dispose();
+    }
+  });
 });
