@@ -30,6 +30,7 @@ export class ProcessTreeCache {
   private isWindows: boolean = process.platform === "win32";
   private refreshCallbacks: Set<RefreshCallback> = new Set();
   private lastError: Error | null = null;
+  private loggedZeroSubscriberSkip: boolean = false;
   private cpuSnapshots = new Map<
     string,
     { kernelTicks: bigint; userTicks: bigint; wallMs: number }
@@ -117,11 +118,21 @@ export class ProcessTreeCache {
   async refresh(): Promise<void> {
     // Skip refresh if nobody is listening - saves CPU especially on Windows
     if (this.refreshCallbacks.size === 0) {
+      // Log once per lifecycle when we skip due to no subscribers. If
+      // ProcessDetector instances aren't registering, detection goes silent —
+      // this surfaces the cause instead of failing silently (#5813).
+      if (!this.loggedZeroSubscriberSkip) {
+        this.loggedZeroSubscriberSkip = true;
+        console.log(
+          "[ProcessTreeCache] refresh skipped — no subscribers (ProcessDetector not attached?)"
+        );
+      }
       if (!this.disposed) {
         this.schedulePoll(this.currentIntervalMs);
       }
       return;
     }
+    this.loggedZeroSubscriberSkip = false;
 
     if (this.isRefreshing) {
       return;

@@ -554,4 +554,101 @@ describe("TerminalProcess shell-command identity fallback", () => {
       terminal.dispose();
     }
   });
+
+  // #5813: user runs a plain-process command, the badge appears via the
+  // fallback, they Ctrl+C, then run a DIFFERENT plain-process command. The
+  // second command must re-arm the fallback even though lastDetectedProcessIconId
+  // from the first command hasn't been cleared by the process-tree path yet.
+  it("re-arms the fallback for a second plain-process command when the first badge hasn't cleared", async () => {
+    const terminal = createPlainTerminal("t-fallback-rearm");
+    const pty = getMockPty(terminal);
+
+    try {
+      terminal.write("npm run dev\r");
+      pty.__emitData("npm run dev\r\n");
+      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
+
+      // Second command while first badge is still latched. No process-tree
+      // clear has fired yet.
+      terminal.write("pnpm build\r");
+      pty.__emitData("pnpm build\r\n");
+      pty.__emitData("> build output\r\n");
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(terminal.getInfo().detectedProcessIconId).toBe("pnpm");
+    } finally {
+      terminal.dispose();
+    }
+  });
+});
+
+// #5813: the live ProcessDetector path for plain terminals running a
+// recognised non-agent process (npm, pnpm, python, docker, etc.) must emit
+// `agent:detected` with `processIconId` but no `agentType`. This is the
+// primary pipeline — the shell-command fallback is belt-and-suspenders.
+describe("TerminalProcess.handleAgentDetection — plain process icon badge emission", () => {
+  it("emits agent:detected with processIconId only (no agentType) for a plain-process detection", () => {
+    const terminal = createPlainTerminal("t-plain-badge");
+    const detectedEvents: Array<{
+      terminalId: string;
+      agentType?: string;
+      processIconId?: string;
+      processName?: string;
+    }> = [];
+    const unsub = events.on("agent:detected", (payload) => {
+      detectedEvents.push({
+        terminalId: payload.terminalId,
+        agentType: payload.agentType,
+        processIconId: payload.processIconId,
+        processName: payload.processName,
+      });
+    });
+
+    try {
+      callHandleAgentDetection(
+        terminal,
+        { detected: true, processIconId: "npm", processName: "npm" },
+        getSpawnedAt(terminal)
+      );
+
+      expect(detectedEvents).toHaveLength(1);
+      expect(detectedEvents[0].terminalId).toBe("t-plain-badge");
+      expect(detectedEvents[0].agentType).toBeUndefined();
+      expect(detectedEvents[0].processIconId).toBe("npm");
+      expect(detectedEvents[0].processName).toBe("npm");
+      expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
+    } finally {
+      unsub();
+      terminal.dispose();
+    }
+  });
+
+  it("clears detectedProcessIconId and emits agent:exited when the plain process goes away", () => {
+    const terminal = createPlainTerminal("t-plain-badge-clear");
+    const exitedEvents: Array<{ terminalId: string; agentType?: string }> = [];
+    const unsub = events.on("agent:exited", (payload) => {
+      exitedEvents.push({ terminalId: payload.terminalId, agentType: payload.agentType });
+    });
+
+    try {
+      callHandleAgentDetection(
+        terminal,
+        { detected: true, processIconId: "npm", processName: "npm" },
+        getSpawnedAt(terminal)
+      );
+      expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
+
+      callHandleAgentDetection(terminal, { detected: false }, getSpawnedAt(terminal));
+
+      expect(terminal.getInfo().detectedProcessIconId).toBeUndefined();
+      expect(exitedEvents).toHaveLength(1);
+      expect(exitedEvents[0].terminalId).toBe("t-plain-badge-clear");
+      expect(exitedEvents[0].agentType).toBeUndefined();
+    } finally {
+      unsub();
+      terminal.dispose();
+    }
+  });
 });

@@ -289,6 +289,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         ref={ref}
         data-panel-id={id}
         data-panel-location={location}
+        data-detected-process-id={detectedProcessId || undefined}
         data-selected={isSelected || undefined}
         style={{
           contain: "content",
