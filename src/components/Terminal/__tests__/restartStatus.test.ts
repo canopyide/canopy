@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getRestartBannerVariant, type RestartBannerInput } from "../restartStatus";
+import {
+  getRestartBannerVariant,
+  getDegradedBannerVariant,
+  type RestartBannerInput,
+  type DegradedBannerInput,
+} from "../restartStatus";
 
 const base: RestartBannerInput = {
   isExited: true,
@@ -87,5 +92,61 @@ describe("getRestartBannerVariant", () => {
   it("preserves the exit code in the exit-error variant", () => {
     const result = getRestartBannerVariant({ ...base, exitCode: 137 });
     expect(result).toEqual({ type: "exit-error", exitCode: 137 });
+  });
+});
+
+const degradedBase: DegradedBannerInput = {
+  kind: "terminal",
+  everDetectedAgent: true,
+  detectedAgentId: "claude",
+  dismissedDegradedBanner: false,
+  isExited: false,
+  isRestarting: false,
+};
+
+describe("getDegradedBannerVariant", () => {
+  it("shows for kind=terminal that has hosted an agent and still has a detected agent", () => {
+    const result = getDegradedBannerVariant(degradedBase);
+    expect(result).toEqual({ type: "degraded-mode", agentId: "claude" });
+  });
+
+  it("returns none for kind=agent (cold-spawned agents have correct env+scrollback)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, kind: "agent" });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none when kind is undefined (not yet hydrated)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, kind: undefined });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none when everDetectedAgent is false (no promotion ever happened)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, everDetectedAgent: false });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none when detectedAgentId is missing (agent already exited)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, detectedAgentId: undefined });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none when the user has dismissed the banner", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, dismissedDegradedBanner: true });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none while exited (the exit banner takes precedence)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, isExited: true });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none while restarting (avoid flashing the banner during convert)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, isRestarting: true });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("preserves the detected agent id in the variant", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, detectedAgentId: "gemini" });
+    expect(result).toEqual({ type: "degraded-mode", agentId: "gemini" });
   });
 });

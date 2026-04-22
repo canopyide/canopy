@@ -274,6 +274,12 @@ export function setupTerminalStoreListeners() {
         const nextDetectedAgentId = isBuiltInAgentId(agentType) ? agentType : undefined;
         if (!processIconId && !nextEverDetectedAgent && !nextDetectedAgentId) return;
 
+        // Snapshot kind before mutation so we can detect runtime promotion of a
+        // plain terminal (kind="terminal") that just started hosting a built-in
+        // agent. Cold agent panels (kind="agent") already use the agent
+        // scrollback policy and do not need repair.
+        const priorKind = usePanelStore.getState().panelsById[terminalId]?.kind;
+
         usePanelStore.setState((state) => {
           const terminal = state.panelsById[terminalId];
           if (!terminal) return state;
@@ -299,6 +305,14 @@ export function setupTerminalStoreListeners() {
             },
           };
         });
+
+        // Spawn-sealed runtime promotion: a kind="terminal" panel cannot get the
+        // agent env/pool repaired in-process, but the live xterm scrollback can
+        // grow to the agent policy. The user-facing "Restart for full agent
+        // support" cue is rendered by the degraded-mode banner in TerminalPane.
+        if (priorKind === "terminal" && nextDetectedAgentId !== undefined) {
+          terminalInstanceService.applyAgentPromotion(terminalId, nextDetectedAgentId);
+        }
       })
     )
   );

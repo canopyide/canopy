@@ -24,7 +24,8 @@ import { ArtifactOverlay } from "./ArtifactOverlay";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalScrollIndicator } from "./TerminalScrollIndicator";
 import { TerminalRestartStatusBanner } from "./TerminalRestartStatusBanner";
-import { getRestartBannerVariant } from "./restartStatus";
+import { TerminalDegradedModeBanner } from "./TerminalDegradedModeBanner";
+import { getRestartBannerVariant, getDegradedBannerVariant } from "./restartStatus";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
 import { SpawnErrorBanner } from "./SpawnErrorBanner";
 import { ReconnectErrorBanner } from "./ReconnectErrorBanner";
@@ -73,9 +74,13 @@ export interface TerminalPaneProps {
   id: string;
   title: string;
   type?: TerminalType;
+  /** Spawn-time panel kind. Used to detect runtime-promoted plain terminals (spawnKind="terminal" + detectedAgentId). */
+  spawnKind?: import("@shared/types/panel").PanelKind;
+  /** Sticky flag set the first time runtime detection saw an agent in this session. */
+  everDetectedAgent?: boolean;
   agentId?: string;
   /** Runtime-detected agent identity (cleared on agent exit). Drives panel chrome (icons, badges). */
-  detectedAgentId?: string;
+  detectedAgentId?: BuiltInAgentId;
   agentPresetId?: string;
   presetColor?: string;
   worktreeId?: string;
@@ -117,6 +122,8 @@ function TerminalPaneComponent({
   id,
   title,
   type,
+  spawnKind,
+  everDetectedAgent,
   agentId,
   detectedAgentId,
   agentPresetId,
@@ -157,6 +164,7 @@ function TerminalPaneComponent({
   const [justFocusedUntil, setJustFocusedUntil] = useState(0);
   const inputBarRef = useRef<HybridInputBarHandle>(null);
   const [dismissedRestartPrompt, setDismissedRestartPrompt] = useState(false);
+  const [dismissedDegradedBanner, setDismissedDegradedBanner] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
   const [isAutoRestarting, setIsAutoRestarting] = useState(false);
@@ -185,6 +193,7 @@ function TerminalPaneComponent({
 
   useEffect(() => {
     setDismissedRestartPrompt(false);
+    setDismissedDegradedBanner(false);
     inputTracker.reset();
     // Track process start time on each restart for backoff stability window
     processStartTimeRef.current = Date.now();
@@ -193,6 +202,7 @@ function TerminalPaneComponent({
   const updateVisibility = usePanelStore((state) => state.updateVisibility);
   const getTerminal = usePanelStore((state) => state.getTerminal);
   const restartTerminal = usePanelStore((state) => state.restartTerminal);
+  const convertTerminalType = usePanelStore((state) => state.convertTerminalType);
   const trashPanel = usePanelStore((state) => state.trashPanel);
   const setFocused = usePanelStore((state) => state.setFocused);
   const updateLastCommand = usePanelStore((state) => state.updateLastCommand);
@@ -634,6 +644,12 @@ function TerminalPaneComponent({
     inputTracker.reset();
   }, [restartTerminal, id, inputTracker]);
 
+  const handleRestartAsAgent = useCallback(() => {
+    if (!detectedAgentId) return;
+    void convertTerminalType(id, detectedAgentId, detectedAgentId);
+    inputTracker.reset();
+  }, [convertTerminalType, id, detectedAgentId, inputTracker]);
+
   const handleUpdateCwd = useCallback(() => {
     setIsUpdateCwdOpen(true);
   }, []);
@@ -853,6 +869,19 @@ function TerminalPaneComponent({
           onRestart={handleRestart}
         />
       )}
+
+      <TerminalDegradedModeBanner
+        variant={getDegradedBannerVariant({
+          kind: spawnKind,
+          everDetectedAgent,
+          detectedAgentId,
+          dismissedDegradedBanner,
+          isExited,
+          isRestarting,
+        })}
+        onRestart={handleRestartAsAgent}
+        onDismiss={() => setDismissedDegradedBanner(true)}
+      />
 
       <TerminalRestartStatusBanner
         variant={getRestartBannerVariant({
