@@ -325,9 +325,18 @@ export function setupTerminalStoreListeners() {
         usePanelStore.setState((state) => {
           const terminal = state.panelsById[terminalId];
           if (!terminal) return state;
-          if (terminal.detectedProcessId === undefined && terminal.detectedAgentId === undefined) {
-            return state;
-          }
+          const needsClear =
+            terminal.detectedProcessId !== undefined ||
+            terminal.detectedAgentId !== undefined ||
+            terminal.agentId !== undefined;
+          if (!needsClear) return state;
+          // "Terminals are the unit": on agent exit, drop the full live
+          // identity including the spawn-time agentId launch hint. Chrome
+          // resolves identity through `detectedAgentId ?? agentId`, so if
+          // we only cleared the detected fields the panel would fall back
+          // to the stale spawn-time agentId and keep showing the exited
+          // agent's badge. The backend already cleared its own agentId —
+          // this mirrors that on the renderer side.
           return {
             panelsById: {
               ...state.panelsById,
@@ -335,6 +344,7 @@ export function setupTerminalStoreListeners() {
                 ...terminal,
                 detectedProcessId: undefined,
                 detectedAgentId: undefined,
+                agentId: undefined,
               },
             },
           };

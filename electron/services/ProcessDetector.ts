@@ -78,31 +78,40 @@ const PROCESS_ICON_MAP: Record<string, string> = {
 
 const PACKAGE_MANAGER_ICON_IDS = new Set(["npm", "yarn", "pnpm", "bun", "composer"]);
 
-// When `comm` is one of these, the process is a runtime host for a script —
-// the interesting identity lives in argv[1] (the script path), not in the
-// basename. Without this, a shebang'd Node CLI like `claude` shows up as
-// `comm: "node"` and gets classified as a generic Node process, not as Claude.
-const RUNTIME_HOSTS = new Set(["node", "deno", "bun", "python", "python3", "ruby", "php", "perl"]);
-
 /**
- * Parse a full `command` line like `node /path/to/claude --flag` and return
- * the script basename (`claude`), stripped of common extensions. Returns null
- * when the command has no recognizable argv[1] (bare runtime, REPL, etc.).
+ * Extract non-flag command name candidates from a full `command` line in
+ * argv order. Used when `comm` doesn't match a known CLI — for example:
+ *   - `node /path/to/claude --flag` (Node-hosted CLI; argv[1] is the agent)
+ *   - `/path/to/claude --flag` (native binary; argv[0] is the agent)
+ *   - claude rewrote its `process.title` to its version string, so comm is
+ *     "2.1.117" but argv[0] still reflects the original invocation because
+ *     `ps -o command` on macOS reads the kernel's copy via sysctl before
+ *     the process modified its own argv.
+ *
+ * Extensions like .js / .py / .rb are stripped so "claude.mjs" → "claude".
+ * Returns argv[0], argv[1], etc. as basenames, capped at 3 entries.
  */
-export function extractScriptBasenameFromCommand(command: string | undefined): string | null {
-  if (!command) return null;
+export function extractCommandNameCandidates(command: string | undefined): string[] {
+  if (!command) return [];
   const parts = command.trim().split(/\s+/);
-  // argv[0] is the runtime; look at argv[1] onward for the first non-flag
-  for (let i = 1; i < parts.length; i++) {
+  const candidates: string[] = [];
+  for (let i = 0; i < parts.length && candidates.length < 3; i++) {
     const arg = parts[i];
     if (!arg || arg.startsWith("-")) continue;
     const basename = arg.split(/[\\/]/).pop();
     if (!basename) continue;
-    // Strip common script extensions so "claude.js" → "claude".
     const withoutExt = basename.replace(/\.(m?js|cjs|ts|py|rb|php|pl)$/i, "");
-    if (withoutExt) return withoutExt;
+    if (withoutExt) candidates.push(withoutExt);
   }
-  return null;
+  return candidates;
+}
+
+/** @deprecated Use extractCommandNameCandidates — retained for test import. */
+export function extractScriptBasenameFromCommand(command: string | undefined): string | null {
+  const all = extractCommandNameCandidates(command);
+  // Previous behaviour: skip argv[0], return argv[1]. Preserved so older
+  // tests that assume "only the script, not the runtime" still pass.
+  return all[1] ?? null;
 }
 
 export interface DetectionResult {
@@ -137,6 +146,7 @@ export class ProcessDetector {
   private onStreak: number = 0;
   private offStreak: number = 0;
   private pendingDetected: { agentType?: TerminalType; processIconId?: string } | null = null;
+  private lastUnknownSignature: string | null = null;
 
   constructor(
     terminalId: string,
@@ -308,8 +318,11 @@ export class ProcessDetector {
       }
     }
 
-    // On Windows, check grandchildren as well (common when child is a shell wrapper).
-    if (process.platform === "win32") {
+    // Grandchild fallback. Only run when direct children didn't produce an
+    // identified agent — avoids showing a "node" badge for claude's Node
+    // worker processes when the claude parent renamed its comm. Covers real
+    // nesting: `zsh → npm → node /path/to/claude` for `npm run claude`.
+    if (!bestMatch || bestMatch.priority > 0) {
       for (const child of children.slice(0, 10)) {
         const grandchildren = this.cache.getChildren(child.pid);
         for (const grandchild of grandchildren) {
@@ -322,6 +335,26 @@ export class ProcessDetector {
             bestMatch = this.selectPreferredCandidate(bestMatch, candidate);
           }
         }
+      }
+    }
+
+    // Diagnostic: when we saw running processes but couldn't identify any of
+    // them, log what the OS actually reported. Fires at most once per
+    // unique (comm, command) tuple set so a persistent mystery process
+    // doesn't spam — but any NEW mystery process gets surfaced.
+    if (!bestMatch) {
+      const signature = processes.map((p) => `${p.name}|${p.command ?? ""}`).join("/");
+      if (signature !== this.lastUnknownSignature) {
+        this.lastUnknownSignature = signature;
+        console.warn(
+          `[ProcessDetector ${this.terminalId.slice(0, 8)}] unmatched children of pid ${this.ptyPid}:`,
+          processes
+            .map(
+              (p) =>
+                `pid=${p.pid} comm=${JSON.stringify(p.name)} cmd=${JSON.stringify(p.command ?? "")}`
+            )
+            .join(" | ")
+        );
       }
     }
 
@@ -359,28 +392,59 @@ export class ProcessDetector {
     const normalizedName = this.normalizeProcessName(processName);
     const lowerName = normalizedName.toLowerCase();
 
-    // Primary lookup: the process basename. Works for native binaries and for
-    // package managers / build tools that live in $PATH as their own command.
+    // Primary: match the process basename (comm). Works for native binaries,
+    // package managers, and well-behaved CLIs that haven't rewritten their
+    // process title.
     let agentType = AGENT_CLI_NAMES[lowerName];
     let processIconId = PROCESS_ICON_MAP[lowerName];
     let effectiveName = normalizedName;
 
-    // Fallback: Node-based CLIs (like `claude`) appear as `comm: "node"` with
-    // the script path in argv[1]. When the basename is a runtime host, peek at
-    // argv[1] to recover the agent identity. Only applied when the basename
-    // lookup didn't already produce an agent — we never downgrade a native
-    // agent binary match.
-    if (!agentType && RUNTIME_HOSTS.has(lowerName)) {
-      const scriptName = extractScriptBasenameFromCommand(processCommand);
-      if (scriptName) {
-        const lowerScript = scriptName.toLowerCase();
-        const scriptAgentType = AGENT_CLI_NAMES[lowerScript];
-        const scriptIconId = PROCESS_ICON_MAP[lowerScript];
-        if (scriptAgentType || scriptIconId) {
-          agentType = scriptAgentType;
-          // Prefer the script's icon — "claude" should beat "node".
-          processIconId = scriptIconId ?? processIconId;
-          effectiveName = scriptName;
+    // Fallback 1: walk argv from `command`. Covers two real cases:
+    //   1. Node/Python-hosted CLIs — comm is the runtime ("node"), argv[1]
+    //      is the script basename ("claude").
+    //   2. CLIs that set `process.title` to something custom — claude, for
+    //      example, rewrites its comm to its version string ("2.1.117").
+    //      `ps -o command` on macOS reads the kernel's original-argv copy
+    //      via sysctl, so "claude" is still recoverable from there.
+    if (!agentType && processCommand) {
+      const candidates = extractCommandNameCandidates(processCommand);
+      for (const candidate of candidates) {
+        const lowerCandidate = candidate.toLowerCase();
+        const candidateAgent = AGENT_CLI_NAMES[lowerCandidate];
+        const candidateIcon = PROCESS_ICON_MAP[lowerCandidate];
+        if (candidateAgent || candidateIcon) {
+          agentType = candidateAgent;
+          // Prefer the candidate's icon — "claude" beats "node".
+          processIconId = candidateIcon ?? processIconId;
+          effectiveName = candidate;
+          break;
+        }
+      }
+    }
+
+    // Fallback 2 (agents only): path-component substring scan on the full
+    // command line. Catches aggressively-rewritten processes where both
+    // comm and argv[0..N] basenames have been scrambled, but the original
+    // invocation path still appears somewhere in the kernel-preserved argv
+    // (e.g. "/Users/foo/.npm-global/bin/claude" somewhere in the string).
+    // Scoped to AGENT names because substring matching is too loose for
+    // short runtime tokens like "node" / "go" which appear as path
+    // components in many unrelated commands.
+    if (!agentType && processCommand) {
+      const lowerCommand = processCommand.toLowerCase();
+      for (const cliName of Object.keys(AGENT_CLI_NAMES)) {
+        if (
+          lowerCommand.includes(`/${cliName} `) ||
+          lowerCommand.endsWith(`/${cliName}`) ||
+          lowerCommand.includes(` ${cliName} `) ||
+          lowerCommand.endsWith(` ${cliName}`) ||
+          lowerCommand.startsWith(`${cliName} `) ||
+          lowerCommand === cliName
+        ) {
+          agentType = AGENT_CLI_NAMES[cliName];
+          processIconId = PROCESS_ICON_MAP[cliName] ?? processIconId;
+          effectiveName = cliName;
+          break;
         }
       }
     }
