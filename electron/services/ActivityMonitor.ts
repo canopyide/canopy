@@ -130,7 +130,7 @@ export class ActivityMonitor {
   private pendingStateRevalidation = false;
 
   // Pattern-based detection
-  private readonly patternDetector?: AgentPatternDetector;
+  private patternDetector?: AgentPatternDetector;
   private lastPatternResult?: PatternDetectionResult;
   private readonly getVisibleLines?: (n: number) => string[];
   private readonly getCursorLine?: () => string | null;
@@ -422,6 +422,24 @@ export class ActivityMonitor {
 
   getLastPatternResult(): PatternDetectionResult | undefined {
     return this.lastPatternResult;
+  }
+
+  reconfigure(agentId?: string, patternConfig?: PatternDetectionConfig): void {
+    if (this.isDisposed) return;
+
+    this.patternDetector =
+      agentId || patternConfig ? new AgentPatternDetector(agentId, patternConfig) : undefined;
+
+    // Old buffer contents and TTL-gated pattern results belong to the previous
+    // detector — leaving any of them would let stale matches hold working state
+    // through the debounce callback's WORKING_INDICATOR_TTL_MS window. Timing
+    // fields (lastActivityTimestamp, promptStableSince, CPU hysteresis,
+    // workingHoldUntil, debounceTimer) are preserved so busy/idle classification
+    // stays coherent across the swap.
+    this.patternBuf.reset();
+    this.lastPatternResult = undefined;
+    this.lastPatternResultAt = 0;
+    this.lastWorkingIndicatorTimestamp = 0;
   }
 
   notifySubmission(): void {

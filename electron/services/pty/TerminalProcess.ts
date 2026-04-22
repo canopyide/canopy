@@ -1441,6 +1441,8 @@ export class TerminalProcess {
         terminal.detectedAgentType = result.agentType;
         terminal.type = result.agentType;
 
+        this.activityMonitor?.reconfigure(result.agentType);
+
         if (!terminal.title || terminal.title === previousType || terminal.title === "Terminal") {
           const config = AGENT_REGISTRY[result.agentType];
           terminal.title =
