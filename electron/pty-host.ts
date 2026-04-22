@@ -1317,6 +1317,7 @@ port.on("message", async (rawMsg: any) => {
                 agentSessionId: terminal.agentSessionId,
                 agentLaunchFlags: terminal.agentLaunchFlags,
                 agentModelId: terminal.agentModelId,
+                everDetectedAgent: terminal.everDetectedAgent,
               }
             : null,
         });
@@ -1438,6 +1439,7 @@ port.on("message", async (rawMsg: any) => {
             agentSessionId: t.agentSessionId,
             agentLaunchFlags: t.agentLaunchFlags,
             agentModelId: t.agentModelId,
+            everDetectedAgent: t.everDetectedAgent,
           })),
         });
         break;
@@ -1467,6 +1469,7 @@ port.on("message", async (rawMsg: any) => {
             agentSessionId: t.agentSessionId,
             agentLaunchFlags: t.agentLaunchFlags,
             agentModelId: t.agentModelId,
+            everDetectedAgent: t.everDetectedAgent,
           })),
         });
         break;
@@ -1496,6 +1499,7 @@ port.on("message", async (rawMsg: any) => {
             agentSessionId: t.agentSessionId,
             agentLaunchFlags: t.agentLaunchFlags,
             agentModelId: t.agentModelId,
+            everDetectedAgent: t.everDetectedAgent,
           })),
         });
         break;

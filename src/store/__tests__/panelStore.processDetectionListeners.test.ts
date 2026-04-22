@@ -10,6 +10,7 @@ type AgentStateHandler = (data: {
 }) => void;
 type AgentDetectedHandler = (data: {
   terminalId: string;
+  agentType?: string;
   processIconId?: string;
   processName: string;
   timestamp: number;
@@ -280,6 +281,59 @@ describe("terminalStore process detection listeners", () => {
       timestamp: Date.now(),
     });
     expect(usePanelStore.getState().panelsById["term-1"]?.detectedProcessId).toBeUndefined();
+    cleanup();
+  });
+
+  // Regression for #5765: once runtime detection sees an agent, the renderer must
+  // mirror the sticky everDetectedAgent flag so the onExit guard can preserve the
+  // panel even if snapshot IPC lags behind the exit event.
+  it("sets everDetectedAgent when agent:detected carries an agentType", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+
+    detected?.({
+      terminalId: "term-1",
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+      timestamp: Date.now(),
+    });
+
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBe(true);
+    cleanup();
+  });
+
+  it("does not set everDetectedAgent for non-agent detections", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+
+    detected?.({
+      terminalId: "term-1",
+      processIconId: "npm",
+      processName: "npm",
+      timestamp: Date.now(),
+    });
+
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBeUndefined();
+    cleanup();
+  });
+
+  it("keeps everDetectedAgent true after agent:exited fires (sticky flag)", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+    const exited = handlers.agentExited;
+
+    detected?.({
+      terminalId: "term-1",
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+      timestamp: Date.now(),
+    });
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBe(true);
+
+    exited?.({ terminalId: "term-1", timestamp: Date.now() });
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBe(true);
     cleanup();
   });
 

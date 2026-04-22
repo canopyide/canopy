@@ -38,6 +38,8 @@ export interface TerminalPublicState {
   lastOutputTime: number;
   lastCheckTime: number;
   detectedAgentType?: TerminalType;
+  /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
+  everDetectedAgent?: boolean;
   restartCount: number;
   isTrashed?: boolean;
   trashExpiresAt?: number;

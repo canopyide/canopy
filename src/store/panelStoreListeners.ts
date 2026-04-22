@@ -264,16 +264,33 @@ export function setupTerminalStoreListeners() {
   disposables.add(
     toDisposable(
       terminalRegistryController.onAgentDetected((data) => {
-        const { terminalId, processIconId } = data;
-        if (!terminalId || !processIconId) return;
+        const { terminalId, processIconId, agentType } = data;
+        if (!terminalId) return;
+        // When a runtime agent is detected, mirror the backend sticky flag so the exit
+        // preservation guard in the renderer survives even if the snapshot IPC is
+        // reordered relative to the exit event.
+        const nextEverDetectedAgent = agentType ? true : undefined;
+        if (!processIconId && !nextEverDetectedAgent) return;
 
         usePanelStore.setState((state) => {
           const terminal = state.panelsById[terminalId];
-          if (!terminal || terminal.detectedProcessId === processIconId) return state;
+          if (!terminal) return state;
+
+          const needsIconUpdate =
+            processIconId !== undefined && terminal.detectedProcessId !== processIconId;
+          const needsStickyUpdate =
+            nextEverDetectedAgent === true && terminal.everDetectedAgent !== true;
+
+          if (!needsIconUpdate && !needsStickyUpdate) return state;
+
           return {
             panelsById: {
               ...state.panelsById,
-              [terminalId]: { ...terminal, detectedProcessId: processIconId },
+              [terminalId]: {
+                ...terminal,
+                ...(needsIconUpdate && { detectedProcessId: processIconId }),
+                ...(needsStickyUpdate && { everDetectedAgent: true }),
+              },
             },
           };
         });
@@ -440,8 +457,13 @@ export function setupTerminalStoreListeners() {
           return;
         }
 
-        // Preserve successfully completed agent terminals to enable reboot and output review
-        if (isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId)) {
+        // Preserve successfully completed agent terminals to enable reboot and output review.
+        // Also preserve plain terminals that ran an agent mid-session (runtime detection);
+        // everDetectedAgent is sticky in the PTY host so it survives past the inner agent exit.
+        if (
+          isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId) ||
+          terminal.everDetectedAgent === true
+        ) {
           return;
         }
 

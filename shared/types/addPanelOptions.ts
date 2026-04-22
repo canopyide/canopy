@@ -56,6 +56,8 @@ export interface AddPanelOptionsBase {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time for per-panel model selection */
   agentModelId?: string;
+  /** Sticky "runtime agent ever detected" flag, rehydrated from backend during reconnect. */
+  everDetectedAgent?: boolean;
   /** Preset ID selected at launch time for per-panel preset selection */
   agentPresetId?: string;
   /** Preset brand color (hex) captured at launch time for per-panel icon tinting */

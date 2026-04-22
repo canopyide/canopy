@@ -465,6 +465,7 @@ export const createCorePanelActions = (
         agentSessionId: options.agentSessionId,
         agentLaunchFlags: options.agentLaunchFlags,
         agentModelId: options.agentModelId,
+        everDetectedAgent: options.everDetectedAgent,
         agentPresetId: options.agentPresetId,
         agentPresetColor: options.agentPresetColor,
         originalPresetId: options.originalPresetId ?? options.agentPresetId,

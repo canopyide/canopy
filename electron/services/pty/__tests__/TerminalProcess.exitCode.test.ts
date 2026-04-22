@@ -138,6 +138,38 @@ describe("TerminalProcess exit code persistence", () => {
     const state = terminal.getPublicState();
     expect(state.exitCode).toBeUndefined();
   });
+
+  // Regression: plain terminals that host a runtime-detected agent (user typed
+  // `claude` inside a bare shell) must be preserved on clean exit — the sticky
+  // everDetectedAgent flag is the single source of truth used by
+  // shouldPreserveOnExit to catch that case.
+  it("preserves plain terminals on clean exit when everDetectedAgent is set", () => {
+    const terminal = createTerminal({ kind: "terminal", type: "terminal" });
+    (
+      terminal as unknown as { terminalInfo: { everDetectedAgent?: boolean } }
+    ).terminalInfo.everDetectedAgent = true;
+
+    expect(exitHandler).not.toBeNull();
+    exitHandler!({ exitCode: 0 });
+
+    const state = terminal.getPublicState();
+    expect(state.isExited).toBe(true);
+    expect(state.exitCode).toBe(0);
+    expect(state.everDetectedAgent).toBe(true);
+  });
+
+  it("does not preserve plain terminals on clean exit when everDetectedAgent is true but wasKilled is set", () => {
+    const terminal = createTerminal({ kind: "terminal", type: "terminal" });
+    (
+      terminal as unknown as { terminalInfo: { everDetectedAgent?: boolean } }
+    ).terminalInfo.everDetectedAgent = true;
+
+    terminal.kill("test");
+    exitHandler!({ exitCode: 0 });
+
+    const state = terminal.getPublicState();
+    expect(state.exitCode).toBeUndefined();
+  });
 });
 
 describe("TerminalProcess spawnArgs persistence", () => {
