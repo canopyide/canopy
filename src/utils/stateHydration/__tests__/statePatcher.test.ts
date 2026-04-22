@@ -732,6 +732,62 @@ describe("everDetectedAgent propagation", () => {
   });
 });
 
+// #5768: the live-detected agent identity must survive every reconnect
+// hydration builder so consumers (fleet arming, focus nav, headlines) can
+// read a single source of truth after a project switch.
+describe("detectedAgentId propagation", () => {
+  it("buildArgsForBackendTerminal forwards detectedAgentId", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal", detectedAgentId: "claude" },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.detectedAgentId).toBe("claude");
+  });
+
+  it("buildArgsForReconnectedFallback forwards detectedAgentId", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", cwd: "/p", detectedAgentId: "gemini" },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.detectedAgentId).toBe("gemini");
+  });
+
+  it("buildArgsForOrphanedTerminal forwards detectedAgentId", () => {
+    const result = buildArgsForOrphanedTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal", detectedAgentId: "codex" },
+      "/p"
+    );
+    expect(result.detectedAgentId).toBe("codex");
+  });
+
+  it("buildArgsForBackendTerminal leaves detectedAgentId undefined when backend has none", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal" },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.detectedAgentId).toBeUndefined();
+  });
+
+  // Runtime detection must never be resurrected from saved JSON — the cold-start
+  // path relies on the backend detector to repopulate the field post-spawn.
+  it("buildArgsForRespawn does not carry detectedAgentId even if saved JSON somehow has one", () => {
+    const saved = {
+      id: "t1",
+      kind: "agent" as const,
+      agentId: "claude",
+      title: "Claude",
+      cwd: "/p",
+      location: "grid",
+    } as Parameters<typeof buildArgsForRespawn>[0] & { detectedAgentId?: string };
+    (saved as { detectedAgentId?: string }).detectedAgentId = "claude";
+    const result = buildArgsForRespawn(saved, "agent", "/p", { agents: {} }, false, undefined);
+    expect((result as { detectedAgentId?: string }).detectedAgentId).toBeUndefined();
+  });
+});
+
 describe("buildArgsForNonPtyRecreation", () => {
   it("builds browser panel args", () => {
     const result = buildArgsForNonPtyRecreation(
