@@ -72,15 +72,22 @@ function setPanelState(options: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Mirror the real buildPanelDuplicateOptions: browser panels don't carry a title
+  // into the returned options (see panelDuplicationService.ts). All other kinds
+  // seed options.title from the source panel.
   buildPanelDuplicateOptionsMock.mockImplementation(
-    async (panel: MockPanel, location: "grid" | "dock") => ({
-      kind: panel.kind ?? "terminal",
-      type: panel.type,
-      agentId: panel.agentId,
-      title: panel.title,
-      location,
-      cwd: "",
-    })
+    async (panel: MockPanel, location: "grid" | "dock") => {
+      const kind = panel.kind ?? "terminal";
+      const base = {
+        kind,
+        type: panel.type,
+        agentId: panel.agentId,
+        location,
+        cwd: "",
+      };
+      if (kind === "browser" || kind === "dev-preview") return base;
+      return { ...base, title: panel.title };
+    }
   );
 });
 
@@ -155,7 +162,7 @@ describe("terminal.duplicate (copy) suffix", () => {
     expect(addPanel.mock.calls[0]![0].title).toBeUndefined();
   });
 
-  it("does not append (copy) for a default-titled browser panel", async () => {
+  it("browser panel duplication never carries a (copy)-suffixed title (service omits title)", async () => {
     const addPanel = vi.fn().mockResolvedValue(undefined);
     setPanelState({
       focusedId: "p1",
@@ -165,6 +172,59 @@ describe("terminal.duplicate (copy) suffix", () => {
     const run = setupActions();
     await run("terminal.duplicate");
 
-    expect(addPanel.mock.calls[0]![0].title).toBe("Browser");
+    const opts = addPanel.mock.calls[0]![0] as { title?: string };
+    expect(opts.title).toBeUndefined();
+  });
+
+  // Regression: buildPanelDuplicateOptions normalizes the title back to the
+  // agent default when a saved preset is stale (see panelDuplicationService.ts
+  // presetWasStale branch). The duplicate action must respect that normalized
+  // title and not re-append "(copy)" using the source panel's stale title.
+  it("preserves stale-preset title normalization (no (copy) when service normalized title)", async () => {
+    const addPanel = vi.fn().mockResolvedValue(undefined);
+    buildPanelDuplicateOptionsMock.mockResolvedValueOnce({
+      kind: "agent",
+      agentId: "claude",
+      type: "claude",
+      title: "Claude", // normalized by service (stale preset dropped)
+      location: "grid",
+      cwd: "",
+    });
+    setPanelState({
+      focusedId: "p1",
+      panels: [
+        {
+          id: "p1",
+          location: "grid",
+          kind: "agent",
+          agentId: "claude",
+          title: "Claude (Deleted Preset)",
+        },
+      ],
+      addPanel,
+    });
+    const run = setupActions();
+    await run("terminal.duplicate");
+
+    expect(addPanel.mock.calls[0]![0].title).toBe("Claude");
+  });
+
+  it("appends (copy) when a browser panel has a user-renamed title", async () => {
+    const addPanel = vi.fn().mockResolvedValue(undefined);
+    buildPanelDuplicateOptionsMock.mockResolvedValueOnce({
+      kind: "browser",
+      location: "grid",
+      cwd: "",
+      title: "My App",
+    });
+    setPanelState({
+      focusedId: "p1",
+      panels: [{ id: "p1", location: "grid", kind: "browser", title: "My App" }],
+      addPanel,
+    });
+    const run = setupActions();
+    await run("terminal.duplicate");
+
+    expect(addPanel.mock.calls[0]![0].title).toBe("My App (copy)");
   });
 });
