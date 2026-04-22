@@ -93,7 +93,11 @@ class AgentNotificationService {
     });
 
     const unsubSpawned = events.on("agent:spawned", (payload) => {
-      const agentKey = payload.agentId ?? payload.terminalId;
+      // Prefer terminalId so grace keys are always unique per-terminal —
+      // runtime-detected agents share agentId values across terminals (both
+      // are just "claude"), and collisions would cause one terminal's grace
+      // to expire a sibling's. #5773
+      const agentKey = payload.terminalId ?? payload.agentId;
       if (agentKey) {
         this.agentSpawnTimestamps.set(agentKey, Date.now());
       }
@@ -106,15 +110,12 @@ class AgentNotificationService {
     // fire agent:spawned — that event is only emitted for kind="agent" panels
     // with a persisted launch-time agentId. Seed spawn grace from agent:detected
     // so startup "waiting" states don't trigger immediate notification sounds
-    // for runtime-detected agents. #5773
+    // for runtime-detected agents. Key exclusively by terminalId to avoid
+    // cross-terminal grace bleed when two terminals detect the same agent type.
+    // #5773
     const unsubDetected = events.on("agent:detected", (payload) => {
-      if (!payload.agentType) return;
-      if (payload.terminalId) {
-        this.agentSpawnTimestamps.set(payload.terminalId, Date.now());
-      }
-      // Also key by the detected agent identity so grace lookups that pass
-      // agentId (from agent:state-changed) find the entry.
-      this.agentSpawnTimestamps.set(payload.agentType, Date.now());
+      if (!payload.agentType || !payload.terminalId) return;
+      this.agentSpawnTimestamps.set(payload.terminalId, Date.now());
     });
 
     this.unsubscribers.push(unsubStateChanged, unsubSpawned, unsubDetected);
@@ -125,7 +126,9 @@ class AgentNotificationService {
   }
 
   private isWithinSpawnGrace(agentId?: string, terminalId?: string): boolean {
-    const key = agentId ?? terminalId;
+    // Prefer terminalId so grace lookups match the per-terminal key used when
+    // seeding from agent:spawned / agent:detected. #5773
+    const key = terminalId ?? agentId;
     if (!key) return false;
     const spawnTime = this.agentSpawnTimestamps.get(key);
     if (spawnTime === undefined) return false;
@@ -173,8 +176,8 @@ class AgentNotificationService {
     // Clear spawn grace tracking once the agent starts doing real work
     // (waiting→working means the user gave input, so future waiting sounds are legitimate)
     if (state === "working" && previousState === "waiting") {
-      const key = agentId ?? terminalId;
-      if (key) this.agentSpawnTimestamps.delete(key);
+      const graceKey = terminalId ?? agentId;
+      if (graceKey) this.agentSpawnTimestamps.delete(graceKey);
     }
 
     // All-clear tracking runs regardless of notification settings
@@ -183,7 +186,10 @@ class AgentNotificationService {
     // Allow same-state transitions for waitingReason changes (e.g., prompt -> question)
     if (state === previousState && !(state === "waiting" && waitingReason !== undefined)) return;
 
-    const key = agentId ?? worktreeId ?? "agent";
+    // Prefer terminalId so per-terminal dedup timers don't collide when two
+    // runtime-detected terminals share the same agentId value (e.g. both
+    // detected as "claude"). #5773
+    const key = terminalId ?? agentId ?? worktreeId ?? "agent";
 
     // Cancel any pending completion timer for this agent when it leaves "completed"
     // (must run even when master toggle is off to prevent stale timers)
