@@ -141,6 +141,7 @@ describe("TerminalProcess OSC color query responder", () => {
 
     expect(ptyWriteMock).toHaveBeenCalledWith("\x1b]10;rgb:cccc/cccc/cccc\x1b\\");
     expect(ptyWriteMock).toHaveBeenCalledWith("\x1b]11;rgb:0000/0000/0000\x1b\\");
+    expect(ptyWriteMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not respond to OSC 10/11 for non-agent terminals", () => {
@@ -175,6 +176,7 @@ describe("TerminalProcess OSC color query responder", () => {
 
     expect(ptyWriteMock).toHaveBeenCalledWith("\x1b]10;rgb:cccc/cccc/cccc\x1b\\");
     expect(ptyWriteMock).toHaveBeenCalledWith("\x1b]11;rgb:0000/0000/0000\x1b\\");
+    expect(emitDataMock).toHaveBeenCalledTimes(1);
     expect(emitDataMock).toHaveBeenCalledWith("t1", "beforemiddleafter");
   });
 
@@ -242,5 +244,47 @@ describe("TerminalProcess OSC color query responder", () => {
 
     expect(ptyWriteMock).not.toHaveBeenCalled();
     expect(emitDataMock).toHaveBeenCalledWith("t1", payload);
+  });
+
+  it("does not respond to an unterminated OSC query fragment", () => {
+    createAgentTerminal("opencode");
+
+    // Split-chunk regression: if the terminator hasn't arrived yet, responding
+    // on the fragment would mismatch the terminator-requiring strip and leak
+    // the fragment to the renderer, which would double-reply once xterm.js
+    // re-assembled the full sequence.
+    ptyOnDataCallback!("\x1b]10;?");
+
+    expect(ptyWriteMock).not.toHaveBeenCalled();
+    expect(emitDataMock).toHaveBeenCalledWith("t1", "\x1b]10;?");
+  });
+
+  it("leaves the query in renderer data when the backend write fails", () => {
+    createAgentTerminal("opencode");
+    ptyWriteMock.mockImplementation(() => {
+      throw new Error("PTY dead");
+    });
+
+    const payload = "\x1b]11;?\x1b\\";
+    ptyOnDataCallback!(payload);
+
+    // Backend tried to respond, but failed. Renderer must still see the query
+    // so xterm.js can reply — otherwise the TUI agent hangs with no responder.
+    expect(emitDataMock).toHaveBeenCalledWith("t1", payload);
+  });
+
+  it("strips only queries whose write succeeded when one of two writes fails", () => {
+    createAgentTerminal("opencode");
+    // OSC 10 write succeeds, OSC 11 write throws.
+    ptyWriteMock
+      .mockImplementationOnce(() => {})
+      .mockImplementationOnce(() => {
+        throw new Error("PTY dead");
+      });
+
+    ptyOnDataCallback!("\x1b]10;?\x07\x1b]11;?\x07");
+
+    // OSC 10 was handled → stripped. OSC 11 failed → left in the stream.
+    expect(emitDataMock).toHaveBeenCalledWith("t1", "\x1b]11;?\x07");
   });
 });

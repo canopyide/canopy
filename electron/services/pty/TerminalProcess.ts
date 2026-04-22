@@ -74,16 +74,19 @@ type CursorBuffer = {
 
 const EVENT_DRIVEN_SNAPSHOT_THROTTLE_MS = 2000;
 
-// Matches OSC 10/11 "?" queries terminated by BEL (\x07) or ST (\x1b\\).
-// Used to strip handled queries from data forwarded to the renderer so that
-// the frontend xterm.js does not also respond (which would double-reply and
-// corrupt TUI agents that consume only the first response).
+// OSC 10/11 "?" queries terminated by BEL (\x07) or ST (\x1b\\).
+// Trigger and strip must use the same terminator-requiring pattern: if we
+// responded on an unterminated fragment but stripped only terminated ones,
+// a split chunk would leak the fragment to the renderer and double-respond
+// once xterm.js re-assembles the sequence.
 // eslint-disable-next-line no-control-regex
-const OSC_COLOR_QUERY_RE = /\x1b\]1[01];\?(?:\x07|\x1b\\)/g;
-
-function stripHandledOscColorQueries(data: string): string {
-  return data.replace(OSC_COLOR_QUERY_RE, "");
-}
+const OSC_10_QUERY_RE = /\x1b\]10;\?(?:\x07|\x1b\\)/;
+// eslint-disable-next-line no-control-regex
+const OSC_11_QUERY_RE = /\x1b\]11;\?(?:\x07|\x1b\\)/;
+// eslint-disable-next-line no-control-regex
+const OSC_10_QUERY_STRIP_RE = /\x1b\]10;\?(?:\x07|\x1b\\)/g;
+// eslint-disable-next-line no-control-regex
+const OSC_11_QUERY_STRIP_RE = /\x1b\]11;\?(?:\x07|\x1b\\)/g;
 
 export interface TerminalProcessCallbacks {
   emitData: (id: string, data: string | Uint8Array) => void;
@@ -1242,20 +1245,33 @@ export class TerminalProcess {
       // blocks for 5 seconds PER query waiting for responses that never come.
       // The renderer's xterm.js (@xterm/xterm BrowserTerminal) also replies to
       // OSC 10/11 by default; to keep exactly one responder active, we strip
-      // handled queries out of the data forwarded to the renderer below.
+      // queries whose backend response succeeded from data forwarded to the
+      // renderer. If a write fails, we leave that query intact so the renderer
+      // can still satisfy it and the TUI agent does not hang.
       let rendererData = data;
       if (this.shouldHandleOscColorQueries && data.includes("\x1b]1")) {
-        try {
-          if (data.includes("\x1b]10;?")) {
+        const has10 = OSC_10_QUERY_RE.test(data);
+        const has11 = OSC_11_QUERY_RE.test(data);
+        let handled10 = false;
+        let handled11 = false;
+        if (has10) {
+          try {
             terminal.ptyProcess.write("\x1b]10;rgb:cccc/cccc/cccc\x1b\\");
+            handled10 = true;
+          } catch (error) {
+            this.logWriteError(error, { operation: "write(osc-color-response)" });
           }
-          if (data.includes("\x1b]11;?")) {
-            terminal.ptyProcess.write("\x1b]11;rgb:0000/0000/0000\x1b\\");
-          }
-        } catch (error) {
-          this.logWriteError(error, { operation: "write(osc-color-response)" });
         }
-        rendererData = stripHandledOscColorQueries(data);
+        if (has11) {
+          try {
+            terminal.ptyProcess.write("\x1b]11;rgb:0000/0000/0000\x1b\\");
+            handled11 = true;
+          } catch (error) {
+            this.logWriteError(error, { operation: "write(osc-color-response)" });
+          }
+        }
+        if (handled10) rendererData = rendererData.replace(OSC_10_QUERY_STRIP_RE, "");
+        if (handled11) rendererData = rendererData.replace(OSC_11_QUERY_STRIP_RE, "");
       }
 
       terminal.headlessTerminal?.write(data);
