@@ -17,6 +17,7 @@ export interface QuickSwitcherItem {
   terminalType?: TerminalInstance["type"];
   terminalKind?: TerminalInstance["kind"];
   agentId?: TerminalInstance["agentId"];
+  detectedAgentId?: TerminalInstance["detectedAgentId"];
   detectedProcessId?: TerminalInstance["detectedProcessId"];
   worktreeId?: string;
 }
@@ -89,6 +90,7 @@ export function useQuickSwitcher(): UseQuickSwitcherReturn {
         terminalType: t.type,
         terminalKind: t.kind,
         agentId: t.agentId,
+        detectedAgentId: t.detectedAgentId,
         detectedProcessId: t.detectedProcessId,
         worktreeId: t.worktreeId,
       });

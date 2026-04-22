@@ -74,6 +74,8 @@ export interface TerminalPaneProps {
   title: string;
   type?: TerminalType;
   agentId?: string;
+  /** Runtime-detected agent identity (cleared on agent exit). Drives panel chrome (icons, badges). */
+  detectedAgentId?: string;
   agentPresetId?: string;
   presetColor?: string;
   worktreeId?: string;
@@ -116,6 +118,7 @@ function TerminalPaneComponent({
   title,
   type,
   agentId,
+  detectedAgentId,
   agentPresetId,
   presetColor,
   worktreeId,
@@ -743,6 +746,7 @@ function TerminalPaneComponent({
       kind={kind}
       type={type}
       agentId={agentId}
+      detectedAgentId={detectedAgentId}
       presetColor={livePresetColor}
       isFocused={isFocused}
       isMaximized={isMaximized}

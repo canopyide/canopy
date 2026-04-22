@@ -55,6 +55,8 @@ export interface ContentPanelProps extends BasePanelProps {
   // Terminal-specific header props (optional, only used for terminal/agent panels)
   type?: TerminalType;
   agentId?: string;
+  /** Runtime-detected agent identity (cleared on agent exit). Drives panel chrome. */
+  detectedAgentId?: string;
   detectedProcessId?: string;
   presetColor?: string;
   agentLaunchFlags?: string[];
@@ -127,6 +129,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     "aria-selected": ariaSelected,
     type,
     agentId,
+    detectedAgentId,
     detectedProcessId,
     presetColor,
     agentLaunchFlags,
@@ -324,6 +327,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
           kind={kind}
           type={type}
           agentId={agentId}
+          detectedAgentId={detectedAgentId}
           detectedProcessId={detectedProcessId}
           presetColor={presetColor}
           agentLaunchFlags={agentLaunchFlags}

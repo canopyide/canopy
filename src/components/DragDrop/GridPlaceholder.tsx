@@ -17,7 +17,7 @@ export function GridPlaceholder({ className }: GridPlaceholderProps) {
     return <div className={cn("h-full rounded-[var(--radius-lg)] bg-daintree-bg/50", className)} />;
   }
 
-  const { title, type, kind, agentId, detectedProcessId } = activeTerminal;
+  const { title, type, kind, agentId, detectedAgentId, detectedProcessId } = activeTerminal;
 
   return (
     <div
@@ -41,6 +41,7 @@ export function GridPlaceholder({ className }: GridPlaceholderProps) {
             type={type}
             kind={kind}
             agentId={agentId}
+            detectedAgentId={detectedAgentId}
             detectedProcessId={detectedProcessId}
             className="w-3.5 h-3.5"
           />

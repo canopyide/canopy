@@ -214,6 +214,8 @@ export interface TerminalInfoPayload {
   isAgentTerminal?: boolean;
   /** Runtime-detected agent type (from process tree analysis) */
   detectedAgentType?: TerminalType;
+  /** Runtime-detected agent identity (cleared when the agent exits). */
+  detectedAgentId?: BuiltInAgentId;
   /** Whether semantic analysis is enabled for this terminal */
   analysisEnabled?: boolean;
   /** Resize strategy: "default" (immediate) or "settled" (batched for TUI agents) */

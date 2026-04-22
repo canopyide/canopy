@@ -365,7 +365,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const panelPresetColors = useMemo(() => {
     return new Map(
       panels.map((p) => {
-        const fallbackColor = getBrandColorHex(p.agentId ?? p.type);
+        const fallbackColor = getBrandColorHex(p.detectedAgentId ?? p.agentId ?? p.type);
         if (!p.agentPresetId || !p.agentId) return [p.id, fallbackColor] as const;
         const presets = getMergedPresets(
           p.agentId,
@@ -390,7 +390,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const commandText = activePanel.activityHeadline || activePanel.lastCommand;
   const brandColor =
     panelPresetColors.get(activePanel.id) ??
-    getBrandColorHex(activePanel.agentId ?? activePanel.type);
+    getBrandColorHex(activePanel.detectedAgentId ?? activePanel.agentId ?? activePanel.type);
   const agentState = activePanel.agentState;
   const displayTitle = getBaseTitle(activePanel.title);
   const showStateIcon = agentState && agentState !== "idle" && agentState !== "completed";
@@ -440,6 +440,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                 type={activePanel.type}
                 kind={activePanel.kind}
                 agentId={activePanel.agentId}
+                detectedAgentId={activePanel.detectedAgentId}
                 detectedProcessId={activePanel.detectedProcessId}
                 className="w-3.5 h-3.5"
                 brandColor={brandColor}
@@ -544,6 +545,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                   title={getBaseTitle(panel.title)}
                   type={panel.type}
                   agentId={panel.agentId}
+                  detectedAgentId={panel.detectedAgentId}
                   detectedProcessId={panel.detectedProcessId}
                   kind={panel.kind ?? "terminal"}
                   agentState={panel.agentState}

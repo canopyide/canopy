@@ -190,6 +190,7 @@ export const GridTabGroup = React.memo(function GridTabGroup({
         title: p.title,
         type: p.type,
         agentId: p.agentId,
+        detectedAgentId: p.detectedAgentId,
         detectedProcessId: p.detectedProcessId,
         kind: p.kind ?? "terminal",
         agentState: p.agentState,

@@ -17,6 +17,7 @@ export interface SendToAgentItem {
   terminalType?: TerminalInstance["type"];
   terminalKind?: TerminalInstance["kind"];
   agentId?: TerminalInstance["agentId"];
+  detectedAgentId?: TerminalInstance["detectedAgentId"];
   detectedProcessId?: TerminalInstance["detectedProcessId"];
   isInputLocked?: boolean;
 }
@@ -107,6 +108,7 @@ export function useSendToAgentPalette() {
         terminalType: t.type,
         terminalKind: t.kind,
         agentId: t.agentId,
+        detectedAgentId: t.detectedAgentId,
         detectedProcessId: t.detectedProcessId,
         isInputLocked: t.isInputLocked,
       });

@@ -5,6 +5,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { WorktreeIcon } from "@/components/icons";
 import type { QuickSwitcherItem as QuickSwitcherItemData } from "@/hooks/useQuickSwitcher";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { resolveEffectiveAgentId } from "@/utils/agentIdentity";
 
 export interface QuickSwitcherItemProps {
   item: QuickSwitcherItemData;
@@ -42,8 +43,11 @@ export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
             type={item.terminalType}
             kind={item.terminalKind}
             agentId={item.agentId}
+            detectedAgentId={item.detectedAgentId}
             detectedProcessId={item.detectedProcessId}
-            brandColor={getBrandColorHex(item.agentId ?? item.terminalType)}
+            brandColor={getBrandColorHex(
+              resolveEffectiveAgentId(item.detectedAgentId, item.agentId) ?? item.terminalType
+            )}
           />
         ) : (
           <WorktreeIcon className="w-4 h-4" />
@@ -61,7 +65,11 @@ export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
                 : "bg-status-success/10 text-status-success border-status-success/30"
             )}
           >
-            {item.type === "terminal" ? (item.terminalType ?? "terminal") : "worktree"}
+            {item.type === "terminal"
+              ? (resolveEffectiveAgentId(item.detectedAgentId, item.agentId) ??
+                item.terminalType ??
+                "terminal")
+              : "worktree"}
           </span>
         </div>
         {item.subtitle && (

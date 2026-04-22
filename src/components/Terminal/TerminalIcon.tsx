@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import type { TerminalType, PanelKind } from "@/types";
 import type { ComponentType } from "react";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
+import { resolveEffectiveAgentId } from "@/utils/agentIdentity";
 import {
   NpmIcon,
   YarnIcon,
@@ -53,6 +54,11 @@ export interface TerminalIconProps {
   type?: TerminalType;
   kind?: PanelKind;
   agentId?: string;
+  /**
+   * Runtime-detected agent (cleared when the agent exits). Takes precedence
+   * over `agentId` so the icon reflects the live process, not the launch intent.
+   */
+  detectedAgentId?: string;
   detectedProcessId?: string;
   className?: string;
   brandColor?: string;
@@ -62,6 +68,7 @@ export function TerminalIcon({
   type,
   kind,
   agentId,
+  detectedAgentId,
   detectedProcessId,
   className,
   brandColor,
@@ -81,8 +88,10 @@ export function TerminalIcon({
     return <Monitor {...finalProps} className={cn(finalProps.className, "text-status-info")} />;
   }
 
-  // Get effective agent ID - either from explicit agentId prop or from type (backward compat)
-  const effectiveAgentId = agentId ?? (type && isRegisteredAgent(type) ? type : undefined);
+  // Prefer runtime-detected identity, then launch-time agentId, then legacy type fallback.
+  const effectiveAgentId =
+    resolveEffectiveAgentId(detectedAgentId, agentId) ??
+    (type && isRegisteredAgent(type) ? type : undefined);
 
   if (effectiveAgentId) {
     const config = getAgentConfig(effectiveAgentId);
