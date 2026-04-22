@@ -96,7 +96,7 @@ describe("getRestartBannerVariant", () => {
 });
 
 const degradedBase: DegradedBannerInput = {
-  kind: "terminal",
+  spawnAgentId: undefined,
   everDetectedAgent: true,
   detectedAgentId: "claude",
   dismissedDegradedBanner: false,
@@ -105,18 +105,18 @@ const degradedBase: DegradedBannerInput = {
 };
 
 describe("getDegradedBannerVariant", () => {
-  it("shows for kind=terminal that has hosted an agent and still has a detected agent", () => {
+  it("shows for a plain terminal that has hosted an agent and still has a detected agent", () => {
     const result = getDegradedBannerVariant(degradedBase);
     expect(result).toEqual({ type: "degraded-mode", agentId: "claude" });
   });
 
-  it("returns none for kind=agent (cold-spawned agents have correct env+scrollback)", () => {
-    const result = getDegradedBannerVariant({ ...degradedBase, kind: "agent" });
+  it("returns none when spawnAgentId is set (cold-spawned agents have correct env+scrollback)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, spawnAgentId: "claude" });
     expect(result).toEqual({ type: "none" });
   });
 
-  it("returns none when kind is undefined (not yet hydrated)", () => {
-    const result = getDegradedBannerVariant({ ...degradedBase, kind: undefined });
+  it("returns none when spawnAgentId is set to a different agent than detected (still cold-spawned)", () => {
+    const result = getDegradedBannerVariant({ ...degradedBase, spawnAgentId: "gemini" });
     expect(result).toEqual({ type: "none" });
   });
 

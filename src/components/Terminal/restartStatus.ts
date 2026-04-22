@@ -1,4 +1,4 @@
-import type { PanelExitBehavior, PanelKind } from "@shared/types/panel";
+import type { PanelExitBehavior } from "@shared/types/panel";
 import type { TerminalRestartError } from "@/types";
 import type { BuiltInAgentId } from "@shared/config/agentIds";
 
@@ -43,7 +43,11 @@ export type DegradedBannerVariant =
   | { type: "none" };
 
 export interface DegradedBannerInput {
-  kind: PanelKind | undefined;
+  // Persisted agentId set at spawn (or after a "Restart as Agent" convert).
+  // When defined, the PTY was spawned with agent env/scrollback and is not
+  // in degraded mode. When undefined, the panel was spawned as a plain
+  // terminal — runtime agent detection cannot repair the sealed PTY env.
+  spawnAgentId: BuiltInAgentId | string | undefined;
   everDetectedAgent: boolean | undefined;
   detectedAgentId: BuiltInAgentId | undefined;
   dismissedDegradedBanner: boolean;
@@ -51,12 +55,12 @@ export interface DegradedBannerInput {
   isRestarting: boolean;
 }
 
-// Spawn-sealed promotion: a panel spawned as kind="terminal" inherits a
+// Spawn-sealed promotion: a panel spawned without an agentId inherits a
 // non-agent PTY (default scrollback, pool-stripped env, missing FORCE_COLOR
 // etc.) — those cannot be repaired in-process for the running child, so the
-// banner offers a one-click restart that respawns as kind="agent".
+// banner offers a one-click restart that respawns with an agentId.
 export function getDegradedBannerVariant(input: DegradedBannerInput): DegradedBannerVariant {
-  if (input.kind !== "terminal") return { type: "none" };
+  if (input.spawnAgentId !== undefined) return { type: "none" };
   if (input.everDetectedAgent !== true) return { type: "none" };
   if (!input.detectedAgentId) return { type: "none" };
   if (input.dismissedDegradedBanner) return { type: "none" };

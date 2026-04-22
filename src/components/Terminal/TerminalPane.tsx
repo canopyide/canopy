@@ -74,10 +74,9 @@ export interface TerminalPaneProps {
   id: string;
   title: string;
   type?: TerminalType;
-  /** Spawn-time panel kind. Used to detect runtime-promoted plain terminals (spawnKind="terminal" + detectedAgentId). */
-  spawnKind?: import("@shared/types/panel").PanelKind;
   /** Sticky flag set the first time runtime detection saw an agent in this session. */
   everDetectedAgent?: boolean;
+  /** Persisted agent identity set at spawn or after an explicit agent convert. Absent on plain terminals (including ones where an agent was only detected at runtime). */
   agentId?: string;
   /** Runtime-detected agent identity (cleared on agent exit). Drives panel chrome (icons, badges). */
   detectedAgentId?: BuiltInAgentId;
@@ -122,7 +121,6 @@ function TerminalPaneComponent({
   id,
   title,
   type,
-  spawnKind,
   everDetectedAgent,
   agentId,
   detectedAgentId,
@@ -878,7 +876,7 @@ function TerminalPaneComponent({
 
       <TerminalDegradedModeBanner
         variant={getDegradedBannerVariant({
-          kind: spawnKind,
+          spawnAgentId: agentId,
           everDetectedAgent,
           detectedAgentId,
           dismissedDegradedBanner,

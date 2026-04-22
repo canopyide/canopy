@@ -390,7 +390,7 @@ describe("terminalStore process detection listeners", () => {
   // Issue #5776: when a plain terminal is runtime-promoted to host an agent,
   // the renderer must apply the agent scrollback policy to the live xterm —
   // the only in-process repair available for spawn-sealed terminals.
-  it("calls applyAgentPromotion when a kind=terminal panel detects a built-in agent", () => {
+  it("calls applyAgentPromotion when a plain terminal (no agentId) detects a built-in agent", () => {
     const cleanup = setupTerminalStoreListeners();
     const detected = handlers.agentDetected;
 
@@ -408,11 +408,11 @@ describe("terminalStore process detection listeners", () => {
     cleanup();
   });
 
-  it("does not call applyAgentPromotion for kind=agent panels (cold-spawned)", () => {
+  it("does not call applyAgentPromotion for cold-spawned agent panels (agentId set at spawn)", () => {
     usePanelStore.setState((s) => ({
       panelsById: {
         ...s.panelsById,
-        "term-1": { ...s.panelsById["term-1"]!, kind: "agent" },
+        "term-1": { ...s.panelsById["term-1"]!, agentId: "claude" },
       },
     }));
 

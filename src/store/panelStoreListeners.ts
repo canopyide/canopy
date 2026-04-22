@@ -274,11 +274,11 @@ export function setupTerminalStoreListeners() {
         const nextDetectedAgentId = isBuiltInAgentId(agentType) ? agentType : undefined;
         if (!processIconId && !nextEverDetectedAgent && !nextDetectedAgentId) return;
 
-        // Snapshot kind before mutation so we can detect runtime promotion of a
-        // plain terminal (kind="terminal") that just started hosting a built-in
-        // agent. Cold agent panels (kind="agent") already use the agent
-        // scrollback policy and do not need repair.
-        const priorKind = usePanelStore.getState().panelsById[terminalId]?.kind;
+        // Snapshot the persisted agentId before mutation so we can detect
+        // runtime promotion of a plain terminal (no agentId) that just started
+        // hosting a built-in agent. Cold-spawned agent panels (agentId set at
+        // spawn) already use the agent scrollback policy and do not need repair.
+        const priorAgentId = usePanelStore.getState().panelsById[terminalId]?.agentId;
 
         usePanelStore.setState((state) => {
           const terminal = state.panelsById[terminalId];
@@ -306,11 +306,12 @@ export function setupTerminalStoreListeners() {
           };
         });
 
-        // Spawn-sealed runtime promotion: a kind="terminal" panel cannot get the
-        // agent env/pool repaired in-process, but the live xterm scrollback can
-        // grow to the agent policy. The user-facing "Restart for full agent
-        // support" cue is rendered by the degraded-mode banner in TerminalPane.
-        if (priorKind === "terminal" && nextDetectedAgentId !== undefined) {
+        // Spawn-sealed runtime promotion: a panel spawned without an agentId
+        // cannot get the agent env/pool repaired in-process, but the live xterm
+        // scrollback can grow to the agent policy. The user-facing "Restart for
+        // full agent support" cue is rendered by the degraded-mode banner in
+        // TerminalPane.
+        if (priorAgentId === undefined && nextDetectedAgentId !== undefined) {
           terminalInstanceService.applyAgentPromotion(terminalId, nextDetectedAgentId);
         }
       })
