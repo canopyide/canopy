@@ -4,6 +4,7 @@ import { z } from "zod";
 import { usePanelStore } from "@/store/panelStore";
 import { useLayoutUndoStore } from "@/store/layoutUndoStore";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
+import { getDefaultTitle } from "@/store/slices/panelRegistry/helpers";
 export function registerTerminalSpawnActions(
   actions: ActionRegistry,
   callbacks: ActionCallbacks
@@ -55,8 +56,11 @@ export function registerTerminalSpawnActions(
         const location =
           terminal.location === "grid" || terminal.location === "dock" ? terminal.location : "grid";
         const options = await buildPanelDuplicateOptions(terminal, location);
-        if (terminal.title) {
-          options.title = `${terminal.title} (copy)`;
+        if (options.title) {
+          const defaultTitle = getDefaultTitle(terminal.kind, terminal.type, terminal.agentId);
+          if (options.title !== defaultTitle) {
+            options.title = `${options.title} (copy)`;
+          }
         }
         await state.addPanel(options);
       } else if (nonTrashed.length === 0) {
