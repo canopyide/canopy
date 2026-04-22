@@ -906,6 +906,22 @@ port.on("message", async (rawMsg: any) => {
         ptyManager.write(msg.id, msg.data, msg.traceId);
         break;
 
+      case "broadcast-write": {
+        // Fleet broadcast: fan one data payload to every armed PTY in a
+        // tight loop inside the pty-host event loop. Avoids N per-keystroke
+        // MessagePort/IPC hops from the renderer when a fleet types.
+        const ids: string[] = Array.isArray(msg.ids) ? msg.ids : [];
+        const data: string = typeof msg.data === "string" ? msg.data : "";
+        if (!data) break;
+        for (const id of ids) {
+          if (typeof id !== "string" || !id) continue;
+          const terminal = ptyManager.getTerminal(id);
+          if (!terminal || terminal.wasKilled || terminal.isExited) continue;
+          ptyManager.write(id, data);
+        }
+        break;
+      }
+
       case "submit":
         ptyManager.submit(msg.id, msg.text);
         break;

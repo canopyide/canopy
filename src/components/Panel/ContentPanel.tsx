@@ -50,6 +50,7 @@ export interface ContentPanelProps extends BasePanelProps {
   tabIndex?: number;
   role?: string;
   "aria-label"?: string;
+  "aria-selected"?: boolean;
 
   // Terminal-specific header props (optional, only used for terminal/agent panels)
   type?: TerminalType;
@@ -116,6 +117,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     tabIndex,
     role,
     "aria-label": ariaLabel,
+    "aria-selected": ariaSelected,
     type,
     agentId,
     detectedProcessId,
@@ -305,6 +307,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         tabIndex={tabIndex}
         role={role}
         aria-label={ariaLabel}
+        aria-selected={ariaSelected}
       >
         <PanelHeader
           isDragging={isDragging}

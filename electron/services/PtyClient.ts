@@ -1162,6 +1162,19 @@ export class PtyClient extends EventEmitter {
     this.send({ type: "batch-double-escape", ids: validIds });
   }
 
+  /**
+   * Fan one data payload to every id in a single pty-host message. Used by
+   * fleet broadcast: every keystroke becomes one main→host message instead
+   * of N renderer→main IPC hops, cutting fan-out latency on large fleets.
+   */
+  broadcastWrite(ids: string[], data: string): void {
+    if (!Array.isArray(ids) || ids.length === 0 || typeof data !== "string" || data.length === 0)
+      return;
+    const validIds = ids.filter((id) => typeof id === "string" && id.length > 0);
+    if (validIds.length === 0) return;
+    this.send({ type: "broadcast-write", ids: validIds, data });
+  }
+
   resize(id: string, cols: number, rows: number): void {
     this.send({ type: "resize", id, cols, rows });
   }

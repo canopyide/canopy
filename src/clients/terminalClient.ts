@@ -182,6 +182,17 @@ export const terminalClient = {
     window.electron.terminal.batchDoubleEscape(ids);
   },
 
+  /**
+   * Fan one data payload to every armed PTY in a single IPC round-trip.
+   * Used by fleet broadcast: for each keystroke we send one main→host
+   * message, the host writes to each PTY in a tight loop. Keeps renderer
+   * latency bounded regardless of fleet size.
+   */
+  broadcast: (ids: string[], data: string): void => {
+    if (ids.length === 0 || data.length === 0) return;
+    window.electron.terminal.broadcastWrite(ids, data);
+  },
+
   resize: (id: string, cols: number, rows: number): void => {
     if (messagePort) {
       try {

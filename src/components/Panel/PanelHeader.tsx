@@ -458,6 +458,7 @@ function PanelHeaderComponent({
     <div
       {...dragListeners}
       data-selected={isSelected || undefined}
+      data-pane-chrome=""
       className={cn(
         "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group",
         "h-8 border-b border-divider",

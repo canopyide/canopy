@@ -103,9 +103,6 @@ export interface TerminalPaneProps {
   // Fleet scope render-time override: force-locks input without mutating the
   // stored TerminalInstance.isInputLocked flag.
   isInputLocked?: boolean;
-  // Fleet arming multi-select support: ordered list of eligible agent terminal IDs
-  // visible in the current grid (shift-range uses visual order).
-  orderedEligibleTerminalIds?: string[];
   // Tab support
   tabs?: import("@/components/Panel/TabButton").TabInfo[];
   onTabClick?: (tabId: string) => void;
@@ -145,7 +142,6 @@ function TerminalPaneComponent({
   detectedProcessId,
   ambientAgentState,
   isInputLocked: isInputLockedOverride,
-  orderedEligibleTerminalIds,
   tabs,
   onTabClick,
   onTabClose,
@@ -519,12 +515,15 @@ function TerminalPaneComponent({
         return;
       }
 
-      // Chrome-level multi-select gestures. Plain click = exclusive single
-      // selection (clear any fleet, then focus). Shift = range-extend,
-      // Cmd/Ctrl = toggle. xterm's pointer-down-capture runs first and leaves
-      // `hasSelection()` truthy when the user is extending a native text
-      // selection, which the guard above routes around.
-      if (e) {
+      // Chrome-level multi-select gestures only fire when the click
+      // originates inside pane chrome (the title bar). Clicks inside the
+      // xterm viewport or the HybridInputBar bypass fleet gestures entirely
+      // and just focus — so native text selection, shell prompts, and typing
+      // are never disturbed by fleet logic.
+      const target = e?.target as HTMLElement | null;
+      const isChromeClick = !!target?.closest("[data-pane-chrome]");
+
+      if (e && isChromeClick) {
         const terminal = getTerminal(id);
         const isEligible = !!(terminal && isFleetArmEligible(terminal));
         const armingStore = useFleetArmingStore.getState();
@@ -534,7 +533,6 @@ function TerminalPaneComponent({
             isEligible,
             isArmed: armingStore.armedIds.has(id),
             armedSize: armingStore.armedIds.size,
-            orderedEligibleIds: orderedEligibleTerminalIds,
           }
         );
 
@@ -543,12 +541,10 @@ function TerminalPaneComponent({
           e.preventDefault();
           return;
         }
-        if (action.type === "extend" && orderedEligibleTerminalIds) {
+        if (action.type === "extend") {
           if (armingStore.armedIds.size === 0) {
-            // Empty armed set — the focused pane is the implicit "first
-            // selection" (the user's mental model for bare shift-click).
-            // Arm it first so extendTo has a real anchor and both panes
-            // end up selected.
+            // Empty armed set — the focused pane is the implicit anchor for
+            // the first shift-click. Arm it so extendTo has a pinned origin.
             const focusedId = usePanelStore.getState().focusedId;
             if (focusedId && focusedId !== id) {
               const focusedTerminal = usePanelStore.getState().panelsById[focusedId];
@@ -557,12 +553,13 @@ function TerminalPaneComponent({
               }
             }
           }
-          armingStore.extendTo(id, orderedEligibleTerminalIds);
+          armingStore.extendTo(id);
           e.preventDefault();
           return;
         }
         if (action.type === "clear") {
           armingStore.clear();
+          armingStore.setAnchor(id);
           // fall through — setFocused below makes the clicked pane the
           // new exclusive selection.
         }
@@ -571,7 +568,7 @@ function TerminalPaneComponent({
       setFocused(id);
       terminalInstanceService.boostRefreshRate(id);
     },
-    [id, setFocused, armedIds, getTerminal, orderedEligibleTerminalIds]
+    [id, setFocused, armedIds, getTerminal]
   );
 
   const handleXtermPointerDownCapture = useCallback(
@@ -783,7 +780,8 @@ function TerminalPaneComponent({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       tabIndex={0}
-      role="group"
+      role="gridcell"
+      aria-selected={isArmed}
       aria-label={(() => {
         if (!effectiveAgentId) {
           return `Terminal: ${title}`;

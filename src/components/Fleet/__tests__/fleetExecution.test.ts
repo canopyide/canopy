@@ -13,6 +13,7 @@ import type { TerminalInstance } from "@shared/types";
 
 const writeMock = vi.fn<(id: string, data: string) => void>();
 const submitMock = vi.fn<(id: string, text: string) => Promise<void>>();
+const broadcastMock = vi.fn<(ids: string[], data: string) => void>();
 
 vi.mock("@/clients", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/clients")>();
@@ -22,6 +23,7 @@ vi.mock("@/clients", async (importOriginal) => {
       ...actual.terminalClient,
       write: (id: string, data: string) => writeMock(id, data),
       submit: (id: string, text: string) => submitMock(id, text),
+      broadcast: (ids: string[], data: string) => broadcastMock(ids, data),
     },
   };
 });
@@ -63,12 +65,14 @@ function armTwo() {
 function reset() {
   writeMock.mockReset();
   submitMock.mockReset();
+  broadcastMock.mockReset();
   submitMock.mockResolvedValue(undefined);
   useFleetArmingStore.setState({
     armedIds: new Set<string>(),
     armOrder: [],
     armOrderById: {},
     lastArmedId: null,
+    anchorId: null,
   });
   usePanelStore.setState({ panelsById: {}, panelIds: [] });
 }
@@ -82,32 +86,31 @@ describe("broadcastFleetKeySequence", () => {
     armTwo();
     broadcastFleetKeySequence("\r");
 
-    expect(writeMock).toHaveBeenCalledTimes(2);
-    expect(writeMock.mock.calls.map(([id, seq]) => [id, seq]).sort()).toEqual([
-      ["t1", "\r"],
-      ["t2", "\r"],
-    ]);
+    expect(broadcastMock).toHaveBeenCalledTimes(1);
+    const [ids, data] = broadcastMock.mock.calls[0]!;
+    expect([...ids].sort()).toEqual(["t1", "t2"]);
+    expect(data).toBe("\r");
   });
 
   it("respects a caller-supplied target list verbatim", () => {
     armTwo();
     broadcastFleetKeySequence("x", ["t2"]);
 
-    expect(writeMock).toHaveBeenCalledTimes(1);
-    expect(writeMock.mock.calls[0]).toEqual(["t2", "x"]);
+    expect(broadcastMock).toHaveBeenCalledTimes(1);
+    expect(broadcastMock.mock.calls[0]).toEqual([["t2"], "x"]);
   });
 
   it("no-ops cleanly with zero targets", () => {
     broadcastFleetKeySequence("\x1b");
+    expect(broadcastMock).not.toHaveBeenCalled();
     expect(writeMock).not.toHaveBeenCalled();
   });
 
   it("does NOT apply recipe-variable substitution to the sequence", () => {
     armTwo();
     broadcastFleetKeySequence("{{branch_name}}");
-    expect(writeMock).toHaveBeenCalledTimes(2);
-    expect(writeMock.mock.calls[0]![1]).toBe("{{branch_name}}");
-    expect(writeMock.mock.calls[1]![1]).toBe("{{branch_name}}");
+    expect(broadcastMock).toHaveBeenCalledTimes(1);
+    expect(broadcastMock.mock.calls[0]![1]).toBe("{{branch_name}}");
   });
 });
 

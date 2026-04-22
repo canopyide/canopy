@@ -767,6 +767,9 @@ const api: ElectronAPI = {
     batchDoubleEscape: (ids: string[]) =>
       ipcRenderer.send(CHANNELS.TERMINAL_BATCH_DOUBLE_ESCAPE, ids),
 
+    broadcastWrite: (ids: string[], data: string) =>
+      ipcRenderer.send(CHANNELS.TERMINAL_BROADCAST_WRITE, ids, data),
+
     reportTitleState: (id: string, state: "working" | "waiting") =>
       ipcRenderer.send(CHANNELS.TERMINAL_AGENT_TITLE_STATE, { id, state }),
 

@@ -64,6 +64,28 @@ export function registerTerminalIOHandlers(deps: HandlerDependencies): () => voi
     ipcMain.removeListener(CHANNELS.TERMINAL_BATCH_DOUBLE_ESCAPE, handleTerminalBatchDoubleEscape)
   );
 
+  const handleTerminalBroadcastWrite = (
+    _event: Electron.IpcMainEvent,
+    ids: unknown,
+    data: unknown
+  ) => {
+    try {
+      if (!Array.isArray(ids) || typeof data !== "string") {
+        console.error("Invalid terminal broadcastWrite parameters");
+        return;
+      }
+      const validIds = ids.filter((id): id is string => typeof id === "string" && id.length > 0);
+      if (validIds.length === 0 || data.length === 0) return;
+      ptyClient.broadcastWrite(validIds, data);
+    } catch (error) {
+      console.error("Error broadcasting write to terminals:", error);
+    }
+  };
+  ipcMain.on(CHANNELS.TERMINAL_BROADCAST_WRITE, handleTerminalBroadcastWrite);
+  handlers.push(() =>
+    ipcMain.removeListener(CHANNELS.TERMINAL_BROADCAST_WRITE, handleTerminalBroadcastWrite)
+  );
+
   const handleTerminalSubmit = async (id: string, text: string) => {
     try {
       if (typeof id !== "string" || typeof text !== "string") {

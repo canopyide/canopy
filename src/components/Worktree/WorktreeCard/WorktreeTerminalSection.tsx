@@ -239,8 +239,12 @@ export function WorktreeTerminalSection({
       }
       const store = useFleetArmingStore.getState();
       if (e.shiftKey) {
-        const orderedEligibleIds = eligibleTerminals.map((t) => t.id);
-        store.extendTo(term.id, orderedEligibleIds);
+        // Sidebar list is 1-D — pass the ordered id list so extendTo uses
+        // the linear range path instead of DOM bounding-box geometry.
+        store.extendTo(
+          term.id,
+          eligibleTerminals.map((t) => t.id)
+        );
       } else {
         store.toggleId(term.id);
       }
