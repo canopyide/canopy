@@ -206,7 +206,10 @@ export const createRestartActions = (
       (currentTerminal.type && isRegisteredAgent(currentTerminal.type)
         ? currentTerminal.type
         : undefined);
-    const isAgent = !!effectiveAgentId;
+    // If the agent has exited (user quit to shell), treat this as a plain
+    // terminal restart — agentId persists as launch identity but must not
+    // trigger an agent relaunch. See issue #5764.
+    const isAgent = !!effectiveAgentId && currentTerminal.agentState !== "exited";
 
     if (isAgent && effectiveAgentId) {
       const sessionId = currentTerminal.agentSessionId;
@@ -352,14 +355,16 @@ export const createRestartActions = (
         cwd: currentTerminal.cwd,
         cols: spawnCols,
         rows: spawnRows,
-        kind: currentTerminal.kind ?? (isAgent ? "agent" : "terminal"),
+        // When demoted (agent exited to shell), force plain terminal kind
+        // even though persisted kind is still "agent" (issue #5764).
+        kind: isAgent ? (currentTerminal.kind ?? "agent") : "terminal",
         type: currentTerminal.type,
         agentId: currentTerminal.agentId,
         title: currentTerminal.title,
         command: spawnCommand,
         restore: false,
         env: restartEnv,
-        agentLaunchFlags: currentTerminal.agentLaunchFlags,
+        agentLaunchFlags: isAgent ? currentTerminal.agentLaunchFlags : undefined,
         agentModelId: currentTerminal.agentModelId,
       });
 
