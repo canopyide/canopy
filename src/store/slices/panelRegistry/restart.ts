@@ -206,7 +206,16 @@ export const createRestartActions = (
       (currentTerminal.type && isRegisteredAgent(currentTerminal.type)
         ? currentTerminal.type
         : undefined);
-    const isAgent = !!effectiveAgentId;
+    // When the agent has exited (user quit to shell) or the PTY has exited
+    // from a state the FSM does not transition out of (`idle`), treat the
+    // restart as a plain shell restart. `exitCode` is the conclusive signal
+    // that the PTY is dead; `agentState === "exited"` is preserved across
+    // demoted restarts so subsequent restarts stay demoted (issue #5764).
+    const isAgent =
+      !!effectiveAgentId &&
+      currentTerminal.agentState !== "exited" &&
+      currentTerminal.exitCode === undefined;
+    const isDemotedAgent = !!effectiveAgentId && !isAgent;
 
     if (isAgent && effectiveAgentId) {
       const sessionId = currentTerminal.agentSessionId;
@@ -308,11 +317,19 @@ export const createRestartActions = (
           ...t,
           location: targetLocation,
           restartKey: (t.restartKey ?? 0) + 1,
-          agentState: isAgent ? ("working" as const) : undefined,
+          // Demoted panels keep `agentState: "exited"` so the guard above
+          // stays true across repeated restarts (issue #5764).
+          agentState: isAgent
+            ? ("working" as const)
+            : isDemotedAgent
+              ? ("exited" as const)
+              : undefined,
           lastStateChange: isAgent ? Date.now() : undefined,
           stateChangeTrigger: undefined,
           stateChangeConfidence: undefined,
-          command: durableCommand,
+          // Clear the stored agent command on demotion so a subsequent
+          // restart falls through to the default shell.
+          command: isDemotedAgent ? undefined : durableCommand,
           agentSessionId: undefined,
           isRestarting: true,
           restartError: undefined,
@@ -352,15 +369,19 @@ export const createRestartActions = (
         cwd: currentTerminal.cwd,
         cols: spawnCols,
         rows: spawnRows,
-        kind: currentTerminal.kind ?? (isAgent ? "agent" : "terminal"),
-        type: currentTerminal.type,
-        agentId: currentTerminal.agentId,
+        // Demoted panels must spawn as plain terminals. Every agent-adjacent
+        // field must be cleared — the IPC handler re-derives agent-ness from
+        // `type` and `agentId` (electron/ipc/handlers/terminal/lifecycle.ts),
+        // so forcing only `kind` is not enough (issue #5764).
+        kind: isAgent ? (currentTerminal.kind ?? "agent") : "terminal",
+        type: isAgent ? currentTerminal.type : "terminal",
+        agentId: isAgent ? currentTerminal.agentId : undefined,
         title: currentTerminal.title,
-        command: spawnCommand,
+        command: isAgent ? spawnCommand : undefined,
         restore: false,
         env: restartEnv,
-        agentLaunchFlags: currentTerminal.agentLaunchFlags,
-        agentModelId: currentTerminal.agentModelId,
+        agentLaunchFlags: isAgent ? currentTerminal.agentLaunchFlags : undefined,
+        agentModelId: isAgent ? currentTerminal.agentModelId : undefined,
       });
 
       if (targetLocation === "dock") {
