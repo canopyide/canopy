@@ -78,6 +78,33 @@ const PROCESS_ICON_MAP: Record<string, string> = {
 
 const PACKAGE_MANAGER_ICON_IDS = new Set(["npm", "yarn", "pnpm", "bun", "composer"]);
 
+// When `comm` is one of these, the process is a runtime host for a script —
+// the interesting identity lives in argv[1] (the script path), not in the
+// basename. Without this, a shebang'd Node CLI like `claude` shows up as
+// `comm: "node"` and gets classified as a generic Node process, not as Claude.
+const RUNTIME_HOSTS = new Set(["node", "deno", "bun", "python", "python3", "ruby", "php", "perl"]);
+
+/**
+ * Parse a full `command` line like `node /path/to/claude --flag` and return
+ * the script basename (`claude`), stripped of common extensions. Returns null
+ * when the command has no recognizable argv[1] (bare runtime, REPL, etc.).
+ */
+export function extractScriptBasenameFromCommand(command: string | undefined): string | null {
+  if (!command) return null;
+  const parts = command.trim().split(/\s+/);
+  // argv[0] is the runtime; look at argv[1] onward for the first non-flag
+  for (let i = 1; i < parts.length; i++) {
+    const arg = parts[i];
+    if (!arg || arg.startsWith("-")) continue;
+    const basename = arg.split(/[\\/]/).pop();
+    if (!basename) continue;
+    // Strip common script extensions so "claude.js" → "claude".
+    const withoutExt = basename.replace(/\.(m?js|cjs|ts|py|rb|php|pl)$/i, "");
+    if (withoutExt) return withoutExt;
+  }
+  return null;
+}
+
 export interface DetectionResult {
   detected: boolean;
   agentType?: TerminalType;
@@ -91,7 +118,7 @@ export type DetectionCallback = (result: DetectionResult, spawnedAt: number) => 
 
 export class ProcessDetector {
   // Require N consecutive polls agreeing on a new agent/icon state before
-  // committing it. At the 2500 ms base poll interval that is ~5 s of confirmation,
+  // committing it. At the 1500 ms base poll interval that is ~3 s of confirmation,
   // which is enough to filter out short-lived processes (e.g. `claude --version`)
   // that would otherwise cause the detector to thrash between on/off.
   private static readonly HYSTERESIS_THRESHOLD = 2;
@@ -331,8 +358,32 @@ export class ProcessDetector {
   ): DetectedProcessCandidate | null {
     const normalizedName = this.normalizeProcessName(processName);
     const lowerName = normalizedName.toLowerCase();
-    const agentType = AGENT_CLI_NAMES[lowerName];
-    const processIconId = PROCESS_ICON_MAP[lowerName];
+
+    // Primary lookup: the process basename. Works for native binaries and for
+    // package managers / build tools that live in $PATH as their own command.
+    let agentType = AGENT_CLI_NAMES[lowerName];
+    let processIconId = PROCESS_ICON_MAP[lowerName];
+    let effectiveName = normalizedName;
+
+    // Fallback: Node-based CLIs (like `claude`) appear as `comm: "node"` with
+    // the script path in argv[1]. When the basename is a runtime host, peek at
+    // argv[1] to recover the agent identity. Only applied when the basename
+    // lookup didn't already produce an agent — we never downgrade a native
+    // agent binary match.
+    if (!agentType && RUNTIME_HOSTS.has(lowerName)) {
+      const scriptName = extractScriptBasenameFromCommand(processCommand);
+      if (scriptName) {
+        const lowerScript = scriptName.toLowerCase();
+        const scriptAgentType = AGENT_CLI_NAMES[lowerScript];
+        const scriptIconId = PROCESS_ICON_MAP[lowerScript];
+        if (scriptAgentType || scriptIconId) {
+          agentType = scriptAgentType;
+          // Prefer the script's icon — "claude" should beat "node".
+          processIconId = scriptIconId ?? processIconId;
+          effectiveName = scriptName;
+        }
+      }
+    }
 
     if (!agentType && !processIconId) {
       return null;
@@ -341,7 +392,7 @@ export class ProcessDetector {
     return {
       agentType,
       processIconId,
-      processName: normalizedName,
+      processName: effectiveName,
       processCommand,
       priority: this.getDetectionPriority(agentType, processIconId),
       order,

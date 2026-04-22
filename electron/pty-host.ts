@@ -93,7 +93,12 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const ptyManager = new PtyManager();
-const processTreeCache = new ProcessTreeCache(2500); // 2.5s poll interval (reduced CPU load)
+// 1.5s base poll interval. With 2-poll hysteresis in ProcessDetector, that's
+// ~3s to commit an agent/process change. Short enough for "I just ran claude
+// and want to see the chrome flip" to feel responsive, long enough to filter
+// `claude --version`-style blips. Adaptive backoff (see ProcessTreeCache)
+// stretches this out when the tree is quiet.
+const processTreeCache = new ProcessTreeCache(1500);
 const terminalResourceMonitor = new TerminalResourceMonitor(
   processTreeCache,
   ptyManager,

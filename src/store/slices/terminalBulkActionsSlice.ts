@@ -3,7 +3,7 @@ import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./panelRegistrySlice";
 import { useLayoutConfigStore } from "@/store/layoutConfigStore";
 import type { AgentState } from "@/types";
-import { isAgentTerminal } from "../../utils/terminalType";
+import { isRuntimeAgentTerminal } from "../../utils/terminalType";
 import { validateTerminals, type ValidationResult } from "@/utils/terminalValidation";
 
 export interface BulkRestartValidation {
@@ -311,8 +311,11 @@ export const createTerminalBulkActionsSlice = (
 
     restartIdleAgents: async () => {
       const terminals = getTerminals();
+      // Runtime predicate — include terminals that were promoted at runtime
+      // (a plain shell where `claude` is currently the foreground process),
+      // not just spawn-sealed agent terminals.
       const idleAgents = terminals.filter(
-        (t) => t.agentState === "idle" && isAgentTerminal(t.kind ?? t.type, t.agentId)
+        (t) => t.agentState === "idle" && isRuntimeAgentTerminal(t)
       );
       await restartTerminals(idleAgents);
     },

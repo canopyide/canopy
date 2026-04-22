@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ProcessDetector } from "../ProcessDetector.js";
+import { ProcessDetector, extractScriptBasenameFromCommand } from "../ProcessDetector.js";
 
 type ProcessNode = { pid: number; comm: string; command?: string };
 
@@ -114,6 +114,106 @@ describe("ProcessDetector", () => {
         processIconId: expectedIcon,
         processName,
         isBusy: true,
+      }),
+      expect.any(Number)
+    );
+  });
+
+  it("detects Claude when it runs via Node as a shebang script", () => {
+    // This is the real-world macOS case: `claude` is a Node CLI installed via
+    // npm, so `comm` is "node" and the agent identity lives in argv[1].
+    const cache = createCacheMock();
+    cache.setChildren(100, [
+      {
+        pid: 200,
+        comm: "node",
+        command: "node /Users/greg/.npm-global/bin/claude --resume",
+      },
+    ]);
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-node-claude",
+      Date.now(),
+      100,
+      callback,
+      cache as never
+    );
+    detector.start();
+    cache.emitRefresh();
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        agentType: "claude",
+        processName: "claude",
+        isBusy: true,
+      }),
+      expect.any(Number)
+    );
+  });
+
+  it("detects Python-hosted CLIs from argv (when they're in AGENT_CLI_NAMES)", () => {
+    // Same mechanism — a Python agent appears as comm="python3" with script in argv[1].
+    // No agent is currently Python-hosted, so this test asserts the runtime-host
+    // recovery path doesn't crash and still identifies a known process icon.
+    const cache = createCacheMock();
+    cache.setChildren(100, [
+      {
+        pid: 200,
+        comm: "python3",
+        command: "/usr/bin/python3 /opt/somescript.py",
+      },
+    ]);
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-python-fallback",
+      Date.now(),
+      100,
+      callback,
+      cache as never
+    );
+    detector.start();
+    cache.emitRefresh();
+
+    // Basename python3 maps to process icon "python" via PROCESS_ICON_MAP;
+    // argv[1] is not in AGENT_CLI_NAMES so the basename match stands.
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        processIconId: "python",
+      }),
+      expect.any(Number)
+    );
+  });
+
+  it("prefers native-binary claude over argv-derived claude when both would match", () => {
+    const cache = createCacheMock();
+    cache.setChildren(100, [
+      {
+        pid: 200,
+        comm: "claude",
+        command: "/usr/local/bin/claude",
+      },
+    ]);
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-native-claude",
+      Date.now(),
+      100,
+      callback,
+      cache as never
+    );
+    detector.start();
+    cache.emitRefresh();
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        agentType: "claude",
+        processName: "claude",
       }),
       expect.any(Number)
     );
@@ -532,5 +632,40 @@ describe("ProcessDetector", () => {
       detector.stop();
       expect(callback).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe("extractScriptBasenameFromCommand", () => {
+  it("extracts claude from `node /path/to/claude`", () => {
+    expect(extractScriptBasenameFromCommand("node /Users/foo/.npm-global/bin/claude")).toBe(
+      "claude"
+    );
+  });
+
+  it("extracts claude when trailing flags are present", () => {
+    expect(extractScriptBasenameFromCommand("node /path/to/claude --resume --model opus")).toBe(
+      "claude"
+    );
+  });
+
+  it("strips .js / .mjs / .cjs / .ts / .py / .rb extensions", () => {
+    expect(extractScriptBasenameFromCommand("node /path/to/gemini.mjs")).toBe("gemini");
+    expect(extractScriptBasenameFromCommand("python3 /opt/script.py")).toBe("script");
+    expect(extractScriptBasenameFromCommand("ruby /opt/tool.rb")).toBe("tool");
+    expect(extractScriptBasenameFromCommand("deno /opt/thing.ts")).toBe("thing");
+  });
+
+  it("skips leading flags", () => {
+    expect(extractScriptBasenameFromCommand("node --inspect /path/to/claude")).toBe("claude");
+  });
+
+  it("returns null for a bare runtime (no argv[1])", () => {
+    expect(extractScriptBasenameFromCommand("node")).toBeNull();
+    expect(extractScriptBasenameFromCommand("python3")).toBeNull();
+  });
+
+  it("returns null for undefined / empty input", () => {
+    expect(extractScriptBasenameFromCommand(undefined)).toBeNull();
+    expect(extractScriptBasenameFromCommand("")).toBeNull();
   });
 });

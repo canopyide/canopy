@@ -1517,10 +1517,13 @@ export class TerminalProcess {
         terminal.type = "terminal";
         terminal.title = "Terminal";
         this.stopActivityMonitor();
-        if (!this.isAgentTerminal) {
-          terminal.analysisEnabled = false;
-          terminal.agentId = undefined;
-        }
+        // "Terminals are the unit": clear live agent identity regardless of
+        // spawn-sealed status. The shell is still alive (it wrapped the agent),
+        // and the panel should demote to a plain terminal now that the agent
+        // has exited. `this.isAgentTerminal` remains a historical fact about
+        // how the PTY was born but no longer gates user-visible identity.
+        terminal.analysisEnabled = false;
+        terminal.agentId = undefined;
         events.emit("agent:exited", {
           terminalId: this.id,
           agentType: previousType,
@@ -1551,10 +1554,12 @@ export class TerminalProcess {
       this.lastDetectedProcessIconId = undefined;
       terminal.detectedProcessIconId = undefined;
       this.stopActivityMonitor();
-      if (!this.isAgentTerminal) {
-        terminal.analysisEnabled = false;
-        terminal.agentId = undefined;
-      }
+      // See note above: clear live agent identity on every agent exit so the
+      // panel demotes back to a plain terminal. The wrapping shell is still
+      // alive (see lifecycle.ts — agents no longer use exec) and ready to
+      // accept another command, possibly a different agent.
+      terminal.analysisEnabled = false;
+      terminal.agentId = undefined;
       events.emit("agent:exited", {
         terminalId: this.id,
         agentType: previousType,

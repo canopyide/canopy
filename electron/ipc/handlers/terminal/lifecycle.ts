@@ -10,7 +10,6 @@ import { projectStore } from "../../../services/ProjectStore.js";
 import type { HandlerDependencies } from "../../types.js";
 import type { TerminalSpawnOptions } from "../../../types/index.js";
 import { TerminalSpawnOptionsSchema } from "../../../schemas/ipc.js";
-import { getDefaultShell } from "../../../services/pty/terminalShell.js";
 import {
   listAgentSessions,
   clearAgentSessions,
@@ -144,37 +143,30 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     const resolvedShell = validatedOptions.shell || projectShell;
     const resolvedArgs = projectArgs;
 
-    // For agent terminals on Unix with a command, pass it via shell -c flag
-    // instead of writing to stdin. This avoids all shell init noise (echoed
-    // commands, prompts, stty tricks) since the shell runs the command directly
-    // after sourcing rc files, with no interactive prompt.
     const trimmedCommand = validatedOptions.command?.trim() || "";
     const isAgent = Boolean(agentId);
-    const useShellExec = isAgent && trimmedCommand.length > 0 && process.platform !== "win32";
+    const hasMultilineCommand =
+      trimmedCommand.length > 0 && (trimmedCommand.includes("\n") || trimmedCommand.includes("\r"));
 
-    let spawnArgs = resolvedArgs;
-    if (useShellExec) {
-      if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
-        console.error("Multi-line commands not allowed for security, ignoring");
-      } else {
-        const agentCommand = `exec ${trimmedCommand}`;
-        const shellToUse = (resolvedShell || getDefaultShell()).toLowerCase();
-        if (shellToUse.includes("zsh") || shellToUse.includes("bash")) {
-          // -l: login shell (sources .zprofile/.bash_profile)
-          // -i: interactive (sources .zshrc/.bashrc for PATH setup like nvm)
-          // -c: run command then exit (no prompt displayed)
-          spawnArgs = ["-lic", agentCommand];
-        } else {
-          spawnArgs = ["-c", agentCommand];
-        }
-      }
+    if (hasMultilineCommand) {
+      console.error("Multi-line commands not allowed for security, ignoring");
     }
+    const safeCommand = hasMultilineCommand ? "" : trimmedCommand;
 
     try {
+      // Spawn a plain interactive shell for every terminal — agent or not.
+      // Previously, agent terminals used `zsh -lic "exec ${command}"` so the
+      // shell was replaced by the agent process; when the agent exited, the
+      // PTY died and the panel greyed out. The new model ("terminals are the
+      // unit; agents are a wrapper") requires the shell to survive: when the
+      // user Ctrl+Cs out of claude, the shell reclaims the foreground and the
+      // panel demotes to a plain terminal instead of dying. Signals still
+      // route correctly — the kernel's TTY line discipline delivers SIGINT to
+      // the foreground process group (the agent), leaving the shell pristine.
       ptyClient.spawn(id, {
         cwd,
         shell: resolvedShell,
-        args: spawnArgs,
+        args: resolvedArgs,
         cols,
         rows,
         env: validatedOptions.env,
@@ -193,30 +185,23 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           validatedOptions.originalAgentPresetId ?? validatedOptions.agentPresetId,
       });
 
-      // For non-agent terminals (or Windows agent terminals), write command to stdin
-      if (trimmedCommand.length > 0 && !useShellExec) {
-        if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
-          console.error("Multi-line commands not allowed for security, ignoring");
-        } else {
-          let finalCommand = trimmedCommand;
-          if (isAgent) {
-            if (process.platform === "win32") {
-              const shell = (resolvedShell || getDefaultShell()).toLowerCase();
-              const shellBasename = shell.split(/[\\/]/).pop() ?? shell;
-              if (shellBasename === "cmd.exe" || shellBasename === "cmd") {
-                finalCommand = `${trimmedCommand} & exit`;
-              } else {
-                finalCommand = `${trimmedCommand}; exit`;
-              }
-            }
+      if (safeCommand.length > 0) {
+        // Write the command to stdin after a short delay so the shell has
+        // had time to source its rc files and print the initial prompt.
+        // Short enough that the user doesn't notice; long enough that the
+        // input lands in the shell's line editor rather than being swallowed
+        // by init-time prompts.
+        setTimeout(() => {
+          if (!ptyClient.hasTerminal(id)) return;
+          if (isAgent && process.platform !== "win32") {
+            // Clear any shell init noise so the agent opens to a clean
+            // screen, matching what spawn-sealed agents previously looked
+            // like. \x1b[H cursor home, \x1b[2J clear screen,
+            // \x1b[3J clear scrollback.
+            ptyClient.write(id, "printf '\\x1b[H\\x1b[2J\\x1b[3J'\r");
           }
-
-          setTimeout(() => {
-            if (ptyClient.hasTerminal(id)) {
-              ptyClient.write(id, `${finalCommand}\r`);
-            }
-          }, COMMAND_DELAY_MS);
-        }
+          ptyClient.write(id, `${safeCommand}\r`);
+        }, COMMAND_DELAY_MS);
       }
 
       return id;
