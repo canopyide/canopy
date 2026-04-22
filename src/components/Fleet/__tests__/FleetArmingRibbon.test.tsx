@@ -17,6 +17,10 @@ vi.mock("framer-motion", () => ({
   useReducedMotion: () => false,
 }));
 
+vi.mock("@/hooks/useWorktreeColorMap", () => ({
+  useWorktreeColorMap: () => null,
+}));
+
 vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode; asChild?: boolean }) => (

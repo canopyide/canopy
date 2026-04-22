@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { isMac } from "@/lib/platform";
-import { useEscapeStack } from "@/hooks";
+import { useEscapeStack, useWorktreeColorMap } from "@/hooks";
 import { useFleetArmingStore, type FleetArmStatePreset } from "@/store/fleetArmingStore";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 import {
@@ -420,7 +420,11 @@ export function FleetArmingRibbon(): ReactElement | null {
         role="status"
         aria-live="polite"
         className={cn(
-          "surface-toolbar relative flex items-center gap-3 border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text"
+          "relative flex items-center gap-3 border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text",
+          // Keep the Fleet surface continuous through confirm-pending so the
+          // mode chrome doesn't visually exit and re-enter during a confirm.
+          "bg-category-amber-subtle",
+          "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-[var(--color-category-amber-border)]"
         )}
         data-testid="fleet-arming-ribbon"
         data-pending-action={pending.kind}
@@ -474,7 +478,13 @@ export function FleetArmingRibbon(): ReactElement | null {
           tabIndex={-1}
           onKeyDown={handleRibbonKeyDown}
           className={cn(
-            "surface-toolbar relative flex items-center gap-3 overflow-hidden border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text outline-none"
+            "relative flex items-center gap-3 overflow-hidden border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text outline-none",
+            "bg-category-amber-subtle",
+            // Non-color structural cue: 2px amber left-edge stripe. Mirrors the
+            // panel-worktree-identity idiom so the "mode surface" reads even
+            // with CVD / low-saturation themes where the amber tint alone
+            // might not register as a distinct surface.
+            "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-[var(--color-category-amber-border)]"
           )}
           data-testid="fleet-arming-ribbon"
           {...ribbonMotionProps}
@@ -511,7 +521,7 @@ export function FleetArmingRibbon(): ReactElement | null {
               )}
             >
               <span>Exit</span>
-              <kbd className="rounded border border-daintree-text/20 bg-tint/[0.06] px-1 font-mono text-[10px] leading-tight text-daintree-text/70">
+              <kbd className="rounded border border-category-amber-border bg-amber-500/5 px-1 font-mono text-[10px] leading-tight text-category-amber-text">
                 {exitChordLabel}
               </kbd>
             </button>
@@ -573,7 +583,9 @@ function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps)
     })
   );
 
-  const label = `${armedCount} in fleet`;
+  const scope = useFleetWorktreeScope();
+  const scopeAriaLabel = scope.worktreeCount > 1 ? ` across ${scope.worktreeCount} worktrees` : "";
+  const label = `${armedCount} in fleet${scopeAriaLabel}`;
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -585,10 +597,11 @@ function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps)
           aria-expanded={open}
           data-testid="fleet-armed-count-chip"
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] transition-colors",
+            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] transition-colors",
             "bg-tint/[0.08] hover:bg-tint/[0.14]"
           )}
         >
+          <FleetWorktreeDots scope={scope} />
           <AnimatedLabel
             label={String(armedCount)}
             textClassName="font-semibold tabular-nums text-daintree-text"
@@ -632,5 +645,91 @@ function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps)
         </ul>
       </PopoverContent>
     </Popover>
+  );
+}
+
+interface FleetWorktreeScope {
+  worktreeCount: number;
+  colors: string[];
+}
+
+/**
+ * Computes the fleet's worktree scope (count + deduped identity colors).
+ *
+ * Stable-sorted by worktreeId so the color strip doesn't re-order every time
+ * a pane joins or leaves the fleet — peripheral jitter on the left edge of
+ * the chip would feel twitchier than the actual information warrants.
+ *
+ * Counts unique worktreeIds (not colors) so the aria-label stays accurate
+ * when the palette wraps modulo 8 and two worktrees happen to share a color.
+ */
+function useFleetWorktreeScope(): FleetWorktreeScope {
+  const armOrder = useFleetArmingStore((s) => s.armOrder);
+  const colorMap = useWorktreeColorMap();
+  const worktreeIdsByPane = usePanelStore(
+    useShallow((state) => {
+      const out: Record<string, string | undefined> = {};
+      for (const id of armOrder) {
+        out[id] = state.panelsById[id]?.worktreeId;
+      }
+      return out;
+    })
+  );
+
+  return useMemo<FleetWorktreeScope>(() => {
+    if (!colorMap) return { worktreeCount: 0, colors: [] };
+    const uniqueWorktreeIds = new Set<string>();
+    for (const paneId of armOrder) {
+      const wtId = worktreeIdsByPane[paneId];
+      if (wtId) uniqueWorktreeIds.add(wtId);
+    }
+    const sortedIds = Array.from(uniqueWorktreeIds).sort();
+    const seenColors = new Set<string>();
+    const colors: string[] = [];
+    for (const wtId of sortedIds) {
+      const color = colorMap[wtId];
+      if (!color || seenColors.has(color)) continue;
+      seenColors.add(color);
+      colors.push(color);
+    }
+    return { worktreeCount: uniqueWorktreeIds.size, colors };
+  }, [armOrder, worktreeIdsByPane, colorMap]);
+}
+
+/**
+ * At-a-glance scope marker — stacked worktree identity dots rendered inside
+ * the count chip so the scope read and the "show list" affordance are one
+ * clickable bundle. Marked aria-hidden; the parent chip button's aria-label
+ * carries the scope for assistive tech.
+ *
+ * Single-worktree projects get no colors from useWorktreeColorMap by design,
+ * so the component renders nothing — no signal to carry when everything is
+ * one color anyway.
+ */
+function FleetWorktreeDots({ scope }: { scope: FleetWorktreeScope }): ReactElement | null {
+  if (scope.colors.length === 0) return null;
+
+  const shown = scope.colors.slice(0, 3);
+  const overflow = scope.colors.length - shown.length;
+
+  return (
+    <span
+      className="flex items-center -space-x-1"
+      aria-hidden="true"
+      data-testid="fleet-worktree-dots"
+    >
+      {shown.map((color, i) => (
+        <span
+          key={color}
+          className="h-2.5 w-2.5 rounded-full ring-2 ring-[var(--theme-surface-canvas)]"
+          style={{ backgroundColor: color, zIndex: shown.length - i }}
+        />
+      ))}
+      {overflow > 0 ? (
+        <span className="ml-1 text-[10px] font-medium tabular-nums text-daintree-text/60">
+          +{overflow}
+        </span>
+      ) : null}
+    </span>
   );
 }
