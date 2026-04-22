@@ -80,16 +80,17 @@ const PACKAGE_MANAGER_ICON_IDS = new Set(["npm", "yarn", "pnpm", "bun", "compose
 
 /**
  * Extract non-flag command name candidates from a full `command` line in
- * argv order. Used when `comm` doesn't match a known CLI — for example:
- *   - `node /path/to/claude --flag` (Node-hosted CLI; argv[1] is the agent)
- *   - `/path/to/claude --flag` (native binary; argv[0] is the agent)
- *   - claude rewrote its `process.title` to its version string, so comm is
- *     "2.1.117" but argv[0] still reflects the original invocation because
- *     `ps -o command` on macOS reads the kernel's copy via sysctl before
- *     the process modified its own argv.
+ * argv order. Used when `comm` basename doesn't match a known CLI — most
+ * commonly for Node-hosted CLIs where `comm = "node"` and argv[1] is the
+ * agent script path (`node /path/to/claude --resume`).
  *
  * Extensions like .js / .py / .rb are stripped so "claude.mjs" → "claude".
- * Returns argv[0], argv[1], etc. as basenames, capped at 3 entries.
+ * Returns argv[0], argv[1], argv[2] basenames.
+ *
+ * NOTE: if a process sets `process.title` after launch, macOS `ps` reports
+ * the rewritten argv — the original invocation is NOT preserved in the
+ * `command` column. Callers should not rely on this to recover identity
+ * after a process has rewritten its title.
  */
 export function extractCommandNameCandidates(command: string | undefined): string[] {
   if (!command) return [];
@@ -112,6 +113,53 @@ export function extractScriptBasenameFromCommand(command: string | undefined): s
   // Previous behaviour: skip argv[0], return argv[1]. Preserved so older
   // tests that assume "only the script, not the runtime" still pass.
   return all[1] ?? null;
+}
+
+export interface CommandIdentity {
+  agentType?: TerminalType;
+  processIconId?: string;
+  processName: string;
+}
+
+/**
+ * Best-effort identity resolution from a shell command line.
+ *
+ * Used by the runtime shell-command fallback in TerminalProcess when the PTY
+ * process tree is blind or a CLI rewrites its own process title. This shares
+ * the same agent/process icon registry as the process-tree detector so chrome
+ * stays consistent regardless of which signal produced the identity.
+ */
+export function detectCommandIdentity(command: string | undefined): CommandIdentity | null {
+  const candidates = extractCommandNameCandidates(command);
+  let iconMatch: { name: string; icon: string } | null = null;
+
+  for (const candidate of candidates) {
+    const lowerCandidate = candidate.toLowerCase();
+    const candidateAgent = AGENT_CLI_NAMES[lowerCandidate];
+    if (candidateAgent) {
+      return {
+        agentType: candidateAgent,
+        processIconId: PROCESS_ICON_MAP[lowerCandidate],
+        processName: candidate,
+      };
+    }
+
+    if (!iconMatch) {
+      const candidateIcon = PROCESS_ICON_MAP[lowerCandidate];
+      if (candidateIcon) {
+        iconMatch = { name: candidate, icon: candidateIcon };
+      }
+    }
+  }
+
+  if (!iconMatch) {
+    return null;
+  }
+
+  return {
+    processIconId: iconMatch.icon,
+    processName: iconMatch.name,
+  };
 }
 
 export interface DetectionResult {
@@ -282,6 +330,15 @@ export class ProcessDetector {
           this.lastBusyState = result.isBusy;
         }
         this.lastCurrentCommand = result.currentCommand;
+        // Always-on, one line per committed state change. Lets us see in
+        // logs whether detection is firing at all, without spam: this block
+        // only runs when we actually emit (gatedCommitted or a busy/command
+        // side-channel change).
+        if (gatedCommitted) {
+          console.log(
+            `[ProcessDetector ${this.terminalId.slice(0, 8)}] commit pid=${this.ptyPid} detected=${result.detected} agent=${result.agentType ?? "null"} icon=${result.processIconId ?? "null"}`
+          );
+        }
         this.callback(result, this.spawnedAt);
       }
     } catch (_error) {
@@ -399,53 +456,44 @@ export class ProcessDetector {
     let processIconId = PROCESS_ICON_MAP[lowerName];
     let effectiveName = normalizedName;
 
-    // Fallback 1: walk argv from `command`. Covers two real cases:
-    //   1. Node/Python-hosted CLIs — comm is the runtime ("node"), argv[1]
-    //      is the script basename ("claude").
-    //   2. CLIs that set `process.title` to something custom — claude, for
-    //      example, rewrites its comm to its version string ("2.1.117").
-    //      `ps -o command` on macOS reads the kernel's original-argv copy
-    //      via sysctl, so "claude" is still recoverable from there.
+    // Fallback: walk argv from `command`. Covers the Node/Python-hosted CLI
+    // case — `comm` is the runtime ("node"), argv[1] is the script basename
+    // ("claude" from `node /path/to/claude --resume`). This only helps when
+    // the process has NOT rewritten its own title; if `process.title = ...`
+    // was called, macOS `ps` reflects the rewritten argv and the original
+    // script name is lost. That case needs a different mechanism (shell
+    // integration / output pattern matching / native foreground probe).
+    //
+    // We scan ALL candidates and prefer an AGENT match over a process-icon
+    // match, because argv[0] of a Node-hosted CLI is "node" (a runtime that
+    // would match PROCESS_ICON_MAP but not AGENT_CLI_NAMES) and the agent
+    // identity is in argv[1]. Stopping at the first icon hit would
+    // misclassify `node /path/to/claude` as a generic Node process.
     if (!agentType && processCommand) {
       const candidates = extractCommandNameCandidates(processCommand);
+      let iconMatch: { name: string; icon: string } | null = null;
       for (const candidate of candidates) {
         const lowerCandidate = candidate.toLowerCase();
         const candidateAgent = AGENT_CLI_NAMES[lowerCandidate];
-        const candidateIcon = PROCESS_ICON_MAP[lowerCandidate];
-        if (candidateAgent || candidateIcon) {
+        if (candidateAgent) {
+          // Agent match wins — commit immediately and stop scanning.
           agentType = candidateAgent;
-          // Prefer the candidate's icon — "claude" beats "node".
-          processIconId = candidateIcon ?? processIconId;
+          processIconId = PROCESS_ICON_MAP[lowerCandidate] ?? processIconId;
           effectiveName = candidate;
           break;
         }
-      }
-    }
-
-    // Fallback 2 (agents only): path-component substring scan on the full
-    // command line. Catches aggressively-rewritten processes where both
-    // comm and argv[0..N] basenames have been scrambled, but the original
-    // invocation path still appears somewhere in the kernel-preserved argv
-    // (e.g. "/Users/foo/.npm-global/bin/claude" somewhere in the string).
-    // Scoped to AGENT names because substring matching is too loose for
-    // short runtime tokens like "node" / "go" which appear as path
-    // components in many unrelated commands.
-    if (!agentType && processCommand) {
-      const lowerCommand = processCommand.toLowerCase();
-      for (const cliName of Object.keys(AGENT_CLI_NAMES)) {
-        if (
-          lowerCommand.includes(`/${cliName} `) ||
-          lowerCommand.endsWith(`/${cliName}`) ||
-          lowerCommand.includes(` ${cliName} `) ||
-          lowerCommand.endsWith(` ${cliName}`) ||
-          lowerCommand.startsWith(`${cliName} `) ||
-          lowerCommand === cliName
-        ) {
-          agentType = AGENT_CLI_NAMES[cliName];
-          processIconId = PROCESS_ICON_MAP[cliName] ?? processIconId;
-          effectiveName = cliName;
-          break;
+        if (!iconMatch) {
+          const candidateIcon = PROCESS_ICON_MAP[lowerCandidate];
+          if (candidateIcon) iconMatch = { name: candidate, icon: candidateIcon };
         }
+      }
+      // No agent found; fall back to the first icon match if we have one
+      // AND the primary `comm` didn't already produce one. Example: bare
+      // `python3 script.py` — primary matches python3→python, fallback
+      // finds no agent in argv, we keep the python icon from primary.
+      if (!agentType && !processIconId && iconMatch) {
+        processIconId = iconMatch.icon;
+        effectiveName = iconMatch.name;
       }
     }
 

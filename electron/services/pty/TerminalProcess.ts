@@ -6,7 +6,12 @@ const { Terminal: HeadlessTerminal } = headless;
 import serialize, { type SerializeAddon as SerializeAddonType } from "@xterm/addon-serialize";
 const { SerializeAddon } = serialize;
 import { AGENT_REGISTRY, getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
-import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
+import {
+  ProcessDetector,
+  detectCommandIdentity,
+  type CommandIdentity,
+  type DetectionResult,
+} from "../ProcessDetector.js";
 import type { ProcessTreeCache } from "../ProcessTreeCache.js";
 import { ActivityMonitor } from "../ActivityMonitor.js";
 import { AgentStateService } from "./AgentStateService.js";
@@ -65,6 +70,7 @@ import {
 } from "./terminalActivityPatterns.js";
 import { TerminalForensicsBuffer } from "./TerminalForensicsBuffer.js";
 import { SemanticBufferManager } from "./SemanticBufferManager.js";
+import { detectPrompt } from "./PromptDetector.js";
 import { stripAnsiCodes } from "../../../shared/utils/artifactParser.js";
 import type { SpawnContext } from "./terminalSpawn.js";
 
@@ -75,6 +81,16 @@ type CursorBuffer = {
 };
 
 const EVENT_DRIVEN_SNAPSHOT_THROTTLE_MS = 2000;
+const SHELL_IDENTITY_FALLBACK_COMMIT_MS = 1200;
+const SHELL_IDENTITY_FALLBACK_POLL_MS = 200;
+const SHELL_IDENTITY_FALLBACK_PROMPT_POLLS = 2;
+const SHELL_IDENTITY_FALLBACK_SCAN_LINES = 4;
+const SHELL_INPUT_BUFFER_MAX = 4096;
+const SHELL_PROMPT_PATTERNS = [
+  /^\s*[>›❯⟩$#%]\s*$/,
+  /^\s*[A-Za-z0-9_.-]+@[\w.-]+(?:\s+[^\r\n]*)?\s*[#$%>]\s*$/,
+  /^\s*[➜➤➟➔❯›]\s+.*$/,
+] as const;
 
 // OSC 10/11 "?" queries terminated by BEL (\x07) or ST (\x1b\\).
 // Trigger and strip must use the same terminator-requiring pattern: if we
@@ -118,6 +134,14 @@ export class TerminalProcess {
   private inputWriteQueue: string[] = [];
   private inputWriteTimeout: NodeJS.Timeout | null = null;
   private killTreeTimer: NodeJS.Timeout | null = null;
+  private shellIdentityFallbackTimer: NodeJS.Timeout | null = null;
+  private shellIdentityFallbackSubmittedAt: number | null = null;
+  private shellIdentityFallbackCommandText: string | undefined;
+  private shellIdentityFallbackIdentity: CommandIdentity | null = null;
+  private shellIdentityFallbackCommitted = false;
+  private shellIdentityFallbackPromptStreak = 0;
+  private suppressNextShellSubmitSignal = false;
+  private shellInputBuffer = "";
 
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
@@ -535,7 +559,22 @@ export class TerminalProcess {
       this.activityMonitor.onInput(data);
     }
 
-    if (isBracketedPaste(data)) {
+    const bracketedPaste = isBracketedPaste(data);
+    const canCaptureShellInput =
+      !bracketedPaste &&
+      this.terminalInfo.detectedAgentType === undefined &&
+      this.lastDetectedProcessIconId === undefined;
+    const submittedCommandText = canCaptureShellInput ? this.captureShellInput(data) : undefined;
+
+    if (!bracketedPaste && /[\r\n]/.test(data)) {
+      if (this.suppressNextShellSubmitSignal) {
+        this.suppressNextShellSubmitSignal = false;
+      } else {
+        this.markShellCommandSubmitted(submittedCommandText);
+      }
+    }
+
+    if (bracketedPaste) {
       try {
         terminal.ptyProcess.write(data);
       } catch (error) {
@@ -617,6 +656,7 @@ export class TerminalProcess {
     const enterSuffix = "\r".repeat(enterCount);
 
     if (body.length === 0) {
+      this.suppressNextShellSubmitSignal = true;
       this.write(enterSuffix);
       return;
     }
@@ -649,6 +689,8 @@ export class TerminalProcess {
       return;
     }
 
+    this.suppressNextShellSubmitSignal = true;
+    this.markShellCommandSubmitted(body);
     this.write(enterSuffix);
   }
 
@@ -1019,6 +1061,200 @@ export class TerminalProcess {
     return line ? line.translateToString(true) : null;
   }
 
+  private normalizeShellCommandText(commandText?: string): string | undefined {
+    if (!commandText) return undefined;
+    const normalized = commandText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    for (const line of normalized.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+    return undefined;
+  }
+
+  private captureShellInput(data: string): string | undefined {
+    let submittedCommandText: string | undefined;
+    let inEscapeSequence = false;
+
+    for (const char of data) {
+      if (inEscapeSequence) {
+        if ((char >= "@" && char <= "~") || char === "\u0007") {
+          inEscapeSequence = false;
+        }
+        continue;
+      }
+
+      if (char === "\x1b") {
+        inEscapeSequence = true;
+        continue;
+      }
+
+      if (char === "\b" || char === "\x7f") {
+        this.shellInputBuffer = this.shellInputBuffer.slice(0, -1);
+        continue;
+      }
+
+      if (char === "\r" || char === "\n") {
+        submittedCommandText = this.normalizeShellCommandText(this.shellInputBuffer);
+        this.shellInputBuffer = "";
+        continue;
+      }
+
+      if (char < " ") {
+        continue;
+      }
+
+      if (this.shellInputBuffer.length < SHELL_INPUT_BUFFER_MAX) {
+        this.shellInputBuffer += char;
+      }
+    }
+
+    return submittedCommandText;
+  }
+
+  private markShellCommandSubmitted(commandText?: string): void {
+    if (this.terminalInfo.isExited || this.terminalInfo.wasKilled) {
+      return;
+    }
+
+    if (this.terminalInfo.detectedAgentType || this.lastDetectedProcessIconId) {
+      return;
+    }
+
+    this.shellIdentityFallbackSubmittedAt = Date.now();
+    this.shellIdentityFallbackCommandText = this.normalizeShellCommandText(commandText);
+    this.shellIdentityFallbackIdentity = this.shellIdentityFallbackCommandText
+      ? detectCommandIdentity(this.shellIdentityFallbackCommandText)
+      : null;
+    this.shellIdentityFallbackCommitted = false;
+    this.shellIdentityFallbackPromptStreak = 0;
+    this.startShellIdentityFallbackWatcher();
+  }
+
+  private startShellIdentityFallbackWatcher(): void {
+    if (this.shellIdentityFallbackTimer) {
+      return;
+    }
+    this.shellIdentityFallbackTimer = setInterval(() => {
+      this.pollShellIdentityFallback();
+    }, SHELL_IDENTITY_FALLBACK_POLL_MS);
+  }
+
+  private stopShellIdentityFallbackWatcher(): void {
+    if (this.shellIdentityFallbackTimer) {
+      clearInterval(this.shellIdentityFallbackTimer);
+      this.shellIdentityFallbackTimer = null;
+    }
+    this.shellIdentityFallbackSubmittedAt = null;
+    this.shellIdentityFallbackCommandText = undefined;
+    this.shellIdentityFallbackIdentity = null;
+    this.shellIdentityFallbackCommitted = false;
+    this.shellIdentityFallbackPromptStreak = 0;
+  }
+
+  private isShellPromptVisible(): boolean {
+    const prompt = detectPrompt(
+      this.getLastNLines(SHELL_IDENTITY_FALLBACK_SCAN_LINES),
+      {
+        promptPatterns: [...SHELL_PROMPT_PATTERNS],
+        promptHintPatterns: [],
+        promptScanLineCount: SHELL_IDENTITY_FALLBACK_SCAN_LINES,
+        promptConfidence: 0.85,
+      },
+      this.getCursorLine()
+    );
+    return prompt.isPrompt;
+  }
+
+  private pollShellIdentityFallback(): void {
+    const submittedAt = this.shellIdentityFallbackSubmittedAt;
+    if (
+      submittedAt === null ||
+      this.terminalInfo.isExited ||
+      this.terminalInfo.wasKilled ||
+      !this.terminalInfo.headlessTerminal
+    ) {
+      this.stopShellIdentityFallbackWatcher();
+      return;
+    }
+
+    if (!this.shellIdentityFallbackIdentity) {
+      const commandText =
+        this.shellIdentityFallbackCommandText ??
+        (this.terminalInfo.lastOutputTime >= submittedAt
+          ? this.semanticBufferManager.getLastCommand()
+          : undefined);
+      const normalized = this.normalizeShellCommandText(commandText);
+      if (normalized) {
+        this.shellIdentityFallbackCommandText = normalized;
+        this.shellIdentityFallbackIdentity = detectCommandIdentity(normalized);
+      }
+    }
+
+    const promptVisible = this.isShellPromptVisible();
+    const hasLiveIdentity =
+      this.terminalInfo.detectedAgentType !== undefined ||
+      this.lastDetectedProcessIconId !== undefined;
+
+    if (!this.shellIdentityFallbackIdentity) {
+      if (promptVisible && Date.now() - submittedAt >= SHELL_IDENTITY_FALLBACK_COMMIT_MS) {
+        this.stopShellIdentityFallbackWatcher();
+      }
+      return;
+    }
+
+    if (!this.shellIdentityFallbackCommitted) {
+      if (hasLiveIdentity) {
+        this.shellIdentityFallbackCommitted = true;
+        return;
+      }
+
+      if (promptVisible) {
+        this.stopShellIdentityFallbackWatcher();
+        return;
+      }
+
+      if (Date.now() - submittedAt < SHELL_IDENTITY_FALLBACK_COMMIT_MS) {
+        return;
+      }
+
+      this.handleAgentDetection(
+        {
+          detected: true,
+          agentType: this.shellIdentityFallbackIdentity.agentType,
+          processIconId: this.shellIdentityFallbackIdentity.processIconId,
+          processName: this.shellIdentityFallbackIdentity.processName,
+          isBusy: true,
+          currentCommand: this.shellIdentityFallbackCommandText,
+        },
+        this.terminalInfo.spawnedAt
+      );
+      this.shellIdentityFallbackCommitted = true;
+      return;
+    }
+
+    if (!promptVisible) {
+      this.shellIdentityFallbackPromptStreak = 0;
+      return;
+    }
+
+    this.shellIdentityFallbackPromptStreak += 1;
+    if (this.shellIdentityFallbackPromptStreak < SHELL_IDENTITY_FALLBACK_PROMPT_POLLS) {
+      return;
+    }
+
+    this.handleAgentDetection(
+      {
+        detected: false,
+        isBusy: false,
+        currentCommand: undefined,
+      },
+      this.terminalInfo.spawnedAt
+    );
+    this.stopShellIdentityFallbackWatcher();
+  }
+
   getSerializedState(): string | null {
     try {
       return this.terminalInfo.serializeAddon!.serialize();
@@ -1220,6 +1456,7 @@ export class TerminalProcess {
   dispose(): void {
     this.stopProcessDetector();
     this.stopActivityMonitor();
+    this.stopShellIdentityFallbackWatcher();
 
     this.semanticBufferManager.dispose();
 
@@ -1554,12 +1791,14 @@ export class TerminalProcess {
       this.lastDetectedProcessIconId = undefined;
       terminal.detectedProcessIconId = undefined;
       this.stopActivityMonitor();
-      // See note above: clear live agent identity on every agent exit so the
-      // panel demotes back to a plain terminal. The wrapping shell is still
-      // alive (see lifecycle.ts — agents no longer use exec) and ready to
-      // accept another command, possibly a different agent.
-      terminal.analysisEnabled = false;
-      terminal.agentId = undefined;
+      // Only clear agent identity when an AGENT exited. This branch also
+      // fires for plain process-icon exits (npm/vite/etc.) where previousType
+      // is undefined; clearing agentId there would wipe the Claude badge
+      // after any short-lived shell command ran inside a Claude terminal.
+      if (previousType) {
+        terminal.analysisEnabled = false;
+        terminal.agentId = undefined;
+      }
       events.emit("agent:exited", {
         terminalId: this.id,
         agentType: previousType,

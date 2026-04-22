@@ -319,32 +319,34 @@ export function setupTerminalStoreListeners() {
   disposables.add(
     toDisposable(
       terminalRegistryController.onAgentExited((data) => {
-        const { terminalId } = data;
+        const { terminalId, agentType } = data;
         if (!terminalId) return;
+
+        // `agent:exited` fires for TWO different transitions:
+        //   1. An agent exited (data.agentType is set) — e.g. claude quit.
+        //   2. A non-agent process exited (data.agentType is undefined) —
+        //      e.g. `npm run build` finished.
+        // Only case (1) should clear the launch-time `agentId`. Clearing
+        // `agentId` on case (2) would wipe the Claude badge every time the
+        // user ran a brief shell command inside a Claude terminal.
+        const isAgentExit = agentType !== undefined;
 
         usePanelStore.setState((state) => {
           const terminal = state.panelsById[terminalId];
           if (!terminal) return state;
-          const needsClear =
-            terminal.detectedProcessId !== undefined ||
-            terminal.detectedAgentId !== undefined ||
-            terminal.agentId !== undefined;
-          if (!needsClear) return state;
-          // "Terminals are the unit": on agent exit, drop the full live
-          // identity including the spawn-time agentId launch hint. Chrome
-          // resolves identity through `detectedAgentId ?? agentId`, so if
-          // we only cleared the detected fields the panel would fall back
-          // to the stale spawn-time agentId and keep showing the exited
-          // agent's badge. The backend already cleared its own agentId —
-          // this mirrors that on the renderer side.
+          const clearProcess = terminal.detectedProcessId !== undefined;
+          const clearDetectedAgent = terminal.detectedAgentId !== undefined;
+          const clearAgentId = isAgentExit && terminal.agentId !== undefined;
+          if (!clearProcess && !clearDetectedAgent && !clearAgentId) return state;
+
           return {
             panelsById: {
               ...state.panelsById,
               [terminalId]: {
                 ...terminal,
-                detectedProcessId: undefined,
-                detectedAgentId: undefined,
-                agentId: undefined,
+                ...(clearProcess && { detectedProcessId: undefined }),
+                ...(clearDetectedAgent && { detectedAgentId: undefined }),
+                ...(clearAgentId && { agentId: undefined }),
               },
             },
           };

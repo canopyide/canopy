@@ -20,20 +20,49 @@ vi.mock("../terminalSessionPersistence.js", async (importOriginal) => {
   };
 });
 
-function createMockPty(): IPty {
-  const pty: Partial<IPty> = {
+type MockPty = IPty & {
+  __emitData: (data: string) => void;
+  __emitExit: (exitCode?: number, signal?: number) => void;
+  __writes: string[];
+};
+
+function createMockPty(): MockPty {
+  const dataListeners = new Set<(data: string) => void>();
+  const exitListeners = new Set<(event: { exitCode: number; signal?: number }) => void>();
+  const writes: string[] = [];
+
+  const pty: Partial<MockPty> = {
     pid: 123,
     cols: 80,
     rows: 24,
-    write: () => {},
+    write: (data: string) => {
+      writes.push(data);
+    },
     resize: () => {},
     kill: vi.fn(),
     pause: () => {},
     resume: () => {},
-    onData: () => ({ dispose: () => {} }),
-    onExit: () => ({ dispose: () => {} }),
+    onData: (callback: (data: string) => void) => {
+      dataListeners.add(callback);
+      return { dispose: () => dataListeners.delete(callback) };
+    },
+    onExit: (callback: (event: { exitCode: number; signal?: number }) => void) => {
+      exitListeners.add(callback);
+      return { dispose: () => exitListeners.delete(callback) };
+    },
+    __emitData: (data: string) => {
+      for (const listener of dataListeners) {
+        listener(data);
+      }
+    },
+    __emitExit: (exitCode = 0, signal = 0) => {
+      for (const listener of exitListeners) {
+        listener({ exitCode, signal });
+      }
+    },
+    __writes: writes,
   };
-  return pty as IPty;
+  return pty as MockPty;
 }
 
 function createMockProcessTreeCache(): ProcessTreeCache {
@@ -150,6 +179,10 @@ function getActivityMonitor(terminal: TerminalProcess): { onInput: (s: string) =
 
 function getSpawnedAt(terminal: TerminalProcess): number {
   return (terminal as unknown as { terminalInfo: { spawnedAt: number } }).terminalInfo.spawnedAt;
+}
+
+function getMockPty(terminal: TerminalProcess): MockPty {
+  return terminal.getInfo().ptyProcess as MockPty;
 }
 
 describe("TerminalProcess.handleAgentDetection — disposes ActivityMonitor on agent exit", () => {
@@ -417,6 +450,106 @@ describe("TerminalProcess.handleAgentDetection — runtime promotion scrollback"
         getSpawnedAt(terminal)
       );
       expect(getScrollback(terminal)).toBe(10000);
+    } finally {
+      terminal.dispose();
+    }
+  });
+});
+
+describe("TerminalProcess shell-command identity fallback", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("promotes a plain terminal from a typed agent command when process-tree detection never commits", async () => {
+    const terminal = createPlainTerminal("t-fallback-agent");
+    const pty = getMockPty(terminal);
+
+    try {
+      terminal.write("claude\r");
+      pty.__emitData("claude\r\n");
+      pty.__emitData("Starting Claude Code...\r\n");
+
+      await vi.advanceTimersByTimeAsync(2000);
+
+      const info = terminal.getInfo();
+      expect(info.detectedAgentType).toBe("claude");
+      expect(info.agentId).toBe("claude");
+      expect(info.analysisEnabled).toBe(true);
+      expect(info.type).toBe("claude");
+      expect(info.everDetectedAgent).toBe(true);
+    } finally {
+      terminal.dispose();
+    }
+  });
+
+  it("demotes a spawn-sealed agent terminal back to plain shell when the prompt returns", async () => {
+    const terminal = createAgentTerminal();
+    const pty = getMockPty(terminal);
+
+    try {
+      terminal.write("claude\r");
+      pty.__emitData("claude\r\n");
+      pty.__emitData("Claude Code ready.\r\n");
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(terminal.getInfo().detectedAgentType).toBe("claude");
+
+      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      await vi.advanceTimersByTimeAsync(600);
+
+      const info = terminal.getInfo();
+      expect(info.detectedAgentType).toBeUndefined();
+      expect(info.agentId).toBeUndefined();
+      expect(info.analysisEnabled).toBe(false);
+      expect(info.type).toBe("terminal");
+    } finally {
+      terminal.dispose();
+    }
+  });
+
+  it("shows the npm badge for a typed npm run dev command and clears it on prompt return", async () => {
+    const terminal = createPlainTerminal("t-fallback-npm");
+    const pty = getMockPty(terminal);
+
+    try {
+      terminal.write("npm run dev\r");
+      pty.__emitData("npm run dev\r\n");
+      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
+
+      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(terminal.getInfo().detectedProcessIconId).toBeUndefined();
+      expect(terminal.getInfo().detectedAgentType).toBeUndefined();
+    } finally {
+      terminal.dispose();
+    }
+  });
+
+  it("does not flash an agent badge for a short-lived command that returns before the fallback commit window", async () => {
+    const terminal = createPlainTerminal("t-fallback-short");
+    const pty = getMockPty(terminal);
+
+    try {
+      terminal.write("claude --version\r");
+      pty.__emitData("claude --version\r\n2.1.117\r\n");
+      pty.__emitData("gpriday@macbook canopy-app % ");
+
+      await vi.advanceTimersByTimeAsync(2500);
+
+      const info = terminal.getInfo();
+      expect(info.detectedAgentType).toBeUndefined();
+      expect(info.detectedProcessIconId).toBeUndefined();
+      expect(info.agentId).toBeUndefined();
+      expect(info.type).toBe("terminal");
     } finally {
       terminal.dispose();
     }

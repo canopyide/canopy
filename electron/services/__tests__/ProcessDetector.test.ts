@@ -119,6 +119,39 @@ describe("ProcessDetector", () => {
     );
   });
 
+  it("detects npm when the process title is rewritten to the full runner command", () => {
+    const cache = createCacheMock();
+    cache.setChildren(100, [
+      {
+        pid: 200,
+        comm: "npm run dev",
+        command: "npm run dev",
+      },
+    ]);
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-npm-title-rewrite",
+      Date.now(),
+      100,
+      callback,
+      cache as never
+    );
+    detector.start();
+    cache.emitRefresh();
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        processIconId: "npm",
+        processName: "npm",
+        isBusy: true,
+        currentCommand: "npm run dev",
+      }),
+      expect.any(Number)
+    );
+  });
+
   it("detects Claude when it runs via Node as a shebang script", () => {
     // This is the real-world macOS case: `claude` is a Node CLI installed via
     // npm, so `comm` is "node" and the agent identity lives in argv[1].
@@ -186,73 +219,6 @@ describe("ProcessDetector", () => {
       }),
       expect.any(Number)
     );
-  });
-
-  it("detects claude when it has rewritten its own process title", () => {
-    // Claude Code rewrites process.title to its version string ("2.1.117"),
-    // so `comm` loses the "claude" hint. But `ps -o command` on macOS reads
-    // the kernel's original argv copy via sysctl, so the invocation path
-    // ("/Users/foo/.npm-global/bin/claude") is still recoverable.
-    const cache = createCacheMock();
-    cache.setChildren(100, [
-      {
-        pid: 200,
-        comm: "2.1.117",
-        command: "/Users/greg/.npm-global/bin/claude --resume",
-      },
-    ]);
-    const callback = vi.fn();
-
-    const detector = new ProcessDetector(
-      "terminal-rewrite-1",
-      Date.now(),
-      100,
-      callback,
-      cache as never
-    );
-    detector.start();
-    cache.emitRefresh();
-
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detected: true,
-        agentType: "claude",
-      }),
-      expect.any(Number)
-    );
-  });
-
-  it("detects claude when process.title rewrite affects argv too but original path survives in the tail", () => {
-    // Defensive: even when argv[0] has been rewritten, the full command
-    // tail still references the invocation path.
-    const cache = createCacheMock();
-    cache.setChildren(100, [
-      {
-        pid: 200,
-        comm: "2.1.117",
-        command:
-          "2.1.117 /Users/greg/.npm-global/lib/node_modules/@anthropic-ai/claude-code/dist/cli.mjs",
-      },
-    ]);
-    const callback = vi.fn();
-
-    const detector = new ProcessDetector(
-      "terminal-rewrite-2",
-      Date.now(),
-      100,
-      callback,
-      cache as never
-    );
-    detector.start();
-    cache.emitRefresh();
-
-    // Fallback 1 (argv) walks basenames — "cli" doesn't match but nothing
-    // else comes up. Fallback 2 (substring) scans for `/claude` as a path
-    // component. The path "@anthropic-ai/claude-code" does NOT contain
-    // "/claude " (space), "/claude" at end, " claude ", etc., so this
-    // case stays unmatched. This test documents that limitation; the
-    // common case (fallback 1 via argv[1]="claude") is covered elsewhere.
-    expect(callback).toHaveBeenCalled();
   });
 
   it("prefers native-binary claude over argv-derived claude when both would match", () => {

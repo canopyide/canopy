@@ -138,10 +138,20 @@ export class ProcessTreeCache {
       this.lastRefreshTime = Date.now();
       this.lastError = null;
     } catch (error) {
-      this.lastError = error instanceof Error ? error : new Error(String(error));
-      if (process.env.DAINTREE_VERBOSE) {
-        console.error("[ProcessTreeCache] Refresh failed:", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      // Only log on transition into failure or each subsequent distinct error
+      // message — don't spam once per poll while a persistent failure lasts.
+      // This is always-on (not DAINTREE_VERBOSE-gated) because silent ps
+      // failures have burned us before: the utility-process sandbox on
+      // macOS can block `ps` and detection silently returns empty.
+      const prevMsg = this.lastError?.message ?? null;
+      if (prevMsg !== err.message) {
+        console.error(
+          "[ProcessTreeCache] ps refresh failed — detection will be blind until it recovers:",
+          err
+        );
       }
+      this.lastError = err;
     } finally {
       this.isRefreshing = false;
 
