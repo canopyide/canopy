@@ -141,6 +141,31 @@ describe("restartTerminal agent-exited demotion (#5764)", () => {
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const payload = mockSpawn.mock.calls[0]![0];
     expect(payload.kind).toBe("terminal");
+    expect(payload.type).toBe("terminal");
+    expect(payload.agentId).toBeUndefined();
+    expect(payload.command).toBeUndefined();
+    expect(payload.agentLaunchFlags).toBeUndefined();
+    expect(payload.agentModelId).toBeUndefined();
+  });
+
+  it("restarts as plain shell when PTY exited from idle state (exitCode set)", async () => {
+    // AgentStateMachine never transitions idle->exited on PTY exit, so the
+    // FSM leaves agentState as "idle" while exitCode is set. The restart
+    // guard must still treat this as demoted.
+    const idleExited = { ...agentPanelBase, agentState: "idle" as const, exitCode: 0 };
+    usePanelStore.setState({
+      panelsById: { [idleExited.id]: idleExited },
+      panelIds: [idleExited.id],
+    });
+
+    await usePanelStore.getState().restartTerminal("test-1");
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    const payload = mockSpawn.mock.calls[0]![0];
+    expect(payload.kind).toBe("terminal");
+    expect(payload.type).toBe("terminal");
+    expect(payload.agentId).toBeUndefined();
+    expect(payload.command).toBeUndefined();
     expect(payload.agentLaunchFlags).toBeUndefined();
   });
 
@@ -156,6 +181,8 @@ describe("restartTerminal agent-exited demotion (#5764)", () => {
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const payload = mockSpawn.mock.calls[0]![0];
     expect(payload.kind).toBe("agent");
+    expect(payload.type).toBe("claude");
+    expect(payload.agentId).toBe("claude");
     expect(payload.agentLaunchFlags).toEqual(["--persisted-flag"]);
   });
 
@@ -170,10 +197,12 @@ describe("restartTerminal agent-exited demotion (#5764)", () => {
 
     const after = usePanelStore.getState().panelsById["test-1"];
     expect(after?.agentId).toBe("claude");
-    expect(after?.agentState).toBeUndefined();
   });
 
-  it("does not set agentState to 'working' when restarting demoted panel", async () => {
+  it("preserves agentState: exited across repeated demoted restarts", async () => {
+    // Without this, the first demoted restart clears agentState, and the
+    // next restart relaunches the agent because the guard sees no exit
+    // signal (exitCode is also cleared on restart).
     const demoted = { ...agentPanelBase, agentState: "exited" as const, exitCode: 0 };
     usePanelStore.setState({
       panelsById: { [demoted.id]: demoted },
@@ -182,7 +211,33 @@ describe("restartTerminal agent-exited demotion (#5764)", () => {
 
     await usePanelStore.getState().restartTerminal("test-1");
 
+    const afterFirst = usePanelStore.getState().panelsById["test-1"];
+    expect(afterFirst?.agentState).toBe("exited");
+
+    await usePanelStore.getState().restartTerminal("test-1");
+
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    const secondPayload = mockSpawn.mock.calls[1]![0];
+    expect(secondPayload.kind).toBe("terminal");
+    expect(secondPayload.agentId).toBeUndefined();
+    expect(secondPayload.command).toBeUndefined();
+  });
+
+  it("clears persisted command on demoted restart so future spawns use default shell", async () => {
+    const demoted = {
+      ...agentPanelBase,
+      command: "claude --model sonnet",
+      agentState: "exited" as const,
+      exitCode: 0,
+    };
+    usePanelStore.setState({
+      panelsById: { [demoted.id]: demoted },
+      panelIds: [demoted.id],
+    });
+
+    await usePanelStore.getState().restartTerminal("test-1");
+
     const after = usePanelStore.getState().panelsById["test-1"];
-    expect(after?.agentState).toBeUndefined();
+    expect(after?.command).toBeUndefined();
   });
 });
