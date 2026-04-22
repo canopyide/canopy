@@ -6,6 +6,7 @@ import type { AgentEvent } from "./AgentStateMachine.js";
 import type { AgentStateChangeTrigger } from "../schemas/agent.js";
 import type { PtyPool } from "./PtyPool.js";
 import type { ProcessTreeCache } from "./ProcessTreeCache.js";
+import type { DetectionResult } from "./ProcessDetector.js";
 import { createLogger } from "../utils/logger.js";
 
 const logger = createLogger("pty-host:PtyManager");
@@ -556,6 +557,22 @@ export class PtyManager extends EventEmitter {
     if (terminal) {
       terminal.setAnalysisEnabled(enabled);
     }
+  }
+
+  /**
+   * Drive the runtime agent-detection pipeline directly. In production, the
+   * per-terminal ProcessDetector invokes TerminalProcess.handleAgentDetection;
+   * this hook routes the same result through that method synchronously so
+   * integration tests can exercise runtime promotion/demotion without depending
+   * on a real agent binary being resident in the process tree.
+   */
+  simulateAgentDetection(id: string, result: DetectionResult): boolean {
+    const terminal = this.registry.get(id);
+    if (!terminal) {
+      return false;
+    }
+    terminal.handleAgentDetection(result, terminal.getInfo().spawnedAt);
+    return true;
   }
 
   /**
