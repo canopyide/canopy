@@ -53,6 +53,7 @@ import {
   useKeybindingDisplay,
 } from "@/hooks";
 import { usePanelStore } from "@/store/panelStore";
+import { resolveEffectiveAgentId } from "@/utils/agentIdentity";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,6 +75,8 @@ export interface PanelHeaderProps {
   kind: PanelKind;
   type?: TerminalType;
   agentId?: string;
+  /** Runtime-detected agent identity (cleared when the agent exits). Drives icons and the watch button. */
+  detectedAgentId?: string;
   detectedProcessId?: string;
   presetColor?: string;
   worktreeAccentColor?: string;
@@ -139,6 +142,7 @@ function PanelHeaderComponent({
   kind,
   type,
   agentId,
+  detectedAgentId,
   detectedProcessId,
   presetColor,
   worktreeAccentColor,
@@ -239,7 +243,11 @@ function PanelHeaderComponent({
   const isWatched = usePanelStore((state) => state.watchedPanels.has(id));
   const watchPanel = usePanelStore((state) => state.watchPanel);
   const unwatchPanel = usePanelStore((state) => state.unwatchPanel);
-  const showWatchButton = !!agentId;
+  // Watch button tracks live agent identity: visible when an agent is currently
+  // running (`detectedAgentId`) OR was launched as one (`agentId`). The fallback
+  // keeps the button available right after spawn before the process detector fires.
+  const effectiveAgentId = resolveEffectiveAgentId(detectedAgentId, agentId);
+  const showWatchButton = !!effectiveAgentId;
 
   // Fleet failure state for this pane: when the most recent broadcast
   // rejected on this terminal (e.g. PTY died mid-paste), surface a red
@@ -717,9 +725,10 @@ function PanelHeaderComponent({
               type={type}
               kind={kind}
               agentId={agentId}
+              detectedAgentId={detectedAgentId}
               detectedProcessId={detectedProcessId}
               className="w-3.5 h-3.5"
-              brandColor={presetColor ?? getBrandColorHex(agentId ?? type)}
+              brandColor={presetColor ?? getBrandColorHex(effectiveAgentId ?? type)}
             />
           </span>
 

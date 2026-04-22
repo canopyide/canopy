@@ -23,14 +23,21 @@ describe("TerminalContextMenu - Convert To Submenu", () => {
 
   describe("Submenu generation logic", () => {
     function buildConvertToSubmenu(
-      terminal: { type: string; kind?: string; agentId?: string | null } | null,
+      terminal: {
+        type: string;
+        kind?: string;
+        agentId?: string | null;
+        detectedAgentId?: string | null;
+      } | null,
       isAvailabilityInitialized: boolean = false,
       availability?: CliAvailability
     ): MenuItemOption[] {
       if (!terminal) return [];
 
       const currentAgentId =
-        terminal.agentId ?? (terminal.type !== "terminal" ? terminal.type : null);
+        terminal.detectedAgentId ??
+        terminal.agentId ??
+        (terminal.type !== "terminal" ? terminal.type : null);
       const isPlainTerminal = terminal.type === "terminal" || terminal.kind === "terminal";
 
       const visibleAgentIds = (() => {
@@ -261,6 +268,34 @@ describe("TerminalContextMenu - Convert To Submenu", () => {
         (item) => item.type !== "separator" && item.id.startsWith("convert-to:")
       );
       expect(agentItems.length).toBe(0);
+    });
+
+    it("should prefer detectedAgentId over launch-time agentId", () => {
+      const detected = AGENT_IDS[0]!;
+      const launched = AGENT_IDS[1] ?? AGENT_IDS[0]!;
+      const terminal = {
+        type: launched,
+        kind: "agent",
+        agentId: launched,
+        detectedAgentId: detected,
+      };
+      const submenu = buildConvertToSubmenu(terminal);
+
+      // Detected agent is current — disabled
+      const detectedItem = submenu.find((i) => i.id === `convert-to:${detected}`);
+      expect(detectedItem).toBeDefined();
+      if (detectedItem && detectedItem.type !== "separator") {
+        expect(detectedItem.enabled).toBe(false);
+      }
+
+      // Launched-only agent (if different) is not marked current — enabled
+      if (launched !== detected) {
+        const launchedItem = submenu.find((i) => i.id === `convert-to:${launched}`);
+        expect(launchedItem).toBeDefined();
+        if (launchedItem && launchedItem.type !== "separator") {
+          expect(launchedItem.enabled).toBe(true);
+        }
+      }
     });
 
     it("should show all states including ready", () => {

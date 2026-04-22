@@ -166,14 +166,18 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
     };
   }, [isOpen, terminalId]);
 
-  const showAgentSection = (info: TerminalInfoPayload): boolean =>
+  // "Launch Context" reflects how the panel was configured at spawn time.
+  const showAgentLaunchSection = (info: TerminalInfoPayload): boolean =>
     !!(
-      info.isAgentTerminal ||
       info.agentId ||
-      info.detectedAgentType ||
       (info.agentLaunchFlags && info.agentLaunchFlags.length > 0) ||
       info.agentModelId
     );
+  // "Live State" reflects what's running right now. Shown for agent panels,
+  // while a runtime agent is detected, or once an agent has ever been detected
+  // in this session (so plain terminals that ran `claude` still show the exit).
+  const showAgentLiveSection = (info: TerminalInfoPayload): boolean =>
+    !!(info.isAgentTerminal || info.detectedAgentId || info.everDetectedAgent);
 
   const formatArgsForClipboard = (args: string[] | undefined): string => {
     if (args === undefined) return "N/A";
@@ -184,15 +188,24 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
   const copyToClipboard = async () => {
     if (!info) return;
 
-    const agentSection = showAgentSection(info)
+    const launchSection = showAgentLaunchSection(info)
       ? `
 
-Agent:
+Agent — Launch Context:
   Agent ID: ${info.agentId ?? "N/A"}
-  Detected Agent: ${info.detectedAgentType ?? "N/A"}
   Launch Flags: ${formatArgsForClipboard(info.agentLaunchFlags)}
   Model: ${info.agentModelId ?? "N/A"}`
       : "";
+
+    const liveSection = showAgentLiveSection(info)
+      ? `
+
+Agent — Live State:
+  Detected Agent ID: ${info.detectedAgentId ?? "None — agent has exited"}
+  Detected Agent Type: ${info.detectedAgentType ?? "N/A"}`
+      : "";
+
+    const agentSection = launchSection + liveSection;
 
     const diagnosticInfo = `Terminal Diagnostic Information
 =====================================
@@ -288,14 +301,20 @@ Performance & Diagnostics:
               <InfoListRow label="Args" items={info.spawnArgs} />
             </InfoSection>
 
-            {showAgentSection(info) && (
-              <InfoSection title="Agent">
+            {showAgentLaunchSection(info) && (
+              <InfoSection title="Agent — Launch Context">
                 {info.agentId && <InfoRow label="Agent ID" value={info.agentId} />}
-                {info.detectedAgentType && (
-                  <InfoRow label="Detected Agent" value={info.detectedAgentType} />
-                )}
                 <InfoListRow label="Launch Flags" items={info.agentLaunchFlags} />
                 {info.agentModelId && <InfoRow label="Model" value={info.agentModelId} mono />}
+              </InfoSection>
+            )}
+
+            {showAgentLiveSection(info) && (
+              <InfoSection title="Agent — Live State">
+                <InfoRow
+                  label="Detected Agent"
+                  value={info.detectedAgentId ?? "None — agent has exited"}
+                />
               </InfoSection>
             )}
 

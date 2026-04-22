@@ -6,6 +6,7 @@ import type { PanelKind, TerminalType, AgentState } from "@/types";
 import type { WaitingReason } from "@shared/types/agent";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
+import { resolveEffectiveAgentId } from "@/utils/agentIdentity";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import {
@@ -19,6 +20,7 @@ export interface TabInfo {
   title: string;
   type?: TerminalType;
   agentId?: string;
+  detectedAgentId?: string;
   detectedProcessId?: string;
   kind: PanelKind;
   agentState?: AgentState;
@@ -34,6 +36,7 @@ export interface TabButtonProps {
   title: string;
   type?: TerminalType;
   agentId?: string;
+  detectedAgentId?: string;
   detectedProcessId?: string;
   kind: PanelKind;
   agentState?: AgentState;
@@ -55,6 +58,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     title,
     type,
     agentId,
+    detectedAgentId,
     detectedProcessId,
     kind,
     agentState,
@@ -263,9 +267,13 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
                 type={type}
                 kind={kind}
                 agentId={agentId}
+                detectedAgentId={detectedAgentId}
                 detectedProcessId={detectedProcessId}
                 className="w-3.5 h-3.5"
-                brandColor={presetColor ?? getBrandColorHex(agentId ?? type)}
+                brandColor={
+                  presetColor ??
+                  getBrandColorHex(resolveEffectiveAgentId(detectedAgentId, agentId) ?? type)
+                }
               />
             </span>
 

@@ -73,6 +73,7 @@ export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinIt
           type={terminal.type}
           kind={terminal.kind}
           agentId={terminal.agentId}
+          detectedAgentId={terminal.detectedAgentId}
           detectedProcessId={terminal.detectedProcessId}
           className="w-3 h-3"
         />

@@ -315,7 +315,9 @@ export function TerminalContextMenu({
   );
 
   const currentAgentId =
-    terminal?.agentId ?? (terminal?.type !== "terminal" ? terminal?.type : null);
+    terminal?.detectedAgentId ??
+    terminal?.agentId ??
+    (terminal?.type !== "terminal" ? terminal?.type : null);
   const isPlainTerminal = terminal?.type === "terminal" || terminal?.kind === "terminal";
 
   const visibleAgentIds = useMemo(() => {

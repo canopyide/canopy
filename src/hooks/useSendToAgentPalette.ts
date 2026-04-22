@@ -17,6 +17,7 @@ export interface SendToAgentItem {
   terminalType?: TerminalInstance["type"];
   terminalKind?: TerminalInstance["kind"];
   agentId?: TerminalInstance["agentId"];
+  detectedAgentId?: TerminalInstance["detectedAgentId"];
   detectedProcessId?: TerminalInstance["detectedProcessId"];
   isInputLocked?: boolean;
 }
@@ -97,7 +98,8 @@ export function useSendToAgentPalette() {
       if (t.kind && !panelKindHasPty(t.kind)) continue;
       if (t.hasPty === false) continue;
 
-      const agentConfig = t.agentId ? getAgentConfig(t.agentId) : null;
+      const effectiveAgentId = t.detectedAgentId ?? t.agentId;
+      const agentConfig = effectiveAgentId ? getAgentConfig(effectiveAgentId) : null;
       const subtitle = agentConfig ? agentConfig.name : t.type !== "terminal" ? t.type : "Terminal";
 
       result.push({
@@ -107,6 +109,7 @@ export function useSendToAgentPalette() {
         terminalType: t.type,
         terminalKind: t.kind,
         agentId: t.agentId,
+        detectedAgentId: t.detectedAgentId,
         detectedProcessId: t.detectedProcessId,
         isInputLocked: t.isInputLocked,
       });

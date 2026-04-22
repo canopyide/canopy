@@ -194,7 +194,9 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     terminal.agentId ? s.presetsByAgent[terminal.agentId] : undefined
   );
   const brandColor = useMemo(() => {
-    const fallbackColor = getBrandColorHex(terminal.agentId ?? terminal.type);
+    const fallbackColor = getBrandColorHex(
+      terminal.detectedAgentId ?? terminal.agentId ?? terminal.type
+    );
     if (!terminal.agentPresetId || !terminal.agentId) return fallbackColor;
     const preset = getMergedPresets(
       terminal.agentId,
@@ -205,6 +207,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     return preset?.color ?? terminal.agentPresetColor ?? fallbackColor;
   }, [
     terminal.agentId,
+    terminal.detectedAgentId,
     terminal.type,
     terminal.agentPresetId,
     terminal.agentPresetColor,
@@ -275,6 +278,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
                 type={terminal.type}
                 kind={terminal.kind}
                 agentId={terminal.agentId}
+                detectedAgentId={terminal.detectedAgentId}
                 detectedProcessId={terminal.detectedProcessId}
                 className="w-3.5 h-3.5"
                 brandColor={brandColor}

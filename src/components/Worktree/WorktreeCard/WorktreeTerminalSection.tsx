@@ -103,6 +103,7 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
               type={term.type}
               kind={term.kind}
               agentId={term.agentId}
+              detectedAgentId={term.detectedAgentId}
               detectedProcessId={term.detectedProcessId}
               className="w-3 h-3"
             />

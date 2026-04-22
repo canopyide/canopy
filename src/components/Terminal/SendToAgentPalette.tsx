@@ -6,6 +6,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { Lock } from "lucide-react";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import type { SendToAgentItem } from "@/hooks/useSendToAgentPalette";
+import { resolveEffectiveAgentId } from "@/utils/agentIdentity";
 
 export interface SendToAgentPaletteProps {
   isOpen: boolean;
@@ -57,8 +58,11 @@ const SendToAgentItemRow = React.memo(function SendToAgentItemRow({
           type={item.terminalType}
           kind={item.terminalKind}
           agentId={item.agentId}
+          detectedAgentId={item.detectedAgentId}
           detectedProcessId={item.detectedProcessId}
-          brandColor={getBrandColorHex(item.agentId ?? item.terminalType)}
+          brandColor={getBrandColorHex(
+            resolveEffectiveAgentId(item.detectedAgentId, item.agentId) ?? item.terminalType
+          )}
         />
       </span>
 

@@ -31,6 +31,7 @@ import { computeSpawnContext, acquirePtyProcess } from "./pty/terminalSpawn.js";
 import { disposeTerminalSerializerService } from "./pty/TerminalSerializerService.js";
 import { deleteSessionFile } from "./pty/terminalSessionPersistence.js";
 import { persistAgentSession } from "./pty/agentSessionHistory.js";
+import { isBuiltInAgentId } from "../../shared/config/agentIds.js";
 
 /**
  * PtyManager - Facade for terminal process management.
@@ -511,6 +512,9 @@ export class PtyManager extends EventEmitter {
       hasPty,
       isAgentTerminal: terminal.getIsAgentTerminal(),
       detectedAgentType: terminalInfo.detectedAgentType,
+      detectedAgentId: isBuiltInAgentId(terminalInfo.detectedAgentType)
+        ? terminalInfo.detectedAgentType
+        : undefined,
       analysisEnabled: terminalInfo.analysisEnabled,
       resizeStrategy: terminal.getResizeStrategy(),
       ptyPid: ptyProcess?.pid,
@@ -522,6 +526,7 @@ export class PtyManager extends EventEmitter {
       agentLaunchFlags: terminalInfo.agentLaunchFlags,
       agentModelId: terminalInfo.agentModelId,
       exitCode: terminalInfo.exitCode,
+      everDetectedAgent: terminalInfo.everDetectedAgent,
     };
   }
 

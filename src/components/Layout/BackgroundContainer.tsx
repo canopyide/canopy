@@ -210,6 +210,7 @@ export function BackgroundContainer({ compact = false }: BackgroundContainerProp
                         type={item.terminal.type}
                         kind={item.terminal.kind}
                         agentId={item.terminal.agentId}
+                        detectedAgentId={item.terminal.detectedAgentId}
                         detectedProcessId={item.terminal.detectedProcessId}
                         className="h-3 w-3"
                       />
@@ -311,6 +312,7 @@ function BackgroundGroupItem({
                     type={terminal.type}
                     kind={terminal.kind}
                     agentId={terminal.agentId}
+                    detectedAgentId={terminal.detectedAgentId}
                     detectedProcessId={terminal.detectedProcessId}
                     className="w-2.5 h-2.5 opacity-60"
                   />

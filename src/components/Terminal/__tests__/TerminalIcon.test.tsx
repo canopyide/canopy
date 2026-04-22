@@ -50,4 +50,24 @@ describe("TerminalIcon", () => {
     expect(explicitAgent).not.toBe(npmDetected);
     expect(explicitAgent).not.toBe(fallback);
   });
+
+  it("prefers detectedAgentId over launch-time agentId", () => {
+    const claudeLaunch = render(<TerminalIcon kind="agent" agentId="claude" />).container.innerHTML;
+    const geminiDetected = render(
+      <TerminalIcon kind="agent" agentId="claude" detectedAgentId="gemini" />
+    ).container.innerHTML;
+    const geminiOnly = render(<TerminalIcon kind="agent" agentId="gemini" />).container.innerHTML;
+
+    expect(geminiDetected).not.toBe(claudeLaunch);
+    expect(geminiDetected).toBe(geminiOnly);
+  });
+
+  it("falls back to agentId when detectedAgentId is undefined", () => {
+    const launchOnly = render(<TerminalIcon kind="agent" agentId="claude" />).container.innerHTML;
+    const withUndefinedDetected = render(
+      <TerminalIcon kind="agent" agentId="claude" detectedAgentId={undefined} />
+    ).container.innerHTML;
+
+    expect(withUndefinedDetected).toBe(launchOnly);
+  });
 });

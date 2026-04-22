@@ -133,6 +133,7 @@ export function StatusContainer({ config, terminals, compact = false }: StatusCo
                       type={terminal.type}
                       kind={terminal.kind}
                       agentId={terminal.agentId}
+                      detectedAgentId={terminal.detectedAgentId}
                       detectedProcessId={terminal.detectedProcessId}
                       className="h-3 w-3"
                     />
