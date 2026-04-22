@@ -6,7 +6,6 @@ import {
   setFleetLastArmedIdGetter,
 } from "@/store/worktreeStore";
 import { setFleetArmingClear } from "@/store/projectStore";
-import { isAgentTerminal } from "@/utils/terminalType";
 import type { TerminalInstance } from "@shared/types";
 import type { AgentState } from "@/types";
 
@@ -53,9 +52,12 @@ export function isFleetArmEligible(t: TerminalInstance | undefined): t is Termin
   if (!t) return false;
   if (t.location === "trash" || t.location === "background") return false;
   if (t.hasPty === false) return false;
-  return (
-    isAgentTerminal(t.kind ?? t.type, t.agentId) || !!t.detectedAgentId || !!t.everDetectedAgent
-  );
+  // `runtimeStatus` is the authoritative liveness signal on the renderer
+  // (`hasPty` is only set by backend snapshots/reconnect and can lag for
+  // exited panels that are kept for review). Exclude terminals whose PTY
+  // has already died so bulk Fleet actions don't target dead shells.
+  if (t.runtimeStatus === "exited" || t.runtimeStatus === "error") return false;
+  return true;
 }
 
 /**
@@ -197,10 +199,10 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
       if (!t.worktreeId || !worktreeIdSet.has(t.worktreeId)) continue;
       ids.push(id);
     }
-    // No eligible agents — leave the existing armed set alone rather than
+    // No eligible terminals — leave the existing armed set alone rather than
     // silently clearing it. The button is still visible whenever any
     // worktrees match the filter; clicking it must not destroy the user's
-    // prior selection when the filtered subset has no arm-eligible agents.
+    // prior selection when the filtered subset has no arm-eligible terminals.
     if (ids.length === 0) return;
     get().armIds(ids);
   },

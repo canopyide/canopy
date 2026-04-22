@@ -155,7 +155,7 @@ export function registerTerminalInputActions(
   actions.set("terminal.bulkCommand", () => ({
     id: "terminal.bulkCommand",
     title: "Fleet: Broadcast",
-    description: "Arm every agent in the current worktree for broadcast",
+    description: "Arm every terminal in the current worktree for broadcast",
     category: "terminal",
     kind: "command",
     danger: "safe",

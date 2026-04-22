@@ -214,16 +214,19 @@ describe("deriveHighestPriorityCluster", () => {
       expect(cluster).toBeNull();
     });
 
-    it("excludes non-agent terminals", () => {
+    it("excludes plain terminals without an agentState (no agent activity)", () => {
+      // In practice only AgentStateService sets `agentState`, so a terminal
+      // with no agent never reaches the cluster states ("waiting", "working",
+      // etc.). The fleet-eligibility predicate no longer filters by agent
+      // provenance, but the downstream cluster predicate still filters by
+      // `agentState` — so plain shells without any agent activity fall out.
       const cluster = derive([
         makeAgent("a", {
-          agentState: "waiting",
-          waitingReason: "prompt",
-          lastStateChange: NOW,
+          agentState: undefined,
           kind: "terminal",
           agentId: undefined,
         }),
-        makeAgent("b", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
+        makeAgent("b", { agentState: undefined, kind: "terminal", agentId: undefined }),
       ]);
       expect(cluster).toBeNull();
     });

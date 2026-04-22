@@ -234,8 +234,11 @@ describe("WorktreeTerminalSection arming click handlers", () => {
     expect([...armed].sort()).toEqual(["a1", "a2"]);
   });
 
-  it("click on non-eligible tile calls onTerminalSelect (legacy)", () => {
-    const nonAgent = makeTerminal({
+  it("click on a plain terminal arms it like any other terminal", () => {
+    // "Terminals are the unit": plain shells are first-class fleet members.
+    // A single click arms; onTerminalSelect is only used by ineligible tiles
+    // (trash/background/no-PTY), which don't render in this section.
+    const plain = makeTerminal({
       id: "p1",
       kind: "terminal",
       agentId: undefined,
@@ -244,7 +247,7 @@ describe("WorktreeTerminalSection arming click handlers", () => {
     const onSelect = vi.fn();
     renderSection({
       isExpanded: true,
-      terminals: [nonAgent],
+      terminals: [plain],
       counts: { ...baseCounts, total: 1 },
       onTerminalSelect: onSelect,
     });
@@ -252,8 +255,8 @@ describe("WorktreeTerminalSection arming click handlers", () => {
     const button = screen.getAllByRole("button", { name: /Test Terminal/i })[0]!;
     fireEvent.click(button);
 
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
+    expect(useFleetArmingStore.getState().armedIds.has("p1")).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("armed tile gets aria-selected=true", () => {

@@ -193,13 +193,16 @@ describe("fleetArmingStore", () => {
       expect([...useFleetArmingStore.getState().armedIds]).toEqual(["t1"]);
     });
 
-    it("excludes non-agent panels", () => {
+    it("includes plain terminals whose agentState matches the preset", () => {
+      // Terminals are the unit: plain terminals with a matching agentState
+      // (e.g. a shell command that set an ambient working state) arm like
+      // any other terminal. Agent provenance is no longer a gate.
       seedPanels([
         makeAgentTerminal("a1", { agentState: "working" }),
         makeAgentTerminal("p1", { agentState: "working", kind: "terminal", agentId: undefined }),
       ]);
       useFleetArmingStore.getState().armByState("working", "current", false);
-      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+      expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "p1"]);
     });
   });
 
@@ -220,7 +223,9 @@ describe("fleetArmingStore", () => {
       expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a2"]);
     });
 
-    it("includes plain terminals currently running a detected agent", () => {
+    it("includes every live terminal — agents, detected agents, and plain shells", () => {
+      // "Terminals are the unit": a plain terminal with no agent provenance is
+      // still fleet-eligible. Only trash/background/no-PTY filter out.
       seedPanels([
         makeAgentTerminal("a1"),
         makeAgentTerminal("p1", {
@@ -236,7 +241,7 @@ describe("fleetArmingStore", () => {
         makeAgentTerminal("p3", { kind: "terminal", agentId: undefined }),
       ]);
       useFleetArmingStore.getState().armAll("current");
-      expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "p1", "p2"]);
+      expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "p1", "p2", "p3"]);
     });
   });
 
@@ -252,6 +257,8 @@ describe("fleetArmingStore", () => {
     });
 
     it("skips ineligible panels even when worktree matches", () => {
+      // Ineligibility is now purely structural: trash, background, or no PTY.
+      // Plain terminals (a5) are eligible and must be included.
       seedPanels([
         makeAgentTerminal("a1", { worktreeId: "wt-1" }),
         makeAgentTerminal("a2", { worktreeId: "wt-1", location: "trash" }),
@@ -264,7 +271,7 @@ describe("fleetArmingStore", () => {
         }),
       ]);
       useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
-      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+      expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a5"]);
     });
 
     it("empty worktreeIds is a no-op and preserves any prior armed set", () => {
@@ -428,10 +435,19 @@ describe("fleetArmingStore", () => {
       expect(isFleetArmEligible(makeAgentTerminal("a", { hasPty: false }))).toBe(false);
     });
 
-    it("rejects non-agent terminals", () => {
+    it("rejects terminals whose PTY has exited", () => {
+      expect(isFleetArmEligible(makeAgentTerminal("a", { runtimeStatus: "exited" }))).toBe(false);
+    });
+
+    it("rejects terminals with a runtime error", () => {
+      expect(isFleetArmEligible(makeAgentTerminal("a", { runtimeStatus: "error" }))).toBe(false);
+    });
+
+    it("accepts plain terminals with no agent provenance", () => {
+      // "Terminals are the unit": a shell is a first-class fleet member.
       expect(
         isFleetArmEligible(makeAgentTerminal("a", { kind: "terminal", agentId: undefined }))
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it("rejects undefined", () => {

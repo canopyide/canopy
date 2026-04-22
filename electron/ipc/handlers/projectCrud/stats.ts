@@ -71,7 +71,11 @@ export function registerProjectStatsHandlers(deps: HandlerDependencies): () => v
       if (terminal.isTrashed) continue;
       if (terminal.kind === "dev-preview") continue;
       if (terminal.hasPty === false) continue;
-      if (!terminal.agentId) continue;
+      // Include plain terminals hosting a runtime-detected agent
+      // (detectedAgentId). Uses the LIVE signal only — everDetectedAgent
+      // is deliberately excluded so panels whose agent has exited do not
+      // inflate the count.
+      if (!terminal.agentId && !terminal.detectedAgentId) continue;
 
       if (terminal.agentState === "waiting") {
         counts.waiting += 1;

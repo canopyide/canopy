@@ -38,6 +38,8 @@ export interface TerminalPublicState {
   lastOutputTime: number;
   lastCheckTime: number;
   detectedAgentType?: TerminalType;
+  /** Runtime-detected non-agent process icon id (npm, yarn, python, etc.). Cleared when the process exits. */
+  detectedProcessIconId?: string;
   /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
   everDetectedAgent?: boolean;
   restartCount: number;

@@ -290,6 +290,8 @@ export interface PtyHostTerminalInfo {
   everDetectedAgent?: boolean;
   /** Runtime-detected agent identity (cleared when the agent exits). */
   detectedAgentId?: BuiltInAgentId;
+  /** Runtime-detected non-agent process icon id (npm, yarn, etc.). Cleared when the process exits. */
+  detectedProcessId?: string;
 }
 
 /** Payload for agent:spawned event */

@@ -473,6 +473,7 @@ export class TerminalProcess {
       lastOutputTime: t.lastOutputTime,
       lastCheckTime: t.lastCheckTime,
       detectedAgentType: t.detectedAgentType,
+      detectedProcessIconId: t.detectedProcessIconId,
       everDetectedAgent: t.everDetectedAgent,
       restartCount: t.restartCount,
       activityTier: this._activityTier,
@@ -1497,6 +1498,7 @@ export class TerminalProcess {
         }
 
         this.lastDetectedProcessIconId = result.processIconId;
+        terminal.detectedProcessIconId = result.processIconId;
         events.emit("agent:detected", {
           terminalId: this.id,
           agentType: result.agentType,
@@ -1528,6 +1530,7 @@ export class TerminalProcess {
       }
       if (this.lastDetectedProcessIconId !== result.processIconId) {
         this.lastDetectedProcessIconId = result.processIconId;
+        terminal.detectedProcessIconId = result.processIconId;
         events.emit("agent:detected", {
           terminalId: this.id,
           processIconId: result.processIconId,
@@ -1546,6 +1549,7 @@ export class TerminalProcess {
       }
 
       this.lastDetectedProcessIconId = undefined;
+      terminal.detectedProcessIconId = undefined;
       this.stopActivityMonitor();
       if (!this.isAgentTerminal) {
         terminal.analysisEnabled = false;

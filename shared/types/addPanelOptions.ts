@@ -61,6 +61,8 @@ export interface AddPanelOptionsBase {
   everDetectedAgent?: boolean;
   /** Runtime-detected agent identity at hydration time; cleared when the agent exits. Rehydrated from backend reconnect payload. */
   detectedAgentId?: BuiltInAgentId;
+  /** Runtime-detected non-agent process icon id (npm, yarn, etc.) at hydration time; cleared when the process exits. */
+  detectedProcessId?: string;
   /** Preset ID selected at launch time for per-panel preset selection */
   agentPresetId?: string;
   /** Preset brand color (hex) captured at launch time for per-panel icon tinting */

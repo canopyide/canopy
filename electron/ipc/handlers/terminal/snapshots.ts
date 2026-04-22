@@ -204,6 +204,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
             agentModelId: terminal.agentModelId,
             everDetectedAgent: terminal.everDetectedAgent,
             detectedAgentId: terminal.detectedAgentId,
+            detectedProcessId: terminal.detectedProcessId,
           });
         }
       }
@@ -253,6 +254,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
           agentModelId: t.agentModelId,
           everDetectedAgent: t.everDetectedAgent,
           detectedAgentId: t.detectedAgentId,
+          detectedProcessId: t.detectedProcessId,
         }));
 
       logInfo(`terminal:getAvailable: found ${sanitized.length} available terminals`);
@@ -302,6 +304,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
           agentModelId: t.agentModelId,
           everDetectedAgent: t.everDetectedAgent,
           detectedAgentId: t.detectedAgentId,
+          detectedProcessId: t.detectedProcessId,
         }));
 
       logInfo(`terminal:getByState(${state}): found ${sanitized.length} terminals`);
@@ -340,6 +343,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
           agentModelId: t.agentModelId,
           everDetectedAgent: t.everDetectedAgent,
           detectedAgentId: t.detectedAgentId,
+          detectedProcessId: t.detectedProcessId,
         }));
 
       logInfo(`terminal:getAll: found ${sanitized.length} terminals`);
@@ -392,6 +396,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
         agentModelId: terminal.agentModelId,
         everDetectedAgent: terminal.everDetectedAgent,
         detectedAgentId: terminal.detectedAgentId,
+        detectedProcessId: terminal.detectedProcessId,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

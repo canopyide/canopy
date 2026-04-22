@@ -30,6 +30,7 @@ import { getMergedPresets } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
+import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
@@ -510,7 +511,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const focusTarget = getTerminalFocusTarget({
-            isAgentTerminal: activePanel.type !== "terminal",
+            isAgentTerminal: isRuntimeAgentTerminal(activePanel),
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
             hybridInputEnabled,
             hybridInputAutoFocus,

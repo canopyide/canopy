@@ -263,7 +263,7 @@ export function WorktreeMenuItems({
 
           <C.Item onSelect={onSelectAllAgents} disabled={counts.all === 0}>
             <CheckSquare className="w-3.5 h-3.5 mr-2" />
-            Select All Agents
+            Select All Terminals
             <C.Shortcut>({counts.all})</C.Shortcut>
           </C.Item>
           <C.Item onSelect={onSelectWaitingAgents} disabled={counts.waiting === 0}>

@@ -164,6 +164,8 @@ export interface BackendTerminalInfo {
   everDetectedAgent?: boolean;
   /** Runtime-detected agent identity (cleared when the agent exits). */
   detectedAgentId?: BuiltInAgentId;
+  /** Runtime-detected non-agent process icon id (npm, yarn, etc.). Cleared when the process exits. */
+  detectedProcessId?: string;
 }
 
 /** Result from terminal reconnect operation */
@@ -187,6 +189,8 @@ export interface TerminalReconnectResult {
   everDetectedAgent?: boolean;
   /** Runtime-detected agent identity (cleared when the agent exits). */
   detectedAgentId?: BuiltInAgentId;
+  /** Runtime-detected non-agent process icon id (npm, yarn, etc.). Cleared when the process exits. */
+  detectedProcessId?: string;
 }
 
 /** Terminal information payload for diagnostic display */

@@ -306,11 +306,9 @@ export function setupTerminalStoreListeners() {
           };
         });
 
-        // Spawn-sealed runtime promotion: a panel spawned without an agentId
-        // cannot get the agent env/pool repaired in-process, but the live xterm
-        // scrollback can grow to the agent policy. The user-facing "Restart for
-        // full agent support" cue is rendered by the degraded-mode banner in
-        // TerminalPane.
+        // Runtime promotion: a panel spawned without an agentId cannot get the
+        // agent env/pool repaired in-process, but the live xterm scrollback
+        // grows to the agent policy so recent output isn't clipped.
         if (priorAgentId === undefined && nextDetectedAgentId !== undefined) {
           terminalInstanceService.applyAgentPromotion(terminalId, nextDetectedAgentId);
         }

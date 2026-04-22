@@ -18,6 +18,7 @@ import { getMergedPresets } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
+import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
@@ -344,7 +345,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const focusTarget = getTerminalFocusTarget({
-            isAgentTerminal: terminal.type !== "terminal",
+            isAgentTerminal: isRuntimeAgentTerminal(terminal),
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
             hybridInputEnabled,
             hybridInputAutoFocus,
