@@ -31,7 +31,7 @@ import { terminalRegistryController } from "@/controllers";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useWorktreeSelectionStore } from "./worktreeStore";
 import type { CrashType } from "@shared/types/pty-host";
-import { isAgentTerminal } from "@/utils/terminalType";
+import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import { logInfo, logWarn, logError } from "@/utils/logger";
 import { clearTerminalRestartGuard } from "./restartExitSuppression";
 import { buildPanelSnapshotOptions } from "@/services/terminal/panelDuplicationService";
@@ -62,8 +62,9 @@ export function getTerminalRefreshTier(
 
   // Active agent terminals stay at VISIBLE minimum to preserve live output.
   // Completed agents drop to BACKGROUND so they can be hibernated to free memory.
+  // Uses runtime-detected identity so panels that have left agent mode can hibernate.
   if (
-    isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId) &&
+    isRuntimeAgentTerminal(terminal) &&
     terminal.agentState !== "completed" &&
     terminal.agentState !== "exited"
   ) {
@@ -238,11 +239,9 @@ export const usePanelStore = create<PanelGridState>()(
               gridTerminals.push(t);
           }
           const trashedTerminal = state.panelsById[id];
-          const wasAgent =
-            trashedTerminal &&
-            isAgentTerminal(trashedTerminal.kind ?? trashedTerminal.type, trashedTerminal.agentId);
+          const wasAgent = trashedTerminal && isRuntimeAgentTerminal(trashedTerminal);
           const nextAgent = wasAgent
-            ? gridTerminals.find((t) => isAgentTerminal(t.kind ?? t.type, t.agentId))
+            ? gridTerminals.find((t) => isRuntimeAgentTerminal(t))
             : undefined;
           updates.focusedId = nextAgent?.id ?? gridTerminals[0]?.id ?? null;
         }
@@ -294,11 +293,9 @@ export const usePanelStore = create<PanelGridState>()(
               gridTerminals.push(t);
           }
           const focusedTerminal = state.panelsById[state.focusedId!];
-          const wasAgent =
-            focusedTerminal &&
-            isAgentTerminal(focusedTerminal.kind ?? focusedTerminal.type, focusedTerminal.agentId);
+          const wasAgent = focusedTerminal && isRuntimeAgentTerminal(focusedTerminal);
           const nextAgent = wasAgent
-            ? gridTerminals.find((t) => isAgentTerminal(t.kind ?? t.type, t.agentId))
+            ? gridTerminals.find((t) => isRuntimeAgentTerminal(t))
             : undefined;
           updates.focusedId = nextAgent?.id ?? gridTerminals[0]?.id ?? null;
         }

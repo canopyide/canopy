@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./panelRegistrySlice";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
-import { isAgentTerminal } from "@/utils/terminalType";
+import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
 
@@ -412,11 +412,11 @@ export const createTerminalFocusSlice =
         const terminals = getTerminals();
         const { focusedId, activateTerminal, pingTerminal } = get();
 
-        // Find all agent terminals excluding trash and orphaned
+        // Find all agent terminals excluding trash and orphaned.
+        // Uses runtime identity so ex-agent panels are excluded and promoted shells
+        // with a detected agent are included.
         const agentTerminals = terminals.filter(
-          (t) =>
-            isAgentTerminal(t.kind ?? t.type, t.agentId) &&
-            isTerminalVisible(t, isInTrash, validWorktreeIds)
+          (t) => isRuntimeAgentTerminal(t) && isTerminalVisible(t, isInTrash, validWorktreeIds)
         );
 
         if (agentTerminals.length === 0) return;
@@ -437,11 +437,11 @@ export const createTerminalFocusSlice =
         const terminals = getTerminals();
         const { focusedId, activateTerminal, pingTerminal } = get();
 
-        // Find all agent terminals excluding trash and orphaned
+        // Find all agent terminals excluding trash and orphaned.
+        // Uses runtime identity so ex-agent panels are excluded and promoted shells
+        // with a detected agent are included.
         const agentTerminals = terminals.filter(
-          (t) =>
-            isAgentTerminal(t.kind ?? t.type, t.agentId) &&
-            isTerminalVisible(t, isInTrash, validWorktreeIds)
+          (t) => isRuntimeAgentTerminal(t) && isTerminalVisible(t, isInTrash, validWorktreeIds)
         );
 
         if (agentTerminals.length === 0) return;
