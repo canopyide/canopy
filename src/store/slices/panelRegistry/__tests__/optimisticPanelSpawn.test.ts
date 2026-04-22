@@ -236,6 +236,149 @@ describe("optimistic panel spawn (#5789)", () => {
     expect(terminalClient.spawn).not.toHaveBeenCalled();
   });
 
+  it("does not remove a replacement panel when a stale spawn rejects", async () => {
+    // Edge case: user closes spawning panel A (id X), a reconnect path reuses
+    // id X with spawnStatus already "ready", then A's original spawn rejects.
+    // The reject handler must not evict the replacement.
+    const { terminalClient } = (await import("@/clients")) as unknown as {
+      terminalClient: { spawn: ReturnType<typeof vi.fn> };
+    };
+
+    let rejectA: (reason: Error) => void = () => {};
+    const gateA = new Promise<never>((_, reject) => {
+      rejectA = reject;
+    });
+    terminalClient.spawn.mockImplementationOnce(async () => {
+      await gateA;
+      return "never";
+    });
+
+    const { addPanel, removePanel } = usePanelStore.getState();
+    // Panel A (will fail).
+    await addPanel({
+      kind: "agent",
+      agentId: "claude",
+      type: "terminal",
+      command: "claude",
+      requestedId: "shared-id",
+      cwd: "/",
+      bypassLimits: true,
+    });
+    // User closes it mid-spawn.
+    removePanel("shared-id");
+    expect(usePanelStore.getState().panelsById["shared-id"]).toBeUndefined();
+
+    // Reconnect path reuses the id (spawnStatus: "ready", spawn is skipped).
+    await addPanel({
+      kind: "agent",
+      agentId: "claude",
+      command: "claude",
+      existingId: "shared-id",
+      cwd: "/",
+      bypassLimits: true,
+    });
+    expect(usePanelStore.getState().panelsById["shared-id"]?.spawnStatus).toBe("ready");
+
+    // Now A's spawn finally rejects. The replacement must survive.
+    rejectA(new Error("late failure"));
+    await drainMicrotasks();
+
+    const after = usePanelStore.getState().panelsById["shared-id"];
+    expect(after).toBeDefined();
+    expect(after?.spawnStatus).toBe("ready");
+  });
+
+  it("issues a compensating kill when the panel is removed mid-spawn", async () => {
+    // Edge case: user closes panel before spawn IPC arrives at the backend.
+    // removePanel's kill was a no-op then (no terminal yet); when the spawn
+    // eventually succeeds, the success handler must issue a follow-up kill so
+    // the PTY isn't orphaned.
+    const { terminalClient } = (await import("@/clients")) as unknown as {
+      terminalClient: { spawn: ReturnType<typeof vi.fn>; kill: ReturnType<typeof vi.fn> };
+    };
+
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    terminalClient.spawn.mockImplementationOnce(async ({ id }: { id?: string }) => {
+      await gate;
+      return id ?? "late";
+    });
+    terminalClient.kill.mockClear();
+
+    const { addPanel, removePanel } = usePanelStore.getState();
+    await addPanel({
+      kind: "agent",
+      agentId: "claude",
+      type: "terminal",
+      command: "claude",
+      requestedId: "orphan-id",
+      cwd: "/",
+      bypassLimits: true,
+    });
+    removePanel("orphan-id");
+    // removePanel fires kill (no-op on the backend since the PTY isn't spawned yet).
+    expect(terminalClient.kill).toHaveBeenCalledWith("orphan-id");
+    const killCallsAfterRemove = terminalClient.kill.mock.calls.length;
+
+    release();
+    await drainMicrotasks();
+
+    // A compensating kill must have fired after spawn succeeded for the
+    // now-missing panel.
+    expect(terminalClient.kill.mock.calls.length).toBeGreaterThan(killCallsAfterRemove);
+    expect(terminalClient.kill).toHaveBeenLastCalledWith("orphan-id");
+  });
+
+  it("does not block the panel render on env fetch latency", async () => {
+    // The panel must appear before window.electron.globalEnv.get() and
+    // projectClient.getSettings() resolve — env fetch is background, not gating.
+    const electron = (
+      globalThis as unknown as {
+        window: { electron: { globalEnv: { get: ReturnType<typeof vi.fn> } } };
+      }
+    ).window.electron;
+    let releaseEnv: () => void = () => {};
+    electron.globalEnv.get = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseEnv = () => resolve({});
+        })
+    );
+
+    const { projectClient } = (await import("@/clients")) as unknown as {
+      projectClient: { getSettings: ReturnType<typeof vi.fn> };
+    };
+    let releaseSettings: () => void = () => {};
+    projectClient.getSettings.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseSettings = () => resolve({});
+        })
+    );
+
+    const { addPanel } = usePanelStore.getState();
+    const id = await addPanel({
+      kind: "agent",
+      agentId: "claude",
+      type: "terminal",
+      command: "claude",
+      requestedId: "env-latent",
+      cwd: "/",
+      bypassLimits: true,
+    });
+
+    expect(id).toBe("env-latent");
+    expect(usePanelStore.getState().panelsById["env-latent"]?.spawnStatus).toBe("spawning");
+    expect(usePanelStore.getState().panelIds).toContain("env-latent");
+
+    releaseEnv();
+    releaseSettings();
+    await drainMicrotasks();
+    expect(usePanelStore.getState().panelsById["env-latent"]?.spawnStatus).toBe("ready");
+  });
+
   it("propagates the pre-assigned id to terminalClient.spawn", async () => {
     const { terminalClient } = (await import("@/clients")) as unknown as {
       terminalClient: { spawn: ReturnType<typeof vi.fn> };

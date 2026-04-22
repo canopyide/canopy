@@ -630,20 +630,38 @@ export const createCorePanelActions = (
     void spawnPromise.then(
       () => {
         // Promote spawnStatus to "ready" once the PTY is live. If the panel was
-        // removed during the spawn window, skip the patch entirely.
+        // removed during the spawn window, issue a compensating kill to avoid
+        // orphaning the freshly-spawned PTY (removePanel's kill IPC was a no-op
+        // at the time because the backend had no terminal yet).
+        let orphaned = false;
         set((state) => {
           const current = state.panelsById[id];
-          if (!current || current.spawnStatus !== "spawning") return state;
+          if (!current) {
+            orphaned = true;
+            return state;
+          }
+          if (current.spawnStatus !== "spawning") return state;
           return {
             panelsById: { ...state.panelsById, [id]: { ...current, spawnStatus: "ready" } },
           };
         });
+        if (orphaned) {
+          terminalClient.kill(id).catch((killError) => {
+            logWarn("[TerminalStore] Compensating kill after orphan spawn failed", {
+              id,
+              error: killError,
+            });
+          });
+        }
       },
       (error) => {
         logError("[TerminalStore] Failed to spawn terminal", error);
-        // Remove the optimistic placeholder so the user isn't left with a dead
-        // panel. A notification for spawn errors comes from the error-handling
-        // path downstream (see onSpawnError IPC handler).
+        // Only remove the placeholder we committed. If the id has been reused
+        // (e.g. the user closed the panel mid-spawn and a reconnect slot picked
+        // the id up) or the panel was already removed, skip the cleanup —
+        // otherwise we'd destroy someone else's panel.
+        const current = get().panelsById[id];
+        if (current?.spawnStatus !== "spawning") return;
         try {
           get().removePanel(id);
         } catch (removeError) {
