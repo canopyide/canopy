@@ -759,7 +759,7 @@ class TerminalInstanceService {
     });
     listeners.push(unsubExit);
 
-    const kind: "terminal" = "terminal";
+    const kind = "terminal" as const;
     const agentId =
       type === "claude" || type === "gemini" || type === "codex" || type === "opencode"
         ? type

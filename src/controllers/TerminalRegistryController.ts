@@ -99,7 +99,7 @@ class TerminalRegistryController {
   async spawn(options: SpawnTerminalOptions): Promise<SpawnTerminalResult> {
     const legacyType: TerminalType = options.type || "terminal";
     const agentId = options.agentId ?? (isRegisteredAgent(legacyType) ? legacyType : undefined);
-    const kind: "terminal" = "terminal";
+    const kind = "terminal" as const;
     const title = options.title || getDefaultTitle(legacyType, agentId);
 
     const commandToExecute = options.skipCommandExecution ? undefined : options.command;
