@@ -380,6 +380,37 @@ describe("Agent Classification Matrix", () => {
       expect(info?.analysisEnabled).toBe(true);
     }, 10000);
 
+    it("should assign agentId on promotion so AgentStateService accepts state events", async () => {
+      const id = randomUUID();
+      manager.spawn(id, {
+        cwd: process.cwd(),
+        cols: 80,
+        rows: 24,
+        type: "terminal" as TerminalType,
+      });
+
+      await sleep(100);
+      expect(manager.getTerminal(id)?.agentId).toBeUndefined();
+
+      manager.simulateAgentDetection(id, {
+        detected: true,
+        agentType: "claude" as TerminalType,
+        processName: "claude",
+      });
+
+      const promoted = manager.getTerminal(id);
+      // Without agentId, AgentStateService.updateAgentState() and
+      // handleActivityState() hard-return, silently dropping every monitor
+      // callback. agentId must be seeded on runtime promotion so the
+      // ActivityMonitor's initial busy emit actually flips state to "working".
+      expect(promoted?.agentId).toBe("claude");
+      expect(promoted?.agentState).toBe("working");
+
+      // Demotion clears agentId back to undefined for runtime-promoted terminals.
+      manager.simulateAgentDetection(id, { detected: false });
+      expect(manager.getTerminal(id)?.agentId).toBeUndefined();
+    }, 10000);
+
     it("should reconfigure the existing monitor when the detected agent type changes", async () => {
       const id = randomUUID();
       manager.spawn(id, {

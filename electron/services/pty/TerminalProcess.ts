@@ -1455,6 +1455,14 @@ export class TerminalProcess {
             terminal.agentState = "idle";
             terminal.lastStateChange = Date.now();
           }
+          // Without agentId, AgentStateService.updateAgentState and
+          // handleActivityState drop every event — state transitions would
+          // never reach the renderer. Mirror spawn-time semantics by using
+          // the detected agent type as the agent id for runtime-promoted
+          // terminals. Leave spawn-time agentId untouched if already set.
+          if (!terminal.agentId) {
+            terminal.agentId = result.agentType;
+          }
           terminal.analysisEnabled = true;
           this.startActivityMonitor();
         }
@@ -1486,6 +1494,7 @@ export class TerminalProcess {
         this.stopActivityMonitor();
         if (!this.isAgentTerminal) {
           terminal.analysisEnabled = false;
+          terminal.agentId = undefined;
         }
         events.emit("agent:exited", {
           terminalId: this.id,
@@ -1515,6 +1524,7 @@ export class TerminalProcess {
       this.stopActivityMonitor();
       if (!this.isAgentTerminal) {
         terminal.analysisEnabled = false;
+        terminal.agentId = undefined;
       }
       events.emit("agent:exited", {
         terminalId: this.id,
