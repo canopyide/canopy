@@ -3746,4 +3746,154 @@ describe("ActivityMonitor", () => {
       expect(onStateChange).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("reconfigure", () => {
+    const CLAUDE_WORKING = "✽ Deliberating… (esc to interrupt · 15s)";
+    const GEMINI_WORKING = "⠼ Unpacking Project Details (esc to cancel, 14s)";
+
+    it("swaps detector so old-agent patterns no longer match after reconfigure", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("reconf-1", 1, onStateChange, { agentId: "claude" });
+
+      // Baseline: claude detector matches its own pattern
+      monitor.onData(CLAUDE_WORKING);
+      expect(monitor.getLastPatternResult()?.isWorking).toBe(true);
+
+      monitor.reconfigure("gemini");
+
+      // Feed claude-only pattern — gemini detector should not match it
+      monitor.onData("✽ Deliberating…");
+      expect(monitor.getLastPatternResult()?.isWorking).toBeFalsy();
+
+      // Feed gemini-only pattern — new detector should match
+      monitor.onData(GEMINI_WORKING);
+      expect(monitor.getLastPatternResult()?.isWorking).toBe(true);
+
+      monitor.dispose();
+    });
+
+    it("clears pattern buffer and TTL fields on reconfigure", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("reconf-2", 1, onStateChange, { agentId: "claude" });
+
+      monitor.onData(CLAUDE_WORKING);
+      expect(monitor.getLastPatternResult()?.isWorking).toBe(true);
+
+      type MonitorInternals = {
+        patternBuf: { getText(): string };
+        lastPatternResult: unknown;
+        lastPatternResultAt: number;
+        lastWorkingIndicatorTimestamp: number;
+      };
+      const internals = monitor as unknown as MonitorInternals;
+      expect(internals.patternBuf.getText().length).toBeGreaterThan(0);
+
+      monitor.reconfigure("gemini");
+
+      expect(internals.patternBuf.getText()).toBe("");
+      expect(internals.lastPatternResult).toBeUndefined();
+      expect(internals.lastPatternResultAt).toBe(0);
+      expect(internals.lastWorkingIndicatorTimestamp).toBe(0);
+
+      monitor.dispose();
+    });
+
+    it("preserves timing state (lastActivityTimestamp, workingHoldUntil) across reconfigure", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("reconf-3", 1, onStateChange, { agentId: "claude" });
+
+      monitor.onData(CLAUDE_WORKING);
+
+      type MonitorInternals = {
+        lastActivityTimestamp: number;
+        workingHoldUntil: number;
+      };
+      const before = monitor as unknown as MonitorInternals;
+      const ts = before.lastActivityTimestamp;
+      const hold = before.workingHoldUntil;
+      expect(ts).toBeGreaterThan(0);
+
+      vi.setSystemTime(10050);
+      monitor.reconfigure("gemini");
+
+      expect(before.lastActivityTimestamp).toBe(ts);
+      expect(before.workingHoldUntil).toBe(hold);
+
+      monitor.dispose();
+    });
+
+    it("does not emit stale working state after reconfigure (debounce TTL guard)", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("reconf-4", 1, onStateChange, {
+        agentId: "claude",
+        idleDebounceMs: 1000,
+      });
+
+      // Enter working via claude pattern
+      monitor.onData(CLAUDE_WORKING);
+      expect(monitor.getState()).toBe("busy");
+      onStateChange.mockClear();
+
+      // Swap to gemini — stale pattern result must not hold working through TTL
+      monitor.reconfigure("gemini");
+
+      // Advance past idle debounce. With stale TTL fields cleared, monitor should
+      // go idle (no new working signals from old detector's stale state).
+      vi.advanceTimersByTime(5000);
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).toHaveBeenCalledWith("reconf-4", 1, "idle");
+
+      monitor.dispose();
+    });
+
+    it("treats reconfigure with no args as disabling the detector", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("reconf-5", 1, onStateChange, { agentId: "claude" });
+
+      monitor.reconfigure();
+
+      // With no detector, claude pattern should not register a working result
+      monitor.onData(CLAUDE_WORKING);
+      expect(monitor.getLastPatternResult()).toBeUndefined();
+
+      monitor.dispose();
+    });
+
+    it("builds a detector when reconfigure is called on a monitor that had none", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("reconf-6", 1, onStateChange);
+
+      // No detector initially
+      monitor.onData(CLAUDE_WORKING);
+      expect(monitor.getLastPatternResult()).toBeUndefined();
+
+      monitor.reconfigure("claude");
+      monitor.onData(CLAUDE_WORKING);
+      expect(monitor.getLastPatternResult()?.isWorking).toBe(true);
+
+      monitor.dispose();
+    });
+
+    it("is a no-op after dispose", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("reconf-7", 1, onStateChange, { agentId: "claude" });
+
+      monitor.dispose();
+
+      expect(() => monitor.reconfigure("gemini")).not.toThrow();
+
+      // Disposed monitor should not react to further data
+      onStateChange.mockClear();
+      monitor.onData(GEMINI_WORKING);
+      expect(onStateChange).not.toHaveBeenCalled();
+    });
+  });
 });
