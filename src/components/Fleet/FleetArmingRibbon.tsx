@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { MoreHorizontal, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
@@ -24,8 +24,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FleetComposer } from "./FleetComposer";
-import { useFleetFocusPulse } from "./useFleetFocusPulse";
+import { useNotificationStore } from "@/store/notificationStore";
+import { getFleetBroadcastWarnings, resolveFleetBroadcastTargetIds } from "./fleetBroadcast";
+import { broadcastFleetLiteralPaste } from "./fleetExecution";
+import { useFleetLiveBroadcast } from "./useFleetLiveBroadcast";
+import { logWarn } from "@/utils/logger";
 
 const DOUBLE_ESC_WINDOW_MS = 350;
 
@@ -61,6 +64,15 @@ function buildConfirmMessage(
   }
 }
 
+function describePasteWarnings(text: string): string[] {
+  const w = getFleetBroadcastWarnings(text);
+  const reasons: string[] = [];
+  if (w.destructive) reasons.push("destructive command detected");
+  if (w.overByteLimit) reasons.push("payload exceeds 512 bytes");
+  if (w.multiline) reasons.push("multi-line payload");
+  return reasons;
+}
+
 export function FleetArmingRibbon(): ReactElement | null {
   const armedCount = useFleetArmingStore((s) => s.armedIds.size);
   const clear = useFleetArmingStore((s) => s.clear);
@@ -71,8 +83,31 @@ export function FleetArmingRibbon(): ReactElement | null {
   const clearPending = useFleetPendingActionStore((s) => s.clear);
 
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [pendingPaste, setPendingPaste] = useState<string | null>(null);
+  const [isSendingPaste, setIsSendingPaste] = useState(false);
+  const pasteCancelRef = useRef<HTMLButtonElement | null>(null);
   const reduceMotion = useReducedMotion();
-  const isPulsing = useFleetFocusPulse(armedCount);
+
+  const handlePasteConfirm = useCallback((text: string) => {
+    setPendingPaste(text);
+  }, []);
+
+  useFleetLiveBroadcast({
+    enabled: armedCount >= 2,
+    onPasteConfirm: handlePasteConfirm,
+  });
+
+  useEffect(() => {
+    if (pendingPaste !== null) {
+      pasteCancelRef.current?.focus();
+    }
+  }, [pendingPaste]);
+
+  useEffect(() => {
+    if (armedCount < 2 && pendingPaste !== null) {
+      setPendingPaste(null);
+    }
+  }, [armedCount, pendingPaste]);
 
   useEffect(() => {
     if (armedCount < 2 && popoverOpen) {
@@ -83,11 +118,14 @@ export function FleetArmingRibbon(): ReactElement | null {
   // Escape stack: confirmation cancel is owned here so a pending confirm
   // absorbs bare Escape before it reaches the targets. The armed-list
   // popover gets its own entry so bare Escape closes the list without
-  // disarming the fleet. Plain Escape never disarms — the targets own it
-  // (see issue #5750: agents use Esc for menus/prompts). Exit requires
-  // the ⌘Esc chord or the visible ✕ chip.
+  // disarming the fleet. Paste confirmation also absorbs bare Escape so
+  // the user can cancel a queued destructive paste with a single tap.
+  // Plain Escape never disarms — the targets own it (see issue #5750:
+  // agents use Esc for menus/prompts). Exit requires the ⌘Esc chord or
+  // the visible ✕ chip.
   useEscapeStack(pending !== null, clearPending);
   useEscapeStack(popoverOpen, () => setPopoverOpen(false));
+  useEscapeStack(pendingPaste !== null, () => setPendingPaste(null));
 
   const exitFleet = useCallback(() => {
     const target = useFleetArmingStore.getState().lastArmedId;
@@ -113,7 +151,7 @@ export function FleetArmingRibbon(): ReactElement | null {
     if (armedCount === 0 && lastAnnouncedCount.current > 0) {
       announce("Fleet disarmed");
     } else if (armedCount > 0) {
-      announce(`${armedCount} ${armedCount === 1 ? "agent" : "agents"} armed`);
+      announce(`${armedCount} ${armedCount === 1 ? "agent" : "agents"} in fleet`);
     }
     lastAnnouncedCount.current = armedCount;
   }, [armedCount]);
@@ -162,8 +200,7 @@ export function FleetArmingRibbon(): ReactElement | null {
   // within 350ms → cancel the pending exit and dispatch fleet.interrupt
   // instead. Bare Escape is intentionally ignored: targets own it for
   // menus/prompts under live echo (#5750). Listener is capture-phase so
-  // the chord fires before Radix popover dismissal and the composer's
-  // textarea keydown handler.
+  // the chord fires before Radix popover dismissal.
   const lastEscapeMsRef = useRef<number>(0);
   const pendingExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitFleetRef = useRef(exitFleet);
@@ -187,19 +224,11 @@ export function FleetArmingRibbon(): ReactElement | null {
 
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      // Cmd on macOS, Ctrl on other platforms — keybindingService
-      // normalizes the two, but for a raw listener we accept either.
-      // The modifier is the discriminator: we accept the chord from any
-      // focus target (including the composer textarea and xterm panes) so
-      // the user can exit broadcast from wherever their cursor landed.
-      // Bare Escape is filtered above and continues to reach targets.
       if (!e.metaKey && !e.ctrlKey) return;
       const now = Date.now();
       const prev = lastEscapeMsRef.current;
 
       if (prev !== 0 && now - prev <= DOUBLE_ESC_WINDOW_MS) {
-        // Second press inside the chord window — cancel the pending exit
-        // and fire the interrupt.
         lastEscapeMsRef.current = 0;
         clearPendingExit();
         e.stopPropagation();
@@ -208,8 +237,6 @@ export function FleetArmingRibbon(): ReactElement | null {
         return;
       }
 
-      // First press — arm the chord and schedule the exit for when the
-      // double-tap window closes without a second press.
       lastEscapeMsRef.current = now;
       e.stopPropagation();
       e.preventDefault();
@@ -221,9 +248,6 @@ export function FleetArmingRibbon(): ReactElement | null {
       }, DOUBLE_ESC_WINDOW_MS);
     };
 
-    // Cmd-held + OS focus loss can leave the chord "half-armed" after
-    // Cmd+Tab away-and-back. Reset so the first Esc on return doesn't
-    // look like a stale second press.
     const handleBlur = () => {
       lastEscapeMsRef.current = 0;
       clearPendingExit();
@@ -238,13 +262,6 @@ export function FleetArmingRibbon(): ReactElement | null {
     };
   }, [armedCount]);
 
-  // "Match active filter" maps the sidebar's quick-state filter (which is
-  // worktree-chip-state driven) to an agent-state preset 1:1 by name. In
-  // edge cases a worktree's chip state can differ from an individual
-  // agent's state (e.g. a worktree in "cleanup" with a still-waiting
-  // agent), so "finished" here arms agents in terminal states, not every
-  // agent under a "finished"-chip worktree. Acceptable — the menu arms
-  // by agent state throughout.
   const filterPreset: FleetArmStatePreset | null =
     quickStateFilter === "all" ? null : (quickStateFilter as FleetArmStatePreset);
   const filterLabel = filterPreset
@@ -254,6 +271,50 @@ export function FleetArmingRibbon(): ReactElement | null {
         ? "Waiting"
         : "Finished"
     : null;
+
+  const pasteWarnings = useMemo(
+    () => (pendingPaste !== null ? describePasteWarnings(pendingPaste) : []),
+    [pendingPaste]
+  );
+
+  const cancelPendingPaste = useCallback(() => {
+    setPendingPaste(null);
+  }, []);
+
+  const confirmPendingPaste = useCallback(async () => {
+    const text = pendingPaste;
+    if (text == null || isSendingPaste) return;
+    setIsSendingPaste(true);
+    try {
+      const targets = resolveFleetBroadcastTargetIds();
+      if (targets.length === 0) {
+        useNotificationStore.getState().addNotification({
+          type: "warning",
+          priority: "low",
+          message: "No armed agents available to send to",
+        });
+        return;
+      }
+      const result = await broadcastFleetLiteralPaste(text, targets);
+      if (result.failureCount > 0) {
+        logWarn("[FleetArmingRibbon] paste broadcast had rejections", {
+          failureCount: result.failureCount,
+          failedIds: result.failedIds,
+        });
+      }
+      useNotificationStore.getState().addNotification({
+        type: result.successCount > 0 ? "success" : "warning",
+        priority: "low",
+        message:
+          result.failureCount > 0
+            ? `Sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"} (${result.failureCount} failed)`
+            : `Sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"}`,
+      });
+    } finally {
+      setIsSendingPaste(false);
+      setPendingPaste(null);
+    }
+  }, [pendingPaste, isSendingPaste]);
 
   const selectionMenuItems = (
     <>
@@ -342,8 +403,7 @@ export function FleetArmingRibbon(): ReactElement | null {
         role="status"
         aria-live="polite"
         className={cn(
-          "surface-toolbar relative flex items-center gap-3 border-b border-daintree-border px-3 py-1 text-[12px] text-daintree-text",
-          "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--color-accent-primary)] before:content-['']"
+          "surface-toolbar relative flex items-center gap-3 border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text"
         )}
         data-testid="fleet-arming-ribbon"
         data-pending-action={pending.kind}
@@ -395,16 +455,12 @@ export function FleetArmingRibbon(): ReactElement | null {
           role="status"
           aria-live="off"
           className={cn(
-            "surface-toolbar relative flex items-center gap-3 overflow-hidden border-b border-daintree-border px-3 py-1 text-[12px] text-daintree-text",
-            "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--color-accent-primary)] before:content-['']",
-            "transition-shadow duration-300",
-            isPulsing && "shadow-[0_0_0_2px_var(--color-accent-primary)]"
+            "surface-toolbar relative flex items-center gap-3 overflow-hidden border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text"
           )}
           data-testid="fleet-arming-ribbon"
-          data-pulsing={isPulsing ? "true" : undefined}
           {...ribbonMotionProps}
         >
-          <ArmedCountChip
+          <FleetCountChip
             armedCount={armedCount}
             open={popoverOpen}
             onOpenChange={setPopoverOpen}
@@ -436,25 +492,55 @@ export function FleetArmingRibbon(): ReactElement | null {
               )}
             >
               <span>Exit</span>
-              <kbd className="rounded border border-daintree-text/20 bg-tint/[0.06] px-1 font-mono text-[10px] leading-tight text-daintree-accent">
+              <kbd className="rounded border border-daintree-text/20 bg-tint/[0.06] px-1 font-mono text-[10px] leading-tight text-daintree-text/70">
                 {exitChordLabel}
               </kbd>
             </button>
           </div>
         </motion.div>
       </AnimatePresence>
-      <FleetComposer />
+      {pendingPaste !== null && (
+        <div
+          role="alertdialog"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="fleet-paste-confirm"
+          className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-200"
+        >
+          <span className="flex-1">
+            Paste to {armedCount} agent{armedCount === 1 ? "" : "s"} — {pasteWarnings.join(", ")}?
+          </span>
+          <button
+            type="button"
+            ref={pasteCancelRef}
+            onClick={cancelPendingPaste}
+            data-testid="fleet-paste-confirm-cancel"
+            className="rounded px-2 py-0.5 text-daintree-text/70 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={isSendingPaste}
+            onClick={() => void confirmPendingPaste()}
+            data-testid="fleet-paste-confirm-send"
+            className="rounded bg-amber-500/20 px-2 py-0.5 text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Send anyway
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-interface ArmedCountChipProps {
+interface FleetCountChipProps {
   armedCount: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-function ArmedCountChip({ armedCount, open, onOpenChange }: ArmedCountChipProps): ReactElement {
+function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps): ReactElement {
   const armOrder = useFleetArmingStore((s) => s.armOrder);
   const disarmId = useFleetArmingStore((s) => s.disarmId);
   const panelsById = usePanelStore(
@@ -468,7 +554,7 @@ function ArmedCountChip({ armedCount, open, onOpenChange }: ArmedCountChipProps)
     })
   );
 
-  const label = `${armedCount} ${armedCount === 1 ? "agent" : "agents"} armed`;
+  const label = `${armedCount} in fleet`;
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -486,11 +572,9 @@ function ArmedCountChip({ armedCount, open, onOpenChange }: ArmedCountChipProps)
         >
           <AnimatedLabel
             label={String(armedCount)}
-            textClassName="font-semibold text-daintree-accent tabular-nums"
+            textClassName="font-semibold tabular-nums text-daintree-text"
           />
-          <span className="text-daintree-text/80">
-            {armedCount === 1 ? "agent armed" : "agents armed"}
-          </span>
+          <span className="text-daintree-text/70">in fleet</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -501,7 +585,7 @@ function ArmedCountChip({ armedCount, open, onOpenChange }: ArmedCountChipProps)
         className="max-h-[320px] w-[260px] overflow-y-auto p-1"
       >
         <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-daintree-text/50">
-          Armed terminals
+          Fleet terminals
         </div>
         <ul className="flex flex-col">
           {armOrder.length === 0 ? (

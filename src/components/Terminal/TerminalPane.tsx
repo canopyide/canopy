@@ -201,10 +201,12 @@ function TerminalPaneComponent({
   const lastCrashType = usePanelStore((state) => state.lastCrashType);
   const clearReconnectError = usePanelStore((state) => state.clearReconnectError);
 
-  // Fleet arming store for multi-select gestures. `isSelected` lights up the
-  // title bar only when 2+ panes are armed — a single armed pane is
-  // indistinguishable from "focused alone" and reuses the normal focus
-  // styling.
+  // Fleet arming store for multi-select gestures. The title bar lifts on
+  // any pane that will receive keystrokes: the focused pane (always) plus
+  // every armed pane once the fleet is actively broadcasting (size >= 2).
+  // A single armed pane is a pre-fleet earmark; until a second pane joins,
+  // input still lands only in whatever is focused, so we leave the single
+  // armed pane visually indistinguishable from "not in fleet yet".
   const armedIds = useFleetArmingStore((state) => state.armedIds);
   const isArmed = armedIds.has(id);
   const isSelected = isArmed && armedIds.size >= 2;
@@ -517,30 +519,31 @@ function TerminalPaneComponent({
         return;
       }
 
-      // Chrome-level multi-select gestures. Shift-click on chrome (the
-      // title bar + container surround) range-extends the armed set; xterm's
-      // pointer-down-capture runs first and leaves `hasSelection()` truthy
-      // when the user is extending a native text selection, which the guard
-      // above routes around.
+      // Chrome-level multi-select gestures. Plain click = exclusive single
+      // selection (clear any fleet, then focus). Shift = range-extend,
+      // Cmd/Ctrl = toggle. xterm's pointer-down-capture runs first and leaves
+      // `hasSelection()` truthy when the user is extending a native text
+      // selection, which the guard above routes around.
       if (e) {
         const terminal = getTerminal(id);
         const isEligible = !!(terminal && isFleetArmEligible(terminal));
+        const armingStore = useFleetArmingStore.getState();
         const action = decideChromeAction(
           { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey },
           {
             isEligible,
-            isArmed: armedIds.has(id),
+            isArmed: armingStore.armedIds.has(id),
+            armedSize: armingStore.armedIds.size,
             orderedEligibleIds: orderedEligibleTerminalIds,
           }
         );
 
         if (action.type === "toggle") {
-          useFleetArmingStore.getState().toggleId(id);
+          armingStore.toggleId(id);
           e.preventDefault();
           return;
         }
         if (action.type === "extend" && orderedEligibleTerminalIds) {
-          const armingStore = useFleetArmingStore.getState();
           if (armingStore.armedIds.size === 0) {
             // Empty armed set — the focused pane is the implicit "first
             // selection" (the user's mental model for bare shift-click).
@@ -558,8 +561,10 @@ function TerminalPaneComponent({
           e.preventDefault();
           return;
         }
-        if (action.type === "bump-primary") {
-          useFleetArmingStore.getState().armId(id);
+        if (action.type === "clear") {
+          armingStore.clear();
+          // fall through — setFocused below makes the clicked pane the
+          // new exclusive selection.
         }
       }
 

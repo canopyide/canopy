@@ -14,31 +14,46 @@ export interface GestureModifiers {
 export type ChromeAction =
   | { type: "toggle" }
   | { type: "extend" }
-  | { type: "bump-primary" }
+  | { type: "clear" }
   | { type: "none" };
 
 /**
  * Resolve a click on the pane chrome (title bar + surrounding container
- * surface, everything outside the xterm render area). The xterm region has
- * its own pointer-down-capture path and handles native text selection; by
- * the time this runs, `hasSelection()` has already been consulted upstream.
+ * surface, everything outside the xterm render area). Mirrors the semantics
+ * of a native `<select multiple>`:
  *
  * - Shift-click on an eligible pane with an ordered ID list extends the
  *   selection across grid visual order.
  * - Cmd/Ctrl-click on an eligible pane toggles selection.
- * - Plain click on an already-armed pane bumps the primary-selection anchor.
- * - Plain click on an unarmed pane is a normal focus click.
+ * - Plain click, when the fleet is non-empty, clears the fleet (caller then
+ *   focuses the clicked pane → exclusive single selection).
+ * - Plain click with an empty fleet has no fleet-side effect.
  */
 export function decideChromeAction(
   modifiers: GestureModifiers,
-  options: { isEligible: boolean; isArmed: boolean; orderedEligibleIds?: string[] }
+  options: {
+    isEligible: boolean;
+    isArmed: boolean;
+    armedSize: number;
+    orderedEligibleIds?: string[];
+  }
 ): ChromeAction {
-  if (!options.isEligible) return { type: "none" };
-  if (modifiers.shiftKey && options.orderedEligibleIds && options.orderedEligibleIds.length > 0) {
+  if (
+    modifiers.shiftKey &&
+    options.isEligible &&
+    options.orderedEligibleIds &&
+    options.orderedEligibleIds.length > 0
+  ) {
     return { type: "extend" };
   }
-  if (modifiers.metaKey || modifiers.ctrlKey) return { type: "toggle" };
-  if (modifiers.shiftKey) return { type: "toggle" };
-  if (options.isArmed) return { type: "bump-primary" };
+  if ((modifiers.metaKey || modifiers.ctrlKey) && options.isEligible) {
+    return { type: "toggle" };
+  }
+  if (modifiers.shiftKey && options.isEligible) {
+    return { type: "toggle" };
+  }
+  if (!modifiers.shiftKey && !modifiers.metaKey && !modifiers.ctrlKey && options.armedSize > 0) {
+    return { type: "clear" };
+  }
   return { type: "none" };
 }

@@ -55,7 +55,6 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 import { FleetArmingRibbon } from "../FleetArmingRibbon";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetPendingActionStore } from "@/store/fleetPendingActionStore";
-import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
@@ -71,7 +70,6 @@ function resetStores() {
     lastArmedId: null,
   });
   useFleetPendingActionStore.setState({ pending: null });
-  useFleetScopeFlagStore.setState({ mode: "legacy", isHydrated: true });
   usePanelStore.setState({ panelsById: {}, panelIds: [], focusedId: null });
   useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-1", isFleetScopeActive: false });
   useWorktreeFilterStore.setState({ quickStateFilter: "all" });
@@ -131,7 +129,7 @@ describe("FleetArmingRibbon", () => {
     expect(screen.getByTestId("fleet-arming-ribbon")).toBeTruthy();
     const chip = screen.getByTestId("fleet-armed-count-chip");
     expect(chip.textContent).toContain("3");
-    expect(chip.textContent).toContain("agents armed");
+    expect(chip.textContent).toContain("in fleet");
   });
 
   it("clicking the exit chip disarms all", () => {
@@ -216,7 +214,7 @@ describe("FleetArmingRibbon", () => {
     act(() => {
       useFleetArmingStore.getState().armIds(["a", "b"]);
     });
-    expect(useAnnouncerStore.getState().polite?.msg).toBe("2 agents armed");
+    expect(useAnnouncerStore.getState().polite?.msg).toBe("2 agents in fleet");
   });
 
   it("announces 'Fleet disarmed' when count returns to zero", () => {
@@ -394,38 +392,6 @@ describe("FleetArmingRibbon", () => {
     }
   });
 
-  it("focus event without a prior blur does NOT pulse the ribbon", () => {
-    seed([makeAgent("t1"), makeAgent("t2")]);
-    useFleetArmingStore.getState().armIds(["t1", "t2"]);
-    render(<FleetArmingRibbon />);
-    vi.spyOn(document, "hasFocus").mockReturnValue(true);
-    fireEvent.focus(window);
-    const ribbon = screen.getByTestId("fleet-arming-ribbon");
-    expect(ribbon.getAttribute("data-pulsing")).toBeNull();
-  });
-
-  it("window focus-return while armed pulses the ribbon border", () => {
-    vi.useFakeTimers();
-    try {
-      seed([makeAgent("t1"), makeAgent("t2")]);
-      useFleetArmingStore.getState().armIds(["t1", "t2"]);
-      render(<FleetArmingRibbon />);
-      // Simulate losing then regaining OS focus while still armed.
-      fireEvent.blur(window);
-      vi.spyOn(document, "hasFocus").mockReturnValue(true);
-      fireEvent.focus(window);
-      const ribbon = screen.getByTestId("fleet-arming-ribbon");
-      expect(ribbon.getAttribute("data-pulsing")).toBe("true");
-      // Pulse auto-clears after ~800ms.
-      act(() => {
-        vi.advanceTimersByTime(900);
-      });
-      expect(ribbon.getAttribute("data-pulsing")).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("Enter while a pending action is open re-dispatches the action with confirmed:true", async () => {
     useFleetArmingStore.getState().armIds(["a", "b", "c"]);
     useFleetPendingActionStore.setState({
@@ -439,28 +405,6 @@ describe("FleetArmingRibbon", () => {
     expect(match).toBeDefined();
     expect(match?.[1]).toEqual({ confirmed: true });
     dispatchSpy.mockRestore();
-  });
-
-  describe("Embedded FleetComposer", () => {
-    it("renders the embedded FleetComposer whenever the ribbon is mounted", () => {
-      useFleetArmingStore.getState().armIds(["a", "b"]);
-      render(<FleetArmingRibbon />);
-      expect(screen.queryByTestId("fleet-composer")).toBeTruthy();
-    });
-
-    it("renders exactly one FleetComposer in the ribbon when Fleet scope is active", () => {
-      // The pinned-header mount point was removed with the orphaned saved-scopes
-      // plumbing; the ribbon is now the sole composer host in every mode.
-      useFleetArmingStore.getState().armIds(["a", "b"]);
-      useFleetScopeFlagStore.setState({ mode: "scoped", isHydrated: true });
-      useWorktreeSelectionStore.setState({
-        activeWorktreeId: "wt-1",
-        isFleetScopeActive: true,
-      });
-      render(<FleetArmingRibbon />);
-      expect(screen.queryAllByTestId("fleet-composer")).toHaveLength(1);
-      expect(screen.queryByTestId("fleet-arming-ribbon")).toBeTruthy();
-    });
   });
 
   describe("Selection menu", () => {

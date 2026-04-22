@@ -1,12 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import { useFleetComposerStore } from "@/store/fleetComposerStore";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { logWarn } from "@/utils/logger";
 import { needsFleetBroadcastConfirmation, resolveFleetBroadcastTargetIds } from "./fleetBroadcast";
 import { broadcastFleetKeySequence, broadcastFleetLiteralPaste } from "./fleetExecution";
 
-export interface FleetLiveKeyCaptureOptions {
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
+export interface FleetLiveBroadcastOptions {
   enabled: boolean;
   onPasteConfirm: (text: string) => void;
 }
@@ -87,55 +86,46 @@ export function mapKeyToSequence(event: KeyboardEvent): string | null {
 }
 
 /**
- * Update the visible draft buffer from a forwarded sequence. The draft is
- * feedback only — the source of truth is the remote PTYs — but mirroring
- * printable chars, Enter, and Backspace keeps the bar legible for the user
- * and drives the destructive-warning regex.
- */
-function applySequenceToDraft(sequence: string): void {
-  const { draft, setDraft } = useFleetComposerStore.getState();
-  if (sequence === "\r") {
-    setDraft(draft + "\n");
-    return;
-  }
-  if (sequence === "\x7f") {
-    if (draft.length > 0) setDraft(draft.slice(0, -1));
-    return;
-  }
-  if (sequence.length === 1) {
-    const code = sequence.charCodeAt(0);
-    if (code >= 0x20 && code !== 0x7f) {
-      setDraft(draft + sequence);
-    }
-  }
-}
-
-/**
- * Attach raw DOM listeners to the fleet composer textarea so every keydown,
- * IME composition, and paste is forwarded to all armed PTYs.
+ * Document-level capture: when a fleet of 2+ terminals is armed, keystrokes
+ * and pastes that originate inside an armed pane fan out to every armed PTY.
  *
- * The hook uses native addEventListener rather than React synthetic events so
- * `preventDefault()` reliably suppresses Tab focus movement, Enter newline
- * insertion, and Esc dismissal across Electron builds.
+ * The origin pane's xterm (or HybridInputBar) never sees the event — we
+ * `stopPropagation` at capture so the origin receives its copy via the
+ * broadcast path only, not via its own input path. Keeps the "type into any
+ * armed terminal to broadcast" model simple and symmetric.
+ *
+ * Escape is intentionally excluded so the ribbon's ⌘Esc chord and the
+ * targets' own Esc handling (menus, prompts) keep working. Cmd/Win keys
+ * are filtered by `mapKeyToSequence` so app shortcuts still reach the
+ * keybinding service.
  */
-export function useFleetLiveKeyCapture({
-  textareaRef,
+export function useFleetLiveBroadcast({
   enabled,
   onPasteConfirm,
-}: FleetLiveKeyCaptureOptions): void {
-  const isComposingRef = useRef(false);
+}: FleetLiveBroadcastOptions): void {
   const onPasteConfirmRef = useRef(onPasteConfirm);
   useLayoutEffect(() => {
     onPasteConfirmRef.current = onPasteConfirm;
   }, [onPasteConfirm]);
 
+  const isComposingRef = useRef(false);
+
   useEffect(() => {
     if (!enabled) return;
-    const el = textareaRef.current;
-    if (!el) return;
+
+    const targetIsInArmedPane = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false;
+      const pane = target.closest<HTMLElement>("[data-panel-id]");
+      if (!pane) return false;
+      const id = pane.dataset.panelId;
+      if (!id) return false;
+      return useFleetArmingStore.getState().armedIds.has(id);
+    };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") return;
       if (event.isComposing || event.keyCode === 229 || isComposingRef.current) return;
+      if (!targetIsInArmedPane(event.target)) return;
 
       const sequence = mapKeyToSequence(event);
       if (sequence == null) return;
@@ -143,31 +133,29 @@ export function useFleetLiveKeyCapture({
       event.preventDefault();
       event.stopPropagation();
 
-      applySequenceToDraft(sequence);
-
       const targets = resolveFleetBroadcastTargetIds();
       broadcastFleetKeySequence(sequence, targets);
     };
 
-    const handleCompositionStart = () => {
+    const handleCompositionStart = (event: CompositionEvent) => {
+      if (!targetIsInArmedPane(event.target)) return;
       isComposingRef.current = true;
     };
 
     const handleCompositionEnd = (event: CompositionEvent) => {
+      if (!targetIsInArmedPane(event.target)) return;
       isComposingRef.current = false;
       const data = event.data ?? "";
       if (!data) return;
-
-      const { draft, setDraft } = useFleetComposerStore.getState();
-      setDraft(draft + data);
-
       const targets = resolveFleetBroadcastTargetIds();
       broadcastFleetKeySequence(data, targets);
     };
 
     const handlePaste = (event: ClipboardEvent) => {
+      if (!targetIsInArmedPane(event.target)) return;
       const text = event.clipboardData?.getData("text/plain") ?? "";
       event.preventDefault();
+      event.stopPropagation();
       if (!text) return;
 
       if (needsFleetBroadcastConfirmation(text)) {
@@ -175,14 +163,11 @@ export function useFleetLiveKeyCapture({
         return;
       }
 
-      const { draft, setDraft } = useFleetComposerStore.getState();
-      setDraft(draft + text);
-
       const targets = resolveFleetBroadcastTargetIds();
       void (async () => {
         const result = await broadcastFleetLiteralPaste(text, targets);
         if (result.failureCount === 0) return;
-        logWarn("[FleetComposer] benign paste broadcast had rejections", {
+        logWarn("[FleetLiveBroadcast] paste broadcast had rejections", {
           failureCount: result.failureCount,
           failedIds: result.failedIds,
         });
@@ -192,22 +177,22 @@ export function useFleetLiveKeyCapture({
           message:
             result.successCount > 0
               ? `Sent to ${result.successCount} agent${result.successCount === 1 ? "" : "s"} (${result.failureCount} failed)`
-              : `Paste failed — no agents received the payload`,
+              : "Paste failed — no agents received the payload",
         });
       })();
     };
 
-    el.addEventListener("keydown", handleKeyDown);
-    el.addEventListener("compositionstart", handleCompositionStart);
-    el.addEventListener("compositionend", handleCompositionEnd);
-    el.addEventListener("paste", handlePaste);
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("compositionstart", handleCompositionStart, true);
+    document.addEventListener("compositionend", handleCompositionEnd, true);
+    document.addEventListener("paste", handlePaste, true);
 
     return () => {
-      el.removeEventListener("keydown", handleKeyDown);
-      el.removeEventListener("compositionstart", handleCompositionStart);
-      el.removeEventListener("compositionend", handleCompositionEnd);
-      el.removeEventListener("paste", handlePaste);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("compositionstart", handleCompositionStart, true);
+      document.removeEventListener("compositionend", handleCompositionEnd, true);
+      document.removeEventListener("paste", handlePaste, true);
       isComposingRef.current = false;
     };
-  }, [enabled, textareaRef]);
+  }, [enabled]);
 }

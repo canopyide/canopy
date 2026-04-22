@@ -433,14 +433,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Trash all armed terminals",
     category: "Fleet",
   },
-  {
-    actionId: "terminal.focusFleetComposer",
-    combo: "Cmd+Shift+F",
-    scope: "global",
-    priority: 0,
-    description: "Focus the fleet broadcast composer",
-    category: "Terminal",
-  },
   // Directional terminal navigation (Ghostty-style: Cmd+Option+Arrow)
   {
     actionId: "terminal.focusUp",
