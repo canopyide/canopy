@@ -106,9 +106,8 @@ function callHandleAgentDetection(
 }
 
 function getActivityMonitor(terminal: TerminalProcess): { onInput: (s: string) => void } | null {
-  return (
-    terminal as unknown as { activityMonitor: { onInput: (s: string) => void } | null }
-  ).activityMonitor;
+  return (terminal as unknown as { activityMonitor: { onInput: (s: string) => void } | null })
+    .activityMonitor;
 }
 
 function getSpawnedAt(terminal: TerminalProcess): number {
@@ -235,11 +234,7 @@ describe("TerminalProcess.handleAgentDetection — disposes monitor without prio
       expect(getActivityMonitor(trackedTerminal)).not.toBeNull();
 
       // Now everything goes away — Branch B with previousType undefined.
-      callHandleAgentDetection(
-        trackedTerminal,
-        { detected: false },
-        getSpawnedAt(trackedTerminal)
-      );
+      callHandleAgentDetection(trackedTerminal, { detected: false }, getSpawnedAt(trackedTerminal));
 
       expect(getActivityMonitor(trackedTerminal)).toBeNull();
       expect(exitedEvents).toHaveLength(1);
@@ -278,11 +273,7 @@ describe("TerminalProcess.handleAgentDetection — polling loop teardown", () =>
       );
       expect(getActivityMonitor(trackedTerminal)).not.toBeNull();
 
-      callHandleAgentDetection(
-        trackedTerminal,
-        { detected: false },
-        getSpawnedAt(trackedTerminal)
-      );
+      callHandleAgentDetection(trackedTerminal, { detected: false }, getSpawnedAt(trackedTerminal));
       expect(getActivityMonitor(trackedTerminal)).toBeNull();
 
       handleActivityState.mockClear();
