@@ -159,6 +159,8 @@ export interface BackendTerminalInfo {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time */
   agentModelId?: string;
+  /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
+  everDetectedAgent?: boolean;
 }
 
 /** Result from terminal reconnect operation */
@@ -179,6 +181,7 @@ export interface TerminalReconnectResult {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  everDetectedAgent?: boolean;
 }
 
 /** Terminal information payload for diagnostic display */
@@ -228,6 +231,8 @@ export interface TerminalInfoPayload {
   agentModelId?: string;
   /** Exit code when terminal has exited */
   exitCode?: number;
+  /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
+  everDetectedAgent?: boolean;
 }
 
 import type { TerminalActivityPayload } from "../terminal.js";

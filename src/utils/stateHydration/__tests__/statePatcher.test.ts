@@ -701,6 +701,37 @@ describe("agentModelId propagation", () => {
   });
 });
 
+// Regression for #5765: the sticky everDetectedAgent flag must survive every
+// reconnect/hydration builder so a reload doesn't drop it and then expose the
+// original trash-on-exit bug.
+describe("everDetectedAgent propagation", () => {
+  it("buildArgsForBackendTerminal forwards everDetectedAgent", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal", everDetectedAgent: true },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.everDetectedAgent).toBe(true);
+  });
+
+  it("buildArgsForReconnectedFallback forwards everDetectedAgent", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", cwd: "/p", everDetectedAgent: true },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.everDetectedAgent).toBe(true);
+  });
+
+  it("buildArgsForOrphanedTerminal forwards everDetectedAgent", () => {
+    const result = buildArgsForOrphanedTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal", everDetectedAgent: true },
+      "/p"
+    );
+    expect(result.everDetectedAgent).toBe(true);
+  });
+});
+
 describe("buildArgsForNonPtyRecreation", () => {
   it("builds browser panel args", () => {
     const result = buildArgsForNonPtyRecreation(

@@ -246,6 +246,12 @@ export interface PtyPanelData extends BasePanelData {
   exitBehavior?: PanelExitBehavior;
   /** Detected process icon ID for dynamic terminal icons (transient, not persisted) */
   detectedProcessId?: string;
+  /**
+   * Set once when runtime agent detection first fires in this terminal session; never cleared.
+   * Used at exit time to preserve plain terminals that ran an agent mid-session. Live-session-only
+   * (not persisted); rehydrated from backend reconnect payload.
+   */
+  everDetectedAgent?: boolean;
   /** Captured agent session ID from graceful shutdown (used for session resume) */
   agentSessionId?: string;
   /** Process-level flags captured at launch time, persisted for session resume */
@@ -413,6 +419,12 @@ export interface TerminalInstance {
   hasPty?: boolean;
   /** Detected process icon ID for dynamic terminal icons (transient, not persisted) */
   detectedProcessId?: string;
+  /**
+   * Set once when runtime agent detection first fires in this terminal session; never cleared.
+   * Used at exit time to preserve plain terminals that ran an agent mid-session. Live-session-only
+   * (not persisted); rehydrated from backend reconnect payload.
+   */
+  everDetectedAgent?: boolean;
   /** Captured agent session ID from graceful shutdown (used for session resume) */
   agentSessionId?: string;
   /** Process-level flags captured at launch time, persisted for session resume */

@@ -95,6 +95,7 @@ interface BackendTerminalData {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  everDetectedAgent?: boolean;
 }
 
 interface ReconnectedTerminalData {
@@ -110,6 +111,7 @@ interface ReconnectedTerminalData {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  everDetectedAgent?: boolean;
 }
 
 interface AgentSettingsData {
@@ -192,6 +194,7 @@ export function buildArgsForBackendTerminal(
     agentSessionId: backendTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: backendTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: backendTerminal.agentModelId ?? saved.agentModelId,
+    everDetectedAgent: backendTerminal.everDetectedAgent,
     agentPresetId: readPresetId(saved),
     agentPresetColor: readPresetColor(saved),
     extensionState: saved.extensionState,
@@ -245,6 +248,7 @@ export function buildArgsForReconnectedFallback(
     agentSessionId: reconnectedTerminal.agentSessionId ?? saved.agentSessionId,
     agentLaunchFlags: reconnectedTerminal.agentLaunchFlags ?? saved.agentLaunchFlags,
     agentModelId: reconnectedTerminal.agentModelId ?? saved.agentModelId,
+    everDetectedAgent: reconnectedTerminal.everDetectedAgent,
     agentPresetId: readPresetId(saved),
     agentPresetColor: readPresetColor(saved),
     extensionState: saved.extensionState,
@@ -456,5 +460,6 @@ export function buildArgsForOrphanedTerminal(
     agentSessionId: terminal.agentSessionId,
     agentLaunchFlags: terminal.agentLaunchFlags,
     agentModelId: terminal.agentModelId,
+    everDetectedAgent: terminal.everDetectedAgent,
   };
 }

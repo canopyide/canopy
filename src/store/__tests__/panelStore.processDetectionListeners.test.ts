@@ -10,6 +10,7 @@ type AgentStateHandler = (data: {
 }) => void;
 type AgentDetectedHandler = (data: {
   terminalId: string;
+  agentType?: string;
   processIconId?: string;
   processName: string;
   timestamp: number;
@@ -280,6 +281,95 @@ describe("terminalStore process detection listeners", () => {
       timestamp: Date.now(),
     });
     expect(usePanelStore.getState().panelsById["term-1"]?.detectedProcessId).toBeUndefined();
+    cleanup();
+  });
+
+  // Regression for #5765: once runtime detection sees an agent, the renderer must
+  // mirror the sticky everDetectedAgent flag so the onExit guard can preserve the
+  // panel even if snapshot IPC lags behind the exit event.
+  it("sets everDetectedAgent when agent:detected carries an agentType", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+
+    detected?.({
+      terminalId: "term-1",
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+      timestamp: Date.now(),
+    });
+
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBe(true);
+    cleanup();
+  });
+
+  it("does not set everDetectedAgent for non-agent detections", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+
+    detected?.({
+      terminalId: "term-1",
+      processIconId: "npm",
+      processName: "npm",
+      timestamp: Date.now(),
+    });
+
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBeUndefined();
+    cleanup();
+  });
+
+  it("keeps everDetectedAgent true after agent:exited fires (sticky flag)", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+    const exited = handlers.agentExited;
+
+    detected?.({
+      terminalId: "term-1",
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+      timestamp: Date.now(),
+    });
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBe(true);
+
+    exited?.({ terminalId: "term-1", timestamp: Date.now() });
+    expect(usePanelStore.getState().panelsById["term-1"]?.everDetectedAgent).toBe(true);
+    cleanup();
+  });
+
+  // End-to-end regression for #5765: a plain terminal that ran an agent must not
+  // be trashed on clean exit — the sticky flag is what the onExit handler reads.
+  it("does not trash a plain terminal on clean exit after an agent was detected", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const detected = handlers.agentDetected;
+    const exit = handlers.exit;
+
+    detected?.({
+      terminalId: "term-1",
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+      timestamp: Date.now(),
+    });
+
+    exit?.("term-1", 0);
+
+    const panel = usePanelStore.getState().panelsById["term-1"];
+    expect(panel).toBeDefined();
+    expect(panel?.location).not.toBe("trash");
+    expect(panel?.everDetectedAgent).toBe(true);
+    cleanup();
+  });
+
+  it("still trashes a plain terminal on clean exit when no agent was ever detected", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const exit = handlers.exit;
+
+    exit?.("term-1", 0);
+
+    const panel = usePanelStore.getState().panelsById["term-1"];
+    // Either moved to trash (location === "trash") or removed entirely.
+    expect(panel === undefined || panel.location === "trash").toBe(true);
     cleanup();
   });
 

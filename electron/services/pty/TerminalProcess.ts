@@ -450,6 +450,7 @@ export class TerminalProcess {
       lastOutputTime: t.lastOutputTime,
       lastCheckTime: t.lastCheckTime,
       detectedAgentType: t.detectedAgentType,
+      everDetectedAgent: t.everDetectedAgent,
       restartCount: t.restartCount,
       activityTier: this._activityTier,
       hasPty,
@@ -1054,7 +1055,7 @@ export class TerminalProcess {
   }
 
   shouldPreserveOnExit(exitCode: number): boolean {
-    if (!this.isAgentTerminal) {
+    if (!this.isAgentTerminal && !this.terminalInfo.everDetectedAgent) {
       return false;
     }
     if (this.terminalInfo.wasKilled) {
@@ -1369,6 +1370,7 @@ export class TerminalProcess {
 
     if (result.detected && result.agentType) {
       const previousType = terminal.detectedAgentType;
+      terminal.everDetectedAgent = true;
 
       if (previousType !== result.agentType) {
         terminal.detectedAgentType = result.agentType;

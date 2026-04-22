@@ -465,6 +465,7 @@ export const createCorePanelActions = (
         agentSessionId: options.agentSessionId,
         agentLaunchFlags: options.agentLaunchFlags,
         agentModelId: options.agentModelId,
+        everDetectedAgent: options.everDetectedAgent,
         agentPresetId: options.agentPresetId,
         agentPresetColor: options.agentPresetColor,
         originalPresetId: options.originalPresetId ?? options.agentPresetId,
@@ -494,6 +495,8 @@ export const createCorePanelActions = (
                   lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
                   exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
                   extensionState: terminal.extensionState ?? existing.extensionState,
+                  // Sticky: once detected, never downgrade on a partial reconnect payload.
+                  everDetectedAgent: terminal.everDetectedAgent || existing.everDetectedAgent,
                 }
               : terminal;
           return { panelsById: { ...state.panelsById, [id]: preservedTerminal } };
@@ -513,6 +516,8 @@ export const createCorePanelActions = (
                   lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
                   exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
                   extensionState: terminal.extensionState ?? existing.extensionState,
+                  // Sticky: once detected, never downgrade on a partial reconnect payload.
+                  everDetectedAgent: terminal.everDetectedAgent || existing.everDetectedAgent,
                 }
               : terminal;
             const newById = { ...state.panelsById, [id]: preservedTerminal };
