@@ -316,7 +316,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
     id: "fleet.armMatchingFilter",
     title: "Fleet: Arm Agents Matching Filter",
     description:
-      "Arm all eligible full agent terminals whose worktree is in the provided set — drives the sidebar 'Arm N matching' affordance",
+      "Arm all eligible full agent terminals whose worktree is in the provided set — sidebar 'Arm N matching' affordance",
     category: "terminal",
     kind: "command",
     danger: "safe",
