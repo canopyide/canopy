@@ -560,10 +560,14 @@ export class TerminalProcess {
     }
 
     const bracketedPaste = isBracketedPaste(data);
+    // Shell input capture is only meaningless when a live AGENT owns the PTY
+    // (agents have their own input semantics). A plain process badge (npm,
+    // pnpm, docker, etc.) does not change the shell semantics — the shell
+    // is still the direct recipient of typed commands, and the next command
+    // must still be visible to the fallback detector so a follow-up
+    // `pnpm build` can re-identify the badge. #5813
     const canCaptureShellInput =
-      !bracketedPaste &&
-      this.terminalInfo.detectedAgentType === undefined &&
-      this.lastDetectedProcessIconId === undefined;
+      !bracketedPaste && this.terminalInfo.detectedAgentType === undefined;
     const submittedCommandText = canCaptureShellInput ? this.captureShellInput(data) : undefined;
 
     if (!bracketedPaste && /[\r\n]/.test(data)) {
@@ -1118,7 +1122,12 @@ export class TerminalProcess {
       return;
     }
 
-    if (this.terminalInfo.detectedAgentType || this.lastDetectedProcessIconId) {
+    // Only skip when a live agent is already detected. A stale
+    // `lastDetectedProcessIconId` must not block re-arming the fallback — if
+    // the user ran `npm run dev` then Ctrl+C then typed `pnpm dev`, the new
+    // command must be allowed to restart detection regardless of whether the
+    // previous badge was cleared by the process-tree path yet.
+    if (this.terminalInfo.detectedAgentType) {
       return;
     }
 
@@ -1169,12 +1178,7 @@ export class TerminalProcess {
 
   private pollShellIdentityFallback(): void {
     const submittedAt = this.shellIdentityFallbackSubmittedAt;
-    if (
-      submittedAt === null ||
-      this.terminalInfo.isExited ||
-      this.terminalInfo.wasKilled ||
-      !this.terminalInfo.headlessTerminal
-    ) {
+    if (submittedAt === null || this.terminalInfo.isExited || this.terminalInfo.wasKilled) {
       this.stopShellIdentityFallbackWatcher();
       return;
     }
@@ -1193,9 +1197,17 @@ export class TerminalProcess {
     }
 
     const promptVisible = this.isShellPromptVisible();
-    const hasLiveIdentity =
-      this.terminalInfo.detectedAgentType !== undefined ||
-      this.lastDetectedProcessIconId !== undefined;
+    // A live identity only pre-empts the fallback commit when it matches what
+    // the fallback detected — a stale badge (e.g. a prior `npm run dev` whose
+    // icon hasn't been cleared yet) must NOT block the fallback from emitting
+    // a fresh `pnpm`/`docker`/etc. detection for the next command. #5813
+    const fallbackIdentity = this.shellIdentityFallbackIdentity;
+    const liveIdentityMatchesFallback =
+      fallbackIdentity !== null &&
+      ((fallbackIdentity.agentType !== undefined &&
+        this.terminalInfo.detectedAgentType === fallbackIdentity.agentType) ||
+        (fallbackIdentity.processIconId !== undefined &&
+          this.lastDetectedProcessIconId === fallbackIdentity.processIconId));
 
     if (!this.shellIdentityFallbackIdentity) {
       if (promptVisible && Date.now() - submittedAt >= SHELL_IDENTITY_FALLBACK_COMMIT_MS) {
@@ -1205,7 +1217,7 @@ export class TerminalProcess {
     }
 
     if (!this.shellIdentityFallbackCommitted) {
-      if (hasLiveIdentity) {
+      if (liveIdentityMatchesFallback) {
         this.shellIdentityFallbackCommitted = true;
         return;
       }
@@ -1574,6 +1586,7 @@ export class TerminalProcess {
 
       this.stopProcessDetector();
       this.stopActivityMonitor();
+      this.stopShellIdentityFallbackWatcher();
       this.semanticBufferManager.flush();
 
       if (this.inputWriteTimeout) {

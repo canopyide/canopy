@@ -221,7 +221,18 @@ export class ProcessDetector {
     this.isStarted = true;
     this.detect();
 
+    let firstRefresh = true;
     this.unsubscribe = this.cache.onRefresh(() => {
+      if (firstRefresh) {
+        firstRefresh = false;
+        // One-shot verbose-gated log on first cache refresh callback —
+        // confirms the detector is actually being ticked by the cache,
+        // independent of whether any state transitions are committed by the
+        // hysteresis gate. Gated so normal runs stay quiet. #5813
+        logDebug(
+          `ProcessDetector ${this.terminalId.slice(0, 8)} first refresh pid=${this.ptyPid} children=${this.cache.getChildren(this.ptyPid).length}`
+        );
+      }
       this.detect();
     });
   }
