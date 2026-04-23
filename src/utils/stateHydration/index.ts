@@ -43,6 +43,7 @@ import { reconnectWithTimeout } from "./reconnectManager";
 import {
   inferKind,
   resolveAgentId,
+  inferAgentIdFromTitle,
   buildArgsForBackendTerminal,
   buildArgsForReconnectedFallback,
   buildArgsForRespawn,
@@ -460,10 +461,14 @@ export async function hydrateAppState(
               isPty: taskIsPty,
               execute: async () => {
                 if (backendTerminal) {
-                  // Skip dead agent backend terminals — they create phantom idle panels
+                  // Skip dead agent backend terminals — they create phantom idle panels.
+                  // capabilityAgentId is sealed at spawn for cold-launched agents, so
+                  // a dead PTY with capabilityAgentId set is still an agent backend
+                  // even if agentId got cleared on PTY teardown.
                   const isDeadAgentBackend =
                     backendTerminal.hasPty === false &&
-                    resolveAgentId(backendTerminal.agentId, backendTerminal.type) !== undefined;
+                    (resolveAgentId(backendTerminal.agentId) !== undefined ||
+                      !!backendTerminal.capabilityAgentId);
                   if (isDeadAgentBackend) {
                     logHydrationInfo(`Skipping dead agent backend terminal: ${backendTerminal.id}`);
                     backendTerminalMap.delete(saved.id);
@@ -592,7 +597,16 @@ export async function hydrateAppState(
                       // panels that no longer exist in the backend — they are phantoms.
                       // On cold app restart (_switchId undefined), not_found simply means the
                       // PTY process was killed on quit and needs to be respawned.
-                      const isAgentKind = resolveAgentId(saved.agentId, saved.type) !== undefined;
+                      // Mirror buildArgsForRespawn's title-inference recovery so legacy
+                      // `kind: "agent"` panels with cleared agentId still skip as phantoms.
+                      const inferredAgentId = inferAgentIdFromTitle(
+                        saved.title,
+                        kind,
+                        resolveAgentId(saved.agentId),
+                        saved.id,
+                        "switch-guard"
+                      );
+                      const isAgentKind = inferredAgentId !== undefined;
                       if (
                         isAgentKind &&
                         reconnectOutcome.status === "not_found" &&
