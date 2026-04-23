@@ -2743,8 +2743,12 @@ describe("hydrateAppState", () => {
 
       terminalClientMock.getForProject.mockResolvedValue([makeBackendAgentEntry()]);
 
-      const addPanel = vi.fn(async (opts: { existingId?: string; requestedId?: string }) => {
-        return opts.existingId ?? opts.requestedId ?? "id";
+      const addPanel = vi.fn(async (opts: Record<string, unknown>) => {
+        return (
+          (opts.existingId as string | undefined) ??
+          (opts.requestedId as string | undefined) ??
+          "id"
+        );
       });
 
       await hydrateAppState({
@@ -2809,8 +2813,12 @@ describe("hydrateAppState", () => {
         }),
       ]);
 
-      const addPanel = vi.fn(async (opts: { existingId?: string; requestedId?: string }) => {
-        return opts.existingId ?? opts.requestedId ?? "id";
+      const addPanel = vi.fn(async (opts: Record<string, unknown>) => {
+        return (
+          (opts.existingId as string | undefined) ??
+          (opts.requestedId as string | undefined) ??
+          "id"
+        );
       });
 
       await hydrateAppState({
@@ -2850,8 +2858,12 @@ describe("hydrateAppState", () => {
         makeBackendAgentEntry({ hasPty: false }),
       ]);
 
-      const addPanel = vi.fn(async (opts: { existingId?: string; requestedId?: string }) => {
-        return opts.existingId ?? opts.requestedId ?? "id";
+      const addPanel = vi.fn(async (opts: Record<string, unknown>) => {
+        return (
+          (opts.existingId as string | undefined) ??
+          (opts.requestedId as string | undefined) ??
+          "id"
+        );
       });
 
       await hydrateAppState({
@@ -2901,8 +2913,12 @@ describe("hydrateAppState", () => {
         capabilityAgentId: "claude",
       });
 
-      const addPanel = vi.fn(async (opts: { existingId?: string; requestedId?: string }) => {
-        return opts.existingId ?? opts.requestedId ?? "id";
+      const addPanel = vi.fn(async (opts: Record<string, unknown>) => {
+        return (
+          (opts.existingId as string | undefined) ??
+          (opts.requestedId as string | undefined) ??
+          "id"
+        );
       });
 
       await hydrateAppState({
@@ -2970,8 +2986,12 @@ describe("hydrateAppState", () => {
         makeBackendAgentEntry({ id: "orphan-agent-1" }),
       ]);
 
-      const addPanel = vi.fn(async (opts: { existingId?: string; requestedId?: string }) => {
-        return opts.existingId ?? opts.requestedId ?? "id";
+      const addPanel = vi.fn(async (opts: Record<string, unknown>) => {
+        return (
+          (opts.existingId as string | undefined) ??
+          (opts.requestedId as string | undefined) ??
+          "id"
+        );
       });
 
       await hydrateAppState({
@@ -3032,8 +3052,12 @@ describe("hydrateAppState", () => {
         capabilityAgentId: "claude",
       });
 
-      const addPanel = vi.fn(async (opts: { existingId?: string; requestedId?: string }) => {
-        return opts.existingId ?? opts.requestedId ?? "id";
+      const addPanel = vi.fn(async (opts: Record<string, unknown>) => {
+        return (
+          (opts.existingId as string | undefined) ??
+          (opts.requestedId as string | undefined) ??
+          "id"
+        );
       });
 
       await hydrateAppState({
