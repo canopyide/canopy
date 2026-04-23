@@ -98,9 +98,9 @@ test.describe.serial("Core: Terminal Identity", () => {
   test("restart preserves capability identity on a full-mode agent panel", async () => {
     const { window } = ctx;
 
-    // Same skip predicate — without Claude there's no full-mode panel to
-    // restart. The test above is the gate that proves the panel exists;
-    // re-check here so this test is independently runnable.
+    // Depends on the cold-launch test above leaving an agent panel in the grid
+    // (serial suite). When Claude isn't on PATH the prior test skipped, so the
+    // capability panel won't be present and we skip too.
     const agentPanel = window.locator(SEL.agent.capabilityPanel("claude")).first();
     if (!(await agentPanel.isVisible({ timeout: T_SHORT }).catch(() => false))) {
       test.skip();

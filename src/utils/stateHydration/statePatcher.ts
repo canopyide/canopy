@@ -172,7 +172,9 @@ export function buildArgsForBackendTerminal(
   projectRoot: string
 ): AddTerminalArgs {
   const cwd = backendTerminal.cwd || projectRoot || "";
-  let agentId = resolveAgentId(backendTerminal.agentId);
+  // Fall back to saved.agentId when the backend record lost it (e.g. PTY-host
+  // restart before persistence flushed) — mirrors buildArgsForReconnectedFallback.
+  let agentId = resolveAgentId(backendTerminal.agentId, saved.agentId);
   agentId = inferAgentIdFromTitle(
     backendTerminal.title,
     backendTerminal.kind,

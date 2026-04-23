@@ -207,6 +207,19 @@ describe("buildArgsForBackendTerminal", () => {
     expect(result.cwd).toBe("/project");
   });
 
+  it("falls back to saved.agentId when backend record lost it", () => {
+    // Mirrors buildArgsForReconnectedFallback's saved-agentId recovery so a
+    // PTY-host restart that wiped backend.agentId doesn't strip the panel's
+    // agent identity if the renderer state still has it.
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", agentId: undefined, capabilityAgentId: "claude" },
+      { id: "t1", location: "grid", agentId: "claude" },
+      "/p"
+    );
+    expect(result.agentId).toBe("claude");
+    expect(result.capabilityAgentId).toBe("claude");
+  });
+
   it("includes dev-preview browser fields", () => {
     const result = buildArgsForBackendTerminal(
       { id: "t1", cwd: "/p", kind: "dev-preview" },
