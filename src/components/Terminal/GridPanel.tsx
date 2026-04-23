@@ -68,6 +68,8 @@ export function gridPanelPropsAreEqual(prev: GridPanelProps, next: GridPanelProp
       a.kind !== b.kind ||
       a.type !== b.type ||
       a.agentId !== b.agentId ||
+      a.detectedAgentId !== b.detectedAgentId ||
+      a.capabilityAgentId !== b.capabilityAgentId ||
       a.cwd !== b.cwd ||
       a.agentState !== b.agentState ||
       a.activityHeadline !== b.activityHeadline ||

@@ -533,13 +533,34 @@ describe("fleetArmingStore", () => {
       expect(isFleetRestartAgentEligible(terminal)).toBe(true);
     });
 
-    it("uses explicit capabilityAgentId when #5804 starts writing it", () => {
+    it("prefers explicit capabilityAgentId over launch-time agentId fallback", () => {
       const terminal = makeAgentTerminal("a", {
         agentId: undefined,
         capabilityAgentId: "codex",
       });
       expect(resolveFleetAgentCapabilityId(terminal)).toBe("codex");
       expect(isAgentFleetActionEligible(terminal)).toBe(true);
+    });
+
+    it("treats observational shells without explicit capabilityAgentId as non-agent-capable when agentId is also unset", () => {
+      // Plain shell where Claude was runtime-detected (e.g., user typed
+      // `claude` in a regular shell), and capability was never sealed at spawn.
+      // `agentId` is undefined here (not yet polluted by the bridge-write
+      // violation in `handleAgentDetection`). Eligibility paths must reject.
+      const observedShell = makeAgentTerminal("a", {
+        agentId: undefined,
+        capabilityAgentId: undefined,
+        detectedAgentId: "claude",
+        everDetectedAgent: true,
+      });
+      expect(observedShell.capabilityAgentId).toBeUndefined();
+      expect(resolveFleetAgentCapabilityId(observedShell)).toBeUndefined();
+      expect(isAgentFleetActionEligible(observedShell)).toBe(false);
+      expect(isFleetWaitingAgentEligible({ ...observedShell, agentState: "waiting" })).toBe(false);
+      expect(isFleetInterruptAgentEligible({ ...observedShell, agentState: "working" })).toBe(
+        false
+      );
+      expect(isFleetRestartAgentEligible(observedShell)).toBe(false);
     });
 
     it("keeps runtime-detected plain shells out of Fleet membership and actions", () => {

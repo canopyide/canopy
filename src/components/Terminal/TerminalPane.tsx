@@ -78,6 +78,14 @@ export interface TerminalPaneProps {
   agentId?: string;
   /** Runtime-detected agent identity (cleared on agent exit). Drives panel chrome (icons, badges). */
   detectedAgentId?: BuiltInAgentId;
+  /**
+   * Sealed-at-spawn capability mode (#5804). Set when the terminal was
+   * cold-launched as a built-in agent; absent on plain shells and on terminals
+   * where an agent was only runtime-detected. Drives session-capability gates
+   * (HybridInputBar, fleet membership) — distinct from `detectedAgentId`,
+   * which only drives chrome.
+   */
+  capabilityAgentId?: BuiltInAgentId;
   agentPresetId?: string;
   presetColor?: string;
   worktreeId?: string;
@@ -121,6 +129,7 @@ function TerminalPaneComponent({
   type,
   agentId,
   detectedAgentId,
+  capabilityAgentId,
   agentPresetId,
   presetColor,
   worktreeId,
@@ -259,10 +268,19 @@ function TerminalPaneComponent({
   }, [isRestartingService]);
   const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
+  // Effective agent identity for chrome (icons, badges, presets) — prefers
+  // runtime-detected over launch-intent so chrome reflects what's actually
+  // running. Distinct from `capabilityAgentId`, which gates session-only
+  // features and never includes runtime-detected agents.
   const effectiveAgentId = (resolveEffectiveAgentId(detectedAgentId, agentId) ??
     (type && isRegisteredAgent(type) ? type : undefined)) as BuiltInAgentId | undefined;
-  const isAgentTerminal = effectiveAgentId !== undefined;
-  const showHybridInputBar = isAgentTerminal && hybridInputEnabled;
+  // HybridInputBar is gated on capability mode (#5804), not on
+  // `effectiveAgentId`. Cold-launched agent terminals get the bar; plain shells
+  // where an agent was merely detected at runtime do not — those terminals lack
+  // the spawn-time env/pool/scrollback shaping the bar's submit semantics
+  // assume. Chrome (icons/badges) still uses `effectiveAgentId` so live
+  // detection drives visual feedback.
+  const showHybridInputBar = capabilityAgentId !== undefined && hybridInputEnabled;
 
   const queueCount = usePanelStore((state) => state.commandQueueCountById[id] ?? 0);
 
@@ -585,7 +603,7 @@ function TerminalPaneComponent({
       if (!xtermElement) return;
 
       const focusTarget = getTerminalFocusTarget({
-        isAgentTerminal,
+        hasFullAgentCapability: capabilityAgentId !== undefined,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -615,7 +633,7 @@ function TerminalPaneComponent({
     [
       id,
       location,
-      isAgentTerminal,
+      capabilityAgentId,
       hybridInputEnabled,
       hybridInputAutoFocus,
       isBackendDisconnected,
@@ -649,7 +667,7 @@ function TerminalPaneComponent({
     if (!isFocused) return;
 
     const focusTarget = getTerminalFocusTarget({
-      isAgentTerminal,
+      hasFullAgentCapability: capabilityAgentId !== undefined,
       isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
       hybridInputEnabled,
       hybridInputAutoFocus,
@@ -673,7 +691,7 @@ function TerminalPaneComponent({
   }, [
     id,
     isFocused,
-    isAgentTerminal,
+    capabilityAgentId,
     hybridInputEnabled,
     hybridInputAutoFocus,
     isBackendDisconnected,
@@ -685,7 +703,7 @@ function TerminalPaneComponent({
     if (!showHybridInputBar) return;
     return registerPanelFocusHandler(id, () => {
       const focusTarget = getTerminalFocusTarget({
-        isAgentTerminal,
+        hasFullAgentCapability: capabilityAgentId !== undefined,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -696,7 +714,7 @@ function TerminalPaneComponent({
   }, [
     id,
     showHybridInputBar,
-    isAgentTerminal,
+    capabilityAgentId,
     isBackendDisconnected,
     isBackendRecovering,
     isInputLocked,

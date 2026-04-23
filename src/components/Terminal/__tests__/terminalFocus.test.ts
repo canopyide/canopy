@@ -5,7 +5,7 @@ describe("getTerminalFocusTarget", () => {
   it("focuses hybrid input for enabled agent terminals", () => {
     expect(
       getTerminalFocusTarget({
-        isAgentTerminal: true,
+        hasFullAgentCapability: true,
         isInputDisabled: false,
         hybridInputEnabled: true,
         hybridInputAutoFocus: true,
@@ -16,7 +16,7 @@ describe("getTerminalFocusTarget", () => {
   it("falls back to xterm when input is disabled", () => {
     expect(
       getTerminalFocusTarget({
-        isAgentTerminal: true,
+        hasFullAgentCapability: true,
         isInputDisabled: true,
         hybridInputEnabled: true,
         hybridInputAutoFocus: true,
@@ -27,7 +27,23 @@ describe("getTerminalFocusTarget", () => {
   it("focuses xterm for non-agent terminals", () => {
     expect(
       getTerminalFocusTarget({
-        isAgentTerminal: false,
+        hasFullAgentCapability: false,
+        isInputDisabled: false,
+        hybridInputEnabled: true,
+        hybridInputAutoFocus: true,
+      })
+    ).toBe("xterm");
+  });
+
+  // #5804 regression: an observational shell (plain terminal where an agent
+  // was runtime-detected) must NOT focus the hybrid input — the bar isn't
+  // rendered for it, so suppressing xterm focus would swallow clicks with no
+  // effect. Capability mode is sealed at spawn; runtime detection can flip
+  // chrome-facing fields (icon, badge) but not capability.
+  it("focuses xterm for observational shells with no full capability", () => {
+    expect(
+      getTerminalFocusTarget({
+        hasFullAgentCapability: false,
         isInputDisabled: false,
         hybridInputEnabled: true,
         hybridInputAutoFocus: true,
@@ -38,7 +54,7 @@ describe("getTerminalFocusTarget", () => {
   it("focuses xterm when hybrid input is disabled", () => {
     expect(
       getTerminalFocusTarget({
-        isAgentTerminal: true,
+        hasFullAgentCapability: true,
         isInputDisabled: false,
         hybridInputEnabled: false,
         hybridInputAutoFocus: true,
@@ -49,7 +65,7 @@ describe("getTerminalFocusTarget", () => {
   it("focuses xterm when hybrid input auto-focus is disabled", () => {
     expect(
       getTerminalFocusTarget({
-        isAgentTerminal: true,
+        hasFullAgentCapability: true,
         isInputDisabled: false,
         hybridInputEnabled: true,
         hybridInputAutoFocus: false,
