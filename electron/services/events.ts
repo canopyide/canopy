@@ -536,9 +536,11 @@ export type DaintreeEventMap = {
   };
 
   /**
-   * Emitted when an agent CLI exits from a terminal.
-   * This channel is reserved for subcommand/demotion exits where the shell PTY
-   * survives. PTY-level exits use `agent:completed`. #5807
+   * Emitted when an agent CLI (or a live-detected process icon) exits from
+   * a terminal. PTY-level exits use the separate `agent:completed` channel —
+   * this channel only fires while the shell PTY is still alive.
+   * `exitKind: "subcommand"` distinguishes an actual agent exit from a plain
+   * process-icon clearing; see `AgentExitedPayload` for full semantics. #5807
    */
   "agent:exited": {
     terminalId: string;
