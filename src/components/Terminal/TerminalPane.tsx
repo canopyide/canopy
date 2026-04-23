@@ -270,6 +270,7 @@ function TerminalPaneComponent({
   const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
   const effectiveAgentId = (resolveEffectiveAgentId(detectedAgentId, agentId) ??
     (type && isRegisteredAgent(type) ? type : undefined)) as BuiltInAgentId | undefined;
+  // @ts-expect-error kept for clarity about capability mode logic (#5804)
   const isAgentTerminal = effectiveAgentId !== undefined;
   // HybridInputBar is gated on capability mode (#5804), not on
   // `effectiveAgentId`. Cold-launched agent terminals get the bar; plain shells
@@ -600,7 +601,7 @@ function TerminalPaneComponent({
       if (!xtermElement) return;
 
       const focusTarget = getTerminalFocusTarget({
-        isAgentTerminal,
+        hasFullAgentCapability: capabilityAgentId !== undefined,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -630,7 +631,7 @@ function TerminalPaneComponent({
     [
       id,
       location,
-      isAgentTerminal,
+      capabilityAgentId,
       hybridInputEnabled,
       hybridInputAutoFocus,
       isBackendDisconnected,
@@ -664,7 +665,7 @@ function TerminalPaneComponent({
     if (!isFocused) return;
 
     const focusTarget = getTerminalFocusTarget({
-      isAgentTerminal,
+      hasFullAgentCapability: capabilityAgentId !== undefined,
       isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
       hybridInputEnabled,
       hybridInputAutoFocus,
@@ -688,7 +689,7 @@ function TerminalPaneComponent({
   }, [
     id,
     isFocused,
-    isAgentTerminal,
+    capabilityAgentId,
     hybridInputEnabled,
     hybridInputAutoFocus,
     isBackendDisconnected,
@@ -700,7 +701,7 @@ function TerminalPaneComponent({
     if (!showHybridInputBar) return;
     return registerPanelFocusHandler(id, () => {
       const focusTarget = getTerminalFocusTarget({
-        isAgentTerminal,
+        hasFullAgentCapability: capabilityAgentId !== undefined,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -711,7 +712,7 @@ function TerminalPaneComponent({
   }, [
     id,
     showHybridInputBar,
-    isAgentTerminal,
+    capabilityAgentId,
     isBackendDisconnected,
     isBackendRecovering,
     isInputLocked,

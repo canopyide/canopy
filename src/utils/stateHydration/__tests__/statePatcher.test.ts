@@ -853,6 +853,64 @@ describe("detectedAgentId propagation", () => {
   });
 });
 
+// #5804: capability mode is sealed at spawn time. Hydration must forward the
+// backend's value verbatim and never re-derive — the `handleAgentDetection`
+// bridge-write violation can pollute `agentId` and the legacy `type` field on
+// observed shells, and re-deriving from that would mint false `full` capability.
+describe("capabilityAgentId propagation", () => {
+  it("buildArgsForBackendTerminal forwards capabilityAgentId", () => {
+    const result = buildArgsForBackendTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal", capabilityAgentId: "claude" },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.capabilityAgentId).toBe("claude");
+  });
+
+  it("buildArgsForReconnectedFallback forwards capabilityAgentId", () => {
+    const result = buildArgsForReconnectedFallback(
+      { id: "t1", cwd: "/p", capabilityAgentId: "gemini" },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    expect(result.capabilityAgentId).toBe("gemini");
+  });
+
+  it("buildArgsForOrphanedTerminal forwards capabilityAgentId", () => {
+    const result = buildArgsForOrphanedTerminal(
+      { id: "t1", cwd: "/p", kind: "terminal", capabilityAgentId: "codex" },
+      "/p"
+    );
+    expect(result.capabilityAgentId).toBe("codex");
+  });
+
+  // Critical regression: an observed shell where `handleAgentDetection` has
+  // bridge-written `agentId="claude"` and `type="claude"` on the backend must
+  // still arrive in the renderer with `capabilityAgentId: undefined`. The
+  // hydration builders must not synthesize capability from the polluted fields.
+  it("buildArgsForBackendTerminal leaves capabilityAgentId undefined for an observed shell with bridge-written agentId", () => {
+    const result = buildArgsForBackendTerminal(
+      {
+        id: "t1",
+        cwd: "/p",
+        kind: "terminal",
+        // Polluted by the bridge-write violation in handleAgentDetection:
+        agentId: "claude",
+        type: "claude",
+        detectedAgentId: "claude",
+        everDetectedAgent: true,
+        // Backend correctly omits capabilityAgentId — it was never sealed.
+      },
+      { id: "t1", location: "grid" },
+      "/p"
+    );
+    // agentId may be present (sealed-or-polluted, not our concern here);
+    // capabilityAgentId must remain undefined so the renderer can correctly
+    // reject this terminal from agent-only feature gates.
+    expect(result.capabilityAgentId).toBeUndefined();
+  });
+});
+
 describe("buildArgsForNonPtyRecreation", () => {
   it("builds browser panel args", () => {
     const result = buildArgsForNonPtyRecreation(

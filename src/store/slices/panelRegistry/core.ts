@@ -411,14 +411,22 @@ export const createCorePanelActions = (
       everDetectedAgent: options.everDetectedAgent,
       detectedAgentId: options.detectedAgentId,
       detectedProcessId: options.detectedProcessId,
-      // Capability mode (#5804). For reconnects/hydration the value comes from
-      // the backend payload via `options.capabilityAgentId`. For fresh agent
-      // spawns, mirror the backend's spawn-time derivation so the renderer can
-      // gate features (HybridInputBar, fleet membership) immediately, before
-      // the post-spawn snapshot lands. The backend writes the same value into
-      // its `TerminalPublicState` from the same launch intent.
-      capabilityAgentId:
-        options.capabilityAgentId ?? (isAgent && isBuiltInAgentId(agentId) ? agentId : undefined),
+      // Capability mode (#5804). On reconnect/hydration, trust the backend
+      // payload directly — it's the source of truth for sealed-at-spawn
+      // identity. We must NOT re-derive from `agentId` here, because the
+      // `handleAgentDetection` bridge-write violation can rewrite `agentId`
+      // (and the legacy `type` field carried in IPC snapshots) to a runtime-
+      // detected agent on observed shells; deriving from that would mint
+      // false `full` capability and expose features (HybridInputBar, fleet
+      // membership) to terminals that were never cold-launched as the agent.
+      // For fresh spawns (no `existingId`), mirror the backend's spawn-time
+      // derivation so the renderer can gate features immediately, before the
+      // post-spawn snapshot lands; the backend writes the same value from the
+      // same launch intent.
+      capabilityAgentId: isReconnect
+        ? options.capabilityAgentId
+        : (options.capabilityAgentId ??
+          (isAgent && isBuiltInAgentId(agentId) ? agentId : undefined)),
       agentPresetId: options.agentPresetId,
       agentPresetColor: options.agentPresetColor,
       originalPresetId: options.originalPresetId ?? options.agentPresetId,

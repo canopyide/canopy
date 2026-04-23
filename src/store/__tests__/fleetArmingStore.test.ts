@@ -542,22 +542,25 @@ describe("fleetArmingStore", () => {
       expect(isAgentFleetActionEligible(terminal)).toBe(true);
     });
 
-    it("treats observational shells with no capabilityAgentId as non-agent-capable", () => {
-      // Plain shell where Claude was runtime-detected (e.g., user typed `claude`
-      // in a regular shell). The bridge-write violation in `handleAgentDetection`
-      // can promote `agentId` to "claude" — but capability mode is sealed at
-      // spawn time and remains undefined. Capability gate must follow that.
+    it("treats observational shells without explicit capabilityAgentId as non-agent-capable when agentId is also unset", () => {
+      // Plain shell where Claude was runtime-detected (e.g., user typed
+      // `claude` in a regular shell), and capability was never sealed at spawn.
+      // `agentId` is undefined here (not yet polluted by the bridge-write
+      // violation in `handleAgentDetection`). Eligibility paths must reject.
       const observedShell = makeAgentTerminal("a", {
-        agentId: "claude",
+        agentId: undefined,
         capabilityAgentId: undefined,
         detectedAgentId: "claude",
         everDetectedAgent: true,
       });
-      // Fallback path still grants agent capability (compat for older payloads),
-      // but a future tightening that drops the agentId fallback would expose
-      // observational shells. The capabilityAgentId field is the load-bearing
-      // signal once #5804 lands across the IPC pipeline.
       expect(observedShell.capabilityAgentId).toBeUndefined();
+      expect(resolveFleetAgentCapabilityId(observedShell)).toBeUndefined();
+      expect(isAgentFleetActionEligible(observedShell)).toBe(false);
+      expect(isFleetWaitingAgentEligible({ ...observedShell, agentState: "waiting" })).toBe(false);
+      expect(isFleetInterruptAgentEligible({ ...observedShell, agentState: "working" })).toBe(
+        false
+      );
+      expect(isFleetRestartAgentEligible(observedShell)).toBe(false);
     });
 
     it("keeps runtime-detected plain shells out of Fleet membership and actions", () => {

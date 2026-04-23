@@ -1,13 +1,25 @@
 export type TerminalFocusTarget = "hybridInput" | "xterm";
 
+/**
+ * Resolve which child component should receive focus when the terminal pane
+ * gains focus.
+ *
+ * `hasFullAgentCapability` must be the capability-mode predicate (#5804) —
+ * `capabilityAgentId !== undefined` — NOT the broader runtime-detect
+ * predicate. The HybridInputBar only renders for cold-launched built-in
+ * agents, so observational shells (plain terminals where an agent was
+ * runtime-detected) must fall through to xterm. Otherwise the unfocused-click
+ * suppression at the call site would swallow clicks with no visible effect:
+ * the bar isn't there to receive focus, and xterm focus is suppressed.
+ */
 export function getTerminalFocusTarget(options: {
-  isAgentTerminal: boolean;
+  hasFullAgentCapability: boolean;
   isInputDisabled: boolean;
   hybridInputEnabled: boolean;
   hybridInputAutoFocus: boolean;
 }): TerminalFocusTarget {
   if (
-    options.isAgentTerminal &&
+    options.hasFullAgentCapability &&
     !options.isInputDisabled &&
     options.hybridInputEnabled &&
     options.hybridInputAutoFocus

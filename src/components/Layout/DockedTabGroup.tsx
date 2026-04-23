@@ -30,7 +30,6 @@ import { getMergedPresets } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
-import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
@@ -510,7 +509,11 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const focusTarget = getTerminalFocusTarget({
-            isAgentTerminal: isRuntimeAgentTerminal(activePanel),
+            // #5804: capability mode (sealed at spawn) — not the broader
+            // runtime-detect predicate. The HybridInputBar only renders for
+            // cold-launched built-in agents, so observational shells must
+            // fall through to xterm focus to keep clicks responsive.
+            hasFullAgentCapability: activePanel.capabilityAgentId !== undefined,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
             hybridInputEnabled,
             hybridInputAutoFocus,

@@ -518,6 +518,7 @@ export class TerminalProcess {
       detectedAgentType: t.detectedAgentType,
       detectedProcessIconId: t.detectedProcessIconId,
       everDetectedAgent: t.everDetectedAgent,
+      capabilityAgentId: t.capabilityAgentId,
       restartCount: t.restartCount,
       activityTier: this._activityTier,
       hasPty,

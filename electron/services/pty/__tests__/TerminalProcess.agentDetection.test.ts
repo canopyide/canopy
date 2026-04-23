@@ -886,4 +886,16 @@ describe("TerminalProcess — capabilityAgentId sealed at spawn (#5804)", () => 
       terminal.dispose();
     }
   });
+
+  it("getPublicState() emits capabilityAgentId — IPC-safe consumers must see it", () => {
+    const agent = createAgentTerminal();
+    const plain = createPlainTerminal("t-cap-public-plain");
+    try {
+      expect(agent.getPublicState().capabilityAgentId).toBe("claude");
+      expect(plain.getPublicState().capabilityAgentId).toBeUndefined();
+    } finally {
+      agent.dispose();
+      plain.dispose();
+    }
+  });
 });
