@@ -537,11 +537,14 @@ export type DaintreeEventMap = {
 
   /**
    * Emitted when an agent CLI exits from a terminal.
+   * This channel is reserved for subcommand/demotion exits where the shell PTY
+   * survives. PTY-level exits use `agent:completed`. #5807
    */
   "agent:exited": {
     terminalId: string;
     agentType?: string;
     timestamp: number;
+    exitKind?: "subcommand";
   };
 
   /**

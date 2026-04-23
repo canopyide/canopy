@@ -82,6 +82,15 @@ export interface AgentExitedPayload {
   agentType?: AgentId;
   /** Timestamp when exited */
   timestamp: number;
+  /**
+   * Identifies the kind of exit. `"subcommand"` means the detected agent
+   * process stopped while the shell PTY is still alive (user quit to shell,
+   * process-tree demotion). PTY-level exits use the separate `agent:completed`
+   * channel and never emit `agent:exited`, so in practice this is always
+   * `"subcommand"` when set. The field is optional for backward compatibility
+   * with older producers. #5807
+   */
+  exitKind?: "subcommand";
 }
 
 /**

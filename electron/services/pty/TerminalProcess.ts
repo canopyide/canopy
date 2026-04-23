@@ -1796,6 +1796,7 @@ export class TerminalProcess {
           terminalId: this.id,
           agentType: previousType,
           timestamp: Date.now(),
+          exitKind: "subcommand",
         });
         justClearedDetection = true;
       }
@@ -1833,6 +1834,7 @@ export class TerminalProcess {
         terminalId: this.id,
         agentType: previousType,
         timestamp: Date.now(),
+        exitKind: "subcommand",
       });
     }
 
