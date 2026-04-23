@@ -14,7 +14,6 @@
  */
 import type { EventEmitter } from "events";
 import { stripAnsi } from "../../../services/pty/AgentPatternDetector.js";
-import { DEFAULT_PROMPT_PATTERNS } from "../../../services/pty/PromptDetector.js";
 
 type PtyClientLike = Pick<EventEmitter, "on" | "off"> & {
   hasTerminal(id: string): boolean;
@@ -30,13 +29,27 @@ export interface WaitForShellReadyOptions {
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_QUIESCENCE_MS = 200;
 
+// End-anchored patterns: a real prompt places the cursor immediately after the
+// prompt character. This is stricter than a start-anchored match, so stray RC
+// lines like "# sourcing plugin" won't trip detection — the `#` isn't at the
+// end of the line. Covers plain prompts ($ # % > ❯), `user@host dir $`-style
+// bash/zsh, and oh-my-zsh arrow themes.
+const PROMPT_PATTERNS = [
+  /[>›❯⟩$#%]\s*$/,
+  /[A-Za-z0-9_.-]+@[\w.-]+(?:[^\r\n]*)?\s*[#$%>]\s*$/,
+  /[➜➤➟➔❯›]\s+[^\r\n]*$/,
+];
+
 function hasPromptCharacter(chunk: string): boolean {
   const clean = stripAnsi(chunk);
   if (clean.length === 0) return false;
-  for (const pattern of DEFAULT_PROMPT_PATTERNS) {
-    if (pattern.test(clean)) return true;
-    const lastLine = clean.slice(clean.lastIndexOf("\n") + 1);
-    if (lastLine !== clean && pattern.test(lastLine)) return true;
+  // A single chunk may contain multiple lines separated by \n, \r, or \r\n;
+  // we care about the last visible line because that's where the cursor sits.
+  const lastBreak = Math.max(clean.lastIndexOf("\n"), clean.lastIndexOf("\r"));
+  const lastLine = lastBreak >= 0 ? clean.slice(lastBreak + 1) : clean;
+  if (lastLine.length === 0) return false;
+  for (const pattern of PROMPT_PATTERNS) {
+    if (pattern.test(lastLine)) return true;
   }
   return false;
 }

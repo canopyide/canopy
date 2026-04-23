@@ -146,6 +146,63 @@ describe("waitForShellReady", () => {
     expect(resolved).toHaveBeenCalledTimes(1);
   });
 
+  it("detects prompts separated by a carriage return only (no newline)", async () => {
+    const resolved = vi.fn();
+    waitForShellReady(ptyClient, "t1").then(resolved);
+
+    ptyClient.emit("data", "t1", "checking env...\r$ ");
+    await flush(200);
+    expect(resolved).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches common bash-style `user@host dir $` prompts", async () => {
+    const resolved = vi.fn();
+    waitForShellReady(ptyClient, "t1").then(resolved);
+
+    ptyClient.emit("data", "t1", "\r\ngpriday@studio ~/project $ ");
+    await flush(200);
+    expect(resolved).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches oh-my-zsh arrow-theme prompts", async () => {
+    const resolved = vi.fn();
+    waitForShellReady(ptyClient, "t1").then(resolved);
+
+    ptyClient.emit("data", "t1", "\r\n➜  project git:(main) ");
+    await flush(200);
+    expect(resolved).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not false-positive on RC output that contains a prompt character mid-line", async () => {
+    const resolved = vi.fn();
+    waitForShellReady(ptyClient, "t1", { timeoutMs: 2000 }).then(resolved);
+
+    ptyClient.emit("data", "t1", "# loading plugin foo\r\n");
+    ptyClient.emit("data", "t1", "error: $VAR not set\r\n");
+    await flush(500);
+    expect(resolved).not.toHaveBeenCalled();
+
+    // Real prompt arrives after the noise — that's what resolves.
+    ptyClient.emit("data", "t1", "$ ");
+    await flush(200);
+    expect(resolved).toHaveBeenCalledTimes(1);
+  });
+
+  it("short-circuits via exit even when quiescence timer is running", async () => {
+    const resolved = vi.fn();
+    waitForShellReady(ptyClient, "t1").then(resolved);
+
+    ptyClient.emit("data", "t1", "$ ");
+    await flush(100); // inside 200ms quiescence
+    expect(resolved).not.toHaveBeenCalled();
+
+    ptyClient.emit("exit", "t1", 0);
+    await flush(0);
+    expect(resolved).toHaveBeenCalledTimes(1);
+    expect(ptyClient.listenerCount("data")).toBe(0);
+    expect(ptyClient.listenerCount("exit")).toBe(0);
+  });
+
   it("does not cross-inject between concurrent terminals", async () => {
     const r1 = vi.fn();
     const r2 = vi.fn();
