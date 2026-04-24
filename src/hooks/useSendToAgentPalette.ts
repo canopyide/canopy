@@ -8,18 +8,14 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient } from "@/clients";
 import { formatWithBracketedPaste } from "@shared/utils/terminalInputProtocol";
 import { usePaletteStore } from "@/store/paletteStore";
-import { getAgentConfig } from "@/config/agents";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
+import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
 
 export interface SendToAgentItem {
   id: string;
   title: string;
   subtitle?: string;
   terminalKind?: TerminalInstance["kind"];
-  launchAgentId?: TerminalInstance["launchAgentId"];
-  detectedAgentId?: TerminalInstance["detectedAgentId"];
-  everDetectedAgent?: TerminalInstance["everDetectedAgent"];
-  detectedProcessId?: TerminalInstance["detectedProcessId"];
+  chrome: TerminalChromeDescriptor;
   isInputLocked?: boolean;
 }
 
@@ -99,19 +95,15 @@ export function useSendToAgentPalette() {
       if (t.kind && !panelKindHasPty(t.kind)) continue;
       if (t.hasPty === false) continue;
 
-      const effectiveAgentId = resolveChromeAgentId(t);
-      const agentConfig = effectiveAgentId ? getAgentConfig(effectiveAgentId) : null;
-      const subtitle = agentConfig ? agentConfig.name : "Terminal";
+      const chrome = deriveTerminalChrome(t);
+      const subtitle = chrome.label;
 
       result.push({
         id: t.id,
         title: t.title,
         subtitle,
         terminalKind: t.kind,
-        launchAgentId: t.launchAgentId,
-        detectedAgentId: t.detectedAgentId,
-        everDetectedAgent: t.everDetectedAgent,
-        detectedProcessId: t.detectedProcessId,
+        chrome,
         isInputLocked: t.isInputLocked,
       });
     }

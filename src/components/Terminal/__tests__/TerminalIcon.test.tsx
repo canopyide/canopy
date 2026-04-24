@@ -2,45 +2,73 @@
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import { TerminalIcon } from "../TerminalIcon";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 function renderDefaultTerminalIcon(): string {
-  return render(<TerminalIcon kind="terminal" />).container.innerHTML;
+  return render(<TerminalIcon kind="terminal" chrome={deriveTerminalChrome()} />).container
+    .innerHTML;
 }
 
 describe("TerminalIcon", () => {
+  it("marks the rendered icon identity for automated chrome assertions", () => {
+    const { container, rerender } = render(
+      <TerminalIcon kind="terminal" chrome={deriveTerminalChrome({ detectedAgentId: "claude" })} />
+    );
+
+    expect(
+      container.querySelector("[data-terminal-icon-id]")?.getAttribute("data-terminal-icon-id")
+    ).toBe("claude");
+
+    rerender(<TerminalIcon kind="terminal" chrome={deriveTerminalChrome()} />);
+
+    expect(
+      container.querySelector("[data-terminal-icon-id]")?.getAttribute("data-terminal-icon-id")
+    ).toBe("terminal");
+  });
+
   it("renders AI process icons for detected CLI processes in terminal panels", () => {
     const fallback = renderDefaultTerminalIcon();
-    const { container } = render(<TerminalIcon kind="terminal" detectedProcessId="claude" />);
+    const { container } = render(
+      <TerminalIcon
+        kind="terminal"
+        chrome={deriveTerminalChrome({ detectedProcessId: "claude" })}
+      />
+    );
 
     expect(container.innerHTML).not.toBe(fallback);
-    expect(container.innerHTML).toContain("currentColor");
   });
 
   it("renders package-manager process icons for detected CLI processes", () => {
     const fallback = renderDefaultTerminalIcon();
-    const { container } = render(<TerminalIcon kind="terminal" detectedProcessId="npm" />);
+    const { container } = render(
+      <TerminalIcon kind="terminal" chrome={deriveTerminalChrome({ detectedProcessId: "npm" })} />
+    );
 
     expect(container.innerHTML).not.toBe(fallback);
   });
 
   it("falls back to terminal icon when detected process is unknown", () => {
     const fallback = renderDefaultTerminalIcon();
-    const { container } = render(<TerminalIcon kind="terminal" detectedProcessId="unknown-tool" />);
+    const { container } = render(
+      <TerminalIcon
+        kind="terminal"
+        chrome={deriveTerminalChrome({ detectedProcessId: "unknown-tool" })}
+      />
+    );
 
     expect(container.innerHTML).toBe(fallback);
   });
 
   it("prefers explicit agent icon over detected process icon", () => {
-    const npmDetected = render(<TerminalIcon kind="terminal" detectedProcessId="npm" />).container
-      .innerHTML;
+    const npmDetected = render(
+      <TerminalIcon kind="terminal" chrome={deriveTerminalChrome({ detectedProcessId: "npm" })} />
+    ).container.innerHTML;
 
-    // detectedAgentId is required for agent chrome; agentId (launch hint) alone is inert.
+    // Agent runtime identity wins over process identity in the descriptor.
     const explicitAgent = render(
       <TerminalIcon
         kind="agent"
-        agentId="claude"
-        detectedAgentId="claude"
-        detectedProcessId="npm"
+        chrome={deriveTerminalChrome({ detectedAgentId: "claude", detectedProcessId: "npm" })}
       />
     ).container.innerHTML;
 
@@ -51,28 +79,27 @@ describe("TerminalIcon", () => {
   });
 
   it("prefers detectedAgentId over launch-time agentId", () => {
-    // Both renders supply detectedAgentId so chrome lights up; the one with
-    // detectedAgentId="gemini" must win over agentId="claude".
+    // Runtime descriptor mirrors detectedAgentId; launch hints are not part of chrome.
     const claudeLaunch = render(
-      <TerminalIcon kind="agent" agentId="claude" detectedAgentId="claude" />
+      <TerminalIcon kind="agent" chrome={deriveTerminalChrome({ detectedAgentId: "claude" })} />
     ).container.innerHTML;
     const geminiDetected = render(
-      <TerminalIcon kind="agent" agentId="claude" detectedAgentId="gemini" />
+      <TerminalIcon kind="agent" chrome={deriveTerminalChrome({ detectedAgentId: "gemini" })} />
     ).container.innerHTML;
     const geminiOnly = render(
-      <TerminalIcon kind="agent" agentId="gemini" detectedAgentId="gemini" />
+      <TerminalIcon kind="agent" chrome={deriveTerminalChrome({ detectedAgentId: "gemini" })} />
     ).container.innerHTML;
 
     expect(geminiDetected).not.toBe(claudeLaunch);
     expect(geminiDetected).toBe(geminiOnly);
   });
 
-  it("falls back to agentId when detectedAgentId is undefined", () => {
-    const launchOnly = render(<TerminalIcon kind="agent" agentId="claude" />).container.innerHTML;
-    const withUndefinedDetected = render(
-      <TerminalIcon kind="agent" agentId="claude" detectedAgentId={undefined} />
+  it("does not use launch-time agent identity as chrome fallback", () => {
+    const launchOnly = render(
+      <TerminalIcon kind="agent" chrome={deriveTerminalChrome({ detectedAgentId: undefined })} />
     ).container.innerHTML;
+    const generic = renderDefaultTerminalIcon();
 
-    expect(withUndefinedDetected).toBe(launchOnly);
+    expect(launchOnly).toBe(generic);
   });
 });

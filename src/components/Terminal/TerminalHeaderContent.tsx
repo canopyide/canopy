@@ -129,7 +129,8 @@ function TerminalHeaderContentComponent({
 
   // Show command pill only for plain terminals (not agent terminals)
   const isPlainTerminal = kind == null || kind === "terminal";
-  const showCommandPill = isPlainTerminal && activityStatus === "working" && !!lastCommand;
+  const showCommandPill =
+    isPlainTerminal && !agentState && activityStatus === "working" && !!lastCommand;
 
   const renderAgentStateChip = () => {
     if (!agentState || agentState === "idle") {

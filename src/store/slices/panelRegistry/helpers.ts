@@ -4,7 +4,7 @@ import { getDefaultPanelTitle } from "@shared/config/panelKindRegistry";
 import { AGENT_REGISTRY } from "@shared/config/agentRegistry";
 import { isBuiltInAgentId } from "@shared/config/agentIds";
 import { ABSOLUTE_MAX_GRID_TERMINALS } from "@/lib/terminalLayout";
-import { resolveChromeAgentId, type ChromeIdentityInput } from "@/utils/agentIdentity";
+import { deriveTerminalChrome, type TerminalChromeInput } from "@/utils/terminalChrome";
 
 // Re-export for backward compatibility
 export const MAX_GRID_TERMINALS = ABSOLUTE_MAX_GRID_TERMINALS;
@@ -41,6 +41,11 @@ export const deriveRuntimeStatus = (
   return "running";
 };
 
+interface DefaultTitleIdentity extends TerminalChromeInput {
+  launchAgentId?: string;
+  everDetectedAgent?: boolean;
+}
+
 /**
  * Compute the default title for a panel given its current chrome identity.
  * Returns the agent's display name while an agent is live/expected, and falls
@@ -51,11 +56,18 @@ export const deriveRuntimeStatus = (
  */
 export function getDefaultTitle(
   kind: PanelKind | undefined,
-  identity?: ChromeIdentityInput
+  identity?: DefaultTitleIdentity
 ): string {
-  const chromeAgentId = resolveChromeAgentId(identity);
+  const chromeAgentId = deriveTerminalChrome({ kind, ...identity }).agentId;
   if (chromeAgentId && isBuiltInAgentId(chromeAgentId)) {
     return AGENT_REGISTRY[chromeAgentId]?.name ?? chromeAgentId;
+  }
+  if (
+    identity?.launchAgentId &&
+    identity.everDetectedAgent !== true &&
+    isBuiltInAgentId(identity.launchAgentId)
+  ) {
+    return AGENT_REGISTRY[identity.launchAgentId]?.name ?? identity.launchAgentId;
   }
   return getDefaultPanelTitle(kind ?? "terminal");
 }

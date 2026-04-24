@@ -3,6 +3,7 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { TabButton } from "../TabButton";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 vi.mock("react-dom", async () => {
   const actual = await vi.importActual<typeof import("react-dom")>("react-dom");
@@ -47,7 +48,7 @@ const defaultProps = {
   title: "Test Agent",
   kind: "terminal" as const,
   type: "claude" as const,
-  agentId: "claude",
+  chrome: deriveTerminalChrome(),
   isActive: true,
   onClick: vi.fn(),
   onClose: vi.fn(),
@@ -126,9 +127,7 @@ describe("TabButton", () => {
       const { container } = render(
         <TabButton
           {...defaultProps}
-          agentId={undefined}
-          detectedAgentId="claude"
-          detectedProcessId="claude"
+          chrome={deriveTerminalChrome({ detectedAgentId: "claude", detectedProcessId: "claude" })}
         />
       );
       // The agent config's Icon component renders. Shorthand: assert the icon
@@ -142,14 +141,7 @@ describe("TabButton", () => {
       // Detection-only rule: no detection → no agent chrome, even if
       // launchAgentId (aka `agentId` prop) says "claude". TerminalIcon should
       // fall through to the plain SquareTerminal glyph.
-      const { container } = render(
-        <TabButton
-          {...defaultProps}
-          agentId="claude"
-          detectedAgentId={undefined}
-          detectedProcessId={undefined}
-        />
-      );
+      const { container } = render(<TabButton {...defaultProps} chrome={deriveTerminalChrome()} />);
       // Lucide's SquareTerminal renders an <svg>; that's what we expect here.
       const svgs = container.querySelectorAll("svg");
       expect(svgs.length).toBeGreaterThan(0);
@@ -157,21 +149,14 @@ describe("TabButton", () => {
 
     it("switches icon when detectedAgentId changes from undefined to 'claude' (promote)", () => {
       const { container, rerender } = render(
-        <TabButton
-          {...defaultProps}
-          agentId={undefined}
-          detectedAgentId={undefined}
-          detectedProcessId={undefined}
-        />
+        <TabButton {...defaultProps} chrome={deriveTerminalChrome()} />
       );
       const before = container.innerHTML;
 
       rerender(
         <TabButton
           {...defaultProps}
-          agentId={undefined}
-          detectedAgentId="claude"
-          detectedProcessId="claude"
+          chrome={deriveTerminalChrome({ detectedAgentId: "claude", detectedProcessId: "claude" })}
         />
       );
       const after = container.innerHTML;
@@ -185,21 +170,12 @@ describe("TabButton", () => {
       const { container, rerender } = render(
         <TabButton
           {...defaultProps}
-          agentId="claude"
-          detectedAgentId="claude"
-          detectedProcessId="claude"
+          chrome={deriveTerminalChrome({ detectedAgentId: "claude", detectedProcessId: "claude" })}
         />
       );
       const before = container.innerHTML;
 
-      rerender(
-        <TabButton
-          {...defaultProps}
-          agentId="claude"
-          detectedAgentId={undefined}
-          detectedProcessId={undefined}
-        />
-      );
+      rerender(<TabButton {...defaultProps} chrome={deriveTerminalChrome()} />);
       const after = container.innerHTML;
 
       expect(before).not.toBe(after);

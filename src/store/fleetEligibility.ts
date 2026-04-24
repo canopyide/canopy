@@ -1,5 +1,6 @@
 import type { BuiltInAgentId } from "@shared/config/agentIds";
 import type { TerminalInstance } from "@shared/types";
+import { getBuiltInRuntimeAgentId } from "@/utils/terminalType";
 
 /**
  * Low-level liveness predicate: the terminal has a writable PTY and is not in
@@ -27,7 +28,7 @@ export function isTerminalFleetEligible(t: TerminalInstance | undefined): t is T
 export function resolveFleetAgentCapabilityId(
   t: TerminalInstance | undefined
 ): BuiltInAgentId | undefined {
-  return t?.detectedAgentId;
+  return getBuiltInRuntimeAgentId(t);
 }
 
 export function isAgentFleetActionEligible(t: TerminalInstance | undefined): t is TerminalInstance {

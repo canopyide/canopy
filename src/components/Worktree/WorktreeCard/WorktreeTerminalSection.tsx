@@ -7,7 +7,7 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { cn } from "@/lib/utils";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
 import { getAgentConfig } from "@/config/agents";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import {
   STATE_LABELS,
   STATE_PRIORITY,
@@ -74,6 +74,8 @@ interface TerminalRowProps {
 function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
   const isArmed = useFleetArmingStore((s) => s.armedIds.has(term.id));
   const armBadge = useFleetArmingStore((s) => s.armOrderById[term.id]);
+  const chrome = deriveTerminalChrome(term);
+  const agentState = chrome.isAgent ? term.agentState : undefined;
   // Primary ("last armed") gets a solid accent ring — it's the terminal that
   // will receive keyboard focus when fleet scope exits. Non-primary armed
   // peers get a dashed ring so the distinction is visible at a glance.
@@ -82,6 +84,9 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
   return (
     <div
       data-terminal-id={term.id}
+      data-terminal-runtime-kind={chrome.runtimeKind}
+      data-terminal-agent-id={chrome.agentId || undefined}
+      data-terminal-agent-state={agentState || undefined}
       className={cn(
         "rounded-[var(--radius-md)]",
         isArmed && "bg-daintree-accent/5 outline outline-2 outline-offset-[-2px]",
@@ -100,31 +105,22 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
           className="flex items-center gap-2 min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px] rounded"
         >
           <div className="shrink-0 opacity-60 group-hover/termrow:opacity-100 transition-opacity">
-            <TerminalIcon
-              kind={term.kind}
-              agentId={term.launchAgentId}
-              detectedAgentId={term.detectedAgentId}
-              detectedProcessId={term.detectedProcessId}
-              className="w-3 h-3"
-            />
+            <TerminalIcon kind={term.kind} chrome={chrome} className="w-3 h-3" />
           </div>
           <div className="flex flex-col min-w-0">
             <span className="truncate text-xs font-medium text-text-secondary transition-colors group-hover/termrow:text-daintree-text">
               {term.title}
             </span>
-            {!term.detectedAgentId &&
-              !term.launchAgentId &&
-              term.activityStatus === "working" &&
-              term.lastCommand && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="truncate text-[11px] font-mono text-text-muted">
-                      {term.lastCommand}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">{term.lastCommand}</TooltipContent>
-                </Tooltip>
-              )}
+            {!chrome.isAgent && term.activityStatus === "working" && term.lastCommand && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="truncate text-[11px] font-mono text-text-muted">
+                    {term.lastCommand}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{term.lastCommand}</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </button>
 
@@ -138,18 +134,18 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
             </span>
           )}
 
-          {term.agentState &&
-            term.agentState !== "idle" &&
+          {agentState &&
+            agentState !== "idle" &&
             (() => {
-              const Icon = getEffectiveStateIcon(term.agentState, term.waitingReason);
+              const Icon = getEffectiveStateIcon(agentState, term.waitingReason);
               return (
                 <Icon
                   className={cn(
                     "w-3 h-3",
-                    getEffectiveStateColor(term.agentState, term.waitingReason),
-                    term.agentState === "working" && "animate-spin-slow motion-reduce:animate-none"
+                    getEffectiveStateColor(agentState, term.waitingReason),
+                    agentState === "working" && "animate-spin-slow motion-reduce:animate-none"
                   )}
-                  aria-label={STATE_LABELS[term.agentState]}
+                  aria-label={STATE_LABELS[agentState]}
                 />
               );
             })()}
@@ -220,11 +216,7 @@ export function WorktreeTerminalSection({
     if (terminals.length === 0) return null;
     let commonId: string | null = null;
     for (const t of terminals) {
-      const effectiveId = resolveChromeAgentId(
-        t.detectedAgentId,
-        t.launchAgentId,
-        t.everDetectedAgent
-      );
+      const effectiveId = deriveTerminalChrome(t).agentId;
       if (!effectiveId) return null;
       if (commonId === null) commonId = effectiveId;
       else if (effectiveId !== commonId) return null;

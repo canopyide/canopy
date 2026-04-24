@@ -41,6 +41,7 @@ import {
   getDominantAgentState,
   agentStateDotColor,
 } from "@/components/Worktree/AgentStatusIndicator";
+import { getRuntimeOrBootAgentId } from "@/utils/terminalType";
 
 type AgentType = BuiltInAgentId;
 
@@ -80,8 +81,7 @@ export function AgentButton({
       const p = panelsById[pid];
       if (
         !p ||
-        !p.launchAgentId ||
-        p.launchAgentId !== type ||
+        getRuntimeOrBootAgentId(p) !== type ||
         p.location === "trash" ||
         p.location === "background"
       )

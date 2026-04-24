@@ -9,6 +9,7 @@ import type { TrashedTerminalGroupMetadata } from "@/store/slices";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useBackgroundedTerminals } from "@/hooks/useTerminalSelectors";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 interface BackgroundContainerProps {
   compact?: boolean;
@@ -208,9 +209,7 @@ export function BackgroundContainer({ compact = false }: BackgroundContainerProp
                     <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                       <TerminalIcon
                         kind={item.terminal.kind}
-                        agentId={item.terminal.launchAgentId}
-                        detectedAgentId={item.terminal.detectedAgentId}
-                        detectedProcessId={item.terminal.detectedProcessId}
+                        chrome={deriveTerminalChrome(item.terminal)}
                         className="h-3 w-3"
                       />
                     </div>
@@ -309,9 +308,7 @@ function BackgroundGroupItem({
                 >
                   <TerminalIcon
                     kind={terminal.kind}
-                    agentId={terminal.launchAgentId}
-                    detectedAgentId={terminal.detectedAgentId}
-                    detectedProcessId={terminal.detectedProcessId}
+                    chrome={deriveTerminalChrome(terminal)}
                     className="w-2.5 h-2.5 opacity-60"
                   />
                   <span

@@ -164,6 +164,7 @@ vi.mock("@/clients", () => ({
 }));
 
 const applyAgentPromotionMock = vi.fn();
+const clearAgentPromotionMock = vi.fn();
 
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
@@ -184,6 +185,7 @@ vi.mock("@/services/TerminalInstanceService", () => ({
     handleBackendRecovery: vi.fn(),
     cleanup: vi.fn(),
     applyAgentPromotion: applyAgentPromotionMock,
+    clearAgentPromotion: clearAgentPromotionMock,
   },
 }));
 
@@ -388,6 +390,18 @@ describe("terminalStore process detection listeners", () => {
 
     exited?.({ terminalId: "term-1", timestamp: Date.now() });
     expect(usePanelStore.getState().panelsById["term-1"]?.detectedAgentId).toBeUndefined();
+    cleanup();
+  });
+
+  it("clears renderer runtime agent capability when agent:exited fires", () => {
+    const cleanup = setupTerminalStoreListeners();
+    const exited = handlers.agentExited;
+
+    clearAgentPromotionMock.mockClear();
+
+    exited?.({ terminalId: "term-1", agentType: "claude", timestamp: Date.now() });
+
+    expect(clearAgentPromotionMock).toHaveBeenCalledWith("term-1");
     cleanup();
   });
 

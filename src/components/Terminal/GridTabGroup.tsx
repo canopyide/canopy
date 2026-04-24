@@ -10,6 +10,7 @@ import type { TabInfo } from "@/components/Panel/TabButton";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { focusPanelInput } from "./terminalFocusRegistry";
 import { getGroupAmbientAgentState } from "@/components/Layout/useDockBlockedState";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 export interface GridTabGroupProps {
   group: TabGroup;
@@ -75,6 +76,7 @@ export function gridTabGroupPropsAreEqual(
           a.launchAgentId !== b.launchAgentId ||
           a.detectedAgentId !== b.detectedAgentId ||
           a.everDetectedAgent !== b.everDetectedAgent ||
+          a.runtimeIdentity !== b.runtimeIdentity ||
           a.cwd !== b.cwd ||
           a.agentState !== b.agentState ||
           a.activityHeadline !== b.activityHeadline ||
@@ -189,10 +191,13 @@ export const GridTabGroup = React.memo(function GridTabGroup({
       return {
         id: p.id,
         title: p.title,
-        agentId: p.launchAgentId,
-        detectedAgentId: p.detectedAgentId,
-        everDetectedAgent: p.everDetectedAgent,
-        detectedProcessId: p.detectedProcessId,
+        chrome: deriveTerminalChrome({
+          kind: p.kind,
+          runtimeIdentity: p.runtimeIdentity,
+          detectedAgentId: p.detectedAgentId,
+          detectedProcessId: p.detectedProcessId,
+          presetColor,
+        }),
         kind: p.kind ?? "terminal",
         agentState: p.agentState,
         isActive: p.id === activeTabId,

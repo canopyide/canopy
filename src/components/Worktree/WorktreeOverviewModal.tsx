@@ -21,6 +21,7 @@ import {
 } from "@/lib/worktreeFilters";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { isAgentTerminal } from "@/utils/terminalType";
 
 interface OverviewWorktreeCardProps {
   worktreeId: string;
@@ -225,6 +226,7 @@ export function WorktreeOverviewModal({
         const t = panelsById[id];
         if (!t || t.worktreeId !== worktree.id || t.location === "trash") continue;
         terminalCount++;
+        if (!isAgentTerminal(t)) continue;
         if (t.agentState === "working") hasWorkingAgent = true;
         if (t.agentState === "waiting") hasWaitingAgent = true;
         if (t.agentState === "completed") hasCompletedAgent = true;

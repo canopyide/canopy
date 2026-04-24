@@ -7,9 +7,8 @@ export type TerminalFocusTarget = "hybridInput" | "xterm";
  * Under the unified identity model (see
  * `docs/architecture/terminal-identity.md`), there is no "full capability"
  * vs "observational" distinction — the HybridInputBar is available whenever
- * chrome identity resolves to an agent. `hasChromeAgentIdentity` is the
- * caller's computed `resolveChromeAgentId(...) !== undefined`: this
- * covers both a live-detected agent and the boot-window launch hint.
+ * runtime chrome resolves to an agent. `hasChromeAgentIdentity` is the
+ * caller's computed `deriveTerminalChrome(...).isAgent`.
  */
 export function getTerminalFocusTarget(options: {
   hasChromeAgentIdentity: boolean;

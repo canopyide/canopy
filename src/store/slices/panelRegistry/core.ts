@@ -18,6 +18,7 @@ import {
 import { getTerminalAppearanceSnapshot } from "@/hooks/useTerminalAppearance";
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
 import { getXtermOptions } from "@/config/xtermConfig";
+import { deriveTerminalRuntimeIdentity } from "@/utils/terminalChrome";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useLayoutConfigStore } from "@/store/layoutConfigStore";
 import { usePanelLimitStore, evaluatePanelLimit } from "@/store/panelLimitStore";
@@ -406,6 +407,11 @@ export const createCorePanelActions = (
       everDetectedAgent: options.everDetectedAgent,
       detectedAgentId: options.detectedAgentId,
       detectedProcessId: options.detectedProcessId,
+      runtimeIdentity:
+        deriveTerminalRuntimeIdentity({
+          detectedAgentId: options.detectedAgentId,
+          detectedProcessId: options.detectedProcessId,
+        }) ?? undefined,
       agentPresetId: options.agentPresetId,
       agentPresetColor: options.agentPresetColor,
       originalPresetId: options.originalPresetId ?? options.agentPresetId,
@@ -440,6 +446,7 @@ export const createCorePanelActions = (
                 // live detection (live IPC event may have landed before reconnect flush).
                 detectedAgentId: terminal.detectedAgentId ?? existing.detectedAgentId,
                 detectedProcessId: terminal.detectedProcessId ?? existing.detectedProcessId,
+                runtimeIdentity: terminal.runtimeIdentity ?? existing.runtimeIdentity,
                 // Capability is sealed at spawn — values should match — but
                 // preserve the existing entry if a partial reconnect omits it.
               }
@@ -467,6 +474,7 @@ export const createCorePanelActions = (
                 // live detection (live IPC event may have landed before reconnect flush).
                 detectedAgentId: terminal.detectedAgentId ?? existing.detectedAgentId,
                 detectedProcessId: terminal.detectedProcessId ?? existing.detectedProcessId,
+                runtimeIdentity: terminal.runtimeIdentity ?? existing.runtimeIdentity,
                 // Capability is sealed at spawn — values should match — but
                 // preserve the existing entry if a partial reconnect omits it.
               }

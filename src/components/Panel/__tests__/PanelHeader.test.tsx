@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PanelHeader } from "../PanelHeader";
 import type { PanelHeaderProps } from "../PanelHeader";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 vi.mock("react-dom", async () => {
   const actual = await vi.importActual<typeof import("react-dom")>("react-dom");
@@ -75,6 +76,13 @@ let mockHasPty = false;
 vi.mock("@shared/config/panelKindRegistry", () => ({
   panelKindCanRestart: () => false,
   panelKindHasPty: () => mockHasPty,
+  getPanelKindConfig: (kind: string) =>
+    kind === "browser"
+      ? { id: "browser", name: "Browser", iconId: "globe", color: "#38bdf8" }
+      : kind === "dev-preview"
+        ? { id: "dev-preview", name: "Dev Preview", iconId: "monitor", color: "#38bdf8" }
+        : { id: "terminal", name: "Terminal", iconId: "terminal", color: "#9ca3af" },
+  getPanelKindColor: () => "#9ca3af",
 }));
 
 const mockDispatch = vi.fn().mockResolvedValue({ ok: true });
@@ -137,10 +145,17 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 }));
 
 function makeProps(overrides: Partial<PanelHeaderProps> = {}): PanelHeaderProps {
+  const chrome =
+    overrides.chrome ??
+    deriveTerminalChrome({
+      kind: overrides.kind ?? "terminal",
+      presetColor: overrides.presetColor,
+    });
   return {
     id: "test-panel",
     title: "Test Panel",
     kind: "terminal",
+    chrome,
     isFocused: true,
     isEditingTitle: false,
     editingValue: "",
@@ -220,7 +235,14 @@ describe("PanelHeader", () => {
     });
 
     it("renders Watch for unwatched agent panels", () => {
-      render(<PanelHeader {...makeProps({ agentId: "claude", detectedAgentId: "claude" })} />);
+      render(
+        <PanelHeader
+          {...makeProps({
+            agentId: "claude",
+            chrome: deriveTerminalChrome({ detectedAgentId: "claude" }),
+          })}
+        />
+      );
       const menu = screen.getByTestId("overflow-menu");
       expect(findMenuButton(menu, "Watch")).toBeDefined();
       expect(findMenuButton(menu, "Cancel Watch")).toBeUndefined();
@@ -231,7 +253,14 @@ describe("PanelHeader", () => {
         ...mockStoreState,
         watchedPanels: new Set(["test-panel"]),
       };
-      render(<PanelHeader {...makeProps({ agentId: "claude", detectedAgentId: "claude" })} />);
+      render(
+        <PanelHeader
+          {...makeProps({
+            agentId: "claude",
+            chrome: deriveTerminalChrome({ detectedAgentId: "claude" }),
+          })}
+        />
+      );
       const menu = screen.getByTestId("overflow-menu");
       expect(findMenuButton(menu, "Cancel Watch")).toBeDefined();
       expect(findMenuButton(menu, "Watch")).toBeUndefined();
@@ -310,7 +339,14 @@ describe("PanelHeader", () => {
     });
 
     it("calls watchPanel when clicking Watch on unwatched agent panel", () => {
-      render(<PanelHeader {...makeProps({ agentId: "claude", detectedAgentId: "claude" })} />);
+      render(
+        <PanelHeader
+          {...makeProps({
+            agentId: "claude",
+            chrome: deriveTerminalChrome({ detectedAgentId: "claude" }),
+          })}
+        />
+      );
       const menu = screen.getByTestId("overflow-menu");
       findMenuButton(menu, "Watch")?.click();
       expect(mockWatchPanel).toHaveBeenCalledWith("test-panel");
@@ -321,7 +357,14 @@ describe("PanelHeader", () => {
         ...mockStoreState,
         watchedPanels: new Set(["test-panel"]),
       };
-      render(<PanelHeader {...makeProps({ agentId: "claude", detectedAgentId: "claude" })} />);
+      render(
+        <PanelHeader
+          {...makeProps({
+            agentId: "claude",
+            chrome: deriveTerminalChrome({ detectedAgentId: "claude" }),
+          })}
+        />
+      );
       const menu = screen.getByTestId("overflow-menu");
       findMenuButton(menu, "Cancel Watch")?.click();
       expect(mockUnwatchPanel).toHaveBeenCalledWith("test-panel");
@@ -417,8 +460,20 @@ describe("PanelHeader", () => {
 
   describe("tab scroll arrows", () => {
     const twoTabs = [
-      { id: "t1", title: "Tab 1", kind: "terminal" as const, isActive: true },
-      { id: "t2", title: "Tab 2", kind: "terminal" as const, isActive: false },
+      {
+        id: "t1",
+        title: "Tab 1",
+        kind: "terminal" as const,
+        chrome: deriveTerminalChrome(),
+        isActive: true,
+      },
+      {
+        id: "t2",
+        title: "Tab 2",
+        kind: "terminal" as const,
+        chrome: deriveTerminalChrome(),
+        isActive: false,
+      },
     ];
 
     it("renders scroll arrows when tabs overflow", () => {

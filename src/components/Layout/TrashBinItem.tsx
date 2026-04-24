@@ -5,6 +5,7 @@ import { usePanelStore, type TerminalInstance } from "@/store";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import type { TrashedTerminal } from "@/store/slices";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { isUselessTitle } from "@shared/utils/isUselessTitle";
 import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
@@ -73,9 +74,7 @@ export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinIt
       <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
         <TerminalIcon
           kind={terminal.kind}
-          agentId={terminal.launchAgentId}
-          detectedAgentId={terminal.detectedAgentId}
-          detectedProcessId={terminal.detectedProcessId}
+          chrome={deriveTerminalChrome(terminal)}
           className="w-3 h-3"
         />
       </div>

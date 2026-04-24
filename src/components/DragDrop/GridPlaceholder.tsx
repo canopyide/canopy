@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useDndPlaceholder, GRID_PLACEHOLDER_ID } from "./DndProvider";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { PlaceholderContent } from "./PlaceholderContent";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 interface GridPlaceholderProps {
   className?: string;
@@ -17,11 +18,11 @@ export function GridPlaceholder({ className }: GridPlaceholderProps) {
     return <div className={cn("h-full rounded-[var(--radius-lg)] bg-daintree-bg/50", className)} />;
   }
 
-  const { title, kind, launchAgentId, detectedAgentId, detectedProcessId } = activeTerminal;
+  const { title, kind } = activeTerminal;
   // Drag visuals mirror chrome: live detection only. A demoted shell dragged
   // across the grid shows plain-terminal styling even though it was launched
   // as an agent — matches what the tab looks like right now.
-  const chromeAgentId = detectedAgentId;
+  const chrome = deriveTerminalChrome(activeTerminal);
 
   return (
     <div
@@ -41,20 +42,14 @@ export function GridPlaceholder({ className }: GridPlaceholderProps) {
         )}
       >
         <span className="shrink-0 flex items-center justify-center text-daintree-accent/80">
-          <TerminalIcon
-            kind={kind}
-            agentId={launchAgentId}
-            detectedAgentId={chromeAgentId}
-            detectedProcessId={detectedProcessId}
-            className="w-3.5 h-3.5"
-          />
+          <TerminalIcon kind={kind} chrome={chrome} className="w-3.5 h-3.5" />
         </span>
         <span className="font-medium text-daintree-accent/80 truncate opacity-80">{title}</span>
       </div>
 
       {/* Panel-specific placeholder body */}
       <div className="flex-1 w-full p-3">
-        <PlaceholderContent kind={kind ?? "terminal"} agentId={chromeAgentId} />
+        <PlaceholderContent kind={kind ?? "terminal"} agentId={chrome.agentId ?? undefined} />
       </div>
     </div>
   );

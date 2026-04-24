@@ -189,6 +189,23 @@ describe("WorktreeTerminalSection summary icon", () => {
     expect(screen.getByTestId("agent-icon")).toBeDefined();
   });
 
+  it("uses runtimeIdentity to classify a plain shell that entered agent mode", () => {
+    renderSection({
+      terminals: [
+        makeTerminal({
+          runtimeIdentity: {
+            kind: "agent",
+            id: "claude",
+            iconId: "claude",
+            agentId: "claude",
+          },
+        }),
+      ],
+      counts: { ...baseCounts, total: 1 },
+    });
+    expect(screen.getByTestId("agent-icon")).toBeDefined();
+  });
+
   it("does not pass brandColor to the agent icon (renders in currentColor)", () => {
     renderSection({
       terminals: [makeTerminal({ detectedAgentId: "claude" })],
@@ -230,6 +247,33 @@ describe("WorktreeTerminalSection arming click handlers", () => {
     fireEvent.click(button);
 
     expect(useFleetArmingStore.getState().armedIds.has("a1")).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("plain click on a runtime-identified agent tile arms it", () => {
+    const term = makeTerminal({
+      id: "runtime-agent",
+      kind: "terminal",
+      hasPty: true,
+      runtimeIdentity: {
+        kind: "agent",
+        id: "claude",
+        iconId: "claude",
+        agentId: "claude",
+      },
+    });
+    const onSelect = vi.fn();
+    renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+      onTerminalSelect: onSelect,
+    });
+
+    const button = screen.getAllByRole("button", { name: /Test Terminal/i })[0]!;
+    fireEvent.click(button);
+
+    expect(useFleetArmingStore.getState().armedIds.has("runtime-agent")).toBe(true);
     expect(onSelect).not.toHaveBeenCalled();
   });
 

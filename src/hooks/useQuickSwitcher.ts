@@ -6,6 +6,7 @@ import { useWorktrees } from "./useWorktrees";
 import { useWorktreeSelectionStore } from "@/store";
 import { isPtyPanel } from "@shared/types/panel";
 import { useSearchablePalette } from "./useSearchablePalette";
+import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
 
 export type QuickSwitcherItemType = "terminal" | "worktree";
 
@@ -15,9 +16,7 @@ export interface QuickSwitcherItem {
   title: string;
   subtitle?: string;
   terminalKind?: TerminalInstance["kind"];
-  launchAgentId?: TerminalInstance["launchAgentId"];
-  detectedAgentId?: TerminalInstance["detectedAgentId"];
-  detectedProcessId?: TerminalInstance["detectedProcessId"];
+  chrome?: TerminalChromeDescriptor;
   worktreeId?: string;
 }
 
@@ -87,9 +86,7 @@ export function useQuickSwitcher(): UseQuickSwitcherReturn {
             : "Backgrounded"
           : baseSubtitle,
         terminalKind: t.kind,
-        launchAgentId: t.launchAgentId,
-        detectedAgentId: t.detectedAgentId,
-        detectedProcessId: t.detectedProcessId,
+        chrome: deriveTerminalChrome(t),
         worktreeId: t.worktreeId,
       });
     }

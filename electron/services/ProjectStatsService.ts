@@ -126,11 +126,13 @@ export class ProjectStatsService {
         if (terminal.isTrashed) continue;
         if (terminal.kind === "dev-preview") continue;
         if (terminal.hasPty === false) continue;
-        // Include plain terminals hosting a runtime-detected agent
-        // (detectedAgentId). Uses the LIVE signal only — everDetectedAgent
-        // is deliberately excluded so panels whose agent has exited do not
-        // inflate the count.
-        if (!terminal.launchAgentId && !terminal.detectedAgentId) continue;
+        // Runtime identity wins; launch intent is only a boot-window fallback
+        // before detection has ever committed. Demoted ex-agents must not
+        // inflate active/waiting counts just because they were launched as agents.
+        const hasLiveOrBootAgent =
+          Boolean(terminal.detectedAgentId) ||
+          (Boolean(terminal.launchAgentId) && terminal.everDetectedAgent !== true);
+        if (!hasLiveOrBootAgent) continue;
 
         if (terminal.agentState === "waiting") {
           counts.waiting += 1;

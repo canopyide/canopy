@@ -15,7 +15,6 @@ import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modi
 import { Plus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, getBaseTitle } from "@/lib/utils";
-import { getBrandColorHex } from "@/lib/colorUtils";
 import {
   useTerminalInputStore,
   usePanelStore,
@@ -30,7 +29,7 @@ import { getMergedPresets } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
@@ -366,9 +365,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const panelPresetColors = useMemo(() => {
     return new Map(
       panels.map((p) => {
-        const fallbackColor = getBrandColorHex(
-          resolveChromeAgentId(p.detectedAgentId, p.launchAgentId, p.everDetectedAgent) ?? undefined
-        );
+        const fallbackColor = deriveTerminalChrome(p).color;
         if (!p.agentPresetId || !p.launchAgentId) return [p.id, fallbackColor] as const;
         const presets = getMergedPresets(
           p.launchAgentId,
@@ -386,20 +383,20 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     return null;
   }
 
-  const isWorking = activePanel.agentState === "working";
-  const isWaiting = activePanel.agentState === "waiting";
+  const brandColor =
+    panelPresetColors.get(activePanel.id) ?? deriveTerminalChrome(activePanel).color;
+  const activeChrome = deriveTerminalChrome({
+    kind: activePanel.kind,
+    runtimeIdentity: activePanel.runtimeIdentity,
+    detectedAgentId: activePanel.detectedAgentId,
+    detectedProcessId: activePanel.detectedProcessId,
+    presetColor: brandColor,
+  });
+  const agentState = activeChrome.isAgent ? activePanel.agentState : undefined;
+  const isWorking = agentState === "working";
+  const isWaiting = agentState === "waiting";
   const isActive = isWorking || isWaiting;
   const commandText = activePanel.activityHeadline || activePanel.lastCommand;
-  const brandColor =
-    panelPresetColors.get(activePanel.id) ??
-    getBrandColorHex(
-      resolveChromeAgentId(
-        activePanel.detectedAgentId,
-        activePanel.launchAgentId,
-        activePanel.everDetectedAgent
-      ) ?? undefined
-    );
-  const agentState = activePanel.agentState;
   const displayTitle = getBaseTitle(activePanel.title);
   const showStateIcon = agentState && agentState !== "idle" && agentState !== "completed";
   const StateIcon = showStateIcon
@@ -444,15 +441,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
             aria-label={`${activePanel.title} (${panels.length} tabs) - Click to preview, double-click to move to grid, drag to reorder`}
           >
             <div className="flex items-center justify-center shrink-0">
-              <TerminalIcon
-                kind={activePanel.kind}
-                agentId={activePanel.launchAgentId}
-                detectedAgentId={activePanel.detectedAgentId}
-                everDetectedAgent={activePanel.everDetectedAgent}
-                detectedProcessId={activePanel.detectedProcessId}
-                className="w-3.5 h-3.5"
-                brandColor={brandColor}
-              />
+              <TerminalIcon kind={activePanel.kind} chrome={activeChrome} className="w-3.5 h-3.5" />
             </div>
             <span className="truncate min-w-[48px] max-w-[140px] font-sans font-medium">
               {displayTitle}
@@ -520,7 +509,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
           const focusTarget = getTerminalFocusTarget({
             // Focus routing follows live detection — HybridInputBar renders when
             // an agent is actually running, so route focus there only then.
-            hasChromeAgentIdentity: activePanel.detectedAgentId !== undefined,
+            hasChromeAgentIdentity: activeChrome.isAgent,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
             hybridInputEnabled,
             hybridInputAutoFocus,
@@ -548,25 +537,31 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
               aria-label="Dock panel tabs"
               onKeyDown={handleTabListKeyDown}
             >
-              {panels.map((panel) => (
-                <SortableTabButton
-                  key={panel.id}
-                  id={panel.id}
-                  title={getBaseTitle(panel.title)}
-                  agentId={panel.launchAgentId}
-                  detectedAgentId={panel.detectedAgentId}
-                  everDetectedAgent={panel.everDetectedAgent}
-                  detectedProcessId={panel.detectedProcessId}
-                  kind={panel.kind ?? "terminal"}
-                  agentState={panel.agentState}
-                  isActive={panel.id === activeTabId}
-                  presetColor={panelPresetColors.get(panel.id)}
-                  isUsingFallback={panel.isUsingFallback}
-                  onClick={() => handleTabClick(panel.id)}
-                  onClose={() => handleTabClose(panel.id)}
-                  onRename={(newTitle) => handleTabRename(panel.id, newTitle)}
-                />
-              ))}
+              {panels.map((panel) => {
+                const tabChrome = deriveTerminalChrome({
+                  kind: panel.kind,
+                  runtimeIdentity: panel.runtimeIdentity,
+                  detectedAgentId: panel.detectedAgentId,
+                  detectedProcessId: panel.detectedProcessId,
+                  presetColor: panelPresetColors.get(panel.id),
+                });
+                return (
+                  <SortableTabButton
+                    key={panel.id}
+                    id={panel.id}
+                    title={getBaseTitle(panel.title)}
+                    chrome={tabChrome}
+                    kind={panel.kind ?? "terminal"}
+                    agentState={tabChrome.isAgent ? panel.agentState : undefined}
+                    isActive={panel.id === activeTabId}
+                    presetColor={panelPresetColors.get(panel.id)}
+                    isUsingFallback={panel.isUsingFallback}
+                    onClick={() => handleTabClick(panel.id)}
+                    onClose={() => handleTabClose(panel.id)}
+                    onRename={(newTitle) => handleTabRename(panel.id, newTitle)}
+                  />
+                );
+              })}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>

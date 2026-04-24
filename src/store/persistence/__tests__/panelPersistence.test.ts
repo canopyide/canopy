@@ -202,6 +202,12 @@ describe("PanelPersistence", () => {
       const terminal = createMockTerminal({
         id: "test-detected-process",
         detectedProcessId: "npm",
+        runtimeIdentity: {
+          kind: "process",
+          id: "npm",
+          iconId: "npm",
+          processId: "npm",
+        },
       });
 
       persistence.save([terminal], projectId);
@@ -210,6 +216,7 @@ describe("PanelPersistence", () => {
       const savedTerminals = client.setTerminals.mock.calls[0]![1] as TerminalSnapshot[];
       expect(savedTerminals).toHaveLength(1);
       expect(savedTerminals[0]).not.toHaveProperty("detectedProcessId");
+      expect(savedTerminals[0]).not.toHaveProperty("runtimeIdentity");
     });
 
     it("applies custom filter function", async () => {

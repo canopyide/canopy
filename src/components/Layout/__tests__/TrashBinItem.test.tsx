@@ -19,6 +19,17 @@ vi.mock("@/components/Terminal/TerminalIcon", () => ({
   TerminalIcon: () => null,
 }));
 
+vi.mock("@/utils/terminalChrome", () => ({
+  deriveTerminalChrome: () => ({
+    iconId: null,
+    label: "Terminal",
+    isAgent: false,
+    agentId: null,
+    processId: null,
+    runtimeKind: "none",
+  }),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,

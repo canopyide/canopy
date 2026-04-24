@@ -51,6 +51,7 @@ import {
   agentStateDotColor,
 } from "@/components/Worktree/AgentStatusIndicator";
 import { cn } from "@/lib/utils";
+import { getRuntimeOrBootAgentId } from "@/utils/terminalType";
 
 interface AgentTrayButtonProps {
   agentAvailability?: CliAvailability;
@@ -327,17 +328,17 @@ export function AgentTrayButton({
     const statesPerAgent = new Map<string, (AgentState | undefined)[]>();
     for (const pid of panelIds) {
       const p = panelsById[pid];
-      // Launch-intent only: the tray aggregates sessions by the agent they were
-      // launched as, so pre-detection panels still appear under their tray entry.
-      // Using `isRuntimeAgentTerminal` here would silently exclude freshly-spawned
-      // agents during the boot window and demote ex-agents that outlived their
-      // process — neither matches the tray's "sessions grouped by launch agent" model.
-      if (!p || !p.launchAgentId || p.location === "trash" || p.location === "background") continue;
+      // Runtime identity wins so a plain shell that starts Claude/Codex is
+      // tracked under the same tray entry. Launch intent is only a boot-window
+      // fallback before any detector result has committed.
+      if (!p || p.location === "trash" || p.location === "background") continue;
+      const agentId = getRuntimeOrBootAgentId(p);
+      if (!agentId) continue;
       if (activeWorktreeId && p.worktreeId !== activeWorktreeId) continue;
       if (!ACTIVE_AGENT_STATES.has(p.agentState)) continue;
-      const arr = statesPerAgent.get(p.launchAgentId) ?? [];
+      const arr = statesPerAgent.get(agentId) ?? [];
       arr.push(p.agentState);
-      statesPerAgent.set(p.launchAgentId, arr);
+      statesPerAgent.set(agentId, arr);
     }
     const result = new Map<string, AgentState | null>();
     for (const [agentId, states] of statesPerAgent) {

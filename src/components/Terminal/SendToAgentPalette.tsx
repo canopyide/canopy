@@ -2,12 +2,9 @@ import React, { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
-import { getBrandColorHex } from "@/lib/colorUtils";
 import { Lock } from "lucide-react";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import type { SendToAgentItem } from "@/hooks/useSendToAgentPalette";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
-import type { BuiltInAgentId } from "@shared/config/agentIds";
 
 export interface SendToAgentPaletteProps {
   isOpen: boolean;
@@ -55,20 +52,7 @@ const SendToAgentItemRow = React.memo(function SendToAgentItemRow({
       role="option"
     >
       <span className="shrink-0 text-daintree-text/70" aria-hidden="true">
-        <TerminalIcon
-          kind={item.terminalKind}
-          agentId={item.launchAgentId}
-          detectedAgentId={item.detectedAgentId}
-          everDetectedAgent={item.everDetectedAgent}
-          detectedProcessId={item.detectedProcessId}
-          brandColor={getBrandColorHex(
-            resolveChromeAgentId(
-              item.detectedAgentId as BuiltInAgentId | undefined,
-              item.launchAgentId,
-              item.everDetectedAgent
-            ) ?? undefined
-          )}
-        />
+        <TerminalIcon kind={item.terminalKind} chrome={item.chrome} />
       </span>
 
       <div className="flex-1 min-w-0 overflow-hidden">

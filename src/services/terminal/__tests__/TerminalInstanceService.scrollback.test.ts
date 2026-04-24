@@ -70,7 +70,7 @@ type ScrollbackTestService = {
 
 function makeMockManaged(overrides: Record<string, unknown> = {}) {
   const writtenData: string[] = [];
-  return {
+  const managed = {
     terminal: {
       options: { scrollback: 5000 },
       rows: 24,
@@ -86,6 +86,17 @@ function makeMockManaged(overrides: Record<string, unknown> = {}) {
     writtenData,
     ...overrides,
   };
+  const runtimeManaged = managed as typeof managed & {
+    runtimeAgentId?: string;
+    launchAgentId?: string;
+  };
+  if (
+    runtimeManaged.runtimeAgentId === undefined &&
+    typeof runtimeManaged.launchAgentId === "string"
+  ) {
+    runtimeManaged.runtimeAgentId = runtimeManaged.launchAgentId;
+  }
+  return runtimeManaged;
 }
 
 describe("TerminalInstanceService - Scrollback", () => {

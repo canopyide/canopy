@@ -18,6 +18,8 @@ export interface ManagedTerminal {
   kind?: PanelKind;
   /** Launch hint — agent this terminal was launched to run. Not identity. */
   launchAgentId?: string;
+  /** Live runtime agent identity. Set by detector promotion, cleared on demotion. */
+  runtimeAgentId?: string;
   agentState?: AgentState;
   agentStateSubscribers: Set<AgentStateCallback>;
   fitAddon: FitAddon;

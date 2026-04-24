@@ -120,7 +120,7 @@ function getLiveAgentId(terminal: TerminalInfo): string | undefined {
  * Compute the default panel title for a terminal given its current chrome
  * identity. Used by the PTY host so the renderer can sync `panel.title` when
  * `titleMode === "default"`. Kept in lockstep with the renderer's
- * `resolveChromeAgentId` rule: detection wins; demotion (ever-detected and
+ * renderer terminal chrome rule: detection wins; demotion (ever-detected and
  * nothing now) returns the shell title; otherwise the launch hint.
  */
 function computeDefaultTitle(terminal: TerminalInfo): string {

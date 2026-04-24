@@ -12,6 +12,7 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import type { TerminalInstance } from "@/store/panelStore";
 import type { PanelLocation } from "@shared/types";
 import type { ComponentType } from "react";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 function getLocationIcon(location: PanelLocation | undefined) {
   if (location === "dock") return <PanelBottom className="w-3 h-3" />;
@@ -131,9 +132,7 @@ export function StatusContainer({ config, terminals, compact = false }: StatusCo
                   <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                     <TerminalIcon
                       kind={terminal.kind}
-                      agentId={terminal.launchAgentId}
-                      detectedAgentId={terminal.detectedAgentId}
-                      detectedProcessId={terminal.detectedProcessId}
+                      chrome={deriveTerminalChrome(terminal)}
                       className="h-3 w-3"
                     />
                   </div>

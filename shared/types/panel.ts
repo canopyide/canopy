@@ -100,10 +100,26 @@ export type TerminalRuntimeStatus = TerminalFlowStatus | "background" | "exited"
 export type TerminalSpawnSource = "quickrun" | "recipe" | "agent" | "palette";
 
 /**
+ * Live process identity detected inside a PTY. This is transient runtime state,
+ * not a launch hint and not persisted.
+ */
+export interface TerminalRuntimeIdentity {
+  kind: "agent" | "process";
+  /** Stable runtime identity id: agent id for agents, process icon id for processes. */
+  id: string;
+  /** Icon registry id used by terminal chrome. */
+  iconId: string;
+  /** Present only when the live process is an agent. */
+  agentId?: AgentId;
+  /** Present when the detector emitted a process icon id. */
+  processId?: string;
+}
+
+/**
  * How a panel's title is currently owned.
  *
- * - `"default"` — title is derived from the live chrome identity
- *   (`resolveChromeAgentId`) and is free to flip as detection promotes/demotes.
+ * - `"default"` — title is derived from live runtime identity and is free to
+ *   flip as detection promotes/demotes.
  * - `"custom"` — the user renamed this panel; title is frozen and must not be
  *   overwritten by detection events.
  *
@@ -261,6 +277,8 @@ export interface PtyPanelData extends BasePanelData {
   exitBehavior?: PanelExitBehavior;
   /** Detected process icon ID for dynamic terminal icons (transient, not persisted) */
   detectedProcessId?: string;
+  /** Canonical live runtime identity for terminal chrome (transient, not persisted) */
+  runtimeIdentity?: TerminalRuntimeIdentity;
   /**
    * Sticky live-session flag. True once runtime detection fires in this session,
    * even if no agent is currently detected. Enables "this terminal hosted an
@@ -453,6 +471,8 @@ export interface TerminalInstance {
   hasPty?: boolean;
   /** Detected process icon ID for dynamic terminal icons (transient, not persisted) */
   detectedProcessId?: string;
+  /** Canonical live runtime identity for terminal chrome (transient, not persisted) */
+  runtimeIdentity?: TerminalRuntimeIdentity;
   /**
    * Sticky live-session flag; set once on first runtime detection, never cleared.
    * See `PtyPanelData.everDetectedAgent` for full contract.

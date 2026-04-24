@@ -10,6 +10,10 @@ import { useWorktreeSelectionStore } from "./worktreeStore";
 import { useResourceMonitoringStore } from "./resourceMonitoringStore";
 import { flushPanelPersistence } from "./slices";
 import { isAgentTerminal } from "@/utils/terminalType";
+import {
+  deriveTerminalRuntimeIdentity,
+  terminalRuntimeIdentitiesEqual,
+} from "@/utils/terminalChrome";
 import { logInfo, logWarn, logError } from "@/utils/logger";
 import { SCROLLBACK_BACKGROUND } from "@shared/config/scrollback";
 import { clearAllRestartGuards, isTerminalRestarting } from "./restartExitSuppression";
@@ -81,6 +85,7 @@ function recordIdentityEvent(
         detectedAgentId?: string;
         everDetectedAgent?: boolean;
         detectedProcessId?: string;
+        runtimeIdentity?: unknown;
         agentState?: string;
       }>;
     };
@@ -98,6 +103,7 @@ function recordIdentityEvent(
             detectedAgentId?: string;
             everDetectedAgent?: boolean;
             detectedProcessId?: string;
+            runtimeIdentity?: unknown;
             agentState?: string;
           };
           return {
@@ -107,6 +113,7 @@ function recordIdentityEvent(
             detectedAgentId: terminal.detectedAgentId,
             everDetectedAgent: terminal.everDetectedAgent,
             detectedProcessId: terminal.detectedProcessId,
+            runtimeIdentity: terminal.runtimeIdentity,
             agentState: terminal.agentState,
           };
         });
@@ -375,6 +382,14 @@ export function setupTerminalStoreListeners() {
             nextEverDetectedAgent === true && terminal.everDetectedAgent !== true;
           const needsAgentIdUpdate =
             nextDetectedAgentId !== undefined && terminal.detectedAgentId !== nextDetectedAgentId;
+          const nextRuntimeIdentity = deriveTerminalRuntimeIdentity({
+            detectedAgentId: nextDetectedAgentId,
+            detectedProcessId: processIconId,
+          });
+          const needsRuntimeIdentityUpdate = !terminalRuntimeIdentitiesEqual(
+            terminal.runtimeIdentity,
+            nextRuntimeIdentity
+          );
           // Compute the new default title from the resolved chrome identity.
           const titleMode = terminal.titleMode ?? "default";
           const computedTitle = needsAgentIdUpdate
@@ -390,7 +405,13 @@ export function setupTerminalStoreListeners() {
             computedTitle.length > 0 &&
             terminal.title !== computedTitle;
 
-          if (!needsIconUpdate && !needsStickyUpdate && !needsAgentIdUpdate && !needsTitleUpdate) {
+          if (
+            !needsIconUpdate &&
+            !needsStickyUpdate &&
+            !needsAgentIdUpdate &&
+            !needsRuntimeIdentityUpdate &&
+            !needsTitleUpdate
+          ) {
             console.log(
               `[IdentityDebug] detected NOOP term=${terminalId.slice(-8)} ` +
                 `already detectedAgentId=${terminal.detectedAgentId ?? "<none>"} ` +
@@ -421,6 +442,9 @@ export function setupTerminalStoreListeners() {
                 ...(needsIconUpdate && { detectedProcessId: processIconId }),
                 ...(needsStickyUpdate && { everDetectedAgent: true }),
                 ...(needsAgentIdUpdate && { detectedAgentId: nextDetectedAgentId }),
+                ...(needsRuntimeIdentityUpdate && {
+                  runtimeIdentity: nextRuntimeIdentity ?? undefined,
+                }),
                 ...(needsTitleUpdate && { title: computedTitle }),
               },
             },
@@ -438,12 +462,13 @@ export function setupTerminalStoreListeners() {
         recordIdentityEvent("exited", terminalId, {
           agentType: (data as { agentType?: string }).agentType,
         });
+        terminalInstanceService.clearAgentPromotion(terminalId);
 
         // `agent:exited` is a subcommand/demotion signal — the shell PTY is
         // still alive. Clear live-detection fields and re-sync the default
         // title. `launchAgentId` is immutable and is not touched here; a
         // cold-launched agent terminal whose agent has exited demotes to
-        // plain shell chrome (see resolveChromeAgentId's demotion rule),
+        // plain shell chrome (see deriveTerminalChrome's demotion rule),
         // but the launch hint is still available for manual restart.
         usePanelStore.setState((state) => {
           const terminal = state.panelsById[terminalId];
@@ -455,8 +480,9 @@ export function setupTerminalStoreListeners() {
           }
           const clearProcess = terminal.detectedProcessId !== undefined;
           const clearDetectedAgent = terminal.detectedAgentId !== undefined;
+          const clearRuntimeIdentity = terminal.runtimeIdentity !== undefined;
           // After demotion, detectedAgentId is cleared and everDetectedAgent stays
-          // true, so resolveChromeAgentId returns undefined → title reverts to "Terminal".
+          // true, so deriveTerminalChrome returns no agent → title reverts to "Terminal".
           const titleMode = terminal.titleMode ?? "default";
           const computedTitle = clearDetectedAgent
             ? getDefaultTitle(terminal.kind, {
@@ -469,7 +495,7 @@ export function setupTerminalStoreListeners() {
             titleMode === "default" &&
             computedTitle !== undefined &&
             terminal.title !== computedTitle;
-          if (!clearProcess && !clearDetectedAgent && !needsTitleUpdate) {
+          if (!clearProcess && !clearDetectedAgent && !clearRuntimeIdentity && !needsTitleUpdate) {
             console.log(`[IdentityDebug] exited NOOP term=${terminalId.slice(-8)} already cleared`);
             return state;
           }
@@ -487,6 +513,7 @@ export function setupTerminalStoreListeners() {
                 ...terminal,
                 ...(clearProcess && { detectedProcessId: undefined }),
                 ...(clearDetectedAgent && { detectedAgentId: undefined }),
+                ...(clearRuntimeIdentity && { runtimeIdentity: undefined }),
                 ...(needsTitleUpdate && { title: computedTitle }),
               },
             },

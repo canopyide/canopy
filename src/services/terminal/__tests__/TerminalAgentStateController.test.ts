@@ -17,7 +17,7 @@ vi.mock("@/utils/logger", () => ({
 }));
 
 function makeMockManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal {
-  return {
+  const managed = {
     kind: "terminal",
     launchAgentId: "claude",
     agentState: undefined,
@@ -25,6 +25,8 @@ function makeMockManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTermi
     agentStateSubscribers: new Set(),
     ...overrides,
   } as unknown as ManagedTerminal;
+  managed.runtimeAgentId ??= managed.launchAgentId;
+  return managed;
 }
 
 describe("TerminalAgentStateController", () => {

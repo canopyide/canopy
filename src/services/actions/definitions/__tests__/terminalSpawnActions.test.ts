@@ -15,6 +15,21 @@ vi.mock("@/services/terminal/panelDuplicationService", () => ({
 }));
 
 vi.mock("@shared/config/panelKindRegistry", () => ({
+  getPanelKindConfig: (kind: string) => {
+    if (kind === "terminal")
+      return { id: kind, name: "Terminal", iconId: "terminal", color: "#aaa" };
+    if (kind === "browser") return { id: kind, name: "Browser", iconId: "globe", color: "#aaa" };
+    if (kind === "notes") return { id: kind, name: "Notes", iconId: "notes", color: "#aaa" };
+    if (kind === "dev-preview")
+      return { id: kind, name: "Dev Preview", iconId: "monitor", color: "#aaa" };
+    return {
+      id: kind,
+      name: kind.charAt(0).toUpperCase() + kind.slice(1),
+      iconId: kind,
+      color: "#aaa",
+    };
+  },
+  getPanelKindColor: () => "#aaa",
   getDefaultPanelTitle: (kind: string, agentId?: string) => {
     // Agent identity takes precedence, matching production behavior
     if (agentId === "claude") return "Claude";

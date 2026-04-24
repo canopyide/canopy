@@ -80,7 +80,7 @@ function makeManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal 
   (termEl as HTMLDivElement & { __paddingTopHistory: string[] }).__paddingTopHistory =
     paddingTopHistory;
 
-  return {
+  const managed = {
     terminal: { element: termEl } as unknown as ManagedTerminal["terminal"],
     type: "terminal",
     kind: "terminal",
@@ -123,6 +123,8 @@ function makeManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal 
     webLinksAddon: null,
     ...overrides,
   } as ManagedTerminal;
+  managed.runtimeAgentId ??= managed.launchAgentId;
+  return managed;
 }
 
 function paddingHistory(managed: ManagedTerminal): string[] {

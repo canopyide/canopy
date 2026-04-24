@@ -1,7 +1,7 @@
 import { Loader2, Layers } from "lucide-react";
 import type { TerminalInstance } from "@/store";
 import { PlaceholderContent } from "./PlaceholderContent";
-import { getPanelKindColor } from "@shared/config/panelKindRegistry";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 interface TerminalDragPreviewProps {
   terminal: TerminalInstance;
@@ -11,8 +11,9 @@ interface TerminalDragPreviewProps {
 
 export function TerminalDragPreview({ terminal, groupTabCount }: TerminalDragPreviewProps) {
   // Drag visual color mirrors live chrome — detection only, not launch hint.
-  const brandColor = getPanelKindColor(terminal.kind ?? "terminal", terminal.detectedAgentId);
-  const isWorking = terminal.agentState === "working";
+  const chrome = deriveTerminalChrome(terminal);
+  const brandColor = chrome.color;
+  const isWorking = chrome.isAgent && terminal.agentState === "working";
   const isGroupDrag = (groupTabCount ?? 0) > 1;
 
   return (
@@ -114,7 +115,10 @@ export function TerminalDragPreview({ terminal, groupTabCount }: TerminalDragPre
           flexDirection: "column",
         }}
       >
-        <PlaceholderContent kind={terminal.kind ?? "terminal"} agentId={terminal.detectedAgentId} />
+        <PlaceholderContent
+          kind={terminal.kind ?? "terminal"}
+          agentId={chrome.agentId ?? undefined}
+        />
       </div>
     </div>
   );

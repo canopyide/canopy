@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
 import type { AgentState } from "@/types";
 import { getDominantAgentState } from "@/components/Worktree/AgentStatusIndicator";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 export interface WorktreeTerminalCounts {
   total: number;
@@ -64,12 +65,13 @@ export function useWorktreeTerminals(worktreeId: string): UseWorktreeTerminalsRe
 
     const agentStates: (AgentState | undefined)[] = [];
     terminals.forEach((terminal) => {
-      // Default to 'idle' for terminals without agentState (e.g., shell terminals)
-      const state = terminal.agentState || "idle";
+      const isLiveAgent = deriveTerminalChrome(terminal).isAgent;
+      // Plain terminals and demoted ex-agents are counted as sessions, but
+      // they must not contribute stale agent states to sidebar badges.
+      const state = isLiveAgent ? (terminal.agentState ?? "idle") : "idle";
       byState[state] = (byState[state] || 0) + 1;
 
-      // Only include agent terminals (those with agentState defined)
-      if (terminal.agentState) {
+      if (isLiveAgent && terminal.agentState) {
         agentStates.push(terminal.agentState);
       }
     });

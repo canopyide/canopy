@@ -123,7 +123,7 @@ function makeMockManaged(overrides: Record<string, unknown> = {}) {
     open: vi.fn(),
   };
 
-  return {
+  const managed = {
     terminal,
     type: "terminal",
     kind: "terminal",
@@ -167,6 +167,17 @@ function makeMockManaged(overrides: Record<string, unknown> = {}) {
     ipcListenerCount: 0,
     ...overrides,
   };
+  const runtimeManaged = managed as typeof managed & {
+    runtimeAgentId?: string;
+    launchAgentId?: string;
+  };
+  if (
+    runtimeManaged.runtimeAgentId === undefined &&
+    typeof runtimeManaged.launchAgentId === "string"
+  ) {
+    runtimeManaged.runtimeAgentId = runtimeManaged.launchAgentId;
+  }
+  return runtimeManaged;
 }
 
 describe("TerminalInstanceService - Hibernation", () => {

@@ -43,7 +43,6 @@ import { cn, getBaseTitle } from "@/lib/utils";
 import { formatShortcutForTooltip, createTooltipWithShortcut } from "@/lib/platform";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
-import { getBrandColorHex } from "@/lib/colorUtils";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { MoveToDockIcon, MoveToGridIcon, WatchAlertIcon, WorktreeIcon } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
@@ -53,7 +52,6 @@ import {
   useKeybindingDisplay,
 } from "@/hooks";
 import { usePanelStore } from "@/store/panelStore";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,22 +63,17 @@ import { TabButton, type TabInfo } from "./TabButton";
 import { SortableTabButton } from "./SortableTabButton";
 import { useShallow } from "zustand/react/shallow";
 import { panelKindCanRestart, panelKindHasPty } from "@shared/config/panelKindRegistry";
-import type { BuiltInAgentId } from "@shared/config/agentIds";
 import { actionService } from "@/services/ActionService";
 import { fireWatchNotification } from "@/lib/watchNotification";
 import { useFleetFailureStore } from "@/store/fleetFailureStore";
+import type { TerminalChromeDescriptor } from "@/utils/terminalChrome";
 
 export interface PanelHeaderProps {
   id: string;
   title: string;
   kind: PanelKind;
   agentId?: string;
-  /** Runtime-detected agent identity (cleared when the agent exits). Drives icons and the watch button. */
-  detectedAgentId?: string;
-  /** Sticky flag: has an agent ever been live-detected in this panel. Needed so
-   * resolveChromeAgentId applies the demotion rule — agent exited → plain shell. */
-  everDetectedAgent?: boolean;
-  detectedProcessId?: string;
+  chrome: TerminalChromeDescriptor;
   presetColor?: string;
   worktreeAccentColor?: string;
   worktreeBranch?: string;
@@ -144,9 +137,7 @@ function PanelHeaderComponent({
   title,
   kind,
   agentId,
-  detectedAgentId,
-  everDetectedAgent,
-  detectedProcessId,
+  chrome,
   presetColor,
   worktreeAccentColor,
   worktreeBranch,
@@ -246,15 +237,7 @@ function PanelHeaderComponent({
   const isWatched = usePanelStore((state) => state.watchedPanels.has(id));
   const watchPanel = usePanelStore((state) => state.watchPanel);
   const unwatchPanel = usePanelStore((state) => state.unwatchPanel);
-  // Watch button tracks live agent identity: visible when an agent is currently
-  // running (`detectedAgentId`) OR was launched as one (`agentId`). The fallback
-  // keeps the button available right after spawn before the process detector fires.
-  const effectiveAgentId = resolveChromeAgentId(
-    detectedAgentId as BuiltInAgentId | undefined,
-    agentId,
-    everDetectedAgent
-  );
-  const showWatchButton = !!effectiveAgentId;
+  const showWatchButton = chrome.isAgent;
 
   // Fleet failure state for this pane: when the most recent broadcast
   // rejected on this terminal (e.g. PTY died mid-paste), surface a red
@@ -360,7 +343,7 @@ function PanelHeaderComponent({
 
   const getAriaLabel = () => {
     if (kind === "browser") return "Edit browser title";
-    if (!agentId && kind === "terminal") return "Edit terminal title";
+    if (!chrome.isAgent && kind === "terminal") return "Edit terminal title";
     return "Edit agent title";
   };
 
@@ -368,7 +351,7 @@ function PanelHeaderComponent({
     const prefix =
       kind === "browser"
         ? "Browser title"
-        : !agentId && kind === "terminal"
+        : !chrome.isAgent && kind === "terminal"
           ? "Terminal title"
           : "Agent title";
     return `${prefix}: ${title}. Press Enter or F2 to edit`;
@@ -558,10 +541,7 @@ function PanelHeaderComponent({
                           key={tab.id}
                           id={tab.id}
                           title={getBaseTitle(tab.title)}
-                          agentId={tab.agentId}
-                          detectedAgentId={tab.detectedAgentId}
-                          everDetectedAgent={tab.everDetectedAgent}
-                          detectedProcessId={tab.detectedProcessId}
+                          chrome={tab.chrome}
                           kind={tab.kind}
                           agentState={tab.agentState}
                           isActive={tab.isActive}
@@ -660,10 +640,7 @@ function PanelHeaderComponent({
                       key={tab.id}
                       id={tab.id}
                       title={getBaseTitle(tab.title)}
-                      agentId={tab.agentId}
-                      detectedAgentId={tab.detectedAgentId}
-                      everDetectedAgent={tab.everDetectedAgent}
-                      detectedProcessId={tab.detectedProcessId}
+                      chrome={tab.chrome}
                       kind={tab.kind}
                       agentState={tab.agentState}
                       isActive={tab.isActive}
@@ -732,11 +709,9 @@ function PanelHeaderComponent({
           <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-daintree-text">
             <TerminalIcon
               kind={kind}
-              agentId={agentId}
-              detectedAgentId={detectedAgentId}
-              detectedProcessId={detectedProcessId}
+              chrome={chrome}
               className="w-3.5 h-3.5"
-              brandColor={presetColor ?? getBrandColorHex(effectiveAgentId)}
+              brandColor={presetColor ?? chrome.color}
             />
           </span>
 

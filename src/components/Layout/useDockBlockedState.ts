@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentState } from "shared/types/agent";
+import type { TerminalRuntimeIdentity } from "@shared/types/panel";
+import { isAgentTerminal } from "@/utils/terminalType";
 
 type BlockedState = "waiting" | null;
 
@@ -8,6 +10,20 @@ const DEBOUNCE_MS = 800;
 function toBlockedState(agentState: AgentState | undefined): BlockedState {
   if (agentState === "waiting") return "waiting";
   return null;
+}
+
+type AgentStateSource = {
+  agentState?: AgentState;
+  detectedAgentId?: string;
+  runtimeIdentity?: TerminalRuntimeIdentity;
+};
+
+function hasRuntimeAgentIdentity(panel: AgentStateSource): boolean {
+  if ("runtimeIdentity" in panel || "detectedAgentId" in panel) {
+    return isAgentTerminal(panel);
+  }
+  // Backward-compatible for unit tests and pure callers that pass only state.
+  return true;
 }
 
 export function useDockBlockedState(agentState: AgentState | undefined): BlockedState {
@@ -48,21 +64,23 @@ export function useDockBlockedState(agentState: AgentState | undefined): Blocked
 }
 
 export function getGroupBlockedAgentState(
-  panels: ReadonlyArray<{ agentState?: AgentState }>
+  panels: ReadonlyArray<AgentStateSource>
 ): AgentState | undefined {
   for (const panel of panels) {
+    if (!hasRuntimeAgentIdentity(panel)) continue;
     if (panel.agentState === "waiting") return "waiting";
   }
   return undefined;
 }
 
 export function getGroupAmbientAgentState(
-  panels: ReadonlyArray<{ agentState?: AgentState }>
+  panels: ReadonlyArray<AgentStateSource>
 ): AgentState | undefined {
   let hasWaiting = false;
   let hasWorking = false;
 
   for (const panel of panels) {
+    if (!hasRuntimeAgentIdentity(panel)) continue;
     if (panel.agentState === "waiting") hasWaiting = true;
     else if (panel.agentState === "working") hasWorking = true;
   }
@@ -72,13 +90,15 @@ export function getGroupAmbientAgentState(
   return undefined;
 }
 
-export function isGroupDeprioritized(panels: ReadonlyArray<{ agentState?: AgentState }>): boolean {
+export function isGroupDeprioritized(panels: ReadonlyArray<AgentStateSource>): boolean {
   if (panels.length === 0) return false;
-  return panels.every(
-    (p) =>
+  return panels.every((p) => {
+    if (!hasRuntimeAgentIdentity(p)) return true;
+    return (
       !p.agentState ||
       p.agentState === "idle" ||
       p.agentState === "completed" ||
       p.agentState === "exited"
-  );
+    );
+  });
 }

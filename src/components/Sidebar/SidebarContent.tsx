@@ -56,6 +56,7 @@ import type { WorktreeActions } from "@/hooks/useWorktreeActions";
 import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
 import { RecipeEditor } from "@/components/TerminalRecipe/RecipeEditor";
 import { RecipeManager } from "@/components/TerminalRecipe/RecipeManager";
+import { isAgentTerminal } from "@/utils/terminalType";
 
 export function preloadNewWorktreeDialog() {
   return import("@/components/Worktree/NewWorktreeDialog");
@@ -438,6 +439,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         const t = panelsById[id];
         if (!t || t.worktreeId !== worktree.id || t.location === "trash") continue;
         terminalCount++;
+        if (!isAgentTerminal(t)) continue;
         if (t.agentState === "working") hasWorkingAgent = true;
         if (t.agentState === "waiting") {
           hasWaitingAgent = true;

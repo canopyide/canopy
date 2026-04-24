@@ -269,7 +269,7 @@ class TerminalInstanceService {
           }
         }
 
-        if (managed.launchAgentId) {
+        if (managed.runtimeAgentId) {
           if (
             tier === TerminalRefreshTier.FOCUSED ||
             tier === TerminalRefreshTier.BURST ||
@@ -349,7 +349,7 @@ class TerminalInstanceService {
    * element. Throttled per terminal.
    */
   private maybeReflowTerminal(managed: ManagedTerminal): void {
-    if (managed.launchAgentId) return;
+    if (managed.runtimeAgentId) return;
     if (managed.isHibernated) return;
     if (!managed.isVisible) return;
     if (managed.isAttaching) return;
@@ -765,6 +765,7 @@ class TerminalInstanceService {
       terminal,
       kind,
       launchAgentId,
+      runtimeAgentId: launchAgentId,
       agentState: undefined,
       agentStateSubscribers,
       ...addons,
@@ -1041,22 +1042,20 @@ class TerminalInstanceService {
     });
     listeners.push(() => inputDisposable.dispose());
 
-    if (launchAgentId) {
-      const keyDisposable = terminal.onKey(({ domEvent }) => {
-        if (
-          !managed.isInputLocked &&
-          domEvent.key === "Enter" &&
-          !domEvent.isComposing &&
-          !domEvent.shiftKey &&
-          !domEvent.ctrlKey &&
-          !domEvent.altKey &&
-          !domEvent.metaKey
-        ) {
-          this.onEnterPressed(id);
-        }
-      });
-      listeners.push(() => keyDisposable.dispose());
-    }
+    const keyDisposable = terminal.onKey(({ domEvent }) => {
+      if (
+        !managed.isInputLocked &&
+        domEvent.key === "Enter" &&
+        !domEvent.isComposing &&
+        !domEvent.shiftKey &&
+        !domEvent.ctrlKey &&
+        !domEvent.altKey &&
+        !domEvent.metaKey
+      ) {
+        this.onEnterPressed(id);
+      }
+    });
+    listeners.push(() => keyDisposable.dispose());
 
     this.instances.set(id, managed);
 
@@ -1196,7 +1195,7 @@ class TerminalInstanceService {
       managed.isOpened = true;
       logDebug(`[TIS.attach] Opened terminal ${id}`);
       if (
-        managed.launchAgentId &&
+        managed.runtimeAgentId &&
         (managed.lastAppliedTier === TerminalRefreshTier.FOCUSED ||
           managed.lastAppliedTier === TerminalRefreshTier.BURST ||
           managed.lastAppliedTier === TerminalRefreshTier.VISIBLE)
@@ -1533,8 +1532,8 @@ class TerminalInstanceService {
   }
 
   private getResizeStrategyForTerminal(managed: ManagedTerminal): "default" | "settled" {
-    if (!managed.launchAgentId) return "default";
-    const config = getEffectiveAgentConfig(managed.launchAgentId);
+    if (!managed.runtimeAgentId) return "default";
+    const config = getEffectiveAgentConfig(managed.runtimeAgentId);
     return config?.capabilities?.resizeStrategy ?? "default";
   }
 
@@ -1851,9 +1850,17 @@ class TerminalInstanceService {
   applyAgentPromotion(id: string, agentId: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;
-    if (managed.launchAgentId === agentId) return;
-    managed.launchAgentId = agentId;
+    if (managed.runtimeAgentId === agentId) return;
+    managed.runtimeAgentId = agentId;
     restoreScrollback(managed);
+  }
+
+  clearAgentPromotion(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed?.runtimeAgentId) return;
+    managed.runtimeAgentId = undefined;
+    this.webGLManager.releaseContext(id);
+    this.maybeReflowTerminal(managed);
   }
 
   reduceScrollbackAllBackground(targetLines: number): void {
@@ -1861,7 +1868,7 @@ class TerminalInstanceService {
       if (managed.isHibernated) continue;
       if (managed.isFocused) continue;
       if (
-        managed.launchAgentId &&
+        managed.runtimeAgentId &&
         managed.canonicalAgentState !== "completed" &&
         managed.canonicalAgentState !== "exited"
       )
@@ -1892,7 +1899,7 @@ class TerminalInstanceService {
   private isHibernationEligible(tier: TerminalRefreshTier, managed: ManagedTerminal): boolean {
     if (tier !== TerminalRefreshTier.BACKGROUND) return false;
     return (
-      !managed.launchAgentId ||
+      !managed.runtimeAgentId ||
       managed.canonicalAgentState === "completed" ||
       managed.canonicalAgentState === "exited"
     );

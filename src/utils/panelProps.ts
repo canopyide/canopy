@@ -1,6 +1,7 @@
 import type { TerminalInstance } from "@/store";
 import type { PanelComponentProps } from "@/registry";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 const activityCache = new Map<string, ActivityState>();
 
@@ -67,6 +68,14 @@ export function buildPanelProps({
     everDetectedAgent: terminal.everDetectedAgent,
     agentId: terminal.launchAgentId,
     detectedAgentId: terminal.detectedAgentId,
+    runtimeIdentity: terminal.runtimeIdentity,
+    chrome: deriveTerminalChrome({
+      kind: terminal.kind,
+      runtimeIdentity: terminal.runtimeIdentity,
+      detectedAgentId: terminal.detectedAgentId,
+      detectedProcessId: terminal.detectedProcessId,
+      presetColor: terminal.agentPresetColor,
+    }),
     agentPresetId: terminal.agentPresetId,
     presetColor: terminal.agentPresetColor,
     agentLaunchFlags: terminal.agentLaunchFlags,

@@ -37,7 +37,7 @@ import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStor
 import { useTerminalLogic } from "@/hooks/useTerminalLogic";
 import { errorsClient } from "@/clients";
 import type { AgentState } from "@/types";
-import type { BuiltInAgentId } from "@shared/config/agentIds";
+import { isBuiltInAgentId, type BuiltInAgentId } from "@shared/config/agentIds";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { actionService } from "@/services/ActionService";
 import { InputTracker } from "@/services/clearCommandDetection";
@@ -53,7 +53,8 @@ const LazyHybridInputBar = lazy(() =>
 import { getTerminalFocusTarget, shouldSuppressUnfocusedClick } from "./terminalFocus";
 import { decideChromeAction } from "./multiSelectGestures";
 import { registerPanelFocusHandler } from "./terminalFocusRegistry";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
+import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
+import type { TerminalRuntimeIdentity } from "@shared/types/panel";
 
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
@@ -72,6 +73,8 @@ export interface TerminalPaneProps {
   agentId?: string;
   /** Runtime-detected agent identity (cleared on agent exit). Drives panel chrome (icons, badges). */
   detectedAgentId?: BuiltInAgentId;
+  runtimeIdentity?: TerminalRuntimeIdentity;
+  chrome?: TerminalChromeDescriptor;
   /** Sticky flag: has an agent ever been live-detected. Drives the chrome demotion rule. */
   everDetectedAgent?: boolean;
   agentPresetId?: string;
@@ -116,6 +119,8 @@ function TerminalPaneComponent({
   title,
   agentId,
   detectedAgentId,
+  runtimeIdentity,
+  chrome: chromeProp,
   everDetectedAgent,
   agentPresetId,
   presetColor,
@@ -255,14 +260,8 @@ function TerminalPaneComponent({
   }, [isRestartingService]);
   const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
-  // Effective agent identity for chrome (icons, badges, presets) — prefers
-  // runtime-detected over launch-intent so chrome reflects what's actually running.
-  const effectiveAgentId = resolveChromeAgentId(detectedAgentId, agentId, everDetectedAgent) as
-    | BuiltInAgentId
-    | undefined;
-  // HybridInputBar is shown when an agent is currently detected as live.
-  const showHybridInputBar = detectedAgentId !== undefined && hybridInputEnabled;
-
+  // Panel kind is always "terminal" for PTY panels; live identity is runtime chrome.
+  const kind = "terminal" as const;
   const queueCount = usePanelStore((state) => state.commandQueueCountById[id] ?? 0);
 
   // Live preset color — re-derives from settings whenever the user edits a preset's color
@@ -292,6 +291,22 @@ function TerminalPaneComponent({
     presetProjectPresets,
     presetColor,
   ]);
+  const chrome = useMemo(
+    () =>
+      chromeProp && chromeProp.color === livePresetColor
+        ? chromeProp
+        : deriveTerminalChrome({
+            kind,
+            runtimeIdentity,
+            detectedAgentId,
+            detectedProcessId,
+            presetColor: livePresetColor,
+          }),
+    [chromeProp, kind, runtimeIdentity, detectedAgentId, detectedProcessId, livePresetColor]
+  );
+  const effectiveAgentId = isBuiltInAgentId(chrome.agentId) ? chrome.agentId : undefined;
+  // HybridInputBar is shown when an agent is currently detected as live.
+  const showHybridInputBar = effectiveAgentId !== undefined && hybridInputEnabled;
 
   const pingedIdSelector = useMemo(
     () => (state: ReturnType<typeof usePanelStore.getState>) => state.pingedId === id,
@@ -584,7 +599,7 @@ function TerminalPaneComponent({
       if (!xtermElement) return;
 
       const focusTarget = getTerminalFocusTarget({
-        hasChromeAgentIdentity: detectedAgentId !== undefined,
+        hasChromeAgentIdentity: chrome.isAgent,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -614,7 +629,7 @@ function TerminalPaneComponent({
     [
       id,
       location,
-      detectedAgentId,
+      chrome.isAgent,
       hybridInputEnabled,
       hybridInputAutoFocus,
       isBackendDisconnected,
@@ -648,7 +663,7 @@ function TerminalPaneComponent({
     if (!isFocused) return;
 
     const focusTarget = getTerminalFocusTarget({
-      hasChromeAgentIdentity: detectedAgentId !== undefined,
+      hasChromeAgentIdentity: chrome.isAgent,
       isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
       hybridInputEnabled,
       hybridInputAutoFocus,
@@ -672,7 +687,7 @@ function TerminalPaneComponent({
   }, [
     id,
     isFocused,
-    detectedAgentId,
+    chrome.isAgent,
     hybridInputEnabled,
     hybridInputAutoFocus,
     isBackendDisconnected,
@@ -684,7 +699,7 @@ function TerminalPaneComponent({
     if (!showHybridInputBar) return;
     return registerPanelFocusHandler(id, () => {
       const focusTarget = getTerminalFocusTarget({
-        hasChromeAgentIdentity: detectedAgentId !== undefined,
+        hasChromeAgentIdentity: chrome.isAgent,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -695,7 +710,7 @@ function TerminalPaneComponent({
   }, [
     id,
     showHybridInputBar,
-    detectedAgentId,
+    chrome.isAgent,
     isBackendDisconnected,
     isBackendRecovering,
     isInputLocked,
@@ -710,10 +725,6 @@ function TerminalPaneComponent({
 
   const isWorking = agentState === "working";
   const allowPing = !isMaximized && (location !== "grid" || (gridPanelCount ?? 2) > 1);
-
-  // Panel kind is always "terminal" for PTY panels — agent identity lives on
-  // effectiveAgentId, which flows to ContentPanel as a separate prop.
-  const kind = "terminal" as const;
 
   const agentHeaderActions = useMemo(() => {
     if (!effectiveAgentId) return undefined;
@@ -743,6 +754,8 @@ function TerminalPaneComponent({
       kind={kind}
       agentId={agentId}
       detectedAgentId={detectedAgentId}
+      runtimeIdentity={runtimeIdentity}
+      chrome={chrome}
       everDetectedAgent={everDetectedAgent}
       presetColor={livePresetColor}
       isFocused={isFocused}

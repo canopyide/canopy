@@ -6,12 +6,14 @@ import { TitleEditingProvider, useTitleEditing } from "./TitleEditingContext";
 import { TerminalHeaderContent } from "@/components/Terminal/TerminalHeaderContent";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import type { PanelKind, AgentState } from "@/types";
+import type { TerminalRuntimeIdentity } from "@shared/types/panel";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 import type { TabInfo } from "./TabButton";
 import { useDockBlockedState } from "@/components/Layout/useDockBlockedState";
 import { usePreferencesStore } from "@/store";
 import { useWorktreeColorMap } from "@/hooks/useWorktreeColorMap";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
+import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
 
 /**
  * Base props for all panel types.
@@ -56,7 +58,11 @@ export interface ContentPanelProps extends BasePanelProps {
   agentId?: string;
   /** Runtime-detected agent identity (cleared on agent exit). Drives panel chrome. */
   detectedAgentId?: string;
-  /** Sticky: has an agent ever been live-detected. Drives demotion in resolveChromeAgentId. */
+  /** Canonical live runtime identity for terminal chrome. */
+  runtimeIdentity?: TerminalRuntimeIdentity;
+  /** Single descriptor consumed by all terminal chrome renderers. */
+  chrome?: TerminalChromeDescriptor;
+  /** Sticky: has an agent ever been live-detected. Not used for chrome. */
   everDetectedAgent?: boolean;
   detectedProcessId?: string;
   presetColor?: string;
@@ -131,6 +137,8 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     "aria-selected": ariaSelected,
     agentId,
     detectedAgentId,
+    runtimeIdentity,
+    chrome,
     everDetectedAgent,
     detectedProcessId,
     presetColor,
@@ -191,12 +199,26 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     )
   );
 
+  const terminalChrome = useMemo(
+    () =>
+      chrome ??
+      deriveTerminalChrome({
+        kind,
+        runtimeIdentity,
+        detectedAgentId,
+        detectedProcessId,
+        presetColor,
+      }),
+    [chrome, kind, runtimeIdentity, detectedAgentId, detectedProcessId, presetColor]
+  );
+  const ownAgentState = terminalChrome.isAgent ? agentState : undefined;
   // Determine effective agent state for container border styling.
   // ambientAgentState takes priority so tab groups can surface highest-urgency
-  // state from hidden tabs without affecting the header chip (which uses agentState).
-  const effectiveAgentState = ambientAgentState ?? agentState;
+  // state from hidden live-agent tabs without affecting the active header chip.
+  const effectiveAgentState = ambientAgentState ?? ownAgentState;
   const blockedState = useDockBlockedState(effectiveAgentState);
   const isWorkingState = effectiveAgentState === "working";
+
   // Auto-construct TerminalHeaderContent for PTY-backed terminals if headerContent not provided
   const resolvedHeaderContent = useMemo(() => {
     if (headerContent !== undefined) return headerContent;
@@ -205,7 +227,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         <TerminalHeaderContent
           id={id}
           kind={kind}
-          agentState={agentState}
+          agentState={ownAgentState}
           activity={activity}
           activityStatus={activityStatus}
           lastCommand={lastCommand}
@@ -221,7 +243,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     headerContent,
     kind,
     id,
-    agentState,
+    ownAgentState,
     activity,
     activityStatus,
     lastCommand,
@@ -292,7 +314,11 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         data-detected-agent-id={detectedAgentId || undefined}
         data-launch-agent-id={agentId || undefined}
         data-ever-detected-agent={everDetectedAgent ? "true" : undefined}
-        data-chrome-agent-id={detectedAgentId || undefined}
+        data-chrome-agent-id={terminalChrome.agentId || undefined}
+        data-agent-state={ownAgentState || undefined}
+        data-ambient-agent-state={ambientAgentState || undefined}
+        data-runtime-kind={terminalChrome.runtimeKind}
+        data-runtime-icon-id={terminalChrome.iconId || undefined}
         data-selected={isSelected || undefined}
         style={{
           contain: "content",
@@ -334,9 +360,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
           title={title}
           kind={kind}
           agentId={agentId}
-          detectedAgentId={detectedAgentId}
-          everDetectedAgent={everDetectedAgent}
-          detectedProcessId={detectedProcessId}
+          chrome={terminalChrome}
           presetColor={presetColor}
           agentLaunchFlags={agentLaunchFlags}
           worktreeAccentColor={worktreeAccentColor}

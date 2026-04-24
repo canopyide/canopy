@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { gridPanelPropsAreEqual, type GridPanelProps } from "../GridPanel";
 import type { TerminalInstance } from "@/store";
 import type { TabInfo } from "@/components/Panel/TabButton";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 const noop = () => {};
 
@@ -14,8 +15,7 @@ const baseTerminal: TerminalInstance = {
 const baseTab: TabInfo = {
   id: "t-1",
   title: "Terminal 1",
-  agentId: undefined,
-  detectedProcessId: undefined,
+  chrome: deriveTerminalChrome(),
   kind: "terminal",
   agentState: undefined,
   isActive: true,

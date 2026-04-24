@@ -285,7 +285,7 @@ describe("handleProjectGetBulkStats", () => {
     expect(result["proj-a"].activeAgentCount).toBe(1);
   });
 
-  it("counts terminals with launchAgentId as agents even without kind=agent", async () => {
+  it("counts launchAgentId only as a boot-window agent before detection commits", async () => {
     const ptyClient = makePtyClient({
       getAllTerminalsAsync: vi.fn().mockResolvedValue([
         {
@@ -293,6 +293,59 @@ describe("handleProjectGetBulkStats", () => {
           projectId: "proj-a",
           kind: "terminal",
           launchAgentId: "claude",
+          agentState: "working",
+          hasPty: true,
+          cwd: "/tmp",
+          spawnedAt: 1,
+        },
+      ]),
+    });
+    registerProjectCrudHandlers(makeDeps(ptyClient));
+    const handler = getBulkStatsHandler();
+
+    const result = (await handler(fakeEvent, ["proj-a"])) as Record<
+      string,
+      { activeAgentCount: number }
+    >;
+
+    expect(result["proj-a"].activeAgentCount).toBe(1);
+  });
+
+  it("does not count demoted launch-agent terminals as active agents", async () => {
+    const ptyClient = makePtyClient({
+      getAllTerminalsAsync: vi.fn().mockResolvedValue([
+        {
+          id: "t1",
+          projectId: "proj-a",
+          kind: "terminal",
+          launchAgentId: "claude",
+          everDetectedAgent: true,
+          agentState: "working",
+          hasPty: true,
+          cwd: "/tmp",
+          spawnedAt: 1,
+        },
+      ]),
+    });
+    registerProjectCrudHandlers(makeDeps(ptyClient));
+    const handler = getBulkStatsHandler();
+
+    const result = (await handler(fakeEvent, ["proj-a"])) as Record<
+      string,
+      { activeAgentCount: number }
+    >;
+
+    expect(result["proj-a"].activeAgentCount).toBe(0);
+  });
+
+  it("counts runtime-detected agents launched from plain terminals", async () => {
+    const ptyClient = makePtyClient({
+      getAllTerminalsAsync: vi.fn().mockResolvedValue([
+        {
+          id: "t1",
+          projectId: "proj-a",
+          kind: "terminal",
+          detectedAgentId: "claude",
           agentState: "working",
           hasPty: true,
           cwd: "/tmp",

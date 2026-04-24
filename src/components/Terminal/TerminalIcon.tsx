@@ -1,123 +1,68 @@
 import { SquareTerminal, Globe, Monitor } from "lucide-react";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { PanelKind } from "@/types";
-import type { ComponentType } from "react";
-import type { BuiltInAgentId } from "@shared/config/agentIds";
-import { getAgentConfig } from "@/config/agents";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
-import {
-  NpmIcon,
-  YarnIcon,
-  PnpmIcon,
-  BunIcon,
-  PythonIcon,
-  ComposerIcon,
-  DockerIcon,
-  RustIcon,
-  GoIcon,
-  RubyIcon,
-  NodeIcon,
-  DenoIcon,
-  GradleIcon,
-  PhpIcon,
-  ViteIcon,
-  WebpackIcon,
-  KotlinIcon,
-  SwiftIcon,
-  TerraformIcon,
-  ElixirIcon,
-} from "@/components/icons";
-
-const PROCESS_ICON_MAP: Record<string, ComponentType<{ className?: string; size?: number }>> = {
-  npm: NpmIcon,
-  yarn: YarnIcon,
-  pnpm: PnpmIcon,
-  bun: BunIcon,
-  python: PythonIcon,
-  composer: ComposerIcon,
-  docker: DockerIcon,
-  rust: RustIcon,
-  go: GoIcon,
-  ruby: RubyIcon,
-  node: NodeIcon,
-  deno: DenoIcon,
-  gradle: GradleIcon,
-  php: PhpIcon,
-  vite: ViteIcon,
-  webpack: WebpackIcon,
-  kotlin: KotlinIcon,
-  swift: SwiftIcon,
-  terraform: TerraformIcon,
-  elixir: ElixirIcon,
-};
+import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
+import { resolveTerminalRunIcon } from "./terminalRunIconRegistry";
+import type { ReactNode } from "react";
 
 export interface TerminalIconProps {
   kind?: PanelKind;
-  agentId?: string;
-  /**
-   * Runtime-detected agent (cleared when the agent exits). Takes precedence
-   * over `agentId` so the icon reflects the live process, not the launch intent.
-   */
-  detectedAgentId?: string;
-  /** Sticky: has an agent ever been live-detected. Required for demotion rule. */
-  everDetectedAgent?: boolean;
-  detectedProcessId?: string;
+  chrome?: TerminalChromeDescriptor;
   className?: string;
   brandColor?: string;
 }
 
-export function TerminalIcon({
-  kind,
-  agentId,
-  detectedAgentId,
-  everDetectedAgent,
-  detectedProcessId,
-  className,
-  brandColor,
-}: TerminalIconProps) {
+export function TerminalIcon({ kind, chrome, className, brandColor }: TerminalIconProps) {
+  const resolvedChrome = chrome ?? deriveTerminalChrome({ kind });
+  const iconId = resolvedChrome.iconId ?? "terminal";
   const finalProps = {
     className: cn("w-4 h-4", className),
     "aria-hidden": "true" as const,
   };
 
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !(window as Window & { __DAINTREE_IDENTITY_RENDER_DEBUG__?: boolean })
+        .__DAINTREE_IDENTITY_RENDER_DEBUG__
+    ) {
+      return;
+    }
+    console.debug(
+      `[IdentityDebug] render-icon kind=${kind ?? "<none>"} icon=${iconId} ` +
+        `agent=${resolvedChrome.agentId ?? "<none>"} process=${resolvedChrome.processId ?? "<none>"} ` +
+        `label=${resolvedChrome.label}`
+    );
+  }, [kind, iconId, resolvedChrome.agentId, resolvedChrome.processId, resolvedChrome.label]);
+
+  const withIconMarker = (icon: ReactNode, markerIconId = iconId) => (
+    <span className="contents" data-terminal-icon-id={markerIconId}>
+      {icon}
+    </span>
+  );
+
   // Browser panes get a globe icon
-  if (kind === "browser") {
-    return <Globe {...finalProps} className={cn(finalProps.className, "text-status-info")} />;
+  if (kind === "browser" || resolvedChrome.iconId === "globe") {
+    return withIconMarker(
+      <Globe {...finalProps} className={cn(finalProps.className, "text-status-info")} />
+    );
   }
 
   // Dev preview panes get a monitor icon
-  if (kind === "dev-preview") {
-    return <Monitor {...finalProps} className={cn(finalProps.className, "text-status-info")} />;
+  if (kind === "dev-preview" || resolvedChrome.iconId === "monitor") {
+    return withIconMarker(
+      <Monitor {...finalProps} className={cn(finalProps.className, "text-status-info")} />
+    );
   }
 
-  // Prefer runtime-detected identity, then launch-time agentId.
-  const effectiveAgentId = resolveChromeAgentId(
-    detectedAgentId as BuiltInAgentId | undefined,
-    agentId,
-    everDetectedAgent
-  );
-
-  if (effectiveAgentId) {
-    const config = getAgentConfig(effectiveAgentId);
-    if (config) {
-      const Icon = config.icon;
-      return <Icon {...finalProps} brandColor={brandColor ?? config.color} />;
-    }
-  }
-
-  // Dynamic process icon for detected running processes (neutral color via currentColor)
-  if (detectedProcessId) {
-    const ProcessIcon = PROCESS_ICON_MAP[detectedProcessId];
-    if (ProcessIcon) {
-      return <ProcessIcon {...finalProps} />;
-    }
-    const detectedAgentConfig = getAgentConfig(detectedProcessId);
-    if (detectedAgentConfig) {
-      const AgentIcon = detectedAgentConfig.icon;
-      return <AgentIcon {...finalProps} brandColor={brandColor} />;
-    }
+  const RunIcon = resolveTerminalRunIcon(resolvedChrome.iconId);
+  if (RunIcon) {
+    return withIconMarker(
+      <RunIcon {...finalProps} brandColor={brandColor ?? resolvedChrome.color} />
+    );
   }
 
   // Fallback to generic terminal icon
-  return <SquareTerminal {...finalProps} />;
+  return withIconMarker(<SquareTerminal {...finalProps} />, "terminal");
 }

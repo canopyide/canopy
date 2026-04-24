@@ -5,6 +5,7 @@ import { usePanelStore, type TerminalInstance } from "@/store";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slices";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
+import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TrashGroupItemProps {
@@ -186,9 +187,7 @@ export function TrashGroupItem({
                 >
                   <TerminalIcon
                     kind={terminal.kind}
-                    agentId={terminal.launchAgentId}
-                    detectedAgentId={terminal.detectedAgentId}
-                    detectedProcessId={terminal.detectedProcessId}
+                    chrome={deriveTerminalChrome(terminal)}
                     className="w-2.5 h-2.5 opacity-60"
                   />
                   <span

@@ -4,10 +4,7 @@ import { motion } from "framer-motion";
 import { X, AlertTriangle } from "lucide-react";
 import type { PanelKind, AgentState } from "@/types";
 import type { WaitingReason } from "@shared/types/agent";
-import type { BuiltInAgentId } from "@shared/config/agentIds";
 import { cn } from "@/lib/utils";
-import { getBrandColorHex } from "@/lib/colorUtils";
-import { resolveChromeAgentId } from "@/utils/agentIdentity";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import {
@@ -15,14 +12,12 @@ import {
   getEffectiveStateColor,
 } from "@/components/Worktree/terminalStateConfig";
 import { usePanelStore } from "@/store";
+import type { TerminalChromeDescriptor } from "@/utils/terminalChrome";
 
 export interface TabInfo {
   id: string;
   title: string;
-  agentId?: string;
-  detectedAgentId?: string;
-  everDetectedAgent?: boolean;
-  detectedProcessId?: string;
+  chrome: TerminalChromeDescriptor;
   kind: PanelKind;
   agentState?: AgentState;
   isActive: boolean;
@@ -35,10 +30,7 @@ export interface TabInfo {
 export interface TabButtonProps {
   id: string;
   title: string;
-  agentId?: string;
-  detectedAgentId?: string;
-  everDetectedAgent?: boolean;
-  detectedProcessId?: string;
+  chrome: TerminalChromeDescriptor;
   kind: PanelKind;
   agentState?: AgentState;
   isActive: boolean;
@@ -57,10 +49,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
   {
     id,
     title,
-    agentId,
-    detectedAgentId,
-    everDetectedAgent,
-    detectedProcessId,
+    chrome,
     kind,
     agentState,
     isActive,
@@ -227,7 +216,8 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
   const waitingReason = usePanelStore((state) => state.panelsById[id]?.waitingReason) as
     | WaitingReason
     | undefined;
-  const showStateIcon = agentState && agentState !== "idle" && agentState !== "completed";
+  const showStateIcon =
+    chrome.isAgent && agentState && agentState !== "idle" && agentState !== "completed";
   const StateIcon = showStateIcon ? getEffectiveStateIcon(agentState, waitingReason) : null;
 
   return (
@@ -266,21 +256,9 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
             <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5">
               <TerminalIcon
                 kind={kind}
-                agentId={agentId}
-                detectedAgentId={detectedAgentId}
-                everDetectedAgent={everDetectedAgent}
-                detectedProcessId={detectedProcessId}
+                chrome={chrome}
                 className="w-3.5 h-3.5"
-                brandColor={
-                  presetColor ??
-                  getBrandColorHex(
-                    resolveChromeAgentId(
-                      detectedAgentId as BuiltInAgentId | undefined,
-                      agentId,
-                      everDetectedAgent
-                    )
-                  )
-                }
+                brandColor={presetColor ?? chrome.color}
               />
             </span>
 

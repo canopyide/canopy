@@ -8,6 +8,7 @@ import { usePanelLifecycle } from "@/hooks/usePanelLifecycle";
 import { usePanelHandlers } from "@/hooks/usePanelHandlers";
 import { buildPanelProps } from "@/utils/panelProps";
 import type { AgentState } from "@/types";
+import { terminalChromeDescriptorsEqual } from "@/utils/terminalChrome";
 
 export interface GridPanelProps {
   terminal: TerminalInstance;
@@ -69,6 +70,7 @@ export function gridPanelPropsAreEqual(prev: GridPanelProps, next: GridPanelProp
       a.launchAgentId !== b.launchAgentId ||
       a.detectedAgentId !== b.detectedAgentId ||
       a.everDetectedAgent !== b.everDetectedAgent ||
+      a.runtimeIdentity !== b.runtimeIdentity ||
       a.cwd !== b.cwd ||
       a.agentState !== b.agentState ||
       a.activityHeadline !== b.activityHeadline ||
@@ -104,10 +106,7 @@ export function gridPanelPropsAreEqual(prev: GridPanelProps, next: GridPanelProp
       if (
         pt.id !== nt.id ||
         pt.title !== nt.title ||
-        pt.agentId !== nt.agentId ||
-        pt.detectedAgentId !== nt.detectedAgentId ||
-        pt.everDetectedAgent !== nt.everDetectedAgent ||
-        pt.detectedProcessId !== nt.detectedProcessId ||
+        !terminalChromeDescriptorsEqual(pt.chrome, nt.chrome) ||
         pt.kind !== nt.kind ||
         pt.agentState !== nt.agentState ||
         pt.isActive !== nt.isActive

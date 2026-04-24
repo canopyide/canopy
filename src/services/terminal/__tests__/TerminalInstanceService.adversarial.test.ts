@@ -126,7 +126,7 @@ function makeManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal 
   const terminalElement = makeTerminalElement();
   hostElement.appendChild(terminalElement);
 
-  return {
+  const managed = {
     terminal: {
       element: terminalElement,
       rows: 24,
@@ -182,7 +182,9 @@ function makeManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal 
     isHibernated: false,
     pendingWrites: 0,
     ...overrides,
-  };
+  } as ManagedTerminal;
+  managed.runtimeAgentId ??= managed.launchAgentId;
+  return managed;
 }
 
 describe("TerminalInstanceService adversarial", () => {

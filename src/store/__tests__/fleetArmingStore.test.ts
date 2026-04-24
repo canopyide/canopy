@@ -254,6 +254,24 @@ describe("fleetArmingStore", () => {
       useFleetArmingStore.getState().armAll("current");
       expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
     });
+
+    it("arms terminals whose live agent identity is carried by runtimeIdentity", () => {
+      seedPanels([
+        makeAgentTerminal("runtime-a1", {
+          detectedAgentId: undefined,
+          runtimeIdentity: {
+            kind: "agent",
+            id: "claude",
+            iconId: "claude",
+            agentId: "claude",
+          },
+        }),
+      ]);
+
+      useFleetArmingStore.getState().armAll("current");
+
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["runtime-a1"]);
+    });
   });
 
   describe("armMatchingFilter", () => {
