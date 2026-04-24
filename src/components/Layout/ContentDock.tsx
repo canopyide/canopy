@@ -35,6 +35,8 @@ import {
 import { AGENT_REGISTRY } from "@/config/agents";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
+import { buildDockRenderItems, type DockRenderItem } from "./dockRenderItems";
+import type { DockDensity } from "@/store/preferencesStore";
 
 const AGENT_OPTIONS = [
   ...BUILT_IN_AGENT_IDS.map((id) => ({
@@ -45,7 +47,6 @@ const AGENT_OPTIONS = [
   { type: "browser" as const, label: "Browser" },
 ];
 
-import type { DockDensity } from "@/store/preferencesStore";
 export type { DockDensity } from "@/store/preferencesStore";
 
 interface ContentDockProps {
@@ -80,6 +81,19 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
     trashedTerminals,
     helpTerminalId,
   ]);
+
+  const dockTerminals = useMemo(() => {
+    return storeTerminalIds
+      .map((id) => panelsById[id])
+      .filter(
+        (terminal): terminal is TerminalInstance =>
+          terminal !== undefined &&
+          terminal.location === "dock" &&
+          !trashedTerminals.has(terminal.id) &&
+          terminal.id !== helpTerminalId &&
+          (terminal.worktreeId == null || terminal.worktreeId === activeWorktreeId)
+      );
+  }, [storeTerminalIds, panelsById, trashedTerminals, helpTerminalId, activeWorktreeId]);
 
   const { worktrees } = useWorktrees();
 
@@ -136,14 +150,23 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
     trashedInfo: typeof trashedTerminals extends Map<string, infer V> ? V : never;
   }[];
 
+  const dockItems = useMemo<DockRenderItem[]>(() => {
+    return buildDockRenderItems(
+      tabGroups,
+      (groupId) => getTabGroupPanels(groupId, "dock"),
+      helpTerminalId,
+      dockTerminals
+    );
+  }, [tabGroups, getTabGroupPanels, helpTerminalId, dockTerminals]);
+
   // Tab group IDs for SortableContext
   const panelIds = useMemo(() => {
-    if (tabGroups.length === 0) {
+    if (dockItems.length === 0) {
       return [DOCK_PLACEHOLDER_ID];
     }
     // Use first panel's ID for each group (consistent with terminal-based DnD)
-    return tabGroups.map((g) => g.panelIds[0] ?? g.id);
-  }, [tabGroups]);
+    return dockItems.map((item) => item.panels[0]?.id ?? item.group.id);
+  }, [dockItems]);
 
   const isCompact = density === "compact";
 
@@ -202,16 +225,13 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
                 strategy={horizontalListSortingStrategy}
               >
                 <div className="flex items-center gap-[var(--dock-gap)] min-w-[100px] min-h-[calc(var(--dock-item-height)-4px)]">
-                  {tabGroups.length === 0 ? (
+                  {dockItems.length === 0 ? (
                     <SortableDockPlaceholder />
                   ) : (
-                    tabGroups.map((group, index) => {
-                      const groupPanels = getTabGroupPanels(group.id, "dock");
-                      if (groupPanels.length === 0) return null;
-
+                    dockItems.map(({ group, panels }, index) => {
                       // Single-panel group: render DockedTerminalItem directly
-                      if (groupPanels.length === 1) {
-                        const terminal = groupPanels[0]!;
+                      if (panels.length === 1) {
+                        const terminal = panels[0]!;
                         return (
                           <SortableDockItem key={group.id} terminal={terminal} sourceIndex={index}>
                             <DockedTerminalItem terminal={terminal} />
@@ -220,7 +240,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
                       }
 
                       // Multi-panel group: pass group context for group-aware DnD
-                      const firstPanel = groupPanels[0]!;
+                      const firstPanel = panels[0]!;
                       return (
                         <SortableDockItem
                           key={group.id}
@@ -229,7 +249,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
                           groupId={group.id}
                           groupPanelIds={group.panelIds}
                         >
-                          <DockedTabGroup group={group} panels={groupPanels} />
+                          <DockedTabGroup group={group} panels={panels} />
                         </SortableDockItem>
                       );
                     })
@@ -265,7 +285,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
           </div>
 
           {/* Separator between terminals and action containers */}
-          {tabGroups.length > 0 && (
+          {dockItems.length > 0 && (
             <div className="w-px h-5 bg-[var(--dock-border)] mx-1 shrink-0" />
           )}
 

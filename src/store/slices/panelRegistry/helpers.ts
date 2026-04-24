@@ -1,5 +1,6 @@
 import type { TerminalFlowStatus, TerminalRuntimeStatus } from "@/types";
 import type { PanelKind } from "@/types";
+import type { TabGroup } from "@/types";
 import { getDefaultPanelTitle } from "@shared/config/panelKindRegistry";
 import { AGENT_REGISTRY } from "@shared/config/agentRegistry";
 import { isBuiltInAgentId } from "@shared/config/agentIds";
@@ -40,6 +41,33 @@ export const deriveRuntimeStatus = (
   }
   return "running";
 };
+
+export function removePanelIdsFromTabGroups(
+  tabGroups: Map<string, TabGroup>,
+  panelIdsToRemove: ReadonlySet<string>
+): { tabGroups: Map<string, TabGroup>; changed: boolean } {
+  let changed = false;
+  const nextTabGroups = new Map(tabGroups);
+
+  for (const [groupId, group] of tabGroups) {
+    if (!group.panelIds.some((panelId) => panelIdsToRemove.has(panelId))) continue;
+
+    changed = true;
+    const panelIds = group.panelIds.filter((panelId) => !panelIdsToRemove.has(panelId));
+    if (panelIds.length <= 1) {
+      nextTabGroups.delete(groupId);
+      continue;
+    }
+
+    nextTabGroups.set(groupId, {
+      ...group,
+      panelIds,
+      activeTabId: panelIds.includes(group.activeTabId) ? group.activeTabId : (panelIds[0] ?? ""),
+    });
+  }
+
+  return { tabGroups: changed ? nextTabGroups : tabGroups, changed };
+}
 
 interface DefaultTitleIdentity extends TerminalChromeInput {
   launchAgentId?: string;

@@ -26,7 +26,7 @@ import {
 import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
-import { useDockBlockedState } from "./useDockBlockedState";
+import { getDockDisplayAgentState, useDockBlockedState } from "./useDockBlockedState";
 import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopoverGuard";
 import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -265,7 +265,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     ]
   );
 
-  const agentState = chrome.isAgent ? terminal.agentState : undefined;
+  const agentState = chrome.isAgent ? getDockDisplayAgentState(terminal) : undefined;
   const isWorking = agentState === "working";
   const isWaiting = agentState === "waiting";
   const isActive = isWorking || isWaiting;

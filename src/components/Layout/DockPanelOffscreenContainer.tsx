@@ -43,6 +43,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
   const [offscreenSlots, setOffscreenSlots] = useState<Map<string, HTMLElement>>(() => new Map());
 
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
+  const activeDockTerminalId = usePanelStore((s) => s.activeDockTerminalId);
   const dockTerminals = usePanelStore(
     useShallow((s) => {
       const result: TerminalInstance[] = [];
@@ -51,6 +52,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
         if (
           t &&
           t.location === "dock" &&
+          !s.trashedTerminals.has(t.id) &&
           // Show terminals that match active worktree OR have no worktree (global terminals)
           (t.worktreeId == null || t.worktreeId === activeWorktreeId)
         ) {
@@ -73,6 +75,12 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
   const handlePopoverClose = useCallback(() => {
     closeDockTerminal();
   }, [closeDockTerminal]);
+
+  useEffect(() => {
+    if (!activeDockTerminalId) return;
+    if (dockTerminals.some((terminal) => terminal.id === activeDockTerminalId)) return;
+    closeDockTerminal();
+  }, [activeDockTerminalId, dockTerminals, closeDockTerminal]);
 
   // Handler for adding a new tab to a single panel (creates a tab group)
   const handleAddTabForPanel = useCallback(

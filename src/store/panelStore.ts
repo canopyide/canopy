@@ -208,6 +208,34 @@ export const usePanelStore = create<PanelGridState>()(
         return moveSucceeded;
       },
 
+      moveTabGroupToLocation: (groupId, location) => {
+        const groupBeforeMove = get().tabGroups.get(groupId);
+        const moved = registrySlice.moveTabGroupToLocation(groupId, location);
+        if (!moved || !groupBeforeMove) return moved;
+
+        if (location === "grid") {
+          const activeDockTerminalId = get().activeDockTerminalId;
+          const nextFocusedId = groupBeforeMove.panelIds.includes(groupBeforeMove.activeTabId)
+            ? groupBeforeMove.activeTabId
+            : (groupBeforeMove.panelIds[0] ?? null);
+          const shouldClearDock =
+            activeDockTerminalId !== null &&
+            groupBeforeMove.panelIds.includes(activeDockTerminalId);
+
+          set({
+            focusedId: nextFocusedId,
+            ...(shouldClearDock && { activeDockTerminalId: null }),
+          });
+        } else {
+          const focusedId = get().focusedId;
+          if (focusedId && groupBeforeMove.panelIds.includes(focusedId)) {
+            set({ focusedId: null, activeDockTerminalId: groupBeforeMove.activeTabId });
+          }
+        }
+
+        return moved;
+      },
+
       trashPanel: (id: string) => {
         const state = get();
         const terminalToTrash = state.panelsById[id];

@@ -2,8 +2,9 @@ import type { PanelRegistryStoreApi, PanelRegistrySlice, TerminalInstance } from
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
-import { saveNormalized } from "./persistence";
+import { saveNormalized, saveTabGroups } from "./persistence";
 import { optimizeForDock } from "./layout";
+import { deriveRuntimeStatus, removePanelIdsFromTabGroups } from "./helpers";
 
 type Set = PanelRegistryStoreApi["setState"];
 type Get = PanelRegistryStoreApi["getState"];
@@ -105,16 +106,29 @@ export const createOrderingActions = (
               ? scopedIndices[scopedCount - 1]! + 1
               : scopedIndices[clampedIndex]!;
 
-      // Update terminal location
-      const updatedTerminal: TerminalInstance = { ...terminal, location };
+      const isVisible = location === "grid";
+      const updatedTerminal: TerminalInstance = {
+        ...terminal,
+        location,
+        isVisible,
+        runtimeStatus: deriveRuntimeStatus(isVisible, terminal.flowStatus, terminal.runtimeStatus),
+      };
 
       // Insert at the right position
       const newIds = [...filteredIds];
       newIds.splice(insertAt, 0, id);
       const newById = { ...state.panelsById, [id]: updatedTerminal };
+      const groupPrune = removePanelIdsFromTabGroups(state.tabGroups, new Set([id]));
 
       saveNormalized(newById, newIds);
-      return { panelsById: newById, panelIds: newIds };
+      if (groupPrune.changed) {
+        saveTabGroups(groupPrune.tabGroups);
+      }
+      return {
+        panelsById: newById,
+        panelIds: newIds,
+        ...(groupPrune.changed && { tabGroups: groupPrune.tabGroups }),
+      };
     });
 
     const terminal = get().panelsById[id];

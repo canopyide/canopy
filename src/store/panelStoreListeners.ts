@@ -609,6 +609,9 @@ export function setupTerminalStoreListeners() {
         if (state.maximizedId === id) {
           updates.maximizedId = null;
         }
+        if (state.activeDockTerminalId === id) {
+          updates.activeDockTerminalId = null;
+        }
         if (Object.keys(updates).length > 0) {
           usePanelStore.setState(updates);
         }

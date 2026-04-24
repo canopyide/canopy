@@ -14,6 +14,8 @@ function toBlockedState(agentState: AgentState | undefined): BlockedState {
 
 type AgentStateSource = {
   agentState?: AgentState;
+  activityStatus?: "working" | "waiting" | "success" | "failure";
+  waitingReason?: unknown;
   detectedAgentId?: string;
   runtimeIdentity?: TerminalRuntimeIdentity;
   launchAgentId?: string;
@@ -27,6 +29,35 @@ function hasRuntimeAgentIdentity(panel: AgentStateSource): boolean {
   }
   // Backward-compatible for unit tests and pure callers that pass only state.
   return true;
+}
+
+export function getDockDisplayAgentState(panel: AgentStateSource): AgentState | undefined {
+  const hasIdentityFields =
+    "runtimeIdentity" in panel ||
+    "detectedAgentId" in panel ||
+    "launchAgentId" in panel ||
+    "runtimeStatus" in panel ||
+    "exitCode" in panel;
+  if (!hasIdentityFields && panel.agentState === undefined) return undefined;
+  if (!hasRuntimeAgentIdentity(panel)) return undefined;
+
+  if (
+    panel.agentState === "completed" ||
+    panel.agentState === "exited" ||
+    panel.agentState === "directing"
+  ) {
+    return panel.agentState;
+  }
+
+  if (panel.activityStatus === "waiting" || panel.agentState === "waiting") {
+    return "waiting";
+  }
+
+  if (panel.activityStatus === "working" || panel.agentState === "working") {
+    return "working";
+  }
+
+  return panel.agentState;
 }
 
 export function useDockBlockedState(agentState: AgentState | undefined): BlockedState {
@@ -70,8 +101,7 @@ export function getGroupBlockedAgentState(
   panels: ReadonlyArray<AgentStateSource>
 ): AgentState | undefined {
   for (const panel of panels) {
-    if (!hasRuntimeAgentIdentity(panel)) continue;
-    if (panel.agentState === "waiting") return "waiting";
+    if (getDockDisplayAgentState(panel) === "waiting") return "waiting";
   }
   return undefined;
 }
@@ -83,9 +113,9 @@ export function getGroupAmbientAgentState(
   let hasWorking = false;
 
   for (const panel of panels) {
-    if (!hasRuntimeAgentIdentity(panel)) continue;
-    if (panel.agentState === "waiting") hasWaiting = true;
-    else if (panel.agentState === "working") hasWorking = true;
+    const state = getDockDisplayAgentState(panel);
+    if (state === "waiting") hasWaiting = true;
+    else if (state === "working") hasWorking = true;
   }
 
   if (hasWaiting) return "waiting";
@@ -96,12 +126,8 @@ export function getGroupAmbientAgentState(
 export function isGroupDeprioritized(panels: ReadonlyArray<AgentStateSource>): boolean {
   if (panels.length === 0) return false;
   return panels.every((p) => {
-    if (!hasRuntimeAgentIdentity(p)) return true;
-    return (
-      !p.agentState ||
-      p.agentState === "idle" ||
-      p.agentState === "completed" ||
-      p.agentState === "exited"
-    );
+    const state = getDockDisplayAgentState(p);
+    if (!state) return true;
+    return state === "idle" || state === "completed" || state === "exited";
   });
 }

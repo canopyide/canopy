@@ -24,6 +24,14 @@ function isTerminalVisible(
   return true;
 }
 
+function isOpenableDockTerminal(
+  terminal: TerminalInstance | undefined
+): terminal is TerminalInstance {
+  if (!terminal) return false;
+  if (terminal.location !== "dock") return false;
+  return true;
+}
+
 interface PreMaximizeLayoutSnapshot {
   gridCols: number;
   gridItemCount: number;
@@ -324,6 +332,16 @@ export const createTerminalFocusSlice =
       openDockTerminal: (id) => {
         // Skip wake for non-PTY panels - they don't have backend PTY processes.
         const terminal = getTerminals().find((t) => t.id === id);
+        if (!isOpenableDockTerminal(terminal)) {
+          set((state) => {
+            if (state.activeDockTerminalId === null && state.focusedId !== id) return state;
+            return {
+              activeDockTerminalId: null,
+              focusedId: state.focusedId === id ? null : state.focusedId,
+            };
+          });
+          return;
+        }
         if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
           terminalInstanceService.wake(id);
         }

@@ -10,4 +10,20 @@ describe("ContentDock regression test", () => {
     expect(content).not.toContain("ClusterAttentionPill");
     expect(content).not.toContain('from "@/components/Fleet"');
   });
+
+  it("renders from resolved dock items instead of raw tab-group shells", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).toContain("const dockItems = useMemo");
+    expect(content).toContain("dockItems.length === 0");
+    expect(content).not.toContain("if (groupPanels.length === 0) return null");
+  });
+
+  it("offscreen dock container closes stale active dock state", () => {
+    const content = readFileSync(resolve(__dirname, "../DockPanelOffscreenContainer.tsx"), "utf-8");
+
+    expect(content).toContain("activeDockTerminalId");
+    expect(content).toContain("closeDockTerminal()");
+    expect(content).toContain("!s.trashedTerminals.has(t.id)");
+  });
 });

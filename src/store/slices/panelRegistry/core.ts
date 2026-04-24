@@ -32,6 +32,7 @@ import {
   DOCK_TERM_HEIGHT,
   DOCK_PREWARM_WIDTH_PX,
   DOCK_PREWARM_HEIGHT_PX,
+  removePanelIdsFromTabGroups,
   stopDevPreviewByPanelId,
 } from "./helpers";
 import type { TrashExpiryHelpers } from "./trash";
@@ -913,6 +914,7 @@ export const createCorePanelActions = (
     set((state) => {
       if (!terminal || terminal.location === "dock") return state;
 
+      const groupPrune = removePanelIdsFromTabGroups(state.tabGroups, new Set([id]));
       const newById = {
         ...state.panelsById,
         [id]: {
@@ -923,7 +925,13 @@ export const createCorePanelActions = (
         },
       };
       saveNormalized(newById, state.panelIds);
-      return { panelsById: newById };
+      if (groupPrune.changed) {
+        saveTabGroups(groupPrune.tabGroups);
+      }
+      return {
+        panelsById: newById,
+        ...(groupPrune.changed && { tabGroups: groupPrune.tabGroups }),
+      };
     });
 
     // Only optimize PTY-backed panels
@@ -982,6 +990,7 @@ export const createCorePanelActions = (
       }
 
       moveSucceeded = true;
+      const groupPrune = removePanelIdsFromTabGroups(state.tabGroups, new Set([id]));
       const newById = {
         ...state.panelsById,
         [id]: {
@@ -992,7 +1001,13 @@ export const createCorePanelActions = (
         },
       };
       saveNormalized(newById, state.panelIds);
-      return { panelsById: newById };
+      if (groupPrune.changed) {
+        saveTabGroups(groupPrune.tabGroups);
+      }
+      return {
+        panelsById: newById,
+        ...(groupPrune.changed && { tabGroups: groupPrune.tabGroups }),
+      };
     });
 
     // Only apply renderer policy for PTY-backed panels if move succeeded

@@ -9,6 +9,7 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 }));
 
 const mockGetActiveWorktreeId = vi.fn(() => "worktree-1" as string | null);
+const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
 
 describe("TerminalFocusSlice - Layout Snapshot", () => {
   const mockTerminals: TerminalInstance[] = [
@@ -494,6 +495,29 @@ describe("TerminalFocusSlice - dock focus sync invariant", () => {
     state.setFocused("unknown-id");
 
     expect(state.focusedId).toBe("unknown-id");
+    expect(state.activeDockTerminalId).toBeNull();
+  });
+
+  it("openDockTerminal opens only dock terminals", () => {
+    state.openDockTerminal("dock-1");
+
+    expect(state.focusedId).toBe("dock-1");
+    expect(state.activeDockTerminalId).toBe("dock-1");
+    expect(terminalInstanceService.wake).toHaveBeenCalledWith("dock-1");
+  });
+
+  it("openDockTerminal clears stale dock activation for grid or missing terminals", () => {
+    state.focusedId = "grid-1";
+    state.activeDockTerminalId = "dock-1";
+
+    state.openDockTerminal("grid-1");
+
+    expect(state.focusedId).toBeNull();
+    expect(state.activeDockTerminalId).toBeNull();
+
+    state.activeDockTerminalId = "dock-2";
+    state.openDockTerminal("missing-id");
+
     expect(state.activeDockTerminalId).toBeNull();
   });
 });

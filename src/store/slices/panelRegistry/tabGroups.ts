@@ -658,10 +658,11 @@ export const createTabGroupActions = (
         if (trashedTerminals.has(id)) return false;
         const terminal = state.panelsById[id];
         if (terminal?.location === "trash" || terminal?.location === "background") return false;
-        // A docked panel inside a persisted grid group means the panel was moved
-        // after the group snapshot. Preserve the newer per-panel dock state and
-        // sever stale membership so restore-to-grid can update the panel directly.
-        if (terminal?.location === "dock" && groupLocation !== "dock") return false;
+        // A panel whose saved location conflicts with a persisted group means
+        // the panel was moved after the group snapshot. Preserve the newer
+        // per-panel location and sever stale membership; otherwise restart can
+        // resurrect a dock outline for a panel that was already restored to grid.
+        if (terminal && getPanelTabGroupLocation(terminal) !== groupLocation) return false;
         return true;
       });
 
@@ -719,11 +720,7 @@ export const createTabGroupActions = (
 
         for (const group of sanitizedGroups.values()) {
           if (group.panelIds.includes(t.id)) {
-            // Skip location override when the terminal has been docked more
-            // recently than the group was recorded — the per-terminal persisted
-            // location is more authoritative for dock state.
-            const skipLocationOverride = t.location === "dock" && group.location !== "dock";
-            const needsLocationUpdate = !skipLocationOverride && t.location !== group.location;
+            const needsLocationUpdate = t.location !== group.location;
             const needsWorktreeUpdate =
               (t.worktreeId ?? undefined) !== (group.worktreeId ?? undefined);
 

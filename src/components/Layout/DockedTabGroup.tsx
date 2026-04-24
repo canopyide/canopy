@@ -40,6 +40,7 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
 import {
   useDockBlockedState,
+  getDockDisplayAgentState,
   getGroupBlockedAgentState,
   isGroupDeprioritized,
 } from "./useDockBlockedState";
@@ -400,7 +401,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     exitCode: activePanel.exitCode,
     presetColor: brandColor,
   });
-  const agentState = activeChrome.isAgent ? activePanel.agentState : undefined;
+  const agentState = activeChrome.isAgent ? getDockDisplayAgentState(activePanel) : undefined;
   const isWorking = agentState === "working";
   const isWaiting = agentState === "waiting";
   const isActive = isWorking || isWaiting;
@@ -562,7 +563,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                     title={getBaseTitle(panel.title)}
                     chrome={tabChrome}
                     kind={panel.kind ?? "terminal"}
-                    agentState={tabChrome.isAgent ? panel.agentState : undefined}
+                    agentState={tabChrome.isAgent ? getDockDisplayAgentState(panel) : undefined}
                     isActive={panel.id === activeTabId}
                     presetColor={panelPresetColors.get(panel.id)}
                     isUsingFallback={panel.isUsingFallback}
