@@ -27,6 +27,7 @@ import {
 } from "@/utils/performance";
 import { isDaintreeEnvEnabled } from "@/utils/env";
 import { useSafeModeStore } from "@/store/safeModeStore";
+import type { AgentPreset } from "@/config/agents";
 import {
   type TerminalRestoreTask,
   splitSnapshotRestoreTasks,
@@ -141,6 +142,11 @@ export interface HydrationOptions {
     agentLaunchFlags?: string[];
     agentModelId?: string;
     agentPresetId?: string;
+    agentPresetColor?: string;
+    originalPresetId?: string;
+    isUsingFallback?: boolean;
+    fallbackChainIndex?: number;
+    env?: Record<string, string>;
     extensionState?: Record<string, unknown>;
     pluginId?: string;
     restore?: boolean;
@@ -340,6 +346,15 @@ export async function hydrateAppState(
           })
       : Promise.resolve(emptyDraftInputs);
 
+    const emptyProjectPresets: Record<string, AgentPreset[]> = {};
+    const projectPresetsPromise: Promise<Record<string, AgentPreset[]>> =
+      currentProjectId && typeof projectClient.getInRepoPresets === "function"
+        ? projectClient.getInRepoPresets(currentProjectId).catch((error) => {
+            logWarn("Failed to prefetch project presets during hydration", { error });
+            return emptyProjectPresets;
+          })
+        : Promise.resolve(emptyProjectPresets);
+
     const recipeLoadPromise = currentProjectId
       ? loadRecipes(currentProjectId).catch((error) => {
           logWarn("Failed to load recipes", { error });
@@ -393,6 +408,8 @@ export async function hydrateAppState(
         if (!checkCurrent()) return;
 
         const activeWorktreeId = appState.activeWorktreeId ?? null;
+        const projectPresetsByAgent = await projectPresetsPromise;
+        if (!checkCurrent()) return;
 
         // Restore all panels in saved order (mix of PTY reconnects and non-PTY recreations)
         if (appState.terminals && appState.terminals.length > 0) {
@@ -618,7 +635,8 @@ export async function hydrateAppState(
                         projectRoot || "",
                         agentSettings,
                         reconnectTimedOut,
-                        clipboardDirectory
+                        clipboardDirectory,
+                        projectPresetsByAgent
                       );
 
                       // Assign to active worktree if the saved terminal has no worktreeId

@@ -71,6 +71,15 @@ describe("runtime agent identity helpers", () => {
     ).toBeUndefined();
   });
 
+  it("treats sticky detected-but-cleared legacy records as non-agent without agentState", () => {
+    expect(
+      isAgentTerminal({
+        launchAgentId: "claude",
+        everDetectedAgent: true,
+      })
+    ).toBe(false);
+  });
+
   it("narrows runtime agent ids to built-ins", () => {
     expect(getBuiltInRuntimeAgentId({ detectedAgentId: "claude" })).toBe("claude");
     expect(getBuiltInRuntimeAgentId({ detectedAgentId: "custom-agent" })).toBeUndefined();

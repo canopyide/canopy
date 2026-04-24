@@ -164,6 +164,14 @@ describe("buildAgentLaunchFlags", () => {
     expect(flags[modelIdx + 1]).toBe("claude-opus-4-6");
   });
 
+  it("includes preset args in persisted launch flags after model and before settings flags", () => {
+    const flags = buildAgentLaunchFlags({ customFlags: "--verbose" }, "claude", {
+      modelId: "claude-opus-4-6",
+      presetArgs: ["--provider", "blue"],
+    });
+    expect(flags).toEqual(["--model", "claude-opus-4-6", "--provider", "blue", "--verbose"]);
+  });
+
   it("does not include --model flag when modelId is not provided", () => {
     const flags = buildAgentLaunchFlags({}, "claude");
     expect(flags).not.toContain("--model");

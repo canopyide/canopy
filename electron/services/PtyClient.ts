@@ -84,6 +84,9 @@ interface TerminalInfoResponse {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  agentPresetId?: string;
+  agentPresetColor?: string;
+  originalAgentPresetId?: string;
   /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
   everDetectedAgent?: boolean;
   /** Runtime-detected agent identity (cleared when the agent exits). */

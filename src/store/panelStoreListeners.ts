@@ -21,6 +21,7 @@ import { usePanelStore, type PanelGridState } from "./panelStore";
 import { DisposableStore, toDisposable } from "@/utils/disposable";
 import { getMergedPresets } from "@/config/agents";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
+import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { isBuiltInAgentId } from "@shared/config/agentIds";
@@ -201,7 +202,8 @@ async function handleFallbackTriggered(data: {
   const agentSettings = useAgentSettingsStore.getState().settings;
   const entry = agentSettings?.agents?.[agentId] ?? {};
   const ccrPresets = useCcrPresetsStore.getState().ccrPresetsByAgent[agentId];
-  const mergedPresets = getMergedPresets(agentId, entry.customPresets, ccrPresets);
+  const projectPresets = useProjectPresetsStore.getState().presetsByAgent[agentId];
+  const mergedPresets = getMergedPresets(agentId, entry.customPresets, ccrPresets, projectPresets);
   const originalPreset = mergedPresets.find((p) => p.id === originalPresetId);
 
   const chain = originalPreset?.fallbacks ?? [];

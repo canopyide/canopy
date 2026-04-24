@@ -40,6 +40,11 @@ const PERSISTED_PTY_FIELDS = [
   "agentSessionId",
   "agentLaunchFlags",
   "agentModelId",
+  "agentPresetId",
+  "agentPresetColor",
+  "originalPresetId",
+  "isUsingFallback",
+  "fallbackChainIndex",
   "agentState",
   "lastStateChange",
 ] as const satisfies readonly (keyof PtyData)[];
@@ -100,6 +105,11 @@ const terminalFixture: TerminalInstance = {
   agentSessionId: "session-abc",
   agentLaunchFlags: ["--resume"],
   agentModelId: "claude-3-5-sonnet",
+  agentPresetId: "blue-provider",
+  agentPresetColor: "#3366ff",
+  originalPresetId: "primary-provider",
+  isUsingFallback: true,
+  fallbackChainIndex: 1,
   agentState: "idle",
   lastStateChange: 1_700_000_000_000,
 };

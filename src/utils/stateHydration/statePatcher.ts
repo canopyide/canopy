@@ -4,7 +4,8 @@ import type { BrowserHistory } from "@shared/types/browser";
 import type { PanelExitBehavior } from "@shared/types/panel";
 import type { AddPanelOptionsBase } from "@shared/types/addPanelOptions";
 import type { BuiltInAgentId } from "@shared/config/agentIds";
-import { getAgentConfig, getMergedPreset, sanitizeAgentEnv } from "@/config/agents";
+import { getAgentConfig } from "@/config/agents";
+import type { AgentPreset } from "@/config/agents";
 import {
   generateAgentCommand,
   buildResumeCommand,
@@ -13,6 +14,7 @@ import {
 import { inferKind as inferKindShared } from "@shared/utils/inferPanelKind";
 import { getDeserializer } from "@/config/panelKindSerialisers";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
+import { resolveAgentRuntimeSettings } from "@/utils/agentRuntimeSettings";
 
 /**
  * Args for building addPanel options from hydration data.
@@ -65,6 +67,9 @@ export interface SavedTerminalData {
   agentModelId?: string;
   agentPresetId?: string;
   agentPresetColor?: string;
+  originalPresetId?: string;
+  isUsingFallback?: boolean;
+  fallbackChainIndex?: number;
   /** @deprecated pre-#5459 legacy key; read-only fallback, never written. */
   agentFlavorId?: string;
   /** @deprecated pre-#5459 legacy key; read-only fallback, never written. */
@@ -93,6 +98,9 @@ interface BackendTerminalData {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  agentPresetId?: string;
+  agentPresetColor?: string;
+  originalAgentPresetId?: string;
   everDetectedAgent?: boolean;
   detectedAgentId?: BuiltInAgentId;
   detectedProcessId?: string;
@@ -110,6 +118,9 @@ interface ReconnectedTerminalData {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  agentPresetId?: string;
+  agentPresetColor?: string;
+  originalAgentPresetId?: string;
   everDetectedAgent?: boolean;
   detectedAgentId?: BuiltInAgentId;
   detectedProcessId?: string;
@@ -211,8 +222,15 @@ export function buildArgsForBackendTerminal(
     everDetectedAgent: backendTerminal.everDetectedAgent,
     detectedAgentId: backendTerminal.detectedAgentId,
     detectedProcessId: backendTerminal.detectedProcessId,
-    agentPresetId: readPresetId(saved),
-    agentPresetColor: readPresetColor(saved),
+    agentPresetId: readPresetId(saved) ?? backendTerminal.agentPresetId,
+    agentPresetColor: readPresetColor(saved) ?? backendTerminal.agentPresetColor,
+    originalPresetId:
+      saved.originalPresetId ??
+      backendTerminal.originalAgentPresetId ??
+      readPresetId(saved) ??
+      backendTerminal.agentPresetId,
+    isUsingFallback: saved.isUsingFallback,
+    fallbackChainIndex: saved.fallbackChainIndex,
     extensionState: saved.extensionState,
     pluginId: saved.pluginId,
   };
@@ -264,8 +282,15 @@ export function buildArgsForReconnectedFallback(
     everDetectedAgent: reconnectedTerminal.everDetectedAgent,
     detectedAgentId: reconnectedTerminal.detectedAgentId,
     detectedProcessId: reconnectedTerminal.detectedProcessId,
-    agentPresetId: readPresetId(saved),
-    agentPresetColor: readPresetColor(saved),
+    agentPresetId: readPresetId(saved) ?? reconnectedTerminal.agentPresetId,
+    agentPresetColor: readPresetColor(saved) ?? reconnectedTerminal.agentPresetColor,
+    originalPresetId:
+      saved.originalPresetId ??
+      reconnectedTerminal.originalAgentPresetId ??
+      readPresetId(saved) ??
+      reconnectedTerminal.agentPresetId,
+    isUsingFallback: saved.isUsingFallback,
+    fallbackChainIndex: saved.fallbackChainIndex,
     extensionState: saved.extensionState,
     pluginId: saved.pluginId,
   };
@@ -277,7 +302,8 @@ export function buildArgsForRespawn(
   projectRoot: string,
   agentSettings: AgentSettingsData | undefined,
   reconnectTimedOut: boolean,
-  clipboardDirectory: string | undefined
+  clipboardDirectory: string | undefined,
+  projectPresetsByAgent?: Record<string, AgentPreset[]>
 ): AddTerminalArgs {
   // Migrate legacy on-disk agentId/type to launchAgentId at the read boundary.
   const savedLaunchAgentId =
@@ -295,38 +321,30 @@ export function buildArgsForRespawn(
   const agentId = effectiveAgentId;
   let command = saved.command?.trim() || undefined;
   let presetEnv: Record<string, string> | undefined;
-  let preset: ReturnType<typeof getMergedPreset> | undefined;
+  let preset: AgentPreset | undefined;
+  const savedPresetIdForRespawn = readPresetId(saved);
+  const savedPresetColorForRespawn = readPresetColor(saved);
+  let presetWasStale = false;
 
   if (agentId) {
     const agentConfig = getAgentConfig(agentId);
     const baseCommand = agentConfig?.command || agentId;
-    const persistedFlags = saved.agentLaunchFlags;
-    const hasPersistedFlags = Boolean(persistedFlags && persistedFlags.length > 0);
     const baseEntry = agentSettings?.agents?.[agentId] ?? {};
     const shareClipboardDirectory = baseEntry.shareClipboardDirectory as boolean | undefined;
     const ccrPresets = useCcrPresetsStore.getState().ccrPresetsByAgent[agentId];
-    const savedPresetId = readPresetId(saved);
-    preset = savedPresetId
-      ? getMergedPreset(agentId, savedPresetId, baseEntry.customPresets as never, ccrPresets)
-      : undefined;
-    const effectiveEntry = preset
-      ? {
-          ...baseEntry,
-          ...(preset.dangerousEnabled !== undefined && {
-            dangerousEnabled: preset.dangerousEnabled,
-          }),
-          ...(preset.customFlags !== undefined && { customFlags: preset.customFlags }),
-          ...(preset.inlineMode !== undefined && { inlineMode: preset.inlineMode }),
-        }
-      : baseEntry;
-    // Merge: global env (base) overridden by preset env (preset wins on conflicts)
-    const sanitizedGlobal = sanitizeAgentEnv(
-      (baseEntry.globalEnv ?? {}) as Record<string, unknown>
-    );
-    const sanitizedPreset = preset?.env;
-    if (sanitizedGlobal || sanitizedPreset) {
-      presetEnv = { ...sanitizedGlobal, ...sanitizedPreset };
-    }
+    const runtimeSettings = resolveAgentRuntimeSettings({
+      agentId,
+      presetId: savedPresetIdForRespawn,
+      entry: baseEntry,
+      ccrPresets,
+      projectPresets: projectPresetsByAgent?.[agentId],
+    });
+    preset = runtimeSettings.preset;
+    presetWasStale = !!savedPresetIdForRespawn && runtimeSettings.presetWasStale;
+    const persistedFlags = presetWasStale ? undefined : saved.agentLaunchFlags;
+    const hasPersistedFlags = Boolean(persistedFlags && persistedFlags.length > 0);
+    const effectiveEntry = runtimeSettings.effectiveEntry;
+    presetEnv = runtimeSettings.env;
 
     const buildFromPersistedFlags = () =>
       buildLaunchCommandFromFlags(baseCommand, agentId, persistedFlags as string[], {
@@ -367,13 +385,14 @@ export function buildArgsForRespawn(
   // clear agentPresetId/agentPresetColor and strip the preset suffix from the
   // title so the respawned panel doesn't lie about its identity — it's now
   // running default env/command, so it should look like default.
-  const savedPresetIdForRespawn = readPresetId(saved);
-  const savedPresetColorForRespawn = readPresetColor(saved);
-  const presetWasStale = isAgentPanel && !!savedPresetIdForRespawn && !preset;
+  presetWasStale = isAgentPanel && presetWasStale;
   const respawnAgentPresetId = presetWasStale ? undefined : savedPresetIdForRespawn;
   const respawnAgentPresetColor = presetWasStale
     ? undefined
     : (preset?.color ?? savedPresetColorForRespawn);
+  const respawnOriginalPresetId = presetWasStale
+    ? undefined
+    : (saved.originalPresetId ?? savedPresetIdForRespawn);
   const respawnTitle = presetWasStale
     ? (agentId ? getAgentConfig(agentId)?.name : saved.title) || saved.title
     : saved.title;
@@ -394,10 +413,13 @@ export function buildArgsForRespawn(
     browserZoom: isDevPreview ? saved.browserZoom : undefined,
     devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
     exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
-    agentLaunchFlags: saved.agentLaunchFlags,
+    agentLaunchFlags: presetWasStale ? undefined : saved.agentLaunchFlags,
     agentModelId: saved.agentModelId,
     agentPresetId: respawnAgentPresetId,
     agentPresetColor: respawnAgentPresetColor,
+    originalPresetId: respawnOriginalPresetId,
+    isUsingFallback: presetWasStale ? undefined : saved.isUsingFallback,
+    fallbackChainIndex: presetWasStale ? undefined : saved.fallbackChainIndex,
     env: presetEnv,
     extensionState: saved.extensionState,
     pluginId: saved.pluginId,
@@ -421,6 +443,9 @@ export function buildArgsForNonPtyRecreation(
     exitBehavior: saved.exitBehavior,
     agentPresetId: readPresetId(saved),
     agentPresetColor: readPresetColor(saved),
+    originalPresetId: saved.originalPresetId ?? readPresetId(saved),
+    isUsingFallback: saved.isUsingFallback,
+    fallbackChainIndex: saved.fallbackChainIndex,
     extensionState: saved.extensionState,
     pluginId: saved.pluginId,
   };
@@ -485,5 +510,8 @@ export function buildArgsForOrphanedTerminal(
     everDetectedAgent: terminal.everDetectedAgent,
     detectedAgentId: terminal.detectedAgentId,
     detectedProcessId: terminal.detectedProcessId,
+    agentPresetId: terminal.agentPresetId,
+    agentPresetColor: terminal.agentPresetColor,
+    originalPresetId: terminal.originalAgentPresetId ?? terminal.agentPresetId,
   };
 }

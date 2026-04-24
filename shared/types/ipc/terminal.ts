@@ -47,6 +47,8 @@ export interface TerminalSpawnOptions {
   worktreeId?: string;
   /** Preset ID the agent is being launched with (needed for fallback chain lookup on exit). */
   agentPresetId?: string;
+  /** Preset brand color captured at launch time. */
+  agentPresetColor?: string;
   /** Original user-selected preset ID; unchanged across fallback hops. */
   originalAgentPresetId?: string;
 }
@@ -104,6 +106,16 @@ export interface TerminalState {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time for per-panel model selection */
   agentModelId?: string;
+  /** Preset ID selected at launch time */
+  agentPresetId?: string;
+  /** Preset brand color captured at launch time */
+  agentPresetColor?: string;
+  /** Original user-selected preset ID; unchanged across fallback hops */
+  originalPresetId?: string;
+  /** Whether this panel is currently running on a fallback preset */
+  isUsingFallback?: boolean;
+  /** How many fallback hops have been consumed */
+  fallbackChainIndex?: number;
   /**
    * Extension ID of the plugin that registered this panel's kind, if applicable.
    * Preserved across save/restore so the placeholder can name the missing plugin
@@ -167,6 +179,12 @@ export interface BackendTerminalInfo {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time */
   agentModelId?: string;
+  /** Preset ID selected at launch time */
+  agentPresetId?: string;
+  /** Preset brand color captured at launch time */
+  agentPresetColor?: string;
+  /** Original user-selected preset ID; unchanged across fallback hops */
+  originalAgentPresetId?: string;
   /**
    * Sticky live-session flag. True once runtime detection fires in this
    * session, even if no agent is currently detected. Not persisted;
@@ -202,6 +220,9 @@ export interface TerminalReconnectResult {
   agentSessionId?: string;
   agentLaunchFlags?: string[];
   agentModelId?: string;
+  agentPresetId?: string;
+  agentPresetColor?: string;
+  originalAgentPresetId?: string;
   /** Sticky live-session flag. Rehydrated on reconnect. */
   everDetectedAgent?: boolean;
   /** Live detected identity; the single chrome source of truth. See `docs/architecture/terminal-identity.md`. */

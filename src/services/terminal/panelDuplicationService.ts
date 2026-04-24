@@ -2,18 +2,19 @@ import type { TerminalInstance } from "@/store";
 import type { AddPanelOptions } from "@/store/slices/panelRegistry/types";
 import type { TabGroupLocation } from "@/types";
 import { generateAgentCommand } from "@shared/types";
-import {
-  getAgentConfig,
-  isRegisteredAgent,
-  getMergedPreset,
-  sanitizeAgentEnv,
-} from "@/config/agents";
+import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { agentSettingsClient, systemClient } from "@/clients";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
+import { useProjectPresetsStore } from "@/store/projectPresetsStore";
+import {
+  buildAgentLaunchFlagsForRuntimeSettings,
+  resolveAgentRuntimeSettings,
+} from "@/utils/agentRuntimeSettings";
 
 export interface ResolvedCommand {
   command: string | undefined;
   env: Record<string, string> | undefined;
+  agentLaunchFlags: string[] | undefined;
   /** Resolved preset, or undefined if the saved presetId is stale/deleted. */
   preset: import("@/config/agents").AgentPreset | undefined;
   /** True when the caller requested a preset but it no longer resolves. */
@@ -37,25 +38,16 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<Resolved
         ]);
         const entry = agentSettings?.agents?.[panel.launchAgentId] ?? {};
         const ccrPresets = useCcrPresetsStore.getState().ccrPresetsByAgent[panel.launchAgentId];
-        const preset = panel.agentPresetId
-          ? getMergedPreset(
-              panel.launchAgentId,
-              panel.agentPresetId,
-              entry.customPresets,
-              ccrPresets
-            )
-          : undefined;
-        const presetWasStale = !!panel.agentPresetId && !preset;
-        const effectiveEntry = preset
-          ? {
-              ...entry,
-              ...(preset.dangerousEnabled !== undefined && {
-                dangerousEnabled: preset.dangerousEnabled,
-              }),
-              ...(preset.customFlags !== undefined && { customFlags: preset.customFlags }),
-              ...(preset.inlineMode !== undefined && { inlineMode: preset.inlineMode }),
-            }
-          : entry;
+        const projectPresets =
+          useProjectPresetsStore.getState().presetsByAgent[panel.launchAgentId];
+        const runtimeSettings = resolveAgentRuntimeSettings({
+          agentId: panel.launchAgentId,
+          presetId: panel.agentPresetId,
+          entry,
+          ccrPresets,
+          projectPresets,
+        });
+        const { preset, presetWasStale, effectiveEntry } = runtimeSettings;
         const clipboardDirectory = tmpDir ? `${tmpDir}/daintree-clipboard` : undefined;
         const command = generateAgentCommand(
           agentConfig.command,
@@ -68,16 +60,13 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<Resolved
             presetArgs: preset?.args?.join(" "),
           }
         );
-        // Mirror useAgentLauncher.ts: global env first, preset env wins on
-        // conflicts. Critical for duplicates — dropping globalEnv here
-        // silently routes the duplicated panel to the default backend.
-        const sanitizedGlobal = sanitizeAgentEnv(entry.globalEnv as Record<string, unknown>);
-        const sanitizedPreset = preset?.env;
-        const mergedEnv =
-          sanitizedGlobal || sanitizedPreset
-            ? { ...sanitizedGlobal, ...sanitizedPreset }
-            : undefined;
-        return { command, env: mergedEnv, preset, presetWasStale };
+        const agentLaunchFlags = buildAgentLaunchFlagsForRuntimeSettings(
+          effectiveEntry,
+          panel.launchAgentId,
+          preset,
+          { modelId: panel.agentModelId }
+        );
+        return { command, env: runtimeSettings.env, agentLaunchFlags, preset, presetWasStale };
       } catch (error) {
         console.warn(
           `Failed to get agent settings for ${panel.launchAgentId}, using existing command:`,
@@ -86,13 +75,20 @@ async function resolveCommandForPanel(panel: TerminalInstance): Promise<Resolved
         return {
           command: panel.command ?? agentConfig.command,
           env: undefined,
+          agentLaunchFlags: panel.agentLaunchFlags,
           preset: undefined,
           presetWasStale: false,
         };
       }
     }
   }
-  return { command: panel.command, env: undefined, preset: undefined, presetWasStale: false };
+  return {
+    command: panel.command,
+    env: undefined,
+    agentLaunchFlags: panel.agentLaunchFlags,
+    preset: undefined,
+    presetWasStale: false,
+  };
 }
 
 function buildBrowserOptions(panel: TerminalInstance) {
@@ -133,11 +129,17 @@ export function buildPanelSnapshotOptions(panel: TerminalInstance): AddPanelOpti
       kind: "terminal",
       launchAgentId: panel.launchAgentId,
       command: panel.command,
+      title: panel.title,
       cwd: panel.cwd || "",
       worktreeId: panel.worktreeId,
       exitBehavior: panel.exitBehavior,
       isInputLocked: panel.isInputLocked,
       agentModelId: panel.agentModelId,
+      agentPresetId: panel.agentPresetId,
+      agentPresetColor: panel.agentPresetColor,
+      originalPresetId: panel.originalPresetId,
+      isUsingFallback: panel.isUsingFallback,
+      fallbackChainIndex: panel.fallbackChainIndex,
       agentLaunchFlags: panel.agentLaunchFlags ? [...panel.agentLaunchFlags] : undefined,
     };
   }
@@ -193,7 +195,8 @@ export async function buildPanelDuplicateOptions(
   targetLocation: TabGroupLocation
 ): Promise<AddPanelOptions> {
   const kind = sourcePanel.kind ?? "terminal";
-  const { command, env, presetWasStale } = await resolveCommandForPanel(sourcePanel);
+  const { command, env, agentLaunchFlags, preset, presetWasStale } =
+    await resolveCommandForPanel(sourcePanel);
 
   if (sourcePanel.launchAgentId && kind === "terminal") {
     if (!command) {
@@ -206,7 +209,9 @@ export async function buildPanelDuplicateOptions(
     const agentConfig = getAgentConfig(sourcePanel.launchAgentId);
     const fallbackTitle = agentConfig?.name ?? sourcePanel.title;
     const agentPresetId = presetWasStale ? undefined : sourcePanel.agentPresetId;
-    const agentPresetColor = presetWasStale ? undefined : sourcePanel.agentPresetColor;
+    const agentPresetColor = presetWasStale
+      ? undefined
+      : (preset?.color ?? sourcePanel.agentPresetColor);
     const title = presetWasStale ? fallbackTitle : sourcePanel.title;
     return {
       kind: "terminal",
@@ -221,7 +226,7 @@ export async function buildPanelDuplicateOptions(
       agentModelId: sourcePanel.agentModelId,
       agentPresetId,
       agentPresetColor,
-      agentLaunchFlags: sourcePanel.agentLaunchFlags,
+      agentLaunchFlags,
       env,
     };
   }

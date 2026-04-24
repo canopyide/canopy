@@ -403,6 +403,7 @@ export class TerminalProcess {
       agentModelId: options.agentModelId,
       worktreeId: options.worktreeId,
       agentPresetId: options.agentPresetId,
+      agentPresetColor: options.agentPresetColor,
       originalAgentPresetId: options.originalAgentPresetId ?? options.agentPresetId,
       spawnArgs,
     };
@@ -563,6 +564,9 @@ export class TerminalProcess {
       exitCode: t.exitCode,
       worktreeId: t.worktreeId,
       lastObservedTitle: t.lastObservedTitle,
+      agentPresetId: t.agentPresetId,
+      agentPresetColor: t.agentPresetColor,
+      originalAgentPresetId: t.originalAgentPresetId,
     };
   }
 

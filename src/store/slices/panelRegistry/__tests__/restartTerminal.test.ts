@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mockSpawn = vi.fn().mockResolvedValue({ id: "test-1" });
 const mockKill = vi.fn().mockResolvedValue(undefined);
+const getMergedPresetMock = vi.hoisted(() => vi.fn().mockReturnValue(undefined));
+const buildAgentLaunchFlagsMock = vi.hoisted(() => vi.fn().mockReturnValue([]));
 
 vi.mock("@/clients", () => ({
   terminalClient: {
@@ -78,13 +80,13 @@ vi.mock("@/config/agents", () => ({
   isRegisteredAgent: (type: string) => type === "claude" || type === "gemini",
   getAgentConfig: vi.fn().mockReturnValue({ command: "claude" }),
   getAgentIds: () => ["claude", "gemini", "codex"],
-  getMergedPreset: vi.fn().mockReturnValue(undefined),
+  getMergedPreset: (...args: unknown[]) => getMergedPresetMock(...args),
   sanitizeAgentEnv: (env: Record<string, string> | undefined) => env,
 }));
 
 vi.mock("@shared/types", () => ({
   generateAgentCommand: vi.fn().mockReturnValue("claude"),
-  buildAgentLaunchFlags: vi.fn().mockReturnValue([]),
+  buildAgentLaunchFlags: (...args: unknown[]) => buildAgentLaunchFlagsMock(...args),
   buildResumeCommand: vi.fn().mockReturnValue(null),
   buildLaunchCommandFromFlags: vi.fn().mockReturnValue("claude --flag"),
 }));
@@ -92,6 +94,12 @@ vi.mock("@shared/types", () => ({
 vi.mock("@/store/ccrPresetsStore", () => ({
   useCcrPresetsStore: {
     getState: () => ({ ccrPresetsByAgent: {} }),
+  },
+}));
+
+vi.mock("@/store/projectPresetsStore", () => ({
+  useProjectPresetsStore: {
+    getState: () => ({ presetsByAgent: {} }),
   },
 }));
 
@@ -114,6 +122,11 @@ const agentPanelBase = {
 describe("restartTerminal agent-exited demotion (#5764)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    getMergedPresetMock.mockReturnValue(undefined);
+    buildAgentLaunchFlagsMock.mockReturnValue([]);
+    const { agentSettingsClient, projectClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (projectClient.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const { reset } = usePanelStore.getState();
     await reset();
     usePanelStore.setState({
@@ -182,6 +195,99 @@ describe("restartTerminal agent-exited demotion (#5764)", () => {
     expect(payload.agentLaunchFlags).toEqual(["--persisted-flag"]);
   });
 
+  it("reapplies preset env, color, IDs, and args when restarting an active agent terminal", async () => {
+    const { agentSettingsClient, projectClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: {
+        claude: {
+          globalEnv: { AGENT_GLOBAL: "g", SHARED: "agent" },
+        },
+      },
+    });
+    (projectClient.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      environmentVariables: { PROJECT_ONLY: "p", SHARED: "project" },
+    });
+    getMergedPresetMock.mockReturnValue({
+      id: "blue-provider",
+      name: "Blue Provider",
+      color: "#3366ff",
+      env: { PRESET_ONLY: "preset", SHARED: "preset" },
+      args: ["--provider", "blue"],
+    });
+
+    const active = {
+      ...agentPanelBase,
+      agentState: "working" as const,
+      agentPresetId: "blue-provider",
+      agentPresetColor: "#old",
+      originalPresetId: "blue-provider",
+    };
+    usePanelStore.setState({
+      panelsById: { [active.id]: active },
+      panelIds: [active.id],
+    });
+
+    await usePanelStore.getState().restartTerminal("test-1");
+
+    const payload = mockSpawn.mock.calls[0]![0];
+    expect(payload.launchAgentId).toBe("claude");
+    expect(payload.agentPresetId).toBe("blue-provider");
+    expect(payload.originalAgentPresetId).toBe("blue-provider");
+    expect(payload.agentLaunchFlags).toEqual(["--persisted-flag", "--provider", "blue"]);
+    expect(payload.env).toEqual({
+      PROJECT_ONLY: "p",
+      AGENT_GLOBAL: "g",
+      SHARED: "preset",
+      PRESET_ONLY: "preset",
+    });
+    expect(usePanelStore.getState().panelsById["test-1"]?.agentPresetColor).toBe("#3366ff");
+  });
+
+  it("reapplies runtime settings env on demoted shell restart without relaunching the agent", async () => {
+    const { agentSettingsClient, projectClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: {
+        claude: {
+          globalEnv: { AGENT_GLOBAL: "g" },
+        },
+      },
+    });
+    (projectClient.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      environmentVariables: { PROJECT_ONLY: "p" },
+    });
+    getMergedPresetMock.mockReturnValue({
+      id: "blue-provider",
+      name: "Blue Provider",
+      color: "#3366ff",
+      env: { PRESET_ONLY: "preset" },
+    });
+
+    const demoted = {
+      ...agentPanelBase,
+      agentState: "exited" as const,
+      exitCode: 0,
+      agentPresetId: "blue-provider",
+      agentPresetColor: "#3366ff",
+    };
+    usePanelStore.setState({
+      panelsById: { [demoted.id]: demoted },
+      panelIds: [demoted.id],
+    });
+
+    await usePanelStore.getState().restartTerminal("test-1");
+
+    const payload = mockSpawn.mock.calls[0]![0];
+    expect(payload.launchAgentId).toBeUndefined();
+    expect(payload.command).toBeUndefined();
+    expect(payload.agentLaunchFlags).toBeUndefined();
+    expect(payload.agentPresetId).toBe("blue-provider");
+    expect(payload.env).toEqual({
+      PROJECT_ONLY: "p",
+      AGENT_GLOBAL: "g",
+      PRESET_ONLY: "preset",
+    });
+  });
+
   it("preserves launchAgentId on the panel after demoted restart (launch identity)", async () => {
     const demoted = { ...agentPanelBase, agentState: "exited" as const, exitCode: 0 };
     usePanelStore.setState({
@@ -241,6 +347,11 @@ describe("restartTerminal agent-exited demotion (#5764)", () => {
 describe("restartTerminal exit/demotion semantics (#5807)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    getMergedPresetMock.mockReturnValue(undefined);
+    buildAgentLaunchFlagsMock.mockReturnValue([]);
+    const { agentSettingsClient, projectClient } = await import("@/clients");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (projectClient.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const { reset } = usePanelStore.getState();
     await reset();
     usePanelStore.setState({

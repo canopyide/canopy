@@ -16,6 +16,10 @@ vi.mock("@shared/types", () => ({
   generateAgentCommand: vi.fn(
     (_cmd: string, _entry: unknown, agentId: string) => `generated-${agentId}-command`
   ),
+  buildAgentLaunchFlags: vi.fn((_entry: unknown, _agentId: string, options?: unknown) => {
+    const presetArgs = (options as { presetArgs?: string[] } | undefined)?.presetArgs ?? [];
+    return [...presetArgs];
+  }),
 }));
 
 const getMergedPresetMock = vi.hoisted(() => vi.fn());
@@ -46,6 +50,12 @@ vi.mock("@/config/agents", () => ({
 vi.mock("@/store/ccrPresetsStore", () => ({
   useCcrPresetsStore: {
     getState: vi.fn(() => ({ ccrPresetsByAgent: {} })),
+  },
+}));
+
+vi.mock("@/store/projectPresetsStore", () => ({
+  useProjectPresetsStore: {
+    getState: vi.fn(() => ({ presetsByAgent: {} })),
   },
 }));
 
@@ -131,6 +141,30 @@ describe("buildPanelSnapshotOptions", () => {
     expect(result!.agentLaunchFlags).toEqual(["--verbose"]);
   });
 
+  it("copies preset identity fields for agent terminal snapshots", () => {
+    const panel = makePanel({
+      launchAgentId: "claude",
+      command: "claude --flag",
+      title: "Claude (Blue)",
+      agentPresetId: "blue-provider",
+      agentPresetColor: "#3366ff",
+      originalPresetId: "primary-provider",
+      isUsingFallback: true,
+      fallbackChainIndex: 1,
+    });
+
+    const result = buildPanelSnapshotOptions(panel);
+
+    expect(result).toMatchObject({
+      title: "Claude (Blue)",
+      agentPresetId: "blue-provider",
+      agentPresetColor: "#3366ff",
+      originalPresetId: "primary-provider",
+      isUsingFallback: true,
+      fallbackChainIndex: 1,
+    });
+  });
+
   it("handles undefined agentLaunchFlags", () => {
     const panel = makePanel({ agentLaunchFlags: undefined });
     const result = buildPanelSnapshotOptions(panel);
@@ -207,6 +241,10 @@ describe("panelDuplicationService", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    const { useProjectPresetsStore } = await import("@/store/projectPresetsStore");
+    (useProjectPresetsStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
+      presetsByAgent: {},
+    });
     const mod = await import("../panelDuplicationService");
     buildPanelDuplicateOptions = mod.buildPanelDuplicateOptions;
   });
@@ -461,6 +499,48 @@ describe("panelDuplicationService", () => {
     });
   });
 
+  it("resolves project presets when duplicating a preset-backed agent terminal", async () => {
+    const { agentSettingsClient } = await import("@/clients");
+    const { useProjectPresetsStore } = await import("@/store/projectPresetsStore");
+    (agentSettingsClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: { claude: {} },
+    });
+    (useProjectPresetsStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
+      presetsByAgent: {
+        claude: [
+          {
+            id: "team-blue",
+            name: "Team Blue",
+            color: "#3366ff",
+            env: { TEAM_PROVIDER: "blue" },
+            args: ["--provider", "blue"],
+          },
+        ],
+      },
+    });
+    getMergedPresetMock.mockImplementation(
+      (
+        _agentId: string,
+        presetId: string,
+        _custom: unknown,
+        _ccr: unknown,
+        projectPresets?: Array<{ id: string }>
+      ) => projectPresets?.find((preset) => preset.id === presetId)
+    );
+
+    const panel = makePanel({
+      kind: "terminal",
+      launchAgentId: "claude",
+      agentPresetId: "team-blue",
+      agentPresetColor: "#old",
+    });
+    const result = await buildPanelDuplicateOptions(panel, "grid");
+
+    expect(result.env).toEqual({ TEAM_PROVIDER: "blue" });
+    expect(result.agentPresetColor).toBe("#3366ff");
+    expect(result.agentLaunchFlags).toEqual(["--provider", "blue"]);
+  });
+
   // Regression: when a saved agentPresetId no longer resolves (deleted custom
   // preset, CCR route removed), we must not carry stale presetId/color/title
   // forward — otherwise a duplicated default-env panel will be mislabeled as
@@ -506,6 +586,10 @@ describe("adversarial: behavioral overrides flow to generateAgentCommand in dupl
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    const { useProjectPresetsStore } = await import("@/store/projectPresetsStore");
+    (useProjectPresetsStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
+      presetsByAgent: {},
+    });
     const mod = await import("../panelDuplicationService");
     buildPanelDuplicateOptions = mod.buildPanelDuplicateOptions;
   });

@@ -132,6 +132,13 @@ export const TerminalSnapshotSchema = z
     browserConsoleOpen: z.boolean().optional(),
     devPreviewConsoleOpen: z.boolean().optional(),
     agentSessionId: z.string().optional(),
+    agentLaunchFlags: z.array(z.string()).optional(),
+    agentModelId: z.string().optional(),
+    agentPresetId: z.string().optional(),
+    agentPresetColor: z.string().optional(),
+    originalPresetId: z.string().optional(),
+    isUsingFallback: z.boolean().optional(),
+    fallbackChainIndex: z.number().int().nonnegative().optional(),
     pluginId: z.string().optional(),
   })
   .passthrough()
@@ -241,6 +248,7 @@ export const TerminalSpawnOptionsSchema = z.object({
   agentModelId: z.string().optional(),
   worktreeId: z.string().optional(),
   agentPresetId: z.string().optional(),
+  agentPresetColor: z.string().optional(),
   originalAgentPresetId: z.string().optional(),
 });
 

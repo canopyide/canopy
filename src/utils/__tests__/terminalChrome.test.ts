@@ -98,6 +98,25 @@ describe("deriveTerminalChrome", () => {
     });
   });
 
+  it("uses stored agentPresetColor when direct panel data is passed", () => {
+    expect(
+      deriveTerminalChrome({
+        detectedAgentId: "claude",
+        agentPresetColor: "#3366ff",
+      }).color
+    ).toBe("#3366ff");
+  });
+
+  it("lets explicit presetColor override stored agentPresetColor", () => {
+    expect(
+      deriveTerminalChrome({
+        detectedAgentId: "claude",
+        agentPresetColor: "#3366ff",
+        presetColor: "#ff6600",
+      }).color
+    ).toBe("#ff6600");
+  });
+
   it("returns agent chrome from durable launch affinity until explicit exit", () => {
     expect(
       deriveTerminalChrome({
@@ -118,6 +137,21 @@ describe("deriveTerminalChrome", () => {
       deriveTerminalChrome({
         launchAgentId: "claude",
         agentState: "exited",
+      })
+    ).toMatchObject({
+      iconId: null,
+      label: "Terminal",
+      isAgent: false,
+      agentId: null,
+      runtimeKind: "none",
+    });
+  });
+
+  it("demotes cleared sticky detection when legacy state lacks agentState", () => {
+    expect(
+      deriveTerminalChrome({
+        launchAgentId: "claude",
+        everDetectedAgent: true,
       })
     ).toMatchObject({
       iconId: null,

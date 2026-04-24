@@ -64,8 +64,20 @@ export function registerTerminalSpawnActions(
       } else if (nonTrashed.length === 0) {
         const lastClosed = state.lastClosedConfig;
         if (lastClosed) {
+          const baseOptions = lastClosed.launchAgentId
+            ? await buildPanelDuplicateOptions(
+                {
+                  id: "last-closed",
+                  title: lastClosed.title ?? "Terminal",
+                  cwd: lastClosed.cwd ?? callbacks.getDefaultCwd(),
+                  location: "grid",
+                  ...lastClosed,
+                },
+                "grid"
+              )
+            : lastClosed;
           await state.addPanel({
-            ...lastClosed,
+            ...baseOptions,
             location: "grid",
             worktreeId: lastClosed.worktreeId ?? callbacks.getActiveWorktreeId(),
           });

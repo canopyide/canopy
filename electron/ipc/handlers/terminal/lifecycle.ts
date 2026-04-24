@@ -225,6 +225,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         agentModelId: validatedOptions.agentModelId,
         worktreeId: validatedOptions.worktreeId,
         agentPresetId: validatedOptions.agentPresetId,
+        agentPresetColor: validatedOptions.agentPresetColor,
         originalAgentPresetId:
           validatedOptions.originalAgentPresetId ?? validatedOptions.agentPresetId,
       });

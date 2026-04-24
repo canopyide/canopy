@@ -635,6 +635,7 @@ export const createCorePanelActions = (
         agentModelId: options.agentModelId,
         worktreeId: options.worktreeId,
         agentPresetId: options.agentPresetId,
+        agentPresetColor: options.agentPresetColor,
         originalAgentPresetId: options.originalPresetId ?? options.agentPresetId,
       });
     })();

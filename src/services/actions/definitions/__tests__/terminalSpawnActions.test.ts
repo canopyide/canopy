@@ -198,6 +198,52 @@ describe("terminal.duplicate (copy) suffix", () => {
     expect(addPanel.mock.calls[0]![0].title).toBeUndefined();
   });
 
+  it("re-resolves runtime settings for last closed agent snapshots", async () => {
+    const addPanel = vi.fn().mockResolvedValue(undefined);
+    buildPanelDuplicateOptionsMock.mockResolvedValueOnce({
+      kind: "terminal",
+      launchAgentId: "claude",
+      command: "generated-claude-command",
+      agentPresetId: "blue-provider",
+      agentPresetColor: "#3366ff",
+      env: { ANTHROPIC_BASE_URL: "https://proxy.example" },
+    });
+    setPanelState({
+      panels: [],
+      addPanel,
+      lastClosedConfig: {
+        kind: "terminal",
+        launchAgentId: "claude",
+        command: "claude --model opus",
+        cwd: "/project",
+        agentPresetId: "blue-provider",
+        agentPresetColor: "#3366ff",
+      },
+    });
+
+    const run = setupActions();
+    await run("terminal.duplicate");
+
+    expect(buildPanelDuplicateOptionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "last-closed",
+        launchAgentId: "claude",
+        agentPresetId: "blue-provider",
+      }),
+      "grid"
+    );
+    expect(addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "generated-claude-command",
+        agentPresetId: "blue-provider",
+        agentPresetColor: "#3366ff",
+        env: { ANTHROPIC_BASE_URL: "https://proxy.example" },
+        location: "grid",
+        worktreeId: "wt-1",
+      })
+    );
+  });
+
   it("browser panel duplication never carries a (copy)-suffixed title (service omits title)", async () => {
     const addPanel = vi.fn().mockResolvedValue(undefined);
     setPanelState({

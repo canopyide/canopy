@@ -384,7 +384,7 @@ export function generateAgentCommand(
 export function buildAgentLaunchFlags(
   entry: AgentSettingsEntry,
   agentId: string,
-  options?: { modelId?: string }
+  options?: { modelId?: string; presetArgs?: string[] }
 ): string[] {
   const agentConfig = getEffectiveAgentConfig(agentId);
   const flags: string[] = [];
@@ -403,6 +403,12 @@ export function buildAgentLaunchFlags(
   // Model flag for per-panel model selection
   if (options?.modelId) {
     flags.push("--model", options.modelId);
+  }
+
+  // Preset-level args are process-level launch configuration. Persist them so
+  // restart/resume paths reproduce the same provider/mode selection as launch.
+  if (options?.presetArgs?.length) {
+    flags.push(...options.presetArgs);
   }
 
   // Dangerous args and custom flags (from generateAgentFlags, excluding clipboard dir)

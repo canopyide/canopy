@@ -311,6 +311,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         if (isAgent) {
           launchFlags = buildAgentLaunchFlags(effectiveEntry, agentId, {
             modelId: launchOptions?.modelId,
+            presetArgs: preset?.args,
           });
         }
       }

@@ -84,6 +84,8 @@ export interface TerminalPublicState {
   lastObservedTitle?: string;
   /** Currently active preset ID (updated on each fallback hop). */
   agentPresetId?: string;
+  /** Preset brand color captured at launch time. */
+  agentPresetColor?: string;
   /** User-originally-selected preset ID; immutable across fallback hops. */
   originalAgentPresetId?: string;
 }

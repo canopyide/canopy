@@ -1354,8 +1354,40 @@ describe("buildArgsForRespawn — preset overrides", () => {
       "claude",
       "user-aaa",
       [PRESET],
-      undefined // no CCR presets in ccrPresetsByAgent mock
+      undefined, // no CCR presets in ccrPresetsByAgent mock
+      undefined
     );
+  });
+
+  it("passes project presets into preset resolution on respawn", () => {
+    const projectPreset = {
+      id: "team-blue",
+      name: "Team Blue",
+      env: { TEAM_PROVIDER: "blue" },
+      color: "#3366ff",
+    };
+    getMergedPresetMock.mockReturnValue(projectPreset);
+    const result = buildArgsForRespawn(
+      {
+        id: "t1",
+        kind: "terminal",
+        agentId: "claude",
+        cwd: "/p",
+        location: "grid",
+        agentPresetId: "team-blue",
+      },
+      "agent",
+      "/p",
+      { agents: { claude: {} } },
+      false,
+      undefined,
+      { claude: [projectPreset] }
+    );
+    expect(getMergedPresetMock).toHaveBeenCalledWith("claude", "team-blue", undefined, undefined, [
+      projectPreset,
+    ]);
+    expect(result.env).toEqual({ TEAM_PROVIDER: "blue" });
+    expect(result.agentPresetColor).toBe("#3366ff");
   });
 
   it("returns no env when the preset has no env block", () => {
@@ -1815,16 +1847,22 @@ describe("Adversarial: buildArgsForNonPtyRecreation preserves agentPresetColor",
 });
 
 describe("Adversarial: buildArgsForOrphanedTerminal preserves agentPresetColor", () => {
-  // OrphanedTerminal receives BackendTerminalData which has no saved state,
-  // so agentPresetColor cannot be restored — this test documents that
-  // buildArgsForOrphanedTerminal does NOT have access to saved.agentPresetColor
-  // and therefore the result is always undefined (by design — no saved state available).
-  it("result has no agentPresetColor (backend-only data — no saved state available)", () => {
+  it("forwards backend preset metadata when no saved state is available", () => {
     const result = buildArgsForOrphanedTerminal(
-      { id: "t1", cwd: "/p", kind: "terminal", launchAgentId: "claude" },
+      {
+        id: "t1",
+        cwd: "/p",
+        kind: "terminal",
+        launchAgentId: "claude",
+        agentPresetId: "user-x",
+        agentPresetColor: "#ff6600",
+        originalAgentPresetId: "user-original",
+      },
       "/p"
     );
-    expect(result.agentPresetColor).toBeUndefined();
+    expect(result.agentPresetId).toBe("user-x");
+    expect(result.agentPresetColor).toBe("#ff6600");
+    expect(result.originalPresetId).toBe("user-original");
   });
 });
 

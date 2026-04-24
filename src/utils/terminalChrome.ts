@@ -13,7 +13,9 @@ export interface TerminalChromeInput {
   agentState?: AgentState | string;
   runtimeStatus?: string;
   exitCode?: number | null;
+  everDetectedAgent?: boolean;
   presetColor?: string;
+  agentPresetColor?: string;
 }
 
 export interface TerminalChromeDescriptor {
@@ -83,6 +85,14 @@ function hasExplicitAgentExit(input: TerminalChromeInput | undefined): boolean {
   );
 }
 
+function hasClearedStickyAgentDetection(input: TerminalChromeInput | undefined): boolean {
+  return (
+    input?.everDetectedAgent === true &&
+    input.detectedAgentId === undefined &&
+    input.agentState === undefined
+  );
+}
+
 function deriveChromeAgentIdentity(
   input: TerminalChromeInput | undefined
 ): TerminalRuntimeIdentity | null {
@@ -95,7 +105,11 @@ function deriveChromeAgentIdentity(
     return makeAgentIdentity(current.agentId, current.processId);
   }
 
-  if (input?.launchAgentId && !hasExplicitAgentExit(input)) {
+  if (
+    input?.launchAgentId &&
+    !hasExplicitAgentExit(input) &&
+    !hasClearedStickyAgentDetection(input)
+  ) {
     return makeAgentIdentity(input.launchAgentId, normalizeProcessId(input.detectedProcessId));
   }
 
@@ -195,9 +209,10 @@ export function deriveTerminalChrome(input: TerminalChromeInput = {}): TerminalC
   if (agentIdentity && agentId) {
     const identity = agentIdentity;
     const config = getAgentConfig(agentId);
+    const presetColor = input.presetColor ?? input.agentPresetColor;
     return {
       iconId: config?.iconId ?? identity.iconId,
-      color: input.presetColor ?? config?.color ?? getPanelKindColor(kind),
+      color: presetColor ?? config?.color ?? getPanelKindColor(kind),
       label: config?.name ?? agentId,
       isAgent: true,
       agentId,

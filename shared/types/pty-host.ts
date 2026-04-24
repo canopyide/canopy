@@ -50,6 +50,8 @@ export interface PtyHostSpawnOptions {
   worktreeId?: string;
   /** Preset ID the agent was launched with (needed for fallback chain lookup on exit). */
   agentPresetId?: string;
+  /** Preset brand color captured by the renderer for reconnect/orphan chrome recovery. */
+  agentPresetColor?: string;
   /** Original user-selected preset ID; unchanged across fallback hops for revert UX. */
   originalAgentPresetId?: string;
 }
@@ -307,6 +309,8 @@ export interface PtyHostTerminalInfo {
   worktreeId?: string;
   /** Preset ID the agent was launched with. */
   agentPresetId?: string;
+  /** Preset brand color captured at launch time. */
+  agentPresetColor?: string;
   /** Original user-selected preset ID; unchanged across fallback hops. */
   originalAgentPresetId?: string;
   /** Set once on first runtime agent detection; never cleared. Sticky across agent exit/re-enter within session. */
