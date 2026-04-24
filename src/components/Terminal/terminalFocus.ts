@@ -1,23 +1,32 @@
 export type TerminalFocusTarget = "hybridInput" | "xterm";
 
+export function shouldShowHybridInputBar(options: {
+  hasAgentIdentity: boolean;
+  hybridInputEnabled: boolean;
+  isFleetArmed: boolean;
+  fleetSize: number;
+}): boolean {
+  return (
+    options.hybridInputEnabled &&
+    (options.hasAgentIdentity || (options.isFleetArmed && options.fleetSize >= 2))
+  );
+}
+
 /**
  * Resolve which child component should receive focus when the terminal pane
  * gains focus.
  *
- * Under the unified identity model (see
- * `docs/architecture/terminal-identity.md`), there is no "full capability"
- * vs "observational" distinction — the HybridInputBar is available whenever
- * runtime chrome resolves to an agent. `hasChromeAgentIdentity` is the
- * caller's computed `deriveTerminalChrome(...).isAgent`.
+ * The HybridInputBar can render for live agent terminals and for normal
+ * terminals that are temporarily participating in a Fleet broadcast.
  */
 export function getTerminalFocusTarget(options: {
-  hasChromeAgentIdentity: boolean;
+  hasHybridInputSurface: boolean;
   isInputDisabled: boolean;
   hybridInputEnabled: boolean;
   hybridInputAutoFocus: boolean;
 }): TerminalFocusTarget {
   if (
-    options.hasChromeAgentIdentity &&
+    options.hasHybridInputSurface &&
     !options.isInputDisabled &&
     options.hybridInputEnabled &&
     options.hybridInputAutoFocus

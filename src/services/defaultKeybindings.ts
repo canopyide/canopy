@@ -382,7 +382,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     combo: "Cmd+Shift+B",
     scope: "global",
     priority: 0,
-    description: "Arm all eligible agents in the current worktree",
+    description: "Arm all eligible terminals in the current worktree",
     category: "Terminal",
   },
   // Fleet quick-actions. These are registered at priority 5 so they beat

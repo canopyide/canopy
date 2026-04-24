@@ -149,7 +149,7 @@ describe("fleet actions — threshold confirmation", () => {
     expect(pending?.kind).toBe("restart");
   });
 
-  it("fleet.restart and trash ignore observational shells even if stale-armed", async () => {
+  it("fleet.restart ignores non-agent shells, but terminal-level trash still applies", async () => {
     const observedShell = makeAgent("observed", {
       detectedAgentId: undefined,
       everDetectedAgent: true,
@@ -163,7 +163,7 @@ describe("fleet actions — threshold confirmation", () => {
     expect(useFleetPendingActionStore.getState().pending).toBeNull();
 
     await run(registry, "fleet.trash");
-    expect(usePanelStore.getState().panelsById["observed"]?.location).toBe("grid");
+    expect(usePanelStore.getState().panelsById["observed"]?.location).toBe("trash");
   });
 
   it("fleet.trash dispatches immediately below the 5-target threshold", async () => {
@@ -322,15 +322,16 @@ describe("fleet.armMatchingFilter", () => {
     vi.clearAllMocks();
   });
 
-  it("arms only eligible agents in the provided worktree ids", async () => {
+  it("arms eligible terminals in the provided worktree ids", async () => {
     seedPanels([
       makeAgent("a1", { worktreeId: "wt-1" }),
       makeAgent("a2", { worktreeId: "wt-2" }),
       makeAgent("a3", { worktreeId: "wt-3" }),
+      makeAgent("p1", { worktreeId: "wt-3", detectedAgentId: undefined, everDetectedAgent: false }),
     ]);
     const registry = await buildRegistry();
     await run(registry, "fleet.armMatchingFilter", { worktreeIds: ["wt-1", "wt-3"] });
-    expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a3"]);
+    expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a3", "p1"]);
   });
 
   it("is a no-op when worktreeIds is empty (does not clobber existing armed set)", async () => {
@@ -341,9 +342,9 @@ describe("fleet.armMatchingFilter", () => {
     expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
   });
 
-  it("preserves prior armed set when filtered worktrees contain no eligible agents", async () => {
+  it("preserves prior armed set when filtered worktrees contain no eligible terminals", async () => {
     // Matches the sidebar case where the filter matches worktrees that
-    // happen to have no arm-eligible agent terminals — the button must
+    // happen to have no arm-eligible terminals — the button must
     // not silently clear the user's selection.
     seedPanels([makeAgent("a1", { worktreeId: "wt-1" })]);
     useFleetArmingStore.getState().armIds(["a1"]);
@@ -474,6 +475,19 @@ describe("fleet.armFocused", () => {
     await run(registry, "fleet.armFocused");
     const armed = useFleetArmingStore.getState().armedIds;
     expect(armed.has("a")).toBe(true);
+    expect(armed.size).toBe(1);
+  });
+
+  it("arms the focused plain terminal", async () => {
+    seedPanels([
+      makeAgent("plain", { detectedAgentId: undefined, everDetectedAgent: false }),
+      makeAgent("agent"),
+    ]);
+    usePanelStore.setState({ focusedId: "plain" });
+    const registry = await buildRegistry();
+    await run(registry, "fleet.armFocused");
+    const armed = useFleetArmingStore.getState().armedIds;
+    expect(armed.has("plain")).toBe(true);
     expect(armed.size).toBe(1);
   });
 

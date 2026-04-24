@@ -226,7 +226,7 @@ describe("resolveFleetBroadcastTargetIds", () => {
     expect(resolveFleetBroadcastTargetIds()).toEqual(["a"]);
   });
 
-  it("excludes a plain terminal after detected agent exits", () => {
+  it("includes plain terminals and ex-agent shells while their PTY is live", () => {
     seedPanels([
       makeAgent("a"),
       makeAgent("p", {
@@ -236,7 +236,7 @@ describe("resolveFleetBroadcastTargetIds", () => {
       }),
     ]);
     useFleetArmingStore.getState().armIds(["a", "p"]);
-    expect(resolveFleetBroadcastTargetIds()).toEqual(["a"]);
+    expect(resolveFleetBroadcastTargetIds()).toEqual(["a", "p"]);
   });
 });
 

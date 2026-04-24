@@ -350,9 +350,9 @@ describe("WorktreeTerminalSection arming click handlers", () => {
     expect([...armed].sort()).toEqual(["a1", "a2"]);
   });
 
-  it("click on a plain terminal selects it instead of arming it", () => {
-    // Fleet peers are full agent terminals with hybrid input. Plain shells are
-    // still selectable, but they cannot join the fleet.
+  it("click on a plain terminal arms it for Fleet broadcast", () => {
+    // Fleet peers are live PTY terminals. Agent-only quick actions still
+    // re-filter by agent capability at dispatch time.
     const plain = makeTerminal({
       id: "p1",
       kind: "terminal",
@@ -369,8 +369,8 @@ describe("WorktreeTerminalSection arming click handlers", () => {
     const button = screen.getAllByRole("button", { name: /Test Terminal/i })[0]!;
     fireEvent.click(button);
 
-    expect(useFleetArmingStore.getState().armedIds.has("p1")).toBe(false);
-    expect(onSelect).toHaveBeenCalledWith(plain);
+    expect(useFleetArmingStore.getState().armedIds.has("p1")).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("armed tile gets aria-selected=true", () => {

@@ -86,7 +86,8 @@ same terminal with no live agent identity.
 Agent-specific UI is gated by runtime agent identity:
 
 - Activity indicators render only when derived chrome says `isAgent === true`.
-- Fleet membership uses runtime agent identity, not launch intent.
+- Fleet broadcast membership uses live PTY eligibility, so normal terminals can
+  participate. Agent-specific Fleet actions still use runtime agent identity.
 - Worktree sidebar rows use the same derived chrome descriptor and only show
   agent state when the row is currently an agent.
 - Plain process icons such as `npm` never enter the agent state machine.
@@ -105,8 +106,8 @@ kept for:
 - Preset/model/settings lookup.
 - Command replay after app restart.
 
-It must not decide chrome, fleet membership, status badges, worktree sidebar
-agent rows, or activity indicators.
+It must not decide chrome, agent-specific fleet actions, status badges,
+worktree sidebar agent rows, or activity indicators.
 
 ## Reader Guidance
 

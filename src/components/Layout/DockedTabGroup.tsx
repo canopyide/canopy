@@ -25,6 +25,7 @@ import {
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
+import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { getMergedPresets } from "@/config/agents";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
@@ -87,6 +88,9 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const activePanel = useMemo(() => {
     return panels.find((p) => p.id === activeTabId) ?? panels[0];
   }, [panels, activeTabId]);
+  const isFleetHybridInputMember = useFleetArmingStore((s) =>
+    activePanel ? s.armedIds.has(activePanel.id) && s.armedIds.size >= 2 : false
+  );
 
   // Derive isOpen from store state - open if ANY panel in this group is active
   const isOpen = panels.some((p) => p.id === activeDockTerminalId);
@@ -511,9 +515,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const focusTarget = getTerminalFocusTarget({
-            // Focus routing follows live detection — HybridInputBar renders when
-            // an agent is actually running, so route focus there only then.
-            hasChromeAgentIdentity: activeChrome.isAgent,
+            hasHybridInputSurface: activeChrome.isAgent || isFleetHybridInputMember,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
             hybridInputEnabled,
             hybridInputAutoFocus,

@@ -8,7 +8,7 @@ import {
 import { setFleetArmingClear } from "@/store/projectStore";
 import type { TerminalInstance } from "@shared/types";
 import type { AgentState } from "@/types";
-import { isAgentFleetActionEligible } from "./fleetEligibility";
+import { isAgentFleetActionEligible, isTerminalFleetEligible } from "./fleetEligibility";
 
 export {
   isAgentFleetActionEligible,
@@ -59,7 +59,7 @@ function matchesPreset(state: AgentState | null | undefined, preset: FleetArmSta
 }
 
 export function isFleetArmEligible(t: TerminalInstance | undefined): t is TerminalInstance {
-  return isAgentFleetActionEligible(t);
+  return isTerminalFleetEligible(t);
 }
 
 /**
@@ -152,7 +152,7 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
     const ids: string[] = [];
     for (const id of state.panelIds) {
       const t = state.panelsById[id];
-      if (!isFleetArmEligible(t)) continue;
+      if (!isAgentFleetActionEligible(t)) continue;
       if (scope === "current") {
         if (!activeWorktreeId || t.worktreeId !== activeWorktreeId) continue;
       }

@@ -34,7 +34,7 @@ import { useWorktreeActions } from "./WorktreeCard/hooks/useWorktreeActions";
 import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { CONTEXT_COMPONENTS, WorktreeMenuItems } from "./WorktreeMenuItems";
-import { isFleetArmEligible } from "@/store/fleetArmingStore";
+import { isAgentFleetActionEligible, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { useWorktreeStatus } from "./WorktreeCard/hooks/useWorktreeStatus";
 import { computeChipState, type ChipState } from "./utils/computeChipState";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -320,23 +320,25 @@ export const WorktreeCard = React.memo(function WorktreeCard({
     (t) => t.location === "grid" || t.location === undefined
   ).length;
   const dockCount = worktreeTerminals.filter((t) => t.location === "dock").length;
-  // Counts for the Sessions submenu's Select * items. All derived from the
-  // same `isFleetArmEligible` subset (has PTY, not trash/background) that
-  // `armAll`/`armByState` actually arm — otherwise the menu could show an
-  // enabled item that silently no-ops (e.g. a background-located waiting
-  // terminal).
-  const eligibleAgents = useMemo(
+  // Counts for the Sessions submenu's Select * items. "All" follows Fleet
+  // broadcast membership (any live PTY); state-specific items are meaningful
+  // only for terminals with agent state.
+  const eligibleTerminals = useMemo(
     () => worktreeTerminals.filter(isFleetArmEligible),
     [worktreeTerminals]
   );
-  const eligibleAgentCount = eligibleAgents.length;
+  const eligibleTerminalCount = eligibleTerminals.length;
   const waitingAgentCount = useMemo(
-    () => eligibleAgents.filter((t) => t.agentState === "waiting").length,
-    [eligibleAgents]
+    () =>
+      eligibleTerminals.filter((t) => isAgentFleetActionEligible(t) && t.agentState === "waiting")
+        .length,
+    [eligibleTerminals]
   );
   const workingAgentCount = useMemo(
-    () => eligibleAgents.filter((t) => t.agentState === "working").length,
-    [eligibleAgents]
+    () =>
+      eligibleTerminals.filter((t) => isAgentFleetActionEligible(t) && t.agentState === "working")
+        .length,
+    [eligibleTerminals]
   );
 
   const worktreeErrors = useErrorStore(
@@ -829,7 +831,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
                     dock: dockCount,
                     active: totalTerminalCount,
                     completed: completedCount,
-                    all: eligibleAgentCount,
+                    all: eligibleTerminalCount,
                     waiting: waitingAgentCount,
                     working: workingAgentCount,
                   },
@@ -967,7 +969,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
             dock: dockCount,
             active: totalTerminalCount,
             completed: completedCount,
-            all: eligibleAgentCount,
+            all: eligibleTerminalCount,
             waiting: waitingAgentCount,
             working: workingAgentCount,
           }}

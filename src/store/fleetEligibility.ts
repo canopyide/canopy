@@ -3,9 +3,8 @@ import type { TerminalInstance } from "@shared/types";
 import { getBuiltInRuntimeAgentId } from "@/utils/terminalType";
 
 /**
- * Low-level liveness predicate: the terminal has a writable PTY and is not in
- * a lifecycle state where Fleet should address it. This is a building block,
- * not the Fleet membership rule.
+ * Fleet membership/broadcast predicate: the terminal has a writable PTY and is
+ * not in a lifecycle state where Fleet should address it.
  */
 export function isTerminalFleetEligible(t: TerminalInstance | undefined): t is TerminalInstance {
   if (!t) return false;
@@ -18,12 +17,10 @@ export function isTerminalFleetEligible(t: TerminalInstance | undefined): t is T
 }
 
 /**
- * Agent capability for Fleet actions — live-detection only.
+ * Agent capability for agent-specific Fleet actions.
  *
- * Fleet only acts on terminals that are *currently* hosting an agent. Launch
- * intent doesn't matter; a plain shell that spawned Claude is a valid fleet
- * member, and a cold-launched Claude panel whose Claude exited to shell is
- * not. See `docs/architecture/terminal-identity.md`.
+ * Broadcast can target any live terminal. Accept/reject/interrupt/restart
+ * still require an agent identity because those actions depend on agent state.
  */
 export function resolveFleetAgentCapabilityId(
   t: TerminalInstance | undefined

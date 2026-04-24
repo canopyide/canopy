@@ -30,7 +30,7 @@ import {
   SortableWorktreeCard,
   getWorktreeSortDragId,
 } from "@/components/DragDrop/SortableWorktreeCard";
-import { usePanelStore, useWorktreeSelectionStore, useProjectStore, useErrorStore } from "@/store";
+import { usePanelStore, useWorktreeSelectionStore, useProjectStore } from "@/store";
 import { useShallow } from "zustand/react/shallow";
 import type { RecipeTerminal } from "@/types";
 import { systemClient } from "@/clients";
@@ -365,9 +365,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const panelsById = usePanelStore(useShallow((state) => state.panelsById));
   const panelIds = usePanelStore(useShallow((state) => state.panelIds));
 
-  // Error store for derived metadata
-  const getWorktreeErrors = useErrorStore((state) => state.getWorktreeErrors);
-
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [recipeManagerEdit, setRecipeManagerEdit] = useState<
     import("@/types").TerminalRecipe | undefined
@@ -485,7 +482,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       });
     }
     return map;
-  }, [deferredWorktrees, panelsById, panelIds, getWorktreeErrors]);
+  }, [deferredWorktrees, panelsById, panelIds]);
 
   // Apply filters and sorting
   const mainWorktree = useMemo(
@@ -978,7 +975,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         {/* Inline search bar — only when there are non-main worktrees */}
         {hasNonMainWorktrees && <WorktreeSidebarSearchBar inputRef={searchInputRef} />}
 
-        {/* Arm all agents matching the active filter — only when a filter narrows the list */}
+        {/* Arm all terminals matching the active filter — only when a filter narrows the list */}
         {hasNonMainWorktrees && hasFilters && filteredWorktrees.length > 0 && (
           <div className="shrink-0 px-4 py-1.5 border-b border-divider">
             <Tooltip>
@@ -1000,7 +997,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                Arm all eligible agents in the {filteredWorktrees.length} worktrees visible below
+                Arm all eligible terminals in the {filteredWorktrees.length} worktrees visible below
               </TooltipContent>
             </Tooltip>
           </div>

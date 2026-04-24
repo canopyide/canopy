@@ -237,7 +237,7 @@ export function registerTerminalInputActions(
   actions.set("terminal.armByState", () => ({
     id: "terminal.armByState",
     title: "Arm by State",
-    description: "Arm all eligible agent terminals in a given state",
+    description: "Arm all eligible agent terminals in a given agent state",
     category: "terminal",
     kind: "command",
     danger: "safe",
@@ -264,7 +264,7 @@ export function registerTerminalInputActions(
   actions.set("terminal.armAll", () => ({
     id: "terminal.armAll",
     title: "Arm All Eligible",
-    description: "Arm every eligible agent terminal",
+    description: "Arm every eligible terminal",
     category: "terminal",
     kind: "command",
     danger: "safe",
@@ -279,7 +279,7 @@ export function registerTerminalInputActions(
   actions.set("terminal.armDefault", () => ({
     id: "terminal.armDefault",
     title: "Arm Current Worktree",
-    description: "Arm all eligible agent terminals in the active worktree",
+    description: "Arm all eligible terminals in the active worktree",
     category: "terminal",
     kind: "command",
     danger: "safe",

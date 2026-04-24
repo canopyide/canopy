@@ -132,7 +132,7 @@ export function FleetArmingRibbon(): ReactElement | null {
     if (armedCount === 0 && lastAnnouncedCount.current > 0) {
       announce("Fleet disarmed");
     } else if (armedCount > 0) {
-      announce(`${armedCount} ${armedCount === 1 ? "agent" : "agents"} in fleet`);
+      announce(`${armedCount} ${armedCount === 1 ? "terminal" : "terminals"} in fleet`);
     }
     lastAnnouncedCount.current = armedCount;
   }, [armedCount]);

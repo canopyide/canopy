@@ -217,7 +217,7 @@ describe("FleetArmingRibbon", () => {
     act(() => {
       useFleetArmingStore.getState().armIds(["a", "b"]);
     });
-    expect(useAnnouncerStore.getState().polite?.msg).toBe("2 agents in fleet");
+    expect(useAnnouncerStore.getState().polite?.msg).toBe("2 terminals in fleet");
   });
 
   it("announces 'Fleet disarmed' when count returns to zero", () => {
@@ -484,7 +484,7 @@ describe("FleetArmingRibbon", () => {
       expect([...armed]).toEqual(["t1"]);
     });
 
-    it("'All in this worktree' arms every eligible agent in the current worktree", () => {
+    it("'All in this worktree' arms every eligible terminal in the current worktree", () => {
       seed([
         makeAgent("t1", "working"),
         makeAgent("t2", "waiting"),

@@ -50,7 +50,11 @@ import type { HybridInputBarHandle } from "./HybridInputBar";
 const LazyHybridInputBar = lazy(() =>
   import("./HybridInputBar").then((m) => ({ default: m.HybridInputBar }))
 );
-import { getTerminalFocusTarget, shouldSuppressUnfocusedClick } from "./terminalFocus";
+import {
+  getTerminalFocusTarget,
+  shouldShowHybridInputBar,
+  shouldSuppressUnfocusedClick,
+} from "./terminalFocus";
 import { decideChromeAction } from "./multiSelectGestures";
 import { registerPanelFocusHandler } from "./terminalFocusRegistry";
 import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
@@ -316,8 +320,12 @@ function TerminalPaneComponent({
     ]
   );
   const effectiveAgentId = isBuiltInAgentId(chrome.agentId) ? chrome.agentId : undefined;
-  // HybridInputBar is shown when an agent is currently detected as live.
-  const showHybridInputBar = effectiveAgentId !== undefined && hybridInputEnabled;
+  const showHybridInputBar = shouldShowHybridInputBar({
+    hasAgentIdentity: effectiveAgentId !== undefined,
+    hybridInputEnabled,
+    isFleetArmed: isArmed,
+    fleetSize: armedIds.size,
+  });
 
   const pingedIdSelector = useMemo(
     () => (state: ReturnType<typeof usePanelStore.getState>) => state.pingedId === id,
@@ -598,7 +606,7 @@ function TerminalPaneComponent({
       setFocused(id);
       terminalInstanceService.boostRefreshRate(id);
     },
-    [id, setFocused, armedIds, getTerminal]
+    [id, setFocused, getTerminal]
   );
 
   const handleXtermPointerDownCapture = useCallback(
@@ -610,7 +618,7 @@ function TerminalPaneComponent({
       if (!xtermElement) return;
 
       const focusTarget = getTerminalFocusTarget({
-        hasChromeAgentIdentity: chrome.isAgent,
+        hasHybridInputSurface: showHybridInputBar,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -640,7 +648,7 @@ function TerminalPaneComponent({
     [
       id,
       location,
-      chrome.isAgent,
+      showHybridInputBar,
       hybridInputEnabled,
       hybridInputAutoFocus,
       isBackendDisconnected,
@@ -674,7 +682,7 @@ function TerminalPaneComponent({
     if (!isFocused) return;
 
     const focusTarget = getTerminalFocusTarget({
-      hasChromeAgentIdentity: chrome.isAgent,
+      hasHybridInputSurface: showHybridInputBar,
       isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
       hybridInputEnabled,
       hybridInputAutoFocus,
@@ -698,7 +706,7 @@ function TerminalPaneComponent({
   }, [
     id,
     isFocused,
-    chrome.isAgent,
+    showHybridInputBar,
     hybridInputEnabled,
     hybridInputAutoFocus,
     isBackendDisconnected,
@@ -710,7 +718,7 @@ function TerminalPaneComponent({
     if (!showHybridInputBar) return;
     return registerPanelFocusHandler(id, () => {
       const focusTarget = getTerminalFocusTarget({
-        hasChromeAgentIdentity: chrome.isAgent,
+        hasHybridInputSurface: showHybridInputBar,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
         hybridInputAutoFocus,
@@ -721,7 +729,6 @@ function TerminalPaneComponent({
   }, [
     id,
     showHybridInputBar,
-    chrome.isAgent,
     isBackendDisconnected,
     isBackendRecovering,
     isInputLocked,

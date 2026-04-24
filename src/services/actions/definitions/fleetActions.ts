@@ -314,9 +314,9 @@ export function registerFleetActions(actions: ActionRegistry): void {
 
   actions.set("fleet.armMatchingFilter", () => ({
     id: "fleet.armMatchingFilter",
-    title: "Fleet: Arm Agents Matching Filter",
+    title: "Fleet: Arm Terminals Matching Filter",
     description:
-      "Arm all eligible full agent terminals whose worktree is in the provided set — sidebar 'Arm N matching' affordance",
+      "Arm all eligible terminals whose worktree is in the provided set — sidebar 'Arm N matching' affordance",
     category: "terminal",
     kind: "command",
     danger: "safe",
@@ -332,7 +332,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
     id: "fleet.armFocused",
     title: "Fleet: Toggle Arm Focused Pane",
     description:
-      "Toggle fleet membership on the focused full agent terminal — keyboard equivalent of ⌘/⇧-clicking pane chrome",
+      "Toggle fleet membership on the focused terminal — keyboard equivalent of ⌘/⇧-clicking pane chrome",
     category: "terminal",
     kind: "command",
     danger: "safe",

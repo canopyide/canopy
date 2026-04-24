@@ -234,10 +234,9 @@ describe("fleetArmingStore", () => {
       expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a2"]);
     });
 
-    it("arms live-agent terminals and excludes ex-agent and plain shells", () => {
-      // Fleet broadcasts through HybridInputBar. Only terminals with a live
-      // detectedAgentId are fleet members. Ex-agents (everDetectedAgent but no
-      // detectedAgentId) and plain shells are excluded.
+    it("arms live-agent terminals, ex-agent shells, and plain shells", () => {
+      // Fleet broadcast membership is terminal-based. Agent-only quick actions
+      // still filter down to terminals with a live agent capability.
       seedPanels([
         makeAgentTerminal("a1"),
         makeAgentTerminal("p1", {
@@ -252,7 +251,7 @@ describe("fleetArmingStore", () => {
         }),
       ]);
       useFleetArmingStore.getState().armAll("current");
-      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1", "p1", "p2"]);
     });
 
     it("arms terminals whose live agent identity is carried by runtimeIdentity", () => {
@@ -275,7 +274,7 @@ describe("fleetArmingStore", () => {
   });
 
   describe("armMatchingFilter", () => {
-    it("arms eligible agents only in the matching worktree set", () => {
+    it("arms eligible terminals in the matching worktree set", () => {
       seedPanels([
         makeAgentTerminal("a1", { worktreeId: "wt-1" }),
         makeAgentTerminal("a2", { worktreeId: "wt-2" }),
@@ -285,7 +284,7 @@ describe("fleetArmingStore", () => {
       expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a3"]);
     });
 
-    it("skips ineligible panels even when worktree matches", () => {
+    it("skips structurally ineligible panels even when worktree matches", () => {
       seedPanels([
         makeAgentTerminal("a1", { worktreeId: "wt-1" }),
         makeAgentTerminal("a2", { worktreeId: "wt-1", location: "trash" }),
@@ -299,7 +298,7 @@ describe("fleetArmingStore", () => {
         }),
       ]);
       useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
-      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1", "a5"]);
     });
 
     it("empty worktreeIds is a no-op and preserves any prior armed set", () => {
@@ -309,7 +308,7 @@ describe("fleetArmingStore", () => {
       expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a2"]);
     });
 
-    it("no eligible agents in matching worktrees preserves any prior armed set", () => {
+    it("no eligible terminals in matching worktrees preserves any prior armed set", () => {
       seedPanels([
         makeAgentTerminal("a1", { worktreeId: "wt-1" }),
         makeAgentTerminal("a2", { worktreeId: "wt-2" }),
@@ -320,7 +319,7 @@ describe("fleetArmingStore", () => {
       expect([...useFleetArmingStore.getState().armedIds].sort()).toEqual(["a1", "a2"]);
     });
 
-    it("no eligible agents and no prior selection leaves armed set empty", () => {
+    it("no eligible terminals and no prior selection leaves armed set empty", () => {
       seedPanels([makeAgentTerminal("a1", { worktreeId: "wt-1" })]);
       useFleetArmingStore.getState().armMatchingFilter(["wt-9"]);
       expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
@@ -360,7 +359,7 @@ describe("fleetArmingStore", () => {
       expect(useFleetArmingStore.getState().armOrder).toEqual(["a1", "a2"]);
     });
 
-    it("excludes ex-agent terminals (detectedAgentId cleared, everDetectedAgent sticky)", () => {
+    it("includes ex-agent terminals because broadcast membership is PTY-based", () => {
       seedPanels([
         makeAgentTerminal("a1", { worktreeId: "wt-1" }),
         makeAgentTerminal("p1", {
@@ -371,7 +370,7 @@ describe("fleetArmingStore", () => {
         }),
       ]);
       useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
-      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1", "p1"]);
     });
 
     it("is fully idempotent — repeated calls preserve armOrder, armOrderById, and lastArmedId", () => {
@@ -465,20 +464,20 @@ describe("fleetArmingStore", () => {
       expect(isFleetArmEligible(makeAgentTerminal("a", { runtimeStatus: "error" }))).toBe(false);
     });
 
-    it("rejects plain terminals with no detectedAgentId", () => {
-      // Fleet membership requires a live detectedAgentId.
+    it("accepts plain terminals with no detectedAgentId", () => {
+      // Fleet broadcast membership only requires a live writable PTY.
       expect(
         isFleetArmEligible(
           makeAgentTerminal("a", { detectedAgentId: undefined, everDetectedAgent: false })
         )
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it("rejects undefined", () => {
       expect(isFleetArmEligible(undefined)).toBe(false);
     });
 
-    it("rejects ex-agent terminals (detectedAgentId cleared, everDetectedAgent sticky)", () => {
+    it("accepts ex-agent terminals (detectedAgentId cleared, everDetectedAgent sticky)", () => {
       expect(
         isFleetArmEligible(
           makeAgentTerminal("a", {
@@ -486,7 +485,7 @@ describe("fleetArmingStore", () => {
             everDetectedAgent: true,
           })
         )
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it("trash guard beats live detectedAgentId", () => {
