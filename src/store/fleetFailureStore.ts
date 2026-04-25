@@ -13,9 +13,8 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
  * surface stale state for an action the user already moved past.
  *
  * `confirmPendingPaste` in FleetArmingRibbon is the active caller. Fleet
- * input is routed through hybrid-input broadcast; the old direct xterm live
- * broadcast path is intentionally not mounted because Fleet does not treat
- * every live agent PTY as a peer terminal.
+ * input is routed through hybrid-input broadcast or direct xterm raw-input
+ * broadcast. Both paths re-resolve the live fleet before writing.
  */
 export interface FleetFailureSnapshot {
   /** Per-target ids that rejected the broadcast. */

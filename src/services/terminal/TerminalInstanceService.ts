@@ -39,6 +39,7 @@ import { stripAnsiAndOscCodes } from "@shared/utils/urlUtils";
 import { isUselessTitle, normalizeObservedTitle } from "@shared/utils/isUselessTitle";
 import { usePanelStore } from "@/store/panelStore";
 import { isNonKeyboardInput } from "./inputUtils";
+import { writeTerminalInputOrFleet } from "./fleetInputRouter";
 
 export { isNonKeyboardInput } from "./inputUtils";
 
@@ -1034,7 +1035,7 @@ class TerminalInstanceService {
         } else {
           this.onUserInput(id, data);
         }
-        terminalClient.write(id, data);
+        writeTerminalInputOrFleet(id, data);
         if (onInput) {
           onInput(data);
         }

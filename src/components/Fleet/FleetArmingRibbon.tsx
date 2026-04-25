@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { isMac } from "@/lib/platform";
 import { useEscapeStack, useWorktreeColorMap } from "@/hooks";
+import "./fleetRawInputBroadcast";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetBroadcastConfirmStore } from "@/store/fleetBroadcastConfirmStore";
 import {

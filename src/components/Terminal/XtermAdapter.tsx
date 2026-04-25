@@ -9,9 +9,9 @@ import React, {
 } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
-import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { writeTerminalInputOrFleet } from "@/services/terminal/fleetInputRouter";
 import { useTerminalAppearance } from "@/hooks/useTerminalAppearance";
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
 import { getXtermOptions } from "@/config/xtermConfig";
@@ -357,7 +357,7 @@ function XtermAdapterComponent({
             // session is currently running, use its sequence even if this
             // terminal was launched as Claude or as a plain shell.
             const softNewline = getSoftNewlineSequence(detectedAgentId ?? launchAgentId);
-            terminalClient.write(terminalId, softNewline);
+            writeTerminalInputOrFleet(terminalId, softNewline);
             terminalInstanceService.notifyUserInput(terminalId);
             onInput?.(softNewline);
           }
@@ -375,7 +375,7 @@ function XtermAdapterComponent({
           event.stopPropagation();
           if (event.type === "keydown" && !managed.isInputLocked) {
             const submit = "\r";
-            terminalClient.write(terminalId, submit);
+            writeTerminalInputOrFleet(terminalId, submit);
             terminalInstanceService.notifyUserInput(terminalId);
             onInput?.(submit);
           }
