@@ -3,6 +3,7 @@
   "productName": "Daintree",
   "version": "0.7.1",
   "description": "Daintree IDE - An Electron-based development environment",
+  "license": "Apache-2.0",
   "author": {
     "name": "Greg Priday",
     "email": "greg@siteorigin.com"

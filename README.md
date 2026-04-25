@@ -247,4 +247,6 @@ daintree/
 
 ## License
 
-[MIT](LICENSE)
+Daintree is released under the [Apache License 2.0](LICENSE).
+
+The Daintree name and logo are not covered by that license. See [TRADEMARKS.md](TRADEMARKS.md) for the brand and marks policy.

@@ -1,8 +1,14 @@
 # Contributing to Daintree
 
-Thanks for your interest in contributing. Daintree is an Electron-based workspace for orchestrating AI coding agents, and we welcome bug fixes, features, tests, and docs from the community.
+Thanks for your interest in contributing.
 
-This document is the rulebook. If something here is unclear or seems wrong, open an issue — the contribution guide is code too.
+**A good issue is more valuable than a pull request.** Bug reports, feature ideas, and well-described problems shape Daintree more than code does, so if you're choosing between writing one or the other, write the issue. Pull requests are welcome too — the rest of this document covers how to send one — but please open an issue first so we can agree on the shape before you spend time on code.
+
+If something here is unclear, open an issue — the contribution guide is code too.
+
+## License
+
+Contributions to Daintree are licensed under the [Apache License 2.0](LICENSE), the same license as the rest of the project. You retain copyright in your contributions. The Daintree name and logo are not covered by that license — see [TRADEMARKS.md](TRADEMARKS.md).
 
 ## Code of Conduct
 
