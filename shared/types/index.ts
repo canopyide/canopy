@@ -368,6 +368,16 @@ export type {
   BranchInfo as WorkspaceBranchInfo,
 } from "./workspace-host.js";
 
+// Worktree Port RPC protocol - typed request/response for the dedicated MessagePort
+export type {
+  WorktreePortProtocol,
+  WorktreePortAction,
+  WorktreePortPayload,
+  WorktreePortResult,
+  WorktreePortRequest,
+  WorktreePortResourceAction,
+} from "./worktree-port.js";
+
 // Project Pulse types - activity heatmap and commit history
 export type {
   PulseRangeDays,
