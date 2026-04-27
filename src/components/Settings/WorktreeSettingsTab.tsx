@@ -237,7 +237,7 @@ export function WorktreeSettingsTab() {
             <span className="block text-xs font-medium text-daintree-text/70">Presets:</span>
             <div className="flex flex-wrap gap-2">
               {PATTERN_PRESETS.map((preset) => (
-                <Tooltip>
+                <Tooltip key={preset.label}>
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => handlePresetClick(preset.pattern)}

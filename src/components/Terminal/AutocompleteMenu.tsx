@@ -59,7 +59,7 @@ export const AutocompleteMenu = forwardRef<HTMLDivElement, AutocompleteMenuProps
               : undefined;
 
             return (
-              <Tooltip>
+              <Tooltip key={item.key}>
                 <TooltipTrigger asChild>
                   <button
                     type="button"

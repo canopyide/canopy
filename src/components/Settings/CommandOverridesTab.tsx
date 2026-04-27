@@ -556,7 +556,7 @@ function PromptEditor({ commandId, args, value, onChange }: PromptEditorProps) {
             <p className="text-xs font-medium text-daintree-text/70 mb-1.5">Available variables:</p>
             <div className="flex flex-wrap gap-1.5">
               {args.map((arg) => (
-                <Tooltip>
+                <Tooltip key={arg.name}>
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => onChange(value + `{${arg.name}}`)}

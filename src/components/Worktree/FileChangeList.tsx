@@ -182,7 +182,7 @@ export function FileChangeList({
     const displayDir = formatDirForDisplay(dir);
 
     return (
-      <Tooltip>
+      <Tooltip key={`${change.path}-${change.status}`}>
         <TooltipTrigger asChild>
           <div
             className="group/filerow flex items-center text-xs font-mono hover:bg-tint/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"

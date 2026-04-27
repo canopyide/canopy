@@ -188,7 +188,7 @@ function InlineStatusBannerComponent({
           );
 
           return action.title ? (
-            <Tooltip>
+            <Tooltip key={action.id}>
               <TooltipTrigger asChild>{buttonEl}</TooltipTrigger>
               <TooltipContent side="bottom">{action.title}</TooltipContent>
             </Tooltip>
