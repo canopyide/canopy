@@ -39,10 +39,13 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
   const [isPending, startTransition] = useTransition();
   const [assignToSelf, setAssignToSelf] = useState(true);
 
-  const items: QuickCreateItem[] = [
-    ...recipes.map((r): QuickCreateItem => ({ ...r, _kind: "recipe" })),
-    { _kind: "customize", id: "__customize__", name: "Customize…" },
-  ];
+  const hasRecipes = recipes.length > 0;
+  const items: QuickCreateItem[] = hasRecipes
+    ? [
+        ...recipes.map((r): QuickCreateItem => ({ ...r, _kind: "recipe" })),
+        { _kind: "customize", id: "__customize__", name: "Customize…" },
+      ]
+    : [];
 
   const filterItems = useCallback(
     (allItems: QuickCreateItem[], query: string): QuickCreateItem[] => {
@@ -82,6 +85,13 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
     (item: QuickCreateItem | null) => {
       if (isPending) return;
       if (!item) {
+        if (palette.results.length === 0) {
+          // No recipes at all — open recipe manager so user can create one
+          closeQuickCreate();
+          palette.close();
+          void actionService.dispatch("recipe.manager.open", undefined, { source: "user" });
+          return;
+        }
         palette.close();
         return;
       }
