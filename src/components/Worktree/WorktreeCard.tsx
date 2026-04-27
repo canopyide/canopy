@@ -681,21 +681,14 @@ export const WorktreeCard = React.memo(function WorktreeCard({
               "bg-surface-panel-elevated shadow-[var(--theme-shadow-ambient)]",
             !isActive &&
               variant === "grid" &&
-              "hover:bg-[var(--sidebar-hover-bg,var(--theme-overlay-hover))]",
+              "hover:bg-overlay-subtle hover:shadow-[var(--theme-shadow-ambient)]",
             variant === "sidebar" && !isActive && "bg-transparent",
-            variant === "grid" &&
-              isActive &&
-              "border-accent-primary/70 shadow-[var(--theme-shadow-floating)]",
-            variant === "grid" &&
-              !isActive &&
-              "hover:border-accent-primary/50 hover:shadow-[var(--theme-shadow-floating)]",
-            isFocused &&
-              !isActive &&
-              variant === "grid" &&
-              "bg-[var(--sidebar-hover-bg,var(--theme-overlay-hover))]",
+            isFocused && !isActive && variant === "grid" && "bg-overlay-soft",
             isOver &&
               !isActive &&
-              "ring-2 ring-accent-primary bg-accent-primary/10 border-accent-primary/50 transition-colors duration-200"
+              "ring-2 ring-overlay bg-overlay-soft border-overlay transition-colors duration-200",
+            worktree.isCurrent &&
+              "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
           )}
           data-active={isActive && variant === "sidebar" ? "true" : undefined}
           data-hoverable={!isActive && variant === "sidebar" ? "true" : undefined}
@@ -721,7 +714,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
           {isOver && !isActive && (
             <div
               className={cn(
-                "absolute inset-0 z-50 bg-accent-primary/10 border-2 border-accent-primary pointer-events-none animate-in fade-in duration-150",
+                "absolute inset-0 z-50 bg-overlay-soft border-2 border-overlay pointer-events-none animate-in fade-in duration-150",
                 variant === "grid" && "rounded-lg"
               )}
             />
@@ -730,7 +723,7 @@ export const WorktreeCard = React.memo(function WorktreeCard({
             <div
               key={flashKey}
               className={cn(
-                "absolute inset-0 z-20 pointer-events-none border border-accent-primary animate-border-flash",
+                "absolute inset-0 z-20 pointer-events-none border border-overlay animate-border-flash",
                 variant === "grid" && "rounded-lg"
               )}
               aria-hidden="true"
