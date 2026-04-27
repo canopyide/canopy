@@ -410,7 +410,7 @@ export function PortalSettingsTab() {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Name"
+              placeholder="e.g. My portal"
               value={newLinkName}
               onChange={(e) => {
                 setNewLinkName(e.target.value);
@@ -420,7 +420,7 @@ export function PortalSettingsTab() {
             />
             <input
               type="text"
-              placeholder="https://..."
+              placeholder="e.g. https://github.com/owner/repo"
               value={newLinkUrl}
               onChange={(e) => {
                 setNewLinkUrl(e.target.value);

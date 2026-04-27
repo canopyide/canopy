@@ -515,7 +515,7 @@ export function ResourceEnvironmentsSection({
               type="text"
               value={env.status ?? ""}
               onChange={(e) => updateEnv({ status: e.target.value || undefined })}
-              placeholder="e.g. docker inspect container"
+              placeholder="e.g. docker compose ps --format json"
               spellCheck={false}
               className="w-full px-3 py-1.5 text-sm bg-surface-inset border border-border-default rounded-[var(--radius-md)] text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
             />
