@@ -13,7 +13,7 @@
 
 export const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|js|jsx)$/;
 
-const FIX_TITLE_RE = /^fix[(:]/;
+const FIX_TITLE_RE = /^fix[(:]/i;
 const RELEASE_TITLE_RE = /^chore\(release\):/;
 const VERSION_TAG_RE = /^v?\d+\.\d+/;
 
@@ -143,6 +143,13 @@ export function validateBaseline(data) {
     if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
       errs.push(`${key} must be a finite non-negative number`);
     }
+  }
+  // Cross-field consistency — catches manual baselines edits or data corruption.
+  if (data.fixWithTestCount > data.fixCount) {
+    errs.push("fixWithTestCount cannot exceed fixCount");
+  }
+  if (data.allWithTestCount > data.totalCount) {
+    errs.push("allWithTestCount cannot exceed totalCount");
   }
   return errs;
 }

@@ -46,7 +46,7 @@ function readJson(file, label, hint) {
   }
 }
 
-const SEARCH_QUERY = `is:pr is:merged -label:documentation -label:dependencies repo:daintreehq/daintree`;
+const SEARCH_QUERY = `is:pr is:merged -label:documentation -label:dependencies repo:daintreehq/daintree sort:created-desc`;
 
 const PR_QUERY = `query($q: String!) {
   search(query: $q, type: ISSUE, first: 100) {
@@ -110,13 +110,23 @@ function writeBaseline(report, { force }) {
     try {
       const prior = JSON.parse(readFileSync(BASELINE_FILE, "utf8"));
       if (prior && typeof prior.fixWithTestRatio === "number" && prior.fixWithTestRatio > 0) {
-        const drop = (prior.fixWithTestRatio - report.fixWithTestRatio) / prior.fixWithTestRatio;
-        if (drop > UPDATE_SHRINKAGE_THRESHOLD) {
+        const fixDrop = (prior.fixWithTestRatio - report.fixWithTestRatio) / prior.fixWithTestRatio;
+        if (fixDrop > UPDATE_SHRINKAGE_THRESHOLD) {
           console.error(
-            `::error::refusing to update baseline — fix-with-test ratio would drop from ${(prior.fixWithTestRatio * 100).toFixed(1)}% to ${(report.fixWithTestRatio * 100).toFixed(1)}% (${(drop * 100).toFixed(1)}% shrinkage > ${(UPDATE_SHRINKAGE_THRESHOLD * 100).toFixed(0)}% threshold).`
+            `::error::refusing to update baseline — fix-with-test ratio would drop from ${(prior.fixWithTestRatio * 100).toFixed(1)}% to ${(report.fixWithTestRatio * 100).toFixed(1)}% (${(fixDrop * 100).toFixed(1)}% shrinkage > ${(UPDATE_SHRINKAGE_THRESHOLD * 100).toFixed(0)}% threshold).`
           );
           console.error(
             "   This usually means the API returned stale data, label filters changed, or a batch of untested PRs merged."
+          );
+          console.error("   If the drop is intentional, re-run with --force.");
+          process.exit(1);
+        }
+      }
+      if (prior && typeof prior.allWithTestRatio === "number" && prior.allWithTestRatio > 0) {
+        const allDrop = (prior.allWithTestRatio - report.allWithTestRatio) / prior.allWithTestRatio;
+        if (allDrop > UPDATE_SHRINKAGE_THRESHOLD) {
+          console.error(
+            `::error::refusing to update baseline — all-with-test ratio would drop from ${(prior.allWithTestRatio * 100).toFixed(1)}% to ${(report.allWithTestRatio * 100).toFixed(1)}% (${(allDrop * 100).toFixed(1)}% shrinkage > ${(UPDATE_SHRINKAGE_THRESHOLD * 100).toFixed(0)}% threshold).`
           );
           console.error("   If the drop is intentional, re-run with --force.");
           process.exit(1);

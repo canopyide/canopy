@@ -40,6 +40,12 @@ describe("isFixTitle", () => {
     expect(isFixTitle("")).toBe(false);
     expect(isFixTitle("prefix-fix: something")).toBe(false);
   });
+
+  it("matches case-insensitive fix titles", () => {
+    expect(isFixTitle("Fix: crash on startup")).toBe(true);
+    expect(isFixTitle("FIX: restore state")).toBe(true);
+    expect(isFixTitle("Fix(auth): patch token")).toBe(true);
+  });
 });
 
 // ── Release / version-bump detection ─────────────────────────────────────
@@ -310,6 +316,36 @@ describe("validateBaseline", () => {
     const errs = validateBaseline(base);
     expect(errs.some((e) => e.includes("fixCount"))).toBe(true);
   });
+
+  it("rejects cross-field inconsistencies", () => {
+    const base = {
+      rollingWindowSize: 100,
+      updatedAt: "2026-01-01",
+      fixWithTestRatio: 0.9,
+      fixCount: 10,
+      fixWithTestCount: 99,
+      allWithTestRatio: 0.5,
+      totalCount: 10,
+      allWithTestCount: 5,
+    };
+    const errs = validateBaseline(base);
+    expect(errs.some((e) => e.includes("fixWithTestCount cannot exceed fixCount"))).toBe(true);
+  });
+
+  it("rejects allWithTestCount exceeding totalCount", () => {
+    const base = {
+      rollingWindowSize: 100,
+      updatedAt: "2026-01-01",
+      fixWithTestRatio: 0.5,
+      fixCount: 10,
+      fixWithTestCount: 5,
+      allWithTestRatio: 0.9,
+      totalCount: 10,
+      allWithTestCount: 99,
+    };
+    const errs = validateBaseline(base);
+    expect(errs.some((e) => e.includes("allWithTestCount cannot exceed totalCount"))).toBe(true);
+  });
 });
 
 // ── compareToBaseline ────────────────────────────────────────────────────
@@ -357,6 +393,7 @@ describe("compareToBaseline", () => {
     };
     const r = compareToBaseline(current, baseline);
     expect(r.ok).toBe(false);
+    expect(r.errors).toHaveLength(1);
     expect(r.errors[0].kind).toBe("fix-with-test-regression");
   });
 
@@ -374,7 +411,27 @@ describe("compareToBaseline", () => {
     };
     const r = compareToBaseline(current, baseline);
     expect(r.ok).toBe(false);
+    expect(r.errors).toHaveLength(1);
     expect(r.errors[0].kind).toBe("all-with-test-regression");
+  });
+
+  it("reports both error kinds when both ratios drop", () => {
+    const current = {
+      fixWithTestRatio: 0.6,
+      fixCount: 50,
+      fixWithTestCount: 30,
+      allWithTestRatio: 0.55,
+      totalCount: 100,
+      allWithTestCount: 55,
+      rollingWindowSize: 100,
+      windowCompleted: true,
+      skippedCount: 0,
+    };
+    const r = compareToBaseline(current, baseline);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toHaveLength(2);
+    const kinds = r.errors.map((e) => e.kind).sort();
+    expect(kinds).toEqual(["all-with-test-regression", "fix-with-test-regression"]);
   });
 
   it("emits notices for improvements", () => {
@@ -391,7 +448,8 @@ describe("compareToBaseline", () => {
     };
     const r = compareToBaseline(current, baseline);
     expect(r.ok).toBe(true);
-    expect(r.notices.length).toBeGreaterThanOrEqual(2);
+    const kinds = r.notices.map((n) => n.kind).sort();
+    expect(kinds).toEqual(["all-with-test-improvement", "fix-with-test-improvement"]);
   });
 
   it("emits notice on window size change", () => {
