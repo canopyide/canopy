@@ -1087,7 +1087,7 @@ class TerminalInstanceService {
       if (!managed.isInputLocked) {
         if (isNonKeyboardInput(data)) {
           if (data === "\x1b") {
-            this.agentStateController.clearDirectingState(id);
+            this.agentStateController.clearDirectingState(id, "escape-key");
           }
         } else {
           this.onUserInput(id, data);
@@ -1264,6 +1264,11 @@ class TerminalInstanceService {
     managed.attachGeneration++;
     managed.lastAttachAt = Date.now();
     managed.isDetached = false;
+
+    // Belt-and-braces: a terminal rehydrated from panel store can carry a
+    // stale "directing" agentState with no live controller timer to clear it.
+    // Sweep before the user sees the stuck indicator.
+    this.agentStateController.checkStaleDirecting(id);
 
     // For warm terminals (previously opened, detached during project switch) with
     // saved target dimensions, apply the resize synchronously before the rAF reveal.
@@ -1568,6 +1573,10 @@ class TerminalInstanceService {
   private handlePostWake(id: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;
+
+    // Wake path can restore a terminal whose persisted agentState is "directing"
+    // with no controller-owned timer. Clear before any other post-wake work.
+    this.agentStateController.checkStaleDirecting(id);
 
     // Settled-strategy agents require atomic xterm+PTY resize (deferred 500ms).
     // fit() would immediately resize xterm.js while PTY lags, breaking atomicity.
