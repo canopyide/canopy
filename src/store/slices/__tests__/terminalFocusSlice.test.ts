@@ -1134,4 +1134,29 @@ describe("TerminalFocusSlice - focusAlternate (last-pane toggle)", () => {
     );
     expect(state.previousFocusedId).toBeNull();
   });
+
+  it("openDockTerminal records the prior focus as previousFocusedId", () => {
+    // Most dock-focus entry points (clicks in DockedTerminalItem, focusDock
+    // action, navigateTab dock branch, focusNextBlockedDock) route through
+    // openDockTerminal — the alternate chain must include them.
+    state.activateTerminal("a");
+
+    state.openDockTerminal("dock-1");
+    expect(state.focusedId).toBe("dock-1");
+    expect(state.activeDockTerminalId).toBe("dock-1");
+    expect(state.previousFocusedId).toBe("a");
+
+    state.focusAlternate();
+    expect(state.focusedId).toBe("a");
+    expect(state.previousFocusedId).toBe("dock-1");
+  });
+
+  it("openDockTerminal does not corrupt previousFocusedId when reopening the same dock panel", () => {
+    state.activateTerminal("a");
+    state.openDockTerminal("dock-1");
+    expect(state.previousFocusedId).toBe("a");
+
+    state.openDockTerminal("dock-1");
+    expect(state.previousFocusedId).toBe("a");
+  });
 });

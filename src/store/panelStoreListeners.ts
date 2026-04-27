@@ -630,6 +630,7 @@ export function setupTerminalStoreListeners() {
         const previousFocusedId = usePanelStore.getState().focusedId;
         usePanelStore.setState({
           focusedId: id,
+          activeDockTerminalId: null,
           ...(previousFocusedId !== id && { previousFocusedId }),
         });
       })

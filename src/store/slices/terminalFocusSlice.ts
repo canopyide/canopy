@@ -374,7 +374,13 @@ export const createTerminalFocusSlice =
         if (terminal?.agentState === "working") {
           window.electron?.notification?.acknowledgeWorkingPulse(id);
         }
-        set({ activeDockTerminalId: id, focusedId: id });
+        const previousFocusedId = get().focusedId;
+        const focusActuallyChanged = id !== previousFocusedId;
+        set({
+          activeDockTerminalId: id,
+          focusedId: id,
+          ...(focusActuallyChanged && { previousFocusedId }),
+        });
       },
 
       closeDockTerminal: () => set({ activeDockTerminalId: null }),
