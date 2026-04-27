@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface ActiveRecording {
   captureId: string;
@@ -79,7 +80,7 @@ export function DemoCaptureBridge() {
             audio: false,
           });
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = formatErrorMessage(err, "getDisplayMedia failed");
           api.sendCommandDone(requestId, `getDisplayMedia failed: ${message}`);
           return;
         }
@@ -93,7 +94,7 @@ export function DemoCaptureBridge() {
           recorder = new MediaRecorder(stream, { mimeType });
         } catch (err) {
           stream.getTracks().forEach((t) => t.stop());
-          const message = err instanceof Error ? err.message : String(err);
+          const message = formatErrorMessage(err, "MediaRecorder init failed");
           api.sendCommandDone(requestId, `MediaRecorder init failed: ${message}`);
           return;
         }
@@ -120,7 +121,7 @@ export function DemoCaptureBridge() {
             api.sendCaptureChunk(active.captureId, new Uint8Array(ab));
           } catch (err) {
             if (!active.stopError) {
-              active.stopError = err instanceof Error ? err.message : String(err);
+              active.stopError = formatErrorMessage(err, "Failed to send capture chunk");
             }
           } finally {
             active.pendingChunks -= 1;
@@ -148,7 +149,7 @@ export function DemoCaptureBridge() {
           recorder.start(1000);
           api.sendCommandDone(requestId);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = formatErrorMessage(err, "recorder.start failed");
           stopAndCleanup(active, message);
           api.sendCommandDone(requestId, `recorder.start failed: ${message}`);
         }
@@ -180,7 +181,7 @@ export function DemoCaptureBridge() {
             maybeSendStop(active);
           }
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = formatErrorMessage(err, "Failed to stop recorder");
           active.stopError = message;
           active.stopped = true;
           maybeSendStop(active);

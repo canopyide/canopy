@@ -7,6 +7,7 @@ import { cliAvailabilityClient } from "@/clients";
 import type { AgentHelpResult } from "@shared/types/ipc/agent";
 import type { AgentAvailabilityState } from "@shared/types";
 import { isAgentInstalled, isAgentMissing } from "../../../shared/utils/agentAvailability";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface AgentHelpOutputProps {
   agentId: string;
@@ -81,7 +82,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
         const result = await agentHelpClient.get({ agentId, refresh });
         setHelpResult(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load help output");
+        setError(formatErrorMessage(err, "Failed to load help output"));
       } finally {
         setIsLoading(false);
       }

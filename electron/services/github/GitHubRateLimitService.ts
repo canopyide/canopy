@@ -3,6 +3,7 @@ import type {
   GitHubRateLimitPayload,
 } from "../../../shared/types/ipc/github.js";
 import { logDebug, logInfo, logWarn } from "../../utils/logger.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 // Buffer applied to GitHub's `x-ratelimit-reset` to absorb clock skew between
 // the local host and api.github.com, and to avoid a poll slipping in a tick
@@ -157,7 +158,7 @@ class GitHubRateLimitServiceImpl {
       } catch (err) {
         // A misbehaving transport must not break rate-limit bookkeeping.
         logWarn("GitHub rate-limit listener threw", {
-          error: err instanceof Error ? err.message : String(err),
+          error: formatErrorMessage(err, "Rate-limit listener failed"),
         });
       }
     }

@@ -1,5 +1,6 @@
 import { graphql } from "@octokit/graphql";
 import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 export const GITHUB_API_TIMEOUT_MS = 15_000;
 export const GITHUB_AUTH_TIMEOUT_MS = 10_000;
@@ -336,7 +337,7 @@ export class GitHubAuth {
         avatarUrl: userData.avatar_url,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error, "Failed to validate GitHub token");
       const isTimeout = error instanceof Error && error.name === "TimeoutError";
       if (
         isTimeout ||

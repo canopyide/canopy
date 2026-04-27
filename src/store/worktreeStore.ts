@@ -7,6 +7,7 @@ import { logErrorWithContext } from "@/utils/errorContext";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
 import { setWorktreeSelectionStoreGetter } from "./projectStore";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 // Getter injected by fleetArmingStore at module init to break the import
 // cycle (fleetArmingStore imports worktreeStore). Returns the current armed
@@ -177,7 +178,7 @@ function loadClientsModule(): Promise<ClientsModule> {
           module: "@/clients",
           durationMs: Number((now - startedAt).toFixed(3)),
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: formatErrorMessage(error, "Failed to load @/clients module"),
         });
         throw error;
       });
@@ -205,7 +206,7 @@ function loadTerminalStoreModule(): Promise<TerminalStoreModule> {
           module: "@/store/panelStore",
           durationMs: Number((now - startedAt).toFixed(3)),
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: formatErrorMessage(error, "Failed to load @/store/panelStore module"),
         });
         throw error;
       });

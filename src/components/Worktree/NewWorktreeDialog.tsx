@@ -46,6 +46,7 @@ import { useBranchPicker } from "./hooks/useBranchPicker";
 import { usePrefixPicker } from "./hooks/usePrefixPicker";
 import { useRecipePicker, CLONE_LAYOUT_ID } from "./hooks/useRecipePicker";
 import { usePanelStore } from "@/store/panelStore";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 type BranchMode = "new" | "existing";
 
@@ -609,8 +610,7 @@ export function NewWorktreeDialog({
                 .generateRecipeFromActiveTerminals(sourceWorktreeId);
               await cloneLayoutPanels(terminals, worktreeId, worktreePath.trim());
             } catch (cloneErr) {
-              const message =
-                cloneErr instanceof Error ? cloneErr.message : "Failed to clone layout";
+              const message = formatErrorMessage(cloneErr, "Failed to clone layout");
               notify({
                 type: "warning",
                 title: "Could not clone layout",
@@ -624,8 +624,7 @@ export function NewWorktreeDialog({
                 branchName: selectedExistingBranch,
               });
             } catch (recipeErr) {
-              const message =
-                recipeErr instanceof Error ? recipeErr.message : "Failed to run recipe";
+              const message = formatErrorMessage(recipeErr, "Failed to run recipe");
               const recipeId = selectedRecipe.id;
               const recipePath = worktreePath.trim();
               notify({
@@ -653,7 +652,7 @@ export function NewWorktreeDialog({
           setSelectedExistingBranch(null);
           setWorktreePath("");
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : "Failed to create worktree";
+          const message = formatErrorMessage(err, "Failed to create worktree");
           setCreationError(mapCreationError(message, onClose));
         }
       });
@@ -761,8 +760,7 @@ export function NewWorktreeDialog({
           try {
             await githubClient.assignIssue(rootPath, selectedIssue.number, currentUser);
           } catch (assignErr) {
-            const message =
-              assignErr instanceof Error ? assignErr.message : "Failed to assign issue";
+            const message = formatErrorMessage(assignErr, "Failed to assign issue");
             const issueUrl = selectedIssue.url;
             notify({
               type: "warning",
@@ -787,7 +785,7 @@ export function NewWorktreeDialog({
               .generateRecipeFromActiveTerminals(sourceWorktreeId);
             await cloneLayoutPanels(terminals, worktreeId, worktreePath.trim());
           } catch (cloneErr) {
-            const message = cloneErr instanceof Error ? cloneErr.message : "Failed to clone layout";
+            const message = formatErrorMessage(cloneErr, "Failed to clone layout");
             notify({
               type: "warning",
               title: "Could not clone layout",
@@ -804,7 +802,7 @@ export function NewWorktreeDialog({
               branchName: fullBranchName,
             });
           } catch (recipeErr) {
-            const message = recipeErr instanceof Error ? recipeErr.message : "Failed to run recipe";
+            const message = formatErrorMessage(recipeErr, "Failed to run recipe");
             const recipeId = selectedRecipe.id;
             const recipePath = worktreePath.trim();
             const recipeWorktreeId = worktreeId;
@@ -839,7 +837,7 @@ export function NewWorktreeDialog({
         setWorktreePath("");
         setFromRemote(false);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Failed to create worktree";
+        const message = formatErrorMessage(err, "Failed to create worktree");
         setCreationError(mapCreationError(message, onClose));
       }
     });
@@ -1435,7 +1433,7 @@ export function NewWorktreeDialog({
                         }
                       } catch (err: unknown) {
                         console.error("Failed to open directory picker:", err);
-                        const message = err instanceof Error ? err.message : "Unknown error";
+                        const message = formatErrorMessage(err, "Failed to open directory picker");
                         setValidationError(`Failed to open directory picker: ${message}`);
                         setErrorField(null);
                       }

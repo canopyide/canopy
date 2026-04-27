@@ -16,6 +16,7 @@ import { broadcastToRenderer } from "../ipc/utils.js";
 import { gitHubRateLimitService } from "./github/index.js";
 import { store } from "../store.js";
 import { isValidLogOverrideLevel } from "../utils/logger.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 import { WorkspaceHostProcess } from "./WorkspaceHostProcess.js";
 import type {
@@ -1094,7 +1095,7 @@ export class WorkspaceClient extends EventEmitter {
         includedFiles: 0,
         includedSize: 0,
         excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: formatErrorMessage(error, "Failed to generate context"),
       };
     }
   }

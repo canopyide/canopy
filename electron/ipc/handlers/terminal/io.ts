@@ -10,6 +10,7 @@ import { TerminalResizePayloadSchema } from "../../../schemas/ipc.js";
 import type { PtyHostActivityTier } from "../../../../shared/types/pty-host.js";
 import { normalizeObservedTitle } from "../../../../shared/utils/isUselessTitle.js";
 import { typedHandle } from "../../utils.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function registerTerminalIOHandlers(deps: HandlerDependencies): () => void {
   const { ptyClient } = deps;
@@ -93,7 +94,7 @@ export function registerTerminalIOHandlers(deps: HandlerDependencies): () => voi
       }
       ptyClient.submit(id, text);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to submit to terminal");
       throw new Error(`Failed to submit to terminal: ${errorMessage}`);
     }
   };
@@ -215,7 +216,7 @@ export function registerTerminalIOHandlers(deps: HandlerDependencies): () => voi
       ptyClient.forceResume(id);
       return { success: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to force resume terminal");
       console.error(`[IPC] Failed to force resume terminal ${id}:`, errorMessage);
       return { success: false, error: errorMessage };
     }

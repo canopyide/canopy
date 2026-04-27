@@ -1,6 +1,7 @@
 import type { TerminalInstance } from "@/types";
 import { systemClient } from "@/clients/systemClient";
 import { getAgentConfig } from "@/config/agents";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export interface ValidationError {
   type: "cwd" | "cli" | "config";
@@ -32,7 +33,7 @@ export async function validateTerminalConfig(
         });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error, "Failed to check directory");
       errors.push({
         type: "config",
         message: `Failed to validate working directory "${terminal.cwd}": ${message}`,
@@ -60,7 +61,7 @@ export async function validateTerminalConfig(
         });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error, "Failed to check CLI");
       errors.push({
         type: "config",
         message: `Failed to validate CLI "${agentId}": ${message}`,
@@ -88,7 +89,7 @@ export async function validateTerminals(
           results.set(terminal.id, result);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = formatErrorMessage(error, "Failed to validate terminal");
         results.set(terminal.id, {
           valid: false,
           errors: [

@@ -9,6 +9,7 @@ import { getAutoAssign } from "@shared/types/project";
 import { detectPrefixFromIssue, buildBranchName } from "@/components/Worktree/branchPrefixUtils";
 import { generateBranchSlug } from "@/utils/textParsing";
 import { notify } from "@/lib/notify";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export type QuickCreateItem =
   | (TerminalRecipe & { _kind: "recipe" })
@@ -182,7 +183,7 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
           notify({
             type: "error",
             title: "Creation Failed",
-            message: error instanceof Error ? error.message : "Unknown error",
+            message: formatErrorMessage(error, "Failed to create worktree"),
           });
         } finally {
           closeQuickCreate();

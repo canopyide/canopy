@@ -4,6 +4,7 @@ import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { notify } from "@/lib/notify";
 import { useNotificationStore } from "@/store/notificationStore";
 import { projectClient } from "@/clients";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 function formatFileList(files: string[]): string {
   if (files.length === 1) return files[0]!;
@@ -110,7 +111,7 @@ export function useContextFilesOffer() {
                 notify({
                   type: "error",
                   title: "Failed to enable project context",
-                  message: err instanceof Error ? err.message : "Unknown error",
+                  message: formatErrorMessage(err, "Failed to enable project context"),
                   duration: 6000,
                 });
                 // Allow a retry next time the effect runs for this project.
@@ -135,7 +136,7 @@ export function useContextFilesOffer() {
                 notify({
                   type: "error",
                   title: "Failed to save preference",
-                  message: err instanceof Error ? err.message : "Unknown error",
+                  message: formatErrorMessage(err, "Failed to dismiss context files offer"),
                   duration: 6000,
                 });
                 if (inFlightProjectRef.current === targetProjectId) {

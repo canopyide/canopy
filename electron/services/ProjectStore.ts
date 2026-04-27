@@ -14,6 +14,7 @@ import { app } from "electron";
 import { GitService } from "./GitService.js";
 import { isDaintreeError } from "../utils/errorTypes.js";
 import { logError } from "../utils/logger.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { store } from "../store.js";
 import { getSharedDb } from "./persistence/db.js";
 import {
@@ -131,7 +132,8 @@ export class ProjectStore {
     try {
       gitRoot = await this.getGitRoot(projectPath);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error, "Failed to add project");
+      // eslint-disable-next-line no-restricted-syntax -- typed extraction of optional Daintree error cause; undefined fallback is required so the join below skips it.
       const causeMessage =
         isDaintreeError(error) && error.cause instanceof Error ? error.cause.message : undefined;
       const combined = [message, causeMessage].filter(Boolean).join("\n");

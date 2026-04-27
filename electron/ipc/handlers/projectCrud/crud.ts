@@ -6,6 +6,7 @@ import { projectStore } from "../../../services/ProjectStore.js";
 import { broadcastToRenderer, typedHandle, typedHandleWithContext } from "../../utils.js";
 import type { HandlerDependencies } from "../../types.js";
 import type { Project } from "../../../types/index.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function registerProjectCrudCoreHandlers(deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
@@ -196,7 +197,7 @@ export function registerProjectCrudCoreHandlers(deps: HandlerDependencies): () =
       console.error(`[IPC] project:close: Failed to close project ${projectId}:`, error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: formatErrorMessage(error, "Failed to close project"),
         processesKilled: 0,
         terminalsKilled: 0,
       };

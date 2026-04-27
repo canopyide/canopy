@@ -10,6 +10,7 @@ import { artifactClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { logErrorWithContext } from "@/utils/errorContext";
 import { logDebug } from "@/utils/logger";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const artifactStore = new Map<string, Artifact[]>();
 const listeners = new Set<(terminalId: string, artifacts: Artifact[]) => void>();
@@ -212,7 +213,7 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
         });
         return {
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: formatErrorMessage(error, "Failed to apply patch"),
         };
       } finally {
         setActionInProgress(null);
@@ -331,7 +332,7 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
           result.failed++;
           result.failures.push({
             artifact,
-            error: error instanceof Error ? error.message : String(error),
+            error: formatErrorMessage(error, "Failed to save artifact"),
           });
         }
       }
@@ -402,7 +403,7 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
           result.failed++;
           result.failures.push({
             artifact,
-            error: error instanceof Error ? error.message : String(error),
+            error: formatErrorMessage(error, "Failed to apply patch"),
           });
         }
       }

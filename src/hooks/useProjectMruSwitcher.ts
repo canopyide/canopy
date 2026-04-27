@@ -4,6 +4,7 @@ import { advanceMruIndex, getMruProjects } from "@/lib/projectMru";
 import { notify } from "@/lib/notify";
 import { useProjectStore } from "@/store/projectStore";
 import type { Project } from "@shared/types";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 import { useEscapeStack } from "./useEscapeStack";
 
@@ -87,7 +88,7 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
       notify({
         type: "error",
         title: "Failed to switch project",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: formatErrorMessage(error, "Failed to switch project"),
         duration: 5000,
       });
     });

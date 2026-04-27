@@ -19,6 +19,7 @@ import { CopyableCommand } from "./InstallBlock";
 import { AGENT_DESCRIPTIONS } from "@/config/agents";
 import type { CliAvailability } from "@shared/types";
 import { isAgentInstalled } from "@shared/utils/agentAvailability";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const AGENT_ORDER = BUILT_IN_AGENT_IDS;
 
@@ -135,7 +136,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
         setCardStatuses((prev) => ({ ...prev, [agentId]: "error" }));
         setCardErrors((prev) => ({
           ...prev,
-          [agentId]: err instanceof Error ? err.message : "Installation failed",
+          [agentId]: formatErrorMessage(err, "Installation failed"),
         }));
       } finally {
         installingRef.current.delete(agentId);

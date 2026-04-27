@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients";
 import type { GitHubIssue } from "@shared/types/github";
 import type { WorktreeState } from "@/types";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface IssuePickerDialogProps {
   isOpen: boolean;
@@ -50,7 +51,7 @@ export function IssuePickerDialog({
         setIssues(result.items);
         setSelectedIndex(0);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load issues");
+        setError(formatErrorMessage(e, "Failed to load issues"));
         setIssues([]);
       } finally {
         setIsLoading(false);

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useProjectStore } from "@/store/projectStore";
 import type { DevServerErrorType } from "../../shared/utils/devServerErrors";
 import type { DevPreviewSessionState } from "../../shared/types/ipc/devPreview";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export type DevPreviewStatus = "stopped" | "starting" | "installing" | "running" | "error";
 
@@ -168,7 +169,7 @@ export function useDevServer({
 
   const applyInvokeError = useCallback((err: unknown) => {
     if (!isMountedRef.current) return;
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatErrorMessage(err, "Dev server request failed");
     latestSessionRef.current = {
       status: "error",
       url: null,

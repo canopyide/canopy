@@ -18,6 +18,7 @@ import { useProjectSettings } from "@/hooks";
 import { useProjectStore } from "@/store/projectStore";
 import type { RunCommand } from "@/types";
 import { getProjectGradient } from "@/lib/colorUtils";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const CURATED_EMOJIS = [
   "🌲",
@@ -127,7 +128,7 @@ export function ProjectOnboardingWizard({
       onClose();
       onFinish?.(projectId);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Failed to save settings");
+      setSaveError(formatErrorMessage(error, "Failed to save settings"));
     } finally {
       setIsSaving(false);
     }

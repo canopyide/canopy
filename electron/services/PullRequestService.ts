@@ -8,6 +8,7 @@ import {
 import { gitHubRateLimitService } from "./github/index.js";
 import { logInfo, logWarn, logDebug } from "../utils/logger.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 60 * 1000;
 
@@ -148,7 +149,7 @@ class PullRequestService {
         logDebug("Running debounced PR check", { candidateCount: this.candidates.size });
         void this.checkForPRs().catch((err) =>
           logWarn("Debounced PR check failed", {
-            error: err instanceof Error ? err.message : String(err),
+            error: formatErrorMessage(err, "Debounced PR check failed"),
           })
         );
 
@@ -267,7 +268,7 @@ class PullRequestService {
           this.consecutiveErrors = 0;
           this.nextRetryAt = 0;
           void this.checkForPRs()
-            .catch((err) => this.handleError(err instanceof Error ? err.message : String(err)))
+            .catch((err) => this.handleError(formatErrorMessage(err, "PR check failed")))
             .finally(() => this.scheduleNextPoll());
         }, delay);
       }
@@ -289,7 +290,7 @@ class PullRequestService {
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
       void this.checkForPRs()
-        .catch((err) => this.handleError(err instanceof Error ? err.message : String(err)))
+        .catch((err) => this.handleError(formatErrorMessage(err, "PR check failed")))
         .finally(() => this.scheduleNextPoll());
     }, interval);
   }
@@ -328,7 +329,7 @@ class PullRequestService {
       void this.revalidateResolvedPRs()
         .catch((err) =>
           logWarn("Revalidation unexpected error", {
-            error: err instanceof Error ? err.message : String(err),
+            error: formatErrorMessage(err, "PR revalidation failed"),
           })
         )
         .finally(() => this.scheduleRevalidation());
@@ -439,7 +440,7 @@ class PullRequestService {
       }
     } catch (error) {
       logWarn("Revalidation check error", {
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: formatErrorMessage(error, "PR revalidation failed"),
       });
     }
   }
@@ -530,7 +531,7 @@ class PullRequestService {
         }
       }
     } catch (error) {
-      this.handleError(error instanceof Error ? error.message : "Unknown error");
+      this.handleError(formatErrorMessage(error, "PR check failed"));
     }
   }
 

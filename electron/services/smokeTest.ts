@@ -8,6 +8,7 @@ import type { ProjectState, TerminalSnapshot } from "../types/index.js";
 import type { PtyClient } from "./PtyClient.js";
 import { projectStore } from "./ProjectStore.js";
 import { getAppWebContents } from "../window/webContentsRegistry.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -328,10 +329,7 @@ async function runSmokeProjectPersistenceChecks(window: BrowserWindow): Promise<
 }
 
 function logSmokeFailure(context: string, error: unknown): void {
-  console.error(
-    `[SMOKE] FAILED — ${context}:`,
-    error instanceof Error ? error.message : String(error)
-  );
+  console.error(`[SMOKE] FAILED — ${context}:`, formatErrorMessage(error, "Smoke test failed"));
 }
 
 export async function runSmokeFunctionalChecks(

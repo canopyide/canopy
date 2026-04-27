@@ -15,6 +15,7 @@ import {
   clearAgentSessions,
 } from "../../../services/pty/agentSessionHistory.js";
 import { getDefaultShell } from "../../../services/pty/terminalShell.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
@@ -242,7 +243,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
 
       return id;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to spawn terminal");
       throw new Error(`Failed to spawn terminal: ${errorMessage}`);
     }
   };
@@ -255,7 +256,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
       }
       ptyClient.kill(id);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to kill terminal");
       throw new Error(`Failed to kill terminal: ${errorMessage}`);
     }
   };
@@ -276,7 +277,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
       }
       ptyClient.trash(id);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to trash terminal");
       throw new Error(`Failed to trash terminal: ${errorMessage}`);
     }
   };
@@ -289,7 +290,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
       }
       return ptyClient.restore(id);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to restore terminal");
       throw new Error(`Failed to restore terminal: ${errorMessage}`);
     }
   };

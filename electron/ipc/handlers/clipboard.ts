@@ -6,6 +6,7 @@ import * as crypto from "node:crypto";
 import * as os from "node:os";
 import { defineIpcNamespace, op } from "../define.js";
 import { CLIPBOARD_METHOD_CHANNELS } from "./clipboard.preload.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 const CLIPBOARD_DIR_NAME = "daintree-clipboard";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -77,7 +78,7 @@ async function handleSaveImage(): Promise<
 
     return { ok: true, filePath, thumbnailDataUrl };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatErrorMessage(err, "Failed to save clipboard image");
     return { ok: false, error: message };
   }
 }
@@ -101,7 +102,7 @@ async function handleThumbnailFromPath(
 
     return { ok: true, filePath, thumbnailDataUrl };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatErrorMessage(err, "Failed to generate clipboard thumbnail");
     return { ok: false, error: message };
   }
 }
@@ -118,7 +119,7 @@ async function handleWriteImage(
     clipboard.writeImage(image);
     return { ok: true };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatErrorMessage(err, "Failed to write clipboard image");
     return { ok: false, error: message };
   }
 }
@@ -131,7 +132,7 @@ function handleWriteText(text: string): { ok: true } | { ok: false; error: strin
     clipboard.writeText(text);
     return { ok: true };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatErrorMessage(err, "Failed to write clipboard text");
     return { ok: false, error: message };
   }
 }
@@ -152,7 +153,7 @@ function handleWriteSelection(text: string): { ok: true } | { ok: false; error: 
     clipboard.writeText(text, "selection");
     return { ok: true };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatErrorMessage(err, "Failed to write PRIMARY selection");
     return { ok: false, error: message };
   }
 }
@@ -165,7 +166,7 @@ function handleReadSelection(): { ok: true; text: string } | { ok: false; error:
     const text = clipboard.readText("selection");
     return { ok: true, text };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatErrorMessage(err, "Failed to read PRIMARY selection");
     return { ok: false, error: message };
   }
 }

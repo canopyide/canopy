@@ -7,6 +7,7 @@ import { copyTreeClient } from "@/clients";
 import { DEFAULT_COPYTREE_FORMAT } from "@/lib/copyTreeFormat";
 import { logDebug, logError } from "@/utils/logger";
 import { isAgentTerminal } from "@/utils/terminalType";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export type InjectionStatus = "idle" | "waiting" | "injecting";
 
@@ -260,7 +261,7 @@ export function useContextInjection(targetTerminalId?: string): UseContextInject
           });
         } catch (e) {
           // Injection was cancelled while waiting
-          const message = e instanceof Error ? e.message : "Injection cancelled";
+          const message = formatErrorMessage(e, "Injection cancelled");
           if (message !== "Injection cancelled") {
             setError(message);
           }
@@ -355,7 +356,7 @@ export function useContextInjection(targetTerminalId?: string): UseContextInject
           currentErrorIdRef.current = null;
         }
       } catch (e) {
-        const message = e instanceof Error ? e.message : "Failed to inject context";
+        const message = formatErrorMessage(e, "Failed to inject context");
         const details = e instanceof Error ? e.stack : undefined;
 
         setError(message);

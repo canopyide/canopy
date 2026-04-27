@@ -33,6 +33,7 @@ import {
 } from "./github/index.js";
 import type { RollupContextNode } from "./github/index.js";
 import { getLastAuthMetadata } from "./github/GitHubAuth.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 import type {
   RepoContext,
@@ -196,7 +197,7 @@ export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
 }
 
 function isRepoNotFoundError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatErrorMessage(error, "Failed to access GitHub repository");
   const lower = message.toLowerCase();
   // Broad pattern match - includes both repo-level and resource-level "not found" errors.
   // This is acceptable because withRepoContextRetry only retries when repo context actually
@@ -996,7 +997,7 @@ export function parseGitHubError(error: unknown): string {
   if (error instanceof GitHubRateLimitError) {
     return rateLimitMessage(error.kind, error.resumeAt);
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatErrorMessage(error, "GitHub request failed");
   const isTimeout = error instanceof Error && error.name === "TimeoutError";
 
   if (
@@ -1779,7 +1780,7 @@ export async function getIssueByNumber(
       return parseIssueNode(issue as Record<string, unknown>);
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatErrorMessage(error, "Failed to fetch GitHub issue");
     if (message === "Not a GitHub repository") {
       throw error;
     }
@@ -1813,7 +1814,7 @@ export async function getPRByNumber(cwd: string, prNumber: number): Promise<GitH
       return parsePRNode(pr as Record<string, unknown>);
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatErrorMessage(error, "Failed to fetch GitHub pull request");
     if (message === "Not a GitHub repository") {
       throw error;
     }

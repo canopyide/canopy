@@ -12,6 +12,7 @@ import type {
   SerializedConsoleRow,
   CdpPropertyDescriptor,
 } from "../../../shared/types/ipc/webviewConsole.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 interface CdpSession {
   runtimeEnabled: boolean;
@@ -236,7 +237,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         state: frozen ? "frozen" : "active",
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatErrorMessage(err, "CDP lifecycle state failed");
       const isExpected =
         message.includes("Target closed") ||
         message.includes("Inspected target navigated") ||
@@ -342,7 +343,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         wc.debugger.on("detach", detachListener);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatErrorMessage(err, "CDP console capture start failed");
       const isExpected =
         message.includes("Target closed") ||
         message.includes("Cannot attach") ||
@@ -506,7 +507,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
 
       return { properties };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatErrorMessage(err, "Failed to get object properties");
       if (message.includes("Could not find object")) {
         return { properties: [] };
       }
@@ -754,7 +755,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         });
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatErrorMessage(err, "CDP setup failed");
       console.error("[OAuthLoopback] CDP setup failed:", msg);
       // Still try to navigate even without interception — might work for providers
       // that don't enforce strict redirect_uri matching at token exchange

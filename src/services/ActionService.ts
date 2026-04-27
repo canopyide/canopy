@@ -13,6 +13,7 @@ import type { AnyActionDefinition } from "./actions/actionTypes";
 import { logWarn } from "@/utils/logger";
 import { keybindingService } from "./KeybindingService";
 import { shortcutHintStore } from "../store/shortcutHintStore";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 /** Fields that should be redacted from event payloads to prevent secret leakage */
 const SENSITIVE_ARG_FIELDS = new Set(["token", "password", "secret", "key", "auth", "credential"]);
@@ -213,7 +214,7 @@ export class ActionService {
     } catch (err) {
       const error: ActionError = {
         code: "EXECUTION_ERROR",
-        message: err instanceof Error ? err.message : String(err),
+        message: formatErrorMessage(err, `Action "${actionId}" failed`),
         details: err,
       };
       return { ok: false, error };

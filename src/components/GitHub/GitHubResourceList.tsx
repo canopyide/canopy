@@ -32,6 +32,7 @@ import {
   MAX_SKELETON_ITEMS,
   RESOURCE_ITEM_HEIGHT_PX,
 } from "./GitHubDropdownSkeletons";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 type StateFilter = IssueStateFilter | PRStateFilter;
 
@@ -265,7 +266,7 @@ export function GitHubResourceList({
         }
       } catch (err) {
         if (abortSignal?.aborted) return;
-        const message = err instanceof Error ? err.message : "Failed to fetch data";
+        const message = formatErrorMessage(err, "Failed to fetch data");
         if (append) {
           setLoadMoreError(message);
         } else {
@@ -410,7 +411,7 @@ export function GitHubResourceList({
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
-        const message = err instanceof Error ? err.message : "Failed to fetch data";
+        const message = formatErrorMessage(err, "Failed to fetch data");
         setError(message);
       } finally {
         if (!abortController.signal.aborted) {

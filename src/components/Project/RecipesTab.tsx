@@ -10,6 +10,7 @@ import { AppDialog } from "@/components/ui/AppDialog";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import type { TerminalRecipe, Worktree } from "@/types";
 import { isInRepoRecipeId } from "@shared/utils/recipeFilename";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface RecipesTabProps {
   projectId: string;
@@ -114,7 +115,7 @@ export function RecipesTab({
       setRecipeToDelete(null);
     } catch (err) {
       console.error("Failed to delete recipe:", err);
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete recipe");
+      setDeleteError(formatErrorMessage(err, "Failed to delete recipe"));
     }
   };
 
@@ -135,7 +136,7 @@ export function RecipesTab({
         }, 2000);
       } catch (err) {
         console.error("Failed to copy to clipboard:", err);
-        setExportError(err instanceof Error ? err.message : "Failed to copy to clipboard");
+        setExportError(formatErrorMessage(err, "Failed to copy to clipboard"));
       }
     }
   };
@@ -151,7 +152,7 @@ export function RecipesTab({
       setShowImportDialog(false);
       setImportJson("");
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : "Failed to import recipe");
+      setImportError(formatErrorMessage(err, "Failed to import recipe"));
     }
   };
 

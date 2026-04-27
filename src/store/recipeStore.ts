@@ -7,6 +7,7 @@ import { generateAgentCommand } from "@shared/types";
 import { replaceRecipeVariables, type RecipeContext } from "@/utils/recipeVariables";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { stableInRepoId, isInRepoRecipeId } from "@shared/utils/recipeFilename";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export interface RecipeSpawnResult {
   index: number;
@@ -593,7 +594,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
           results.failed.push({ index, error: "Panel limit reached" });
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = formatErrorMessage(error, "Failed to spawn terminal");
         console.error(`Failed to spawn terminal for recipe ${recipeId}:`, error);
         results.failed.push({ index, error: message });
       }

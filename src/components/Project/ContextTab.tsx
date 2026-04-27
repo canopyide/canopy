@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { copyTreeClient } from "@/clients/copyTreeClient";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { CopyTreeSettings, CopyTreeTestConfigResult, Worktree } from "@/types";
 
 function formatBytes(bytes: number): string {
@@ -114,7 +115,7 @@ export function ContextTab({
         includedFiles: 0,
         includedSize: 0,
         excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
-        error: error instanceof Error ? error.message : "Failed to test configuration",
+        error: formatErrorMessage(error, "Failed to test configuration"),
       });
     } finally {
       setIsTestingConfig(false);

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { RemoteInfo } from "@shared/types/ipc/github";
 
 interface GitHubTabProps {
@@ -29,7 +30,7 @@ export function GitHubTab({ githubRemote, onGithubRemoteChange, projectPath }: G
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(formatErrorMessage(err, "Failed to load git remotes"));
           setLoading(false);
         }
       });

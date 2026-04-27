@@ -4,6 +4,7 @@ import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { getMruProjects } from "@/lib/projectMru";
 import { notify } from "@/lib/notify";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void> {
   const state = useProjectStore.getState();
@@ -25,7 +26,7 @@ async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void>
     notify({
       type: "error",
       title: "Failed to switch project",
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: formatErrorMessage(error, "Failed to switch project"),
       duration: 5000,
     });
   }
@@ -258,7 +259,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
         notify({
           type: "error",
           title: "Failed to mute notifications",
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: formatErrorMessage(error, "Failed to mute project notifications"),
           duration: 5000,
         });
       }

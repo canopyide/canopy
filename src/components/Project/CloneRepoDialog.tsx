@@ -5,6 +5,7 @@ import { Check, AlertCircle, FolderOpen } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { WorktreeIcon } from "@/components/icons";
 import { projectClient } from "@/clients";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { CloneRepoProgressEvent } from "@shared/types/ipc/gitClone";
 
 interface CloneRepoDialogProps {
@@ -140,7 +141,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
         setError(result.error || "Clone failed");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(formatErrorMessage(err, "Failed to clone repository"));
     } finally {
       setIsCloning(false);
     }

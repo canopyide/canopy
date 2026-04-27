@@ -23,6 +23,7 @@ import {
   classifyGitError,
   getGitRecoveryAction,
 } from "../../../shared/utils/gitOperationErrors.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -339,7 +340,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
         } catch (pushErr) {
           // Keep the narrow upstream-missing auto-retry via substring match —
           // classifier's `config-missing` also covers unrelated config errors.
-          const msg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+          const msg = formatErrorMessage(pushErr, "git push failed");
           if (msg.includes("no upstream branch") || msg.includes("has no upstream")) {
             await git.push(["--set-upstream", "origin", branchName]);
           } else {
@@ -355,7 +356,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
         soundService.play("git-push-error");
       }
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "git push failed");
       const gitReason = classifyGitError(error);
       return {
         success: false,

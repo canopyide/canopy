@@ -6,6 +6,7 @@ import { WorktreeRemovedError, toGitOperationError } from "./errorTypes.js";
 import { logWarn, logError } from "./logger.js";
 import { Cache } from "./cache.js";
 import { createHardenedGit } from "./hardenedGit.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const GIT_WORKTREE_CHANGES_CACHE = new Cache<string, WorktreeChanges>({
   maxSize: 100,
@@ -444,7 +445,7 @@ export async function getWorktreeChangesWithStats(
         throw error;
       }
 
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Git worktree changes failed");
       if (
         errorMessage.includes("ENOENT") ||
         errorMessage.includes("no such file or directory") ||

@@ -27,6 +27,7 @@ import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { useShallow } from "zustand/react/shallow";
 import { githubClient } from "@/clients/githubClient";
 import { actionService } from "@/services/ActionService";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface ReviewHubProps {
   isOpen: boolean;
@@ -159,7 +160,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       }
     } catch (err) {
       if (refreshIdRef.current === requestId) {
-        setLoadError(err instanceof Error ? err.message : String(err));
+        setLoadError(formatErrorMessage(err, "Failed to load staging status"));
       }
     } finally {
       if (refreshIdRef.current === requestId) {
@@ -214,7 +215,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       setBaseBranchFiles(res.files);
     } catch (err) {
       if (baseBranchRequestRef.current !== requestId) return;
-      setBaseBranchError(err instanceof Error ? err.message : "Failed to load base branch diff");
+      setBaseBranchError(formatErrorMessage(err, "Failed to load base branch diff"));
     } finally {
       if (baseBranchRequestRef.current === requestId) setBaseBranchLoading(false);
     }
@@ -280,7 +281,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         await window.electron.git.stageFile(worktreePath, filePath);
         await refresh();
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : String(err));
+        setActionError(formatErrorMessage(err, "Failed to stage file"));
       }
     },
     [worktreePath, refresh]
@@ -294,7 +295,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         await window.electron.git.unstageFile(worktreePath, filePath);
         await refresh();
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : String(err));
+        setActionError(formatErrorMessage(err, "Failed to unstage file"));
       }
     },
     [worktreePath, refresh]
@@ -307,7 +308,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       await window.electron.git.stageAll(worktreePath);
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      setActionError(formatErrorMessage(err, "Failed to stage all files"));
     }
   }, [worktreePath, refresh]);
 
@@ -318,7 +319,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       await window.electron.git.unstageAll(worktreePath);
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      setActionError(formatErrorMessage(err, "Failed to unstage all files"));
     }
   }, [worktreePath, refresh]);
 
@@ -330,7 +331,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         await window.electron.git.commit(worktreePath, message);
         await refresh();
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : String(err));
+        setActionError(formatErrorMessage(err, "Failed to commit changes"));
         throw err;
       }
     },
@@ -344,7 +345,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       await window.electron.git.abortRepositoryOperation(worktreePath);
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      setActionError(formatErrorMessage(err, "Failed to abort repository operation"));
       throw err;
     }
   }, [worktreePath, refresh]);
@@ -356,7 +357,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       await window.electron.git.continueRepositoryOperation(worktreePath);
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      setActionError(formatErrorMessage(err, "Failed to continue repository operation"));
       throw err;
     }
   }, [worktreePath, refresh]);
@@ -369,7 +370,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         const tail = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
         await window.electron.system.openInEditor({ path: `${base}/${tail}` });
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : String(err));
+        setActionError(formatErrorMessage(err, "Failed to open file in editor"));
       }
     },
     [worktreePath]
@@ -389,7 +390,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     } catch (err) {
       setPushError({
         reason: "unknown",
-        rawMessage: err instanceof Error ? err.message : String(err),
+        rawMessage: formatErrorMessage(err, "Failed to push"),
       });
     }
   }, [worktreePath]);
@@ -402,7 +403,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       try {
         await window.electron.git.commit(worktreePath, message);
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : String(err));
+        setActionError(formatErrorMessage(err, "Failed to commit changes"));
         throw err;
       }
       await refresh();

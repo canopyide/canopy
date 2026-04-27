@@ -5,6 +5,7 @@ import { useRecipeStore } from "@/store/recipeStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { formatBytes } from "@/lib/formatBytes";
 import { actionService } from "@/services/ActionService";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export function formatCopyResultMessage(payload: {
   fileCount: number;
@@ -67,7 +68,7 @@ export async function copyContextWithFeedback(
       dismissed: false,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Failed to copy context to clipboard";
+    const message = formatErrorMessage(e, "Failed to copy context to clipboard");
     store.updateNotification(toastId, {
       type: "error",
       message: `Copy context failed: ${message}`,
@@ -139,7 +140,7 @@ export function useWorktreeActions({
         };
         return formatCopyResultMessage(payload);
       } catch (e) {
-        const message = e instanceof Error ? e.message : "Failed to copy context to clipboard";
+        const message = formatErrorMessage(e, "Failed to copy context to clipboard");
         const details = e instanceof Error ? e.stack : undefined;
 
         let errorType: AppError["type"] = "process";

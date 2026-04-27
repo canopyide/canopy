@@ -4,6 +4,7 @@ import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface McpServerStatus {
   enabled: boolean;
@@ -42,7 +43,7 @@ export function McpServerSettingsTab() {
       })
       .catch((err) => {
         if (settled) return;
-        setError(err instanceof Error ? err.message : "Failed to load MCP status");
+        setError(formatErrorMessage(err, "Failed to load MCP status"));
       })
       .finally(() => {
         settled = true;
@@ -59,7 +60,7 @@ export function McpServerSettingsTab() {
       const newStatus = await window.electron.mcpServer.setEnabled(!status.enabled);
       setStatus(newStatus);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update MCP server");
+      setError(formatErrorMessage(err, "Failed to update MCP server"));
     }
   }, [status.enabled]);
 
@@ -70,7 +71,7 @@ export function McpServerSettingsTab() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to copy config");
+      setError(formatErrorMessage(err, "Failed to copy config"));
     }
   }, []);
 
@@ -87,7 +88,7 @@ export function McpServerSettingsTab() {
       setStatus(newStatus);
       setPortInput(newStatus.configuredPort?.toString() ?? "");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update port");
+      setError(formatErrorMessage(err, "Failed to update port"));
     }
   }, [portInput]);
 
@@ -98,7 +99,7 @@ export function McpServerSettingsTab() {
       setStatus((prev) => ({ ...prev, apiKey: key }));
       setShowApiKey(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate API key");
+      setError(formatErrorMessage(err, "Failed to generate API key"));
     }
   }, []);
 
@@ -108,7 +109,7 @@ export function McpServerSettingsTab() {
       const newStatus = await window.electron.mcpServer.setApiKey("");
       setStatus(newStatus);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clear API key");
+      setError(formatErrorMessage(err, "Failed to clear API key"));
     }
   }, []);
 

@@ -307,6 +307,7 @@ export async function refreshPath(): Promise<void> {
             shellEnvFailed = true;
             console.warn(
               "[refreshPath] shell-env failed:",
+              // eslint-disable-next-line no-restricted-syntax -- diagnostic console.warn passes the raw error if not an Error; not a user-visible string.
               err instanceof Error ? err.message : err
             );
           }

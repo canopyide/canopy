@@ -15,6 +15,7 @@ export function _resetHandlingFatalForTesting(): void {
 }
 
 function buildFatalAppError(kind: string, error: unknown): AppError {
+  // eslint-disable-next-line no-restricted-syntax -- top-level fatal handler with no operation context; the kind ("UNCAUGHT_EXCEPTION" / "UNHANDLED_REJECTION") supplies the domain.
   const message = error instanceof Error ? error.message : String(error ?? "Unknown error");
   const id = `fatal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
