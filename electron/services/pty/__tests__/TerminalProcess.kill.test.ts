@@ -300,4 +300,37 @@ describe.skipIf(process.platform === "win32")("TerminalProcess.kill — process 
     const terminal = createTerminal(undefined, { processTreeCache: mockCache });
     expect(() => terminal.kill("test")).not.toThrow();
   });
+
+  it("re-reads descendants at SIGKILL time so children spawned in the grace window are reaped", () => {
+    // SIGTERM pass sees [456]; before the 500ms SIGKILL escalation a new
+    // child (789) forks and registers in the cache. The escalation must
+    // observe the fresh list rather than the snapshot from kill() time.
+    const getDescendantPids = vi
+      .fn<(pid: number) => number[]>()
+      .mockReturnValueOnce([456])
+      .mockReturnValue([456, 789]);
+    const mockCache = {
+      ...createMockProcessTreeCache(),
+      getDescendantPids,
+    } as unknown as ProcessTreeCache;
+
+    const terminal = createTerminal(undefined, { processTreeCache: mockCache });
+    terminal.kill("test");
+
+    // SIGTERM pass used the initial snapshot [456]
+    const sigTermCalls = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGTERM");
+    expect(sigTermCalls).toEqual([[456, "SIGTERM"]]);
+
+    // Advance to fire the SIGKILL sweep
+    vi.advanceTimersByTime(500);
+
+    const sigkillCalls = processKillSpy.mock.calls.filter((c: unknown[]) => c[1] === "SIGKILL");
+    const sigkillPids = sigkillCalls.map((c: unknown[]) => c[0]);
+    // The late-forked 789 must be SIGKILL'd alongside 456 and the shell pid 123.
+    expect(sigkillPids).toEqual([456, 789, 123]);
+    // Cache was queried at SIGTERM time and again at SIGKILL time.
+    expect(getDescendantPids).toHaveBeenCalledTimes(2);
+    expect(getDescendantPids).toHaveBeenNthCalledWith(1, 123);
+    expect(getDescendantPids).toHaveBeenNthCalledWith(2, 123);
+  });
 });
