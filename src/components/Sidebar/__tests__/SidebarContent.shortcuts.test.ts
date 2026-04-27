@@ -22,6 +22,10 @@ describe("SidebarContent shortcut tooltips — issue #5843", () => {
       expect(source).not.toMatch(/createTooltipWithShortcut\([^)]*"Cmd\+/);
       expect(source).not.toMatch(/createTooltipWithShortcut\([^)]*"Ctrl\+/);
     });
+
+    it("does not assign hardcoded shortcut literals to *Shortcut variables", () => {
+      expect(source).not.toMatch(/const\s+\w*Shortcut\s*=\s*["'](Cmd|Ctrl|Shift|Alt|Option)/);
+    });
   });
 
   describe("createTooltipWithShortcut usage", () => {
