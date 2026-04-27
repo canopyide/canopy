@@ -587,8 +587,12 @@ describe("AgentButton preset UX", () => {
       const { getAllByTestId } = render(
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
       );
-      // No `·` segment when nothing is armed.
-      expect(tooltipTexts(getAllByTestId)).toContain("Start Claude");
+      const texts = tooltipTexts(getAllByTestId);
+      expect(texts).toContain("Start Claude");
+      // No `·` segment leaks in via the launch tooltip when nothing is armed.
+      const launchTooltip = texts.find((t) => t.startsWith("Start "));
+      expect(launchTooltip).toBeDefined();
+      expect(launchTooltip).not.toContain("·");
     });
 
     it("omits the preset segment when the saved id no longer matches a preset", () => {
@@ -600,7 +604,10 @@ describe("AgentButton preset UX", () => {
       const { getAllByTestId } = render(
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
       );
-      expect(tooltipTexts(getAllByTestId)).toContain("Start Claude");
+      const texts = tooltipTexts(getAllByTestId);
+      expect(texts).toContain("Start Claude");
+      const launchTooltip = texts.find((t) => t.startsWith("Start "));
+      expect(launchTooltip).not.toContain("·");
     });
 
     it("renders a chevron-specific tooltip distinct from the launch tooltip", () => {
@@ -611,6 +618,23 @@ describe("AgentButton preset UX", () => {
         <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
       );
       expect(tooltipTexts(getAllByTestId)).toContain("Choose Claude preset");
+    });
+
+    it("preserves the preset segment when the sign-in probe is unconfirmed", () => {
+      // Edge case: agent is `ready` but the auth probe came back empty.
+      // The user still has an armed preset that will fire on click — the
+      // tooltip should surface it rather than silently dropping the segment.
+      mockSettings = settingsWith({ claude: { presetId: "user-blue" } });
+      mockMergedPresetsFn = () => [{ id: "user-blue", name: "Blue" }];
+      mockCliDetails = { claude: { authConfirmed: false } };
+
+      const { getAllByTestId } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+      const texts = tooltipTexts(getAllByTestId);
+      const launchTooltip = texts.find((t) => t.startsWith("Start "));
+      expect(launchTooltip).toContain("· Blue");
+      expect(launchTooltip).toContain("sign-in not detected");
     });
   });
 
@@ -638,6 +662,42 @@ describe("AgentButton preset UX", () => {
       // The Default radio item is rendered with value="" so the group
       // resolves to that item when nothing is saved.
       expect(getByTestId("preset-radio-group").getAttribute("data-value")).toBe("");
+    });
+
+    it("context-menu radio group reflects the saved preset id", () => {
+      mockSettings = settingsWith({ claude: { presetId: "user-blue" } });
+      mockMergedPresetsFn = () => [
+        { id: "user-blue", name: "Blue" },
+        { id: "user-red", name: "Red" },
+      ];
+
+      const { getByTestId } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+      expect(getByTestId("context-radio-group").getAttribute("data-value")).toBe("user-blue");
+    });
+
+    it("context-menu preset selection dispatches with source 'context-menu'", () => {
+      mockActiveWorktreeId = "wt-A";
+      mockSettings = settingsWith({ claude: {} });
+      mockMergedPresetsFn = () => [
+        { id: "user-blue", name: "Blue" },
+        { id: "user-red", name: "Red" },
+      ];
+
+      const { getAllByTestId } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+      const items = getAllByTestId("context-radio-item") as HTMLElement[];
+      const blueItem = items.find((el) => el.textContent?.includes("Blue"))!;
+      fireEvent.click(blueItem);
+
+      expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", "user-blue");
+      expect(dispatchMock).toHaveBeenCalledWith(
+        "agent.launch",
+        { agentId: "claude", presetId: "user-blue" },
+        { source: "context-menu" }
+      );
     });
   });
 
