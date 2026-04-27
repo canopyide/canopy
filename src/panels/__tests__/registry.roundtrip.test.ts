@@ -152,9 +152,10 @@ describe("panel serializer round-trip (property tests)", () => {
         expect("agentModelId" in result).toBe(false);
       }
 
-      if (fields.agentState) {
+      if (fields.agentState && fields.agentState !== "directing") {
         expect(result.agentState).toBe(fields.agentState);
       } else {
+        // "directing" is intentionally excluded from serialization (#5832).
         expect("agentState" in result).toBe(false);
       }
 
