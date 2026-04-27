@@ -3,7 +3,7 @@ import { useErrorStore, type AppError, type RetryAction } from "@/store";
 import { isElectronAvailable } from "./useElectron";
 import { errorsClient } from "@/clients";
 import { logErrorWithContext } from "@/utils/errorContext";
-import { notify, shouldEscalateTransientError } from "@/lib/notify";
+import { notify, shouldEscalateTransientError, consumeEscalation } from "@/lib/notify";
 import type { NotificationPriority } from "@/store/notificationStore";
 
 export function getErrorPriority(
@@ -31,13 +31,17 @@ function routeError(error: AppError): void {
     recoveryHint: error.recoveryHint,
   });
 
-  notify({
+  const toastId = notify({
     type: "error",
     title: error.source,
     message: error.message,
     correlationId: error.correlationId,
     priority,
   });
+
+  if (escalated && toastId) {
+    consumeEscalation(error);
+  }
 }
 
 let ipcListenerAttached = false;

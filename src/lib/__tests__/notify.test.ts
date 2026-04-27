@@ -8,6 +8,7 @@ import {
   _resetComboMap,
   _resetEscalationTrackers,
   shouldEscalateTransientError,
+  consumeEscalation,
   _setQuietUntil,
   muteForDuration,
   muteUntilNextMorning,
@@ -1704,14 +1705,31 @@ describe("shouldEscalateTransientError", () => {
     Date.now = realDateNow;
   });
 
-  it("does not re-escalate during cooldown (one-shot per group)", () => {
+  it("does not re-escalate after escalation is consumed (one-shot per group)", () => {
     const error = { type: "network" as const, message: "ETIMEDOUT", isTransient: true };
     shouldEscalateTransientError(error);
     shouldEscalateTransientError(error);
     const escalated = shouldEscalateTransientError(error);
     expect(escalated).toBe(true);
 
+    consumeEscalation(error);
+
     // Same error fires again immediately — should not re-escalate
+    expect(shouldEscalateTransientError(error)).toBe(false);
+  });
+
+  it("re-escalates if first escalation was not consumed (toast suppressed)", () => {
+    const error = { type: "network" as const, message: "ETIMEDOUT", isTransient: true };
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(true);
+
+    // Escalation not consumed (toast suppressed, e.g. blurred)
+    // Next occurrence should still signal escalation
+    expect(shouldEscalateTransientError(error)).toBe(true);
+
+    // Now consume it
+    consumeEscalation(error);
     expect(shouldEscalateTransientError(error)).toBe(false);
   });
 
@@ -1726,6 +1744,7 @@ describe("shouldEscalateTransientError", () => {
     shouldEscalateTransientError(error);
     shouldEscalateTransientError(error);
     expect(shouldEscalateTransientError(error)).toBe(true);
+    consumeEscalation(error);
 
     // Advance past 60-min cooldown + past the 120s window (so counter resets)
     now = 1000 + 61 * 60 * 1000;

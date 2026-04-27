@@ -198,9 +198,6 @@ export function shouldEscalateTransientError(error: {
     }
 
     if (tracker.count >= profile.threshold && !tracker.escalated) {
-      tracker.escalated = true;
-      tracker.cooldownUntil = now + ESCALATION_COOLDOWN_MS;
-      pruneEscalationTrackers();
       return true;
     }
   } else {
@@ -215,6 +212,25 @@ export function shouldEscalateTransientError(error: {
   }
 
   return false;
+}
+
+export function consumeEscalation(error: {
+  type: ErrorType;
+  message: string;
+  source?: string;
+  isTransient: boolean;
+}): void {
+  if (!error.isTransient) return;
+
+  const key = buildEscalationKey(error);
+  const tracker = _escalationTrackers.get(key);
+  if (!tracker || tracker.escalated) return;
+
+  const profile = classifyErrorType(error.type);
+  if (tracker.count >= profile.threshold) {
+    tracker.escalated = true;
+    tracker.cooldownUntil = Date.now() + ESCALATION_COOLDOWN_MS;
+  }
 }
 
 let _quietUntil = 0;
