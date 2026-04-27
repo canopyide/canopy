@@ -162,7 +162,10 @@ function InlineStatusBannerComponent({
         {onClose && (
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             aria-label="Dismiss"
             className="p-1 rounded text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 focus-visible:outline-2 focus-visible:outline-daintree-accent"
           >
