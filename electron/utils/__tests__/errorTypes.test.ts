@@ -5,6 +5,7 @@ import {
   WorktreeRemovedError,
   DaintreeError,
   toGitOperationError,
+  getUserMessage,
 } from "../errorTypes.js";
 
 describe("GitOperationError", () => {
@@ -69,5 +70,31 @@ describe("toGitOperationError", () => {
     const wrapped = toGitOperationError("fatal: unable to read config file '/etc/gitconfig'");
     expect(wrapped).toBeInstanceOf(GitOperationError);
     expect(wrapped.reason).toBe("config-missing");
+  });
+});
+
+describe("getUserMessage", () => {
+  it("returns the Daintree error's own message when given a DaintreeError", () => {
+    const err = new GitOperationError("auth-failed", "permission denied", { op: "push" });
+    expect(getUserMessage(err)).toBe("permission denied");
+  });
+
+  it("returns the message of a plain Error", () => {
+    expect(getUserMessage(new Error("boom"))).toBe("boom");
+  });
+
+  it("returns a string error verbatim", () => {
+    expect(getUserMessage("plain string")).toBe("plain string");
+  });
+
+  it("duck-types IPC-stripped error objects (Electron structured clone case)", () => {
+    expect(getUserMessage({ message: "remote failure", name: "Error" })).toBe("remote failure");
+  });
+
+  it("falls back to 'An unknown error occurred' for opaque values", () => {
+    expect(getUserMessage(42)).toBe("An unknown error occurred");
+    expect(getUserMessage(null)).toBe("An unknown error occurred");
+    expect(getUserMessage(undefined)).toBe("An unknown error occurred");
+    expect(getUserMessage({ code: "EFAIL" })).toBe("An unknown error occurred");
   });
 });

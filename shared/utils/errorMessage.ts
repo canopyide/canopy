@@ -13,9 +13,15 @@
 export function formatErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
-  if (typeof error === "object" && error !== null && "message" in error) {
-    const message = (error as { message: unknown }).message;
-    if (typeof message === "string") return message;
+  if (typeof error === "object" && error !== null) {
+    try {
+      if ("message" in error) {
+        const message = (error as { message: unknown }).message;
+        if (typeof message === "string") return message;
+      }
+    } catch {
+      // Proxies with throwing `has` traps or accessor errors fall back.
+    }
   }
   return fallback;
 }

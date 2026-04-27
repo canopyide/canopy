@@ -85,5 +85,26 @@ describe("formatErrorMessage", () => {
     it("does not stringify opaque objects (no [object Object] leakage)", () => {
       expect(formatErrorMessage({ foo: "bar" }, FALLBACK)).not.toContain("[object Object]");
     });
+
+    it("falls back when the message getter throws", () => {
+      const hostile = {
+        get message(): string {
+          throw new Error("getter blew up");
+        },
+      };
+      expect(formatErrorMessage(hostile, FALLBACK)).toBe(FALLBACK);
+    });
+
+    it("falls back when a Proxy has-trap throws", () => {
+      const hostile = new Proxy(
+        {},
+        {
+          has() {
+            throw new Error("has-trap blew up");
+          },
+        }
+      );
+      expect(formatErrorMessage(hostile, FALLBACK)).toBe(FALLBACK);
+    });
   });
 });
