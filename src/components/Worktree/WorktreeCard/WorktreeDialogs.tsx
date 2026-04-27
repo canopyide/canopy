@@ -40,17 +40,15 @@ export function WorktreeDialogs({
 }: WorktreeDialogsProps) {
   return (
     <>
-      {confirmDialog.isOpen && (
-        <ConfirmDialog
-          isOpen
-          title={confirmDialog.title}
-          description={confirmDialog.description}
-          confirmLabel={confirmDialog.confirmLabel}
-          variant={confirmDialog.variant}
-          onConfirm={confirmDialog.onConfirm}
-          onClose={onCloseConfirm}
-        />
-      )}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.isOpen ? confirmDialog.title : ""}
+        description={confirmDialog.isOpen ? confirmDialog.description : undefined}
+        confirmLabel={confirmDialog.isOpen ? confirmDialog.confirmLabel : ""}
+        variant={confirmDialog.isOpen ? confirmDialog.variant : "default"}
+        onConfirm={confirmDialog.isOpen ? confirmDialog.onConfirm : () => {}}
+        onClose={onCloseConfirm}
+      />
 
       <WorktreeDeleteDialog
         isOpen={showDeleteDialog}
