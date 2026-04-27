@@ -13,7 +13,13 @@ import React, {
 import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw } from "lucide-react";
 import { BroadcastTerminalIcon } from "@/components/icons";
 import { ScrollIndicator } from "@/components/Worktree/ScrollIndicator";
-import { useAgentLauncher, useWorktrees, useProjectSettings, useWorktreeActions } from "@/hooks";
+import {
+  useAgentLauncher,
+  useWorktrees,
+  useProjectSettings,
+  useWorktreeActions,
+  useKeybindingDisplay,
+} from "@/hooks";
 import { createTooltipWithShortcut } from "@/lib/platform";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -291,6 +297,7 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({ onOpenOverview }: SidebarContentProps) {
+  const overviewShortcut = useKeybindingDisplay("worktree.overview");
   const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
@@ -920,7 +927,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  {createTooltipWithShortcut("Open worktrees overview", "Cmd+Shift+O")}
+                  {createTooltipWithShortcut("Open worktrees overview", overviewShortcut)}
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
