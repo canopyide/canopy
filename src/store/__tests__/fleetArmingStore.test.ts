@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   useFleetArmingStore,
+  computeArmByStateIds,
   isFleetArmEligible,
   isAgentFleetActionEligible,
   isFleetInterruptAgentEligible,
@@ -18,6 +19,8 @@ function resetStore() {
     armOrder: [],
     armOrderById: {},
     lastArmedId: null,
+    broadcastSignal: 0,
+    previewArmedIds: new Set<string>(),
   });
 }
 
@@ -550,6 +553,101 @@ describe("fleetArmingStore", () => {
       expect(isFleetInterruptAgentEligible(working)).toBe(true);
       expect(isFleetWaitingAgentEligible(working)).toBe(false);
       expect(isFleetInterruptAgentEligible(idle)).toBe(false);
+    });
+  });
+
+  describe("broadcastSignal", () => {
+    it("starts at 0", () => {
+      expect(useFleetArmingStore.getState().broadcastSignal).toBe(0);
+    });
+
+    it("monotonically increments on noteBroadcastCommit()", () => {
+      const { noteBroadcastCommit } = useFleetArmingStore.getState();
+      noteBroadcastCommit();
+      expect(useFleetArmingStore.getState().broadcastSignal).toBe(1);
+      noteBroadcastCommit();
+      noteBroadcastCommit();
+      expect(useFleetArmingStore.getState().broadcastSignal).toBe(3);
+    });
+
+    it("is unaffected by clear()", () => {
+      const { noteBroadcastCommit, clear } = useFleetArmingStore.getState();
+      noteBroadcastCommit();
+      noteBroadcastCommit();
+      clear();
+      expect(useFleetArmingStore.getState().broadcastSignal).toBe(2);
+    });
+  });
+
+  describe("previewArmedIds", () => {
+    it("starts empty", () => {
+      expect(useFleetArmingStore.getState().previewArmedIds.size).toBe(0);
+    });
+
+    it("setPreviewArmedIds replaces the set", () => {
+      const { setPreviewArmedIds } = useFleetArmingStore.getState();
+      setPreviewArmedIds(new Set(["a", "b"]));
+      const ids = useFleetArmingStore.getState().previewArmedIds;
+      expect([...ids].sort()).toEqual(["a", "b"]);
+    });
+
+    it("setPreviewArmedIds is a no-op when the set is unchanged (referential stability)", () => {
+      const { setPreviewArmedIds } = useFleetArmingStore.getState();
+      setPreviewArmedIds(new Set(["a", "b"]));
+      const before = useFleetArmingStore.getState().previewArmedIds;
+      setPreviewArmedIds(new Set(["b", "a"]));
+      expect(useFleetArmingStore.getState().previewArmedIds).toBe(before);
+    });
+
+    it("clearPreviewArmedIds empties the set", () => {
+      const { setPreviewArmedIds, clearPreviewArmedIds } = useFleetArmingStore.getState();
+      setPreviewArmedIds(new Set(["a"]));
+      clearPreviewArmedIds();
+      expect(useFleetArmingStore.getState().previewArmedIds.size).toBe(0);
+    });
+
+    it("clearPreviewArmedIds is a no-op when already empty (referential stability)", () => {
+      const before = useFleetArmingStore.getState().previewArmedIds;
+      useFleetArmingStore.getState().clearPreviewArmedIds();
+      expect(useFleetArmingStore.getState().previewArmedIds).toBe(before);
+    });
+
+    it("clear() also resets previewArmedIds", () => {
+      const { setPreviewArmedIds, clear } = useFleetArmingStore.getState();
+      setPreviewArmedIds(new Set(["a", "b"]));
+      clear();
+      expect(useFleetArmingStore.getState().previewArmedIds.size).toBe(0);
+    });
+  });
+
+  describe("computeArmByStateIds", () => {
+    beforeEach(() => {
+      seedPanels([
+        makeAgentTerminal("t1", { agentState: "working" }),
+        makeAgentTerminal("t2", { agentState: "waiting" }),
+        makeAgentTerminal("t3", { agentState: "working", worktreeId: "wt-2" }),
+      ]);
+    });
+
+    it("returns ids that armByState would arm — current scope", () => {
+      const ids = computeArmByStateIds("working", "current", "wt-1");
+      expect(ids).toEqual(["t1"]);
+    });
+
+    it("returns ids that armByState would arm — all scope", () => {
+      const ids = computeArmByStateIds("working", "all", "wt-1");
+      expect(ids.sort()).toEqual(["t1", "t3"]);
+    });
+
+    it("returns empty when no panels match the preset", () => {
+      const ids = computeArmByStateIds("finished", "current", "wt-1");
+      expect(ids).toEqual([]);
+    });
+
+    it("does not mutate the store", () => {
+      const before = useFleetArmingStore.getState();
+      computeArmByStateIds("working", "all", "wt-1");
+      expect(useFleetArmingStore.getState()).toBe(before);
     });
   });
 

@@ -118,6 +118,13 @@ export interface PanelHeaderProps {
   // appears on non-focused armed panes (true followers, not the primary).
   isFleetFollower?: boolean;
 
+  // Hover/focus preview from the fleet selection menu. When true, the title
+  // bar lifts to a faint neutral tint (no accent) so the user sees which
+  // panes a state-preset menu item would arm before they commit. Cleared
+  // on pointer-leave / blur / menu close. Distinct from `isSelected` —
+  // preview never paints the same surface as actual selection.
+  isFleetPreviewed?: boolean;
+
   // Slots for kind-specific content
   headerContent?: ReactNode;
   headerActions?: ReactNode;
@@ -165,6 +172,7 @@ function PanelHeaderComponent({
   wasJustSelected = false,
   isSelected = false,
   isFleetFollower = false,
+  isFleetPreviewed = false,
   headerContent,
   headerActions,
   tabs,
@@ -473,6 +481,7 @@ function PanelHeaderComponent({
       {...dragListeners}
       data-selected={isSelected || undefined}
       data-fleet-follower={isFleetFollower || undefined}
+      data-fleet-previewed={isFleetPreviewed || undefined}
       data-pane-chrome=""
       className={cn(
         "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group",
@@ -483,7 +492,12 @@ function PanelHeaderComponent({
             ? "bg-surface"
             : isFocused || isSelected
               ? "bg-overlay-subtle"
-              : "bg-transparent",
+              // Preview tint sits between transparent and bg-overlay-subtle so
+              // a previewed-but-unselected pane reads distinctly from both.
+              // Neutral surface, no accent — accent restraint per CLAUDE.md.
+              : isFleetPreviewed
+                ? "bg-tint/[0.05]"
+                : "bg-transparent",
         // Mirror the fleet ribbon's 2px amber left stripe on follower panes.
         // Renders via `before:` so it stacks alongside the worktree-identity
         // `after:` stripe on the panel container without conflicting. The

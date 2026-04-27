@@ -1,4 +1,12 @@
-import React, { useCallback, useRef, forwardRef, useMemo, useEffect, type ReactNode } from "react";
+import React, {
+  useCallback,
+  useRef,
+  forwardRef,
+  useMemo,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { cn } from "@/lib/utils";
 import { PanelHeader } from "./PanelHeader";
 import { useIsDragging } from "@/components/DragDrop";
@@ -11,6 +19,7 @@ import type { ActivityState } from "@/components/Terminal/TerminalPane";
 import type { TabInfo } from "./TabButton";
 import { useDockBlockedState } from "@/components/Layout/useDockBlockedState";
 import { usePreferencesStore } from "@/store";
+import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useWorktreeColorMap } from "@/hooks/useWorktreeColorMap";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
@@ -171,6 +180,35 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   const isDragging = useIsDragging();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const titleEditing = useTitleEditing();
+
+  // Hover/focus preview from the fleet selection menu — true when the user
+  // is previewing a state-preset menu item that *would* arm this pane. The
+  // pane's title bar lifts to a neutral surface tint (not accent) so the
+  // preview is unmistakable but doesn't squat on the focus anchor color.
+  const isFleetPreviewed = useFleetArmingStore((s) => s.previewArmedIds.has(id));
+
+  // One-shot ring pulse when this pane becomes the new primary on fleet
+  // exit. Listens for the CustomEvent dispatched from FleetArmingRibbon's
+  // exitFleet — keeps the cosmetic event out of any persistent store.
+  const [showExitPulse, setShowExitPulse] = useState(false);
+  useEffect(() => {
+    let pulseTimer: number | null = null;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ panelId?: string }>).detail;
+      if (!detail || detail.panelId !== id) return;
+      setShowExitPulse(true);
+      if (pulseTimer !== null) window.clearTimeout(pulseTimer);
+      pulseTimer = window.setTimeout(() => {
+        setShowExitPulse(false);
+        pulseTimer = null;
+      }, 240);
+    };
+    window.addEventListener("daintree:fleet-exit-pulse", handler);
+    return () => {
+      window.removeEventListener("daintree:fleet-exit-pulse", handler);
+      if (pulseTimer !== null) window.clearTimeout(pulseTimer);
+    };
+  }, [id]);
 
   // Focus and select input when editing starts (handles context menu rename).
   // Use a short delay instead of rAF so the context menu's focus restoration
@@ -402,6 +440,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
           wasJustSelected={wasJustSelected}
           isSelected={isSelected}
           isFleetFollower={isFleetFollower}
+          isFleetPreviewed={isFleetPreviewed}
           headerContent={resolvedHeaderContent}
           headerActions={headerActions}
           tabs={tabs}
@@ -416,6 +455,8 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         {toolbar}
 
         <div className="flex-1 min-h-0 relative flex flex-col">{children}</div>
+
+        {showExitPulse ? <span className="fleet-exit-pulse-overlay" aria-hidden="true" /> : null}
       </div>
     </TerminalContextMenu>
   );
