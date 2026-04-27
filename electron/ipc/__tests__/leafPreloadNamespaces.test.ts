@@ -1,11 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildSlashCommandsPreloadBindings } from "../handlers/slashCommands.preload.js";
-import { buildGlobalEnvPreloadBindings } from "../handlers/globalEnv.preload.js";
-import { buildHelpPreloadBindings } from "../handlers/help.preload.js";
-import { buildAccessibilityPreloadBindings } from "../handlers/accessibility.preload.js";
+import { CHANNELS } from "../channels.js";
+import {
+  SLASH_COMMANDS_METHOD_CHANNELS,
+  buildSlashCommandsPreloadBindings,
+} from "../handlers/slashCommands.preload.js";
+import {
+  GLOBAL_ENV_METHOD_CHANNELS,
+  buildGlobalEnvPreloadBindings,
+} from "../handlers/globalEnv.preload.js";
+import { HELP_METHOD_CHANNELS, buildHelpPreloadBindings } from "../handlers/help.preload.js";
+import {
+  ACCESSIBILITY_METHOD_CHANNELS,
+  buildAccessibilityPreloadBindings,
+} from "../handlers/accessibility.preload.js";
 
 describe("leaf preload namespace bindings", () => {
+  describe("METHOD_CHANNELS stay in sync with CHANNELS", () => {
+    it("slashCommands matches", () => {
+      expect(SLASH_COMMANDS_METHOD_CHANNELS.list).toBe(CHANNELS.SLASH_COMMANDS_LIST);
+    });
+
+    it("globalEnv matches", () => {
+      expect(GLOBAL_ENV_METHOD_CHANNELS.get).toBe(CHANNELS.GLOBAL_ENV_GET);
+      expect(GLOBAL_ENV_METHOD_CHANNELS.set).toBe(CHANNELS.GLOBAL_ENV_SET);
+    });
+
+    it("help matches", () => {
+      expect(HELP_METHOD_CHANNELS.getFolderPath).toBe(CHANNELS.HELP_GET_FOLDER_PATH);
+      expect(HELP_METHOD_CHANNELS.markTerminal).toBe(CHANNELS.HELP_MARK_TERMINAL);
+      expect(HELP_METHOD_CHANNELS.unmarkTerminal).toBe(CHANNELS.HELP_UNMARK_TERMINAL);
+    });
+
+    it("accessibility matches", () => {
+      expect(ACCESSIBILITY_METHOD_CHANNELS.getEnabled).toBe(CHANNELS.ACCESSIBILITY_GET_ENABLED);
+    });
+  });
+
   describe("slashCommands", () => {
     it("routes list() to slash-commands:list with the payload forwarded", async () => {
       const invoke = vi.fn().mockResolvedValue([]);
