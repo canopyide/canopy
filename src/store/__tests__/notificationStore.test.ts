@@ -232,6 +232,51 @@ describe("notificationStore — error-protected eviction", () => {
 
     expect(onDismiss).not.toHaveBeenCalled();
   });
+
+  it("admits an incoming error by evicting the oldest non-error from a full cap", () => {
+    const successId1 = addToast({ type: "success", message: "ok-1" });
+    addToast({ type: "success", message: "ok-2" });
+    addToast({ type: "success", message: "ok-3" });
+    addToast({ type: "error", message: "boom" });
+
+    const notifications = getState().notifications;
+    expect(notifications.find((n) => n.id === successId1)?.dismissed).toBe(true);
+
+    const active = notifications.filter((n) => !n.dismissed);
+    expect(active.map((n) => n.message)).toEqual(["ok-2", "ok-3", "boom"]);
+  });
+
+  it("flips only the evicted toast's history entry — bystanders stay seen", () => {
+    const evictedEntry = useNotificationHistoryStore.getState().addEntry({
+      type: "info",
+      message: "evicted-history",
+      seenAsToast: true,
+    });
+    const survivorEntry = useNotificationHistoryStore.getState().addEntry({
+      type: "info",
+      message: "survivor-history",
+      seenAsToast: true,
+    });
+
+    addToast({ type: "error", message: "err" });
+    addToast({ type: "info", message: "info-1", historyEntryId: evictedEntry });
+    addToast({ type: "info", message: "info-2", historyEntryId: survivorEntry });
+    addToast({ type: "success", message: "ok" });
+
+    const entries = useNotificationHistoryStore.getState().entries;
+    expect(entries.find((e) => e.id === evictedEntry)?.seenAsToast).toBe(false);
+    expect(entries.find((e) => e.id === survivorEntry)?.seenAsToast).toBe(true);
+  });
+
+  it("does not invoke onDismiss in the all-errors FIFO fallback path", () => {
+    const onDismiss = vi.fn();
+    addToast({ type: "error", message: "err-1", onDismiss });
+    addToast({ type: "error", message: "err-2" });
+    addToast({ type: "error", message: "err-3" });
+    addToast({ type: "error", message: "err-4" });
+
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
 });
 
 describe("notificationStore — correlationId collapse", () => {
