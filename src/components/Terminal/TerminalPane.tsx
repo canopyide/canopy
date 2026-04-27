@@ -818,17 +818,18 @@ function TerminalPaneComponent({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       tabIndex={0}
-      role="gridcell"
-      aria-selected={isArmed}
+      role="group"
+      data-armed={isArmed || undefined}
       aria-label={(() => {
+        const armedSuffix = isArmed ? " (armed)" : "";
         if (!effectiveAgentId) {
-          return `Terminal: ${title}`;
+          return `Terminal: ${title}${armedSuffix}`;
         }
         const agentConfig = getAgentConfig(effectiveAgentId);
         if (agentConfig) {
-          return `${agentConfig.name} agent: ${title}`;
+          return `${agentConfig.name} agent: ${title}${armedSuffix}`;
         }
-        return `${effectiveAgentId} session: ${title}`;
+        return `${effectiveAgentId} session: ${title}${armedSuffix}`;
       })()}
     >
       {terminalErrors.length > 0 && (

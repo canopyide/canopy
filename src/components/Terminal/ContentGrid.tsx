@@ -1222,9 +1222,6 @@ export function ContentGrid({
                 }}
                 id="panel-grid"
                 data-grid-container="true"
-                role="grid"
-                aria-multiselectable="true"
-                aria-label="Terminal panes"
               >
                 {isEmpty && !showPlaceholder ? (
                   <div className="col-span-full row-span-full">

@@ -10,7 +10,7 @@ export const SEL = {
     portalToggle: '[aria-label*="context portal"]',
   },
   portal: {
-    region: '[role="region"][aria-label="Portal"]',
+    region: 'aside[aria-label="Portal"]',
     resizeHandle: '[aria-label="Resize portal panel"]',
     launchpadHeading: 'h2:has-text("New Chat")',
     container: '[aria-label="Portal"]',
@@ -32,7 +32,7 @@ export const SEL = {
     navSidebar: ".settings-sidebar",
     projectPulseToggle: '[aria-label="Project Pulse Toggle"]',
     performanceModeToggle: '[aria-label="Performance Mode Toggle"]',
-    fontFamilySelect: 'select[aria-label="Terminal font family"]',
+    fontFamilySelect: '[aria-label="Terminal font family"]',
     subtabNav: '[aria-label="Subtab navigation"]',
     searchInput: '[aria-label="Search settings"]',
     searchClear: '[aria-label="Clear search"]',

@@ -56,10 +56,12 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
     const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_MEDIUM });
 
-    // The auto badge only renders once a CCR preset is selected in the detail
-    // view; select the one we created in test 77 first.
-    const detail = await getPresetRowByName(ctx.window, "IPC Sync Model");
-    await expect(detail.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
+    // The auto badge only renders once a CCR preset is selected — it lives in
+    // the scope banner inside #agents-presets (not inside the per-preset detail
+    // panel). Select the CCR preset, then assert the badge is visible in the
+    // section.
+    await getPresetRowByName(ctx.window, "IPC Sync Model");
+    await expect(section.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
   });
 
   test("79. CCR model sync makes toolbar chevron visible", async () => {
@@ -102,11 +104,11 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
     const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_MEDIUM });
 
-    // Select the CCR preset via the Popover, then assert the detail view shows
-    // the `auto` badge that identifies a CCR entry.
+    // Select the CCR preset via the Popover, then assert the section's scope
+    // banner shows the `auto` badge that identifies a CCR entry.
     const detail = await getPresetRowByName(ctx.window, "IPC Sync Model");
     await expect(detail).toBeVisible({ timeout: T_SHORT });
-    await expect(detail.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
+    await expect(section.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
   });
 
   test("82. Removing CCR config does not crash the app — settings still loads", async () => {

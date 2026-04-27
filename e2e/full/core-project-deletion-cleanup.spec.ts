@@ -43,6 +43,12 @@ async function removeProjectViaSwitcher(
  * currently-active project. Active projects no longer have a "Remove
  * project" menu item — instead they expose "Stop all agents" which fires
  * the Stop project confirm dialog.
+ *
+ * "Stop all agents" is gated by `processCount > 0` in the renderer. The
+ * processCount is pushed via `project:stats-updated` IPC, which is debounced
+ * (200ms) and otherwise polls every 5s. Right-clicking immediately after
+ * spawning terminals can race the broadcast — retry by re-opening the
+ * context menu until the menuitem renders.
  */
 async function stopActiveProjectViaSwitcher(
   window: import("@playwright/test").Page,
@@ -54,9 +60,24 @@ async function stopActiveProjectViaSwitcher(
 
   const option = palette.getByRole("option", { name: new RegExp(projectName) });
   await expect(option).toBeVisible({ timeout: T_SHORT });
-  await option.click({ button: "right" });
+
   const stopItem = window.getByRole("menuitem", { name: "Stop all agents" });
-  await expect(stopItem).toBeVisible({ timeout: T_SHORT });
+
+  await expect
+    .poll(
+      async () => {
+        await option.click({ button: "right" });
+        const visible = await stopItem.isVisible({ timeout: T_SHORT }).catch(() => false);
+        if (visible) return true;
+        // Menu opened but lacks "Stop all agents" (processCount not yet
+        // propagated). Dismiss and retry — palette stays open.
+        await window.keyboard.press("Escape");
+        return false;
+      },
+      { timeout: T_LONG, intervals: [250, 500, 1000] }
+    )
+    .toBe(true);
+
   await stopItem.click();
 }
 

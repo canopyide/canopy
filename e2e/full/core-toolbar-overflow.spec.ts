@@ -35,10 +35,11 @@ test.describe.serial("Core: Toolbar Overflow", () => {
     const { window, app } = ctx;
 
     // Close sidebar to maximize toolbar space usage
-    const sidebar = window.locator('aside[aria-label="Sidebar"]');
-    if (await sidebar.isVisible()) {
+    const resizer = window.locator('[role="separator"][aria-label="Resize sidebar"]');
+    const valueNow = await resizer.getAttribute("aria-valuenow");
+    if (valueNow !== "0") {
       await window.locator(SEL.toolbar.toggleSidebar).click();
-      await expect(sidebar).not.toBeVisible({ timeout: T_SHORT });
+      await expect(resizer).toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
     }
 
     // Shrink the window as small as Electron allows

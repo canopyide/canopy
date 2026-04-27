@@ -33,10 +33,13 @@ test.describe("CCR UI Debug", () => {
 
   test("CCR preset row is visible", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    // Select the CCR preset in the Popover, then assert the detail view
-    // renders with an `auto` badge (the indicator that it's a CCR preset).
+    // Select the CCR preset in the Popover, then assert the section's scope
+    // banner renders with an `auto` badge (the indicator that it's a CCR
+    // preset). The badge lives in the scope banner, not inside the detail
+    // panel.
     const detail = await getPresetRowByName(ctx.window, "UI Debug");
     await expect(detail).toBeVisible({ timeout: T_MEDIUM });
-    await expect(detail.locator(SEL.preset.autoBadge)).toBeVisible();
+    const section = ctx.window.locator(SEL.preset.section);
+    await expect(section.locator(SEL.preset.autoBadge)).toBeVisible();
   });
 });

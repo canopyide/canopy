@@ -739,7 +739,7 @@ function PanelHeaderComponent({
                 <TooltipTrigger asChild>
                   <span
                     className={cn(
-                      "text-xs font-medium font-sans select-none transition-colors",
+                      "text-xs font-medium font-sans select-none transition-colors inline-flex items-center min-h-6",
                       isFocused || isSelected ? "text-daintree-text" : "text-daintree-text/70",
                       onTitleChange && "cursor-text hover:text-daintree-text",
                       isPinged &&

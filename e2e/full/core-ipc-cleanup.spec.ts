@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo, createMultiProjectFixture } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
-import { waitForTerminalText } from "../helpers/terminal";
+import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 import { getFirstGridPanel, getGridPanelCount, openTerminal } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_LONG, T_SETTLE } from "../helpers/timeouts";
@@ -53,7 +53,8 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
 
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
-      await waitForTerminalText(panel, "ipc-cleanup", T_LONG);
+      await runTerminalCommand(window, panel, "echo READY_" + i);
+      await waitForTerminalText(panel, "READY_" + i, T_LONG);
 
       await panel.locator(SEL.panel.close).first().click({ force: true });
       await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(0);
@@ -80,7 +81,8 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
 
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
-      await waitForTerminalText(panel, "ipc-cleanup", T_LONG);
+      await runTerminalCommand(window, panel, "echo NAV_READY_" + i);
+      await waitForTerminalText(panel, "NAV_READY_" + i, T_LONG);
 
       await panel.locator(SEL.panel.close).first().click({ force: true });
       await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(0);

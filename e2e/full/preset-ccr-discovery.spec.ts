@@ -142,9 +142,13 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
   test("8. CCR presets show 'auto' badge", async () => {
     writeCcrConfig([{ id: "autobadge", name: "Autobadge Test", model: "auto-model" }]);
     await navigateToAgentSettings(ctx.window, "claude");
-    await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
-    const row = await getPresetRowByName(ctx.window, "Autobadge Test");
-    await expect(row.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
+    const section = ctx.window.locator(SEL.preset.section);
+    await expect(section).toBeVisible({ timeout: T_CCR });
+    // The auto badge lives in the scope banner inside #agents-presets, not
+    // inside the per-preset detail panel. Select the CCR preset first, then
+    // assert the badge is visible in the section.
+    await getPresetRowByName(ctx.window, "Autobadge Test");
+    await expect(section.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
 
     await closeSettings();
   });

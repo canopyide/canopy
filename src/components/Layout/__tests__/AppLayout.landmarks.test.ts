@@ -65,11 +65,12 @@ describe("ARIA page landmarks — issue #5416", () => {
       expect(source).toMatch(/<aside[\s\S]*?tabIndex=\{-1\}/);
     });
 
-    it("hides the aside from the accessibility tree when no panels are docked", () => {
-      // The dock <aside> stays mounted (offscreen container pattern), but
-      // screen-reader landmark rotors will list it as an empty navigable
-      // landmark unless aria-hidden is toggled with hasDocked.
-      expect(source).toMatch(/aria-hidden=\{hasDocked \? undefined : true\}/);
+    it("does not aria-hide the dock landmark", () => {
+      // The dock always renders interactive content (Help Agent button,
+      // status containers), so aria-hidden would trap focusable controls
+      // beneath aria-hidden=true and fail axe's aria-hidden-focus rule.
+      expect(source).not.toMatch(/aria-hidden=\{[^}]*hasDocked[^}]*\}/);
+      expect(source).not.toMatch(/aria-hidden="true"/);
     });
   });
 

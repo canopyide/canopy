@@ -88,7 +88,9 @@ test.describe.serial("Presets: Custom Add (13–24)", () => {
       await ctx.window.waitForTimeout(T_SETTLE);
       const submenuContent = ctx.window.locator('[data-testid="submenu-content"]');
       await expect(submenuContent).toBeVisible({ timeout: T_SHORT });
-      await expect(submenuContent.locator("span", { hasText: "New Preset" }).first()).toBeVisible({
+      // Preset name renders as a text node inside DropdownMenuItem (not inside
+      // a span). Use getByText so the matcher walks both nodes and spans.
+      await expect(submenuContent.getByText("New Preset").first()).toBeVisible({
         timeout: T_SHORT,
       });
     }

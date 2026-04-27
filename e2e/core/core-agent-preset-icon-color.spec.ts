@@ -319,6 +319,12 @@ test.describe.serial("Core: Agent preset icon color", () => {
     await expectPersistedPresetColor(ctx.window, "claude", CLAUDE_PRESET_ID, CLAUDE_COLOR);
     const claude = await launchPreset(ctx.window, "claude", CLAUDE_PRESET_ID);
     await expectAgentIconColor(claude.panel, "claude", CLAUDE_COLOR);
+    // Wait for the fake script to finish its startup logs before sending /quit —
+    // without this, keystrokes typed during the shell→script handover can be
+    // dropped, leaving the agent runtime alive and stalling the demote.
+    // FAKE_CLAUDE_MANUAL is the script's last startup line; once it prints the
+    // stdin handler is bound and the buffer reader still sees it after reflow.
+    await waitForTerminalText(claude.panel, "FAKE_CLAUDE_MANUAL=", T_LONG);
 
     await quitAgentOrWaitForDemotion(ctx.window, claude.panel);
     await restartTerminal(ctx.window, claude.id, claude.panel);

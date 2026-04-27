@@ -131,9 +131,14 @@ test.describe.serial("Core: Dev Preview — Per-Worktree Port Registry", () => {
     await expect(statusBadge).toContainText("Running", { timeout: T_LONG });
 
     // Read the address bar URL and store for later comparison.
+    // Note: the address bar displays a host-port form (e.g. "localhost:7514")
+    // — protocol is stripped via getDisplayUrl(). Reconstruct the canonical
+    // URL so it matches the IPC `assignedUrl` shape later.
     const addressBar = window.locator(SEL.browser.addressBar).first();
     await expect(addressBar).toHaveValue(/localhost:\d+/, { timeout: T_MEDIUM });
-    urlMain = (await addressBar.inputValue()).trim();
+    const displayUrl = (await addressBar.inputValue()).trim();
+    expect(displayUrl).toMatch(/^localhost:\d+$/);
+    urlMain = displayUrl.startsWith("http") ? displayUrl : `http://${displayUrl}`;
     expect(urlMain).toMatch(/^http:\/\/localhost:\d+$/);
   });
 
@@ -164,7 +169,11 @@ test.describe.serial("Core: Dev Preview — Per-Worktree Port Registry", () => {
     // Read the feature panel's URL.
     const addressBars = window.locator(SEL.browser.addressBar);
     await expect(addressBars.last()).toHaveValue(/localhost:\d+/, { timeout: T_MEDIUM });
-    urlFeature = (await addressBars.last().inputValue()).trim();
+    const displayUrlFeature = (await addressBars.last().inputValue()).trim();
+    expect(displayUrlFeature).toMatch(/^localhost:\d+$/);
+    urlFeature = displayUrlFeature.startsWith("http")
+      ? displayUrlFeature
+      : `http://${displayUrlFeature}`;
     expect(urlFeature).toMatch(/^http:\/\/localhost:\d+$/);
 
     // The two panels MUST be on different ports.

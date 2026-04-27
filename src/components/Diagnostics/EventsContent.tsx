@@ -12,6 +12,12 @@ export interface EventsContentProps {
 }
 
 export function EventsContent({ className }: EventsContentProps) {
+  // React Compiler can't see that getFilteredEvents() reads via Zustand's
+  // get(), so it can over-cache the useMemo below — which then keeps
+  // useDeferredValue stuck at the initial empty array even after `events`
+  // grows. Opt out of compiler memoization for this component.
+  "use no memo";
+
   const {
     events,
     filters,

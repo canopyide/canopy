@@ -126,10 +126,14 @@ export async function getSelectedPresetLabel(
 export async function addCustomPreset(window: import("@playwright/test").Page): Promise<void> {
   const section = window.locator(SEL.preset.section);
   await section.locator(SEL.preset.addButton).click();
+  // The Add button now opens an "Add Preset" dialog with a Start-from chooser.
+  // Click Create to accept the default "Blank" choice and create the preset.
+  const dialog = window.locator('[data-testid="add-preset-dialog"]');
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+  await dialog.locator('button:has-text("Create")').click();
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
   // Wait for the IPC round-trip to settle so the new preset is in the store
-  // before the caller proceeds. Reading back the agentSettings store is the
-  // cheapest way to confirm the write landed without blowing the popover
-  // open twice per helper call.
+  // before the caller proceeds.
   await window.waitForTimeout(350);
 }
 
