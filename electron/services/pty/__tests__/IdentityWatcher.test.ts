@@ -261,6 +261,83 @@ describe("IdentityWatcher", () => {
     });
   });
 
+  describe("commit & demote (detector path — primary production flow)", () => {
+    it("calls processDetector.injectShellCommandEvidence on commit", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["pnpm dev\r\n", "> dev output"],
+        cursorLine: "> dev output",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("pnpm dev");
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      // Detector path is taken — handleAgentDetection is NOT called directly.
+      expect(state.detectionCalls).toHaveLength(0);
+      expect(inject).toHaveBeenCalledTimes(1);
+      const [identity, commandText] = inject.mock.calls[0];
+      expect(identity).toMatchObject({ processIconId: "pnpm" });
+      expect(commandText).toBe("pnpm dev");
+      expect(watcher.isFallbackCommitted).toBe(true);
+    });
+
+    it("calls processDetector.clearShellCommandEvidence('prompt-return') on demotion", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["claude\r\n", "Starting Claude Code..."],
+        cursorLine: "Starting Claude Code...",
+        ptyDescendantCount: 1,
+        foreground: { shellPgid: 123, foregroundPgid: 123 },
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      state.visibleLines = ["user@host canopy % "];
+      state.cursorLine = "user@host canopy % ";
+      state.ptyDescendantCount = 0;
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(clear).toHaveBeenCalledWith("prompt-return");
+      // handleAgentDetection is the legacy fallback; not used when detector is present.
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    it("clears stale shell evidence when a new no-identity command is submitted", () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({ processDetector: fakeDetector });
+      const watcher = new IdentityWatcher(delegate);
+
+      // `echo hi` has no recognizable identity — must clear stale evidence
+      // immediately so the prior badge doesn't stay sticky for the full TTL.
+      watcher.onShellSubmit("echo hi");
+      expect(clear).toHaveBeenCalledTimes(1);
+      expect(clear).toHaveBeenCalledWith();
+      expect(inject).not.toHaveBeenCalled();
+    });
+  });
+
   describe("commit & demote (no detector path)", () => {
     it("commits agent identity after the commit window when prompt is hidden", async () => {
       const { delegate, state } = createFakeDelegate({
