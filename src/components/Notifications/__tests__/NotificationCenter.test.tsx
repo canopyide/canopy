@@ -298,7 +298,22 @@ describe("NotificationCenter pause menu", () => {
     expect(screen.queryByText("Configure")).toBeNull();
   });
 
-  it("opens a Pause menu and routes 'For 1 hour' to muteForDuration", async () => {
+  it("does not render legacy controls even when entries exist and pause menu is open", async () => {
+    setEntries([makeEntry()]);
+    render(<NotificationCenter open onClose={() => {}} />);
+    const trigger = screen.getByLabelText("Pause notifications");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    expect(screen.queryByText("Mute 1h")).toBeNull();
+    expect(screen.queryByText("Until morning")).toBeNull();
+    expect(screen.queryByText("Configure")).toBeNull();
+  });
+
+  it("opens a Pause menu and routes 'For 1 hour' to muteForDuration without dispatching settings", async () => {
     render(<NotificationCenter open onClose={() => {}} />);
     const trigger = screen.getByLabelText("Pause notifications");
     await act(async () => {
@@ -314,6 +329,7 @@ describe("NotificationCenter pause menu", () => {
 
     expect(vi.mocked(notifyLib.muteForDuration)).toHaveBeenCalledWith(60 * 60 * 1000);
     expect(vi.mocked(notifyLib.notify)).toHaveBeenCalled();
+    expect(dispatchMock).not.toHaveBeenCalled();
   });
 
   it("routes 'Until 8:00 AM' to muteUntilNextMorning", async () => {
@@ -343,7 +359,7 @@ describe("NotificationCenter pause menu", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Notification settings →"));
+      fireEvent.click(screen.getByLabelText("Notification settings"));
     });
 
     expect(onClose).toHaveBeenCalled();
@@ -409,6 +425,61 @@ describe("NotificationCenter muted pill", () => {
     expect(vi.mocked(notifyLib.setSessionQuietUntil)).toHaveBeenCalledWith(0);
     // Persistent setting must not be touched.
     expect(useNotificationSettingsStore.getState().quietHoursEnabled).toBe(true);
+  });
+
+  it("clears the pill automatically when session mute expires", () => {
+    vi.useFakeTimers();
+    try {
+      const until = Date.now() + 500;
+      useNotificationSettingsStore.setState({ quietUntil: until });
+
+      render(<NotificationCenter open onClose={() => {}} />);
+      expect(screen.queryByTestId("notification-muted-pill")).toBeTruthy();
+
+      act(() => {
+        // Roll past the expiry; tick effect schedules a re-render at quietUntil + 50ms.
+        vi.advanceTimersByTime(700);
+      });
+
+      expect(screen.queryByTestId("notification-muted-pill")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("when both session and scheduled mute are active, ✕ clears session only and the pill persists as 'Quiet hours'", () => {
+    const fixedNow = new Date();
+    fixedNow.setHours(2, 0, 0, 0);
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    try {
+      useNotificationSettingsStore.setState({
+        quietUntil: fixedNow.getTime() + 60 * 60 * 1000,
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 8 * 60,
+        quietHoursWeekdays: [],
+      });
+
+      render(<NotificationCenter open onClose={() => {}} />);
+      const resume = screen.getByLabelText("Resume notifications");
+
+      act(() => {
+        // Simulate setSessionQuietUntil clearing the reactive store like the real impl does.
+        vi.mocked(notifyLib.setSessionQuietUntil).mockImplementation((ts: number) => {
+          useNotificationSettingsStore.getState().setQuietUntil(ts);
+        });
+        fireEvent.click(resume);
+      });
+
+      expect(vi.mocked(notifyLib.setSessionQuietUntil)).toHaveBeenCalledWith(0);
+      const pill = screen.getByTestId("notification-muted-pill");
+      expect(pill.textContent).toContain("Quiet hours");
+      expect(screen.queryByLabelText("Resume notifications")).toBeNull();
+      expect(useNotificationSettingsStore.getState().quietHoursEnabled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders a scheduled-only pill without a Resume ✕ button", () => {

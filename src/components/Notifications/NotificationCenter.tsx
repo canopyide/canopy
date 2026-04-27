@@ -17,7 +17,7 @@ import {
 import { actionService } from "@/services/ActionService";
 import { muteForDuration, muteUntilNextMorning, notify, setSessionQuietUntil } from "@/lib/notify";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
-import { isScheduledQuietNow } from "@shared/utils/quietHours";
+import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
 import type { NotificationType } from "@/store/notificationStore";
 
 const SEVERITY_WEIGHTS: Record<NotificationType, number> = {
@@ -203,6 +203,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const pillLabel = isSessionMuted
     ? `Muted until ${timeFormatter.format(new Date(quietUntil))}`
     : "Quiet hours";
+  const morningLabel = `Until ${timeFormatter.format(new Date(nextOccurrenceTimestamp(8 * 60)))}`;
 
   return (
     <div className="w-[360px] max-h-[420px] flex flex-col">
@@ -288,14 +289,20 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem onSelect={() => handleMuteFor(60 * 60 * 1000, "for 1h")}>
+              <DropdownMenuItem onSelect={() => handleMuteFor(60 * 60 * 1000, "for 1 hour")}>
                 For 1 hour
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleMuteUntilMorning}>Until 8:00 AM</DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleMuteUntilMorning}>{morningLabel}</DropdownMenuItem>
               <DropdownMenuItem onSelect={openNotificationSettings}>Custom…</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={openNotificationSettings}>
-                Notification settings →
+              <DropdownMenuItem
+                aria-label="Notification settings"
+                onSelect={openNotificationSettings}
+              >
+                Notification settings{" "}
+                <span aria-hidden="true" className="ml-auto pl-2 text-daintree-text/40">
+                  →
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
