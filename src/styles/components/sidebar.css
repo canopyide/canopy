@@ -4,12 +4,12 @@
     box-shadow var(--duration-150) var(--ease-out-expo);
 }
 
-.sidebar-root:has(:focus-within) .sidebar-worktree-card[data-active="true"] {
+.sidebar-worktree-card[data-active="true"] {
   background: var(--sidebar-active-bg, rgba(255, 255, 255, 0.03));
   box-shadow: inset 2px 0 0 var(--theme-overlay-selected);
 }
 
-.sidebar-root:not(:has(:focus-within)) .sidebar-worktree-card[data-active="true"] {
+.sidebar-root:not(:focus-within) .sidebar-worktree-card[data-active="true"] {
   background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.015));
   box-shadow: none;
 }
