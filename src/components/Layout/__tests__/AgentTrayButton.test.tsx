@@ -983,4 +983,76 @@ describe("AgentTrayButton", () => {
       );
     });
   });
+
+  describe("RunningDot status badge", () => {
+    function arrangeClaudePanel(state: string) {
+      const availability = { claude: "ready" } as unknown as CliAvailability;
+      mockSettings = settingsWith({ claude: { pinned: false } });
+      // `detectedAgentId` is what `getRuntimeOrBootAgentId` reads via
+      // `deriveTerminalChrome`; plain `agentId` is ignored by the derivation.
+      mockPanelsById = {
+        "panel-1": {
+          id: "panel-1",
+          kind: "terminal",
+          detectedAgentId: "claude",
+          worktreeId: "wt-1",
+          location: "grid",
+          agentState: state,
+        },
+      };
+      mockPanelIds = ["panel-1"];
+      mockActiveWorktreeId = "wt-1";
+      return availability;
+    }
+
+    function badgeIn(row: HTMLElement): Element | null {
+      // The RunningDot lives inside the icon's relative-positioned wrapper —
+      // the only `aria-hidden` span in a Launch row that uses this scoping.
+      return row.querySelector('span.relative span[aria-hidden="true"]');
+    }
+
+    it.each([["waiting"], ["directing"]] as const)(
+      "renders the badge for actionable state %s",
+      (state) => {
+        const availability = arrangeClaudePanel(state);
+        const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+        const row = getByTestId("agent-tray-row-claude");
+        expect(badgeIn(row)).not.toBeNull();
+      }
+    );
+
+    it.each([["working"], ["idle"]] as const)(
+      "does not render the badge for passive state %s",
+      (state) => {
+        const availability = arrangeClaudePanel(state);
+        const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+        const row = getByTestId("agent-tray-row-claude");
+        expect(badgeIn(row)).toBeNull();
+      }
+    );
+
+    // `completed` and `exited` are excluded from ACTIVE_AGENT_STATES, so the
+    // panel never enters the dominant-state aggregation in the first place;
+    // the dot is suppressed one layer earlier than for working/idle. Covered
+    // here so the consumer-level contract ("no badge for passive states") is
+    // tested end-to-end regardless of which guard fires.
+    it.each([["completed"], ["exited"]] as const)(
+      "does not render the badge for terminal state %s",
+      (state) => {
+        const availability = arrangeClaudePanel(state);
+        const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+        const row = getByTestId("agent-tray-row-claude");
+        expect(badgeIn(row)).toBeNull();
+      }
+    );
+
+    it("does not render the badge when there is no active session", () => {
+      const availability = { claude: "ready" } as unknown as CliAvailability;
+      mockSettings = settingsWith({ claude: { pinned: false } });
+
+      const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+      const row = getByTestId("agent-tray-row-claude");
+      expect(badgeIn(row)).toBeNull();
+    });
+  });
 });
