@@ -741,6 +741,15 @@ export type DaintreeEventMap = {
    */
   "terminal:exited": {
     terminalId: string;
+    /**
+     * Session-scoped token (the spawning timestamp) that distinguishes
+     * different `TerminalProcess` instances which happen to share an `id`
+     * — e.g. when `PtyManager.spawn(id)` kills the prior terminal and
+     * respawns under the same id. Subscribers must filter on both
+     * `terminalId` AND `spawnedAt` to avoid firing the new instance's
+     * handlers on the old PTY's exit.
+     */
+    spawnedAt: number;
     code: number | null;
     signal?: number;
     reason: ExitReason;

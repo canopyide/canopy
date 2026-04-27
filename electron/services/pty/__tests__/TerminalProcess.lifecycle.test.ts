@@ -288,4 +288,119 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
 
     expect(emitAgentCompletedSpy).not.toHaveBeenCalled();
   });
+
+  // PtyManager.spawn(id) kills the existing terminal and respawns under
+  // the same id. The new instance's `terminal:exited` listener must NOT
+  // be consumed by the old PTY's eventual exit — that would silence its
+  // own real exit later.
+  it("filters terminal:exited by spawnedAt to survive id reuse during respawn", () => {
+    const pty1 = createControllablePty();
+    const emitAgentCompletedSpy1 = vi.fn();
+    const t1 = createTerminal(
+      pty1,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: emitAgentCompletedSpy1,
+        } as never,
+      },
+      "t-shared-id"
+    );
+    t1.kill("respawn");
+
+    // Wait one millisecond so the second terminal's spawnedAt token
+    // differs from the first.
+    const start = Date.now();
+    while (Date.now() === start) {
+      /* spin briefly */
+    }
+
+    const pty2 = createControllablePty();
+    const emitAgentCompletedSpy2 = vi.fn();
+    createTerminal(
+      pty2,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: emitAgentCompletedSpy2,
+        } as never,
+      },
+      "t-shared-id"
+    );
+
+    // Old PTY fires its long-delayed exit. Subscriber for t1 may run; the
+    // subscriber for t2 must NOT (it was killed, so reason !== natural,
+    // but the critical case is that t2's listener is also still wired
+    // and would otherwise match terminalId).
+    pty1.emitExit(0);
+
+    // Now t2 exits naturally — its own subscriber must still be wired.
+    pty2.emitExit(0);
+
+    // t1 was killed, no agent:completed expected for it.
+    expect(emitAgentCompletedSpy1).not.toHaveBeenCalled();
+    // t2 exited naturally; its subscriber must have fired.
+    expect(emitAgentCompletedSpy2).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not double-fire callbacks.onExit when natural exit follows dispose()", () => {
+    const pty = createControllablePty();
+    const onExitSpy = vi.fn();
+
+    const terminal = new TerminalProcess(
+      "t-late-exit",
+      { cwd: process.cwd(), cols: 80, rows: 24, kind: "terminal" },
+      { emitData: () => {}, onExit: onExitSpy },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+        ptyPool: null,
+        processTreeCache: null,
+      },
+      defaultSpawnContext(),
+      pty
+    );
+
+    terminal.dispose();
+    pty.emitExit(0);
+
+    expect(onExitSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("TerminalProcess — getPublicState lifecycle derivation", () => {
+  it("reflects hasPty=false after dispose() even without prior kill", () => {
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty);
+
+    expect(terminal.getPublicState().hasPty).toBe(true);
+
+    terminal.dispose();
+
+    const state = terminal.getPublicState();
+    expect(state.hasPty).toBe(false);
+    expect(state.wasKilled).toBe(true);
+  });
+
+  it("reflects hasPty=false after natural exit (preserved agent terminal)", () => {
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty, { kind: "terminal", launchAgentId: "claude" });
+
+    pty.emitExit(0);
+
+    const state = terminal.getPublicState();
+    expect(state.hasPty).toBe(false);
+    expect(state.isExited).toBe(true);
+    expect(state.exitCode).toBe(0);
+  });
 });

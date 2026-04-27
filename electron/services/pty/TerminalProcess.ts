@@ -587,6 +587,7 @@ export class TerminalProcess {
 
     events.emit("terminal:exited", {
       terminalId: this.id,
+      spawnedAt: terminal.spawnedAt,
       code: args.code,
       signal: args.signal,
       reason: args.reason,
@@ -611,8 +612,13 @@ export class TerminalProcess {
    */
   private _exitObserverDisposable: { dispose: () => void } | null = null;
   private _subscribeExitObservers(): void {
+    const sessionToken = this.terminalInfo.spawnedAt;
     const off = events.on("terminal:exited", (payload) => {
-      if (payload.terminalId !== this.id) return;
+      // Filter on terminalId AND the session token. Without spawnedAt, an
+      // old PTY's exit (after `PtyManager.spawn(id)` killed it and
+      // respawned under the same id) would consume the new instance's
+      // listener and silence its real exit later.
+      if (payload.terminalId !== this.id || payload.spawnedAt !== sessionToken) return;
 
       // Forensics: log abnormal exits with the tail captured at exit time.
       // `wasKilled` is encoded in the reason — kill / graceful-shutdown
@@ -684,8 +690,21 @@ export class TerminalProcess {
 
   getPublicState(): TerminalPublicState {
     const t = this.terminalInfo;
-    // Terminal has a PTY when it hasn't been killed and hasn't exited
-    const hasPty = !t.wasKilled && !t.isExited;
+    // Derive lifecycle flags from the state machine so disposed terminals
+    // reflect `hasPty: false` even when `dispose()` ran without setting
+    // the legacy `wasKilled`/`isExited` flags. The legacy flags remain
+    // populated where the existing code paths set them (kill, preserve)
+    // and we OR them in to keep behaviour identical for those paths.
+    const state = this._ptyState;
+    const exitedState = state.kind === "exited" || state.kind === "disposed";
+    const killReason =
+      (state.kind === "shutting-down" || state.kind === "exited" || state.kind === "disposed") &&
+      (state.reason === "kill" ||
+        state.reason === "graceful-shutdown" ||
+        state.reason === "dispose");
+    const wasKilled = t.wasKilled || killReason;
+    const isExited = t.isExited || exitedState;
+    const hasPty = !wasKilled && !isExited;
     return {
       id: t.id,
       projectId: t.projectId,
@@ -696,8 +715,8 @@ export class TerminalProcess {
       title: t.title,
       titleMode: t.titleMode,
       spawnedAt: t.spawnedAt,
-      wasKilled: t.wasKilled,
-      isExited: t.isExited,
+      wasKilled,
+      isExited,
       agentState: t.agentState,
       waitingReason: t.waitingReason,
       lastStateChange: t.lastStateChange,
@@ -1880,6 +1899,14 @@ export class TerminalProcess {
 
     ptyProcess.onExit(({ exitCode, signal }) => {
       if (terminal.ptyProcess !== ptyProcess) {
+        return;
+      }
+
+      // dispose() may have already emitted terminal:exited and notified
+      // the registry via callbacks.onExit. A late OS-delivered exit must
+      // not double-fire either path — both downstream subscribers and
+      // PtyManager are not idempotent.
+      if (this._exitEventEmitted) {
         return;
       }
 
