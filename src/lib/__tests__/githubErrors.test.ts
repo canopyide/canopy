@@ -56,4 +56,9 @@ describe("isTransientNetworkError", () => {
     expect(isTransientNetworkError(undefined)).toBe(false);
     expect(isTransientNetworkError("")).toBe(false);
   });
+
+  it("is case-sensitive (matches the canonical capitalization only)", () => {
+    expect(isTransientNetworkError("cannot reach GitHub.")).toBe(false);
+    expect(isTransientNetworkError("CANNOT REACH GITHUB.")).toBe(false);
+  });
 });

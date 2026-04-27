@@ -6,14 +6,19 @@ import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { GitHubIssue, GitHubListResponse } from "@shared/types/github";
 import { setCache, buildCacheKey, _resetForTests } from "@/lib/githubResourceCache";
+import { useGitHubFilterStore } from "@/store/githubFilterStore";
 
 const mockListIssues = vi.fn<() => Promise<GitHubListResponse<GitHubIssue>>>();
 const mockListPRs = vi.fn();
+const mockGetIssueByNumber = vi.fn();
+const mockGetPRByNumber = vi.fn();
 
 vi.mock("@/clients/githubClient", () => ({
   githubClient: {
     listIssues: (...args: unknown[]) => mockListIssues(...(args as [])),
     listPullRequests: (...args: unknown[]) => mockListPRs(...(args as [])),
+    getIssueByNumber: (...args: unknown[]) => mockGetIssueByNumber(...(args as [])),
+    getPRByNumber: (...args: unknown[]) => mockGetPRByNumber(...(args as [])),
   },
 }));
 
@@ -119,6 +124,10 @@ beforeEach(() => {
   _resetForTests();
   mockListIssues.mockReset();
   mockListPRs.mockReset();
+  mockGetIssueByNumber.mockReset();
+  mockGetPRByNumber.mockReset();
+  useGitHubFilterStore.getState().setIssueSearchQuery("");
+  useGitHubFilterStore.getState().setPrSearchQuery("");
 });
 
 afterEach(() => {
@@ -286,6 +295,61 @@ describe("GitHubResourceList retry behavior", () => {
     expect(screen.queryByText(/Cannot reach GitHub/)).toBeNull();
   });
 
+  it("succeeds on the third attempt — retries through both backoff delays", async () => {
+    mockListIssues
+      .mockRejectedValueOnce(new Error("Cannot reach GitHub. Check your internet connection."))
+      .mockRejectedValueOnce(new Error("Cannot reach GitHub. Check your internet connection."))
+      .mockResolvedValue(makeResponse([makeIssue(8)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(1500);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("item-8")).toBeTruthy();
+    });
+
+    expect(mockListIssues).toHaveBeenCalledTimes(3);
+    expect(screen.queryByText(/Cannot reach GitHub/)).toBeNull();
+  });
+
+  it("does not flash an error during the retry window", async () => {
+    let resolveSecond: (v: GitHubListResponse<GitHubIssue>) => void = () => {};
+    mockListIssues
+      .mockRejectedValueOnce(new Error("Cannot reach GitHub. Check your internet connection."))
+      .mockImplementationOnce(
+        () =>
+          new Promise<GitHubListResponse<GitHubIssue>>((resolve) => {
+            resolveSecond = resolve;
+          })
+      );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Wait for first call to settle (rejection)
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Before timer advance: still in retry-delay window. No error should be visible.
+    expect(screen.queryByText(/Cannot reach GitHub/)).toBeNull();
+
+    // Advance the 500ms backoff to trigger second attempt (still pending).
+    await vi.advanceTimersByTimeAsync(500);
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText(/Cannot reach GitHub/)).toBeNull();
+
+    // Resolve second attempt — data renders, no error ever shown.
+    resolveSecond(makeResponse([makeIssue(9)]));
+    await waitFor(() => {
+      expect(screen.getByTestId("item-9")).toBeTruthy();
+    });
+    expect(screen.queryByText(/Cannot reach GitHub/)).toBeNull();
+  });
+
   it("surfaces error after exhausting retries (3 attempts)", async () => {
     mockListIssues.mockRejectedValue(
       new Error("Cannot reach GitHub. Check your internet connection.")
@@ -327,6 +391,38 @@ describe("GitHubResourceList retry behavior", () => {
     });
 
     expect(mockListIssues).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry rate-limit errors", async () => {
+    mockListIssues.mockRejectedValue(
+      new Error("GitHub rate limit exceeded. Try again in a few minutes.")
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/rate limit exceeded/)).toBeTruthy();
+    });
+
+    expect(mockListIssues).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries transient errors in the numeric (single) fetch path", async () => {
+    useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+    mockGetIssueByNumber
+      .mockRejectedValueOnce(new Error("Cannot reach GitHub. Check your internet connection."))
+      .mockResolvedValue(makeIssue(42));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("item-42")).toBeTruthy();
+    });
+
+    expect(mockGetIssueByNumber).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Cannot reach GitHub/)).toBeNull();
   });
 
   it("does not retry on background revalidation — preserves stale data and surfaces error", async () => {
