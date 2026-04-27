@@ -54,6 +54,21 @@ describe("useHeldShortcutReveal", () => {
     expect(isRevealed()).toBe(true);
   });
 
+  it("does not reveal at 999ms but reveals on the next tick", () => {
+    renderHook(() => useHeldShortcutReveal());
+
+    act(() => dispatchKey("keydown", "Meta"));
+    act(() => {
+      vi.advanceTimersByTime(999);
+    });
+    expect(isRevealed()).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(isRevealed()).toBe(true);
+  });
+
   it("reveals after 1s hold of Control on non-mac", () => {
     isMacMock.mockReturnValue(false);
     renderHook(() => useHeldShortcutReveal());
