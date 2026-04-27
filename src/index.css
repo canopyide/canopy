@@ -1265,6 +1265,76 @@ body,
   will-change: opacity;
 }
 
+/* Fleet broadcast bar refocus pulse — when the OS window regains focus and
+ * fleet is armed, breathe the bar's amber stripe so the user can re-orient
+ * to the active mode without searching for it. ~800ms total, opacity-only.
+ */
+@keyframes fleet-bar-refocus-pulse {
+  0% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-fleet-bar-refocus-pulse::before {
+  animation: fleet-bar-refocus-pulse 800ms cubic-bezier(0.4, 0, 0.2, 1) 1 both;
+  will-change: opacity;
+}
+
+/* Fleet broadcast commit flash — fired on every keystroke/paste that the
+ * fleet handler fans out. 100ms opacity dip on the bar's amber stripe so
+ * the input "thumps" visibly without flashing color.
+ */
+@keyframes fleet-bar-commit-flash {
+  0% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-fleet-bar-commit-flash::before {
+  animation: fleet-bar-commit-flash 140ms cubic-bezier(0.4, 0, 0.2, 1) 1 both;
+  will-change: opacity;
+}
+
+/* Fleet exit ring pulse — fired once on the panel that becomes the new
+ * primary when the user exits fleet mode. Painted on a dedicated overlay
+ * element so it doesn't fight the panel container's `::after` worktree
+ * stripe or the existing border-color transitions.
+ */
+@keyframes fleet-exit-pulse {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.fleet-exit-pulse-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--theme-tint) 35%, transparent);
+  animation: fleet-exit-pulse 220ms cubic-bezier(0.4, 0, 0.2, 1) 1 both;
+  will-change: opacity;
+  z-index: 2;
+}
+
 /* Respect user's motion preferences — OS prefers-reduced-motion and the
  * Daintree-level "Reduce UI animations" toggle (body[data-reduce-animations])
  * both remove spatial motion while leaving opacity changes intact.
@@ -1287,6 +1357,23 @@ body,
     animation: none;
     opacity: 1;
     transform: none;
+    will-change: auto;
+  }
+
+  /* Fleet polish animations — opacity-only already, but drop the keyframe
+   * entirely to keep WCAG 2.3.3 strict compliance. The bar stripe pseudos
+   * stay at their static opacity (1); only the dedicated exit overlay is
+   * hidden since it has no static-state purpose.
+   */
+  .animate-fleet-bar-refocus-pulse::before,
+  .animate-fleet-bar-commit-flash::before {
+    animation: none;
+    will-change: auto;
+  }
+
+  .fleet-exit-pulse-overlay {
+    animation: none;
+    opacity: 0;
     will-change: auto;
   }
 
@@ -1347,6 +1434,18 @@ body[data-reduce-animations="true"]
   animation: none;
   opacity: 1;
   transform: none;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] .animate-fleet-bar-refocus-pulse::before,
+body[data-reduce-animations="true"] .animate-fleet-bar-commit-flash::before {
+  animation: none;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] .fleet-exit-pulse-overlay {
+  animation: none;
+  opacity: 0;
   will-change: auto;
 }
 

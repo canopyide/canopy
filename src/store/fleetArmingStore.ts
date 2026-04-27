@@ -28,6 +28,16 @@ interface FleetArmingState {
   armOrderById: Record<string, number>;
   lastArmedId: string | null;
 
+  // Monotonic counter incremented every time fleet broadcast actually fans out
+  // a chunk of input. Renderer components watch this to fire a one-shot CSS
+  // pulse on the broadcast bar's input edge. Increments only — never resets.
+  broadcastSignal: number;
+
+  // Transient hover/focus preview from the selection menu. Not persisted, not
+  // part of the broadcast set — purely a UX hint so panes glow before the
+  // user commits to the menu item.
+  previewArmedIds: Set<string>;
+
   armId: (id: string) => void;
   disarmId: (id: string) => void;
   toggleId: (id: string) => void;
@@ -37,6 +47,9 @@ interface FleetArmingState {
   armMatchingFilter: (worktreeIds: string[]) => void;
   clear: () => void;
   prune: (validIds: Set<string>) => void;
+  noteBroadcastCommit: () => void;
+  setPreviewArmedIds: (ids: Set<string>) => void;
+  clearPreviewArmedIds: () => void;
 }
 
 function rebuildOrderById(order: string[]): Record<string, number> {
@@ -83,11 +96,38 @@ export function collectEligibleIds(
   return ids;
 }
 
+/**
+ * Pure dry-run of `armByState` — returns the ids that would be armed without
+ * mutating the store. Used by the selection menu's hover/focus preview so the
+ * panes that *would* be selected glow ahead of the click.
+ */
+export function computeArmByStateIds(
+  preset: FleetArmStatePreset,
+  scope: FleetArmScope,
+  activeWorktreeId: string | null
+): string[] {
+  const state = usePanelStore.getState();
+  const ids: string[] = [];
+  for (const id of state.panelIds) {
+    const t = state.panelsById[id];
+    if (!isAgentFleetActionEligible(t)) continue;
+    if (scope === "current") {
+      if (!activeWorktreeId || t.worktreeId !== activeWorktreeId) continue;
+    }
+    if (matchesPreset(t.agentState ?? null, preset)) {
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
 export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
   armedIds: new Set<string>(),
   armOrder: [],
   armOrderById: {},
   lastArmedId: null,
+  broadcastSignal: 0,
+  previewArmedIds: new Set<string>(),
 
   armId: (id) =>
     set((s) => {
@@ -147,19 +187,7 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
   },
 
   armByState: (preset, scope, extend) => {
-    const state = usePanelStore.getState();
-    const activeWorktreeId = getActiveWorktreeId();
-    const ids: string[] = [];
-    for (const id of state.panelIds) {
-      const t = state.panelsById[id];
-      if (!isAgentFleetActionEligible(t)) continue;
-      if (scope === "current") {
-        if (!activeWorktreeId || t.worktreeId !== activeWorktreeId) continue;
-      }
-      if (matchesPreset(t.agentState ?? null, preset)) {
-        ids.push(id);
-      }
-    }
+    const ids = computeArmByStateIds(preset, scope, getActiveWorktreeId());
     if (extend) {
       set((s) => {
         const nextArmed = new Set(s.armedIds);
@@ -215,6 +243,7 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
       armOrder: [],
       armOrderById: {},
       lastArmedId: null,
+      previewArmedIds: new Set<string>(),
     }),
 
   prune: (validIds) =>
@@ -241,6 +270,28 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
         lastArmedId: nextLast,
       };
     }),
+
+  noteBroadcastCommit: () => set((s) => ({ broadcastSignal: s.broadcastSignal + 1 })),
+
+  setPreviewArmedIds: (ids) => {
+    const current = get().previewArmedIds;
+    if (current.size === ids.size) {
+      let same = true;
+      for (const id of ids) {
+        if (!current.has(id)) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+    set({ previewArmedIds: new Set(ids) });
+  },
+
+  clearPreviewArmedIds: () => {
+    if (get().previewArmedIds.size === 0) return;
+    set({ previewArmedIds: new Set<string>() });
+  },
 }));
 
 function getActiveWorktreeId(): string | null {

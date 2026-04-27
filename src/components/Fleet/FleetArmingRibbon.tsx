@@ -6,7 +6,14 @@ import { cn } from "@/lib/utils";
 import { isMac } from "@/lib/platform";
 import { useEscapeStack, useWorktreeColorMap } from "@/hooks";
 import "./fleetRawInputBroadcast";
-import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import {
+  useFleetArmingStore,
+  computeArmByStateIds,
+  collectEligibleIds,
+  type FleetArmStatePreset,
+  type FleetArmScope,
+} from "@/store/fleetArmingStore";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useFleetBroadcastConfirmStore } from "@/store/fleetBroadcastConfirmStore";
 import {
   useFleetPendingActionStore,
@@ -76,6 +83,7 @@ export function FleetArmingRibbon(): ReactElement | null {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
   const pasteCancelRef = useRef<HTMLButtonElement | null>(null);
+  const ribbonRef = useRef<HTMLDivElement | null>(null);
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
@@ -114,6 +122,12 @@ export function FleetArmingRibbon(): ReactElement | null {
     clear();
     if (target && usePanelStore.getState().panelsById[target]) {
       usePanelStore.getState().setFocused(target);
+      // Fire a one-shot ring pulse on the panel that just became primary so
+      // the focus restoration is visually anchored. Dispatched from React
+      // (not the store/router) since this is a purely cosmetic event.
+      window.dispatchEvent(
+        new CustomEvent("daintree:fleet-exit-pulse", { detail: { panelId: target } })
+      );
     }
   }, [clear]);
 
@@ -244,6 +258,93 @@ export function FleetArmingRibbon(): ReactElement | null {
     };
   }, [armedCount]);
 
+  // Commit flash: bypass React's render cycle entirely. We subscribe to
+  // `broadcastSignal` via the Zustand external API (not the React selector
+  // hook) so the ribbon does not re-render on every fanned-out keystroke
+  // — vital under heavy fleet input where the counter increments per char.
+  // The CSS class toggle + forced reflow restarts the keyframe even when a
+  // new commit arrives mid-flash.
+  const commitFlashClearRef = useRef<number | null>(null);
+  useEffect(() => {
+    let lastObservedSignal = useFleetArmingStore.getState().broadcastSignal;
+    const unsubscribe = useFleetArmingStore.subscribe((state) => {
+      if (state.broadcastSignal === lastObservedSignal) return;
+      lastObservedSignal = state.broadcastSignal;
+      const node = ribbonRef.current;
+      if (!node) return;
+      if (commitFlashClearRef.current !== null) {
+        window.clearTimeout(commitFlashClearRef.current);
+      }
+      node.classList.remove("animate-fleet-bar-commit-flash");
+      // Force reflow so the keyframe restarts even if the class is re-
+      // applied within its own animation window. `void` reads a layout
+      // property to pin the style flush.
+      void node.offsetWidth;
+      node.classList.add("animate-fleet-bar-commit-flash");
+      commitFlashClearRef.current = window.setTimeout(() => {
+        node.classList.remove("animate-fleet-bar-commit-flash");
+        commitFlashClearRef.current = null;
+      }, 180);
+    });
+    return () => {
+      unsubscribe();
+      if (commitFlashClearRef.current !== null) {
+        window.clearTimeout(commitFlashClearRef.current);
+        commitFlashClearRef.current = null;
+      }
+    };
+  }, []);
+
+  // Window-refocus pulse: when the OS window regains focus while the fleet
+  // is armed, breathe the bar's stripe so the user re-orients to the active
+  // mode. Reads armedCount via getState to avoid a stale closure (#5087).
+  // Track the timer in a ref so rapid focus events cancel any in-flight
+  // removal — otherwise the first timer's removal would cut a second
+  // pulse short mid-animation.
+  const refocusPulseTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    const handler = () => {
+      if (useFleetArmingStore.getState().armedIds.size < 2) return;
+      const node = ribbonRef.current;
+      if (!node) return;
+      if (refocusPulseTimerRef.current !== null) {
+        window.clearTimeout(refocusPulseTimerRef.current);
+      }
+      node.classList.remove("animate-fleet-bar-refocus-pulse");
+      void node.offsetWidth;
+      node.classList.add("animate-fleet-bar-refocus-pulse");
+      refocusPulseTimerRef.current = window.setTimeout(() => {
+        node.classList.remove("animate-fleet-bar-refocus-pulse");
+        refocusPulseTimerRef.current = null;
+      }, 850);
+    };
+    window.addEventListener("focus", handler);
+    return () => {
+      window.removeEventListener("focus", handler);
+      if (refocusPulseTimerRef.current !== null) {
+        window.clearTimeout(refocusPulseTimerRef.current);
+        refocusPulseTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Preview cleanup: if the user opens the selection menu, hovers a
+  // state-preset item (which sets previewArmedIds), and then disarms panes
+  // one-by-one until armedCount drops below 2, the ribbon early-returns
+  // null *before* the DropdownMenu's onOpenChange(false) fires. Without
+  // this watcher the surviving pane keeps its preview tint indefinitely.
+  // Also covers the full-unmount case for parent-driven removals.
+  useEffect(() => {
+    if (armedCount < 2) {
+      useFleetArmingStore.getState().clearPreviewArmedIds();
+    }
+  }, [armedCount]);
+  useEffect(() => {
+    return () => {
+      useFleetArmingStore.getState().clearPreviewArmedIds();
+    };
+  }, []);
+
   const cancelPendingBroadcast = useCallback(() => {
     clearPendingBroadcast();
   }, [clearPendingBroadcast]);
@@ -261,6 +362,43 @@ export function FleetArmingRibbon(): ReactElement | null {
     }
   }, [pendingBroadcast, isSendingBroadcast, clearPendingBroadcast]);
 
+  const setPreviewArmedIds = useFleetArmingStore((s) => s.setPreviewArmedIds);
+  const clearPreviewArmedIds = useFleetArmingStore((s) => s.clearPreviewArmedIds);
+
+  // Compute which panel ids a state-preset menu item would arm — used to
+  // light up the matching panes' title bars while the user hovers/focuses
+  // the menu item, before they commit. Pure dry-run; no store mutation.
+  const computePreviewByState = useCallback(
+    (preset: FleetArmStatePreset, scope: FleetArmScope): Set<string> => {
+      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+      return new Set(computeArmByStateIds(preset, scope, activeWorktreeId));
+    },
+    []
+  );
+
+  const computePreviewAll = useCallback((scope: FleetArmScope): Set<string> => {
+    const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+    return new Set(collectEligibleIds(scope, activeWorktreeId));
+  }, []);
+
+  // Radix DropdownMenuItem: onFocus fires for keyboard nav AND mouse hover
+  // (Radix syncs them); onPointerMove with a mouse-only guard avoids phantom
+  // events when the menu opens under a stationary cursor. onPointerLeave +
+  // onBlur clear the preview. Never preventDefault — it would break Radix's
+  // composeEventHandlers chain.
+  const previewItemHandlers = useCallback(
+    (compute: () => Set<string>) => ({
+      onFocus: () => setPreviewArmedIds(compute()),
+      onPointerMove: (e: React.PointerEvent) => {
+        if (e.pointerType !== "mouse") return;
+        setPreviewArmedIds(compute());
+      },
+      onPointerLeave: () => clearPreviewArmedIds(),
+      onBlur: () => clearPreviewArmedIds(),
+    }),
+    [setPreviewArmedIds, clearPreviewArmedIds]
+  );
+
   const selectionMenuItems = (
     <>
       <DropdownMenuLabel>Select by state</DropdownMenuLabel>
@@ -268,6 +406,7 @@ export function FleetArmingRibbon(): ReactElement | null {
         onSelect={() => {
           armByState("waiting", "current", false);
         }}
+        {...previewItemHandlers(() => computePreviewByState("waiting", "current"))}
       >
         All waiting — this worktree
       </DropdownMenuItem>
@@ -275,6 +414,7 @@ export function FleetArmingRibbon(): ReactElement | null {
         onSelect={() => {
           armByState("waiting", "all", false);
         }}
+        {...previewItemHandlers(() => computePreviewByState("waiting", "all"))}
       >
         All waiting — all worktrees
       </DropdownMenuItem>
@@ -282,6 +422,7 @@ export function FleetArmingRibbon(): ReactElement | null {
         onSelect={() => {
           armByState("working", "current", false);
         }}
+        {...previewItemHandlers(() => computePreviewByState("working", "current"))}
       >
         All working — this worktree
       </DropdownMenuItem>
@@ -289,6 +430,7 @@ export function FleetArmingRibbon(): ReactElement | null {
         onSelect={() => {
           armByState("working", "all", false);
         }}
+        {...previewItemHandlers(() => computePreviewByState("working", "all"))}
       >
         All working — all worktrees
       </DropdownMenuItem>
@@ -297,6 +439,7 @@ export function FleetArmingRibbon(): ReactElement | null {
         onSelect={() => {
           armAll("current");
         }}
+        {...previewItemHandlers(() => computePreviewAll("current"))}
       >
         All in this worktree
       </DropdownMenuItem>
@@ -386,6 +529,11 @@ export function FleetArmingRibbon(): ReactElement | null {
     return null;
   }
 
+  // Entrance is a low-bounce spring (~200ms). Exit is critically damped and
+  // faster (~120ms) so the bar tucks away cleanly without overshoot —
+  // important when the user is about to refocus an unarmed pane. Framer
+  // Motion 12 reads `transition` from inside the exit variant when present,
+  // overriding the top-level `transition` for exit only.
   const ribbonMotionProps = reduceMotion
     ? {
         initial: { opacity: 0 },
@@ -396,8 +544,12 @@ export function FleetArmingRibbon(): ReactElement | null {
     : {
         initial: { y: "-100%", opacity: 0 },
         animate: { y: 0, opacity: 1 },
-        exit: { y: "-100%", opacity: 0 },
-        transition: { type: "spring" as const, duration: 0.2, bounce: 0.15 },
+        exit: {
+          y: "-100%",
+          opacity: 0,
+          transition: { duration: 0.12, ease: [0.4, 0, 0.2, 1] as const },
+        },
+        transition: { type: "spring" as const, duration: 0.2, bounce: 0.12 },
       };
 
   const exitChordLabel = isMac() ? "⌘Esc" : "Ctrl+Esc";
@@ -412,6 +564,7 @@ export function FleetArmingRibbon(): ReactElement | null {
     <div data-testid="fleet-arming-ribbon-group">
       <AnimatePresence initial={false}>
         <motion.div
+          ref={ribbonRef}
           key="fleet-arming-ribbon"
           role={isBroadcastConfirmActive ? "alertdialog" : "status"}
           aria-live={isBroadcastConfirmActive ? "polite" : "off"}
@@ -435,7 +588,11 @@ export function FleetArmingRibbon(): ReactElement | null {
             open={popoverOpen}
             onOpenChange={setPopoverOpen}
           />
-          <DropdownMenu>
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (!open) clearPreviewArmedIds();
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -522,6 +679,36 @@ function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps)
     })
   );
 
+  // Scale-bump the chip on every count change. AnimatedLabel handles the
+  // text crossfade; this adds a subtle "tick" to the chip itself so the
+  // membership change registers peripherally. Skips first mount to avoid
+  // a phantom bump when the ribbon first renders.
+  const chipRef = useRef<HTMLButtonElement | null>(null);
+  const lastCountRef = useRef(armedCount);
+  const bumpClearRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (armedCount === lastCountRef.current) return;
+    lastCountRef.current = armedCount;
+    const node = chipRef.current;
+    if (!node) return;
+    if (bumpClearRef.current !== null) {
+      window.clearTimeout(bumpClearRef.current);
+    }
+    node.classList.remove("animate-badge-bump");
+    void node.offsetWidth;
+    node.classList.add("animate-badge-bump");
+    bumpClearRef.current = window.setTimeout(() => {
+      node.classList.remove("animate-badge-bump");
+      bumpClearRef.current = null;
+    }, 240);
+    return () => {
+      if (bumpClearRef.current !== null) {
+        window.clearTimeout(bumpClearRef.current);
+        bumpClearRef.current = null;
+      }
+    };
+  }, [armedCount]);
+
   // Click a row → focus that pane (mouse path to "set primary"). Existing
   // terminal-nav chords (⌘⌥Arrow, Ctrl+Tab, ⌘1-9) cover the keyboard path
   // since focus already promotes any armed pane to primary. Closes the
@@ -544,6 +731,7 @@ function FleetCountChip({ armedCount, open, onOpenChange }: FleetCountChipProps)
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button
+          ref={chipRef}
           type="button"
           aria-label={`${label} — show list`}
           aria-haspopup="dialog"
