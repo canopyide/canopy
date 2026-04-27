@@ -132,7 +132,12 @@ export function useActionPalette(): UseActionPaletteReturn {
 
   const executeAction = useCallback(
     (item: ActionPaletteItem) => {
-      useActionMruStore.getState().recordActionMru(item.id);
+      // Only record frecency for enabled items so disabled actions don't get
+      // promoted to the top from repeated attempts. Dispatch still runs for
+      // disabled items so ActionService can surface the disabled-reason toast.
+      if (item.enabled) {
+        useActionMruStore.getState().recordActionMru(item.id);
+      }
       close();
       void actionService
         .dispatch(

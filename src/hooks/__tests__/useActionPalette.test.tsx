@@ -196,8 +196,11 @@ describe("useActionPalette", () => {
       result.current.executeAction(result.current.results[0]!);
     });
 
+    // Dispatch still runs so ActionService can surface the disabled-reason toast,
+    // but MRU stays clean — repeated attempts on a disabled item must not promote
+    // it to the top of the palette.
     expect(useActionMruStore.getState().getSortedActionMruList().length).toBe(0);
-    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(dispatchMock).toHaveBeenCalledWith("a.action", {}, { source: "user" });
   });
 
   it("uses frecency as tiebreaker in non-empty query results", async () => {
