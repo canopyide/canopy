@@ -110,10 +110,6 @@ export function setStartupQuietPeriod(durationMs: number): void {
   _startupQuietUntil = Date.now() + durationMs;
 }
 
-export function getQuietPeriodRemaining(): number {
-  return Math.max(0, _startupQuietUntil - Date.now());
-}
-
 export function _setQuietUntil(ts: number): void {
   _muteStore.setState({ quietUntil: ts });
 }
