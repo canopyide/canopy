@@ -171,7 +171,13 @@ export class WriteQueue {
       while (!this.disposed && this.submitQueue.length > 0) {
         const next = this.submitQueue.shift();
         if (next === undefined) continue;
-        await this.options.performSubmit(next);
+        try {
+          await this.options.performSubmit(next);
+        } catch (error) {
+          // Don't let a single submit failure abandon the rest of the queue
+          // or escape as an unhandled rejection from the void caller above.
+          this.options.onWriteError?.(error, { operation: "performSubmit" });
+        }
       }
     } finally {
       this.submitInFlight = false;

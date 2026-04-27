@@ -74,6 +74,24 @@ describe("WriteQueue.enqueueChunked", () => {
     expect(written).toBe(big);
   });
 
+  it("preserves order when a second enqueueChunked arrives while the first is still pacing", async () => {
+    const m = makeOptions();
+    const wq = new WriteQueue(m.options);
+    const first = "a".repeat(WRITE_MAX_CHUNK_SIZE * 3);
+    const second = "b".repeat(WRITE_MAX_CHUNK_SIZE * 2);
+
+    wq.enqueueChunked(first);
+    // After one interval, the second chunk of `first` has fired but the
+    // queue is still draining. Append `second` mid-flight.
+    await vi.advanceTimersByTimeAsync(WRITE_INTERVAL_MS);
+    wq.enqueueChunked(second);
+
+    await vi.runAllTimersAsync();
+
+    const written = m.writeToPty.mock.calls.map((c) => c[0]).join("");
+    expect(written).toBe(first + second);
+  });
+
   it("ignores empty payloads", () => {
     const m = makeOptions();
     const wq = new WriteQueue(m.options);
@@ -134,6 +152,25 @@ describe("WriteQueue.submit", () => {
 
     await vi.runAllTimersAsync();
     expect(order).toEqual(["first", "second", "third"]);
+  });
+
+  it("absorbs a performSubmit rejection without abandoning the queue", async () => {
+    const m = makeOptions();
+    const seen: string[] = [];
+    m.performSubmit.mockImplementation(async (text) => {
+      seen.push(text);
+      if (text === "boom") throw new Error("submit failed");
+    });
+    const wq = new WriteQueue(m.options);
+
+    wq.submit("boom");
+    wq.submit("after");
+
+    await vi.runAllTimersAsync();
+
+    expect(seen).toEqual(["boom", "after"]);
+    expect(m.onWriteError).toHaveBeenCalledOnce();
+    expect(m.onWriteError.mock.calls[0]?.[1]).toEqual({ operation: "performSubmit" });
   });
 
   it("serialises overlapping submits — second performSubmit waits for the first to resolve", async () => {
