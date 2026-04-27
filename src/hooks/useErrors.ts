@@ -3,7 +3,7 @@ import { useErrorStore, type AppError, type RetryAction } from "@/store";
 import { isElectronAvailable } from "./useElectron";
 import { errorsClient } from "@/clients";
 import { logErrorWithContext } from "@/utils/errorContext";
-import { notify } from "@/lib/notify";
+import { notify, shouldEscalateTransientError } from "@/lib/notify";
 import type { NotificationPriority } from "@/store/notificationStore";
 
 export function getErrorPriority(
@@ -11,6 +11,33 @@ export function getErrorPriority(
 ): NotificationPriority {
   if (error.isTransient) return "low";
   return "high";
+}
+
+function routeError(error: AppError): void {
+  const escalated = shouldEscalateTransientError(error);
+  const priority = escalated ? "high" : getErrorPriority(error);
+
+  useErrorStore.getState().addError({
+    type: error.type,
+    message: error.message,
+    details: error.details,
+    source: error.source,
+    context: error.context,
+    isTransient: error.isTransient,
+    retryAction: error.retryAction,
+    retryArgs: error.retryArgs,
+    fromPreviousSession: error.fromPreviousSession,
+    correlationId: error.correlationId,
+    recoveryHint: error.recoveryHint,
+  });
+
+  notify({
+    type: "error",
+    title: error.source,
+    message: error.message,
+    correlationId: error.correlationId,
+    priority,
+  });
 }
 
 let ipcListenerAttached = false;
@@ -38,27 +65,7 @@ export function useErrors() {
     didAttachListener.current = true;
 
     const unsubscribeError = errorsClient.onError((error: AppError) => {
-      addError({
-        type: error.type,
-        message: error.message,
-        details: error.details,
-        source: error.source,
-        context: error.context,
-        isTransient: error.isTransient,
-        retryAction: error.retryAction,
-        retryArgs: error.retryArgs,
-        fromPreviousSession: error.fromPreviousSession,
-        correlationId: error.correlationId,
-        recoveryHint: error.recoveryHint,
-      });
-
-      notify({
-        type: "error",
-        title: error.source,
-        message: error.message,
-        correlationId: error.correlationId,
-        priority: getErrorPriority(error),
-      });
+      routeError(error);
     });
 
     const unsubscribeProgress = errorsClient.onRetryProgress((payload) => {
@@ -69,27 +76,7 @@ export function useErrors() {
       .getPending()
       .then((pending) => {
         for (const error of pending) {
-          addError({
-            type: error.type,
-            message: error.message,
-            details: error.details,
-            source: error.source,
-            context: error.context,
-            isTransient: error.isTransient,
-            retryAction: error.retryAction,
-            retryArgs: error.retryArgs,
-            fromPreviousSession: error.fromPreviousSession,
-            correlationId: error.correlationId,
-            recoveryHint: error.recoveryHint,
-          });
-
-          notify({
-            type: "error",
-            title: error.source,
-            message: error.message,
-            correlationId: error.correlationId,
-            priority: getErrorPriority(error),
-          });
+          routeError(error);
         }
       })
       .catch(() => {
