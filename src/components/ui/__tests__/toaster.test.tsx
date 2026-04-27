@@ -358,6 +358,67 @@ describe("Toast accessibility", () => {
     consoleError.mockRestore();
   });
 
+  it.each([
+    ["success", "lucide-circle-check", "text-status-success", "status"],
+    ["error", "lucide-circle-x", "text-status-error", "alert"],
+    ["info", "lucide-info", "text-status-info", "status"],
+    ["warning", "lucide-triangle-alert", "text-status-warning", "status"],
+  ] as const)(
+    "renders a %s severity icon with the matching status colour",
+    async (type, iconClass, colourClass, role) => {
+      render(<Toaster />);
+      await act(async () => {
+        addToast({ type, message: `${type} message` });
+        vi.advanceTimersByTime(16);
+      });
+
+      const toast = screen.getByRole(role);
+      const icon = toast.querySelector(`.${iconClass}`);
+      expect(icon).not.toBeNull();
+      expect(icon?.parentElement?.className).toContain(colourClass);
+      expect(icon?.getAttribute("aria-hidden")).toBe("true");
+    }
+  );
+
+  it("falls back to the info icon for unknown severity types", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ type: "fatal" as unknown as "info", message: "Unknown severity" });
+      vi.advanceTimersByTime(16);
+    });
+
+    const toast = screen.getByRole("status");
+    const icon = toast.querySelector(".lucide-info");
+    expect(icon).not.toBeNull();
+    expect(icon?.parentElement?.className).toContain("text-status-info");
+  });
+
+  it("swaps icon, colour, and role when a toast's severity changes", async () => {
+    render(<Toaster />);
+    let toastId: string;
+    await act(async () => {
+      toastId = addToast({ type: "info", message: "In progress" });
+      vi.advanceTimersByTime(16);
+    });
+
+    const initialToast = screen.getByRole("status");
+    expect(initialToast.textContent).toContain("In progress");
+    expect(initialToast.querySelector(".lucide-info")).not.toBeNull();
+
+    await act(async () => {
+      useNotificationStore.getState().updateNotification(toastId!, {
+        type: "error",
+        message: "Failed",
+      });
+    });
+
+    const updatedToast = screen.getByRole("alert");
+    expect(updatedToast.querySelector(".lucide-circle-x")).not.toBeNull();
+    expect(updatedToast.querySelector(".lucide-info")).toBeNull();
+    const iconWrapper = updatedToast.querySelector(".lucide-circle-x")?.parentElement;
+    expect(iconWrapper?.className).toContain("text-status-error");
+  });
+
   it("re-announces via screen reader when updatedAt changes", async () => {
     render(<Toaster />);
     let toastId: string;
