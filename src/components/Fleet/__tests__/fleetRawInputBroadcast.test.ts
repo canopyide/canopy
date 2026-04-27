@@ -151,10 +151,30 @@ describe("applyFleetBroadcastResult", () => {
 
     const failure = useFleetFailureStore.getState();
     expect(Array.from(failure.failedIds)).toEqual(["t2"]);
-    expect(failure.payload).toBe("ls\r");
+    // Payload is intentionally empty for raw-input failures — single
+    // keystrokes aren't meaningful to retry, and the `Retry failed` action
+    // checks for a non-null payload before firing.
+    expect(failure.payload).toBe("");
 
     const arming = useFleetArmingStore.getState();
     expect(arming.armedIds.has("t2")).toBe(true);
+  });
+
+  it("treats failures with no errno code as permanent (defensive default)", () => {
+    seedPanels([makeTerminal("t1"), makeTerminal("t2")]);
+    useFleetArmingStore.getState().armIds(["t1", "t2"]);
+    broadcastFleetRawInput("t1", "x");
+
+    applyFleetBroadcastResult({
+      results: [
+        { id: "t1", ok: true },
+        { id: "t2", ok: false, error: { message: "unknown write error" } },
+      ],
+    });
+
+    const arming = useFleetArmingStore.getState();
+    expect(arming.armedIds.has("t2")).toBe(false);
+    expect(useFleetFailureStore.getState().failedIds.size).toBe(0);
   });
 
   it("handles a mixed batch — disarm permanent, record non-permanent", () => {

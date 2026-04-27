@@ -928,11 +928,11 @@ port.on("message", async (rawMsg: any) => {
         // tight loop inside the pty-host event loop. Avoids N per-keystroke
         // MessagePort/IPC hops from the renderer when a fleet types.
         //
-        // Per-target writes go straight to `pty.write()`, which throws
-        // synchronously on dead pipes (EPIPE/EIO/EBADF/ECONNRESET).
-        // Catch those throws so one dead target can't take down the whole
-        // fan-out, and report a per-target result so the renderer can
-        // disarm permanently-failed targets and surface the failure chip.
+        // Each target write goes through `ptyManager.tryWrite()` rather than
+        // `ptyManager.write()` because the regular write path swallows
+        // dead-pipe errors via `logWriteError` and returns void. The throwing
+        // variant returns `{ ok, error? }` per call so a dead target produces
+        // an actionable result the renderer can use to auto-disarm the pane.
         const ids: string[] = Array.isArray(msg.ids) ? msg.ids : [];
         const data: string = typeof msg.data === "string" ? msg.data : "";
         if (!data) break;
@@ -948,13 +948,13 @@ port.on("message", async (rawMsg: any) => {
             });
             continue;
           }
-          try {
-            ptyManager.write(id, data);
+          const outcome = ptyManager.tryWrite(id, data);
+          if (outcome.ok) {
             results.push({ id, ok: true });
-          } catch (error) {
-            const err = error as NodeJS.ErrnoException;
+          } else {
+            const err = outcome.error;
             const code = typeof err?.code === "string" ? err.code : undefined;
-            const message = err?.message ?? String(error);
+            const message = err?.message ?? "unknown write error";
             console.error(
               `[PtyHost] broadcast-write failed for ${id}${code ? ` (${code})` : ""}: ${message}`
             );

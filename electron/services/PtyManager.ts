@@ -280,6 +280,27 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Write data and return per-call result for the small-keystroke fast path.
+   * Used by fleet broadcast so dead-pipe errors on one target don't
+   * disappear into `logWriteError` but produce a per-target rejection that
+   * the renderer can use to disarm the dead pane.
+   */
+  tryWrite(
+    id: string,
+    data: string,
+    traceId?: string
+  ): { ok: boolean; error?: NodeJS.ErrnoException } {
+    const terminal = this.registry.get(id);
+    if (!terminal) {
+      return {
+        ok: false,
+        error: Object.assign(new Error(`terminal ${id} not found`), { code: "EBADF" }),
+      };
+    }
+    return terminal.tryWrite(data, traceId);
+  }
+
+  /**
    * Submit text as a command to the terminal.
    * Handles bracketed paste and CR timing on the backend for reliable execution.
    */

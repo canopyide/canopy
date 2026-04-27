@@ -603,6 +603,56 @@ export class TerminalProcess {
     // No-op: SAB-based backpressure in pty-host.ts handles all flow control
   }
 
+  /**
+   * Throwing variant of `write` for the small-keystroke fast path. Used by the
+   * fleet broadcast loop in pty-host so a synchronous EPIPE/EIO/EBADF on one
+   * target produces an actionable per-target failure result instead of being
+   * swallowed by `logWriteError`. Returns `{ ok: true }` on success and
+   * `{ ok: false, error: NodeJS.ErrnoException }` when `pty.write()` throws.
+   *
+   * Falls back to `write()` (queued chunking) for payloads >512 bytes; the
+   * caller cannot meaningfully observe failures in the chunked async path,
+   * but broadcast keystrokes are always single chunks so this is fine.
+   */
+  tryWrite(data: string, traceId?: string): { ok: boolean; error?: NodeJS.ErrnoException } {
+    const terminal = this.terminalInfo;
+    if (terminal.isExited) {
+      return {
+        ok: false,
+        error: Object.assign(new Error("terminal exited"), { code: "EBADF" }),
+      };
+    }
+    if (!terminal.ptyProcess) {
+      return {
+        ok: false,
+        error: Object.assign(new Error("terminal has no pty process"), { code: "EBADF" }),
+      };
+    }
+
+    if (data.length > 512) {
+      // Long payloads queue through chunkInput in write(); we lose precise
+      // per-call failure visibility but that path isn't used by broadcast.
+      this.write(data, traceId);
+      return { ok: true };
+    }
+
+    terminal.lastInputTime = Date.now();
+    if (traceId !== undefined) {
+      terminal.traceId = traceId || undefined;
+    }
+    if (this.activityMonitor) {
+      this.activityMonitor.onInput(data);
+    }
+
+    try {
+      terminal.ptyProcess.write(data);
+      return { ok: true };
+    } catch (error) {
+      this.logWriteError(error, { operation: "tryWrite", traceId });
+      return { ok: false, error: error as NodeJS.ErrnoException };
+    }
+  }
+
   write(data: string, traceId?: string): void {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();

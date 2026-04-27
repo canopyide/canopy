@@ -18,13 +18,6 @@ const PERMANENT_FAILURE_CODES: ReadonlySet<string> = new Set([
   "ECONNRESET",
 ]);
 
-/**
- * Track the most recent payload broadcast so the failure chip can replay it
- * via "Retry failed". Updated on every fan-out and read when the
- * `broadcast-write-result` event fires from the pty-host.
- */
-let lastBroadcastPayload = "";
-
 function resolveLiveFleetTargetIds(): string[] {
   const { armOrder, armedIds } = useFleetArmingStore.getState();
   if (armedIds.size < 2) return [];
@@ -48,7 +41,6 @@ export function broadcastFleetRawInput(originId: string, data: string): boolean 
   const targets = resolveLiveFleetTargetIds();
   if (targets.length < 2 || !targets.includes(originId)) return false;
 
-  lastBroadcastPayload = data;
   terminalClient.broadcast(targets, data);
   return true;
 }
@@ -56,13 +48,19 @@ export function broadcastFleetRawInput(originId: string, data: string): boolean 
 /**
  * Apply per-target results from a broadcast write.
  *
- * - Permanent failures (dead pipe, see `PERMANENT_FAILURE_CODES`) disarm the
- *   target so subsequent keystrokes don't keep firing into a gone process.
- *   The failure chip is *not* recorded for these — `fleetFailureStore`'s
- *   `armedIds` subscription would auto-dismiss it the moment we disarm, so a
- *   chip would never appear and we'd just thrash the store.
- * - Non-permanent failures (e.g., `ENOSPC`) leave arming alone and record
- *   the failure so the user sees the chip and can retry.
+ * - Permanent failures (dead pipe, see `PERMANENT_FAILURE_CODES`, or any
+ *   write error with no errno code) disarm the target so subsequent
+ *   keystrokes don't keep firing into a gone process. The failure chip is
+ *   *not* recorded for these — `fleetFailureStore`'s `armedIds` subscription
+ *   would auto-dismiss it the moment we disarm, so a chip would never appear
+ *   and we'd just thrash the store. An unknown errno is treated as permanent
+ *   on purpose: the safer default is to stop typing into a target whose
+ *   write semantics we can't reason about.
+ * - Non-permanent failures (e.g., `ENOSPC`) leave arming alone and record a
+ *   transient failure entry so the user sees the chip. The chip's "Retry
+ *   failed" path is a no-op for the raw-input transport (single keystrokes
+ *   are not meaningful to replay), and `recordFailure` is called with an
+ *   empty payload to make that explicit.
  *
  * Exported for testing — production wires this into the IPC subscription
  * registered at module load.
@@ -75,7 +73,9 @@ export function applyFleetBroadcastResult(payload: BroadcastWriteResultPayload):
   for (const result of payload.results) {
     if (result.ok) continue;
     const code = result.error?.code;
-    if (code && PERMANENT_FAILURE_CODES.has(code)) {
+    // Unknown errno → permanent. We can't tell if the target is recoverable,
+    // so the safer default is to disarm rather than keep firing keystrokes.
+    if (!code || PERMANENT_FAILURE_CODES.has(code)) {
       permanentlyFailedIds.push(result.id);
     } else {
       nonPermanentFailedIds.push(result.id);
@@ -90,12 +90,17 @@ export function applyFleetBroadcastResult(payload: BroadcastWriteResultPayload):
   });
 
   if (nonPermanentFailedIds.length > 0) {
-    useFleetFailureStore.getState().recordFailure(lastBroadcastPayload, nonPermanentFailedIds);
+    // Empty payload — raw input has no meaningful retry, and the
+    // `Retry failed` action checks for a non-null payload before firing.
+    // The chip still surfaces so the user notices something rejected.
+    useFleetFailureStore.getState().recordFailure("", nonPermanentFailedIds);
   }
 
   if (permanentlyFailedIds.length > 0) {
     const arming = useFleetArmingStore.getState();
     for (const id of permanentlyFailedIds) {
+      // disarmId is a no-op for non-armed ids per fleetArmingStore semantics,
+      // so a stale result for a manually-disarmed target is harmless.
       arming.disarmId(id);
     }
   }
