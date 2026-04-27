@@ -32,6 +32,7 @@ export class CrashLoopGuardService {
   private safeMode = false;
   private relaunchAllowed = true;
   private stabilityTimer: ReturnType<typeof setTimeout> | null = null;
+  private initialized = false;
 
   constructor() {
     this.userData = app.getPath("userData");
@@ -39,6 +40,9 @@ export class CrashLoopGuardService {
   }
 
   initialize(): void {
+    if (this.initialized) return;
+    this.initialized = true;
+
     const state = this.readState();
     const now = Date.now();
 
@@ -168,6 +172,32 @@ export class CrashLoopGuardService {
       // Fallback: direct write (non-atomic but functional)
       fs.writeFileSync(this.statePath, data, "utf8");
     }
+  }
+}
+
+export function isSafeModeActive(userDataPath?: string): boolean {
+  const dir = userDataPath ?? app.getPath("userData");
+  const statePath = path.join(dir, STATE_FILENAME);
+
+  try {
+    if (!fs.existsSync(statePath)) return false;
+    const raw = fs.readFileSync(statePath, "utf8");
+    const parsed = JSON.parse(raw) as Partial<CrashLoopState>;
+    if (
+      parsed.version === 1 &&
+      typeof parsed.crashes === "number" &&
+      Array.isArray(parsed.launches) &&
+      typeof parsed.cleanExit === "boolean" &&
+      typeof parsed.lastReset === "number"
+    ) {
+      if (parsed.cleanExit) return false;
+      const now = Date.now();
+      const recentLaunches = parsed.launches.filter((ts) => now - ts < RAPID_CRASH_WINDOW_MS);
+      return recentLaunches.length >= CRASH_THRESHOLD;
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
