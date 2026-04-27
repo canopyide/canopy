@@ -95,19 +95,23 @@ export function _resetComboMap(): void {
 }
 
 /**
- * Vanilla Zustand store wrapping the session quiet-until timestamp so the
- * renderer UI (notification center pill, Pause popover) can subscribe
- * reactively. Internal `notify()` reads still go through `getState()` for the
- * synchronous gate.
+ * Vanilla Zustand store wrapping the user-initiated session mute timestamp.
+ * The notification-center pill and Pause popover subscribe to this for
+ * reactive display. Kept separate from the startup quiet period so the pill
+ * never reflects the silent app-boot suppression window.
  */
 export const _muteStore = createStore<{ quietUntil: number }>(() => ({ quietUntil: 0 }));
 
+// Startup quiet is an internal app-boot guard, not a user-facing mute. The
+// pill must not flash during this window, so it lives outside `_muteStore`.
+let _startupQuietUntil = 0;
+
 export function setStartupQuietPeriod(durationMs: number): void {
-  _muteStore.setState({ quietUntil: Date.now() + durationMs });
+  _startupQuietUntil = Date.now() + durationMs;
 }
 
 export function getQuietPeriodRemaining(): number {
-  return Math.max(0, _muteStore.getState().quietUntil - Date.now());
+  return Math.max(0, _startupQuietUntil - Date.now());
 }
 
 export function _setQuietUntil(ts: number): void {
@@ -199,8 +203,10 @@ export function notify(payload: NotifyPayload): string {
     }));
 
   const notificationsEnabled = useNotificationSettingsStore.getState().enabled;
+  const now = Date.now();
   const isQuiet =
-    !payload.urgent && (Date.now() < _muteStore.getState().quietUntil || isScheduledQuietHours());
+    !payload.urgent &&
+    (now < _muteStore.getState().quietUntil || now < _startupQuietUntil || isScheduledQuietHours());
 
   if (placement === "grid-bar") {
     const entryId = historyMessage

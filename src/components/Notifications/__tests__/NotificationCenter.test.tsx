@@ -6,7 +6,7 @@ import type { NotificationHistoryEntry } from "@/store/slices/notificationHistor
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { useNotificationStore } from "@/store/notificationStore";
-import { _muteStore, _setQuietUntil } from "@/lib/notify";
+import { _muteStore, _setQuietUntil, setStartupQuietPeriod } from "@/lib/notify";
 import { _resetForTests as resetEscapeStack, dispatchEscape } from "@/lib/escapeStack";
 
 const dispatchMock = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true }));
@@ -51,6 +51,7 @@ beforeEach(() => {
     quietHoursWeekdays: [],
   });
   _setQuietUntil(0);
+  setStartupQuietPeriod(0);
   resetEscapeStack();
   dispatchMock.mockClear();
   getMock.mockReturnValue(null);
@@ -326,6 +327,16 @@ describe("NotificationCenter — Pause popover", () => {
     vi.useRealTimers();
   });
 
+  it("mute confirmation toast does not increment the unread badge", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2024, 0, 1, 12, 0));
+    render(<NotificationCenter open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("Pause notifications"));
+    fireEvent.click(screen.getByText("For 1 hour"));
+    expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
+    vi.useRealTimers();
+  });
+
   it('"Until 8:00 AM" mutes until next 08:00', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
@@ -389,6 +400,14 @@ describe("NotificationCenter — muted-state pill", () => {
     expect(_muteStore.getState().quietUntil).toBe(0);
     const pill = screen.getByTestId("notification-mute-pill");
     expect(pill.className).toContain("invisible");
+  });
+
+  it("startup quiet period does not surface as a session-mute pill", () => {
+    setStartupQuietPeriod(5000);
+    render(<NotificationCenter open onClose={vi.fn()} />);
+    const pill = screen.getByTestId("notification-mute-pill");
+    expect(pill.className).toContain("invisible");
+    expect(screen.queryByLabelText("Resume notifications")).toBeNull();
   });
 
   it("scheduled quiet hours show a pill without a Resume button", () => {

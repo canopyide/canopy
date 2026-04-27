@@ -144,6 +144,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       message: `Notifications muted ${label}`,
       priority: "low",
       urgent: true,
+      countable: false,
     });
   };
 
@@ -155,6 +156,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       message: `Notifications muted until ${formatTimeOfDay(until)}`,
       priority: "low",
       urgent: true,
+      countable: false,
     });
   };
 
