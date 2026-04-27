@@ -6,7 +6,7 @@
 
 .sidebar-worktree-card[data-active="true"] {
   background: var(--sidebar-active-bg, rgba(255, 255, 255, 0.03));
-  box-shadow: inset 2px 0 0 var(--theme-accent-primary);
+  box-shadow: inset 2px 0 0 var(--theme-overlay-selected);
 }
 
 .sidebar-worktree-card[data-hoverable="true"]:hover,
