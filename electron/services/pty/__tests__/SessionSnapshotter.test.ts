@@ -3,7 +3,7 @@ import { SessionSnapshotter, type SessionSnapshotterHost } from "../SessionSnaps
 
 const persistAsyncMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const persistSyncMock = vi.hoisted(() => vi.fn());
-const setSuppressedMock = vi.hoisted(() => vi.fn());
+const isSuppressedMock = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock("../terminalSessionPersistence.js", async (importOriginal) => {
   const orig = (await importOriginal()) as Record<string, unknown>;
@@ -12,7 +12,7 @@ vi.mock("../terminalSessionPersistence.js", async (importOriginal) => {
     TERMINAL_SESSION_PERSISTENCE_ENABLED: true,
     persistSessionSnapshotSync: persistSyncMock,
     persistSessionSnapshotAsync: persistAsyncMock,
-    setSessionPersistSuppressed: setSuppressedMock,
+    isSessionPersistSuppressed: isSuppressedMock,
   };
 });
 
@@ -78,6 +78,8 @@ describe("SessionSnapshotter", () => {
     persistAsyncMock.mockReset();
     persistAsyncMock.mockResolvedValue(undefined);
     persistSyncMock.mockReset();
+    isSuppressedMock.mockReset();
+    isSuppressedMock.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -108,6 +110,7 @@ describe("SessionSnapshotter", () => {
       snap.schedule();
       await vi.advanceTimersByTimeAsync(5000);
 
+      expect(persistAsyncMock).toHaveBeenCalledTimes(1);
       expect(persistAsyncMock).toHaveBeenCalledWith("t-test", "banner-state");
     });
 
@@ -180,7 +183,7 @@ describe("SessionSnapshotter", () => {
       }).not.toThrow();
     });
 
-    it("blocks reschedule from in-flight finally block when disposed mid-flight", async () => {
+    it("blocks reschedule and post-await persist when disposed mid-flight", async () => {
       const host = createHost();
       host.asyncResolved = false;
       const snap = new SessionSnapshotter(host);
@@ -196,16 +199,37 @@ describe("SessionSnapshotter", () => {
       // Dispose while the async serialize is still pending.
       snap.dispose();
 
-      // Resolve the in-flight promise — the finally block must not reschedule.
+      // Resolve the in-flight promise — neither persist nor reschedule should
+      // fire: the post-await disposed check bails before persistSessionSnapshotAsync.
       host.asyncResolve();
       await Promise.resolve();
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(10_000);
 
-      // persistAsyncMock may have been called once before the deferred resolve
-      // (since the async serializer awaits before calling persist), but no
-      // reschedule should fire after dispose.
       expect(vi.getTimerCount()).toBe(0);
+      expect(persistAsyncMock).not.toHaveBeenCalled();
+    });
+
+    it("blocks post-await persist when wasKilled is set mid-flight", async () => {
+      const host = createHost();
+      host.asyncResolved = false;
+      const snap = new SessionSnapshotter(host);
+
+      snap.schedule();
+      await vi.advanceTimersByTimeAsync(5000);
+
+      // Simulate kill: flushSyncOnKill writes a sync snapshot, then wasKilled
+      // is set. The post-await guard must prevent the in-flight async from
+      // overwriting the sync snapshot.
+      snap.flushSyncOnKill();
+      host.wasKilled = true;
+
+      host.asyncResolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(persistSyncMock).toHaveBeenCalledTimes(1);
+      expect(persistAsyncMock).not.toHaveBeenCalled();
     });
 
     it("schedule after dispose is a no-op", async () => {
@@ -228,6 +252,7 @@ describe("SessionSnapshotter", () => {
 
       snap.flushEventDriven();
 
+      expect(persistAsyncMock).toHaveBeenCalledTimes(1);
       expect(persistAsyncMock).toHaveBeenCalledWith("t-test", "sync-state");
     });
 
@@ -308,6 +333,7 @@ describe("SessionSnapshotter", () => {
 
       snap.flushSyncOnKill();
 
+      expect(persistSyncMock).toHaveBeenCalledTimes(1);
       expect(persistSyncMock).toHaveBeenCalledWith("t-test", "sync-state");
     });
 
@@ -337,6 +363,7 @@ describe("SessionSnapshotter", () => {
 
       snap.flushSyncOnKill();
 
+      expect(persistSyncMock).toHaveBeenCalledTimes(1);
       expect(persistSyncMock).toHaveBeenCalledWith("t-test", "sync-state");
     });
   });
@@ -358,6 +385,7 @@ describe("SessionSnapshotter", () => {
       snap.schedule(); // sets dirty=true
       snap.flushSyncOnDispose();
 
+      expect(persistSyncMock).toHaveBeenCalledTimes(1);
       expect(persistSyncMock).toHaveBeenCalledWith("t-test", "banner-state");
     });
 
@@ -379,6 +407,7 @@ describe("SessionSnapshotter", () => {
       snap.schedule();
       snap.flushSyncOnDispose();
 
+      expect(persistSyncMock).toHaveBeenCalledTimes(1);
       expect(persistSyncMock).toHaveBeenCalledWith("t-test", "sync-state");
     });
 
@@ -391,6 +420,27 @@ describe("SessionSnapshotter", () => {
       snap.flushSyncOnDispose();
 
       expect(persistSyncMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("isSessionPersistSuppressed gate", () => {
+    it("blocks all persistence paths when suppression is active", async () => {
+      isSuppressedMock.mockReturnValue(true);
+      const host = createHost();
+      const snap = new SessionSnapshotter(host);
+
+      snap.schedule();
+      await vi.advanceTimersByTimeAsync(5000);
+      snap.flushEventDriven();
+      snap.flushSyncOnKill();
+      // schedule was no-op so dirty is false; force dirty for the dispose path.
+      isSuppressedMock.mockReturnValue(false);
+      snap.schedule();
+      isSuppressedMock.mockReturnValue(true);
+      snap.flushSyncOnDispose();
+
+      expect(persistAsyncMock).not.toHaveBeenCalled();
+      expect(persistSyncMock).not.toHaveBeenCalled();
     });
   });
 });

@@ -59,6 +59,9 @@ export class SessionSnapshotter {
       const state = this.host.hasBannerMarkers()
         ? this.host.serializeForPersistence()
         : await this.host.getSerializedStateAsync();
+      // Re-check lifecycle after the await — a kill or dispose during async
+      // serialize would otherwise stomp the sync snapshot written from kill().
+      if (this.disposed || this.host.wasKilled) return;
       if (!state) return;
       if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
         return;
