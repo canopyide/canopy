@@ -248,7 +248,7 @@ export function ColorSchemePicker() {
                       "flex flex-col gap-1.5 p-2 rounded-[var(--radius-md)] border transition-colors text-left",
                       "[&>*]:pointer-events-none",
                       isSelected
-                        ? "border-daintree-accent bg-daintree-accent/10"
+                        ? "border-border-strong bg-overlay-selected"
                         : "border-daintree-border bg-daintree-bg hover:border-daintree-text/30"
                     )}
                   >
@@ -257,9 +257,7 @@ export function ColorSchemePicker() {
                       <span className="text-xs text-daintree-text truncate flex-1">
                         {scheme.name}
                       </span>
-                      {isSelected && (
-                        <Check className="w-3.5 h-3.5 text-daintree-accent shrink-0" />
-                      )}
+                      {isSelected && <Check className="w-3.5 h-3.5 text-daintree-text shrink-0" />}
                     </div>
                   </button>
                 );
