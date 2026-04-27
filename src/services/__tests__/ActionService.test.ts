@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeAll, afterAll, describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 
 const hintMocks = vi.hoisted(() => {
@@ -1029,6 +1029,169 @@ describe("ActionService", () => {
 
       expect(mockShow).not.toHaveBeenCalled();
       expect(mockIncrementCount).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("action definition validation", () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeAll(() => {
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterAll(() => {
+      warnSpy.mockRestore();
+    });
+
+    beforeEach(() => {
+      warnSpy.mockClear();
+    });
+
+    it("warns when action defines isEnabled but no disabledReason", () => {
+      const action: ActionDefinition = {
+        id: "test.noDisabledReason" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Action "test.noDisabledReason" defines isEnabled but no disabledReason callback'
+        )
+      );
+    });
+
+    it("does not warn when action has both isEnabled and disabledReason", () => {
+      const action: ActionDefinition = {
+        id: "test.bothCallbacks" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        disabledReason: () => "Action is disabled for testing",
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does not warn when action has neither isEnabled nor disabledReason", () => {
+      const action: ActionDefinition = {
+        id: "test.neither" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does not warn when action has disabledReason without isEnabled (valid pattern)", () => {
+      const action: ActionDefinition = {
+        id: "test.onlyDisabledReason" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        disabledReason: () => "Some reason",
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("warns for multiple offending actions", () => {
+      const action1: ActionDefinition = {
+        id: "test.offender1" as ActionId,
+        title: "Test 1",
+        description: "Test 1",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const action2: ActionDefinition = {
+        id: "test.offender2" as ActionId,
+        title: "Test 2",
+        description: "Test 2",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        disabledReason: () => "Reason", // This one is OK
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const action3: ActionDefinition = {
+        id: "test.offender3" as ActionId,
+        title: "Test 3",
+        description: "Test 3",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action1);
+      service.register(action2);
+      service.register(action3);
+
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Action "test.offender1"'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Action "test.offender3"'));
+    });
+
+    it("does not warn on duplicate registration (validate runs after duplicate-ID check)", () => {
+      const action: ActionDefinition = {
+        id: "test.duplicate" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      // First registration: warning fires
+      service.register(action);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+
+      // Second registration: duplicate-ID guard throws before validate runs
+      warnSpy.mockClear();
+      expect(() => service.register(action)).toThrow(/already registered/);
+      expect(warnSpy).not.toHaveBeenCalled();
     });
   });
 });

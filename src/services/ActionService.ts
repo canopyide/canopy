@@ -20,6 +20,23 @@ const SENSITIVE_ARG_FIELDS = new Set(["token", "password", "secret", "key", "aut
 /** Max size for args in event payloads (prevents explosion) */
 const MAX_ARG_PAYLOAD_SIZE = 1024;
 
+/**
+ * Validate an action definition for common anti-patterns.
+ * Emits console warnings in dev mode only.
+ */
+function validateActionDefinition<S extends z.ZodTypeAny | undefined, Result>(
+  definition: ActionDefinition<S, Result>
+): void {
+  if (!import.meta.env.DEV) return;
+
+  if (definition.isEnabled && !definition.disabledReason) {
+    console.warn(
+      `[ActionRegistry] Action "${definition.id}" defines isEnabled but no disabledReason callback. ` +
+        `Users may see a disabled command with no explanation.`
+    );
+  }
+}
+
 function isElectronApiAvailable(): boolean {
   return typeof window !== "undefined" && !!window.electron;
 }
@@ -98,6 +115,10 @@ export class ActionService {
     if (this.registry.has(definition.id)) {
       throw new Error(`Action "${definition.id}" is already registered.`);
     }
+    // Validate after the duplicate-ID guard: on HMR / plugin reload a
+    // re-registering action was already validated on first pass — emitting
+    // a warning before the throw would be spurious noise.
+    validateActionDefinition(definition);
     this.registry.set(definition.id, definition as AnyActionDefinition);
   }
 
