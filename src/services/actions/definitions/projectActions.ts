@@ -167,10 +167,10 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
       const { projectId } = args as { projectId: string };
       const state = useProjectStore.getState();
       if (projectId === state.currentProject?.id) {
-        await state.closeActiveProject(projectId);
-      } else {
-        await state.closeProject(projectId);
+        callbacks.onConfirmCloseActiveProject(projectId);
+        return;
       }
+      await state.closeProject(projectId);
     },
   }));
 

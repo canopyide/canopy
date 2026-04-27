@@ -352,6 +352,77 @@ describe("project action hardening", () => {
     expect(state.addProjectByPath).toHaveBeenCalledWith("/tmp/repo");
   });
 
+  it("routes project.close for the active project through the confirm callback", async () => {
+    useProjectStore.setState({
+      currentProject: { id: "project-1" } as never,
+      closeProject: vi.fn().mockResolvedValue({ success: true }),
+    });
+    const onConfirmCloseActiveProject = vi.fn();
+    const { service } = buildService(registerProjectActions, {
+      onConfirmCloseActiveProject,
+    });
+
+    const result = await service.dispatch(
+      "project.close",
+      { projectId: "project-1" },
+      { source: "user" }
+    );
+
+    expect(result).toEqual({ ok: true, result: undefined });
+    expect(onConfirmCloseActiveProject).toHaveBeenCalledWith("project-1");
+    expect(useProjectStore.getState().closeProject).not.toHaveBeenCalled();
+  });
+
+  it("routes project.close for a background project through the store", async () => {
+    const closeProject = vi.fn().mockResolvedValue({ success: true });
+    useProjectStore.setState({
+      currentProject: { id: "active-project" } as never,
+      closeProject,
+    });
+    const onConfirmCloseActiveProject = vi.fn();
+    const { service } = buildService(registerProjectActions, {
+      onConfirmCloseActiveProject,
+    });
+
+    const result = await service.dispatch(
+      "project.close",
+      { projectId: "background-project" },
+      { source: "user" }
+    );
+
+    expect(result).toEqual({ ok: true, result: undefined });
+    expect(closeProject).toHaveBeenCalledWith("background-project");
+    expect(onConfirmCloseActiveProject).not.toHaveBeenCalled();
+  });
+
+  it("project.closeActive triggers the confirm callback for the current project", async () => {
+    useProjectStore.setState({
+      currentProject: { id: "active-project" } as never,
+    });
+    const onConfirmCloseActiveProject = vi.fn();
+    const { service } = buildService(registerProjectActions, {
+      onConfirmCloseActiveProject,
+    });
+
+    const result = await service.dispatch("project.closeActive", undefined, { source: "menu" });
+
+    expect(result).toEqual({ ok: true, result: undefined });
+    expect(onConfirmCloseActiveProject).toHaveBeenCalledWith("active-project");
+  });
+
+  it("project.closeActive no-ops when no project is active", async () => {
+    useProjectStore.setState({ currentProject: null });
+    const onConfirmCloseActiveProject = vi.fn();
+    const { service } = buildService(registerProjectActions, {
+      onConfirmCloseActiveProject,
+    });
+
+    const result = await service.dispatch("project.closeActive", undefined, { source: "menu" });
+
+    expect(result).toEqual({ ok: true, result: undefined });
+    expect(onConfirmCloseActiveProject).not.toHaveBeenCalled();
+  });
+
   it("rejects unconfirmed agent project switches before mutating store state", async () => {
     const { service } = buildService(registerProjectActions);
     const state = useProjectStore.getState();
