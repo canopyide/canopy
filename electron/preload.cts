@@ -56,6 +56,7 @@ import type { ColorVisionMode, AppColorScheme } from "../shared/types/appTheme.j
 import type {
   WorktreePortAction,
   WorktreePortPayload,
+  WorktreePortRequestArgs,
   WorktreePortResult,
 } from "../shared/types/worktree-port.js";
 import type {
@@ -271,8 +272,8 @@ class WorktreePortClient {
         clearTimeout(entry.timeout);
         this.pending.delete(data.id);
 
-        if (data.error) {
-          entry.reject(new Error(data.error));
+        if (data.error != null) {
+          entry.reject(new Error(String(data.error)));
         } else {
           entry.resolve(data.result);
         }
@@ -377,7 +378,7 @@ class WorktreePortClient {
       const id = crypto.randomUUID();
       const timeout = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Worktree port request timed out: ${action}`));
+        reject(new Error(`Worktree port request timed out: ${String(action)}`));
       }, timeoutMs);
 
       this.pending.set(id, {
@@ -630,8 +631,9 @@ const api: ElectronAPI = {
   worktreePort: {
     request: <K extends WorktreePortAction>(
       action: K,
-      payload?: WorktreePortPayload<K>
-    ): Promise<WorktreePortResult<K>> => worktreePortClient.request(action, payload),
+      ...args: WorktreePortRequestArgs<K>
+    ): Promise<WorktreePortResult<K>> =>
+      worktreePortClient.request<K>(action, args[0] as WorktreePortPayload<K> | undefined),
 
     onEvent: (type: string, callback: (data: unknown) => void): (() => void) =>
       worktreePortClient.onEvent(type, callback),

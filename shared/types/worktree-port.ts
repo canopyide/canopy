@@ -75,3 +75,14 @@ export type WorktreePortRequest = {
     payload: WorktreePortPayload<K>;
   };
 }[WorktreePortAction];
+
+/**
+ * Rest-args tuple that makes `payload` optional only when an empty object is
+ * assignable to the action's payload (i.e. all fields optional, or
+ * `Record<string, never>`). Required-field payloads (e.g. `set-active`) become
+ * a compile error if omitted.
+ */
+export type WorktreePortRequestArgs<K extends WorktreePortAction> =
+  Record<string, never> extends WorktreePortPayload<K>
+    ? [payload?: WorktreePortPayload<K>]
+    : [payload: WorktreePortPayload<K>];

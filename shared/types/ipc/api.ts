@@ -27,7 +27,7 @@ import type {
 } from "./worktree.js";
 import type {
   WorktreePortAction,
-  WorktreePortPayload,
+  WorktreePortRequestArgs,
   WorktreePortResult,
 } from "../worktree-port.js";
 import type {
@@ -230,7 +230,7 @@ export interface ElectronAPI {
   worktreePort: {
     request<K extends WorktreePortAction>(
       action: K,
-      payload?: WorktreePortPayload<K>
+      ...args: WorktreePortRequestArgs<K>
     ): Promise<WorktreePortResult<K>>;
     onEvent(type: string, callback: (data: unknown) => void): () => void;
     isReady(): boolean;

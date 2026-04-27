@@ -375,6 +375,7 @@ export type {
   WorktreePortPayload,
   WorktreePortResult,
   WorktreePortRequest,
+  WorktreePortRequestArgs,
   WorktreePortResourceAction,
 } from "./worktree-port.js";
 
