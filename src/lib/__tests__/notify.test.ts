@@ -6,6 +6,9 @@ import {
   TOAST_DURATION,
   _resetCoalesceMap,
   _resetComboMap,
+  _resetEscalationTrackers,
+  shouldEscalateTransientError,
+  consumeEscalation,
   _setQuietUntil,
   muteForDuration,
   muteUntilNextMorning,
@@ -1631,5 +1634,167 @@ describe("notify()", () => {
       expect(new Date(until).getDate()).toBe(2);
       vi.useRealTimers();
     });
+  });
+});
+
+describe("shouldEscalateTransientError", () => {
+  beforeEach(() => {
+    _resetEscalationTrackers();
+  });
+
+  it("returns false for non-transient errors", () => {
+    expect(
+      shouldEscalateTransientError({
+        type: "process",
+        message: "spawn failed",
+        isTransient: false,
+      })
+    ).toBe(false);
+  });
+
+  it("returns false for first occurrence of a transient error", () => {
+    expect(
+      shouldEscalateTransientError({
+        type: "filesystem",
+        message: "EBUSY: resource locked",
+        isTransient: true,
+      })
+    ).toBe(false);
+  });
+
+  it("returns false for second occurrence within window", () => {
+    const error = { type: "process" as const, message: "EAGAIN", isTransient: true };
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(false);
+  });
+
+  it("returns true when local-resource error hits threshold (3) within 5s window", () => {
+    const error = { type: "filesystem" as const, message: "EBUSY", isTransient: true };
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(true);
+  });
+
+  it("returns true when network error hits threshold (3) within 120s window", () => {
+    const error = { type: "network" as const, message: "ETIMEDOUT", isTransient: true };
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(true);
+  });
+
+  it("treats 'unknown' as network profile", () => {
+    const error = { type: "unknown" as const, message: "something failed", isTransient: true };
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(true);
+  });
+
+  it("resets counter after local-resource window expires (5s)", () => {
+    const error = { type: "filesystem" as const, message: "EBUSY", isTransient: true };
+    const realDateNow = Date.now;
+
+    let now = 1000;
+    Date.now = () => now;
+
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error); // count=2
+
+    now = 7000; // past 5s window
+    expect(shouldEscalateTransientError(error)).toBe(false); // count reset to 1
+
+    Date.now = realDateNow;
+  });
+
+  it("does not re-escalate after escalation is consumed (one-shot per group)", () => {
+    const error = { type: "network" as const, message: "ETIMEDOUT", isTransient: true };
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    const escalated = shouldEscalateTransientError(error);
+    expect(escalated).toBe(true);
+
+    consumeEscalation(error);
+
+    // Same error fires again immediately — should not re-escalate
+    expect(shouldEscalateTransientError(error)).toBe(false);
+  });
+
+  it("re-escalates if first escalation was not consumed (toast suppressed)", () => {
+    const error = { type: "network" as const, message: "ETIMEDOUT", isTransient: true };
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(true);
+
+    // Escalation not consumed (toast suppressed, e.g. blurred)
+    // Next occurrence should still signal escalation
+    expect(shouldEscalateTransientError(error)).toBe(true);
+
+    // Now consume it
+    consumeEscalation(error);
+    expect(shouldEscalateTransientError(error)).toBe(false);
+  });
+
+  it("allows re-escalation after cooldown expires", () => {
+    const error = { type: "network" as const, message: "ETIMEDOUT", isTransient: true };
+    const realDateNow = Date.now;
+
+    let now = 1000;
+    Date.now = () => now;
+
+    // First escalation
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(true);
+    consumeEscalation(error);
+
+    // Advance past 60-min cooldown + past the 120s window (so counter resets)
+    now = 1000 + 61 * 60 * 1000;
+    // Counter should reset since window expired, then escalate again on 3rd
+    shouldEscalateTransientError(error);
+    shouldEscalateTransientError(error);
+    expect(shouldEscalateTransientError(error)).toBe(true);
+
+    Date.now = realDateNow;
+  });
+
+  it("groups errors by type + source + message", () => {
+    const error1 = {
+      type: "network" as const,
+      message: "ECONNRESET",
+      source: "git-poll",
+      isTransient: true,
+    };
+    const error2 = {
+      type: "network" as const,
+      message: "ECONNRESET",
+      source: "terminal",
+      isTransient: true,
+    };
+
+    // Different source = different group
+    shouldEscalateTransientError(error1);
+    shouldEscalateTransientError(error1);
+    shouldEscalateTransientError(error1); // error1 escalates
+
+    // error2 should have its own counter at 1
+    shouldEscalateTransientError(error2);
+    expect(shouldEscalateTransientError(error2)).toBe(false); // count=2, not yet threshold
+  });
+
+  it("caps tracking entries and prunes LRU", () => {
+    const realDateNow = Date.now;
+    Date.now = () => 1000;
+
+    // Create 201 unique errors — should not throw
+    for (let i = 0; i < 201; i++) {
+      expect(() =>
+        shouldEscalateTransientError({
+          type: "network",
+          message: `error-${i}`,
+          isTransient: true,
+        })
+      ).not.toThrow();
+    }
+
+    Date.now = realDateNow;
   });
 });

@@ -12,6 +12,7 @@ import {
 } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
+import type { ErrorType } from "@/store/errorStore";
 
 /**
  * Default auto-dismiss durations (ms) by notification type.
@@ -109,6 +110,127 @@ const _comboCounts = new Map<string, ComboEntry>();
 
 export function _resetComboMap(): void {
   _comboCounts.clear();
+}
+
+// ── transient error escalation ──────────────────────────────────────────────
+//
+// Transient errors (EBUSY, EAGAIN, ETIMEDOUT, ECONNRESET, ENOTFOUND) are
+// routed to priority "low" by default (history-only, no toast). When the same
+// error repeats beyond a threshold within a time window, we escalate the next
+// instance to priority "high" so the user gets a toast. Escalation is one-shot
+// per group with a 60-minute cooldown to avoid toast storms.
+
+interface EscalationTracker {
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  escalated: boolean;
+  cooldownUntil: number;
+}
+
+const ESCALATION_MAX_ENTRIES = 200;
+const ESCALATION_COOLDOWN_MS = 60 * 60 * 1000;
+
+interface EscalationProfile {
+  windowMs: number;
+  threshold: number;
+}
+
+const LOCAL_RESOURCE_PROFILE: EscalationProfile = { windowMs: 5_000, threshold: 3 };
+const NETWORK_PROFILE: EscalationProfile = { windowMs: 120_000, threshold: 3 };
+
+function classifyErrorType(type: ErrorType): EscalationProfile {
+  switch (type) {
+    case "filesystem":
+    case "process":
+      return LOCAL_RESOURCE_PROFILE;
+    default:
+      return NETWORK_PROFILE;
+  }
+}
+
+function buildEscalationKey(error: { type: ErrorType; message: string; source?: string }): string {
+  return `${error.type}|${error.source ?? ""}|${error.message}`;
+}
+
+const _escalationTrackers = new Map<string, EscalationTracker>();
+
+export function _resetEscalationTrackers(): void {
+  _escalationTrackers.clear();
+}
+
+function pruneEscalationTrackers(): void {
+  if (_escalationTrackers.size <= ESCALATION_MAX_ENTRIES) return;
+
+  const entries = Array.from(_escalationTrackers.entries());
+  entries.sort((a, b) => a[1].lastAt - b[1].lastAt);
+
+  const toRemove = entries.slice(0, entries.length - ESCALATION_MAX_ENTRIES);
+  for (const [key] of toRemove) {
+    _escalationTrackers.delete(key);
+  }
+}
+
+export function shouldEscalateTransientError(error: {
+  type: ErrorType;
+  message: string;
+  source?: string;
+  isTransient: boolean;
+}): boolean {
+  if (!error.isTransient) return false;
+
+  const key = buildEscalationKey(error);
+  const now = Date.now();
+  const profile = classifyErrorType(error.type);
+  const tracker = _escalationTrackers.get(key);
+
+  if (tracker) {
+    if (tracker.escalated && now < tracker.cooldownUntil) return false;
+
+    if (now - tracker.firstAt <= profile.windowMs) {
+      tracker.count += 1;
+      tracker.lastAt = now;
+    } else {
+      tracker.count = 1;
+      tracker.firstAt = now;
+      tracker.lastAt = now;
+      tracker.escalated = false;
+    }
+
+    if (tracker.count >= profile.threshold && !tracker.escalated) {
+      return true;
+    }
+  } else {
+    _escalationTrackers.set(key, {
+      count: 1,
+      firstAt: now,
+      lastAt: now,
+      escalated: false,
+      cooldownUntil: 0,
+    });
+    pruneEscalationTrackers();
+  }
+
+  return false;
+}
+
+export function consumeEscalation(error: {
+  type: ErrorType;
+  message: string;
+  source?: string;
+  isTransient: boolean;
+}): void {
+  if (!error.isTransient) return;
+
+  const key = buildEscalationKey(error);
+  const tracker = _escalationTrackers.get(key);
+  if (!tracker || tracker.escalated) return;
+
+  const profile = classifyErrorType(error.type);
+  if (tracker.count >= profile.threshold) {
+    tracker.escalated = true;
+    tracker.cooldownUntil = Date.now() + ESCALATION_COOLDOWN_MS;
+  }
 }
 
 let _quietUntil = 0;

@@ -3,11 +3,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { AppError } from "@/store";
 
-const { onErrorMock, getPendingMock, notifyMock } = vi.hoisted(() => ({
-  onErrorMock: vi.fn(),
-  getPendingMock: vi.fn(),
-  notifyMock: vi.fn().mockReturnValue(""),
-}));
+const { onErrorMock, getPendingMock, notifyMock, shouldEscalateMock, consumeEscalationMock } =
+  vi.hoisted(() => ({
+    onErrorMock: vi.fn(),
+    getPendingMock: vi.fn(),
+    notifyMock: vi.fn().mockReturnValue(""),
+    shouldEscalateMock: vi.fn().mockReturnValue(false),
+    consumeEscalationMock: vi.fn(),
+  }));
 
 vi.mock("@/clients", async (importOriginal) => {
   const actual: Record<string, unknown> = await importOriginal();
@@ -24,9 +27,15 @@ vi.mock("@/clients", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/notify", () => ({
-  notify: notifyMock,
-}));
+vi.mock("@/lib/notify", async (importOriginal) => {
+  const actual: Record<string, unknown> = await importOriginal();
+  return {
+    ...actual,
+    notify: notifyMock,
+    shouldEscalateTransientError: shouldEscalateMock,
+    consumeEscalation: consumeEscalationMock,
+  };
+});
 
 function makeError(overrides: Partial<AppError> = {}): AppError {
   return {
@@ -181,6 +190,100 @@ describe("useErrors — getPending path", () => {
     });
 
     expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "low" }));
+    unmount();
+  });
+});
+
+describe("useErrors — escalation of persistent transient errors", () => {
+  let capturedOnError: (error: AppError) => void;
+
+  beforeEach(() => {
+    Object.defineProperty(window, "electron", {
+      value: { errors: {} },
+      writable: true,
+      configurable: true,
+    });
+
+    onErrorMock.mockImplementation((cb: (error: AppError) => void) => {
+      capturedOnError = cb;
+      return vi.fn();
+    });
+    getPendingMock.mockResolvedValue([]);
+    notifyMock.mockClear();
+    notifyMock.mockReturnValue("toast-id");
+    shouldEscalateMock.mockReset();
+    shouldEscalateMock.mockReturnValue(false);
+    consumeEscalationMock.mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("promotes priority to 'high' when escalation is triggered", async () => {
+    shouldEscalateMock.mockReturnValue(true);
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "network", isTransient: true });
+    act(() => capturedOnError(error));
+
+    expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "high" }));
+    unmount();
+  });
+
+  it("keeps 'low' priority when escalation is not triggered", async () => {
+    shouldEscalateMock.mockReturnValue(false);
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "network", isTransient: true });
+    act(() => capturedOnError(error));
+
+    expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "low" }));
+    unmount();
+  });
+
+  it("calls shouldEscalateTransientError before addError (dedup safety)", async () => {
+    const callOrder: string[] = [];
+    shouldEscalateMock.mockImplementation(() => {
+      callOrder.push("escalate");
+      return false;
+    });
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "filesystem", isTransient: true });
+    act(() => capturedOnError(error));
+
+    expect(callOrder[0]).toBe("escalate");
+    expect(notifyMock).toHaveBeenCalled();
+    unmount();
+  });
+
+  it("consumes escalation only when toast was shown", async () => {
+    shouldEscalateMock.mockReturnValue(true);
+    notifyMock.mockReturnValue("toast-1");
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "network", isTransient: true });
+    act(() => capturedOnError(error));
+
+    expect(consumeEscalationMock).toHaveBeenCalled();
+    unmount();
+  });
+
+  it("does not consume escalation when toast is suppressed (blurred/quiet/disabled)", async () => {
+    shouldEscalateMock.mockReturnValue(true);
+    notifyMock.mockReturnValue("");
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "network", isTransient: true });
+    act(() => capturedOnError(error));
+
+    expect(consumeEscalationMock).not.toHaveBeenCalled();
     unmount();
   });
 });
