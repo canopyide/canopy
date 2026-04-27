@@ -60,7 +60,7 @@ import {
   TERMINAL_SESSION_PERSISTENCE_ENABLED,
   restoreSessionFromFile,
 } from "./terminalSessionPersistence.js";
-import { SessionSnapshotter } from "./SessionSnapshotter.js";
+import { SessionSnapshotter, type SessionSnapshotterHost } from "./SessionSnapshotter.js";
 import {
   createProcessStateValidator,
   buildActivityMonitorOptions,
@@ -209,22 +209,39 @@ export class TerminalProcess {
   }
 
   private createSessionSnapshotter(): SessionSnapshotter {
-    const self = this;
-    return new SessionSnapshotter({
-      get id() {
-        return self.id;
-      },
-      get wasKilled() {
-        return self.terminalInfo.wasKilled === true;
-      },
-      get launchAgentId() {
-        return self.terminalInfo.launchAgentId;
-      },
-      hasBannerMarkers: () => !!(self._restoreBannerStart || self._restoreBannerEnd),
-      getSerializedState: () => self.getSerializedState(),
-      getSerializedStateAsync: () => self.getSerializedStateAsync(),
-      serializeForPersistence: () => self._serializeForPersistence(),
-    });
+    class Host implements SessionSnapshotterHost {
+      constructor(private parent: TerminalProcess) {}
+
+      get id(): string {
+        return this.parent.id;
+      }
+
+      get wasKilled(): boolean {
+        return this.parent.terminalInfo.wasKilled === true;
+      }
+
+      get launchAgentId(): string | undefined {
+        return this.parent.terminalInfo.launchAgentId;
+      }
+
+      hasBannerMarkers(): boolean {
+        return !!(this.parent._restoreBannerStart || this.parent._restoreBannerEnd);
+      }
+
+      getSerializedState(): string | null {
+        return this.parent.getSerializedState();
+      }
+
+      getSerializedStateAsync(): Promise<string | null> {
+        return this.parent.getSerializedStateAsync();
+      }
+
+      serializeForPersistence(): string | null {
+        return this.parent._serializeForPersistence();
+      }
+    }
+
+    return new SessionSnapshotter(new Host(this));
   }
 
   private logWriteError(error: unknown, context: { operation: string; traceId?: string }): void {
