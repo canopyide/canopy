@@ -1,4 +1,4 @@
-import { useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
@@ -66,19 +66,25 @@ const stopPointer = (e: ReactPointerEvent) => {
 interface WorktreeMenuItemsProps {
   agentType: AgentType;
   worktrees: ReturnType<typeof useWorktrees>["worktrees"];
-  closeMenu: () => void;
 }
 
 // Flattens the worktree picker from a nested 3-deep submenu (worktree →
-// Grid/Dock) into one row per worktree. Default click (and keyboard
-// Enter) launches in grid; the inline Dock affordance gives mouse users
-// the secondary location without a second submenu hop, mirroring the pin
-// button pattern in AgentTrayButton. The pointer/click stopPropagation
-// guards keep the parent ContextMenuItem from also firing the row's
-// grid onSelect — but stopping the onClick also cuts Radix's
-// handleSelect → onClose chain, so we close the menu explicitly via
-// the controlled closeMenu callback.
-function WorktreeMenuItems({ agentType, worktrees, closeMenu }: WorktreeMenuItemsProps) {
+// Grid/Dock) into one row per worktree. Row click (and keyboard Enter)
+// launches in grid; the inline Dock affordance gives mouse users the
+// secondary location without a second submenu hop, mirroring the pin
+// button pattern in AgentTrayButton.
+//
+// Closing-the-menu mechanics: Radix ContextMenu Root has no `open` prop,
+// so we can't use a controlled-state shortcut. Instead, the inline Dock
+// click is allowed to bubble to the parent ContextMenuItem so Radix's
+// normal handleSelect → onClose chain still fires (which is what closes
+// the menu). To avoid double-firing the row's grid dispatch on top of
+// the dock dispatch, the inline button sets a ref before bubbling; the
+// row's onSelect honors the ref and skips the grid dispatch when set.
+// pointerDown/pointerUp still stopPropagation to keep Radix from
+// treating the icon press as the row's primary selection event.
+function WorktreeMenuItems({ agentType, worktrees }: WorktreeMenuItemsProps) {
+  const dockClickedRef = useRef(false);
   return (
     <>
       {worktrees.map((wt) => {
@@ -88,13 +94,17 @@ function WorktreeMenuItems({ agentType, worktrees, closeMenu }: WorktreeMenuItem
             key={wt.id}
             className="group/wt-row pr-1"
             data-testid={`agent-context-worktree-${wt.id}`}
-            onSelect={() =>
+            onSelect={() => {
+              if (dockClickedRef.current) {
+                dockClickedRef.current = false;
+                return;
+              }
               void actionService.dispatch(
                 "agent.launch",
                 { agentId: agentType, worktreeId: wt.id, location: "grid" },
                 { source: "context-menu" }
-              )
-            }
+              );
+            }}
           >
             <span className="flex-1 truncate">{label}</span>
             <span
@@ -104,14 +114,13 @@ function WorktreeMenuItems({ agentType, worktrees, closeMenu }: WorktreeMenuItem
               title="Launch in dock"
               onPointerDown={stopPointer}
               onPointerUp={stopPointer}
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={() => {
+                dockClickedRef.current = true;
                 void actionService.dispatch(
                   "agent.launch",
                   { agentId: agentType, worktreeId: wt.id, location: "dock" },
                   { source: "context-menu" }
                 );
-                closeMenu();
               }}
               className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-sm text-daintree-text/50 opacity-0 transition-opacity hover:bg-overlay-emphasis hover:text-daintree-text group-data-[highlighted]/wt-row:opacity-100"
             >
@@ -130,11 +139,6 @@ export function AgentButton({
   "data-toolbar-item": dataToolbarItem,
 }: AgentButtonProps) {
   const { worktrees } = useWorktrees();
-  // Controlled open state lets WorktreeMenuItems' inline Dock button close the
-  // menu manually after dispatching, since stopPropagation on the inline
-  // button's onClick also cuts Radix's normal handleSelect → onClose path.
-  const [contextMenuOpen, setContextMenuOpen] = useState(false);
-  const closeContextMenu = () => setContextMenuOpen(false);
   const displayCombo = useKeybindingDisplay(`agent.${type}`);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
   const cliDetail = useCliAvailabilityStore((s) => s.details[type]);
@@ -286,7 +290,7 @@ export function AgentButton({
 
   if (!hasPresets) {
     return (
-      <ContextMenu open={contextMenuOpen} onOpenChange={setContextMenuOpen}>
+      <ContextMenu>
         <ContextMenuTrigger asChild>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -342,11 +346,7 @@ export function AgentButton({
             <ContextMenuSub>
               <ContextMenuSubTrigger disabled={!isReady}>Launch in Worktree</ContextMenuSubTrigger>
               <ContextMenuSubContent>
-                <WorktreeMenuItems
-                  agentType={type}
-                  worktrees={worktrees}
-                  closeMenu={closeContextMenu}
-                />
+                <WorktreeMenuItems agentType={type} worktrees={worktrees} />
               </ContextMenuSubContent>
             </ContextMenuSub>
           )}
@@ -383,7 +383,7 @@ export function AgentButton({
   }
 
   return (
-    <ContextMenu open={contextMenuOpen} onOpenChange={setContextMenuOpen}>
+    <ContextMenu>
       <ContextMenuTrigger asChild>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -575,11 +575,7 @@ export function AgentButton({
           <ContextMenuSub>
             <ContextMenuSubTrigger disabled={!isReady}>Launch in Worktree</ContextMenuSubTrigger>
             <ContextMenuSubContent>
-              <WorktreeMenuItems
-                agentType={type}
-                worktrees={worktrees}
-                closeMenu={closeContextMenu}
-              />
+              <WorktreeMenuItems agentType={type} worktrees={worktrees} />
             </ContextMenuSubContent>
           </ContextMenuSub>
         )}
