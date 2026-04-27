@@ -15,7 +15,7 @@ export function PortalLaunchpad({ links, onOpenUrl }: PortalLaunchpadProps) {
   const mac = isMac();
 
   const handleAddPortalLink = useCallback(() => {
-    void actionService.dispatch("portal.links.add", undefined, { source: "user" });
+    void actionService.dispatch("app.settings.openTab", { tab: "portal" }, { source: "user" });
   }, []);
 
   if (links.length === 0) {

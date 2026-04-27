@@ -102,8 +102,10 @@ export function QuickCreatePalette({ palette }: QuickCreatePaletteProps) {
   }, [closeQuickCreate, palette]);
 
   const handleOpenRecipeEditor = useCallback(() => {
-    void actionService.dispatch("recipe.editor.open", undefined, { source: "user" });
-  }, []);
+    closeQuickCreate();
+    palette.close();
+    void actionService.dispatch("recipe.manager.open", undefined, { source: "user" });
+  }, [closeQuickCreate, palette]);
 
   const showAssignToggle =
     palette.selectedRecipe && getAutoAssign(palette.selectedRecipe) === "prompt";
