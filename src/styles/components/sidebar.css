@@ -4,9 +4,14 @@
     box-shadow var(--duration-150) var(--ease-out-expo);
 }
 
-.sidebar-worktree-card[data-active="true"] {
+.sidebar-root:has(:focus-within) .sidebar-worktree-card[data-active="true"] {
   background: var(--sidebar-active-bg, rgba(255, 255, 255, 0.03));
   box-shadow: inset 2px 0 0 var(--theme-overlay-selected);
+}
+
+.sidebar-root:not(:has(:focus-within)) .sidebar-worktree-card[data-active="true"] {
+  background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.015));
+  box-shadow: none;
 }
 
 .sidebar-worktree-card[data-hoverable="true"]:hover,
