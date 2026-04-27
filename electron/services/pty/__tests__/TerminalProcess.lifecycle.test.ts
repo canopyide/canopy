@@ -102,12 +102,14 @@ function createTerminal(
   );
 }
 
+type TerminalExitedPayload = Parameters<Parameters<typeof events.on<"terminal:exited">>[1]>[0];
+
 describe("TerminalProcess — terminal:exited event", () => {
-  let exitedListener: ReturnType<typeof vi.fn>;
+  let exitedListener: ReturnType<typeof vi.fn<(p: TerminalExitedPayload) => void>>;
   let unsubscribe: () => void;
 
   beforeEach(() => {
-    exitedListener = vi.fn();
+    exitedListener = vi.fn<(p: TerminalExitedPayload) => void>();
     unsubscribe = events.on("terminal:exited", exitedListener);
   });
 
