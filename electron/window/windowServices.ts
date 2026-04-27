@@ -82,6 +82,7 @@ import {
   finalizeDeferredRegistration,
   resetDeferredQueue,
 } from "./deferredInitQueue.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const DEFAULT_TERMINAL_ID = "default";
 
@@ -261,7 +262,7 @@ export async function setupWindowServices(
       markPerformance(PERF_MARKS.SERVICE_INIT_MIGRATIONS_DONE);
     } catch (error) {
       console.error("[MAIN] Store migration failed:", error);
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error, "Store migration failed");
       dialog
         .showMessageBox(win, {
           type: "error",

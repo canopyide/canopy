@@ -35,6 +35,7 @@ import {
 import { usePreferencesStore } from "@/store";
 import { keybindingService } from "@/services/KeybindingService";
 import { actionService } from "@/services/ActionService";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const GENERAL_SUBTABS: SettingsSubtabItem[] = [
   { id: "overview", label: "Overview" },
@@ -186,7 +187,7 @@ export function GeneralTab({
         clearTimeout(timer);
         if (cancelled) return;
         console.error("Failed to load hibernation config:", error);
-        setConfigError(error instanceof Error ? error.message : "Failed to load settings");
+        setConfigError(formatErrorMessage(error, "Failed to load hibernation settings"));
       });
 
     actionService

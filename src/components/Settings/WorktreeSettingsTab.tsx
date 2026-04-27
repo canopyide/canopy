@@ -12,6 +12,7 @@ import {
 import { actionService } from "@/services/ActionService";
 import { SettingsSection } from "./SettingsSection";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const PATTERN_PRESETS = [
   {
@@ -77,7 +78,7 @@ export function WorktreeSettingsTab() {
       .catch((err) => {
         settled = true;
         clearTimeout(timer);
-        setError(err instanceof Error ? err.message : "Failed to load settings");
+        setError(formatErrorMessage(err, "Failed to load worktree settings"));
       })
       .finally(() => {
         setIsLoading(false);
@@ -126,7 +127,7 @@ export function WorktreeSettingsTab() {
       const timeout = setTimeout(() => setSavedMessage(false), 2000);
       setSavedMessageTimeout(timeout);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save pattern");
+      setError(formatErrorMessage(err, "Failed to save pattern"));
     } finally {
       setIsSaving(false);
     }

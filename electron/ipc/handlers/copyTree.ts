@@ -3,6 +3,7 @@ import crypto from "crypto";
 import path from "path";
 import { pathToFileURL } from "url";
 import { CHANNELS } from "../channels.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import {
   broadcastToRenderer,
   checkRateLimit,
@@ -357,7 +358,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to copy context file");
       console.error(`[${traceId}] Failed to save/copy context file:`, errorMessage);
       return {
         ...result,

@@ -6,6 +6,7 @@ import { getEffectiveAgentIds } from "../../shared/config/agentRegistry";
 import { isAgentPinned } from "../../shared/utils/agentPinned";
 import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 import { useCliAvailabilityStore } from "./cliAvailabilityStore";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 /**
  * In-memory normalization with two distinct paths:
@@ -136,7 +137,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
           return;
         }
         set({
-          error: e instanceof Error ? e.message : "Failed to load agent settings",
+          error: formatErrorMessage(e, "Failed to load agent settings"),
           isLoading: false,
           isInitialized: true,
         });
@@ -166,7 +167,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
       // owns the error surface now, and fire-and-forget callers should not
       // see spurious unhandled rejections from an invalidated attempt.
       if (myEpoch !== normalizeEpoch) return;
-      set({ error: e instanceof Error ? e.message : "Failed to refresh agent settings" });
+      set({ error: formatErrorMessage(e, "Failed to refresh agent settings") });
       throw e;
     }
   },
@@ -195,7 +196,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
     } catch (e) {
       if (myEpoch !== normalizeEpoch) return;
       if (previous) set({ settings: previous });
-      set({ error: e instanceof Error ? e.message : `Failed to update ${agentId} settings` });
+      set({ error: formatErrorMessage(e, `Failed to update ${agentId} settings`) });
       throw e;
     }
   },
@@ -232,7 +233,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
       set({ settings });
     } catch (e) {
       if (myEpoch !== normalizeEpoch) return;
-      set({ error: e instanceof Error ? e.message : "Failed to reset agent settings" });
+      set({ error: formatErrorMessage(e, "Failed to reset agent settings") });
       throw e;
     }
   },

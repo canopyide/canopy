@@ -7,6 +7,7 @@ import type { GitStatus, WorktreeChanges } from "../../shared/types/index.js";
 import { WorktreeRemovedError, GitError, toGitOperationError } from "../utils/errorTypes.js";
 import type { CrossWorktreeDiffResult, CrossWorktreeFile } from "../../shared/types/ipc/git.js";
 import { createHardenedGit } from "../utils/hardenedGit.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -487,7 +488,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     try {
       return await operation();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, `Git operation failed: ${context}`);
 
       if (
         errorMessage.includes("ENOENT") ||

@@ -1,5 +1,6 @@
 import type { PersistStorage, StateStorage, StorageValue } from "zustand/middleware";
 import { isRendererPerfCaptureEnabled, markRendererPerformance } from "@/utils/performance";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const fallbackStorageData = new Map<string, string>();
 
@@ -151,7 +152,7 @@ export function safeJSONParse<T>(
   } catch (error) {
     console.warn("[safeStorage] JSON parse failed", {
       ...context,
-      error: error instanceof Error ? error.message : String(error),
+      error: formatErrorMessage(error, "JSON parse failed"),
     });
     return fallback;
   }
@@ -170,7 +171,7 @@ export function createSafeJSONStorage<T>(): PersistStorage<T> {
       } catch (error) {
         console.warn("[safeStorage] corrupt persisted state, resetting to defaults", {
           key: name,
-          error: error instanceof Error ? error.message : String(error),
+          error: formatErrorMessage(error, "Corrupt persisted state"),
         });
         return null;
       }

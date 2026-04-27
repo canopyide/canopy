@@ -128,26 +128,24 @@ export default tseslint.config(
     },
   },
 
-  // Scaffold: no-restricted-syntax — uncomment and adapt to block a retired
-  // identifier (module export, global name, or property access) during a
-  // flag burn-down. Uses ESLint AST selectors.
-  // {
-  //   rules: {
-  //     "no-restricted-syntax": [
-  //       "error",
-  //       {
-  //         // why: <identifier> was retired in <version> — see <issue>.
-  //         selector: "Identifier[name='RetiredName']",
-  //         message: "RetiredName is retired. Use ReplacementName instead.",
-  //       },
-  //       {
-  //         // why: property access on a removed global.
-  //         selector: "MemberExpression[object.name='legacyGlobal']",
-  //         message: "legacyGlobal is retired. Use currentAPI instead.",
-  //       },
-  //     ],
-  //   },
-  // },
+  // Ban the ad-hoc `err instanceof Error ? err.message : <fallback>` ternary —
+  // use formatErrorMessage(err, "domain fallback") from shared/utils/errorMessage
+  // so every call site supplies its own operation-specific fallback string.
+  // See issue #5845.
+  {
+    files: ["**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "ConditionalExpression[test.type='BinaryExpression'][test.operator='instanceof'][test.right.name='Error'][consequent.type='MemberExpression'][consequent.property.name='message']",
+          message:
+            "Use formatErrorMessage(err, 'operation-specific fallback') from @shared/utils/errorMessage instead of the inline `instanceof Error ? .message : ...` ternary.",
+        },
+      ],
+    },
+  },
 
   // Prevent UI components from importing main-process types
   {

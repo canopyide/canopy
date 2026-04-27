@@ -5,6 +5,7 @@ import { Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import type { TerminalInfoPayload } from "@/types/electron";
 import { actionService } from "@/services/ActionService";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface TerminalInfoDialogProps {
   isOpen: boolean;
@@ -148,7 +149,7 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
           setInfo(result.result as TerminalInfoPayload);
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
+        const message = formatErrorMessage(err, "Failed to load terminal info");
         if (isMounted) {
           setError(message);
         }

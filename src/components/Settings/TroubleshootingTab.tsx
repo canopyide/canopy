@@ -22,6 +22,7 @@ import { actionService } from "@/services/ActionService";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { DiagnosticsReviewDialog } from "./DiagnosticsReviewDialog";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 function SystemHealthSection() {
   const [result, setResult] = useState<SystemHealthCheckResult | null>(null);
@@ -35,7 +36,7 @@ function SystemHealthSection() {
       const data = await systemClient.healthCheck();
       setResult(data);
     } catch (err) {
-      setCheckError(err instanceof Error ? err.message : "Health check failed");
+      setCheckError(formatErrorMessage(err, "Health check failed"));
     } finally {
       setIsChecking(false);
     }
@@ -104,7 +105,7 @@ function DownloadDiagnosticsSection() {
       setReviewPayload(payload);
       setReviewOpen(true);
     } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : "Failed to collect diagnostics");
+      setDownloadError(formatErrorMessage(err, "Failed to collect diagnostics"));
     } finally {
       setIsCollecting(false);
     }
@@ -124,7 +125,7 @@ function DownloadDiagnosticsSection() {
           setReviewOpen(false);
         }
       } catch (err) {
-        setDownloadError(err instanceof Error ? err.message : "Failed to save diagnostics bundle");
+        setDownloadError(formatErrorMessage(err, "Failed to save diagnostics bundle"));
       } finally {
         setIsSaving(false);
       }

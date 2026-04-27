@@ -36,6 +36,7 @@ import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
 import { SCROLLBACK_BACKGROUND } from "@shared/config/scrollback";
 import { stripAnsiAndOscCodes } from "@shared/utils/urlUtils";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { isUselessTitle, normalizeObservedTitle } from "@shared/utils/isUselessTitle";
 import { usePanelStore } from "@/store/panelStore";
 import { isNonKeyboardInput } from "./inputUtils";
@@ -994,14 +995,14 @@ class TerminalInstanceService {
           window.electron.terminal.updateObservedTitle(id, pending);
         } catch (err) {
           logWarn("[TerminalInstanceService] updateObservedTitle failed", {
-            error: err instanceof Error ? err.message : String(err),
+            error: formatErrorMessage(err, "Failed to update observed title"),
           });
         }
         try {
           usePanelStore.getState().updateLastObservedTitle(id, pending);
         } catch (err) {
           logWarn("[TerminalInstanceService] panel store title update failed", {
-            error: err instanceof Error ? err.message : String(err),
+            error: formatErrorMessage(err, "Failed to update panel store observed title"),
           });
         }
       }, 150);

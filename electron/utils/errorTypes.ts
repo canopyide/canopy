@@ -1,5 +1,6 @@
 import { classifyGitError, extractGitErrorMessage } from "../../shared/utils/gitOperationErrors.js";
 import type { GitOperationReason } from "../../shared/types/ipc/errors.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 export class DaintreeError extends Error {
   constructor(
@@ -131,11 +132,7 @@ export function getUserMessage(error: unknown): string {
     return error.message;
   }
 
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
+  return formatErrorMessage(error, "An unknown error occurred");
 }
 
 /**

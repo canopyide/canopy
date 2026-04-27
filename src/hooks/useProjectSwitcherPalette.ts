@@ -6,6 +6,7 @@ import { usePaletteStore } from "@/store/paletteStore";
 import { notify } from "@/lib/notify";
 import type { Project } from "@shared/types";
 import { projectClient } from "@/clients";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export type ProjectSwitcherMode = "modal" | "dropdown";
 
@@ -251,7 +252,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
           notify({
             type: "error",
             title: "Failed to reopen project",
-            message: error instanceof Error ? error.message : "Unknown error",
+            message: formatErrorMessage(error, "Failed to reopen project"),
             duration: 5000,
           });
         }
@@ -262,7 +263,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
           notify({
             type: "error",
             title: "Failed to switch project",
-            message: error instanceof Error ? error.message : "Unknown error",
+            message: formatErrorMessage(error, "Failed to switch project"),
             duration: 5000,
           });
         }
@@ -305,7 +306,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
         notify({
           type: "error",
           title: "Failed to update project",
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: formatErrorMessage(error, "Failed to update project"),
           duration: 5000,
         });
       }
@@ -332,7 +333,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
       notify({
         type: "error",
         title: "Failed to stop project",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: formatErrorMessage(error, "Failed to stop project"),
         duration: 5000,
       });
     } finally {
@@ -370,7 +371,10 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
         title: removeConfirmProject.isActive
           ? "Failed to close project"
           : "Failed to remove project",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: formatErrorMessage(
+          error,
+          removeConfirmProject.isActive ? "Failed to close project" : "Failed to remove project"
+        ),
         duration: 5000,
       });
     } finally {

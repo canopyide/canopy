@@ -13,6 +13,7 @@ import type {
   CloneRepoResult,
   CloneRepoProgressEvent,
 } from "../../../../shared/types/ipc/gitClone.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function registerGitCloneHandlers(): () => void {
   const handlers: Array<() => void> = [];
@@ -137,7 +138,7 @@ export function registerGitCloneHandlers(): () => void {
         return { success: false, cancelled: true, error: "Clone cancelled" };
       }
 
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to clone repository");
       emitProgress("error", 0, `Clone failed: ${errorMessage}`);
       return { success: false, error: errorMessage };
     } finally {

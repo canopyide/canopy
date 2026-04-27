@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { actionService } from "@/services/ActionService";
 import type { ActionId } from "@shared/types/actions";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 /**
  * Sets up the renderer-side MCP bridge.
@@ -37,7 +38,7 @@ export function useMcpBridge(): void {
               ok: false,
               error: {
                 code: "EXECUTION_ERROR",
-                message: err instanceof Error ? err.message : String(err),
+                message: formatErrorMessage(err, "Action dispatch failed"),
               },
             },
           });

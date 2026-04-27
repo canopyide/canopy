@@ -8,6 +8,7 @@ import type { CrossWorktreeDiffResult, CrossWorktreeFile } from "@shared/types/i
 import { DiffViewer } from "./DiffViewer";
 import { WorktreeSelector } from "./WorktreeSelector";
 import { sortWorktreesForComparison } from "./crossWorktreeDiffUtils";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface CrossWorktreeDiffProps {
   isOpen: boolean;
@@ -101,7 +102,7 @@ export function CrossWorktreeDiff({ isOpen, onClose, initialWorktreeId }: CrossW
       setResult(res);
     } catch (err) {
       if (token !== compareTokenRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to compare worktrees");
+      setError(formatErrorMessage(err, "Failed to compare worktrees"));
     } finally {
       if (token === compareTokenRef.current) setLoading(false);
     }

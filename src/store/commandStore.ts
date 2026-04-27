@@ -6,6 +6,7 @@ import type {
   BuilderStep,
 } from "@shared/types/commands";
 import { commandsClient } from "@/clients/commandsClient";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface CommandStore {
   // Picker state
@@ -78,7 +79,7 @@ export const useCommandStore = create<CommandStore>()((set, get) => ({
           }
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to load builder";
+        const message = formatErrorMessage(error, "Failed to load builder");
         console.error("Failed to fetch builder steps:", error);
         const currentCommandId = get().activeCommandId;
         if (currentCommandId === commandId) {
@@ -119,7 +120,7 @@ export const useCommandStore = create<CommandStore>()((set, get) => ({
 
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Command execution failed";
+      const message = formatErrorMessage(error, "Command execution failed");
       set({ executionError: message });
       return {
         success: false,

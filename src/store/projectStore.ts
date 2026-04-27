@@ -12,6 +12,7 @@ import { registerPersistedStore } from "./persistence/persistedStoreRegistry";
 import { panelPersistence, panelToSnapshot } from "./persistence/panelPersistence";
 import { useTerminalInputStore } from "./terminalInputStore";
 import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { ProjectSwitchOutgoingState } from "@shared/types/ipc/project";
 import type { TerminalInstance, TabGroup } from "@shared/types";
 
@@ -191,13 +192,13 @@ function getProjectStoreListenerState(): ProjectStoreListenerState {
 }
 
 function isDubiousOwnershipError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatErrorMessage(error, "");
   const lower = message.toLowerCase();
   return lower.includes("dubious ownership") || lower.includes("safe.directory");
 }
 
 function getProjectOpenErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatErrorMessage(error, "");
   const lower = message.toLowerCase();
 
   if (lower.includes("spawn git enoent") || lower.includes("git: not found")) {
@@ -289,7 +290,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         component: "projectStore",
         details: { path: resolvedPath || path },
       });
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to add project");
 
       // Absolute-path check: POSIX (/...), Windows drive letter (C:\... / C:/...),
       // and Windows UNC (\\server\share...) are all "absolute" here.
@@ -324,8 +325,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
                   try {
                     await window.electron.git.markSafeDirectory(targetPath);
                   } catch (markError) {
-                    const markMessage =
-                      markError instanceof Error ? markError.message : String(markError);
+                    const markMessage = formatErrorMessage(
+                      markError,
+                      "Failed to mark directory as safe"
+                    );
                     notify({
                       type: "error",
                       title: "Failed to mark as safe",

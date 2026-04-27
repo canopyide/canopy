@@ -6,6 +6,7 @@ import { notify } from "@/lib/notify";
 import { useNotificationStore } from "@/store/notificationStore";
 import { detectCloudSyncService, type Platform } from "@/utils/cloudSyncDetection";
 import { isMac, isLinux } from "@/lib/platform";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 function getPlatform(): Platform {
   if (isMac()) return "mac";
@@ -67,7 +68,7 @@ export function useCloudSyncWarning(homeDir?: string) {
               notify({
                 type: "error",
                 title: "Failed to save preference",
-                message: err instanceof Error ? err.message : "Unknown error",
+                message: formatErrorMessage(err, "Failed to save cloud sync warning preference"),
                 duration: 6000,
               });
               lastNotifiedProjectRef.current = null;

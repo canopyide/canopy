@@ -6,6 +6,7 @@ import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { store } from "../store.js";
 import type { AppError } from "../../shared/types/ipc/errors.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 let handlingFatal = false;
 
@@ -15,7 +16,7 @@ export function _resetHandlingFatalForTesting(): void {
 }
 
 function buildFatalAppError(kind: string, error: unknown): AppError {
-  const message = error instanceof Error ? error.message : String(error ?? "Unknown error");
+  const message = formatErrorMessage(error, "Unknown fatal error");
   const id = `fatal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   return {

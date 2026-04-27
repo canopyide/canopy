@@ -115,6 +115,7 @@ export class CliAvailabilityService {
             }
           });
         } catch (error) {
+          // eslint-disable-next-line no-restricted-syntax -- diagnostic console.warn passes the raw error if not an Error; not a user-visible string.
           console.warn("[CliAvailabilityService]", error instanceof Error ? error.message : error);
           outcomeEntries = entries.map(([id]) => [
             id,

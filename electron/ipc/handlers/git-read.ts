@@ -5,6 +5,7 @@ import { checkRateLimit, typedHandle, typedHandleWithContext } from "../utils.js
 import type { HandlerDependencies } from "../types.js";
 import type { PulseRangeDays, ProjectPulse } from "../../../shared/types/pulse.js";
 import { taskWorktreeService } from "../../services/TaskWorktreeService.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 export function registerGitReadHandlers(deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
@@ -73,7 +74,7 @@ export function registerGitReadHandlers(deps: HandlerDependencies): () => void {
     try {
       return await deps.worktreeService.getFileDiff(cwd, filePath, status);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to get file diff");
       console.error("[Git] Failed to get file diff via WorkspaceClient:", errorMessage);
       throw new Error(`Failed to get file diff: ${errorMessage}`, { cause: error });
     }

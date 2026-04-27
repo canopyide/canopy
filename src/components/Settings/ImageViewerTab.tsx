@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Image } from "lucide-react";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { useProjectStore } from "@/store";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 type ImageViewerMode = "os" | "custom";
 
@@ -93,7 +94,7 @@ export function ImageViewerTab() {
       setSaved(true);
     } catch (err) {
       if (!isMountedRef.current) return;
-      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaveError(formatErrorMessage(err, "Failed to save image viewer preference"));
     } finally {
       if (isMountedRef.current) setIsSaving(false);
     }

@@ -6,7 +6,7 @@ import { getErrorMessage } from "@/utils/errorContext";
 export function onCaughtError(error: unknown, errorInfo: { componentStack?: string }): void {
   try {
     logWarn("[React] Caught render error", {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       componentStack: errorInfo.componentStack,
     });
   } catch {
@@ -55,7 +55,7 @@ export function onUncaughtError(error: unknown, errorInfo: { componentStack?: st
 export function onRecoverableError(error: unknown, errorInfo: { componentStack?: string }): void {
   try {
     logDebug("[React] Recoverable render error", {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       componentStack: errorInfo.componentStack,
     });
   } catch {

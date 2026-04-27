@@ -15,6 +15,7 @@ import type { ProjectTerminalSettings, ResourceEnvironment } from "@shared/types
 import type { CommandOverride } from "@shared/types/commands";
 import type { NotificationSettings } from "@shared/types/ipc/api";
 import { SCROLLBACK_MIN, SCROLLBACK_MAX } from "@shared/config/scrollback";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface UseProjectSettingsFormParams {
   projectId: string | null;
@@ -404,7 +405,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       }
     } catch (err) {
       console.error("Failed to auto-save project settings:", err);
-      setProjectAutoSaveError(err instanceof Error ? err.message : "Failed to save settings");
+      setProjectAutoSaveError(formatErrorMessage(err, "Failed to save settings"));
     }
   };
 

@@ -8,6 +8,7 @@ import path from "path";
 import { CHANNELS } from "../../channels.js";
 import type { HandlerDependencies } from "../../types.js";
 import { typedHandle, typedHandleWithContext } from "../../utils.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function registerArtifactHandlers(deps: HandlerDependencies): () => void {
   const mainWindow = deps.windowRegistry?.getPrimary()?.browserWindow ?? deps.mainWindow;
@@ -73,7 +74,7 @@ export function registerArtifactHandlers(deps: HandlerDependencies): () => void 
         success: true,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to save artifact");
       console.error("[Artifact] Failed to save to file:", errorMessage);
       throw new Error(`Failed to save artifact: ${errorMessage}`);
     }
@@ -142,7 +143,7 @@ export function registerArtifactHandlers(deps: HandlerDependencies): () => void 
       } catch (error) {
         return {
           success: false,
-          error: `Invalid cwd: ${error instanceof Error ? error.message : String(error)}`,
+          error: formatErrorMessage(error, "Invalid cwd"),
         };
       }
 
@@ -172,7 +173,7 @@ export function registerArtifactHandlers(deps: HandlerDependencies): () => void 
         await fs.unlink(tmpPatchPath).catch(() => {});
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to apply patch");
       console.error("[Artifact] Failed to apply patch:", errorMessage);
       return {
         success: false,

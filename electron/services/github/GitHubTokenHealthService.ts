@@ -4,6 +4,7 @@ import type {
 } from "../../../shared/types/ipc/github.js";
 import { logDebug, logInfo, logWarn } from "../../utils/logger.js";
 import { GitHubAuth, captureAuthMetadata, getLastAuthMetadata } from "./GitHubAuth.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 /** How often background probes run when the app is actively used. */
 export const HEALTH_CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -230,7 +231,7 @@ class GitHubTokenHealthServiceImpl {
         // Network failures (`ENOTFOUND`, `ETIMEDOUT`, `AbortError`, etc.) are
         // not authoritative token-dead signals — don't flip state.
         logDebug("GitHub token health: probe failed (network/transport)", {
-          error: err instanceof Error ? err.message : String(err),
+          error: formatErrorMessage(err, "Token health probe failed"),
           reason: context.reason,
         });
       }
@@ -267,7 +268,7 @@ class GitHubTokenHealthServiceImpl {
       } catch (err) {
         // A misbehaving transport must not break health-check bookkeeping.
         logWarn("GitHub token-health listener threw", {
-          error: err instanceof Error ? err.message : String(err),
+          error: formatErrorMessage(err, "Token-health listener failed"),
         });
       }
     }

@@ -28,6 +28,7 @@ import {
   resolveAgentRuntimeSettings,
   type AgentRuntimeSettingsResolution,
 } from "@/utils/agentRuntimeSettings";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 // Lazy accessor to break circular dependency: restart -> projectStore -> panelPersistence -> core.
 let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
@@ -199,7 +200,7 @@ export const createRestartActions = (
         recoverable: false,
         context: {
           failedCwd: terminal.cwd,
-          validationError: error instanceof Error ? error.message : String(error),
+          validationError: formatErrorMessage(error, "Failed to validate terminal configuration"),
         },
       };
 
@@ -501,7 +502,7 @@ export const createRestartActions = (
       unmarkTerminalRestarting(id);
       set((state) => updateTerminal(state, id, (t) => ({ ...t, isRestarting: false })));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to restart terminal");
       const errorCode = (error as { code?: string })?.code;
 
       let phase = "unknown";
@@ -693,7 +694,7 @@ export const createRestartActions = (
                   ...t,
                   isRestarting: false,
                   restartError: {
-                    message: err instanceof Error ? err.message : String(err),
+                    message: formatErrorMessage(err, "Failed to move terminal to new worktree"),
                     timestamp: Date.now(),
                     recoverable: false,
                     context: {
@@ -949,7 +950,7 @@ export const createRestartActions = (
       set((state) => updateTerminal(state, id, (t) => ({ ...t, isRestarting: false })));
       return { success: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to restart terminal");
       unmarkTerminalRestarting(id);
       set((state) =>
         updateTerminal(state, id, (t) => ({

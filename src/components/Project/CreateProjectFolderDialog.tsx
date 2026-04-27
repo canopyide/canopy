@@ -4,6 +4,7 @@ import { AppDialog } from "@/components/ui/AppDialog";
 import { FolderPlus, FolderOpen } from "lucide-react";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface CreateProjectFolderDialogProps {
   isOpen: boolean;
@@ -95,7 +96,7 @@ export function CreateProjectFolderDialog({ isOpen, onClose }: CreateProjectFold
       onClose();
     } catch (err) {
       // Show error inline — keep dialog open so user can retry or correct input
-      setError(err instanceof Error ? err.message : "Failed to create folder");
+      setError(formatErrorMessage(err, "Failed to create folder"));
     } finally {
       setIsCreating(false);
     }

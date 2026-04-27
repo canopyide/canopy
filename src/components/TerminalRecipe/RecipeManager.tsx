@@ -24,6 +24,7 @@ import { LiveTimeAgo } from "@/components/Worktree/LiveTimeAgo";
 import type { TerminalRecipe } from "@/types";
 import { useRef } from "react";
 import { isInRepoRecipeId } from "@shared/utils/recipeFilename";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface RecipeManagerProps {
   isOpen: boolean;
@@ -84,7 +85,7 @@ export function RecipeManager({
       setRecipeToDelete(null);
     } catch (err) {
       console.error("Failed to delete recipe:", err);
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete recipe");
+      setDeleteError(formatErrorMessage(err, "Failed to delete recipe"));
     }
   };
 
@@ -118,7 +119,7 @@ export function RecipeManager({
       setRecipeToSave(null);
       setRecipeToDeleteAfterSave(savedId);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save recipe to repo");
+      setSaveError(formatErrorMessage(err, "Failed to save recipe to repo"));
     } finally {
       setIsSaving(false);
     }
@@ -146,7 +147,7 @@ export function RecipeManager({
       setShowImportDialog(false);
       setImportJson("");
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : "Failed to import recipe");
+      setImportError(formatErrorMessage(err, "Failed to import recipe"));
     }
   };
 

@@ -1,4 +1,5 @@
 import type { ISearchOptions } from "@xterm/addon-search";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export type SearchStatus = "idle" | "found" | "none" | "invalidRegex";
 
@@ -21,7 +22,7 @@ export function validateRegexTerm(
   } catch (e) {
     return {
       isValid: false,
-      error: e instanceof Error ? e.message : "Invalid regex pattern",
+      error: formatErrorMessage(e, "Invalid regex pattern"),
     };
   }
 }

@@ -16,6 +16,7 @@ import type { PtyClient } from "./PtyClient.js";
 import type { AgentState } from "../../shared/types/agent.js";
 import type { DaintreeEventMap } from "./events.js";
 import type { TaskRoutingHints } from "../../shared/types/task.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 /**
  * Check if an agent is available to receive a new task.
@@ -186,7 +187,7 @@ export class TaskOrchestrator {
 
           console.warn(
             `[TaskOrchestrator] Failed to mark task ${task.id} as running:`,
-            error instanceof Error ? error.message : String(error)
+            formatErrorMessage(error, "Failed to mark task running")
           );
           break; // Don't try to assign more tasks if we hit an error
         }
@@ -385,7 +386,7 @@ export class TaskOrchestrator {
     } catch (error) {
       console.error(
         `[TaskOrchestrator] Failed to mark task ${taskId} as completed:`,
-        error instanceof Error ? error.message : String(error)
+        formatErrorMessage(error, "Failed to mark task completed")
       );
     }
 
@@ -434,7 +435,7 @@ export class TaskOrchestrator {
     } catch (err) {
       console.error(
         `[TaskOrchestrator] Failed to cancel task ${taskId} after agent kill:`,
-        err instanceof Error ? err.message : String(err)
+        formatErrorMessage(err, "Failed to cancel task")
       );
     }
 
@@ -491,7 +492,7 @@ export class TaskOrchestrator {
       } catch (err) {
         console.error(
           `[TaskOrchestrator] Failed to mark task ${taskId} completed after agent exit:`,
-          err instanceof Error ? err.message : String(err)
+          formatErrorMessage(err, "Failed to mark task completed")
         );
       }
     }
@@ -541,7 +542,7 @@ export class TaskOrchestrator {
         // Task may already be in a terminal state
         console.warn(
           `[TaskOrchestrator] Failed to cancel task ${task.id} on worktree removal:`,
-          error instanceof Error ? error.message : String(error)
+          formatErrorMessage(error, "Failed to cancel task on worktree removal")
         );
       }
     }

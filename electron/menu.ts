@@ -16,6 +16,7 @@ async function checkForUpdatesManually(): Promise<void> {
 import { getPluginMenuItems } from "./services/pluginMenuRegistry.js";
 import { getAppWebContents } from "./window/webContentsRegistry.js";
 import { PRODUCT_NAME, PRODUCT_WEBSITE, PRODUCT_COPYRIGHT_ORG } from "./utils/productBranding.js";
+import { formatErrorMessage } from "../shared/utils/errorMessage.js";
 
 app.setAboutPanelOptions({
   applicationName: PRODUCT_NAME,
@@ -363,7 +364,7 @@ export function createApplicationMenu(
               }
               createApplicationMenu(mainWindow, cliAvailabilityService);
             } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
+              const message = formatErrorMessage(err, "Failed to install CLI");
               if (targetWin && !targetWin.isDestroyed()) {
                 const wc = getAppWebContents(targetWin);
                 if (!wc.isDestroyed()) {

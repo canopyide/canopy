@@ -1,6 +1,7 @@
 import { create, type StateCreator } from "zustand";
 import type { ProjectSettings, RunCommand } from "@shared/types";
 import { projectClient } from "@/clients";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface ProjectSettingsState {
   /** Cached settings for the current project */
@@ -114,7 +115,7 @@ const createProjectSettingsStore: StateCreator<ProjectSettingsState & ProjectSet
       }
 
       set({
-        error: err instanceof Error ? err.message : "Unknown error",
+        error: formatErrorMessage(err, "Failed to load project settings"),
         settings: { runCommands: [] },
         detectedRunners: [],
         allDetectedRunners: [],

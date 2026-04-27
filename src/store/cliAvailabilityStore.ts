@@ -5,6 +5,7 @@ import { cliAvailabilityClient } from "@/clients";
 import { getAgentIds } from "@/config/agents";
 import { isElectronAvailable } from "@/hooks/useElectron";
 import { safeJSONParse } from "./persistence/safeStorage";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface CliAvailabilityState {
   availability: CliAvailability;
@@ -207,7 +208,7 @@ export const useCliAvailabilityStore = create<CliAvailabilityStore>()(
         } catch (e) {
           if (epoch === myEpoch) {
             set({
-              error: e instanceof Error ? e.message : "Failed to check CLI availability",
+              error: formatErrorMessage(e, "Failed to check CLI availability"),
               isLoading: false,
               isInitialized: true,
             });
@@ -262,7 +263,7 @@ export const useCliAvailabilityStore = create<CliAvailabilityStore>()(
         } catch (e) {
           if (epoch === myEpoch) {
             set({
-              error: e instanceof Error ? e.message : "Failed to refresh CLI availability",
+              error: formatErrorMessage(e, "Failed to refresh CLI availability"),
               isRefreshing: false,
             });
           }

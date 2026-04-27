@@ -8,6 +8,7 @@ import { TerminalReplayHistoryPayloadSchema } from "../../../schemas/index.js";
 import { logDebug, logInfo, logWarn, logError } from "../../../utils/logger.js";
 import { getAgentAvailabilityStore } from "../../../services/AgentAvailabilityStore.js";
 import { typedHandle } from "../../utils.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () => void {
   const { ptyClient } = deps;
@@ -25,7 +26,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       }
       return await ptyClient.wakeTerminal(id);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to wake terminal");
       throw new Error(`Failed to wake terminal: ${errorMessage}`);
     }
   };
@@ -46,7 +47,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       }
       return serializedState;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to get serialized terminal state");
       throw new Error(`Failed to get serialized terminal state: ${errorMessage}`);
     }
   };
@@ -110,7 +111,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
 
       return terminalInfo;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to get terminal info");
       throw new Error(`Failed to get terminal info: ${errorMessage}`);
     }
   };
@@ -158,7 +159,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       logInfo(`terminal:replayHistory(${terminalId}): replayed ${replayed} lines`);
       return { replayed };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to replay terminal history");
       throw new Error(`Failed to replay terminal history: ${errorMessage}`);
     }
   };
@@ -224,7 +225,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       );
       return terminals;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to get terminals for project");
       throw new Error(`Failed to get terminals for project: ${errorMessage}`);
     }
   };
@@ -268,7 +269,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       logInfo(`terminal:getAvailable: found ${sanitized.length} available terminals`);
       return sanitized;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to get available terminals");
       throw new Error(`Failed to get available terminals: ${errorMessage}`);
     }
   };
@@ -323,7 +324,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       logInfo(`terminal:getByState(${state}): found ${sanitized.length} terminals`);
       return sanitized;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to get terminals by state");
       throw new Error(`Failed to get terminals by state: ${errorMessage}`);
     }
   };
@@ -367,7 +368,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       logInfo(`terminal:getAll: found ${sanitized.length} terminals`);
       return sanitized;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to get all terminals");
       throw new Error(`Failed to get all terminals: ${errorMessage}`);
     }
   };
@@ -420,7 +421,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
         detectedProcessId: terminal.detectedProcessId,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Failed to reconnect to terminal");
       throw new Error(`Failed to reconnect to terminal: ${errorMessage}`);
     }
   };

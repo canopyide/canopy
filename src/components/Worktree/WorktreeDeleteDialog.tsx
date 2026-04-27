@@ -7,6 +7,7 @@ import { useWorktreeTerminals } from "@/hooks/useWorktreeTerminals";
 import { usePanelStore } from "@/store";
 import { actionService } from "@/services/ActionService";
 import type { WorktreeState } from "@/types";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface WorktreeDeleteDialogProps {
   isOpen: boolean;
@@ -106,7 +107,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
       }
       onClose();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatErrorMessage(err, "Failed to delete worktree");
       setError(msg);
     } finally {
       setIsDeleting(false);

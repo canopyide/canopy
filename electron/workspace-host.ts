@@ -23,6 +23,7 @@ import type { WorkspaceHostRequest, WorkspaceHostEvent } from "../shared/types/w
 import { WorkspaceService } from "./workspace-host/WorkspaceService.js";
 import { gitHubRateLimitService } from "./services/github/index.js";
 import { ensureSerializable } from "../shared/utils/serialization.js";
+import { formatErrorMessage } from "../shared/utils/errorMessage.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -209,7 +210,7 @@ process.on("unhandledRejection", (reason) => {
   console.error("[WorkspaceHost] Unhandled Rejection:", reason);
   sendEvent({
     type: "error",
-    error: String(reason instanceof Error ? reason.message : reason),
+    error: formatErrorMessage(reason, "Unhandled rejection in workspace host"),
   });
 });
 
@@ -220,7 +221,7 @@ function sendEvent(event: WorkspaceHostEvent): void {
   } catch (error) {
     console.error(
       `[WorkspaceHost] Failed to send event type "${(event as any).type}":`,
-      error instanceof Error ? error.message : String(error)
+      formatErrorMessage(error, "Failed to send workspace event")
     );
 
     try {
@@ -230,7 +231,7 @@ function sendEvent(event: WorkspaceHostEvent): void {
     } catch (sanitizeError) {
       console.error(
         `[WorkspaceHost] Failed to sanitize event, sending error event instead:`,
-        sanitizeError instanceof Error ? sanitizeError.message : String(sanitizeError)
+        formatErrorMessage(sanitizeError, "Failed to sanitize workspace event")
       );
       port.postMessage({
         type: "error",

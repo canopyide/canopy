@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "./SettingsSection";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 
 interface EnvVar {
@@ -173,7 +174,7 @@ export function EnvironmentSettingsTab() {
       setSavedSnapshot(record);
       setIsDirty(false);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaveError(formatErrorMessage(err, "Failed to save environment variables"));
     } finally {
       setIsSaving(false);
     }

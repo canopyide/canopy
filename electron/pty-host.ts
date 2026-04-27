@@ -60,6 +60,7 @@ import {
   BACKPRESSURE_SAFETY_TIMEOUT_MS,
 } from "./pty-host/index.js";
 import { isSmokeTestTerminalId } from "../shared/utils/smokeTestTerminals.js";
+import { formatErrorMessage } from "../shared/utils/errorMessage.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -89,7 +90,7 @@ process.on("unhandledRejection", (reason) => {
     sendEvent({
       type: "error",
       id: "system",
-      error: String(reason instanceof Error ? reason.message : reason),
+      error: formatErrorMessage(reason, "Unhandled rejection in PTY host"),
     });
   } catch {
     // ignore

@@ -13,6 +13,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 import type { ActionManifestEntry, ActionDispatchResult } from "../../shared/types/actions.js";
 import { store } from "../store.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const DISCOVERY_DIR = path.join(os.homedir(), ".daintree");
 const DISCOVERY_FILE = path.join(DISCOVERY_DIR, "mcp.json");
@@ -414,7 +415,7 @@ export class McpServerService {
           content: [
             {
               type: "text" as const,
-              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+              text: `Error: ${formatErrorMessage(err, "Action dispatch failed")}`,
             },
           ],
           isError: true,

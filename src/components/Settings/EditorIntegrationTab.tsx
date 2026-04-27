@@ -5,6 +5,7 @@ import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { editorClient } from "@/clients/editorClient";
 import type { EditorConfig, DiscoveredEditor, KnownEditorId } from "@shared/types/editor";
 import { useProjectStore } from "@/store";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const EDITOR_LABELS: Record<KnownEditorId, string> = {
   vscode: "VS Code",
@@ -110,7 +111,7 @@ export function EditorIntegrationTab() {
       setPreferredEditor(editor);
     } catch (err) {
       if (!isMountedRef.current) return;
-      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaveError(formatErrorMessage(err, "Failed to save editor preference"));
     } finally {
       if (isMountedRef.current) setIsSaving(false);
     }

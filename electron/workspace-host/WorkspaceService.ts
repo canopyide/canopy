@@ -28,6 +28,7 @@ import { WorktreeMonitor } from "./WorktreeMonitor.js";
 import { WorktreeListService } from "./WorktreeListService.js";
 import { PRIntegrationService } from "./PRIntegrationService.js";
 import { waitForPathExists } from "../utils/fs.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 // Configuration
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = 2000;
@@ -542,7 +543,7 @@ export class WorkspaceService {
     } catch (error) {
       console.warn(
         "[WorkspaceHost] Resource config initialization failed (continuing without resources):",
-        error instanceof Error ? error.message : String(error)
+        formatErrorMessage(error, "Resource config initialization failed")
       );
     }
   }
@@ -2172,7 +2173,7 @@ ${connectCommand} "$@"
 
       await writeFile(wrapperPath, scriptContent, { mode: 0o755 });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = formatErrorMessage(error, "Failed to generate daintree-remote wrapper");
       console.warn("[WorkspaceService] Failed to generate daintree-remote wrapper:", msg);
     }
   }

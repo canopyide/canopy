@@ -13,6 +13,7 @@ import type {
   GitInitResult,
   GitInitProgressEvent,
 } from "../../../../shared/types/ipc/gitInit.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function registerGitInitHandlers(): () => void {
   const handlers: Array<() => void> = [];
@@ -136,7 +137,7 @@ export function registerGitInitHandlers(): () => void {
           completedSteps.push("commit");
           emitProgress("commit", "success", `Committed: ${initialCommitMessage}`);
         } catch (commitError) {
-          const errorMsg = commitError instanceof Error ? commitError.message : String(commitError);
+          const errorMsg = formatErrorMessage(commitError, "Failed to create initial commit");
           if (errorMsg.includes("user.email") || errorMsg.includes("user.name")) {
             emitProgress(
               "commit",
@@ -157,7 +158,7 @@ export function registerGitInitHandlers(): () => void {
       emitProgress("complete", "success", "Git initialization complete");
       return { success: true, completedSteps };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatErrorMessage(error, "Git initialization failed");
       emitProgress("error", "error", "Git initialization failed", errorMessage);
       return {
         success: false,

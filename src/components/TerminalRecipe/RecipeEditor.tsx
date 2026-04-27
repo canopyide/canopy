@@ -6,6 +6,7 @@ import { useRecipeStore } from "@/store/recipeStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { isInRepoRecipeId } from "@shared/utils/recipeFilename";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 function cloneTerminal(t: RecipeTerminal): RecipeTerminal {
   return { ...t, env: t.env ? { ...t.env } : {} };
@@ -239,7 +240,7 @@ export function RecipeEditor({
 
       onClose();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to save recipe");
+      setError(formatErrorMessage(error, "Failed to save recipe"));
     } finally {
       setIsSaving(false);
     }

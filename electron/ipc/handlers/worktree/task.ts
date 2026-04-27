@@ -19,6 +19,7 @@ import {
 import { resolveWorktreePattern } from "../../../utils/worktreePattern.js";
 import { taskWorktreeService } from "../../../services/TaskWorktreeService.js";
 import { WORKTREE_RATE_LIMIT_KEY, WORKTREE_RATE_LIMIT_INTERVAL_MS } from "./constants.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function registerTaskWorktreeHandlers(deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
@@ -303,7 +304,7 @@ export function registerTaskWorktreeHandlers(deps: HandlerDependencies): () => v
       allStates = await deps.worktreeService.getAllStatesAsync(senderWindowCleanup?.id);
     } catch (error) {
       logDebug("Could not fetch worktree states for cleanup pre-check", {
-        error: error instanceof Error ? error.message : String(error),
+        error: formatErrorMessage(error, "Could not fetch worktree states"),
         taskId,
       });
     }
@@ -335,7 +336,7 @@ export function registerTaskWorktreeHandlers(deps: HandlerDependencies): () => v
         // Remove from tracking after successful deletion
         taskWorktreeService.removeTaskWorktreeMapping(currentProjectId, taskId, worktreeId);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = formatErrorMessage(error, "Failed to cleanup worktree");
 
         // If worktree not found, treat as success and remove mapping (idempotent)
         if (errorMessage.includes("not found") || errorMessage.includes("does not exist")) {

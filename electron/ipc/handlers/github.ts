@@ -13,6 +13,7 @@ import type {
 } from "../../types/index.js";
 import { gitHubRateLimitService, gitHubTokenHealthService } from "../../services/github/index.js";
 import { getWorkspaceClient } from "../../services/WorkspaceClient.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 export function buildGitHubSearchQuery(
   searchText: string | undefined,
@@ -126,7 +127,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
         rateLimitKind: rateLimitState.blocked ? (rateLimitState.kind ?? undefined) : undefined,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatErrorMessage(err, "Failed to fetch GitHub repo stats");
       return {
         commitCount: 0,
         issueCount: null,
@@ -194,7 +195,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
         error: result.error,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatErrorMessage(err, "Failed to fetch GitHub project health");
       return {
         ciStatus: "none",
         issueCount: 0,
@@ -304,7 +305,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
         throw new Error(`Only https:// or http:// PR URLs are allowed, got ${url.protocol}`);
       }
     } catch (error) {
-      throw new Error(`Invalid PR URL: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(formatErrorMessage(error, "Invalid PR URL"));
     }
     await shell.openExternal(prUrl);
   };

@@ -17,6 +17,7 @@ import type {
 import type { DevServerError } from "../../shared/utils/devServerErrors.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
 import { markPerformance } from "../utils/performance.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 interface DevPreviewSession extends DevPreviewSessionState {
   cwd: string;
@@ -236,7 +237,7 @@ export class DevPreviewSessionService {
       try {
         this.ptyClient.kill(terminalId, "dev-preview:dispose");
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = formatErrorMessage(err, "Failed to kill dev preview terminal");
         if (!this.isBenignMissingTerminalError(message)) {
           console.warn("[DevPreviewSessionService] Failed to kill terminal during dispose:", err);
         }
@@ -405,7 +406,7 @@ export class DevPreviewSessionService {
             this.releasePort(key);
             this.restoreWorktreeMapping(session.worktreeId, key);
           } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            const message = formatErrorMessage(err, "Failed to stop dev preview");
             this.updateSession(session, {
               status: "error",
               url: null,
@@ -447,7 +448,7 @@ export class DevPreviewSessionService {
             this.releasePort(key);
             this.restoreWorktreeMapping(session.worktreeId, key);
           } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            const message = formatErrorMessage(err, "Failed to stop dev preview");
             console.warn("[DevPreviewSessionService] stopByProject failed for session", {
               panelId: session.panelId,
               projectId: session.projectId,
@@ -685,7 +686,7 @@ export class DevPreviewSessionService {
     } catch (err) {
       console.warn("[DevPreviewSessionService] replayRecentOutput failed for terminal:", {
         terminalId,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatErrorMessage(err, "Failed to replay terminal history"),
       });
     }
   }
@@ -737,7 +738,7 @@ export class DevPreviewSessionService {
         terminalId,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error, "Failed to start dev server");
       this.detachTerminal(session);
       this.updateSession(session, {
         status: "error",
@@ -848,7 +849,7 @@ export class DevPreviewSessionService {
     try {
       this.ptyClient.kill(terminalId, `dev-preview:${context}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatErrorMessage(err, "Failed to kill dev preview terminal");
       if (!this.isBenignMissingTerminalError(message)) {
         throw new Error(`Failed to kill terminal (${context}): ${message}`);
       }
@@ -1049,7 +1050,7 @@ export class DevPreviewSessionService {
       });
     } catch (error) {
       session.isRunningInstall = false;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error, "Failed to start dependency install");
       this.detachTerminal(session);
       this.updateSession(session, {
         status: "error",
@@ -1128,7 +1129,7 @@ export class DevPreviewSessionService {
         session.pendingUrl = null;
         session.readinessAbort = null;
 
-        const message = err instanceof Error ? err.message : String(err);
+        const message = formatErrorMessage(err, "Dev server readiness check failed");
         console.warn("[DevPreviewSessionService] Readiness poll error:", {
           url,
           panelId: session.panelId,

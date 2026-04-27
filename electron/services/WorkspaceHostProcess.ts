@@ -10,6 +10,7 @@ import type {
 } from "../../shared/types/workspace-host.js";
 import { GitHubAuth } from "./github/GitHubAuth.js";
 import { createLogger } from "../utils/logger.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const logger = createLogger("main:WorkspaceHost");
 const logInfo = (msg: string, ctx?: Record<string, unknown>) =>
@@ -425,7 +426,7 @@ export class WorkspaceHostProcess extends EventEmitter {
     } catch (error) {
       console.error(`[WorkspaceHost:${this.serviceName}] Failed to fork:`, error);
       if (this.readyReject) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = formatErrorMessage(error, "Workspace host failed to fork");
         this.readyReject(new Error(`Workspace host failed to fork: ${errorMessage}`));
         this.readyReject = null;
       }

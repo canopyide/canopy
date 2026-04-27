@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Key, Lock, ShieldAlert, Eye, EyeOff, Plus, Trash2, Save, Globe } from "lucide-react";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { EnvVar } from "./projectSettingsDirty";
 import type { ProjectSettings } from "@shared/types/project";
 
@@ -133,7 +134,7 @@ export function EnvironmentVariablesEditor({
         await onFlush();
       }
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save environment variables");
+      setSaveError(formatErrorMessage(err, "Failed to save environment variables"));
     } finally {
       setIsSaving(false);
     }

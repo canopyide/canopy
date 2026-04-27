@@ -5,6 +5,7 @@ import { Check, AlertCircle } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { WorktreeIcon } from "@/components/icons";
 import { projectClient } from "@/clients";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { GitInitProgressEvent } from "@shared/types/ipc/gitInit";
 
 interface GitInitDialogProps {
@@ -82,8 +83,7 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
         setError(result.error || "Initialization failed");
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      setError(errorMessage);
+      setError(formatErrorMessage(err, "Failed to initialize git repository"));
     } finally {
       setIsInitializing(false);
     }

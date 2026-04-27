@@ -8,6 +8,7 @@ import { getProjectGradient, isValidHexColor } from "@/lib/colorUtils";
 import { cn } from "@/lib/utils";
 import { sanitizeSvg, svgToDataUrl } from "@/lib/svg";
 import { GITIGNORE_SNIPPET } from "./projectSettingsConstants";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { Project } from "@shared/types/project";
 
 const PRESET_SWATCHES = [
@@ -219,7 +220,7 @@ export function GeneralTab({
         setInRepoExpanded(false);
       }
     } catch (err) {
-      setInRepoError(err instanceof Error ? err.message : "Failed to enable in-repo settings");
+      setInRepoError(formatErrorMessage(err, "Failed to enable in-repo settings"));
     } finally {
       setInRepoEnabling(false);
     }
@@ -232,7 +233,7 @@ export function GeneralTab({
     try {
       await disableInRepoSettings(projectId);
     } catch (err) {
-      setInRepoError(err instanceof Error ? err.message : "Failed to disable in-repo settings");
+      setInRepoError(formatErrorMessage(err, "Failed to disable in-repo settings"));
     } finally {
       setInRepoEnabling(false);
     }

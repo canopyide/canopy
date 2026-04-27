@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { GitHubRateLimitKind, RepositoryStats } from "../types";
 import { githubClient, projectClient } from "@/clients";
 import { isTokenRelatedError } from "@/lib/githubErrors";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const ACTIVE_POLL_INTERVAL = 30 * 1000;
 const IDLE_POLL_INTERVAL = 5 * 60 * 1000;
@@ -176,8 +177,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
       }
     } catch (err) {
       if (mountedRef.current) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to fetch repository stats";
+        const errorMessage = formatErrorMessage(err, "Failed to fetch repository stats");
         setError(errorMessage);
         lastErrorRef.current = errorMessage;
       }
