@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
@@ -12,9 +12,9 @@ vi.mock("@/services/ActionService", () => ({
 }));
 
 vi.mock("@/lib/notify", () => ({
-  notify: vi.fn(),
   muteForDuration: vi.fn(),
-  muteUntilNextMorning: vi.fn(),
+  muteUntilNextMorning: vi.fn().mockReturnValue(Date.now() + 3600_000),
+  notify: vi.fn(),
 }));
 
 function makeEntry(overrides: Partial<NotificationHistoryEntry> = {}): NotificationHistoryEntry {
@@ -28,6 +28,11 @@ function makeEntry(overrides: Partial<NotificationHistoryEntry> = {}): Notificat
     countable: true,
     ...overrides,
   };
+}
+
+function setEntries(entries: NotificationHistoryEntry[]) {
+  const unreadCount = entries.filter((e) => !e.seenAsToast && e.countable !== false).length;
+  useNotificationHistoryStore.setState({ entries, unreadCount });
 }
 
 beforeEach(() => {
@@ -268,5 +273,53 @@ describe("NotificationThread message content", () => {
     await waitFor(() => {
       expect(screen.queryByText("Build retried and succeeded")).toBeTruthy();
     });
+  });
+});
+
+describe("NotificationCenter overflow menu", () => {
+  it("does not render overflow trigger when there are no entries", () => {
+    render(<NotificationCenter open onClose={() => {}} />);
+    expect(screen.queryByLabelText("More notification actions")).toBeNull();
+  });
+
+  it("renders overflow trigger as a button when entries exist", () => {
+    setEntries([makeEntry()]);
+    render(<NotificationCenter open onClose={() => {}} />);
+    const trigger = screen.getByLabelText("More notification actions");
+    expect(trigger.tagName).toBe("BUTTON");
+  });
+
+  it("calls clearAll before onClose and removes the trigger when 'Clear all' is selected", async () => {
+    const callOrder: string[] = [];
+    const originalClearAll = useNotificationHistoryStore.getState().clearAll;
+    const clearAllSpy = vi.fn(() => {
+      callOrder.push("clearAll");
+      originalClearAll();
+    });
+    useNotificationHistoryStore.setState({ clearAll: clearAllSpy });
+
+    setEntries([makeEntry(), makeEntry({ id: "entry-2" })]);
+    const onClose = vi.fn(() => {
+      callOrder.push("onClose");
+    });
+    render(<NotificationCenter open onClose={onClose} />);
+
+    const trigger = screen.getByLabelText("More notification actions");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    const clearItem = screen.getByText("Clear all");
+    await act(async () => {
+      fireEvent.click(clearItem);
+    });
+
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+    expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(callOrder).toEqual(["clearAll", "onClose"]);
+    expect(screen.queryByLabelText("More notification actions")).toBeNull();
   });
 });
