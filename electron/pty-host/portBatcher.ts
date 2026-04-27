@@ -78,8 +78,8 @@ export class PortBatcher {
     this.mode = "idle";
 
     for (const [id, { chunks, bytes }] of snapshot) {
-      const data = mergeChunks(chunks, bytes);
       try {
+        const data = mergeChunks(chunks, bytes);
         this.deps.postMessage(id, data, bytes);
         this.deps.portQueueManager.addBytes(id, bytes);
         this.deps.portQueueManager.applyBackpressure(
@@ -106,8 +106,8 @@ export class PortBatcher {
       this.mode = "idle";
     }
 
-    const data = mergeChunks(entry.chunks, entry.bytes);
     try {
+      const data = mergeChunks(entry.chunks, entry.bytes);
       this.deps.postMessage(id, data, entry.bytes);
       this.deps.portQueueManager.addBytes(id, entry.bytes);
       this.deps.portQueueManager.applyBackpressure(

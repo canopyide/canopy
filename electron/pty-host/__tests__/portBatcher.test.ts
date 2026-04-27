@@ -310,6 +310,48 @@ describe("PortBatcher", () => {
     expect(Array.from(emitted)).toEqual([1, 2, 3, 4]);
   });
 
+  it("multi-byte UTF-8: emitted byteLength matches Buffer.byteLength of the source string", () => {
+    // ACK accounting on the host uses chunk.byteLength (the UTF-8 byte count),
+    // not character count. A regression that confused string.length and
+    // byteLength would silently miscalibrate backpressure for non-ASCII output.
+    const deps = createDeps();
+    const batcher = new PortBatcher(deps);
+
+    const text = "café — 日本語 🚀";
+    const expectedBytes = Buffer.byteLength(text, "utf8");
+    expect(expectedBytes).toBeGreaterThan(text.length);
+
+    batcher.write("t1", bytes(text), expectedBytes);
+    vi.runAllTimers();
+
+    const postMessage = deps.postMessage as ReturnType<typeof vi.fn>;
+    expect(postMessage).toHaveBeenCalledOnce();
+    const [, emitted, ackBytes] = postMessage.mock.calls[0];
+    expect(ackBytes).toBe(expectedBytes);
+    expect((emitted as Uint8Array).byteLength).toBe(expectedBytes);
+    expect(Buffer.from(emitted as Uint8Array).toString("utf8")).toBe(text);
+  });
+
+  it("byte-count mismatch routes through onError instead of throwing", () => {
+    // mergeChunks runs inside the flush try/catch, so allocation failures
+    // (e.g., a future caller passing a wrong totalBytes) surface via onError
+    // and trigger disconnectWindow rather than aborting the flush loop.
+    const deps = createDeps();
+    const batcher = new PortBatcher(deps);
+
+    // Lie about the byte count: chunk is 4 bytes but we claim 8 bytes.
+    // mergeChunks will allocate Uint8Array(8) and chunks.set(chunk, offset)
+    // succeeds — but offset (4) does not equal totalBytes (8). The actual
+    // failure mode here is benign (trailing zeros), so we use a chunk that
+    // overflows the claimed budget instead.
+    const chunk = bytesOfLength(8);
+    batcher.write("t1", chunk, 4); // claim 4 bytes for an 8-byte chunk
+    vi.runAllTimers();
+
+    expect(deps.onError).toHaveBeenCalledOnce();
+    expect(deps.onError).toHaveBeenCalledWith(expect.any(Error));
+  });
+
   it("flush concatenates multiple chunks into a single contiguous Uint8Array", () => {
     const deps = createDeps();
     const batcher = new PortBatcher(deps);
