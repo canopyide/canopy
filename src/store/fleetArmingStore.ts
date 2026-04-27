@@ -271,8 +271,7 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
       };
     }),
 
-  noteBroadcastCommit: () =>
-    set((s) => ({ broadcastSignal: s.broadcastSignal + 1 })),
+  noteBroadcastCommit: () => set((s) => ({ broadcastSignal: s.broadcastSignal + 1 })),
 
   setPreviewArmedIds: (ids) => {
     const current = get().previewArmedIds;

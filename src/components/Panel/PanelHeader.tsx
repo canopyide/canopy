@@ -492,10 +492,10 @@ function PanelHeaderComponent({
             ? "bg-surface"
             : isFocused || isSelected
               ? "bg-overlay-subtle"
-              // Preview tint sits between transparent and bg-overlay-subtle so
-              // a previewed-but-unselected pane reads distinctly from both.
-              // Neutral surface, no accent — accent restraint per CLAUDE.md.
-              : isFleetPreviewed
+              : // Preview tint sits between transparent and bg-overlay-subtle so
+                // a previewed-but-unselected pane reads distinctly from both.
+                // Neutral surface, no accent — accent restraint per CLAUDE.md.
+                isFleetPreviewed
                 ? "bg-tint/[0.05]"
                 : "bg-transparent",
         // Mirror the fleet ribbon's 2px amber left stripe on follower panes.

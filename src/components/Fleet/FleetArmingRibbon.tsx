@@ -370,16 +370,14 @@ export function FleetArmingRibbon(): ReactElement | null {
   // the menu item, before they commit. Pure dry-run; no store mutation.
   const computePreviewByState = useCallback(
     (preset: FleetArmStatePreset, scope: FleetArmScope): Set<string> => {
-      const activeWorktreeId =
-        useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
       return new Set(computeArmByStateIds(preset, scope, activeWorktreeId));
     },
     []
   );
 
   const computePreviewAll = useCallback((scope: FleetArmScope): Set<string> => {
-    const activeWorktreeId =
-      useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+    const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
     return new Set(collectEligibleIds(scope, activeWorktreeId));
   }, []);
 
