@@ -781,6 +781,31 @@ describe("AgentButton preset UX", () => {
     });
   });
 
+  describe("manage presets dropdown footer", () => {
+    it("dropdown footer dispatches deep-link to the preset editor with source 'user'", () => {
+      // The chevron dropdown carries a footer "Manage Presets..." item that
+      // mirrors the right-click menu's agent-named entry but uses the
+      // shorter label since the agent identity is implicit (the user just
+      // clicked this agent's chevron). Source is "user" because it's a
+      // direct primary-UI dispatch, not a context-menu surface.
+      mockSettings = settingsWith({ claude: {} });
+      mockMergedPresetsFn = () => [{ id: "user-alpha", name: "Alpha" }];
+
+      const { getAllByTestId } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+      const items = getAllByTestId("preset-item") as HTMLElement[];
+      const manage = items.find((el) => el.textContent === "Manage Presets...")!;
+      fireEvent.click(manage);
+
+      expect(dispatchMock).toHaveBeenCalledWith(
+        "app.settings.openTab",
+        { tab: "agents", subtab: "claude", sectionId: "agents-presets" },
+        { source: "user" }
+      );
+    });
+  });
+
   describe("context menu", () => {
     it("exposes Manage Presets that deep-links to the presets section (no-presets branch)", () => {
       mockSettings = settingsWith({ claude: {} });
