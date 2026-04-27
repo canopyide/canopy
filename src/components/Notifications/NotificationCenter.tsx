@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, Moon, Settings2, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useStore } from "zustand";
+import { Bell, CheckCheck, Clock, Moon, Sunrise, Trash2, X } from "lucide-react";
 import {
   useNotificationHistoryStore,
   type NotificationHistoryEntry,
@@ -7,7 +8,16 @@ import {
 import { NotificationCenterEntry } from "./NotificationCenterEntry";
 import { Button } from "@/components/ui/button";
 import { actionService } from "@/services/ActionService";
-import { muteForDuration, muteUntilNextMorning, notify } from "@/lib/notify";
+import {
+  _muteStore,
+  clearSessionMute,
+  isScheduledQuietHours,
+  muteForDuration,
+  muteUntilNextMorning,
+  notify,
+} from "@/lib/notify";
+import { useEscapeStack } from "@/hooks/useEscapeStack";
+import { cn } from "@/lib/utils";
 import type { NotificationType } from "@/store/notificationStore";
 
 const SEVERITY_WEIGHTS: Record<NotificationType, number> = {
@@ -62,21 +72,52 @@ function groupByCorrelationId(entries: NotificationHistoryEntry[]): ThreadGroup[
   });
 }
 
+function formatTimeOfDay(ts: number): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
+    new Date(ts)
+  );
+}
+
 export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const entries = useNotificationHistoryStore((s) => s.entries);
   const unreadCount = useNotificationHistoryStore((s) => s.unreadCount);
   const clearAll = useNotificationHistoryStore((s) => s.clearAll);
   const markAllRead = useNotificationHistoryStore((s) => s.markAllRead);
   const dismissEntry = useNotificationHistoryStore((s) => s.dismissEntry);
+  const quietUntil = useStore(_muteStore, (s) => s.quietUntil);
 
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [frozenUnreadIds, setFrozenUnreadIds] = useState<Set<string> | null>(null);
+  const [pauseOpen, setPauseOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const pauseAnchorRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
       setFrozenUnreadIds(null);
+      setPauseOpen(false);
     }
   }, [open]);
+
+  // Refresh once a minute while open so the muted pill auto-clears on expiry
+  // and the "Muted until 8:00" label stays current. Poll-while-open keeps the
+  // cost off the closed-state idle path. Lesson #4595.
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, [open]);
+
+  useEscapeStack(open && pauseOpen, () => setPauseOpen(false));
+
+  const sessionMuted = quietUntil > now;
+  const scheduledQuiet = useMemo(() => isScheduledQuietHours(new Date(now)), [now]);
+  const muteActive = sessionMuted || scheduledQuiet;
+  const muteLabel = sessionMuted
+    ? `Muted until ${formatTimeOfDay(quietUntil)}`
+    : scheduledQuiet
+      ? "Quiet hours"
+      : "";
 
   const filteredEntries = useMemo(() => {
     if (filter === "all") return entries;
@@ -97,6 +138,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
 
   const handleMuteFor = (durationMs: number, label: string) => {
     muteForDuration(durationMs);
+    setPauseOpen(false);
     notify({
       type: "info",
       message: `Notifications muted ${label}`,
@@ -107,19 +149,29 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
 
   const handleMuteUntilMorning = () => {
     const until = muteUntilNextMorning();
-    const formatter = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+    setPauseOpen(false);
     notify({
       type: "info",
-      message: `Notifications muted until ${formatter.format(new Date(until))}`,
+      message: `Notifications muted until ${formatTimeOfDay(until)}`,
       priority: "low",
       urgent: true,
     });
   };
 
+  const openSettings = () => {
+    setPauseOpen(false);
+    onClose();
+    void actionService.dispatch(
+      "app.settings.openTab",
+      { tab: "notifications" },
+      { source: "user" }
+    );
+  };
+
   return (
     <div className="w-[360px] max-h-[420px] flex flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-divider">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-xs font-medium text-daintree-text/80">Notifications</span>
           {entries.length > 0 && (
             <div className="flex items-center rounded-md border border-daintree-text/10 overflow-hidden">
@@ -150,29 +202,14 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               </button>
             </div>
           )}
+          <MuteStatePill
+            visible={muteActive}
+            label={muteLabel}
+            canResume={sessionMuted}
+            onResume={clearSessionMute}
+          />
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => handleMuteFor(60 * 60 * 1000, "for 1h")}
-            className="text-daintree-text/50"
-            title="Suppress non-urgent notifications for the next hour"
-          >
-            <Moon />
-            Mute 1h
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={handleMuteUntilMorning}
-            className="text-daintree-text/50"
-            title="Suppress non-urgent notifications until 8:00 AM"
-          >
-            Until morning
-          </Button>
           {unreadCount > 0 && (
             <Button
               type="button"
@@ -185,23 +222,35 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               Mark all read
             </Button>
           )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => {
-              onClose();
-              void actionService.dispatch(
-                "app.settings.openTab",
-                { tab: "notifications" },
-                { source: "user" }
-              );
-            }}
-            className="text-daintree-text/50"
-          >
-            <Settings2 />
-            Configure
-          </Button>
+          <div className="relative">
+            <Button
+              ref={pauseAnchorRef}
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => setPauseOpen((o) => !o)}
+              className={cn(
+                "text-daintree-text/50",
+                muteActive && "text-daintree-text/80",
+                pauseOpen && "bg-overlay-soft text-daintree-text"
+              )}
+              aria-label="Pause notifications"
+              aria-haspopup="menu"
+              aria-expanded={pauseOpen}
+              title="Pause notifications"
+            >
+              <Moon />
+            </Button>
+            {pauseOpen && (
+              <PausePopover
+                anchorRef={pauseAnchorRef}
+                onClose={() => setPauseOpen(false)}
+                onMuteFor={handleMuteFor}
+                onMuteUntilMorning={handleMuteUntilMorning}
+                onOpenSettings={openSettings}
+              />
+            )}
+          </div>
           {entries.length > 0 && (
             <Button
               type="button"
@@ -251,6 +300,142 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         )}
       </div>
     </div>
+  );
+}
+
+function MuteStatePill({
+  visible,
+  label,
+  canResume,
+  onResume,
+}: {
+  visible: boolean;
+  label: string;
+  canResume: boolean;
+  onResume: () => void;
+}) {
+  // `invisible` keeps the slot reserved so toggling on/off doesn't reflow the
+  // header (filter pills / Pause button stay put). The width cap protects the
+  // row from runaway labels.
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1 rounded-md bg-overlay-medium px-1.5 py-0.5 text-[10px] font-medium text-daintree-text/70 max-w-[160px]",
+        visible ? "visible" : "invisible"
+      )}
+      aria-hidden={!visible}
+      data-testid="notification-mute-pill"
+    >
+      <span className="truncate">{label || "—"}</span>
+      {canResume && (
+        <button
+          type="button"
+          onClick={onResume}
+          className="-mr-0.5 rounded-sm p-0.5 text-daintree-text/60 hover:bg-overlay-soft hover:text-daintree-text"
+          aria-label="Resume notifications"
+          tabIndex={visible ? 0 : -1}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PausePopover({
+  anchorRef,
+  onClose,
+  onMuteFor,
+  onMuteUntilMorning,
+  onOpenSettings,
+}: {
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+  onMuteFor: (durationMs: number, label: string) => void;
+  onMuteUntilMorning: () => void;
+  onOpenSettings: () => void;
+}) {
+  // Positioned absolutely inside the NotificationCenter DOM tree (no portal).
+  // `FixedDropdown` guards outside-click via `contentRef.contains()`, so any
+  // portaled popover would close the parent dropdown when clicked. Keeping
+  // the panel inside the same node tree avoids that collision.
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (panelRef.current?.contains(target)) return;
+      // Skip the trigger button — its onClick toggles us closed already, and
+      // closing here would race with the click handler reopening us.
+      if (anchorRef.current?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [anchorRef, onClose]);
+
+  return (
+    <div
+      ref={panelRef}
+      role="menu"
+      className="absolute right-0 top-full mt-1 z-10 w-[200px] rounded-md surface-overlay shadow-overlay border border-divider py-1 text-xs"
+      data-testid="notification-pause-popover"
+    >
+      <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-daintree-text/40">
+        Pause notifications
+      </div>
+      <PauseOption
+        icon={<Clock className="h-3.5 w-3.5" />}
+        label="For 1 hour"
+        onClick={() => onMuteFor(60 * 60 * 1000, "for 1h")}
+      />
+      <PauseOption
+        icon={<Sunrise className="h-3.5 w-3.5" />}
+        label="Until 8:00 AM"
+        onClick={onMuteUntilMorning}
+      />
+      <PauseOption
+        icon={<Moon className="h-3.5 w-3.5" />}
+        label="Custom…"
+        onClick={onOpenSettings}
+      />
+      <div className="my-1 border-t border-divider" />
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onOpenSettings}
+        className="flex w-full items-center justify-between px-2 py-1.5 text-left text-daintree-text/70 hover:bg-overlay-soft hover:text-daintree-text"
+      >
+        <span>Notification settings</span>
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
+  );
+}
+
+function PauseOption({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-daintree-text/70 hover:bg-overlay-soft hover:text-daintree-text"
+    >
+      <span className="text-daintree-text/50">{icon}</span>
+      <span>{label}</span>
+    </button>
   );
 }
 

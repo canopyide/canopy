@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createStore } from "zustand/vanilla";
 import {
   useNotificationStore,
   type NotificationPriority,
@@ -93,23 +94,29 @@ export function _resetComboMap(): void {
   _comboCounts.clear();
 }
 
-let _quietUntil = 0;
+/**
+ * Vanilla Zustand store wrapping the session quiet-until timestamp so the
+ * renderer UI (notification center pill, Pause popover) can subscribe
+ * reactively. Internal `notify()` reads still go through `getState()` for the
+ * synchronous gate.
+ */
+export const _muteStore = createStore<{ quietUntil: number }>(() => ({ quietUntil: 0 }));
 
 export function setStartupQuietPeriod(durationMs: number): void {
-  _quietUntil = Date.now() + durationMs;
+  _muteStore.setState({ quietUntil: Date.now() + durationMs });
 }
 
 export function getQuietPeriodRemaining(): number {
-  return Math.max(0, _quietUntil - Date.now());
+  return Math.max(0, _muteStore.getState().quietUntil - Date.now());
 }
 
 export function _setQuietUntil(ts: number): void {
-  _quietUntil = ts;
+  _muteStore.setState({ quietUntil: ts });
 }
 
 /** Session-only mute helper used by the notification-center quick actions. */
 export function setSessionQuietUntil(ts: number): void {
-  _quietUntil = ts;
+  _muteStore.setState({ quietUntil: ts });
   // Mirror to main so completion watch notifications and working-pulse sounds
   // are also suppressed until the timestamp.
   if (typeof window !== "undefined") {
@@ -128,6 +135,11 @@ export function muteUntilNextMorning(morningMin = 8 * 60): number {
   const until = nextOccurrenceTimestamp(morningMin);
   setSessionQuietUntil(until);
   return until;
+}
+
+/** Clears the session mute. Used by the resume (✕) affordance on the muted-state pill. */
+export function clearSessionMute(): void {
+  setSessionQuietUntil(0);
 }
 
 export function isScheduledQuietHours(now: Date = new Date()): boolean {
@@ -187,7 +199,8 @@ export function notify(payload: NotifyPayload): string {
     }));
 
   const notificationsEnabled = useNotificationSettingsStore.getState().enabled;
-  const isQuiet = !payload.urgent && (Date.now() < _quietUntil || isScheduledQuietHours());
+  const isQuiet =
+    !payload.urgent && (Date.now() < _muteStore.getState().quietUntil || isScheduledQuietHours());
 
   if (placement === "grid-bar") {
     const entryId = historyMessage

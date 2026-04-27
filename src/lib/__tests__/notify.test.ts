@@ -5,8 +5,10 @@ import {
   _resetCoalesceMap,
   _resetComboMap,
   _setQuietUntil,
+  _muteStore,
   muteForDuration,
   muteUntilNextMorning,
+  clearSessionMute,
   isScheduledQuietHours,
 } from "../notify";
 import { useNotificationStore } from "../../store/notificationStore";
@@ -1507,6 +1509,35 @@ describe("notify()", () => {
       expect(new Date(until).getHours()).toBe(8);
       expect(new Date(until).getDate()).toBe(2);
       vi.useRealTimers();
+    });
+
+    it("_muteStore reflects writes from setSession/mute helpers", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 12, 0));
+      muteForDuration(60 * 60 * 1000);
+      expect(_muteStore.getState().quietUntil).toBe(Date.now() + 60 * 60 * 1000);
+      vi.useRealTimers();
+    });
+
+    it("clearSessionMute resets quietUntil to 0 and lifts the mute gate", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 12, 0));
+      muteForDuration(60 * 60 * 1000);
+      expect(_muteStore.getState().quietUntil).toBeGreaterThan(Date.now());
+
+      clearSessionMute();
+      expect(_muteStore.getState().quietUntil).toBe(0);
+
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "info", message: "Now visible", priority: "high" });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("clearSessionMute mirrors the cleared timestamp to the main process", () => {
+      mockSetSessionMute.mockClear();
+      clearSessionMute();
+      expect(mockSetSessionMute).toHaveBeenCalledWith(0);
     });
   });
 });
