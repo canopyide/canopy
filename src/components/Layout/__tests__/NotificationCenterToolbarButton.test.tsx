@@ -12,7 +12,7 @@
  *  - aria-label / tooltip describes the muted state with a time-of-day when known
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, act } from "@testing-library/react";
 import { NotificationCenterToolbarButton } from "../NotificationCenterToolbarButton";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
@@ -112,6 +112,7 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       });
       const { queryByTestId } = render(<NotificationCenterToolbarButton />);
       expect(queryByTestId("icon-bell-off")).toBeTruthy();
+      expect(queryByTestId("icon-bell")).toBeNull();
     });
 
     it("renders Bell again outside scheduled quiet hours", () => {
@@ -124,6 +125,27 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       });
       const { queryByTestId } = render(<NotificationCenterToolbarButton />);
       expect(queryByTestId("icon-bell")).toBeTruthy();
+      expect(queryByTestId("icon-bell-off")).toBeNull();
+    });
+
+    it("respects weekday filter — Bell on excluded day, BellOff on included day", () => {
+      vi.useFakeTimers();
+      // 2024-01-06 is a Saturday (day 6); 2024-01-08 is a Monday (day 1).
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 23 * 60,
+        quietHoursWeekdays: [1, 2, 3, 4, 5],
+      });
+
+      vi.setSystemTime(new Date(2024, 0, 6, 22, 30));
+      const sat = render(<NotificationCenterToolbarButton />);
+      expect(sat.queryByTestId("icon-bell")).toBeTruthy();
+      sat.unmount();
+
+      vi.setSystemTime(new Date(2024, 0, 8, 22, 30));
+      const mon = render(<NotificationCenterToolbarButton />);
+      expect(mon.queryByTestId("icon-bell-off")).toBeTruthy();
     });
   });
 
@@ -175,8 +197,8 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       const btn = container.querySelector("button")!;
       const label = btn.getAttribute("aria-label") ?? "";
       expect(label.startsWith("Notifications — muted until ")).toBe(true);
-      // Locale-dependent formatting — match the time portion loosely.
-      expect(label).toMatch(/2:30/);
+      // Match either 12h ("2:30") or 24h ("14:30") locale outputs.
+      expect(label).toMatch(/(?:^|[^0-9])(?:14|2):30/);
     });
 
     it("says 'scheduled quiet hours' during the configured window", () => {
@@ -217,6 +239,55 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       useNotificationSettingsStore.setState({ enabled: false });
       const { container } = render(<NotificationCenterToolbarButton />);
       expect(container.querySelector("button")).toBeNull();
+    });
+  });
+
+  describe("boundary timers — auto re-render at expiry / minute boundary", () => {
+    it("flips BellOff back to Bell when the session mute expires", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 12, 0));
+      useNotificationSettingsStore.setState({
+        quietUntil: new Date(2024, 0, 1, 12, 0, 30).getTime(),
+      });
+
+      const { queryByTestId } = render(<NotificationCenterToolbarButton />);
+      expect(queryByTestId("icon-bell-off")).toBeTruthy();
+
+      // Advance past the expiry timestamp + the 50ms safety pad.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000);
+      });
+
+      expect(queryByTestId("icon-bell")).toBeTruthy();
+      expect(queryByTestId("icon-bell-off")).toBeNull();
+    });
+
+    it("re-arms the minute poll so scheduled quiet hours flip Bell at the end boundary", async () => {
+      vi.useFakeTimers();
+      // Start at 22:59:30 — quiet starts at 23:00 and ends at 23:01.
+      vi.setSystemTime(new Date(2024, 0, 1, 22, 59, 30));
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 23 * 60,
+        quietHoursEndMin: 23 * 60 + 1,
+      });
+
+      const { queryByTestId } = render(<NotificationCenterToolbarButton />);
+      // Outside the window initially.
+      expect(queryByTestId("icon-bell")).toBeTruthy();
+
+      // Cross 23:00 — first re-arm via initial setTimeout fires.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000);
+      });
+      expect(queryByTestId("icon-bell-off")).toBeTruthy();
+
+      // Cross 23:01 — interval must re-arm and tick again.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(queryByTestId("icon-bell")).toBeTruthy();
+      expect(queryByTestId("icon-bell-off")).toBeNull();
     });
   });
 });

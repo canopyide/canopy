@@ -66,6 +66,7 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
   useEffect(() => {
     const tick = () => forceTick((n) => n + 1);
     const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const intervals: ReturnType<typeof setInterval>[] = [];
 
     if (isSessionMuted) {
       const delay = Math.max(0, quietUntil - Date.now());
@@ -73,14 +74,20 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
     }
 
     if (quietHoursEnabled) {
-      // Re-evaluate at the next minute boundary — a single coarse poll keeps
-      // the implementation simple across midnight/DST/weekday rollovers.
+      // Coarse minute-poll re-render. Aligns to the next minute, then repeats.
+      // Simpler than computing exact start/end edges across midnight/DST/weekday rollovers.
       const msToNextMinute = 60_000 - (Date.now() % 60_000);
-      timeouts.push(setTimeout(tick, msToNextMinute + 50));
+      timeouts.push(
+        setTimeout(() => {
+          tick();
+          intervals.push(setInterval(tick, 60_000));
+        }, msToNextMinute + 50)
+      );
     }
 
     return () => {
       for (const t of timeouts) clearTimeout(t);
+      for (const i of intervals) clearInterval(i);
     };
   }, [isSessionMuted, quietUntil, quietHoursEnabled]);
 
