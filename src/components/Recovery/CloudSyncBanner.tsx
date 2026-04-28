@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { useCloudSyncBannerStore } from "@/store/cloudSyncBannerStore";
+import { useProjectStore } from "@/store/projectStore";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { notify } from "@/lib/notify";
@@ -8,12 +9,22 @@ import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export function CloudSyncBanner() {
   const service = useCloudSyncBannerStore((s) => s.service);
-  const setService = useCloudSyncBannerStore((s) => s.setService);
+  const setBanner = useCloudSyncBannerStore((s) => s.setBanner);
   const { saveSettings } = useProjectSettings();
 
   if (!service) return null;
 
   const handleDismiss = async () => {
+    // Guard against project switch race: the store carries the projectId the
+    // banner was raised for; skip the save if it no longer matches the live
+    // project (saveSettings would otherwise persist to the wrong project).
+    const bannerProjectId = useCloudSyncBannerStore.getState().projectId;
+    const livePid = useProjectStore.getState().currentProject?.id ?? null;
+    if (!bannerProjectId || bannerProjectId !== livePid) {
+      setBanner({ service: null, projectId: null });
+      return;
+    }
+
     try {
       const latestSettings = useProjectSettingsStore.getState().settings;
       if (!latestSettings) return;
@@ -22,7 +33,7 @@ export function CloudSyncBanner() {
         ...latestSettings,
         cloudSyncWarningDismissed: true,
       });
-      setService(null);
+      setBanner({ service: null, projectId: null });
     } catch (err) {
       logError("Failed to save cloud sync warning preference", err);
       notify({

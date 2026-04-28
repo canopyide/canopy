@@ -15,9 +15,14 @@ export function useGitHubTokenHealth(): void {
 
   useEffect(() => {
     let cancelled = false;
+    let pushApplied = false;
 
-    const apply = (payload: GitHubTokenHealthPayload) => {
+    const apply = (payload: GitHubTokenHealthPayload, source: "push" | "replay") => {
       if (cancelled) return;
+      // If a live push already updated state, ignore a stale initial-replay
+      // response (the IPC race is rare but real — see review notes).
+      if (source === "replay" && pushApplied) return;
+      if (source === "push") pushApplied = true;
 
       const isUnhealthy = payload.status === "unhealthy";
       const wasUnhealthy = useGitHubTokenHealthStore.getState().isUnhealthy;
@@ -39,13 +44,13 @@ export function useGitHubTokenHealth(): void {
       }
     };
 
-    const cleanup = githubClient.onTokenHealthChanged(apply);
+    const cleanup = githubClient.onTokenHealthChanged((payload) => apply(payload, "push"));
 
     // Replay current state on mount so secondary windows / late mounts see the
     // unhealthy flag without waiting for a transition.
     void githubClient
       .getTokenHealth()
-      .then(apply)
+      .then((payload) => apply(payload, "replay"))
       .catch(() => {
         // Initial-state fetch is best-effort; transitions still work.
       });

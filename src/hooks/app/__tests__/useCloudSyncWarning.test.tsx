@@ -108,4 +108,17 @@ describe("useCloudSyncWarning", () => {
     const entries = useNotificationHistoryStore.getState().entries;
     expect(entries.filter((e) => e.title === "Cloud sync folder detected")).toHaveLength(1);
   });
+
+  it("populates the banner store with the project id alongside the service", () => {
+    setupProject({
+      projectId: "alpha",
+      projectPath: "/Users/foo/Library/CloudStorage/Dropbox-Personal/work",
+      settings: { runCommands: [] },
+    });
+    renderHook(() => useCloudSyncWarning("/Users/foo"));
+
+    const state = useCloudSyncBannerStore.getState();
+    expect(state.service).toBe("Dropbox");
+    expect(state.projectId).toBe("alpha");
+  });
 });

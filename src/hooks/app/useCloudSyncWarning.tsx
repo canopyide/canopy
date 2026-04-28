@@ -18,27 +18,26 @@ export function useCloudSyncWarning(homeDir?: string) {
   const lastInboxedProjectRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const setService = useCloudSyncBannerStore.getState().setService;
+    const setBanner = useCloudSyncBannerStore.getState().setBanner;
 
     if (!currentProject?.id || settingsProjectId !== currentProject.id || !settings || !homeDir) {
-      setService(null);
+      setBanner({ service: null, projectId: null });
       return;
     }
 
     if (settings.cloudSyncWarningDismissed) {
-      setService(null);
+      setBanner({ service: null, projectId: null });
       return;
     }
 
     const service = detectCloudSyncService(currentProject.path, homeDir, getPlatform());
 
     if (!service) {
-      setService(null);
-      lastInboxedProjectRef.current = null;
+      setBanner({ service: null, projectId: null });
       return;
     }
 
-    setService(service);
+    setBanner({ service, projectId: currentProject.id });
 
     // Inbox entry once per project — banner is the live surface; the entry is an audit trail.
     if (lastInboxedProjectRef.current !== currentProject.id) {

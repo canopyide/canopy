@@ -110,4 +110,39 @@ describe("useGitHubTokenHealth", () => {
     // (Note: cleanup() is called too, but our mock retains the listener reference for testing.)
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(false);
   });
+
+  it("clears the store when payload status is unknown", async () => {
+    renderHook(() => useGitHubTokenHealth());
+    await act(async () => {});
+
+    act(() => healthListener?.({ status: "unhealthy" }));
+    expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
+
+    act(() => healthListener?.({ status: "unknown" }));
+    expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(false);
+  });
+
+  it("ignores a stale initial-replay response when a live push has already arrived", async () => {
+    let resolveReplay!: (payload: GitHubTokenHealthPayload) => void;
+    getTokenHealthMock.mockImplementationOnce(
+      () =>
+        new Promise<GitHubTokenHealthPayload>((resolve) => {
+          resolveReplay = resolve;
+        })
+    );
+
+    renderHook(() => useGitHubTokenHealth());
+    // Subscribe is sync; let the hook attach.
+    await act(async () => {});
+
+    // Live push lands first.
+    act(() => healthListener?.({ status: "unhealthy" }));
+    expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
+
+    // Now the slow replay resolves with stale data — must NOT overwrite the live state.
+    await act(async () => {
+      resolveReplay({ status: "healthy" });
+    });
+    expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
+  });
 });
