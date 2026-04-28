@@ -1,4 +1,4 @@
-import { SquareTerminal, Globe, Monitor } from "lucide-react";
+import { SquareTerminal, Globe, MonitorPlay } from "lucide-react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { PanelKind } from "@/types";
@@ -54,10 +54,14 @@ export function TerminalIcon({ kind, chrome, className, brandColor }: TerminalIc
     );
   }
 
-  // Dev preview panes get a monitor icon
-  if (kind === "dev-preview" || resolvedChrome.iconId === "monitor") {
+  // Dev preview panes get a monitor-play icon
+  if (
+    kind === "dev-preview" ||
+    resolvedChrome.iconId === "monitor-play" ||
+    resolvedChrome.iconId === "monitor"
+  ) {
     return withIconMarker(
-      <Monitor {...finalProps} className={cn(finalProps.className, "text-status-info")} />
+      <MonitorPlay {...finalProps} className={cn(finalProps.className, "text-status-info")} />
     );
   }
 

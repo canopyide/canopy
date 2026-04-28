@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { Globe, Monitor, SquareTerminal } from "lucide-react";
+import { Globe, MonitorPlay, SquareTerminal } from "lucide-react";
 import { TerminalRecipeIcon } from "@/components/icons";
 import { useRecipeStore } from "@/store/recipeStore";
 import type { RecipeContext } from "@/utils/recipeVariables";
@@ -83,7 +83,7 @@ export function DockLaunchMenuItems({
       </C.Item>
       {hasDevPreview && (
         <C.Item onSelect={() => onLaunchAgent("dev-preview")}>
-          <Monitor className="w-3.5 h-3.5 mr-2 text-status-success" />
+          <MonitorPlay className="w-3.5 h-3.5 mr-2 text-status-success" />
           Dev preview
         </C.Item>
       )}

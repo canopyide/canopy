@@ -7,7 +7,7 @@ import {
   FileText,
   SquareTerminal,
   Globe,
-  Monitor,
+  MonitorPlay,
 } from "lucide-react";
 import { DaintreeAgentIcon } from "@/components/icons";
 import { AppDialog } from "../ui/AppDialog";
@@ -35,7 +35,7 @@ function getPanelIcon(kind: string) {
     case "browser":
       return <Globe className="h-3.5 w-3.5" />;
     case "dev-preview":
-      return <Monitor className="h-3.5 w-3.5" />;
+      return <MonitorPlay className="h-3.5 w-3.5" />;
     default:
       return <SquareTerminal className="h-3.5 w-3.5" />;
   }

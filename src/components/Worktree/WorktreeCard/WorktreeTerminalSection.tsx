@@ -15,8 +15,13 @@ import {
   getEffectiveStateColor,
 } from "../terminalStateConfig";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
-import { ChevronRight, GripVertical, PanelBottom, SquareTerminal } from "lucide-react";
-import { MoveToGridIcon } from "@/components/icons";
+import {
+  ChevronRight,
+  GripVertical,
+  PanelBottom,
+  PanelTopClose,
+  SquareTerminal,
+} from "lucide-react";
 import {
   SortableWorktreeTerminal,
   getAccordionDragId,
@@ -158,7 +163,7 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
                 {term.location === "dock" ? (
                   <PanelBottom className="w-3 h-3" />
                 ) : (
-                  <MoveToGridIcon className="w-3 h-3" />
+                  <PanelTopClose className="w-3 h-3" />
                 )}
               </div>
             </TooltipTrigger>

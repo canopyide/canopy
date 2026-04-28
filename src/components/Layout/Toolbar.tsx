@@ -13,7 +13,7 @@ import {
   Check,
   ChevronsUpDown,
   Globe,
-  Monitor,
+  MonitorPlay,
   Bell,
   Ellipsis,
   GitBranch,
@@ -122,7 +122,7 @@ export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenu
   "agent-tray": { label: "Agent Tray", icon: Plug },
   terminal: { label: "Terminal", icon: SquareTerminal },
   browser: { label: "Browser", icon: Globe },
-  "dev-server": { label: "Dev Preview", icon: Monitor },
+  "dev-server": { label: "Dev Preview", icon: MonitorPlay },
   "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
   "notification-center": { label: "Notifications", icon: Bell },
   "copy-tree": { label: "Copy Context", icon: CopyTreeIcon },
@@ -464,7 +464,7 @@ export function Toolbar({
                 className={toolbarIconButtonClass}
                 aria-label="Open Dev Preview"
               >
-                <Monitor />
+                <MonitorPlay />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Open Dev Preview</TooltipContent>

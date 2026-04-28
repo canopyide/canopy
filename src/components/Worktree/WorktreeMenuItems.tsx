@@ -24,7 +24,7 @@ import {
   LayoutGrid,
   Layers,
   Link,
-  Monitor,
+  MonitorPlay,
   CheckSquare,
   Maximize2,
   PanelTopClose,
@@ -36,13 +36,14 @@ import {
   RefreshCw,
   Save,
   Server,
+  PanelBottomClose,
   Pause,
   SquareTerminal,
   Trash2,
   Undo2,
   Zap,
 } from "lucide-react";
-import { MoveToDockIcon, CopyTreeIcon, TerminalRecipeIcon } from "@/components/icons";
+import { CopyTreeIcon, TerminalRecipeIcon } from "@/components/icons";
 
 type MenuComponent = React.ElementType;
 type LaunchAgentIcon = React.ComponentType<{ className?: string }>;
@@ -222,7 +223,7 @@ export function WorktreeMenuItems({
             Open Browser
           </C.Item>
           <C.Item onSelect={() => onLaunchAgent?.("dev-preview")} disabled={!onLaunchAgent}>
-            <Monitor className="w-3.5 h-3.5 mr-2 text-status-success" />
+            <MonitorPlay className="w-3.5 h-3.5 mr-2 text-status-success" />
             Open Dev Preview
           </C.Item>
         </C.SubContent>
@@ -244,7 +245,7 @@ export function WorktreeMenuItems({
         </C.SubTrigger>
         <C.SubContent>
           <C.Item onSelect={onDockAll} disabled={counts.grid === 0}>
-            <MoveToDockIcon className="w-3.5 h-3.5 mr-2" />
+            <PanelBottomClose className="w-3.5 h-3.5 mr-2" />
             Dock All
             <C.Shortcut>({counts.grid})</C.Shortcut>
           </C.Item>

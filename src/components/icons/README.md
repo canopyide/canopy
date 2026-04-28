@@ -11,10 +11,12 @@ app as bespoke components.
   icon, but a state-indicator component that lives next to the icon set).
 - `custom/` — **Daintree-original icons.** Single-glyph 24×24 line icons drawn
   for product-specific concepts that Lucide doesn't cover (worktrees, agents,
-  recipes, broadcast, project pulse, copy tree, watch alert, MCP server,
-  move-to-dock/grid). All eight of the actively-used non-utility icons are
-  scheduled for a Lucide-compatible redraw — see
+  recipes, broadcast, project pulse, copy tree, watch alert, MCP server). All
+  eight non-MCP icons are scheduled for a Lucide-compatible redraw — see
   [docs/design/custom-icon-spec.pdf](../../../docs/design/custom-icon-spec.pdf).
+  The MCP icon is the official mark from `modelcontextprotocol.io` and stays
+  as-is. Move-to-dock and move-to-grid used to live here too; both are now
+  Lucide's `panel-bottom-close` / `panel-top-close`.
 - `brands/` — third-party brand marks (language runtimes, package managers,
   AI agents). These follow each brand's official mark and are not redrawn.
 

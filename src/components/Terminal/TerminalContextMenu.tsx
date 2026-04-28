@@ -24,6 +24,8 @@ import {
   Maximize2,
   Minimize2,
   OctagonX,
+  PanelBottomClose,
+  PanelTopClose,
   Pencil,
   Play,
   Radio,
@@ -34,7 +36,7 @@ import {
   Trash2,
   Unlock,
 } from "lucide-react";
-import { MoveToDockIcon, MoveToGridIcon, WorktreeIcon } from "@/components/icons";
+import { WorktreeIcon } from "@/components/icons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -327,9 +329,9 @@ export function TerminalContextMenu({
         onSelect={() => handleAction(currentLocation === "grid" ? "move-to-dock" : "move-to-grid")}
       >
         {currentLocation === "grid" ? (
-          <MoveToDockIcon className={ICON_CLASS} />
+          <PanelBottomClose className={ICON_CLASS} />
         ) : (
-          <MoveToGridIcon className={ICON_CLASS} />
+          <PanelTopClose className={ICON_CLASS} />
         )}
         {currentLocation === "grid" ? "Move to Dock" : "Move to Grid"}
       </ContextMenuItem>

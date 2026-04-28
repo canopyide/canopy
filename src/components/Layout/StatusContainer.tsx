@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { PanelBottom } from "lucide-react";
-import { MoveToGridIcon } from "@/components/icons";
+import { PanelBottom, PanelTopClose } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,7 @@ import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
 function getLocationIcon(location: PanelLocation | undefined) {
   if (location === "dock") return <PanelBottom className="w-3 h-3" />;
-  return <MoveToGridIcon className="w-3 h-3" />;
+  return <PanelTopClose className="w-3 h-3" />;
 }
 
 export interface StatusContainerConfig {

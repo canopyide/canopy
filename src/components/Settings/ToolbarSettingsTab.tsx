@@ -19,7 +19,7 @@ import {
   GripVertical,
   SquareTerminal,
   Globe,
-  Monitor,
+  MonitorPlay,
   AlertTriangle,
   Settings,
   AlertCircle,
@@ -95,7 +95,7 @@ const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
   },
   "dev-server": {
     label: "Dev Preview",
-    icon: <Monitor className="h-4 w-4" />,
+    icon: <MonitorPlay className="h-4 w-4" />,
     description: "Open dev preview panel",
   },
   "voice-recording": {

@@ -1,5 +1,3 @@
-export { MoveToDockIcon } from "./MoveToDockIcon";
-export { MoveToGridIcon } from "./MoveToGridIcon";
 export { DaintreeAgentIcon } from "./DaintreeAgentIcon";
 export { CopyTreeIcon } from "./CopyTreeIcon";
 export { TerminalRecipeIcon } from "./TerminalRecipeIcon";

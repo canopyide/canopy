@@ -21,6 +21,8 @@ import {
   CopyPlus,
   Ellipsis,
   Lock,
+  PanelBottomClose,
+  PanelTopClose,
   Pencil,
   Trash2,
   Unlock,
@@ -43,7 +45,7 @@ import { formatShortcutForTooltip, createTooltipWithShortcut } from "@/lib/platf
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
-import { MoveToDockIcon, MoveToGridIcon, WatchAlertIcon, WorktreeIcon } from "@/components/icons";
+import { WatchAlertIcon, WorktreeIcon } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import {
   useBackgroundPanelStats,
@@ -939,7 +941,7 @@ function PanelHeaderComponent({
               {((canRestart && onRestart) || agentId) && <DropdownMenuSeparator />}
               {location === "dock" && onRestore && (
                 <DropdownMenuItem onSelect={() => onRestore()}>
-                  <MoveToGridIcon className="w-3 h-3 mr-2" aria-hidden="true" />
+                  <PanelTopClose className="w-3 h-3 mr-2" aria-hidden="true" />
                   Restore to Grid
                 </DropdownMenuItem>
               )}
@@ -1033,7 +1035,7 @@ function PanelHeaderComponent({
                 aria-label="Move to Dock"
                 data-testid="panel-move-to-dock"
               >
-                <MoveToDockIcon className="w-3 h-3" />
+                <PanelBottomClose className="w-3 h-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -1056,7 +1058,7 @@ function PanelHeaderComponent({
                 aria-label="Collapse to Dock"
                 data-testid="panel-collapse-to-dock"
               >
-                <MoveToDockIcon className="w-3 h-3" />
+                <PanelBottomClose className="w-3 h-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

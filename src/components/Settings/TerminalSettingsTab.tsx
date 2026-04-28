@@ -9,7 +9,7 @@ import {
   MessageSquare,
   MousePointerClick,
   SplitSquareHorizontal,
-  Monitor,
+  MonitorPlay,
   RotateCcw,
   Ear,
   Activity,
@@ -640,7 +640,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
 
             <div className="ml-4 space-y-3 border-l-2 border-daintree-border pl-4">
               <SettingsSwitchCard
-                icon={Monitor}
+                icon={MonitorPlay}
                 title={
                   twoPaneSplitConfig.preferPreview ? "Preview-Focused Layout" : "Balanced Layout"
                 }
