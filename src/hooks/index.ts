@@ -105,3 +105,5 @@ export { useDebounce } from "./useDebounce";
 export { useShortcutHintHover } from "./useShortcutHintHover";
 
 export { useTruncationDetection, isElementTruncated } from "./useTruncationDetection";
+
+export { useConnectivity, useConnectivitySnapshot } from "./useConnectivity";
