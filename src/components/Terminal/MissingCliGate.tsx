@@ -20,6 +20,20 @@ function getOsLabel(): string {
 }
 
 function StateBanner({ state, detail }: { state: AgentAvailabilityState; detail: AgentCliDetail }) {
+  if (state === "ready") {
+    return (
+      <div className="flex items-start gap-3 px-4 py-3 rounded-[var(--radius-md)] border border-status-success/20 bg-status-success/5">
+        <Check className="w-5 h-5 text-green-500 shrink-0 mt-px" />
+        <div>
+          <p className="text-sm font-medium">CLI is now available</p>
+          <p className="text-xs text-daintree-text/60 mt-1">
+            The agent binary was detected. Close this panel and re-launch to start a session.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (state === "missing") {
     return (
       <div className="flex items-start gap-3 px-4 py-3 rounded-[var(--radius-md)] border border-status-warning/20 bg-status-warning/5">

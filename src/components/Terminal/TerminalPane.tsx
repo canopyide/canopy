@@ -222,6 +222,8 @@ function TerminalPaneComponent({
     const panel = usePanelStore.getState().panelsById[id];
     if (!panel || !agentId) return;
 
+    const presetEnv = panel.extensionState?.presetEnv as Record<string, string> | undefined;
+
     removePanel(id);
     void addPanel({
       kind: "terminal",
@@ -234,6 +236,7 @@ function TerminalPaneComponent({
       agentLaunchFlags: panel.agentLaunchFlags,
       agentModelId: panel.agentModelId,
       agentPresetId: panel.agentPresetId,
+      env: presetEnv,
     });
   }, [id, agentId, addPanel, removePanel]);
 

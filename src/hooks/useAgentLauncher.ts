@@ -89,7 +89,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
 
   const isMounted = useRef(true);
-  const isLaunchingRef = useRef(false);
+  const launchingAgentsRef = useRef<Set<string>>(new Set());
 
   const checkAvailabilityAndLoadSettings = useCallback(async () => {
     if (!isElectronAvailable()) {
@@ -161,10 +161,11 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         return null;
       }
 
-      // Prevent concurrent launches from double-clicks or rapid keybindings.
+      // Reentrancy guard scoped per agentId so concurrent launches of different
+      // agents (or browser/dev-preview panels) are not blocked.
       // useRef avoids the react batching window that useState would have.
-      if (isLaunchingRef.current) return null;
-      isLaunchingRef.current = true;
+      if (launchingAgentsRef.current.has(agentId)) return null;
+      launchingAgentsRef.current.add(agentId);
 
       try {
         const targetWorktreeId = launchOptions?.worktreeId ?? activeWorktreeId;
@@ -396,6 +397,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               spawnStatus: "missing-cli",
               startedAt: Date.now(),
               isVisible: true,
+              extensionState: presetEnv ? { presetEnv } : undefined,
             };
             usePanelStore.setState((state) => ({
               panelsById: { ...state.panelsById, [gateId]: gatePanel },
@@ -413,7 +415,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
           return null;
         }
       } finally {
-        isLaunchingRef.current = false;
+        launchingAgentsRef.current.delete(agentId);
       }
     },
     [activeWorktreeId, worktreeMap, isInitialized, addPanel, currentProject, agentSettings, homeDir]
