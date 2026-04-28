@@ -10,23 +10,31 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useRecipeStore } from "@/store/recipeStore";
+import type { RecipeContext } from "@/utils/recipeVariables";
 
 interface DockLaunchButtonProps {
   agentOptions: ReadonlyArray<{ type: string; label: string }>;
   onLaunchAgent: (agentId: string) => void;
   activeWorktreeId: string | null;
   cwd: string;
+  recipeContext?: RecipeContext;
 }
 
 interface RecipesSectionProps {
   activeWorktreeId: string | null;
   cwd: string;
+  recipeContext?: RecipeContext;
 }
 
 // Read recipes inside DropdownMenuContent so the subscription is only active
 // while the menu is open. Filter via useMemo to avoid the new-array-each-render
 // pitfall of subscribing to getRecipesForWorktree directly through Zustand.
-function RecipesSection({ activeWorktreeId, cwd }: RecipesSectionProps) {
+//
+// Recipes here intentionally use the store's default placement (grid). Every
+// other recipe launch site in the app does the same, and recipes are commonly
+// multi-terminal — a "Launch in dock" override would put a 3-agent recipe in
+// the dock, which is a single-panel surface.
+function RecipesSection({ activeWorktreeId, cwd, recipeContext }: RecipesSectionProps) {
   const recipes = useRecipeStore((s) => s.recipes);
   const visibleRecipes = useMemo(
     () =>
@@ -48,7 +56,7 @@ function RecipesSection({ activeWorktreeId, cwd }: RecipesSectionProps) {
             onSelect={() =>
               void useRecipeStore
                 .getState()
-                .runRecipe(recipe.id, cwd, activeWorktreeId ?? undefined)
+                .runRecipe(recipe.id, cwd, activeWorktreeId ?? undefined, recipeContext)
             }
           >
             {recipe.name}
@@ -64,6 +72,7 @@ export function DockLaunchButton({
   onLaunchAgent,
   activeWorktreeId,
   cwd,
+  recipeContext,
 }: DockLaunchButtonProps) {
   // Mirror AgentButton.tsx's tooltip-suppression pattern: when the dropdown
   // closes, Radix restores focus to the trigger and the tooltip would re-fire
@@ -117,7 +126,11 @@ export function DockLaunchButton({
             New {label}
           </DropdownMenuItem>
         ))}
-        <RecipesSection activeWorktreeId={activeWorktreeId} cwd={cwd} />
+        <RecipesSection
+          activeWorktreeId={activeWorktreeId}
+          cwd={cwd}
+          recipeContext={recipeContext}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

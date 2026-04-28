@@ -300,6 +300,16 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
               onLaunchAgent={handleAddTerminal}
               activeWorktreeId={activeWorktreeId}
               cwd={cwd}
+              recipeContext={
+                activeWorktree
+                  ? {
+                      issueNumber: activeWorktree.issueNumber,
+                      prNumber: activeWorktree.prNumber,
+                      branchName: activeWorktree.branch,
+                      worktreePath: activeWorktree.path,
+                    }
+                  : undefined
+              }
             />
             <HelpAgentDockButton />
           </div>

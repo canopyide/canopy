@@ -124,8 +124,15 @@ describe("DockLaunchButton", () => {
     expect(queryByText("Other worktree recipe")).toBeNull();
   });
 
-  it("invokes runRecipe with cwd and worktreeId when a recipe is selected", () => {
+  it("invokes runRecipe with cwd, worktreeId, and recipe context when a recipe is selected", () => {
     mockRecipes = [{ id: "r-1", name: "My recipe", worktreeId: undefined }];
+
+    const recipeContext = {
+      issueNumber: 42,
+      prNumber: 100,
+      branchName: "feature/abc",
+      worktreePath: "/path/to/wt",
+    };
 
     const { getByText } = render(
       <DockLaunchButton
@@ -133,10 +140,11 @@ describe("DockLaunchButton", () => {
         onLaunchAgent={vi.fn()}
         activeWorktreeId="wt-1"
         cwd="/path/to/wt"
+        recipeContext={recipeContext}
       />
     );
 
     fireEvent.click(getByText("My recipe"));
-    expect(runRecipeMock).toHaveBeenCalledWith("r-1", "/path/to/wt", "wt-1");
+    expect(runRecipeMock).toHaveBeenCalledWith("r-1", "/path/to/wt", "wt-1", recipeContext);
   });
 });
