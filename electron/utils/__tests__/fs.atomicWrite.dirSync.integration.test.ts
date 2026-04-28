@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { mkdtemp, readFile, rm } from "fs/promises";
 import path from "path";
 import os from "os";
