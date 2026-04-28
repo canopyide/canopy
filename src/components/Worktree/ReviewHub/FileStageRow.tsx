@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { Plus, Minus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
-import { useTruncationDetection } from "@/hooks/useTruncationDetection";
 
 const STATUS_CONFIG: Record<GitStatus, { label: string; bg: string; text: string }> = {
   modified: {
@@ -68,7 +67,6 @@ function splitPath(filePath: string): { dir: string; base: string } {
 export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStageRowProps) {
   const config = STATUS_CONFIG[file.status] || STATUS_CONFIG.untracked;
   const { dir, base } = splitPath(file.path);
-  const { ref, isTruncated } = useTruncationDetection();
 
   const handleToggle = useCallback(
     (e: React.MouseEvent) => {
@@ -111,7 +109,7 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
         <TooltipContent side="right">{isStaged ? "Unstage" : "Stage"}</TooltipContent>
       </Tooltip>
 
-      <TruncatedTooltip content={file.path} isTruncated={isTruncated}>
+      <TruncatedTooltip content={file.path}>
         <button
           type="button"
           aria-label={`View diff: ${file.path}`}
@@ -136,10 +134,7 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
               {dir}/
             </span>
           )}
-          <span
-            ref={ref}
-            className="shrink truncate text-daintree-text group-hover/stagerow:text-daintree-text font-medium font-mono text-[11px] transition-colors"
-          >
+          <span className="shrink truncate text-daintree-text group-hover/stagerow:text-daintree-text font-medium font-mono text-[11px] transition-colors">
             {base}
           </span>
         </button>

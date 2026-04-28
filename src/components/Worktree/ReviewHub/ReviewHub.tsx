@@ -4,7 +4,7 @@ import type { StagingStatus, GitStatus } from "@shared/types";
 import type { CrossWorktreeFile } from "@shared/types/ipc/git";
 import type { GitOperationReason } from "@shared/types/ipc/errors";
 import { cn } from "@/lib/utils";
-import { useOverlayState, useTruncationDetection } from "@/hooks";
+import { useOverlayState } from "@/hooks";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
 import {
   X,
@@ -108,7 +108,6 @@ interface BaseBranchFileRowProps {
 }
 
 function BaseBranchFileRow({ file, onClick }: BaseBranchFileRowProps) {
-  const { ref, isTruncated } = useTruncationDetection();
   const { label, className: statusClass } = statusLabel(file.status);
   const filename = file.path.split(/[/\\]/).filter(Boolean).pop() || file.path;
   const dirPath = /[/\\]/.test(file.path)
@@ -116,7 +115,7 @@ function BaseBranchFileRow({ file, onClick }: BaseBranchFileRowProps) {
     : "";
 
   return (
-    <TruncatedTooltip content={file.path} isTruncated={isTruncated}>
+    <TruncatedTooltip content={file.path}>
       <button
         type="button"
         onClick={onClick}
@@ -130,9 +129,7 @@ function BaseBranchFileRow({ file, onClick }: BaseBranchFileRowProps) {
           {label}
         </span>
         <FileIcon className="w-3 h-3 shrink-0 text-daintree-text/40" />
-        <span ref={ref} className="text-daintree-text/80 truncate min-w-0">
-          {filename}
-        </span>
+        <span className="text-daintree-text/80 truncate min-w-0">{filename}</span>
         <span className="text-daintree-text/30 truncate min-w-0 text-[10px] ml-auto pl-2">
           {dirPath}
         </span>

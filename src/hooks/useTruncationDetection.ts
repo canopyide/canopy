@@ -51,6 +51,7 @@ export function useTruncationDetection() {
     // Unregister previous element
     const prev = elementRef.current;
     if (prev && s.subscribers.has(prev)) {
+      s.observer?.unobserve(prev);
       s.subscribers.delete(prev);
     }
 
