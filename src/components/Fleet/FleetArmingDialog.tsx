@@ -17,6 +17,7 @@ import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { cn } from "@/lib/utils";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { SemanticSearchMatch, TerminalInstance } from "@shared/types";
 
 export type FleetArmingDialogChip = "all" | "waiting" | "working";
@@ -129,7 +130,7 @@ export function FleetArmingDialog({
         new RegExp(trimmed);
         setRegexError(null);
       } catch (err) {
-        setRegexError(err instanceof Error ? err.message : "Invalid regular expression");
+        setRegexError(formatErrorMessage(err, "Invalid regular expression"));
         setSnippetMap(new Map());
         searchRequestRef.current += 1;
         return;
