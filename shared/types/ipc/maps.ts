@@ -132,6 +132,7 @@ import type {
   DevPreviewStateChangedPayload,
   DevPreviewGetByWorktreeRequest,
 } from "./devPreview.js";
+import type { ServiceConnectivityPayload, ServiceConnectivitySnapshot } from "./connectivity.js";
 import type { SanitizedTelemetryEvent, TelemetryPreviewState } from "./telemetryPreview.js";
 import type { ProjectPulse, PulseRangeDays } from "../pulse.js";
 import type {
@@ -1950,6 +1951,12 @@ export interface IpcInvokeMap {
     result: GitHubTokenHealthPayload;
   };
 
+  // Per-service connectivity channels
+  "connectivity:get-state": {
+    args: [];
+    result: ServiceConnectivitySnapshot;
+  };
+
   // Global env channels
   "global-env:get": {
     args: [];
@@ -2220,6 +2227,9 @@ export interface IpcEventMap {
 
   // GitHub token health state push (expiry/revocation detection)
   "github:token-health-changed": GitHubTokenHealthPayload;
+
+  // Per-service connectivity state push
+  "connectivity:service-changed": ServiceConnectivityPayload;
 
   // Error events
   "error:notify": ErrorRecord;

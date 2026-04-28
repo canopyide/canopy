@@ -30,6 +30,10 @@ import {
 import { initializeTelemetry, setOnboardingCompleteTag } from "../services/TelemetryService.js";
 import { GitHubAuth } from "../services/github/GitHubAuth.js";
 import { gitHubTokenHealthService } from "../services/github/GitHubTokenHealthService.js";
+import {
+  agentConnectivityService,
+  getServiceConnectivityRegistry,
+} from "../services/connectivity/index.js";
 import { secureStorage } from "../services/SecureStorage.js";
 import { notificationService } from "../services/NotificationService.js";
 import type { agentNotificationService as AgentNotificationServiceType } from "../services/AgentNotificationService.js";
@@ -338,6 +342,13 @@ export async function setupWindowServices(
     // so a stale probe cannot clobber a freshly-set token.
     gitHubTokenHealthService.start();
     console.log("[MAIN] GitHubTokenHealthService started");
+
+    // Start background agent provider reachability probes (Claude, Gemini,
+    // Codex). Then wire up the registry that aggregates GitHub, agents, and
+    // MCP into a single per-service connectivity snapshot for renderers.
+    agentConnectivityService.start();
+    getServiceConnectivityRegistry().start();
+    console.log("[MAIN] ServiceConnectivityRegistry started");
 
     // Notifications (global singletons)
     // AgentNotificationService is deferred — agents can't emit state events
@@ -1258,6 +1269,8 @@ export async function setupWindowServices(
     getCrashRecoveryService().stopBackupTimer();
     getSystemSleepService().dispose();
     gitHubTokenHealthService.dispose();
+    agentConnectivityService.dispose();
+    getServiceConnectivityRegistry().dispose();
     notificationService.dispose();
     if (agentNotificationServiceRef) {
       agentNotificationServiceRef.dispose();

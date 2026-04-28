@@ -617,6 +617,10 @@ export const CHANNELS = {
 
   // Performance capture channels
   PERF_FLUSH_RENDERER_MARKS: "perf:flush-renderer-marks",
+
+  // Per-service connectivity channels
+  CONNECTIVITY_GET_STATE: "connectivity:get-state",
+  CONNECTIVITY_SERVICE_CHANGED: "connectivity:service-changed",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

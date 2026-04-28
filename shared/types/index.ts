@@ -161,6 +161,11 @@ export type {
   GitHubRateLimitKind,
   GitHubTokenHealthPayload,
   GitHubTokenHealthStatus,
+  // Per-service connectivity types
+  ConnectivityServiceKey,
+  ServiceConnectivityStatus,
+  ServiceConnectivityPayload,
+  ServiceConnectivitySnapshot,
   // Hibernation types
   HibernationConfig,
   HibernationProjectHibernatedPayload,
@@ -291,6 +296,9 @@ export {
 // User agent registry types - user-defined agent configuration
 export type { UserAgentConfig, UserAgentRegistry } from "./userAgentRegistry.js";
 export { UserAgentConfigSchema, UserAgentRegistrySchema } from "./userAgentRegistry.js";
+
+// Per-service connectivity helpers
+export { CONNECTIVITY_SERVICE_KEYS } from "./ipc/connectivity.js";
 
 // Event types - event context for correlation
 export type { EventContext } from "./events.js";

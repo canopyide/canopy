@@ -674,6 +674,12 @@ export interface ElectronAPI {
     onTokenHealthChanged(callback: (data: GitHubTokenHealthPayload) => void): () => void;
     getTokenHealth(): Promise<GitHubTokenHealthPayload>;
   };
+  connectivity: {
+    getState(): Promise<import("./connectivity.js").ServiceConnectivitySnapshot>;
+    onServiceChanged(
+      callback: (payload: import("./connectivity.js").ServiceConnectivityPayload) => void
+    ): () => void;
+  };
   devPreview: {
     ensure(request: DevPreviewEnsureRequest): Promise<DevPreviewSessionState>;
     restart(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
