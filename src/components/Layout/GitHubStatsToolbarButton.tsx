@@ -19,6 +19,7 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { useGitHubFilterStore } from "@/store/githubFilterStore";
 import { useRepositoryStats } from "@/hooks/useRepositoryStats";
+import { useGitHubTokenExpiryNotification } from "@/hooks/useGitHubTokenExpiryNotification";
 import {
   GitHubResourceListSkeleton,
   CommitListSkeleton,
@@ -78,6 +79,8 @@ export const GitHubStatsToolbarButton = memo(
       rateLimitResetAt,
       rateLimitKind,
     } = useRepositoryStats();
+
+    useGitHubTokenExpiryNotification(isTokenError);
 
     const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
     const activeWorktree = useWorktreeStore((state) =>

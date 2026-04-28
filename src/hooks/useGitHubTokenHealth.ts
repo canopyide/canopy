@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { githubClient } from "@/clients/githubClient";
 import { useNotificationStore } from "@/store/notificationStore";
+import { notify } from "@/lib/notify";
+import { actionService } from "@/services/ActionService";
 import type { GitHubTokenHealthPayload } from "@shared/types";
 
 /**
@@ -23,46 +25,47 @@ export function useGitHubTokenHealth(): void {
 
     const apply = (payload: GitHubTokenHealthPayload) => {
       if (cancelled) return;
-      const store = useNotificationStore.getState();
 
       if (payload.status === "unhealthy") {
-        // Coalesce: if we already have a live notification, don't stack a
-        // duplicate. Keyed on the notification id returned from the first
-        // `addNotification` since the store has no correlationId dedup.
-        const existing = notificationIdRef.current
-          ? store.notifications.find((n) => n.id === notificationIdRef.current)
-          : undefined;
-
-        if (existing && !existing.dismissed) {
-          return;
+        if (notificationIdRef.current) {
+          const existing = useNotificationStore
+            .getState()
+            .notifications.find((n) => n.id === notificationIdRef.current);
+          if (existing && !existing.dismissed) {
+            return;
+          }
         }
 
-        const id = store.addNotification({
+        const id = notify({
           type: "warning",
           priority: "high",
           title: "GitHub token expired",
           message:
             "Your GitHub personal access token is no longer valid. Reconnect to restore issue, PR, and project-health data.",
           inboxMessage: "GitHub token expired — reconnect to restore GitHub features.",
-          correlationId: "github-token-health",
+          correlationId: "github:token-expiry",
           duration: 0,
           action: {
-            label: "Reconnect to GitHub",
+            label: "Open GitHub settings",
+            actionId: "app.settings.openTab",
+            actionArgs: { tab: "github", sectionId: "github-token" },
             onClick: () => {
-              window.dispatchEvent(
-                new CustomEvent("daintree:open-settings-tab", { detail: { tab: "github" } })
+              void actionService.dispatch(
+                "app.settings.openTab",
+                { tab: "github", sectionId: "github-token" },
+                { source: "user" }
               );
             },
           },
         });
-        notificationIdRef.current = id;
+        notificationIdRef.current = id || null;
         return;
       }
 
       if (payload.status === "healthy" || payload.status === "unknown") {
         const id = notificationIdRef.current;
         if (id) {
-          store.dismissNotification(id);
+          useNotificationStore.getState().dismissNotification(id);
           notificationIdRef.current = null;
         }
       }
