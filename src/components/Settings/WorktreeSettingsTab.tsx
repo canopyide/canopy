@@ -159,7 +159,7 @@ export function WorktreeSettingsTab() {
         title="Worktree Path Pattern"
         description="Configure the default path pattern for new worktrees. Use variables to build dynamic paths based on your repository and branch names."
       >
-        <div className="space-y-4">
+        <div className="contents">
           <div className="space-y-2">
             <label htmlFor="path-pattern" className="block text-sm font-medium text-daintree-text">
               Pattern

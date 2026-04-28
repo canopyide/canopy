@@ -88,4 +88,10 @@ describe("SettingsSwitchCard", () => {
     const switchEl = container.querySelector('[role="switch"]');
     expect(switchEl?.className).toContain("data-[state=checked]:bg-daintree-accent");
   });
+
+  it("wraps content in subgrid container", () => {
+    const { container } = render(<SettingsSwitchCard {...defaultProps} />);
+    const outer = container.firstElementChild as HTMLElement;
+    expect(outer.classList.contains("grid-cols-subgrid")).toBe(true);
+  });
 });

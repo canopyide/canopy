@@ -121,7 +121,7 @@ export function SettingsChoicebox<T extends string = string>({
   }, [onChange, options]);
 
   return (
-    <div className={cn("group flex flex-col gap-2", className)} {...props}>
+    <div className={cn("group grid grid-cols-subgrid gap-2 col-span-full", className)} {...props}>
       {label && (
         <div className="flex items-center gap-2">
           <label id={labelId} htmlFor={id} className="text-sm text-daintree-text/70">

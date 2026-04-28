@@ -196,7 +196,7 @@ export function GitHubSettingsTab() {
         title="Personal Access Token"
         description="Used for repository statistics, issue/PR detection, and linking worktrees to GitHub. Eliminates the need for the gh CLI."
       >
-        <div className="space-y-3">
+        <div className="contents">
           {githubConfig?.hasToken && (
             <div className="flex items-center gap-1 text-xs text-status-success">
               <Check className="w-3 h-3" />

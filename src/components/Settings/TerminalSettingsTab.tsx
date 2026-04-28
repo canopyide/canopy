@@ -515,7 +515,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
           description="Number of project views to keep loaded in memory. Lower values save memory; switching to an evicted project takes ~500ms to reload."
         >
           <div
-            className="grid grid-cols-5 gap-2"
+            className="grid grid-cols-5 gap-3"
             role="radiogroup"
             aria-label="Cached project views"
           >
@@ -731,7 +731,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
           description="Base scrollback applies to agent terminals. Shells and dev servers use reduced limits automatically."
           badge="New Terminals"
         >
-          <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Scrollback presets">
+          <div className="grid grid-cols-4 gap-3" role="radiogroup" aria-label="Scrollback presets">
             {SCROLLBACK_OPTIONS.map(({ value, label, description }) => (
               <button
                 key={value}
@@ -818,7 +818,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
           id="terminal-screen-reader"
           description="Enable screen reader support so assistive technology can read terminal output. When set to Auto, screen reader mode activates only when the OS reports an active screen reader."
         >
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Screen reader mode">
+          <div className="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Screen reader mode">
             {(
               [
                 { value: "auto", label: "Auto", description: "Follow OS" },

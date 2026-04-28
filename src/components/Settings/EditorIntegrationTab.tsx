@@ -152,7 +152,7 @@ export function EditorIntegrationTab() {
         title="External Editor"
         description="Choose the editor that opens when you click 'Open in editor' in the diff viewer or worktree cards."
       >
-        <div className="space-y-4">
+        <div className="contents">
           <div className="space-y-1">
             <label className="text-xs text-daintree-text/60">Editor</label>
             <div className="flex items-center gap-2">

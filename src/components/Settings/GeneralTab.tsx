@@ -754,7 +754,7 @@ export function GeneralTab({
             }
           />
 
-          <div id="general-developer-tools">
+          <div id="general-developer-tools" className="contents">
             <SettingsSwitchCard
               icon={Wrench}
               title="Developer Tools"
@@ -779,7 +779,7 @@ export function GeneralTab({
             />
           </div>
 
-          <div id="general-grid-agent-highlights">
+          <div id="general-grid-agent-highlights" className="contents">
             <SettingsSwitchCard
               icon={LayoutGrid}
               title="Grid Panel Agent Highlights"
@@ -804,7 +804,7 @@ export function GeneralTab({
             />
           </div>
 
-          <div id="general-dock-agent-highlights">
+          <div id="general-dock-agent-highlights" className="contents">
             <SettingsSwitchCard
               icon={PanelBottom}
               title="Dock Item Agent Highlights"
@@ -829,7 +829,7 @@ export function GeneralTab({
             />
           </div>
 
-          <div id="general-reduce-animations">
+          <div id="general-reduce-animations" className="contents">
             <SettingsSwitchCard
               icon={Gauge}
               title="Reduce UI Animations"

@@ -182,7 +182,7 @@ export function NotificationSettingsTab() {
           title="Agent Notifications"
           description="OS notifications are off by default. Enable individual event types below to receive native alerts for agent activity. Notifications are suppressed when you are already viewing the relevant worktree."
         >
-          <div className="space-y-3">
+          <div className="contents">
             <SettingsCheckbox
               id="notif-completed"
               label="Agent completed"
@@ -241,7 +241,7 @@ export function NotificationSettingsTab() {
           title="Sound"
           description="Play a sound when a notification fires."
         >
-          <div className="space-y-4">
+          <div className="contents">
             <SettingsSwitchCard
               variant="compact"
               title="Play sound"
@@ -252,7 +252,7 @@ export function NotificationSettingsTab() {
             />
 
             {settings.soundEnabled && (
-              <div className="space-y-4">
+              <div className="contents">
                 {(
                   [
                     {
@@ -308,7 +308,7 @@ export function NotificationSettingsTab() {
           title="Quiet Hours"
           description="Suppress in-app toasts and OS notifications during a daily time window. History still records everything, and agents waiting for input always page through."
         >
-          <div className="space-y-4">
+          <div className="contents">
             <SettingsSwitchCard
               variant="compact"
               title="Enable quiet hours"

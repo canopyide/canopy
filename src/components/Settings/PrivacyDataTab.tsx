@@ -203,7 +203,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
           title="Telemetry & Diagnostics"
           description="Control what data Daintree collects. No personal data, file contents, or credentials are ever collected."
         >
-          <div className="space-y-2">
+          <div className="contents">
             {TELEMETRY_OPTIONS.map((option) => (
               <button
                 key={option.level}
@@ -393,7 +393,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
                 Reset All Data…
               </Button>
             ) : (
-              <div className="space-y-3">
+              <div className="contents">
                 <div className="p-3 rounded-[var(--radius-md)] border border-status-error/20 bg-status-error/5">
                   <p className="text-sm text-daintree-text font-medium mb-1">Reset all app data?</p>
                   <p className="text-xs text-daintree-text/60">
