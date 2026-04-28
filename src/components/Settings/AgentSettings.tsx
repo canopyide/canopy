@@ -127,7 +127,7 @@ export function AgentSettings({
     try {
       await updateAgent(addDialogAgentId, { customPresets: updated, presetId: id });
       onSettingsChange?.();
-      lastAddTimeRef.current = now;
+      lastAddTimeRef.current = Date.now();
       setIsAddDialogOpen(false);
       setAddDialogAgentId(null);
     } catch (error) {
