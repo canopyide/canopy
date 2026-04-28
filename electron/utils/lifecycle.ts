@@ -47,26 +47,31 @@ export class DisposableStore implements IDisposable {
   dispose(): void {
     if (this._isDisposed) return;
     this._isDisposed = true;
-    for (const d of this._disposables) {
+    // Snapshot before iteration so a child's dispose() can mutate the Set
+    // (e.g. by disposing a sibling that was registered here) without skipping
+    // entries via in-flight Set iteration semantics.
+    const items = Array.from(this._disposables);
+    this._disposables.clear();
+    for (const d of items) {
       try {
         d.dispose();
       } catch {
         /* swallow — mirrors WindowRegistry.unregister() error handling */
       }
     }
-    this._disposables.clear();
   }
 
   /** Dispose all children but keep the store usable for new registrations. */
   clear(): void {
-    for (const d of this._disposables) {
+    const items = Array.from(this._disposables);
+    this._disposables.clear();
+    for (const d of items) {
       try {
         d.dispose();
       } catch {
         /* swallow */
       }
     }
-    this._disposables.clear();
   }
 
   get size(): number {

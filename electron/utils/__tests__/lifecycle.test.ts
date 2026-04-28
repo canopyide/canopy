@@ -87,6 +87,24 @@ describe("DisposableStore", () => {
     }
   });
 
+  it("re-entrant dispose() during a child's dispose() is safe", () => {
+    // Snapshot-before-iterate also makes it safe for a child to call
+    // store.dispose() during its own teardown — _isDisposed is set first,
+    // so the re-entrant call is a no-op and does not double-invoke siblings.
+    const store = new DisposableStore();
+    const sibling = vi.fn();
+    store.add(
+      toDisposable(() => {
+        store.dispose();
+      })
+    );
+    store.add(toDisposable(sibling));
+
+    store.dispose();
+    expect(sibling).toHaveBeenCalledOnce();
+    expect(store.isDisposed).toBe(true);
+  });
+
   it("clear() disposes all children but keeps the store usable", () => {
     const store = new DisposableStore();
     const a = vi.fn();

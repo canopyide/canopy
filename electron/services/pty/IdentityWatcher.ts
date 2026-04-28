@@ -158,7 +158,7 @@ export class IdentityWatcher {
   }
 
   onShellSubmit(commandText?: string, options: { allowWhenAgentDetected?: boolean } = {}): void {
-    if (this.delegate.isExited || this.delegate.wasKilled) {
+    if (this.stopped || this.delegate.isExited || this.delegate.wasKilled) {
       return;
     }
 
