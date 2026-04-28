@@ -83,7 +83,7 @@ describe("CloudSyncBanner", () => {
     await waitFor(() => {
       expect(saveSettingsMock).toHaveBeenCalledOnce();
     });
-    const saved = saveSettingsMock.mock.calls[0]![0] as Record<string, unknown>;
+    const saved = (saveSettingsMock.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
     expect(saved).toEqual({
       runCommands: [{ command: "npm start", label: "Start" }],
       cloudSyncWarningDismissed: true,

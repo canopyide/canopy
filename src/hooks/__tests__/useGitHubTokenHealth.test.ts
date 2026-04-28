@@ -12,7 +12,8 @@ const onTokenHealthChangedMock = vi.fn(
   }
 );
 const getTokenHealthMock = vi.fn(
-  (): Promise<GitHubTokenHealthPayload> => Promise.resolve({ status: "unknown" })
+  (): Promise<GitHubTokenHealthPayload> =>
+    Promise.resolve({ status: "unknown", tokenVersion: 0, checkedAt: 0 })
 );
 
 vi.mock("@/clients/githubClient", () => ({
@@ -32,7 +33,9 @@ describe("useGitHubTokenHealth", () => {
     healthListener = null;
     onTokenHealthChangedMock.mockClear();
     cleanupMock.mockClear();
-    getTokenHealthMock.mockReset().mockResolvedValue({ status: "unknown" });
+    getTokenHealthMock
+      .mockReset()
+      .mockResolvedValue({ status: "unknown", tokenVersion: 0, checkedAt: 0 });
     useGitHubTokenHealthStore.setState({ isUnhealthy: false });
     useNotificationHistoryStore.setState({ entries: [], unreadCount: 0 });
   });
@@ -51,7 +54,7 @@ describe("useGitHubTokenHealth", () => {
     });
 
     act(() => {
-      healthListener?.({ status: "unhealthy" });
+      healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 });
     });
 
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
@@ -61,10 +64,10 @@ describe("useGitHubTokenHealth", () => {
     renderHook(() => useGitHubTokenHealth());
     await act(async () => {});
 
-    act(() => healthListener?.({ status: "unhealthy" }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
 
-    act(() => healthListener?.({ status: "healthy" }));
+    act(() => healthListener?.({ status: "healthy", tokenVersion: 0, checkedAt: 0 }));
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(false);
   });
 
@@ -72,8 +75,8 @@ describe("useGitHubTokenHealth", () => {
     renderHook(() => useGitHubTokenHealth());
     await act(async () => {});
 
-    act(() => healthListener?.({ status: "unhealthy" }));
-    act(() => healthListener?.({ status: "unhealthy" }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
 
     const entries = useNotificationHistoryStore.getState().entries;
     expect(entries.filter((e) => e.correlationId === "github-token-health")).toHaveLength(1);
@@ -83,16 +86,20 @@ describe("useGitHubTokenHealth", () => {
     renderHook(() => useGitHubTokenHealth());
     await act(async () => {});
 
-    act(() => healthListener?.({ status: "unhealthy" }));
-    act(() => healthListener?.({ status: "healthy" }));
-    act(() => healthListener?.({ status: "unhealthy" }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
+    act(() => healthListener?.({ status: "healthy", tokenVersion: 0, checkedAt: 0 }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
 
     const entries = useNotificationHistoryStore.getState().entries;
     expect(entries.filter((e) => e.correlationId === "github-token-health")).toHaveLength(2);
   });
 
   it("replays initial state on mount via getTokenHealth", async () => {
-    getTokenHealthMock.mockResolvedValueOnce({ status: "unhealthy" });
+    getTokenHealthMock.mockResolvedValueOnce({
+      status: "unhealthy",
+      tokenVersion: 0,
+      checkedAt: 0,
+    });
     renderHook(() => useGitHubTokenHealth());
     await act(async () => {});
 
@@ -104,7 +111,7 @@ describe("useGitHubTokenHealth", () => {
     await act(async () => {});
 
     unmount();
-    act(() => healthListener?.({ status: "unhealthy" }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
 
     // The store should remain false because the cancelled flag short-circuits apply().
     // (Note: cleanup() is called too, but our mock retains the listener reference for testing.)
@@ -115,10 +122,10 @@ describe("useGitHubTokenHealth", () => {
     renderHook(() => useGitHubTokenHealth());
     await act(async () => {});
 
-    act(() => healthListener?.({ status: "unhealthy" }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
 
-    act(() => healthListener?.({ status: "unknown" }));
+    act(() => healthListener?.({ status: "unknown", tokenVersion: 0, checkedAt: 0 }));
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(false);
   });
 
@@ -136,12 +143,12 @@ describe("useGitHubTokenHealth", () => {
     await act(async () => {});
 
     // Live push lands first.
-    act(() => healthListener?.({ status: "unhealthy" }));
+    act(() => healthListener?.({ status: "unhealthy", tokenVersion: 0, checkedAt: 0 }));
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
 
     // Now the slow replay resolves with stale data — must NOT overwrite the live state.
     await act(async () => {
-      resolveReplay({ status: "healthy" });
+      resolveReplay({ status: "healthy", tokenVersion: 0, checkedAt: 0 });
     });
     expect(useGitHubTokenHealthStore.getState().isUnhealthy).toBe(true);
   });
