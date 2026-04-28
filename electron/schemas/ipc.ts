@@ -172,6 +172,53 @@ export const TerminalSnapshotSchema = z
 export type AppStateTerminalEntry = z.infer<typeof AppStateTerminalEntrySchema>;
 export type TerminalSnapshotEntry = z.infer<typeof TerminalSnapshotSchema>;
 
+// ============================================================================
+// Recipe Validation Schemas
+// ============================================================================
+
+/**
+ * Schema for a single terminal definition within a recipe.
+ * Matches the RecipeTerminal interface from shared/types/project.ts.
+ * Uses passthrough() to preserve unknown fields for forward compatibility.
+ */
+export const RecipeTerminalSchema = z
+  .object({
+    type: z.string().min(1),
+    title: z.string().optional(),
+    command: z.string().optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    initialPrompt: z.string().optional(),
+    args: z.string().optional(),
+    devCommand: z.string().optional(),
+    exitBehavior: z.enum(["keep", "trash", "remove", "restart"]).optional(),
+    agentModelId: z.string().optional(),
+    agentLaunchFlags: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+/**
+ * Schema for a saved terminal recipe.
+ * Matches the TerminalRecipe interface from shared/types/project.ts.
+ * Uses passthrough() to preserve unknown fields for forward compatibility.
+ */
+export const TerminalRecipeSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    projectId: z.string().optional(),
+    worktreeId: z.string().optional(),
+    terminals: z.array(RecipeTerminalSchema),
+    createdAt: z.number(),
+    showInEmptyState: z.boolean().optional(),
+    lastUsedAt: z.number().optional(),
+    usageHistory: z.array(z.number()).optional(),
+    autoAssign: z.enum(["always", "never", "prompt"]).optional(),
+  })
+  .passthrough();
+
+export type RecipeTerminalEntry = z.infer<typeof RecipeTerminalSchema>;
+export type TerminalRecipeEntry = z.infer<typeof TerminalRecipeSchema>;
+
 /**
  * Validates an array of terminal entries and returns only the valid ones.
  * Logs warnings for any filtered invalid entries.

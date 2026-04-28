@@ -64,12 +64,12 @@ describe("GlobalFileStore adversarial", () => {
     fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue(
       JSON.stringify([
-        { id: "r1", name: "valid", terminals: [] },
+        { id: "r1", name: "valid", terminals: [], createdAt: 1000 },
         null,
         "string",
         { id: "r2", name: "no terminals" },
-        { id: 42, name: "wrong id type", terminals: [] },
-        { id: "r3", name: "also valid", terminals: [{ title: "t" }] },
+        { id: 42, name: "wrong id type", terminals: [], createdAt: 1000 },
+        { id: "r3", name: "also valid", terminals: [{ type: "terminal" }], createdAt: 2000 },
       ])
     );
 
@@ -140,8 +140,8 @@ describe("GlobalFileStore adversarial", () => {
     fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue(
       JSON.stringify([
-        { id: "keep", name: "k", terminals: [] },
-        { id: "drop", name: "d", terminals: [] },
+        { id: "keep", name: "k", terminals: [], createdAt: 1000 },
+        { id: "drop", name: "d", terminals: [], createdAt: 1000 },
       ])
     );
 

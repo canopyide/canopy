@@ -6,6 +6,7 @@ import fs from "fs/promises";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { UTF8_BOM } from "./projectStorePaths.js";
 import { safeRecipeFilename } from "../utils/recipeFilename.js";
+import { TerminalRecipeSchema } from "../schemas/ipc.js";
 
 const MAX_PROJECT_NAME_LENGTH = 100;
 const DAINTREE_DIR = ".daintree";
@@ -258,12 +259,7 @@ export class ProjectIdentityFiles {
       try {
         const content = await fs.readFile(path.join(recipesDir, entry.name), "utf-8");
         const parsed = JSON.parse(content);
-        if (
-          typeof parsed !== "object" ||
-          parsed === null ||
-          typeof parsed.name !== "string" ||
-          !Array.isArray(parsed.terminals)
-        ) {
+        if (typeof parsed !== "object" || parsed === null) {
           continue;
         }
         if (!parsed.id) {
@@ -272,7 +268,15 @@ export class ProjectIdentityFiles {
         if (typeof parsed.createdAt !== "number") {
           parsed.createdAt = 0;
         }
-        recipes.push(parsed as TerminalRecipe);
+        const result = TerminalRecipeSchema.safeParse(parsed);
+        if (!result.success) {
+          console.warn(
+            `[ProjectIdentityFiles] Skipping invalid recipe: ${entry.name}`,
+            result.error.flatten()
+          );
+          continue;
+        }
+        recipes.push(result.data);
       } catch {
         console.warn(`[ProjectIdentityFiles] Skipping malformed recipe file: ${entry.name}`);
       }

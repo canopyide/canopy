@@ -357,6 +357,73 @@ describe("readInRepoRecipes", () => {
     const recipes = await identityFiles.readInRepoRecipes(tmpDir);
     expect(recipes[0]!.id).toBe("inrepo-my-recipe");
   });
+
+  it("defaults createdAt to 0 when missing", async () => {
+    const recipesDir = path.join(tmpDir, DAINTREE_RECIPES_DIR);
+    await fs.mkdir(recipesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(recipesDir, "my-recipe.json"),
+      JSON.stringify({ name: "My Recipe", terminals: [{ type: "terminal" }] }),
+      "utf-8"
+    );
+    const recipes = await identityFiles.readInRepoRecipes(tmpDir);
+    expect(recipes[0]!.createdAt).toBe(0);
+  });
+
+  it("skips recipes with invalid terminal entries", async () => {
+    const recipesDir = path.join(tmpDir, DAINTREE_RECIPES_DIR);
+    await fs.mkdir(recipesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(recipesDir, "bad-terminal.json"),
+      JSON.stringify({
+        id: "r1",
+        name: "Bad Terminal",
+        terminals: [{ type: "" }],
+        createdAt: 100,
+      }),
+      "utf-8"
+    );
+    await fs.writeFile(
+      path.join(recipesDir, "no-type.json"),
+      JSON.stringify({
+        id: "r2",
+        name: "No Terminal Type",
+        terminals: [{ title: "missing type" }],
+        createdAt: 100,
+      }),
+      "utf-8"
+    );
+    const recipes = await identityFiles.readInRepoRecipes(tmpDir);
+    expect(recipes).toHaveLength(0);
+  });
+
+  it("skips recipes with deep field errors in terminals", async () => {
+    const recipesDir = path.join(tmpDir, DAINTREE_RECIPES_DIR);
+    await fs.mkdir(recipesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(recipesDir, "command-number.json"),
+      JSON.stringify({
+        id: "r1",
+        name: "Command Number",
+        terminals: [{ type: "terminal", command: 12345 }],
+        createdAt: 100,
+      }),
+      "utf-8"
+    );
+    await fs.writeFile(
+      path.join(recipesDir, "valid.json"),
+      JSON.stringify({
+        id: "r2",
+        name: "Valid",
+        terminals: [{ type: "terminal" }],
+        createdAt: 100,
+      }),
+      "utf-8"
+    );
+    const recipes = await identityFiles.readInRepoRecipes(tmpDir);
+    expect(recipes).toHaveLength(1);
+    expect(recipes[0]!.id).toBe("r2");
+  });
 });
 
 describe("deleteInRepoRecipe", () => {
