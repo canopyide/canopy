@@ -655,8 +655,12 @@ export class ProjectStore {
           projectId: _p1,
           worktreeId: _w1,
           ...inRepoNorm
-        } = recipe as Record<string, unknown>;
-        const { projectId: _p2, worktreeId: _w2, ...fsNorm } = existing as Record<string, unknown>;
+        } = recipe as unknown as Record<string, unknown>;
+        const {
+          projectId: _p2,
+          worktreeId: _w2,
+          ...fsNorm
+        } = existing as unknown as Record<string, unknown>;
         if (JSON.stringify(inRepoNorm) !== JSON.stringify(fsNorm)) {
           contentDiffers = true;
           break;
