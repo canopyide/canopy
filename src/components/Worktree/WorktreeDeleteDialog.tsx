@@ -117,7 +117,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   const getDeleteButtonText = () => {
     if (isDeleting) return "Deleting...";
     if (deleteBranch && canDeleteBranch && isArmed) return "Click again to confirm";
-    return "Delete Worktree";
+    return "Delete worktree";
   };
 
   return (
@@ -134,16 +134,22 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
           <div className="p-2 bg-status-error/10 rounded-full">
             <Trash2 className="w-6 h-6" />
           </div>
-          <AppDialog.Title>Delete Worktree?</AppDialog.Title>
+          <AppDialog.Title>Delete '{worktree.branch ?? worktree.name}'?</AppDialog.Title>
         </div>
 
         <div className="space-y-4">
           <p className="text-sm text-daintree-text/80">
-            Are you sure you want to delete{" "}
-            <span className="font-mono font-medium text-daintree-text">
-              {worktree.isMainWorktree ? worktree.name : worktree.branch || worktree.name}
-            </span>
-            ?
+            This will permanently delete the worktree directory
+            {worktree.branch && (
+              <>
+                {" "}
+                and branch{" "}
+                <span className="font-mono font-medium text-daintree-text">{worktree.branch}</span>
+              </>
+            )}
+            . All associated terminals will be closed.
+            {hasChanges &&
+              " Uncommitted changes will be lost unless the worktree is first restored from git."}
           </p>
 
           <div className="text-xs text-daintree-text/60 bg-daintree-bg/50 p-3 rounded border border-daintree-border font-mono break-all">

@@ -303,13 +303,13 @@ export function KeyboardShortcutsTab() {
       <ConfirmDialog
         isOpen={isResetDialogOpen}
         onClose={isResetting ? undefined : handleCancelReset}
-        title="Reset Keyboard Shortcuts?"
+        title="Reset keyboard shortcuts?"
         description={
           hasOverrides
             ? "All keyboard shortcuts will be reset to their default values. Any customized shortcuts will be removed."
             : "There are no customized shortcuts to reset. All shortcuts are already at their default values."
         }
-        confirmLabel="Reset to Defaults"
+        confirmLabel="Reset shortcuts"
         cancelLabel="Cancel"
         onConfirm={handleConfirmReset}
         isConfirmLoading={isResetting}

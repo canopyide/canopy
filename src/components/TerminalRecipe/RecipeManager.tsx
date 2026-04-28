@@ -379,13 +379,13 @@ export function RecipeManager({
 
       <ConfirmDialog
         isOpen={recipeToDelete !== null}
-        title="Delete Recipe"
+        title={`Delete '${globalRecipes.find((r) => r.id === recipeToDelete)?.name ?? projectRecipes.find((r) => r.id === recipeToDelete)?.name ?? inRepoRecipes.find((r) => r.id === recipeToDelete)?.name ?? "recipe"}'?`}
         description={
           deleteError
             ? `Error: ${deleteError}`
-            : "Are you sure you want to delete this recipe? This action cannot be undone."
+            : "The recipe will be permanently removed. This cannot be undone."
         }
-        confirmLabel={deleteError ? "Retry" : "Delete"}
+        confirmLabel={deleteError ? "Retry" : "Delete recipe"}
         variant="destructive"
         onConfirm={() => {
           if (recipeToDelete) void handleDeleteRecipe(recipeToDelete);
@@ -418,7 +418,7 @@ export function RecipeManager({
         isOpen={recipeToDeleteAfterSave !== null}
         title="Delete original?"
         description="The recipe has been saved to the repository. Do you want to remove the original copy from this machine?"
-        confirmLabel="Delete Original"
+        confirmLabel="Delete original"
         cancelLabel="Keep Both"
         variant="destructive"
         onConfirm={() => void handleDeleteAfterSave()}
