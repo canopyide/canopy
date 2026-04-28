@@ -272,7 +272,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
               onClick={handleInputClick}
               onDoubleClick={handleInputDoubleClick}
               onPointerDown={handleInputPointerDown}
-              className="text-xs bg-daintree-bg/80 border border-daintree-accent/50 px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-daintree-accent"
+              className="text-xs bg-daintree-bg/80 border border-border-strong px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-daintree-accent"
               aria-label={`Rename tab ${title}`}
             />
           ) : (
