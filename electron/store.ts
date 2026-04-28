@@ -412,6 +412,15 @@ function refreshBackup(configPath: string): void {
   }
 }
 
+function readRawSnapshot(filePath: string): Buffer | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    return fs.readFileSync(filePath);
+  } catch {
+    return null;
+  }
+}
+
 function createInMemoryFallback(): Store<StoreSchema> {
   const memoryStore = new Map();
   return {
@@ -453,11 +462,23 @@ export function initializeStore(options: typeof storeOptions = storeOptions): St
   }
 
   try {
+    const preSnapshot = configPath ? readRawSnapshot(configPath) : null;
     const instance = new Store<StoreSchema>({
       ...options,
       clearInvalidConfig: true,
     });
-    refreshBackup(instance.path);
+    const postSnapshot = configPath ? readRawSnapshot(configPath) : null;
+    const wipedDuringConstruction =
+      preSnapshot !== null &&
+      (postSnapshot === null || !preSnapshot.equals(postSnapshot));
+    if (wipedDuringConstruction) {
+      console.warn(
+        "[Store] electron-store silently replaced config.json during construction; preserving .bak"
+      );
+      pendingSettingsRecovery = { kind: "reset-to-defaults" };
+    } else {
+      refreshBackup(instance.path);
+    }
     return instance;
   } catch (error) {
     console.warn("[Store] Failed to initialize electron-store, using in-memory fallback:", error);

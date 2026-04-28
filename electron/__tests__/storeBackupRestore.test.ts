@@ -212,6 +212,24 @@ describe("initializeStore", () => {
     expect(instance.path).toBe("");
   });
 
+  it("does NOT overwrite backup when store silently clears a schema-invalid config", () => {
+    const configPath = path.join(tempDir, "config.json");
+    const lastGood = JSON.stringify({ _schemaVersion: 7 });
+    const violating = JSON.stringify({ _schemaVersion: "not-a-number" });
+    fs.writeFileSync(configPath, violating, "utf8");
+    fs.writeFileSync(`${configPath}.bak`, lastGood, "utf8");
+
+    const opts = testOptions(tempDir);
+    opts.schema = { _schemaVersion: { type: "number" } };
+
+    const instance = initializeStore(opts);
+    expect(instance).toBeDefined();
+    // Store has been silently reset to defaults by electron-store
+    expect(instance.get("_schemaVersion")).toBe(0);
+    // Backup must remain untouched — recovery is still possible
+    expect(fs.readFileSync(`${configPath}.bak`, "utf8")).toBe(lastGood);
+  });
+
   describe("consumePendingSettingsRecovery", () => {
     it("returns null on normal startup", () => {
       initializeStore(testOptions(tempDir));
@@ -245,6 +263,18 @@ describe("initializeStore", () => {
       initializeStore(testOptions("/nonexistent/\0/path"));
       const recovery = consumePendingSettingsRecovery();
       expect(recovery).toEqual({ kind: "reset-to-defaults" });
+    });
+
+    it("returns reset-to-defaults when store silently clears schema-invalid config", () => {
+      const configPath = path.join(tempDir, "config.json");
+      fs.writeFileSync(configPath, JSON.stringify({ _schemaVersion: "bad" }), "utf8");
+      fs.writeFileSync(`${configPath}.bak`, JSON.stringify({ _schemaVersion: 7 }), "utf8");
+      const opts = testOptions(tempDir);
+      opts.schema = { _schemaVersion: { type: "number" } };
+      initializeStore(opts);
+      const recovery = consumePendingSettingsRecovery();
+      expect(recovery).toEqual({ kind: "reset-to-defaults" });
+      expect(consumePendingSettingsRecovery()).toBeNull();
     });
 
     it("consume-once: second call returns null", () => {
