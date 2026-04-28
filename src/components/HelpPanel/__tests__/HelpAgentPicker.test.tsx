@@ -20,6 +20,50 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/EmptyState", async () => {
+  const { Button } = await import("@/components/ui/button");
+  type IconComponent = React.ComponentType<{
+    className?: string;
+    "aria-hidden"?: boolean | "true";
+  }>;
+  type Props =
+    | {
+        variant: "zero-data";
+        icon?: IconComponent;
+        title: string;
+        description?: string;
+        ctaLabel?: string;
+        onCta?: () => void;
+      }
+    | { variant: "filtered-empty"; message: string; clearLabel?: string; onClear?: () => void }
+    | { variant: "acknowledged"; message: string };
+  const EmptyState = (props: Props) => {
+    if (props.variant === "zero-data") {
+      const { icon: Icon, title, description, ctaLabel, onCta } = props;
+      return (
+        <div>
+          {Icon && <Icon aria-hidden="true" />}
+          <p>{title}</p>
+          {description && <p>{description}</p>}
+          {ctaLabel && onCta && <Button onClick={onCta}>{ctaLabel}</Button>}
+        </div>
+      );
+    }
+    if (props.variant === "filtered-empty") {
+      return (
+        <div role="status" aria-live="polite">
+          <p>{props.message}</p>
+          {props.onClear && (
+            <Button onClick={props.onClear}>{props.clearLabel ?? "Clear search"}</Button>
+          )}
+        </div>
+      );
+    }
+    return <p>{props.message}</p>;
+  };
+  return { EmptyState };
+});
+
 vi.mock("@shared/config/agentIds", () => ({
   BUILT_IN_AGENT_IDS: ["claude", "gemini", "codex"],
 }));
@@ -73,7 +117,7 @@ describe("HelpAgentPicker", () => {
 
     const { container } = render(<HelpAgentPicker onSelectAgent={vi.fn()} />);
 
-    expect(screen.getByText("No agents are installed.")).toBeTruthy();
+    expect(screen.getByText("No agents installed")).toBeTruthy();
     expect(screen.getByText("Run setup wizard")).toBeTruthy();
     expect(container.textContent).not.toMatch(/Enable an agent/i);
   });
@@ -108,7 +152,7 @@ describe("HelpAgentPicker", () => {
     render(<HelpAgentPicker onSelectAgent={vi.fn()} />);
 
     expect(screen.getByText("Checking for installed agents…")).toBeTruthy();
-    expect(screen.queryByText("No agents are installed.")).toBeNull();
+    expect(screen.queryByText("No agents installed")).toBeNull();
     expect(screen.queryByText("Claude")).toBeNull();
   });
 

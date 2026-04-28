@@ -145,6 +145,14 @@ export function McpServerSettingsTab() {
         disabled={loading}
       />
 
+      {!status.enabled && !loading && (
+        <p className="text-xs text-daintree-text/50 leading-relaxed">
+          Turn the server on to let MCP-aware agents like Claude Code and Cursor call Daintree
+          actions over a local connection. Connection details and an optional API key appear once
+          enabled.
+        </p>
+      )}
+
       {status.enabled && (
         <>
           {/* Connection Status */}

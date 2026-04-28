@@ -393,6 +393,50 @@ describe("GitHubResourceList retry behavior", () => {
     expect(mockListIssues).toHaveBeenCalledTimes(1);
   });
 
+  it("shows zero-data empty state when authenticated with no results and no search", async () => {
+    vi.useRealTimers();
+    mockListIssues.mockResolvedValue(makeResponse([]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No issues yet")).toBeTruthy();
+    });
+    expect(screen.getByText(/Issues opened on GitHub will appear here/)).toBeTruthy();
+    // zero-data variant must NOT have role=status (mount-once, no SR announcement)
+    expect(document.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("shows filtered-empty state with Clear search affordance when search returns no results", async () => {
+    vi.useRealTimers();
+    useGitHubFilterStore.getState().setIssueSearchQuery("nonexistent");
+    mockListIssues.mockResolvedValue(makeResponse([]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No issues match "nonexistent"/)).toBeTruthy();
+    });
+    // filtered-empty has role=status + aria-live=polite for screen readers
+    const region = document.querySelector('[role="status"]');
+    expect(region).toBeTruthy();
+    expect(region?.getAttribute("aria-live")).toBe("polite");
+    // EmptyState renders a "Clear search" button (text, distinct from the X icon's aria-label)
+    expect(region?.textContent).toContain("Clear search");
+  });
+
+  it("shows zero-data empty state for pull requests with the right copy", async () => {
+    vi.useRealTimers();
+    mockListPRs.mockResolvedValue(makeResponse([]));
+
+    render(<GitHubResourceList type="pr" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No pull requests yet")).toBeTruthy();
+    });
+    expect(screen.getByText(/Pull requests against this repository will appear here/)).toBeTruthy();
+  });
+
   it("does not retry rate-limit errors", async () => {
     mockListIssues.mockRejectedValue(
       new Error("GitHub rate limit exceeded. Try again in a few minutes.")

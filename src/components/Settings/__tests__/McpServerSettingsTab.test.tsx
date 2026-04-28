@@ -127,4 +127,24 @@ describe("McpServerSettingsTab", () => {
       expect(screen.getByText("Generate API Key")).toBeTruthy();
     });
   });
+
+  it("shows a contextual hint when disabled and not loading", async () => {
+    window.electron = {
+      mcpServer: createMcpApi({
+        getStatus: vi.fn().mockResolvedValue({
+          enabled: false,
+          port: null,
+          configuredPort: null,
+          apiKey: "",
+        }),
+      }),
+    } as unknown as typeof window.electron;
+
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "Turn the server on");
+
+    expect(screen.queryByText("Connection")).toBeNull();
+    expect(screen.queryByText("API key active")).toBeNull();
+    expect(container.textContent).toMatch(/MCP-aware agents like Claude Code and Cursor/);
+  });
 });

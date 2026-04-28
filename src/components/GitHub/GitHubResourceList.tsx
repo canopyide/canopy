@@ -1,7 +1,18 @@
 import { useState, useEffect, useMemo, useCallback, useRef, type KeyboardEvent } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Search, ExternalLink, RefreshCw, WifiOff, Plus, Settings, X, Filter } from "lucide-react";
+import {
+  Search,
+  ExternalLink,
+  RefreshCw,
+  WifiOff,
+  Plus,
+  Settings,
+  X,
+  Filter,
+  CircleDot,
+  GitPullRequest,
+} from "lucide-react";
 import {
   buildCacheKey,
   getCache,
@@ -11,6 +22,7 @@ import {
 } from "@/lib/githubResourceCache";
 import { isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients/githubClient";
@@ -714,21 +726,36 @@ export function GitHubResourceList({
   const renderEmpty = () => {
     if (exactNumberNotFound !== null) {
       return (
-        <div className="p-8 text-center text-muted-foreground">
-          <p className="text-sm">
-            {type === "issue" ? "Issue" : "PR"} #{exactNumberNotFound} not found
-          </p>
-        </div>
+        <EmptyState
+          variant="filtered-empty"
+          message={`${type === "issue" ? "Issue" : "PR"} #${exactNumberNotFound} not found`}
+          onClear={handleClearSearch}
+        />
       );
     }
 
+    if (debouncedSearch) {
+      return (
+        <EmptyState
+          variant="filtered-empty"
+          message={`No ${type === "issue" ? "issues" : "pull requests"} match "${debouncedSearch}"`}
+          onClear={handleClearSearch}
+        />
+      );
+    }
+
+    const Icon = type === "issue" ? CircleDot : GitPullRequest;
     return (
-      <div className="p-8 text-center text-muted-foreground">
-        <p className="text-sm">
-          No {type === "issue" ? "issues" : "pull requests"} found
-          {debouncedSearch && ` for "${debouncedSearch}"`}
-        </p>
-      </div>
+      <EmptyState
+        variant="zero-data"
+        icon={Icon}
+        title={type === "issue" ? "No issues yet" : "No pull requests yet"}
+        description={
+          type === "issue"
+            ? "Issues opened on GitHub will appear here"
+            : "Pull requests against this repository will appear here"
+        }
+      />
     );
   };
 

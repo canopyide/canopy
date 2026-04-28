@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from "react";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { AGENT_REGISTRY } from "@/config/agents";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
@@ -38,21 +38,15 @@ export function HelpAgentPicker({ onSelectAgent }: HelpAgentPickerProps) {
 
   if (installedAgents.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
-        <p className="text-sm text-daintree-text/50">No agents are installed.</p>
-        <p className="text-xs text-daintree-text/40">
-          Install an agent using the setup wizard to use as your Daintree assistant.
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleOpenSetupWizard}
-          className="gap-1.5"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Run setup wizard</span>
-        </Button>
+      <div className="flex-1 flex flex-col items-center justify-center p-4">
+        <EmptyState
+          variant="zero-data"
+          icon={Sparkles}
+          title="No agents installed"
+          description="Install an agent to use as your Daintree assistant"
+          ctaLabel="Run setup wizard"
+          onCta={handleOpenSetupWizard}
+        />
       </div>
     );
   }
