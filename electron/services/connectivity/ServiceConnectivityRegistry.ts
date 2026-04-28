@@ -131,7 +131,15 @@ export class ServiceConnectivityRegistry {
     // Seed from existing state so secondary windows don't see `unknown` for a
     // service that has already settled.
     this.applyGitHubState(this.gitHubHealth.getState(), { silent: true });
-    this.applyMcpState(this.mcpServer.isRunning, { silent: true });
+    // MCP is started by a deferred task that runs *after* this registry, so
+    // `isRunning === false` here means "not started yet" — distinct from
+    // "was running, now stopped". Leave the snapshot at `unknown` and let
+    // the first live emitStatusChange define the initial state. Otherwise
+    // every normal launch with MCP enabled would see an unreachable→reachable
+    // transition fire a spurious "Connection restored" toast.
+    if (this.mcpServer.isRunning) {
+      this.applyMcpState(true, { silent: true });
+    }
     for (const provider of ["claude", "gemini", "codex"] as const) {
       const state = this.agentConnectivity.getProviderState(provider);
       this.applyAgentState(provider, state, { silent: true });
@@ -173,11 +181,15 @@ export class ServiceConnectivityRegistry {
     // `useGitHubTokenHealth` hook handles the token-revoked UX.
     const status: ServiceConnectivityStatus =
       payload.status === "healthy" ? "reachable" : "unknown";
-    this.update("github", status, payload.checkedAt || this.now(), options);
+    // Pass `payload.checkedAt` through as-is — `0` is the documented value
+    // for "no probe has run yet" and must reach the snapshot intact.
+    this.update("github", status, payload.checkedAt, options);
   }
 
   private applyMcpState(running: boolean, options: { silent?: boolean } = {}): void {
     const status: ServiceConnectivityStatus = running ? "reachable" : "unreachable";
+    // MCP has no native checkedAt — use now() since this is a real transition
+    // observation (silent seeding only calls us when running === true).
     this.update("mcp", status, this.now(), options);
   }
 
@@ -187,7 +199,7 @@ export class ServiceConnectivityRegistry {
     options: { silent?: boolean } = {}
   ): void {
     const key = PROVIDER_TO_KEY[provider];
-    this.update(key, state.status, state.checkedAt || this.now(), options);
+    this.update(key, state.status, state.checkedAt, options);
   }
 
   private update(

@@ -64,6 +64,7 @@ class AgentConnectivityServiceImpl {
   private readonly state: Record<AgentConnectivityProvider, ProviderState>;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly listeners = new Set<StateChangeListener>();
+  private disposed = false;
 
   private fetchImpl: FetchFn;
   private now: () => number;
@@ -118,6 +119,7 @@ class AgentConnectivityServiceImpl {
   dispose(): void {
     this.stop();
     this.listeners.clear();
+    this.disposed = true;
     for (const provider of this.providers) {
       this.state[provider] = { status: "unknown", checkedAt: 0, pendingCheck: null };
     }
@@ -139,6 +141,7 @@ class AgentConnectivityServiceImpl {
   _resetForTests(): void {
     this.stop();
     this.listeners.clear();
+    this.disposed = false;
     for (const provider of this.providers) {
       this.state[provider] = { status: "unknown", checkedAt: 0, pendingCheck: null };
     }
@@ -207,6 +210,10 @@ class AgentConnectivityServiceImpl {
     provider: AgentConnectivityProvider,
     status: ServiceConnectivityStatus
   ): void {
+    // Stale completion after dispose() — ignore so we don't overwrite the
+    // freshly-reset state or notify listeners that have been re-attached to
+    // a recreated service instance.
+    if (this.disposed) return;
     const entry = this.state[provider];
     const previous = entry.status;
     entry.status = status;

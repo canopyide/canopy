@@ -244,12 +244,26 @@ describe("ServiceConnectivityRegistry", () => {
     });
 
     it("fires onRecovery when a service transitions from `unreachable` to `reachable`", () => {
+      // Force MCP into the unreachable state by simulating a real stop after
+      // it had been running. Initial seed treats `false` as `unknown`.
+      mcpServer.setRunning(true);
       mcpServer.setRunning(false);
       onRecovery.mockClear();
 
       mcpServer.setRunning(true);
 
       expect(onRecovery).toHaveBeenCalledWith("mcp", "MCP server");
+    });
+
+    it("does NOT fire onRecovery for MCP starting up on a fresh launch (regression)", () => {
+      // Repro of the startup spurious-toast bug: registry starts before the
+      // deferred MCP task. isRunning is false at seed time. When MCP later
+      // starts, it must be unknown→reachable (no toast), not unreachable→reachable.
+      onRecovery.mockClear();
+      mcpServer.setRunning(true);
+
+      expect(onRecovery).not.toHaveBeenCalled();
+      expect(registry.getSnapshot().mcp.status).toBe("reachable");
     });
 
     it("does NOT fire onRecovery on `unknown` → `reachable` transitions (initial probes)", () => {
@@ -291,6 +305,34 @@ describe("ServiceConnectivityRegistry", () => {
       // `unknown` → `reachable` — not a recovery in our model. The dedicated
       // GitHub token-health hook handles the token-revoked banner UX.
       expect(onRecovery).not.toHaveBeenCalled();
+    });
+
+    it("still emits the change event when onRecovery throws", () => {
+      const throwing = vi.fn(() => {
+        throw new Error("boom");
+      });
+      const isolatedRegistry = new ServiceConnectivityRegistry({
+        gitHubHealth,
+        mcpServer,
+        agentConnectivity,
+        onRecovery: throwing,
+      });
+      isolatedRegistry.start();
+      const changeListener = vi.fn();
+      isolatedRegistry.onChange(changeListener);
+
+      // Force MCP unreachable then reachable.
+      mcpServer.setRunning(true);
+      mcpServer.setRunning(false);
+      changeListener.mockClear();
+      throwing.mockClear();
+      mcpServer.setRunning(true);
+
+      expect(throwing).toHaveBeenCalled();
+      expect(changeListener).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceKey: "mcp", status: "reachable" })
+      );
+      isolatedRegistry.dispose();
     });
   });
 

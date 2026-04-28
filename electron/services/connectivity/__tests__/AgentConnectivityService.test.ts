@@ -169,5 +169,43 @@ describe("AgentConnectivityService", () => {
       service.dispose();
       expect(service.getProviderState("claude").status).toBe("unknown");
     });
+
+    it("does not let an in-flight probe overwrite reset state after dispose()", async () => {
+      const resolvers: Array<(value: Response) => void> = [];
+      fetchMock.mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolvers.push(resolve);
+          })
+      );
+
+      const probe = service.refresh({ force: true });
+      service.dispose();
+      // Resolve the in-flight fetches AFTER dispose. Without the disposed
+      // guard in transitionTo(), these would overwrite the reset state.
+      for (const resolve of resolvers) {
+        resolve(buildResponse(200));
+      }
+      await probe;
+
+      expect(service.getProviderState("claude").status).toBe("unknown");
+      expect(service.getProviderState("gemini").status).toBe("unknown");
+      expect(service.getProviderState("codex").status).toBe("unknown");
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("classifies each provider independently when one resolves and another rejects", async () => {
+      fetchMock.mockImplementation((url: string) => {
+        if (url.includes("anthropic")) return Promise.resolve(buildResponse(200));
+        if (url.includes("googleapis")) return Promise.reject(new Error("ENOTFOUND"));
+        return Promise.resolve(buildResponse(200));
+      });
+
+      await service.refresh({ force: true });
+
+      expect(service.getProviderState("claude").status).toBe("reachable");
+      expect(service.getProviderState("gemini").status).toBe("unreachable");
+      expect(service.getProviderState("codex").status).toBe("reachable");
+    });
   });
 });

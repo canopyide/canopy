@@ -51,10 +51,13 @@ export function useConnectivitySnapshot(): ServiceConnectivitySnapshot {
         if (cancelled) return;
         setSnapshot((prev) => {
           // Preserve any payload that arrived via push after we issued the
-          // mount-time getState() — push events represent newer truth.
+          // mount-time getState() — push events represent newer truth. Use
+          // `>=` so push-delivered status wins on `checkedAt` ties; the
+          // alternative ('>') drops a same-millisecond push update if
+          // getState() resolves later with stale data.
           const merged = { ...next };
           for (const key of CONNECTIVITY_SERVICE_KEYS) {
-            if (prev[key].checkedAt > merged[key].checkedAt) {
+            if (prev[key].checkedAt >= merged[key].checkedAt && prev[key].checkedAt > 0) {
               merged[key] = prev[key];
             }
           }
