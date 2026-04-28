@@ -449,21 +449,11 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
                   type="button"
                   onClick={() => handleRangeChange(option.value)}
                   className={cn(
-                    "rounded-md px-2 py-1 transition-colors",
+                    "rounded-md border px-2 py-1 transition-colors",
                     isActive
-                      ? "text-daintree-accent border border-daintree-accent/25"
-                      : "pulse-control text-daintree-text/55 hover:text-daintree-text/80"
+                      ? "bg-overlay-selected border-border-strong text-daintree-text"
+                      : "pulse-control border-transparent text-daintree-text/55 hover:text-daintree-text/80"
                   )}
-                  style={
-                    isActive
-                      ? {
-                          background:
-                            "color-mix(in oklab, var(--color-accent-primary) 12%, transparent)",
-                        }
-                      : {
-                          background: "transparent",
-                        }
-                  }
                   aria-pressed={isActive}
                 >
                   {option.label}
