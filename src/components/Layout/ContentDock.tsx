@@ -19,34 +19,42 @@ import { BackgroundContainer } from "./BackgroundContainer";
 import { HelpAgentDockButton } from "./HelpAgentDockButton";
 import { DockLaunchButton } from "./DockLaunchButton";
 import {
+  DockLaunchMenuItems,
+  type DockLaunchAgent,
+  type DockLaunchMenuComponents,
+} from "./DockLaunchMenuItems";
+import {
   SortableDockItem,
   SortableDockPlaceholder,
   DOCK_PLACEHOLDER_ID,
 } from "@/components/DragDrop";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { useHorizontalScrollControls } from "@/hooks";
+import { useProjectSettings } from "@/hooks/useProjectSettings";
+import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
+import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import type { ActionSource } from "@shared/types/actions";
 import { actionService } from "@/services/ActionService";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 
-import { AGENT_REGISTRY } from "@/config/agents";
-import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { getAgentConfig, getAgentIds } from "@/config/agents";
+import { isAgentReady } from "@shared/utils/agentAvailability";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { buildDockRenderItems, type DockRenderItem } from "./dockRenderItems";
 import type { DockDensity } from "@/store/preferencesStore";
 
-export const AGENT_OPTIONS = [
-  ...BUILT_IN_AGENT_IDS.map((id) => ({
-    type: id,
-    label: AGENT_REGISTRY[id]?.name ?? id,
-  })),
-  { type: "terminal" as const, label: "Terminal" },
-  { type: "browser" as const, label: "Browser" },
-];
+const CONTEXT_MENU_COMPONENTS: DockLaunchMenuComponents = {
+  Item: ContextMenuItem,
+  Label: ContextMenuLabel,
+  Separator: ContextMenuSeparator,
+};
 
 export type { DockDensity } from "@/store/preferencesStore";
 
@@ -65,6 +73,10 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const openDockTerminal = usePanelStore((state) => state.openDockTerminal);
   const currentProject = useProjectStore((s) => s.currentProject);
   const helpTerminalId = useHelpPanelStore((s) => s.terminalId);
+  const agentSettings = useAgentSettingsStore((s) => s.settings);
+  const agentAvailability = useCliAvailabilityStore((s) => s.availability);
+  const { settings: projectSettings } = useProjectSettings();
+  const hasDevPreview = Boolean(projectSettings?.devServerCommand?.trim());
 
   // Get tab groups for the dock, excluding the help panel terminal
   const tabGroups = useMemo(() => {
@@ -101,6 +113,31 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const activeWorktree = activeWorktreeId ? worktrees.find((w) => w.id === activeWorktreeId) : null;
   const cwd = activeWorktree?.path ?? currentProject?.path ?? "";
 
+  const launchAgents = useMemo<DockLaunchAgent[]>(() => {
+    const baseIds = getAgentIds();
+    const settingsIds = agentSettings?.agents ? Object.keys(agentSettings.agents) : [];
+    const extraIds = settingsIds.filter((id) => !baseIds.includes(id)).sort();
+    return [...baseIds, ...extraIds].map((id) => {
+      const config = getAgentConfig(id);
+      return {
+        id,
+        name: config?.name ?? id,
+        icon: config?.icon,
+        brandColor: config?.color,
+        isEnabled: isAgentReady(agentAvailability?.[id]),
+      };
+    });
+  }, [agentAvailability, agentSettings]);
+
+  const recipeContext = activeWorktree
+    ? {
+        issueNumber: activeWorktree.issueNumber,
+        prNumber: activeWorktree.prNumber,
+        branchName: activeWorktree.branch,
+        worktreePath: activeWorktree.path,
+      }
+    : undefined;
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { canScrollLeft, canScrollRight, scrollLeft, scrollRight } =
     useHorizontalScrollControls(scrollContainerRef);
@@ -122,7 +159,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   );
 
   const handleAddTerminal = useCallback(
-    async (agentId: string) => {
+    async (agentId: string, source: ActionSource = "menu") => {
       const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
         {
@@ -131,7 +168,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
           cwd,
           worktreeId: activeWorktreeId || undefined,
         },
-        { source: "context-menu" }
+        { source }
       );
 
       if (result.ok && result.result?.terminalId) {
@@ -185,6 +222,17 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
           )}
           data-dock-density={density}
         >
+          <div className="shrink-0 flex items-center">
+            <DockLaunchButton
+              agents={launchAgents}
+              hasDevPreview={hasDevPreview}
+              onLaunchAgent={(agentId) => void handleAddTerminal(agentId, "menu")}
+              activeWorktreeId={activeWorktreeId}
+              cwd={cwd}
+              recipeContext={recipeContext}
+            />
+          </div>
+
           <div className="relative flex-1 min-w-0">
             {/* Left Scroll Chevron - Overlay */}
             {canScrollLeft && (
@@ -293,34 +341,22 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
             <TrashContainer trashedTerminals={trashedItems} compact={isCompact} />
           </div>
 
-          {/* Right-aligned launcher cluster: launch + help */}
+          {/* Right-aligned cluster: help */}
           <div className="ml-auto shrink-0 flex items-center gap-2">
-            <DockLaunchButton
-              agentOptions={AGENT_OPTIONS}
-              onLaunchAgent={handleAddTerminal}
-              activeWorktreeId={activeWorktreeId}
-              cwd={cwd}
-              recipeContext={
-                activeWorktree
-                  ? {
-                      issueNumber: activeWorktree.issueNumber,
-                      prNumber: activeWorktree.prNumber,
-                      branchName: activeWorktree.branch,
-                      worktreePath: activeWorktree.path,
-                    }
-                  : undefined
-              }
-            />
             <HelpAgentDockButton />
           </div>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {AGENT_OPTIONS.map(({ type, label }) => (
-          <ContextMenuItem key={type} onSelect={() => void handleAddTerminal(type)}>
-            New {label}
-          </ContextMenuItem>
-        ))}
+        <DockLaunchMenuItems
+          components={CONTEXT_MENU_COMPONENTS}
+          agents={launchAgents}
+          hasDevPreview={hasDevPreview}
+          activeWorktreeId={activeWorktreeId}
+          cwd={cwd}
+          recipeContext={recipeContext}
+          onLaunchAgent={(agentId) => void handleAddTerminal(agentId, "context-menu")}
+        />
       </ContextMenuContent>
     </ContextMenu>
   );

@@ -37,20 +37,30 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuContent: ({ children }: { children: ReactNode }) => (
     <div data-testid="dock-launcher-content">{children}</div>
   ),
-  DropdownMenuItem: ({ children, onSelect }: { children: ReactNode; onSelect?: () => void }) => (
-    <button type="button" onClick={() => onSelect?.()}>
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    disabled,
+  }: {
+    children: ReactNode;
+    onSelect?: () => void;
+    disabled?: boolean;
+  }) => (
+    <button type="button" onClick={() => onSelect?.()} disabled={disabled}>
       {children}
     </button>
+  ),
+  DropdownMenuLabel: ({ children }: { children: ReactNode }) => (
+    <div data-testid="dock-launcher-label">{children}</div>
   ),
   DropdownMenuSeparator: () => <hr data-testid="dock-launcher-separator" />,
 }));
 
 import { DockLaunchButton } from "../DockLaunchButton";
 
-const AGENT_OPTIONS = [
-  { type: "claude", label: "Claude" },
-  { type: "terminal" as const, label: "Terminal" },
-  { type: "browser" as const, label: "Browser" },
+const AGENTS = [
+  { id: "claude", name: "Claude", isEnabled: true },
+  { id: "gemini", name: "Gemini", isEnabled: false },
 ];
 
 beforeEach(() => {
@@ -62,7 +72,8 @@ describe("DockLaunchButton", () => {
   it("renders a launch button with accessible label", () => {
     const { getByLabelText } = render(
       <DockLaunchButton
-        agentOptions={AGENT_OPTIONS}
+        agents={AGENTS}
+        hasDevPreview={false}
         onLaunchAgent={vi.fn()}
         activeWorktreeId={null}
         cwd="/tmp"
@@ -71,36 +82,92 @@ describe("DockLaunchButton", () => {
     expect(getByLabelText("Launch panel")).toBeTruthy();
   });
 
-  it("lists every agent option and invokes onLaunchAgent when one is selected", () => {
+  it("renders sectioned labels for agents, panels, and recipes", () => {
+    mockRecipes = [{ id: "r-1", name: "My recipe", worktreeId: undefined }];
+
+    const { getAllByTestId } = render(
+      <DockLaunchButton
+        agents={AGENTS}
+        hasDevPreview
+        onLaunchAgent={vi.fn()}
+        activeWorktreeId={null}
+        cwd="/tmp"
+      />
+    );
+
+    const labels = getAllByTestId("dock-launcher-label").map((el) => el.textContent);
+    expect(labels).toEqual(["Launch agent", "Launch panel", "Launch recipe"]);
+  });
+
+  it("invokes onLaunchAgent for an agent and respects disabled state", () => {
     const onLaunchAgent = vi.fn();
     const { getByText } = render(
       <DockLaunchButton
-        agentOptions={AGENT_OPTIONS}
+        agents={AGENTS}
+        hasDevPreview={false}
         onLaunchAgent={onLaunchAgent}
         activeWorktreeId={null}
         cwd="/tmp"
       />
     );
 
-    expect(getByText("New Claude")).toBeTruthy();
-    expect(getByText("New Terminal")).toBeTruthy();
-    expect(getByText("New Browser")).toBeTruthy();
-
-    fireEvent.click(getByText("New Claude"));
+    fireEvent.click(getByText("Claude"));
     expect(onLaunchAgent).toHaveBeenCalledWith("claude");
+
+    onLaunchAgent.mockClear();
+    fireEvent.click(getByText("Gemini"));
+    expect(onLaunchAgent).not.toHaveBeenCalled();
   });
 
-  it("renders 'No recipes' when no recipes match the active worktree", () => {
-    mockRecipes = [];
-    const { getByText } = render(
+  it("always exposes Terminal and Browser, gates Dev preview on hasDevPreview", () => {
+    const onLaunchAgent = vi.fn();
+    const { getByText, queryByText, rerender } = render(
       <DockLaunchButton
-        agentOptions={AGENT_OPTIONS}
+        agents={[]}
+        hasDevPreview={false}
+        onLaunchAgent={onLaunchAgent}
+        activeWorktreeId={null}
+        cwd="/tmp"
+      />
+    );
+
+    expect(getByText("Terminal")).toBeTruthy();
+    expect(getByText("Browser")).toBeTruthy();
+    expect(queryByText("Dev preview")).toBeNull();
+
+    fireEvent.click(getByText("Terminal"));
+    expect(onLaunchAgent).toHaveBeenLastCalledWith("terminal");
+
+    fireEvent.click(getByText("Browser"));
+    expect(onLaunchAgent).toHaveBeenLastCalledWith("browser");
+
+    rerender(
+      <DockLaunchButton
+        agents={[]}
+        hasDevPreview
+        onLaunchAgent={onLaunchAgent}
+        activeWorktreeId={null}
+        cwd="/tmp"
+      />
+    );
+
+    fireEvent.click(getByText("Dev preview"));
+    expect(onLaunchAgent).toHaveBeenLastCalledWith("dev-preview");
+  });
+
+  it("hides the recipe section when no recipes match the active worktree", () => {
+    mockRecipes = [];
+    const { queryByText } = render(
+      <DockLaunchButton
+        agents={AGENTS}
+        hasDevPreview={false}
         onLaunchAgent={vi.fn()}
         activeWorktreeId="wt-1"
         cwd="/tmp"
       />
     );
-    expect(getByText("No recipes")).toBeTruthy();
+    expect(queryByText("Launch recipe")).toBeNull();
+    expect(queryByText("No recipes")).toBeNull();
   });
 
   it("lists project-wide recipes and recipes scoped to the active worktree", () => {
@@ -112,7 +179,8 @@ describe("DockLaunchButton", () => {
 
     const { getByText, queryByText } = render(
       <DockLaunchButton
-        agentOptions={AGENT_OPTIONS}
+        agents={AGENTS}
+        hasDevPreview={false}
         onLaunchAgent={vi.fn()}
         activeWorktreeId="wt-1"
         cwd="/tmp"
@@ -136,7 +204,8 @@ describe("DockLaunchButton", () => {
 
     const { getByText } = render(
       <DockLaunchButton
-        agentOptions={AGENT_OPTIONS}
+        agents={AGENTS}
+        hasDevPreview={false}
         onLaunchAgent={vi.fn()}
         activeWorktreeId="wt-1"
         cwd="/path/to/wt"

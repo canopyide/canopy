@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6,69 +6,35 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useRecipeStore } from "@/store/recipeStore";
+import {
+  DockLaunchMenuItems,
+  type DockLaunchAgent,
+  type DockLaunchMenuComponents,
+} from "./DockLaunchMenuItems";
 import type { RecipeContext } from "@/utils/recipeVariables";
 
+const DROPDOWN_COMPONENTS: DockLaunchMenuComponents = {
+  Item: DropdownMenuItem,
+  Label: DropdownMenuLabel,
+  Separator: DropdownMenuSeparator,
+};
+
 interface DockLaunchButtonProps {
-  agentOptions: ReadonlyArray<{ type: string; label: string }>;
+  agents: ReadonlyArray<DockLaunchAgent>;
+  hasDevPreview: boolean;
   onLaunchAgent: (agentId: string) => void;
   activeWorktreeId: string | null;
   cwd: string;
   recipeContext?: RecipeContext;
 }
 
-interface RecipesSectionProps {
-  activeWorktreeId: string | null;
-  cwd: string;
-  recipeContext?: RecipeContext;
-}
-
-// Read recipes inside DropdownMenuContent so the subscription is only active
-// while the menu is open. Filter via useMemo to avoid the new-array-each-render
-// pitfall of subscribing to getRecipesForWorktree directly through Zustand.
-//
-// Recipes here intentionally use the store's default placement (grid). Every
-// other recipe launch site in the app does the same, and recipes are commonly
-// multi-terminal — a "Launch in dock" override would put a 3-agent recipe in
-// the dock, which is a single-panel surface.
-function RecipesSection({ activeWorktreeId, cwd, recipeContext }: RecipesSectionProps) {
-  const recipes = useRecipeStore((s) => s.recipes);
-  const visibleRecipes = useMemo(
-    () =>
-      recipes.filter(
-        (r) => r.worktreeId === undefined || r.worktreeId === (activeWorktreeId ?? undefined)
-      ),
-    [recipes, activeWorktreeId]
-  );
-
-  return (
-    <>
-      <DropdownMenuSeparator />
-      {visibleRecipes.length === 0 ? (
-        <p className="px-2.5 py-1.5 text-xs text-daintree-text/50">No recipes</p>
-      ) : (
-        visibleRecipes.map((recipe) => (
-          <DropdownMenuItem
-            key={recipe.id}
-            onSelect={() =>
-              void useRecipeStore
-                .getState()
-                .runRecipe(recipe.id, cwd, activeWorktreeId ?? undefined, recipeContext)
-            }
-          >
-            {recipe.name}
-          </DropdownMenuItem>
-        ))
-      )}
-    </>
-  );
-}
-
 export function DockLaunchButton({
-  agentOptions,
+  agents,
+  hasDevPreview,
   onLaunchAgent,
   activeWorktreeId,
   cwd,
@@ -113,23 +79,22 @@ export function DockLaunchButton({
       </Tooltip>
       <DropdownMenuContent
         side="top"
-        align="end"
+        align="start"
         sideOffset={4}
-        className="min-w-[12rem]"
+        className="min-w-[14rem]"
         onCloseAutoFocus={() => {
           setTooltipOpen(false);
           isRestoringFocusRef.current = true;
         }}
       >
-        {agentOptions.map(({ type, label }) => (
-          <DropdownMenuItem key={type} onSelect={() => onLaunchAgent(type)}>
-            New {label}
-          </DropdownMenuItem>
-        ))}
-        <RecipesSection
+        <DockLaunchMenuItems
+          components={DROPDOWN_COMPONENTS}
+          agents={agents}
+          hasDevPreview={hasDevPreview}
           activeWorktreeId={activeWorktreeId}
           cwd={cwd}
           recipeContext={recipeContext}
+          onLaunchAgent={onLaunchAgent}
         />
       </DropdownMenuContent>
     </DropdownMenu>

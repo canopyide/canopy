@@ -31,8 +31,20 @@ describe("ContentDock regression test", () => {
     const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
 
     expect(content).toContain("DockLaunchButton");
-    expect(content).toContain("agentOptions={AGENT_OPTIONS}");
-    expect(content).toContain("onLaunchAgent={handleAddTerminal}");
-    expect(content).toContain("export const AGENT_OPTIONS");
+    expect(content).toContain("agents={launchAgents}");
+    expect(content).toMatch(/onLaunchAgent=\{[^}]*handleAddTerminal/);
+    expect(content).toContain("hasDevPreview={hasDevPreview}");
+  });
+
+  it("places the launch button on the left side of the dock", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    const launchIdx = content.indexOf("<DockLaunchButton");
+    const helpIdx = content.indexOf("<HelpAgentDockButton");
+    const trashIdx = content.indexOf("<TrashContainer");
+
+    expect(launchIdx).toBeGreaterThan(0);
+    expect(launchIdx).toBeLessThan(trashIdx);
+    expect(launchIdx).toBeLessThan(helpIdx);
   });
 });
