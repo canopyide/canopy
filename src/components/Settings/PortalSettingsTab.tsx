@@ -296,10 +296,7 @@ export function PortalSettingsTab() {
                 )
               }
               disabled={link.alwaysEnabled}
-              className={cn(
-                "p-1.5 rounded hover:bg-daintree-border/50 text-daintree-text/50 hover:text-status-error",
-                link.alwaysEnabled && "opacity-50 cursor-not-allowed"
-              )}
+              className="p-1.5 rounded hover:bg-daintree-border/50 text-daintree-text/50 hover:text-status-error disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               <Trash2 className="w-4 h-4" />
             </button>

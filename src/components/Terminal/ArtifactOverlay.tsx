@@ -169,7 +169,7 @@ function ArtifactItem({
                       className={cn(
                         "px-3 py-1 text-xs rounded transition-colors",
                         "bg-status-success hover:brightness-110 text-daintree-bg",
-                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                        "disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       )}
                     >
                       Apply Patch
