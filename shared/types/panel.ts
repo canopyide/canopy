@@ -511,7 +511,7 @@ export interface TerminalInstance {
    * then "ready". Absent (undefined) on hydrated panels — treat as "ready".
    * Never serialized — see `serializePtyPanel`.
    */
-  spawnStatus?: "spawning" | "ready";
+  spawnStatus?: "spawning" | "ready" | "missing-cli";
   /** Original user-selected preset ID; immutable across fallback hops. */
   originalPresetId?: string;
   /** Whether this panel is currently running on a fallback preset. */
