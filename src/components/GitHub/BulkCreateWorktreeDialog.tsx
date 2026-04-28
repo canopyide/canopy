@@ -1207,10 +1207,10 @@ export function BulkCreateWorktreeDialog({
           }
         >
           {isExecuting
-            ? "Creating Worktrees\u2026"
+            ? "Creating worktrees\u2026"
             : isDone
-              ? "Creation Complete"
-              : `Create ${creatableCount} Worktree${creatableCount !== 1 ? "s" : ""}`}
+              ? "Creation complete"
+              : `Create ${creatableCount} worktree${creatableCount !== 1 ? "s" : ""}`}
         </AppDialog.Title>
         {!isExecuting && <AppDialog.CloseButton />}
       </AppDialog.Header>
@@ -1528,7 +1528,7 @@ export function BulkCreateWorktreeDialog({
                 data-testid="bulk-create-retry-button"
               >
                 <RotateCcw />
-                Retry Failed
+                Retry failed
               </Button>
             )}
             <Button onClick={handleDone} data-testid="bulk-create-done-button">
@@ -1552,7 +1552,7 @@ export function BulkCreateWorktreeDialog({
               data-testid="bulk-create-confirm-button"
             >
               <Check />
-              Create {creatableCount} Worktree{creatableCount !== 1 ? "s" : ""}
+              Create {creatableCount} worktree{creatableCount !== 1 ? "s" : ""}
             </Button>
           </>
         )}

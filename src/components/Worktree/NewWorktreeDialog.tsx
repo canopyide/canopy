@@ -1791,7 +1791,7 @@ export function NewWorktreeDialog({
               variant="ghost"
               onClick={() => setIsDismissing(false)}
             >
-              Keep Editing
+              Keep editing
             </Button>
             <Button variant="destructive" onClick={onClose}>
               Discard

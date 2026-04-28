@@ -247,7 +247,7 @@ describe("useAgentWaitingNudge", () => {
     expect(removeNotificationMock).toHaveBeenCalledWith("notif-123");
   });
 
-  it("No Thanks action removes notification without enabling", async () => {
+  it("No thanks action removes notification without enabling", async () => {
     renderHook(() => useAgentWaitingNudge(true));
     await act(async () => {});
 

@@ -326,11 +326,11 @@ export function RecipesTab({
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleAddRecipe} className="flex-1">
               <Plus />
-              Add Recipe
+              Add recipe
             </Button>
             <Button variant="outline" onClick={() => setShowImportDialog(true)}>
               <FileDown />
-              Import Recipe
+              Import recipe
             </Button>
           </div>
         </div>
@@ -374,7 +374,7 @@ export function RecipesTab({
         size="md"
       >
         <AppDialog.Header>
-          <AppDialog.Title>Import Recipe</AppDialog.Title>
+          <AppDialog.Title>Import recipe</AppDialog.Title>
           <AppDialog.CloseButton />
         </AppDialog.Header>
 
