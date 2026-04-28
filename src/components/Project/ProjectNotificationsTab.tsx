@@ -86,7 +86,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
               .getSettings()
               .then(setGlobalSettings)
               .catch((err) => {
-                console.error("[ProjectNotificationsTab] Retry failed:", err);
+                logError("[ProjectNotificationsTab] Retry failed", err);
                 setGlobalError("Failed to load global settings");
               });
           }}

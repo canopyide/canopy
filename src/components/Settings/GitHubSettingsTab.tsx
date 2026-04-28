@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { useGitHubConfigStore } from "@/store";
 import { actionService } from "@/services/ActionService";
 import { SettingsSection } from "./SettingsSection";
+import { logError } from "@/utils/logger";
 
 type ValidationResult = "success" | "error" | "test-success" | "test-error" | null;
 
@@ -75,7 +76,7 @@ export function GitHubSettingsTab() {
         setErrorMessage(validation.error || "Invalid token");
       }
     } catch (error) {
-      console.error("Failed to save GitHub token:", error);
+      logError("Failed to save GitHub token", error);
       setValidationResult("error");
       setErrorMessage("Failed to save token");
     } finally {
@@ -101,7 +102,7 @@ export function GitHubSettingsTab() {
       setValidationResult(null);
       setErrorMessage(null);
     } catch (error) {
-      console.error("Failed to clear GitHub token:", error);
+      logError("Failed to clear GitHub token", error);
       setValidationResult("error");
       setErrorMessage("Failed to clear token");
     }
@@ -129,7 +130,7 @@ export function GitHubSettingsTab() {
         setErrorMessage(validation.error || "Invalid token");
       }
     } catch (error) {
-      console.error("Failed to test GitHub token:", error);
+      logError("Failed to test GitHub token", error);
       setValidationResult("test-error");
       setErrorMessage("Failed to validate token");
     } finally {

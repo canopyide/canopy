@@ -4,6 +4,7 @@ import { useAgentSettingsStore, useCliAvailabilityStore, useAgentPreferencesStor
 import { cliAvailabilityClient } from "@/clients";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
+import { logError } from "@/utils/logger";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
@@ -79,7 +80,7 @@ export function AgentSettings({
       const details = await cliAvailabilityClient.getDetails();
       setCliDetails(details);
     } catch (error) {
-      console.error("[AgentSettings] Failed to fetch CLI details:", error);
+      logError("[AgentSettings] Failed to fetch CLI details", error);
     }
   }, []);
 
@@ -97,7 +98,7 @@ export function AgentSettings({
       await refreshCliAvailability(true);
       await fetchCliDetails();
     } catch (error) {
-      console.error("[AgentSettings] Failed to refresh CLI availability:", error);
+      logError("[AgentSettings] Failed to refresh CLI availability", error);
     }
   }, [isRefreshingCli, refreshCliAvailability, fetchCliDetails]);
 
@@ -137,7 +138,7 @@ export function AgentSettings({
       setIsAddDialogOpen(false);
       setAddDialogAgentId(null);
     } catch (error) {
-      console.error("[AgentSettings] Failed to create preset:", error);
+      logError("[AgentSettings] Failed to create preset", error);
     }
   };
 
@@ -352,7 +353,7 @@ export function AgentSettings({
                         );
                         if (!result.ok) throw new Error(result.error.message);
                       } catch (error) {
-                        console.error("Failed to open usage URL:", error);
+                        logError("Failed to open usage URL", error);
                       }
                     }}
                   >
@@ -498,7 +499,7 @@ export function AgentSettings({
                     await updateAgent(activeAgent.id, { customPresets: updated });
                     onSettingsChange?.();
                   } catch (error) {
-                    console.error("Failed to update preset:", error);
+                    logError("Failed to update preset", error);
                   }
                 })();
               };

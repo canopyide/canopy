@@ -259,7 +259,7 @@ export function ProjectResourceBadge() {
         projects: projects.map((p: Project) => ({ id: p.id, name: p.name })),
       };
     } catch (error) {
-      console.error("[ProjectResourceBadge] Failed to fetch stats:", error);
+      logError("[ProjectResourceBadge] Failed to fetch stats", error);
       return null;
     }
   }, []);
@@ -308,7 +308,7 @@ export function ProjectResourceBadge() {
           setPopoverData({ processMetrics, heapStats, diagnosticsInfo, projectStats });
         }
       } catch (error) {
-        console.error("[ProjectResourceBadge] Failed to fetch popover data:", error);
+        logError("[ProjectResourceBadge] Failed to fetch popover data", error);
       }
     };
 
