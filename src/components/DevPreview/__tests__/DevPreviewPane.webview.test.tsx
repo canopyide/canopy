@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { DevPreviewPaneProps } from "../DevPreviewPane";
-import { DevPreviewPane, _resetScrollCacheForTests } from "../DevPreviewPane";
+import { DevPreviewPane } from "../DevPreviewPane";
 
 type MockWebviewElement = HTMLElement & {
   reload: ReturnType<typeof vi.fn>;
@@ -57,6 +57,7 @@ type DevServerState = {
 
 const {
   terminalStoreState,
+  scrollPositionRef,
   usePanelStoreMock,
   useProjectStoreMock,
   useProjectSettingsStoreMock,
@@ -64,15 +65,27 @@ const {
   useDevServerMock,
   useIsDraggingMock,
 } = vi.hoisted(() => {
+  const scrollPositionRef: { current: { url: string; scrollY: number } | undefined } = {
+    current: undefined,
+  };
   const terminalStoreState = {
     getTerminal: vi.fn(),
     setBrowserUrl: vi.fn(),
     setBrowserHistory: vi.fn(),
     setBrowserZoom: vi.fn(),
     setDevPreviewConsoleOpen: vi.fn(),
+    setViewportPreset: vi.fn(),
+    setDevPreviewScrollPosition: vi.fn(
+      (_id: string, position: { url: string; scrollY: number } | undefined) => {
+        scrollPositionRef.current = position;
+      }
+    ),
   };
-  const usePanelStoreMock = vi.fn((selector: (state: typeof terminalStoreState) => unknown) =>
-    selector(terminalStoreState)
+  const usePanelStoreMock = Object.assign(
+    vi.fn((selector: (state: typeof terminalStoreState) => unknown) =>
+      selector(terminalStoreState)
+    ),
+    { getState: () => terminalStoreState }
   );
 
   const projectStoreState = {
@@ -118,6 +131,7 @@ const {
 
   return {
     terminalStoreState,
+    scrollPositionRef,
     usePanelStoreMock,
     useProjectStoreMock,
     useProjectSettingsStoreMock,
@@ -223,7 +237,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    _resetScrollCacheForTests();
+    scrollPositionRef.current = undefined;
     originalCreateElement = document.createElement.bind(document);
     document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
       const element = originalCreateElement(tagName, options);
@@ -242,6 +256,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       browserZoom: 1.4,
       devPreviewConsoleOpen: false,
       devCommand: "npm run dev",
+      devPreviewScrollPosition: scrollPositionRef.current,
     }));
     devServerStateRef.current = {
       status: "running",
@@ -588,6 +603,10 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     });
 
     expect(webview.executeJavaScript).toHaveBeenCalledWith("window.scrollY");
+    expect(terminalStoreState.setDevPreviewScrollPosition).toHaveBeenCalledWith(
+      "dev-preview-panel-1",
+      { url: "http://localhost:5173/", scrollY: 250 }
+    );
   });
 
   it("restores scroll position on dom-ready after remount", async () => {
@@ -625,7 +644,9 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       emitWebviewEvent(newWebview, "dom-ready");
     });
 
-    expect(newWebview.executeJavaScript).toHaveBeenCalledWith("window.scrollTo(0, 250)");
+    expect(newWebview.executeJavaScript).toHaveBeenCalledWith(
+      "requestAnimationFrame(() => window.scrollTo(0, 250))"
+    );
   });
 
   it("clears scroll cache on hard restart", async () => {
@@ -660,6 +681,11 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     // Hard restart clears cache
     fireEvent.click(screen.getByTestId("hard-restart"));
 
+    expect(terminalStoreState.setDevPreviewScrollPosition).toHaveBeenCalledWith(
+      "dev-preview-panel-1",
+      undefined
+    );
+
     // Remount
     devServerStateRef.current = {
       ...devServerStateRef.current,
@@ -681,6 +707,85 @@ describe("DevPreviewPane webview lifecycle regression", () => {
 
     // Should NOT call scrollTo since cache was cleared
     const scrollToCalls = newWebview.executeJavaScript.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("scrollTo")
+    );
+    expect(scrollToCalls).toHaveLength(0);
+  });
+
+  it("ignores in-flight scroll captures that resolve after hard restart", async () => {
+    const { container, rerender } = render(<DevPreviewPane {...baseProps} />);
+    const webview = getWebviewElement(container);
+
+    // Build a manually-resolvable promise so we can interleave the hard restart
+    // before the capture promise resolves.
+    let resolveScrollY: (v: number) => void = () => {};
+    const pending = new Promise<number>((resolve) => {
+      resolveScrollY = resolve;
+    });
+    webview.executeJavaScript.mockImplementationOnce(() => pending);
+
+    // Trigger a capture by transitioning away from running. The capture promise
+    // is now in-flight and parked on `pending`.
+    devServerStateRef.current = {
+      ...devServerStateRef.current,
+      status: "stopped",
+      url: null,
+    };
+    rerender(<DevPreviewPane {...baseProps} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Hard restart fires before the in-flight capture resolves.
+    fireEvent.click(screen.getByTestId("hard-restart"));
+
+    // The clear must have happened.
+    expect(terminalStoreState.setDevPreviewScrollPosition).toHaveBeenCalledWith(
+      "dev-preview-panel-1",
+      undefined
+    );
+
+    terminalStoreState.setDevPreviewScrollPosition.mockClear();
+
+    // Now resolve the previously parked capture.
+    await act(async () => {
+      resolveScrollY(987);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The stale capture must not have written anything back over the cleared state.
+    expect(terminalStoreState.setDevPreviewScrollPosition).not.toHaveBeenCalled();
+  });
+
+  it("does not restore scroll when saved URL differs from loaded URL", async () => {
+    scrollPositionRef.current = { url: "http://localhost:5173/old", scrollY: 250 };
+    const { container } = render(<DevPreviewPane {...baseProps} />);
+    const webview = getWebviewElement(container);
+    webview.executeJavaScript.mockClear();
+
+    act(() => {
+      emitWebviewEvent(webview, "dom-ready");
+    });
+
+    const scrollToCalls = webview.executeJavaScript.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("scrollTo")
+    );
+    expect(scrollToCalls).toHaveLength(0);
+  });
+
+  it("does not restore scroll when saved scrollY is 0", async () => {
+    scrollPositionRef.current = { url: "http://localhost:5173/", scrollY: 0 };
+    const { container } = render(<DevPreviewPane {...baseProps} />);
+    const webview = getWebviewElement(container);
+    webview.executeJavaScript.mockClear();
+
+    act(() => {
+      emitWebviewEvent(webview, "dom-ready");
+    });
+
+    const scrollToCalls = webview.executeJavaScript.mock.calls.filter(
       (call: unknown[]) => typeof call[0] === "string" && call[0].includes("scrollTo")
     );
     expect(scrollToCalls).toHaveLength(0);
