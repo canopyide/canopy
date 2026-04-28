@@ -119,21 +119,15 @@ export function AgentSettings({
 
   const handleCreatePreset = async (presetData: Omit<AgentPreset, "id">) => {
     if (!addDialogAgentId) return;
-    const now = Date.now();
     const freshSettings = useAgentSettingsStore.getState().settings ?? DEFAULT_AGENT_SETTINGS;
     const entry = getAgentSettingsEntry(freshSettings, addDialogAgentId);
     const existing = entry.customPresets ?? [];
-    let id = `user-${now}`;
-    if (existing.some((f) => f.id === id)) {
-      let suffix = 1;
-      while (existing.some((f) => f.id === `user-${now}-${suffix}`)) suffix += 1;
-      id = `user-${now}-${suffix}`;
-    }
+    const id = `user-${crypto.randomUUID()}`;
     const updated = [...existing, { ...presetData, id }];
     try {
       await updateAgent(addDialogAgentId, { customPresets: updated, presetId: id });
       onSettingsChange?.();
-      lastAddTimeRef.current = now;
+      lastAddTimeRef.current = Date.now();
       setIsAddDialogOpen(false);
       setAddDialogAgentId(null);
     } catch (error) {
@@ -461,7 +455,7 @@ export function AgentSettings({
               };
 
               const handleDuplicatePreset = (preset: AgentPreset) => {
-                const id = `user-${Date.now()}`;
+                const id = `user-${crypto.randomUUID()}`;
                 const updated = [
                   ...(activeEntry.customPresets ?? []),
                   { ...preset, id, name: `${preset.name} (copy)` },

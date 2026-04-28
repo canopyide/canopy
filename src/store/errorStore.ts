@@ -50,7 +50,7 @@ const MAX_ERRORS = 50;
 const ERROR_RATE_LIMIT_MS = 500;
 
 function generateErrorId(): string {
-  return `error-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return `error-${crypto.randomUUID()}`;
 }
 
 const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({

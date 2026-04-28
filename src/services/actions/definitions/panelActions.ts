@@ -526,7 +526,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
       const icon = agentInfo?.icon;
 
       if (background) {
-        const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const newTabId = `tab-${crypto.randomUUID()}`;
         usePortalStore.setState((s) => ({
           tabs: [...s.tabs, { id: newTabId, url, title: finalTitle, icon }],
         }));

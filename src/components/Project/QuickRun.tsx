@@ -144,7 +144,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
     e.preventDefault();
 
     const commandToSave: RunCommand = {
-      id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      id: `cmd-${crypto.randomUUID()}`,
       name: item.label,
       command: item.value,
       icon: "icon" in item ? item.icon || "terminal" : "terminal",

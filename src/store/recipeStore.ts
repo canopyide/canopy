@@ -226,9 +226,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     const isGlobal = projectId === undefined;
     const newRecipe: TerminalRecipe = {
-      id: isGlobal
-        ? `recipe-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-        : stableInRepoId(name),
+      id: isGlobal ? `recipe-${crypto.randomUUID()}` : stableInRepoId(name),
       name,
       projectId: isGlobal ? undefined : projectId,
       worktreeId: isGlobal ? undefined : worktreeId,
@@ -731,9 +729,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     const isGlobal = projectId === undefined;
     const recipeName = String(recipe.name);
     const importedRecipe: TerminalRecipe = {
-      id: isGlobal
-        ? `recipe-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-        : stableInRepoId(recipeName),
+      id: isGlobal ? `recipe-${crypto.randomUUID()}` : stableInRepoId(recipeName),
       name: recipeName,
       projectId: isGlobal ? undefined : projectId,
       worktreeId: isGlobal
