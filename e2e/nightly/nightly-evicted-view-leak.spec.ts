@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- main-process globals are untyped in app.evaluate() */
 import { test, expect } from "@playwright/test";
 import path from "path";
 import { tmpdir } from "os";
@@ -95,36 +94,40 @@ test.describe.serial("Nightly: Evicted project view leak detection", () => {
       pvm?.setCachedViewLimit(1);
     });
 
-    // GC_DELAY_MS in ProjectViewManager is 100ms; give the close() handlers
-    // and any window.gc() injection a comfortable margin before reading state.
-    await ctx.window.waitForTimeout(800);
+    // Poll until eviction completes. GC_DELAY_MS in ProjectViewManager is
+    // 100ms but webContents.close() can be slower on loaded CI runners — a
+    // fixed sleep races there. Re-read state until the evicted view is gone
+    // or we hit a meaningful timeout.
+    const readEvictionState = () =>
+      app.evaluate(({ webContents }, wcId) => {
+        const g = globalThis as Record<string, unknown>;
+        const getPvm = g.__daintreeGetPvm as (() => unknown) | undefined;
+        const pvm = getPvm?.() as
+          | {
+              getAllViews: () => Array<{
+                view: { webContents: { id: number; isDestroyed: () => boolean } };
+                projectId: string;
+              }>;
+            }
+          | null
+          | undefined;
+        const evicted = webContents.fromId(wcId);
+        return {
+          viewCount: pvm?.getAllViews().length ?? -1,
+          viewProjectIds: pvm?.getAllViews().map((v) => v.projectId) ?? [],
+          evictedIsNullOrDestroyed: !evicted || evicted.isDestroyed(),
+        };
+      }, evictedWcId);
 
-    const afterEviction = await app.evaluate(({ webContents }, wcId) => {
-      const g = globalThis as Record<string, unknown>;
-      const getPvm = g.__daintreeGetPvm as (() => unknown) | undefined;
-      const pvm = getPvm?.() as
-        | {
-            getAllViews: () => Array<{
-              view: { webContents: { id: number; isDestroyed: () => boolean } };
-              projectId: string;
-            }>;
-          }
-        | null
-        | undefined;
-      const evicted = webContents.fromId(wcId);
-      return {
-        viewCount: pvm?.getAllViews().length ?? -1,
-        viewProjectIds: pvm?.getAllViews().map((v) => v.projectId) ?? [],
-        evictedIsNullOrDestroyed: !evicted || evicted.isDestroyed(),
-      };
-    }, evictedWcId);
+    await expect
+      .poll(readEvictionState, { timeout: 10_000, intervals: [200, 400, 800, 1600] })
+      .toMatchObject({ viewCount: 1, evictedIsNullOrDestroyed: true });
 
+    const afterEviction = await readEvictionState();
     console.log(
       `[evicted-view] after eviction: viewCount=${afterEviction.viewCount}, projectIds=${JSON.stringify(afterEviction.viewProjectIds)}, evicted destroyed=${afterEviction.evictedIsNullOrDestroyed}`
     );
-    expect(afterEviction.viewCount).toBe(1);
     expect(afterEviction.viewProjectIds).toContain(activeId);
-    expect(afterEviction.evictedIsNullOrDestroyed).toBe(true);
   });
 
   test("main-process heap snapshot parses and surfaces diagnostic counts", async () => {
@@ -165,26 +168,31 @@ test.describe.serial("Nightly: Evicted project view leak detection", () => {
     expect(existsSync(snapshotPath)).toBe(true);
 
     const snapshot = parseHeapSnapshot(snapshotPath);
-    for (const className of DIAGNOSTIC_CLASS_NAMES) {
-      const count = countInstancesByName(snapshot, className);
-      console.log(`[evicted-view][heap] ${className}: ${count} instances`);
-    }
 
     // Sanity: the snapshot must be a valid V8 heap snapshot with the expected
     // shape. If parsing yields an empty/garbage object, fail loudly so a
     // future Electron upgrade that changes the snapshot schema is noticed.
+    // Run schema checks before the diagnostic loop so the failure points at
+    // the schema, not the lookup.
     expect(snapshot.snapshot.meta.node_fields).toContain("type");
     expect(snapshot.snapshot.meta.node_fields).toContain("name");
     expect(snapshot.nodes.length).toBeGreaterThan(0);
     expect(snapshot.strings.length).toBeGreaterThan(0);
 
+    for (const className of DIAGNOSTIC_CLASS_NAMES) {
+      const count = countInstancesByName(snapshot, className);
+      console.log(`[evicted-view][heap] ${className}: ${count} instances`);
+    }
+
     // ProjectViewManager is a per-window singleton — its instance count
     // should be exactly 1 in single-window E2E runs. We look it up by the
     // runtime constructor name to stay correct under production minification.
-    if (pvmRuntimeName) {
-      const pvmCount = countInstancesByName(snapshot, pvmRuntimeName);
-      console.log(`[evicted-view][heap] PVM (${pvmRuntimeName}): ${pvmCount} instances`);
-      expect(pvmCount).toBe(1);
-    }
+    // Asserting truthiness first ensures the hook working correctly is a
+    // hard requirement of the test rather than a best-effort skip — a falsy
+    // value (null, "", undefined) would otherwise silently pass.
+    expect(pvmRuntimeName).toBeTruthy();
+    const pvmCount = countInstancesByName(snapshot, pvmRuntimeName!);
+    console.log(`[evicted-view][heap] PVM (${pvmRuntimeName}): ${pvmCount} instances`);
+    expect(pvmCount).toBe(1);
   });
 });
