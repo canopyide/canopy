@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/formatBytes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { FileReadErrorCode } from "@shared/types/ipc/files";
+import { isClientAppError } from "@/utils/clientAppError";
 import { sanitizeSvg } from "@shared/utils/svgSanitizer";
 import { logError } from "@/utils/logger";
 
@@ -132,30 +133,26 @@ export function FileViewerModal({
 
     filesClient
       .read({ path: filePath, rootPath: effectiveRootPath })
-      .then((result) => {
+      .then(({ content: fileContent }) => {
         if (!isMountedRef.current || requestRef.current !== requestId) return;
-        if (result.ok) {
-          if (svgFile) {
-            const sanitized = sanitizeSvg(result.content);
-            if (sanitized.ok) {
-              setSanitizedSvg(sanitized.svg);
-              setLoadState("svg");
-            } else {
-              setErrorCode("INVALID_PATH");
-              setLoadState("error");
-            }
+        if (svgFile) {
+          const sanitized = sanitizeSvg(fileContent);
+          if (sanitized.ok) {
+            setSanitizedSvg(sanitized.svg);
+            setLoadState("svg");
           } else {
-            setContent(result.content);
-            setLoadState("loaded");
+            setErrorCode("INVALID_PATH");
+            setLoadState("error");
           }
         } else {
-          setErrorCode(result.code);
-          setLoadState("error");
+          setContent(fileContent);
+          setLoadState("loaded");
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!isMountedRef.current || requestRef.current !== requestId) return;
-        setErrorCode("INVALID_PATH");
+        const code = isClientAppError(error) ? (error.code as FileReadErrorCode) : "INVALID_PATH";
+        setErrorCode(code);
         setLoadState("error");
       });
   });

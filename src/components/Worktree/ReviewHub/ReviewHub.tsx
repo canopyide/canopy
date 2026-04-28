@@ -415,18 +415,15 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
 
   const runPush = useCallback(async () => {
     try {
-      const result = await window.electron.git.push(worktreePath);
-      if (result.success) {
-        setPushError(null);
-      } else {
-        setPushError({
-          reason: result.gitReason ?? "unknown",
-          rawMessage: result.error ?? "",
-        });
-      }
+      await window.electron.git.push(worktreePath);
+      setPushError(null);
     } catch (err) {
+      const reason =
+        (err as { gitReason?: string }).gitReason ??
+        ((err as { code?: string }).code as string | undefined) ??
+        "unknown";
       setPushError({
-        reason: "unknown",
+        reason: reason as GitOperationReason,
         rawMessage: formatErrorMessage(err, "Failed to push"),
       });
     }

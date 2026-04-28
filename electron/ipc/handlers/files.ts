@@ -5,6 +5,7 @@ import { checkRateLimit, typedHandle } from "../utils.js";
 import { fileSearchService } from "../../services/FileSearchService.js";
 import { FileSearchPayloadSchema, FileReadPayloadSchema } from "../../schemas/ipc.js";
 import type { FileReadResult } from "../../../shared/types/ipc/files.js";
+import { AppError } from "../../utils/errorTypes.js";
 
 const FILE_SIZE_LIMIT = 512 * 1024; // 500 KB
 
@@ -48,13 +49,17 @@ export function registerFilesHandlers(): () => void {
     const parsed = FileReadPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       console.error("[IPC] Invalid files:read payload:", parsed.error.format());
-      return { ok: false, code: "INVALID_PATH" };
+      throw new AppError({ code: "INVALID_PATH", message: "Invalid files:read payload" });
     }
 
     const { path: filePath, rootPath } = parsed.data;
 
     if (!path.isAbsolute(filePath) || !path.isAbsolute(rootPath)) {
-      return { ok: false, code: "INVALID_PATH" };
+      throw new AppError({
+        code: "INVALID_PATH",
+        message: "filePath and rootPath must be absolute",
+        context: { filePath, rootPath },
+      });
     }
 
     // Containment check: file must be inside rootPath
@@ -64,39 +69,68 @@ export function registerFilesHandlers(): () => void {
       !normalizedFile.startsWith(normalizedRoot + path.sep) &&
       normalizedFile !== normalizedRoot
     ) {
-      return { ok: false, code: "OUTSIDE_ROOT" };
+      throw new AppError({
+        code: "OUTSIDE_ROOT",
+        message: "File is outside the project root",
+        context: { filePath, rootPath },
+      });
     }
 
+    let stat: Awaited<ReturnType<typeof fs.stat>>;
     try {
-      const stat = await fs.stat(normalizedFile);
-
-      if (stat.size > FILE_SIZE_LIMIT) {
-        return { ok: false, code: "FILE_TOO_LARGE" };
-      }
-
-      const buffer = await fs.readFile(normalizedFile);
-
-      // Binary detection: check for null bytes in first 8 KB
-      const checkLength = Math.min(buffer.length, 8192);
-      for (let i = 0; i < checkLength; i++) {
-        if (buffer[i] === 0) {
-          return { ok: false, code: "BINARY_FILE" };
-        }
-      }
-
-      if (isLfsPointer(buffer)) {
-        return { ok: false, code: "LFS_POINTER" };
-      }
-
-      return { ok: true, content: buffer.toString("utf-8") };
+      stat = await fs.stat(normalizedFile);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT") {
-        return { ok: false, code: "NOT_FOUND" };
+        throw new AppError({
+          code: "NOT_FOUND",
+          message: "File not found",
+          context: { filePath },
+          cause: error instanceof Error ? error : undefined,
+        });
       }
       console.error("[IPC] files:read failed:", error);
-      return { ok: false, code: "INVALID_PATH" };
+      throw new AppError({
+        code: "INVALID_PATH",
+        message: "Could not stat file",
+        context: { filePath },
+        cause: error instanceof Error ? error : undefined,
+      });
     }
+
+    if (stat.size > FILE_SIZE_LIMIT) {
+      throw new AppError({
+        code: "FILE_TOO_LARGE",
+        message: `File exceeds ${FILE_SIZE_LIMIT} byte limit`,
+        userMessage: "This file is too large to preview.",
+        context: { filePath, size: stat.size, limit: FILE_SIZE_LIMIT },
+      });
+    }
+
+    const buffer = await fs.readFile(normalizedFile);
+
+    // Binary detection: check for null bytes in first 8 KB
+    const checkLength = Math.min(buffer.length, 8192);
+    for (let i = 0; i < checkLength; i++) {
+      if (buffer[i] === 0) {
+        throw new AppError({
+          code: "BINARY_FILE",
+          message: "Binary file cannot be displayed as text",
+          context: { filePath },
+        });
+      }
+    }
+
+    if (isLfsPointer(buffer)) {
+      throw new AppError({
+        code: "LFS_POINTER",
+        message: "File is a Git LFS pointer",
+        userMessage: "This file is stored in Git LFS — fetch it locally to preview.",
+        context: { filePath },
+      });
+    }
+
+    return { content: buffer.toString("utf-8") };
   };
 
   handlers.push(typedHandle(CHANNELS.FILES_READ, handleRead));
