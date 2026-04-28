@@ -287,6 +287,87 @@ describe("terminal spawn handler - cwd fallback (#5139: worktree is now renderer
   });
 });
 
+describe("terminal spawn shell-injection hardening (#6065)", () => {
+  let ptyClient: {
+    spawn: ReturnType<typeof vi.fn>;
+    hasTerminal: ReturnType<typeof vi.fn>;
+    write: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ptyClient = {
+      spawn: vi.fn(),
+      hasTerminal: vi.fn(() => false),
+      write: vi.fn(),
+    };
+    mockGetCurrentProject.mockReturnValue({ id: "p1", path: "/tmp", name: "p" });
+    mockGetProjectById.mockReturnValue(null);
+    mockGetProjectSettings.mockResolvedValue({});
+  });
+
+  it("rejects commands containing control characters before spawning", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+
+    await expect(
+      handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          command: "echo \x1B[31mred",
+        } as unknown as Parameters<typeof handler>[1]
+      )
+    ).rejects.toThrow(/Invalid spawn options/);
+
+    expect(ptyClient.spawn).not.toHaveBeenCalled();
+  });
+
+  it("rejects multi-line commands at the schema boundary", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+
+    await expect(
+      handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          command: "evil\nrm -rf ~",
+        } as unknown as Parameters<typeof handler>[1]
+      )
+    ).rejects.toThrow(/Invalid spawn options/);
+
+    expect(ptyClient.spawn).not.toHaveBeenCalled();
+  });
+
+  it("accepts intentional shell metacharacters (pipes, redirects, env, $())", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: "/tmp",
+        command: "FOO=bar npm run dev | tee out.log; echo $(pwd)",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).toBe("FOO=bar npm run dev | tee out.log; echo $(pwd)");
+  });
+});
+
 describe("terminal spawn rate limiting (#5352)", () => {
   let ptyClient: {
     spawn: ReturnType<typeof vi.fn>;
