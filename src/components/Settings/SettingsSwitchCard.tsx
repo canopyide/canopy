@@ -10,6 +10,7 @@ const COLOR_SCHEMES = {
 };
 
 interface SettingsSwitchCardProps {
+  id?: string;
   icon?: ComponentType<{ className?: string }>;
   title: string;
   subtitle: string;
@@ -27,6 +28,7 @@ interface SettingsSwitchCardProps {
 }
 
 export function SettingsSwitchCard({
+  id,
   icon: Icon,
   title,
   subtitle,
@@ -116,11 +118,15 @@ export function SettingsSwitchCard({
   );
 
   if (!showReset) {
-    return <div className="grid grid-cols-subgrid col-span-full gap-2">{card}</div>;
+    return (
+      <div id={id} className="grid grid-cols-subgrid col-span-full gap-2">
+        {card}
+      </div>
+    );
   }
 
   return (
-    <div className="grid grid-cols-subgrid col-span-full gap-2">
+    <div id={id} className="grid grid-cols-subgrid col-span-full gap-2">
       <div className="group relative">
         {card}
         <button
