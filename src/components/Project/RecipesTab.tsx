@@ -351,7 +351,7 @@ export function RecipesTab({
             ? `Error: ${deleteError}`
             : "The recipe will be permanently removed. This cannot be undone."
         }
-        confirmLabel={deleteError ? "Retry" : "Delete recipe"}
+        confirmLabel={deleteError ? "Retry delete" : "Delete recipe"}
         variant="destructive"
         onConfirm={() => {
           if (recipeToDelete) {

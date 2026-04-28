@@ -572,7 +572,7 @@ export function BulkCreateWorktreeDialog({
             queueRef.current = null;
             notify({
               type: "error",
-              title: "Bulk Create Partial Failure",
+              title: "Some worktrees couldn't be created",
               message: `0 created, ${failedItems.size} failed`,
             });
             return;
@@ -1043,13 +1043,13 @@ export function BulkCreateWorktreeDialog({
       if (fCount === 0) {
         notify({
           type: "success",
-          title: "Bulk Create Complete",
+          title: "Worktrees created",
           message: `Created ${sCount} worktree${sCount !== 1 ? "s" : ""}`,
         });
       } else {
         notify({
           type: "error",
-          title: "Bulk Create Partial Failure",
+          title: "Some worktrees couldn't be created",
           message: `${sCount} created, ${fCount} failed`,
         });
       }
@@ -1065,7 +1065,7 @@ export function BulkCreateWorktreeDialog({
       if (toCreate.length === 0) {
         notify({
           type: "info",
-          title: "Nothing to Create",
+          title: "Nothing to create",
           message:
             mode === "pr"
               ? "All selected PRs already have worktrees or are ineligible"
