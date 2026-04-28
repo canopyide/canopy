@@ -77,12 +77,10 @@ export interface IpcHandlerEnvelopeViolation {
  * constraint catches the antipattern at the registration site, directing
  * developers to throw an error instead of returning an inner-envelope shape.
  */
-export type ForbidIpcEnvelopeKeys<T> = [T] extends [object]
-  ? T extends unknown
-    ? Extract<keyof T, ForbiddenEnvelopeKey> extends never
-      ? T
-      : IpcHandlerEnvelopeViolation
-    : never
+export type ForbidIpcEnvelopeKeys<T> = T extends object
+  ? Extract<keyof T, ForbiddenEnvelopeKey> extends never
+    ? T
+    : IpcHandlerEnvelopeViolation
   : T;
 
 /** Error type */

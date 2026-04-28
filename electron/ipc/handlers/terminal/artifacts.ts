@@ -90,7 +90,10 @@ export function registerArtifactHandlers(deps: HandlerDependencies): () => void 
       });
     }
   };
-  handlers.push(typedHandle(CHANNELS.ARTIFACT_SAVE_TO_FILE, handleArtifactSaveToFile));
+  handlers.push(
+    // @ts-expect-error: result type contains {success} | null — pending migration to throw AppError. See #6020.
+    typedHandle(CHANNELS.ARTIFACT_SAVE_TO_FILE, handleArtifactSaveToFile)
+  );
 
   const handleArtifactApplyPatch = async (
     ctx: import("../../types.js").IpcContext,

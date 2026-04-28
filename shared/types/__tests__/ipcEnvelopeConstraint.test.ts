@@ -44,6 +44,30 @@ describe("ForbidIpcEnvelopeKeys", () => {
     expectTypeOf<ForbidIpcEnvelopeKeys<Result>>().toEqualTypeOf<IpcHandlerEnvelopeViolation>();
   });
 
+  it("brands the object branch of a union with null/void/undefined (regression)", () => {
+    // The previous `[T] extends [object]` outer guard short-circuited
+    // when the union contained any non-object member, letting
+    // `{ success: boolean } | null` (the webview:oauth-loopback result)
+    // pass through unchanged. Switching to a distributive `T extends
+    // object` evaluates each branch separately so the brand attaches
+    // only to the object branch, surfacing the violation.
+    expectTypeOf<
+      ForbidIpcEnvelopeKeys<{ success: boolean } | null>
+    >().toEqualTypeOf<IpcHandlerEnvelopeViolation | null>();
+    expectTypeOf<ForbidIpcEnvelopeKeys<{ ok: false; error: string } | undefined>>().toEqualTypeOf<
+      IpcHandlerEnvelopeViolation | undefined
+    >();
+  });
+
+  it("passes through unions of safe objects with null/void/undefined", () => {
+    expectTypeOf<ForbidIpcEnvelopeKeys<{ value: string } | null>>().toEqualTypeOf<{
+      value: string;
+    } | null>();
+    expectTypeOf<ForbidIpcEnvelopeKeys<{ value: string } | undefined>>().toEqualTypeOf<
+      { value: string } | undefined
+    >();
+  });
+
   it("the violation brand carries the remediation hint as a key name", () => {
     // The brand's only property name is the human-readable error message,
     // so `tsc` surfaces it directly: 'Property "...message..." is missing'.
