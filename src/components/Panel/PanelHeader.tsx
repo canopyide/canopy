@@ -731,7 +731,7 @@ function PanelHeaderComponent({
               onChange={(e) => onEditingValueChange(e.target.value)}
               onKeyDown={onTitleInputKeyDown}
               onBlur={onTitleSave}
-              className="text-sm font-medium bg-daintree-bg/60 border border-daintree-accent/50 px-1 h-5 min-w-32 text-daintree-text select-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+              className="text-sm font-medium bg-daintree-bg/60 border border-border-strong px-1 h-5 min-w-32 text-daintree-text select-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
               aria-label={getAriaLabel()}
             />
           ) : (
