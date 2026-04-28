@@ -225,6 +225,13 @@ describe("PanelHeader", () => {
       expect(findMenuButton(menu, "Lock Input")).toBeDefined();
     });
 
+    it("does not render View Terminal Info on any panel kind (#5957)", () => {
+      mockHasPty = true;
+      render(<PanelHeader {...makeProps({ kind: "terminal" })} />);
+      const menu = screen.getByTestId("overflow-menu");
+      expect(findMenuButton(menu, "View Terminal Info")).toBeUndefined();
+    });
+
     it("does not render Lock Input for non-PTY panels", () => {
       mockHasPty = false;
       render(<PanelHeader {...makeProps({ kind: "browser" })} />);

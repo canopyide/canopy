@@ -181,6 +181,9 @@ test.describe.serial("Core: Panel Tab Groups", () => {
         });
       }
 
+      // Removed in #5957 — guard against accidental re-introduction
+      await expect(window.getByRole("menuitem", { name: "View Terminal Info" })).toHaveCount(0);
+
       // Close the menu
       await window.keyboard.press("Escape");
     });
