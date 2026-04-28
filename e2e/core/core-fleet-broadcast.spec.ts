@@ -212,4 +212,40 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
     });
     await expect(agents[0]!.panel.locator(SEL.terminal.cmEditor)).toHaveCount(0);
   });
+
+  test("Cmd+Alt+Arrow cycles focus across the fleet grid (#5989)", async () => {
+    test.setTimeout(60_000);
+
+    const { window } = ctx;
+
+    // The previous test left 3 agents armed in the fleet. Activate fleet
+    // scope so ContentGrid renders the flat fleet grid — this is the path
+    // where useGridNavigation regressed in #5989.
+    const enter = await dispatchAction(window, "fleet.scope.enter", undefined, { source: "user" });
+    expect(enter.ok, enter.error?.message).toBe(true);
+
+    const fleetIds = await getGridPanelIds(window);
+    expect(fleetIds.length).toBeGreaterThanOrEqual(2);
+
+    // Click the first fleet panel to anchor focus.
+    const firstId = fleetIds[0]!;
+    await getPanelById(window, firstId).click();
+    await expect
+      .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })
+      .toBe(firstId);
+
+    // Pre-fix, this dispatch was a silent no-op because the nav model was
+    // built from the active worktree's tab groups, not the fleet armOrder.
+    const right = await dispatchAction(window, "terminal.focusRight", undefined, {
+      source: "keybinding",
+    });
+    expect(right.ok, right.error?.message).toBe(true);
+
+    await expect
+      .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })
+      .toBe(fleetIds[1]!);
+
+    const exit = await dispatchAction(window, "fleet.scope.exit", undefined, { source: "user" });
+    expect(exit.ok, exit.error?.message).toBe(true);
+  });
 });

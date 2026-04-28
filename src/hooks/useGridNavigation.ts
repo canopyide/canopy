@@ -1,7 +1,10 @@
 import { useMemo, useCallback, useRef, useEffect, useState } from "react";
 import { usePanelStore, useLayoutConfigStore, useWorktreeSelectionStore } from "@/store";
+import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { useShallow } from "zustand/react/shallow";
 import { computeGridColumns } from "@/lib/terminalLayout";
+import { buildFleetPanels } from "@/components/Terminal/contentGridFleetPanels";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
 
@@ -29,7 +32,14 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   );
 
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
+  const isFleetScopeActive = useWorktreeSelectionStore((state) => state.isFleetScopeActive);
+  const fleetScopeMode = useFleetScopeFlagStore((state) => state.mode);
+  const { armedIds, armOrder } = useFleetArmingStore(
+    useShallow((state) => ({ armedIds: state.armedIds, armOrder: state.armOrder }))
+  );
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
+
+  const isFleetScopeEnabled = fleetScopeMode === "scoped" && isFleetScopeActive;
 
   const gridTerminals = useMemo(
     () =>
@@ -90,6 +100,19 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
     return () => observer.disconnect();
   }, [containerSelector]);
 
+  // Fleet scope projection: must mirror ContentGrid's fleetPanels exactly so
+  // the focus model lines up with what's rendered. Drift here was the cause
+  // of #5989 (Cmd+Alt+Arrow no-op when fleet scope spanned worktrees).
+  const fleetPanels = useMemo(() => {
+    if (!isFleetScopeEnabled) return [];
+    return buildFleetPanels(armOrder, armedIds, panelsById);
+  }, [isFleetScopeEnabled, armOrder, armedIds, panelsById]);
+
+  // Mirrors ContentGrid.isFleetScopeRender — when fleet scope is on but every
+  // armed panel has been moved to dock/trash, ContentGrid falls through to
+  // the normal active-worktree grid; the nav model has to match.
+  const isFleetScopeRender = isFleetScopeEnabled && fleetPanels.length > 0;
+
   // Derive visual grid groups (one cell per tab group), matching ContentGrid.
   // getTabGroups reads tabGroups/panelIds/panelsById from the store via get();
   // reference them so exhaustive-deps treats them as real deps without a
@@ -101,14 +124,26 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
     return getTabGroups("grid", activeWorktreeId ?? undefined);
   }, [getTabGroups, activeWorktreeId, tabGroups, panelIds, panelsById]);
 
-  // Compute gridCols using visual group count, matching ContentGrid's gridItemCount
+  // Compute gridCols using visual group count, matching ContentGrid's gridItemCount.
+  // In fleet scope render, count is fleet panels (matches ContentGrid.fleetGridCols).
   const gridCols = useMemo(() => {
     const { strategy, value } = layoutConfig;
-    return computeGridColumns(gridGroups.length, gridWidth, strategy, value);
-  }, [gridGroups.length, layoutConfig, gridWidth]);
+    const count = isFleetScopeRender ? Math.max(fleetPanels.length, 1) : gridGroups.length;
+    return computeGridColumns(count, gridWidth, strategy, value);
+  }, [isFleetScopeRender, fleetPanels.length, gridGroups.length, layoutConfig, gridWidth]);
 
-  // Compute grid layout from visual groups (no DOM measurement)
+  // Compute grid layout from visual groups (no DOM measurement). Fleet branch
+  // treats each armed panel as its own single-cell position, mirroring how
+  // ContentGrid renders the flat fleet grid when scope is active.
   const gridLayout = useMemo(() => {
+    if (isFleetScopeRender) {
+      return fleetPanels.map((t, index) => ({
+        terminalId: t.id,
+        row: Math.floor(index / gridCols),
+        col: index % gridCols,
+      }));
+    }
+
     if (gridGroups.length === 0) return [];
 
     return gridGroups
@@ -125,7 +160,7 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
           : null;
       })
       .filter((pos): pos is GridPosition => pos !== null);
-  }, [gridGroups, gridCols]);
+  }, [isFleetScopeRender, fleetPanels, gridGroups, gridCols]);
 
   const rowMajor = useMemo(() => {
     return [...gridLayout].sort((a, b) => {
@@ -224,11 +259,15 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
 
   // Build a group-aware ordered list matching ContentGrid's visual order.
   // Uses getTabGroups for ordering (explicit groups first by terminal order, then virtual groups)
-  // so Cmd+N indices are consistent with what the user sees on screen.
+  // so Cmd+N indices are consistent with what the user sees on screen. In
+  // fleet scope render, the visible order is armOrder, so Cmd+N maps to that.
   const groupRowMajor = useMemo(() => {
     void tabGroups;
     void panelIds;
     void panelsById;
+    if (isFleetScopeRender) {
+      return fleetPanels.map((t) => t.id);
+    }
     const orderedGroups = getTabGroups("grid", activeWorktreeId ?? undefined);
     return orderedGroups.flatMap((group) => {
       const resolvedId = group.panelIds.includes(group.activeTabId)
@@ -236,7 +275,15 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
         : group.panelIds[0];
       return resolvedId ? [resolvedId] : [];
     });
-  }, [getTabGroups, activeWorktreeId, tabGroups, panelIds, panelsById]);
+  }, [
+    isFleetScopeRender,
+    fleetPanels,
+    getTabGroups,
+    activeWorktreeId,
+    tabGroups,
+    panelIds,
+    panelsById,
+  ]);
 
   const findByIndex = useCallback(
     (index: number): string | null => {

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { NavigationDirection } from "../useGridNavigation";
+import { buildFleetPanels } from "@/components/Terminal/contentGridFleetPanels";
+import type { TerminalInstance } from "@/store";
 
 interface GridPosition {
   terminalId: string;
@@ -425,6 +427,120 @@ describe("Grid Navigation Logic", () => {
       ]);
 
       expect(findNearest("term-999", "right", gridLayout)).toBe(null);
+    });
+  });
+
+  describe("fleet-scope grid layout", () => {
+    // Mirrors the hook's fleet branch: each armed panel becomes a single-cell
+    // position in armOrder, regardless of which worktree owns it. Regression
+    // coverage for #5989.
+    const buildFleetGridLayout = (panelIds: string[], cols: number): GridPosition[] => {
+      return panelIds.map((id, index) => ({
+        terminalId: id,
+        row: Math.floor(index / cols),
+        col: index % cols,
+        center: { x: (index % cols) * 150, y: Math.floor(index / cols) * 150 },
+      }));
+    };
+
+    it("navigates across panels from different worktrees in armOrder", () => {
+      // Two panels armed across two worktrees — the exact #5989 scenario.
+      const layout = buildFleetGridLayout(["wt-a:term-1", "wt-b:term-2"], 2);
+
+      expect(findNearest("wt-a:term-1", "right", layout)).toBe("wt-b:term-2");
+      expect(findNearest("wt-b:term-2", "right", layout)).toBe("wt-a:term-1");
+      expect(findNearest("wt-a:term-1", "left", layout)).toBe("wt-b:term-2");
+    });
+
+    it("preserves armOrder for Cmd+N indexing across worktrees", () => {
+      const panelIds = ["wt-a:t1", "wt-b:t2", "wt-a:t3", "wt-c:t4"];
+      const layout = buildFleetGridLayout(panelIds, 2);
+
+      expect(layout.map((p) => p.terminalId)).toEqual(panelIds);
+    });
+
+    it("supports vertical navigation in cross-worktree fleet grid", () => {
+      // 4 fleet panels, 2 cols → 2x2 grid
+      const layout = buildFleetGridLayout(["wt-a:t1", "wt-b:t2", "wt-c:t3", "wt-d:t4"], 2);
+
+      expect(findNearest("wt-a:t1", "down", layout)).toBe("wt-c:t3");
+      expect(findNearest("wt-c:t3", "up", layout)).toBe("wt-a:t1");
+      expect(findNearest("wt-b:t2", "down", layout)).toBe("wt-d:t4");
+    });
+
+    it("falls back to single-panel self-loop when fleet has one entry", () => {
+      const layout = buildFleetGridLayout(["wt-a:only"], 1);
+
+      expect(findNearest("wt-a:only", "right", layout)).toBe("wt-a:only");
+      expect(findNearest("wt-a:only", "down", layout)).toBe("wt-a:only");
+    });
+  });
+
+  describe("buildFleetPanels filter", () => {
+    const makePanel = (id: string, location: TerminalInstance["location"]): TerminalInstance =>
+      ({
+        id,
+        title: id,
+        location,
+      }) as TerminalInstance;
+
+    it("returns panels in armOrder", () => {
+      const panelsById = {
+        "t-1": makePanel("t-1", "grid"),
+        "t-2": makePanel("t-2", "grid"),
+        "t-3": makePanel("t-3", "grid"),
+      };
+      const result = buildFleetPanels(
+        ["t-3", "t-1", "t-2"],
+        new Set(["t-1", "t-2", "t-3"]),
+        panelsById
+      );
+
+      expect(result.map((p) => p.id)).toEqual(["t-3", "t-1", "t-2"]);
+    });
+
+    it("skips ids missing from armedIds (stale order)", () => {
+      const panelsById = {
+        "t-1": makePanel("t-1", "grid"),
+        "t-2": makePanel("t-2", "grid"),
+      };
+      const result = buildFleetPanels(["t-1", "t-2"], new Set(["t-1"]), panelsById);
+
+      expect(result.map((p) => p.id)).toEqual(["t-1"]);
+    });
+
+    it("skips trash, background, and dock panels", () => {
+      const panelsById = {
+        "t-grid": makePanel("t-grid", "grid"),
+        "t-trash": makePanel("t-trash", "trash"),
+        "t-bg": makePanel("t-bg", "background"),
+        "t-dock": makePanel("t-dock", "dock"),
+      };
+      const result = buildFleetPanels(
+        ["t-grid", "t-trash", "t-bg", "t-dock"],
+        new Set(["t-grid", "t-trash", "t-bg", "t-dock"]),
+        panelsById
+      );
+
+      expect(result.map((p) => p.id)).toEqual(["t-grid"]);
+    });
+
+    it("skips ids not present in panelsById", () => {
+      const panelsById = {
+        "t-1": makePanel("t-1", "grid"),
+      };
+      const result = buildFleetPanels(["t-1", "t-stale"], new Set(["t-1", "t-stale"]), panelsById);
+
+      expect(result.map((p) => p.id)).toEqual(["t-1"]);
+    });
+
+    it("returns empty when no armed panels are grid-renderable", () => {
+      const panelsById = {
+        "t-1": makePanel("t-1", "trash"),
+      };
+      const result = buildFleetPanels(["t-1"], new Set(["t-1"]), panelsById);
+
+      expect(result).toEqual([]);
     });
   });
 });
