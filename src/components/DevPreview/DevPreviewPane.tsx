@@ -31,6 +31,7 @@ import { useWebviewDialog } from "@/hooks/useWebviewDialog";
 import { WebviewDialog } from "../Browser/WebviewDialog";
 import { FindBar } from "../Browser/FindBar";
 import { useFindInPage } from "@/hooks/useFindInPage";
+import { useLoadingState } from "@/hooks/useLoadingState";
 import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { logError } from "@/utils/logger";
@@ -227,6 +228,8 @@ export function DevPreviewPane({
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const devServerPending = isRestarting || status === "starting" || status === "installing";
+  const { showSpinner: showDevServerSpinner } = useLoadingState(devServerPending);
   const [blockedNav, setBlockedNav] = useState<{
     url: string;
     canOpenExternal: boolean;
@@ -945,7 +948,7 @@ export function DevPreviewPane({
               {getViewportPreset(viewportPreset).height}
             </div>
           )}
-          {isRestarting || status === "starting" || status === "installing" ? (
+          {devServerPending && showDevServerSpinner ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg">
               <Spinner size="2xl" className="text-status-info mb-4" />
               <p className="text-sm text-daintree-text/60">

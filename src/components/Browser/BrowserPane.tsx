@@ -29,6 +29,7 @@ import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import { useFindInPage } from "@/hooks/useFindInPage";
+import { useLoadingState } from "@/hooks/useLoadingState";
 import { logError } from "@/utils/logger";
 
 export interface BrowserPaneProps extends BasePanelProps {
@@ -131,6 +132,7 @@ export function BrowserPane({
   });
 
   const [isLoading, setIsLoading] = useState(true);
+  const { showSpinner } = useLoadingState(isLoading);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [blockedNav, setBlockedNav] = useState<{
     url: string;
@@ -1001,7 +1003,7 @@ export function BrowserPane({
             )}
             <div className="relative flex-1 min-h-0">
               {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
-              {isLoading && (
+              {showSpinner && (
                 <div className="absolute inset-0 flex items-center justify-center bg-daintree-bg z-10">
                   <Spinner size="2xl" className="text-status-info" />
                 </div>
