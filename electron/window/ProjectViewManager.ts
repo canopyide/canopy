@@ -622,7 +622,6 @@ export class ProjectViewManager {
     let cleaned = false;
     entry.cleanupHandlers = () => {
       if (cleaned) return;
-      cleaned = true;
       wc.removeListener("will-navigate", handleWillNavigate);
       wc.removeListener("will-redirect", handleWillRedirect);
       wc.removeListener("will-attach-webview", handleWillAttachWebview);
@@ -630,6 +629,7 @@ export class ProjectViewManager {
       wc.removeListener("did-finish-load", handleDidFinishLoad);
       wc.removeListener("render-process-gone", handleRenderProcessGone);
       detachRendererConsoleCapture(wc);
+      cleaned = true;
     };
 
     // Fullscreen events are handled by the window-level resize handler

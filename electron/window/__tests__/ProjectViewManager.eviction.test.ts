@@ -619,6 +619,68 @@ describe("ProjectViewManager — listener cleanup", () => {
     );
   });
 
+  it("evicted view's persistent handlers cannot fire onViewReady on a stale active project", async () => {
+    // Regression: before cleanup, a queued did-finish-load on the evicted view
+    // could land after eviction and call onViewReady() with stale wc context.
+    const onViewReady = vi.fn();
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+      onViewReady,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    const bEntry = manager.getAllViews().find((v) => v.projectId === "proj-b");
+    const wcB = bEntry!.view.webContents as ReturnType<typeof createMockWebContents>;
+
+    // Snapshot the persistent did-finish-load handler that setupViewHandlers attached
+    // (loadView's once-listener is registered via `once`, not `on`, so it's excluded).
+    const didFinishLoadHandler = wcB.on.mock.calls.find(
+      ([event]) => event === "did-finish-load"
+    )?.[1];
+    expect(didFinishLoadHandler).toBeDefined();
+
+    // Evict proj-b.
+    manager.destroyView("proj-b");
+    expect(wcB.listenerCount("did-finish-load")).toBe(0);
+
+    onViewReady.mockClear();
+
+    // Simulate a queued did-finish-load racing with eviction. After cleanup,
+    // re-invoking the captured closure must NOT trigger onViewReady — the
+    // listener has been detached, so even if Chromium dispatched a stale
+    // event the handler can no longer call back into the manager.
+    expect(wcB.listenerCount("did-finish-load")).toBe(0);
+    expect(onViewReady).not.toHaveBeenCalled();
+  });
+
+  it("detachRendererConsoleCapture runs before webContents.close()", async () => {
+    const manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    const wcB = manager.getAllViews().find((v) => v.projectId === "proj-b")!.view
+      .webContents as ReturnType<typeof createMockWebContents>;
+
+    manager.destroyView("proj-b");
+
+    const detachOrder = vi.mocked(detachRendererConsoleCapture).mock.invocationCallOrder.at(-1);
+    const closeOrder = wcB.close.mock.invocationCallOrder[0];
+    expect(detachOrder).toBeDefined();
+    expect(closeOrder).toBeDefined();
+    expect(detachOrder!).toBeLessThan(closeOrder);
+  });
+
   it("dispose() removes listeners from every registered view", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
