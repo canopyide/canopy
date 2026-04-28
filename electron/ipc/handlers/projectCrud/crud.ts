@@ -27,7 +27,13 @@ export function registerProjectCrudCoreHandlers(deps: HandlerDependencies): () =
       if (viewProjectId) {
         const project = projectStore.getProjectById(viewProjectId);
         if (project) return project;
+        return null;
       }
+      // PVM exists but this WebContents has no binding — an unbound new window.
+      // Returning null lets the renderer show the WelcomeScreen instead of inheriting
+      // the last-active project (#6015). Skip the worktree side-effect too: no port has
+      // been brokered for this view, so the snapshot would be orphaned.
+      return null;
     }
 
     const currentProject = projectStore.getCurrentProject();
