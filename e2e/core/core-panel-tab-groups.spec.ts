@@ -173,20 +173,16 @@ test.describe.serial("Core: Panel Tab Groups", () => {
       await overflowBtn.click();
 
       // Verify expected menu items are visible (scoped to window since Radix portals to body)
-      const expectedItems = [
-        "Restart Session",
-        "Rename",
-        "Duplicate",
-        "Lock Input",
-        "View Terminal Info",
-        "Trash",
-      ];
+      const expectedItems = ["Restart Session", "Rename", "Duplicate", "Lock Input", "Trash"];
 
       for (const itemName of expectedItems) {
         await expect(window.getByRole("menuitem", { name: itemName })).toBeVisible({
           timeout: T_SHORT,
         });
       }
+
+      // Removed in #5957 — guard against accidental re-introduction
+      await expect(window.getByRole("menuitem", { name: "View Terminal Info" })).toHaveCount(0);
 
       // Close the menu
       await window.keyboard.press("Escape");
