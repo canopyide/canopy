@@ -200,7 +200,7 @@ export function EnvironmentSettingsTab() {
       description="Global environment variables injected into all new terminals. Project-level variables override globals with the same name."
       id="environment-variables"
     >
-      <div className="space-y-3">
+      <div className="contents">
         <div className="space-y-2">
           {envRows.length === 0 ? (
             <div className="text-sm text-daintree-text/60 text-center py-8 border border-dashed border-daintree-border rounded-[var(--radius-md)]">

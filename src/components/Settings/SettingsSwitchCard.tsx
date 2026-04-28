@@ -10,6 +10,7 @@ const COLOR_SCHEMES = {
 };
 
 interface SettingsSwitchCardProps {
+  id?: string;
   icon?: ComponentType<{ className?: string }>;
   title: string;
   subtitle: string;
@@ -27,6 +28,7 @@ interface SettingsSwitchCardProps {
 }
 
 export function SettingsSwitchCard({
+  id,
   icon: Icon,
   title,
   subtitle,
@@ -115,26 +117,34 @@ export function SettingsSwitchCard({
     </div>
   );
 
-  if (!showReset) return card;
+  if (!showReset) {
+    return (
+      <div id={id} className="grid grid-cols-subgrid col-span-full gap-2">
+        {card}
+      </div>
+    );
+  }
 
   return (
-    <div className="group relative">
-      {card}
-      <button
-        type="button"
-        aria-label={resetAriaLabel ?? `Reset ${title} to default`}
-        className={cn(
-          "absolute top-1/2 -translate-y-1/2 z-10 p-1 rounded-sm",
-          "text-daintree-text/40 hover:text-daintree-accent",
-          "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
-          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
-          "transition-colors",
-          isCard ? "right-[4.5rem]" : "right-[3.25rem]"
-        )}
-        onClick={onReset}
-      >
-        <RotateCcw className="w-3 h-3" />
-      </button>
+    <div id={id} className="grid grid-cols-subgrid col-span-full gap-2">
+      <div className="group relative">
+        {card}
+        <button
+          type="button"
+          aria-label={resetAriaLabel ?? `Reset ${title} to default`}
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2 z-10 p-1 rounded-sm",
+            "text-daintree-text/40 hover:text-daintree-accent",
+            "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
+            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
+            "transition-colors",
+            isCard ? "right-[4.5rem]" : "right-[3.25rem]"
+          )}
+          onClick={onReset}
+        >
+          <RotateCcw className="w-3 h-3" />
+        </button>
+      </div>
     </div>
   );
 }

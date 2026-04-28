@@ -754,105 +754,101 @@ export function GeneralTab({
             }
           />
 
-          <div id="general-developer-tools">
-            <SettingsSwitchCard
-              icon={Wrench}
-              title="Developer Tools"
-              subtitle="Show problems panel button in the toolbar"
-              isEnabled={showDeveloperTools}
-              onChange={() =>
-                void actionService.dispatch(
-                  "preferences.showDeveloperTools.set",
-                  { show: !showDeveloperTools },
-                  { source: "user" }
-                )
-              }
-              ariaLabel="Developer Tools Toggle"
-              isModified={showDeveloperTools}
-              onReset={() =>
-                void actionService.dispatch(
-                  "preferences.showDeveloperTools.set",
-                  { show: false },
-                  { source: "user" }
-                )
-              }
-            />
-          </div>
+          <SettingsSwitchCard
+            id="general-developer-tools"
+            icon={Wrench}
+            title="Developer Tools"
+            subtitle="Show problems panel button in the toolbar"
+            isEnabled={showDeveloperTools}
+            onChange={() =>
+              void actionService.dispatch(
+                "preferences.showDeveloperTools.set",
+                { show: !showDeveloperTools },
+                { source: "user" }
+              )
+            }
+            ariaLabel="Developer Tools Toggle"
+            isModified={showDeveloperTools}
+            onReset={() =>
+              void actionService.dispatch(
+                "preferences.showDeveloperTools.set",
+                { show: false },
+                { source: "user" }
+              )
+            }
+          />
 
-          <div id="general-grid-agent-highlights">
-            <SettingsSwitchCard
-              icon={LayoutGrid}
-              title="Grid Panel Agent Highlights"
-              subtitle="Show waiting and working state borders on grid panels. Failed state borders are always visible."
-              isEnabled={showGridAgentHighlights}
-              onChange={() =>
-                void actionService.dispatch(
-                  "preferences.showGridAgentHighlights.set",
-                  { show: !showGridAgentHighlights },
-                  { source: "user" }
-                )
-              }
-              ariaLabel="Grid Panel Agent Highlights Toggle"
-              isModified={showGridAgentHighlights}
-              onReset={() =>
-                void actionService.dispatch(
-                  "preferences.showGridAgentHighlights.set",
-                  { show: false },
-                  { source: "user" }
-                )
-              }
-            />
-          </div>
+          <SettingsSwitchCard
+            id="general-grid-agent-highlights"
+            icon={LayoutGrid}
+            title="Grid Panel Agent Highlights"
+            subtitle="Show waiting and working state borders on grid panels. Failed state borders are always visible."
+            isEnabled={showGridAgentHighlights}
+            onChange={() =>
+              void actionService.dispatch(
+                "preferences.showGridAgentHighlights.set",
+                { show: !showGridAgentHighlights },
+                { source: "user" }
+              )
+            }
+            ariaLabel="Grid Panel Agent Highlights Toggle"
+            isModified={showGridAgentHighlights}
+            onReset={() =>
+              void actionService.dispatch(
+                "preferences.showGridAgentHighlights.set",
+                { show: false },
+                { source: "user" }
+              )
+            }
+          />
 
-          <div id="general-dock-agent-highlights">
-            <SettingsSwitchCard
-              icon={PanelBottom}
-              title="Dock Item Agent Highlights"
-              subtitle="Show waiting state borders on dock items. Failed state borders are always visible."
-              isEnabled={showDockAgentHighlights}
-              onChange={() =>
-                void actionService.dispatch(
-                  "preferences.showDockAgentHighlights.set",
-                  { show: !showDockAgentHighlights },
-                  { source: "user" }
-                )
-              }
-              ariaLabel="Dock Item Agent Highlights Toggle"
-              isModified={showDockAgentHighlights}
-              onReset={() =>
-                void actionService.dispatch(
-                  "preferences.showDockAgentHighlights.set",
-                  { show: false },
-                  { source: "user" }
-                )
-              }
-            />
-          </div>
+          <SettingsSwitchCard
+            id="general-dock-agent-highlights"
+            icon={PanelBottom}
+            title="Dock Item Agent Highlights"
+            subtitle="Show waiting state borders on dock items. Failed state borders are always visible."
+            isEnabled={showDockAgentHighlights}
+            onChange={() =>
+              void actionService.dispatch(
+                "preferences.showDockAgentHighlights.set",
+                { show: !showDockAgentHighlights },
+                { source: "user" }
+              )
+            }
+            ariaLabel="Dock Item Agent Highlights Toggle"
+            isModified={showDockAgentHighlights}
+            onReset={() =>
+              void actionService.dispatch(
+                "preferences.showDockAgentHighlights.set",
+                { show: false },
+                { source: "user" }
+              )
+            }
+          />
 
-          <div id="general-reduce-animations">
-            <SettingsSwitchCard
-              icon={Gauge}
-              title="Reduce UI Animations"
-              subtitle="Minimize motion across the interface, independent of your OS reduce-motion setting."
-              isEnabled={reduceAnimations}
-              onChange={() =>
-                void actionService.dispatch(
-                  "preferences.reduceAnimations.set",
-                  { value: !reduceAnimations },
-                  { source: "user" }
-                )
-              }
-              ariaLabel="Reduce UI Animations Toggle"
-              isModified={reduceAnimations}
-              onReset={() =>
-                void actionService.dispatch(
-                  "preferences.reduceAnimations.set",
-                  { value: false },
-                  { source: "user" }
-                )
-              }
-            />
-          </div>
+          <SettingsSwitchCard
+            id="general-reduce-animations"
+            icon={Gauge}
+            title="Reduce UI Animations"
+            subtitle="Minimize motion across the interface, independent of your OS reduce-motion setting."
+            isEnabled={reduceAnimations}
+            onChange={() =>
+              void actionService.dispatch(
+                "preferences.reduceAnimations.set",
+                { value: !reduceAnimations },
+                { source: "user" }
+              )
+            }
+            ariaLabel="Reduce UI Animations Toggle"
+            isModified={reduceAnimations}
+            onReset={() =>
+              void actionService.dispatch(
+                "preferences.reduceAnimations.set",
+                { value: false },
+                { source: "user" }
+              )
+            }
+          />
         </SettingsSection>
       )}
     </div>

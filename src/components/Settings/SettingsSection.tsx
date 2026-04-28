@@ -24,7 +24,12 @@ export function SettingsSection({
   const headingId = useId();
 
   return (
-    <div className="flex flex-col gap-3" id={id} role="group" aria-labelledby={headingId}>
+    <div
+      className="grid grid-cols-[minmax(0,1fr)] gap-3"
+      id={id}
+      role="group"
+      aria-labelledby={headingId}
+    >
       <div>
         <h4
           id={headingId}

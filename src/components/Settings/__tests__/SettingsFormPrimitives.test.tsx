@@ -906,3 +906,44 @@ describe("SettingsSwitch", () => {
     expect(switchEl?.classList.contains("custom-class")).toBe(true);
   });
 });
+
+describe("layout contract — subgrid participation", () => {
+  const getRoot = (container: HTMLElement) => container.firstElementChild as HTMLElement;
+
+  it("SettingsInput root has grid-cols-subgrid", () => {
+    const { container } = render(<SettingsInput label="Test" />);
+    expect(getRoot(container).classList.contains("grid-cols-subgrid")).toBe(true);
+  });
+
+  it("SettingsSelect root has grid-cols-subgrid", () => {
+    const { container } = render(
+      <SettingsSelect
+        label="Test"
+        value="a"
+        onValueChange={vi.fn()}
+        options={[{ value: "a", label: "A" }]}
+      />
+    );
+    expect(getRoot(container).classList.contains("grid-cols-subgrid")).toBe(true);
+  });
+
+  it("SettingsTextarea root has grid-cols-subgrid", () => {
+    const { container } = render(<SettingsTextarea label="Test" />);
+    expect(getRoot(container).classList.contains("grid-cols-subgrid")).toBe(true);
+  });
+
+  it("SettingsChoicebox root has grid-cols-subgrid", () => {
+    const options: ChoiceboxOption[] = [{ value: "a", label: "A" }];
+    const { container } = render(
+      <SettingsChoicebox label="Test" value="a" onChange={vi.fn()} options={options} />
+    );
+    expect(getRoot(container).classList.contains("grid-cols-subgrid")).toBe(true);
+  });
+
+  it("SettingsCheckbox outer wrapper has grid-cols-subgrid", () => {
+    const { container } = render(
+      <SettingsCheckbox label="Test" description="desc" checked={false} onChange={vi.fn()} />
+    );
+    expect(getRoot(container).classList.contains("grid-cols-subgrid")).toBe(true);
+  });
+});

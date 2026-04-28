@@ -156,7 +156,7 @@ export function McpServerSettingsTab() {
             {loading ? (
               <p className="text-xs text-daintree-text/50">Loading…</p>
             ) : status.port ? (
-              <div className="space-y-3">
+              <div className="contents">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-status-success shrink-0" />
                   <span className="text-xs text-daintree-text/60">
@@ -240,7 +240,7 @@ export function McpServerSettingsTab() {
             description="Optionally require a bearer token for MCP connections. Recommended if other users share this machine. Not needed for typical local-only use."
           >
             {status.apiKey ? (
-              <div className="space-y-3">
+              <div className="contents">
                 <div className="flex items-center gap-1.5 text-xs text-status-success">
                   <Key className="w-3 h-3" />
                   API key active — clients must send an Authorization header
@@ -300,7 +300,7 @@ export function McpServerSettingsTab() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="contents">
                 <div className="flex items-center gap-2 p-3 rounded-[var(--radius-md)] bg-daintree-bg border border-daintree-border">
                   <div className="w-2 h-2 rounded-full bg-daintree-text/30" />
                   <span className="text-xs text-daintree-text/60">

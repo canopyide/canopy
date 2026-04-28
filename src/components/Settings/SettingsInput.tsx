@@ -55,7 +55,7 @@ export function SettingsInput({
   ) : null;
 
   return (
-    <div className="group flex flex-col gap-2">
+    <div className="group grid grid-cols-subgrid gap-2 col-span-full">
       <div className="flex items-center gap-2">
         <label htmlFor={id} className="text-sm text-text-secondary">
           {label}
