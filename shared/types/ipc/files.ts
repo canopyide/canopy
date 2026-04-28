@@ -23,7 +23,8 @@ export type FileReadErrorCode =
   | "LFS_POINTER"
   | "NOT_FOUND"
   | "OUTSIDE_ROOT"
-  | "INVALID_PATH";
+  | "INVALID_PATH"
+  | "PERMISSION";
 
 export interface FileReadResult {
   content: string;

@@ -168,4 +168,42 @@ describe("files:read handler", () => {
       code: "NOT_FOUND",
     });
   });
+
+  it("throws AppError(NOT_FOUND) when stat succeeds but readFile raises ENOENT (TOCTOU)", async () => {
+    fsMock.stat.mockResolvedValue({ size: 100 });
+    fsMock.readFile.mockRejectedValue(
+      Object.assign(new Error("file disappeared"), { code: "ENOENT" })
+    );
+    registerFilesHandlers();
+
+    await expect(getReadHandler()({}, { path: file, rootPath: root })).rejects.toMatchObject({
+      name: "AppError",
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("throws AppError(PERMISSION) when readFile raises EACCES", async () => {
+    fsMock.stat.mockResolvedValue({ size: 100 });
+    fsMock.readFile.mockRejectedValue(
+      Object.assign(new Error("permission denied"), { code: "EACCES" })
+    );
+    registerFilesHandlers();
+
+    await expect(getReadHandler()({}, { path: file, rootPath: root })).rejects.toMatchObject({
+      name: "AppError",
+      code: "PERMISSION",
+    });
+  });
+
+  it("throws AppError(PERMISSION) when stat raises EPERM", async () => {
+    fsMock.stat.mockRejectedValue(
+      Object.assign(new Error("operation not permitted"), { code: "EPERM" })
+    );
+    registerFilesHandlers();
+
+    await expect(getReadHandler()({}, { path: file, rootPath: root })).rejects.toMatchObject({
+      name: "AppError",
+      code: "PERMISSION",
+    });
+  });
 });

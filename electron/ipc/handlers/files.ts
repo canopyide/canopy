@@ -76,26 +76,41 @@ export function registerFilesHandlers(): () => void {
       });
     }
 
-    let stat: Awaited<ReturnType<typeof fs.stat>>;
-    try {
-      stat = await fs.stat(normalizedFile);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") {
-        throw new AppError({
+    // Map ENOENT/EACCES/EPERM the same way for both stat and readFile — the
+    // file can disappear or change permissions between the two calls (TOCTOU).
+    function fsErrorToAppError(error: unknown, fallbackMessage: string): AppError {
+      const errCode = (error as NodeJS.ErrnoException).code;
+      if (errCode === "ENOENT") {
+        return new AppError({
           code: "NOT_FOUND",
           message: "File not found",
           context: { filePath },
           cause: error instanceof Error ? error : undefined,
         });
       }
+      if (errCode === "EACCES" || errCode === "EPERM") {
+        return new AppError({
+          code: "PERMISSION",
+          message: "Permission denied",
+          userMessage: "You don't have permission to read this file.",
+          context: { filePath },
+          cause: error instanceof Error ? error : undefined,
+        });
+      }
       console.error("[IPC] files:read failed:", error);
-      throw new AppError({
+      return new AppError({
         code: "INVALID_PATH",
-        message: "Could not stat file",
+        message: fallbackMessage,
         context: { filePath },
         cause: error instanceof Error ? error : undefined,
       });
+    }
+
+    let stat: Awaited<ReturnType<typeof fs.stat>>;
+    try {
+      stat = await fs.stat(normalizedFile);
+    } catch (error) {
+      throw fsErrorToAppError(error, "Could not stat file");
     }
 
     if (stat.size > FILE_SIZE_LIMIT) {
@@ -107,7 +122,12 @@ export function registerFilesHandlers(): () => void {
       });
     }
 
-    const buffer = await fs.readFile(normalizedFile);
+    let buffer: Buffer;
+    try {
+      buffer = await fs.readFile(normalizedFile);
+    } catch (error) {
+      throw fsErrorToAppError(error, "Could not read file");
+    }
 
     // Binary detection: check for null bytes in first 8 KB
     const checkLength = Math.min(buffer.length, 8192);

@@ -54,6 +54,7 @@ const ERROR_MESSAGES: Record<FileReadErrorCode, string> = {
   NOT_FOUND: "File no longer exists",
   OUTSIDE_ROOT: "File is outside the project root",
   INVALID_PATH: "Invalid file path",
+  PERMISSION: "Permission denied — you don't have access to this file",
 };
 
 export function FileViewerModal({

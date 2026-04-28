@@ -1214,6 +1214,22 @@ describe("ReviewHub", () => {
       expect(screen.queryByTestId("review-hub-push-error-cta")).toBeNull();
     });
 
+    it("shows a rate-limit message when push throws AppError(RATE_LIMITED)", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("Rate limit exceeded"), {
+          name: "AppError",
+          code: "RATE_LIMITED",
+        })
+      );
+
+      await triggerCommitAndPush();
+
+      const banner = await screen.findByTestId("review-hub-push-error");
+      expect(banner.getAttribute("data-reason")).toBe("unknown");
+      const details = screen.queryByTestId("review-hub-push-error-details");
+      expect(details?.textContent ?? "").toMatch(/Too many push attempts/i);
+    });
+
     it("does not render the banner on successful push", async () => {
       pushMock.mockResolvedValue(undefined);
 
