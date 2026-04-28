@@ -19,6 +19,7 @@ import {
   createHardenedGit,
   createAuthenticatedGit,
   createWslHardenedGit,
+  getGitLocaleEnv,
   HARDENED_GIT_CONFIG,
   AUTHENTICATED_GIT_CONFIG,
 } from "../hardenedGit.js";
@@ -170,6 +171,14 @@ describe("createHardenedGit", () => {
     );
   });
 
+  it("sets a platform-appropriate LC_CTYPE so non-ASCII paths survive iconv", () => {
+    createHardenedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(typeof envArg.LC_CTYPE).toBe("string");
+    expect(envArg.LC_CTYPE).toMatch(/UTF-8$/);
+  });
+
   it("does not apply hardened SSH command (blocked via config instead)", () => {
     const origSsh = process.env.GIT_SSH_COMMAND;
     delete process.env.GIT_SSH_COMMAND;
@@ -273,6 +282,14 @@ describe("createAuthenticatedGit", () => {
         LANGUAGE: "",
       })
     );
+  });
+
+  it("sets a platform-appropriate LC_CTYPE so non-ASCII paths survive iconv", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(typeof envArg.LC_CTYPE).toBe("string");
+    expect(envArg.LC_CTYPE).toMatch(/UTF-8$/);
   });
 
   it("spreads process.env into the .env() call", () => {
@@ -519,6 +536,32 @@ describe("createWslHardenedGit", () => {
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
     });
+  });
+});
+
+describe("getGitLocaleEnv", () => {
+  it("returns LC_CTYPE=C.UTF-8 and LANG=C.UTF-8 on win32", () => {
+    expect(getGitLocaleEnv("win32")).toEqual({
+      LC_CTYPE: "C.UTF-8",
+      LANG: "C.UTF-8",
+    });
+  });
+
+  it("returns LC_CTYPE=en_US.UTF-8 on darwin (macOS lacks C.UTF-8)", () => {
+    expect(getGitLocaleEnv("darwin")).toEqual({
+      LC_CTYPE: "en_US.UTF-8",
+    });
+  });
+
+  it("returns LC_CTYPE=C.UTF-8 on linux", () => {
+    expect(getGitLocaleEnv("linux")).toEqual({
+      LC_CTYPE: "C.UTF-8",
+    });
+  });
+
+  it("does not set LANG on non-win32 platforms", () => {
+    expect(getGitLocaleEnv("linux")).not.toHaveProperty("LANG");
+    expect(getGitLocaleEnv("darwin")).not.toHaveProperty("LANG");
   });
 });
 

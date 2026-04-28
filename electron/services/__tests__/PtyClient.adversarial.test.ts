@@ -118,6 +118,22 @@ describe("PtyClient adversarial", () => {
     return client;
   }
 
+  it("FORK_ENV_DISABLES_UV_IO_URING_ON_LINUX_ONLY", () => {
+    // node-pty hangs intermittently when libuv batches epoll via io_uring.
+    // The env var must live inside the explicit fork env (not parent
+    // process.env) because utilityProcess.fork's env option overrides default
+    // propagation. Linux-only — io_uring is a no-op on macOS/Windows.
+    createReadyClient();
+
+    expect(shared.forkMock).toHaveBeenCalledTimes(1);
+    const forkOpts = shared.forkMock.mock.calls[0][2] as { env?: Record<string, string> };
+    if (process.platform === "linux") {
+      expect(forkOpts.env).toEqual(expect.objectContaining({ UV_USE_IO_URING: "0" }));
+    } else {
+      expect(forkOpts.env?.UV_USE_IO_URING).toBeUndefined();
+    }
+  });
+
   it("DOUBLE_RESUME_HANDSHAKE_COALESCES", () => {
     const client = createReadyClient({ healthCheckIntervalMs: 1000 });
 

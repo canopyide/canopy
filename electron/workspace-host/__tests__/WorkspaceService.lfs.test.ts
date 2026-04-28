@@ -23,6 +23,7 @@ vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(),
   createAuthenticatedGit: vi.fn(),
   validateCwd: vi.fn(),
+  getGitLocaleEnv: vi.fn(() => ({ LC_CTYPE: "C.UTF-8" })),
 }));
 vi.mock("../../services/events.js", () => ({ events: { on: vi.fn(), off: vi.fn() } }));
 vi.mock("../../services/PullRequestService.js", () => ({ pullRequestService: {} }));
@@ -70,7 +71,11 @@ describe("probeGitLfsAvailable", () => {
     expect(execFileMock).toHaveBeenCalledWith(
       "git",
       ["lfs", "version"],
-      expect.objectContaining({ timeout: 3000, windowsHide: true }),
+      expect.objectContaining({
+        timeout: 3000,
+        windowsHide: true,
+        env: expect.objectContaining({ LC_CTYPE: expect.any(String) }),
+      }),
       expect.any(Function)
     );
   });

@@ -5,7 +5,11 @@ import { mkdir, writeFile, stat, readFile } from "fs/promises";
 import { join as pathJoin, dirname, resolve as pathResolve, isAbsolute } from "path";
 import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
 import { SimpleGit, BranchSummary } from "simple-git";
-import { createHardenedGit, createAuthenticatedGit } from "../utils/hardenedGit.js";
+import {
+  createHardenedGit,
+  createAuthenticatedGit,
+  getGitLocaleEnv,
+} from "../utils/hardenedGit.js";
 import { classifyGitError, getGitRecoveryAction } from "../../shared/utils/gitOperationErrors.js";
 import type { Worktree, WorktreeResourceStatus } from "../../shared/types/worktree.js";
 import type {
@@ -61,7 +65,11 @@ export function probeGitLfsAvailable(): Promise<boolean> {
     const child = execFile(
       "git",
       ["lfs", "version"],
-      { timeout: LFS_PROBE_TIMEOUT_MS, windowsHide: true },
+      {
+        timeout: LFS_PROBE_TIMEOUT_MS,
+        windowsHide: true,
+        env: { ...process.env, ...getGitLocaleEnv() },
+      },
       (err, stdout) => {
         if (err) {
           done(false);

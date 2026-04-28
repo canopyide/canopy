@@ -21,7 +21,7 @@ interface CachedVersionInfo {
 export class AgentVersionService {
   private cache = new Map<AgentId, CachedVersionInfo>();
   private readonly CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-  private readonly TIMEOUT_MS = 5000;
+  private readonly TIMEOUT_MS = 10000;
   private readonly MAX_BUFFER = 256 * 1024;
   private inFlightChecks = new Map<AgentId, Promise<AgentVersionInfo>>();
   private generation = 0;
