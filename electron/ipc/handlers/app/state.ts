@@ -469,7 +469,15 @@ export function registerAppStateHandlers(): () => void {
       }
 
       for (const [field, value] of Object.entries(updates)) {
-        store.set(`appState.${field}`, value);
+        if (value === undefined) {
+          // electron-store v11 throws on `set(key, undefined)`. Use delete to
+          // clear the field — matches the prior bulk-spread behavior, where
+          // `JSON.stringify` silently omitted undefined values from the slice.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (store.delete as (k: string) => void)(`appState.${field}` as any);
+        } else {
+          store.set(`appState.${field}`, value);
+        }
       }
 
       // Note: We intentionally do NOT save per-project terminal state.

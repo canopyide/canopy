@@ -13,6 +13,7 @@ import { initializeStore } from "../store.js";
 type AnyStore = {
   set: (key: string, value: unknown) => void;
   get: (key: string) => unknown;
+  delete: (key: string) => void;
 };
 
 describe("Store dot-path persistence", () => {
@@ -77,6 +78,25 @@ describe("Store dot-path persistence", () => {
     const store = makeStore();
     store.set("foo", { onlyField: "value" });
     expect(readConfig()).toEqual({ foo: { onlyField: "value" } });
+  });
+
+  it("dot-path delete clears a leaf without dropping siblings", () => {
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ appState: { activeWorktreeId: "wt-old", sidebarWidth: 350 } }),
+      "utf8"
+    );
+    const store = makeStore();
+    store.delete("appState.activeWorktreeId");
+    const slice = readConfig().appState as Record<string, unknown>;
+    expect(slice).not.toHaveProperty("activeWorktreeId");
+    expect(slice.sidebarWidth).toBe(350);
+  });
+
+  it("set with undefined throws — callers must use delete to clear", () => {
+    const store = makeStore();
+    store.set("appState.sidebarWidth", 350);
+    expect(() => store.set("appState.activeWorktreeId", undefined)).toThrow();
   });
 
   it("preserves nested record fields not addressed by the dot-path", () => {
