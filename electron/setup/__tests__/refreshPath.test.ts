@@ -376,7 +376,7 @@ describe("refreshPath — shell probe (DAINTREE_SHELL_PROBE=1)", () => {
     expect(call[1].slice(0, 3)).toEqual(["-i", "-l", "-c"]);
     expect(call[2].env.DAINTREE_RESOLVING_ENVIRONMENT).toBe("1");
     expect(call[2].env.ELECTRON_RUN_AS_NODE).toBe("1");
-    expect(call[2].stdio).toEqual(["ignore", "pipe", "pipe"]);
+    expect(call[2].stdio).toEqual(["ignore", "pipe", "ignore"]);
 
     delete process.env.SHELL;
   });
@@ -647,6 +647,46 @@ describe("refreshPath — shell probe (DAINTREE_SHELL_PROBE=1)", () => {
 
       await refreshPromise;
       expect(process.env.PATH).toBe("/orig");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not clobber PATH if the probe closes during the SIGTERM grace window", async () => {
+    vi.useFakeTimers();
+    process.env.PATH = "/orig";
+
+    let mockChild: MockChild | undefined;
+    let mockMarker = "";
+    spawnMock.mockImplementation((_shell: string, args: string[]) => {
+      mockChild = createMockChild();
+      mockMarker = extractMarker(args[args.length - 1]);
+      return mockChild;
+    });
+
+    try {
+      const { refreshPath } = await import("../environment.js");
+      const refreshPromise = refreshPath();
+
+      // Trip the outer race timeout — refreshPath returns and applies its
+      // post-race fallback augmentation.
+      await vi.advanceTimersByTimeAsync(10_000);
+      await refreshPromise;
+      const pathAfterTimeout = process.env.PATH;
+
+      // Now simulate the shell finally responding to SIGTERM (within the
+      // 500ms grace window) with valid markers — this MUST NOT clobber the
+      // post-race PATH.
+      mockChild!.stdout.emit(
+        "data",
+        Buffer.from(`${mockMarker}${JSON.stringify({ PATH: "/late/clobber" })}${mockMarker}`)
+      );
+      mockChild!.emit("close", 0);
+      // Drain microtasks so any (incorrectly) pending PATH assignment runs.
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(process.env.PATH).toBe(pathAfterTimeout);
+      expect(process.env.PATH).not.toBe("/late/clobber");
     } finally {
       vi.useRealTimers();
     }

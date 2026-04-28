@@ -288,7 +288,10 @@ function applyWindowsExtraPaths(currentPath: string): string {
 }
 
 function parseMarkeredPath(stdout: string, marker: string): string | null {
-  const regex = new RegExp(marker + "([\\s\\S]+)" + marker);
+  // Non-greedy quantifier so the first balanced marker pair wins. With a
+  // 32-hex-char random marker a collision is astronomically improbable,
+  // but the lazy match is structurally clearer than relying on uniqueness.
+  const regex = new RegExp(marker + "([\\s\\S]+?)" + marker);
   const match = regex.exec(stdout);
   if (!match) return null;
   try {
@@ -337,8 +340,14 @@ function runShellProbe(): Promise<string | null> {
 
     let child: ReturnType<typeof spawn>;
     try {
+      // stderr is intentionally ignored: a noisy oh-my-zsh/.zshrc can write
+      // tens of KB to stderr (update banners, compliance scripts), and a
+      // piped-but-undrained stderr would block the child once the OS pipe
+      // buffer fills — preventing the marker probe from ever reaching its
+      // closing printf and forcing a guaranteed timeout. Mirrors VS Code's
+      // getUnixShellEnvironment.
       child = spawn(shell, ["-i", "-l", "-c", probeCmd], {
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "ignore"],
         env: childEnv,
       });
     } catch (err) {
@@ -412,12 +421,17 @@ function resolvePathViaShellProbe(): Promise<string | null> {
 export async function refreshPath(): Promise<void> {
   let timeoutId: NodeJS.Timeout | undefined;
   let shellEnvFailed = false;
+  // Guards against late inner-IIFE writes to process.env.PATH after the
+  // outer race has already resolved with "timeout". Without this guard a
+  // shell that closes during the SIGTERM→SIGKILL grace window can clobber
+  // the fallback-augmented PATH that the post-race block has already set.
+  let timedOut = false;
   try {
     const result = await Promise.race([
       (async () => {
         if (process.platform === "win32") {
           const registryPath = await readWindowsRegistryPath();
-          if (!registryPath) return;
+          if (!registryPath || timedOut) return;
           const withExtras = applyWindowsExtraPaths(registryPath);
           process.env.PATH = deduplicatePath(withExtras, true);
         } else if (process.env.DAINTREE_SHELL_PROBE === "1") {
@@ -428,6 +442,7 @@ export async function refreshPath(): Promise<void> {
           // are visible. Gated behind the flag so we can dogfood for one
           // release before flipping the default.
           const probedPath = await resolvePathViaShellProbe();
+          if (timedOut) return;
           if (probedPath) {
             process.env.PATH = deduplicatePath(probedPath, false);
           } else {
@@ -439,6 +454,7 @@ export async function refreshPath(): Promise<void> {
               shellEnv: () => Promise<Record<string, string>>;
             };
             const env = await shellEnv();
+            if (timedOut) return;
             if (env.PATH) {
               process.env.PATH = deduplicatePath(env.PATH, false);
             }
@@ -458,7 +474,10 @@ export async function refreshPath(): Promise<void> {
         }
       })(),
       new Promise<"timeout">((resolve) => {
-        timeoutId = setTimeout(() => resolve("timeout"), REFRESH_TIMEOUT_MS);
+        timeoutId = setTimeout(() => {
+          timedOut = true;
+          resolve("timeout");
+        }, REFRESH_TIMEOUT_MS);
       }),
     ]);
 
