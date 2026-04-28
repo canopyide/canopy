@@ -1,4 +1,12 @@
-import { SquareTerminal, Globe, FileText, Monitor, StickyNote, LucideIcon } from "lucide-react";
+import {
+  SquareTerminal,
+  Globe,
+  FileText,
+  Monitor,
+  MonitorPlay,
+  StickyNote,
+  LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon, WorktreeIcon } from "@/components/icons";
 import { getAgentConfig } from "@/config/agents";
@@ -10,6 +18,7 @@ const ICON_MAP: Record<string, LucideIcon | ComponentType<Record<string, unknown
   "file-text": FileText,
   "git-branch": WorktreeIcon,
   monitor: Monitor,
+  "monitor-play": MonitorPlay,
   "sticky-note": StickyNote,
   daintree: DaintreeIcon,
 };

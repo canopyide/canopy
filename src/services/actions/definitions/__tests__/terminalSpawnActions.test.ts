@@ -21,7 +21,7 @@ vi.mock("@shared/config/panelKindRegistry", () => ({
     if (kind === "browser") return { id: kind, name: "Browser", iconId: "globe", color: "#aaa" };
     if (kind === "notes") return { id: kind, name: "Notes", iconId: "notes", color: "#aaa" };
     if (kind === "dev-preview")
-      return { id: kind, name: "Dev Preview", iconId: "monitor", color: "#aaa" };
+      return { id: kind, name: "Dev Preview", iconId: "monitor-play", color: "#aaa" };
     return {
       id: kind,
       name: kind.charAt(0).toUpperCase() + kind.slice(1),

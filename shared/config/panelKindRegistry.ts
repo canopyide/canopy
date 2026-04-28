@@ -80,7 +80,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
   "dev-preview": {
     id: "dev-preview",
     name: "Dev Preview",
-    iconId: "monitor",
+    iconId: "monitor-play",
     color: PANEL_KIND_BRAND_COLORS["dev-preview"],
     hasPty: false,
     canRestart: false,

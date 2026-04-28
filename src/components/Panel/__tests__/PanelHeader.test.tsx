@@ -80,7 +80,7 @@ vi.mock("@shared/config/panelKindRegistry", () => ({
     kind === "browser"
       ? { id: "browser", name: "Browser", iconId: "globe", color: "#38bdf8" }
       : kind === "dev-preview"
-        ? { id: "dev-preview", name: "Dev Preview", iconId: "monitor", color: "#38bdf8" }
+        ? { id: "dev-preview", name: "Dev Preview", iconId: "monitor-play", color: "#38bdf8" }
         : { id: "terminal", name: "Terminal", iconId: "terminal", color: "#9ca3af" },
   getPanelKindColor: () => "#9ca3af",
 }));

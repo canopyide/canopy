@@ -1,9 +1,7 @@
 export { MoveToDockIcon } from "./MoveToDockIcon";
 export { MoveToGridIcon } from "./MoveToGridIcon";
 export { DaintreeAgentIcon } from "./DaintreeAgentIcon";
-export { AgentCompletedIcon } from "./AgentCompletedIcon";
 export { CopyTreeIcon } from "./CopyTreeIcon";
-export { SendToAgentIcon } from "./SendToAgentIcon";
 export { TerminalRecipeIcon } from "./TerminalRecipeIcon";
 export { WatchAlertIcon } from "./WatchAlertIcon";
 export { WorktreeOverviewIcon } from "./WorktreeOverviewIcon";

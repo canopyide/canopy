@@ -30,21 +30,23 @@ export function useShortcutHintHover(actionId: string) {
   }, [actionId]);
 
   // Keep the dwell callback fresh with the latest actionId closure.
-  fireDwellRef.current = (clientX: number, clientY: number) => {
-    const displayCombo = displayComboRef.current;
-    if (!displayCombo) return;
+  useEffect(() => {
+    fireDwellRef.current = (clientX: number, clientY: number) => {
+      const displayCombo = displayComboRef.current;
+      if (!displayCombo) return;
 
-    const store = shortcutHintStore;
-    if (!store.getState().isHoverEligible(actionId)) return;
+      const store = shortcutHintStore;
+      if (!store.getState().isHoverEligible(actionId)) return;
 
-    const shown = store.getState().show(actionId, displayCombo, {
-      x: clientX,
-      y: clientY,
-    });
-    if (shown) {
-      store.getState().markHoverShown(actionId);
-    }
-  };
+      const shown = store.getState().show(actionId, displayCombo, {
+        x: clientX,
+        y: clientY,
+      });
+      if (shown) {
+        store.getState().markHoverShown(actionId);
+      }
+    };
+  }, [actionId]);
 
   const clearTimer = () => {
     if (timerRef.current) {
