@@ -216,7 +216,7 @@ describe("devDiagnostics", () => {
       vi.advanceTimersByTime(SWEEP_INTERVAL_MS);
 
       // Both sweeps fired
-      const leakWarnings = warnSpy.mock.calls.filter((c) =>
+      const leakWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
         String(c[0]).includes("Listener leak suspected")
       );
       expect(leakWarnings.length).toBeGreaterThanOrEqual(2);
@@ -261,7 +261,7 @@ describe("devDiagnostics", () => {
       startDevDiagnostics();
       vi.advanceTimersByTime(SWEEP_INTERVAL_MS);
 
-      const leakWarnings = warnSpy.mock.calls.filter((c) =>
+      const leakWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
         String(c[0]).includes("Listener leak suspected")
       );
       expect(leakWarnings).toHaveLength(1);
@@ -291,7 +291,7 @@ describe("devDiagnostics", () => {
       fsMock.readdirSync.mockReturnValueOnce(Array.from({ length: 15 }, (_, i) => String(i)));
       vi.advanceTimersByTime(SWEEP_INTERVAL_MS);
 
-      const fdWarnings = warnSpy.mock.calls.filter((c) =>
+      const fdWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
         String(c[0]).includes("fd leak suspected")
       );
       expect(fdWarnings).toHaveLength(0);
@@ -305,7 +305,7 @@ describe("devDiagnostics", () => {
         throw new Error("EACCES");
       });
       expect(() => vi.advanceTimersByTime(SWEEP_INTERVAL_MS)).not.toThrow();
-      const fdWarnings = warnSpy.mock.calls.filter((c) =>
+      const fdWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
         String(c[0]).includes("fd leak suspected")
       );
       expect(fdWarnings).toHaveLength(0);
@@ -322,7 +322,7 @@ describe("devDiagnostics", () => {
       fsMock.readdirSync.mockReturnValue(Array.from({ length: 50 }, (_, i) => String(i)));
       vi.advanceTimersByTime(SWEEP_INTERVAL_MS * 3);
 
-      const fdWarnings = warnSpy.mock.calls.filter((c) =>
+      const fdWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
         String(c[0]).includes("fd leak suspected")
       );
       expect(fdWarnings).toHaveLength(0);
@@ -346,7 +346,7 @@ describe("devDiagnostics", () => {
       stopDevDiagnostics();
 
       vi.advanceTimersByTime(SWEEP_INTERVAL_MS * 3);
-      const leakWarnings = warnSpy.mock.calls.filter((c) =>
+      const leakWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
         String(c[0]).includes("Listener leak suspected")
       );
       expect(leakWarnings).toHaveLength(0);
