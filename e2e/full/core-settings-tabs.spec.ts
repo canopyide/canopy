@@ -360,8 +360,10 @@ test.describe.serial("Core: Settings Tabs Coverage", () => {
     await removeButton.click();
 
     // ConfirmDialog should appear (rendered via portal, so use window scope)
-    await expect(window.locator("text=Remove environment?")).toBeVisible({ timeout: T_SHORT });
-    await window.locator('[role="dialog"] button', { hasText: "Remove" }).click();
+    await expect(window.getByRole("dialog", { name: "Remove 'staging'?" })).toBeVisible({
+      timeout: T_SHORT,
+    });
+    await window.getByRole("button", { name: "Remove environment" }).click();
     await window.waitForTimeout(T_SETTLE);
 
     // "staging" should be gone from dropdown, "production" should remain

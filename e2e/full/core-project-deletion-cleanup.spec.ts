@@ -259,9 +259,9 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
 
     await removeProjectViaSwitcher(window, PROJECT_B);
 
-    const dialog = window.getByRole("dialog", { name: "Remove Project from List?" }).last();
+    const dialog = window.getByRole("dialog", { name: "Remove project from list?" }).last();
     await expect(dialog).toBeVisible({ timeout: T_MEDIUM });
-    await expect(dialog.getByRole("button", { name: "Remove Project" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Remove project" })).toBeVisible();
 
     // Cancel first
     await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -273,10 +273,10 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
 
     await removeProjectViaSwitcher(window, PROJECT_B);
 
-    const dialog = window.getByRole("dialog", { name: "Remove Project from List?" }).last();
+    const dialog = window.getByRole("dialog", { name: "Remove project from list?" }).last();
     await expect(dialog).toBeVisible({ timeout: T_MEDIUM });
 
-    await dialog.getByRole("button", { name: "Remove Project" }).click();
+    await dialog.getByRole("button", { name: "Remove project" }).click();
     await expect(dialog).not.toBeVisible({ timeout: T_MEDIUM });
 
     await window.waitForTimeout(T_SETTLE * 2);
@@ -362,9 +362,9 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
 
     // Remove B from the list
     await removeProjectViaSwitcher(ctx.window, PROJECT_B);
-    const dialog = ctx.window.getByRole("dialog", { name: "Remove Project from List?" }).last();
+    const dialog = ctx.window.getByRole("dialog", { name: "Remove project from list?" }).last();
     await expect(dialog).toBeVisible({ timeout: T_MEDIUM });
-    await dialog.getByRole("button", { name: "Remove Project" }).click();
+    await dialog.getByRole("button", { name: "Remove project" }).click();
     await expect(dialog).not.toBeVisible({ timeout: T_MEDIUM });
 
     // Verify B is gone

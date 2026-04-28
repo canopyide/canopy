@@ -576,13 +576,13 @@ export function ResourceEnvironmentsSection({
 
       <ConfirmDialog
         isOpen={pendingDeleteEnvironment !== null}
-        title="Remove environment?"
+        title={`Remove '${pendingDeleteEnvironment}'?`}
         description={
           pendingDeleteEnvironment
-            ? `Remove environment "${pendingDeleteEnvironment}"? This only removes its saved commands from project settings.`
+            ? `This removes the saved commands for "${pendingDeleteEnvironment}" from project settings.`
             : undefined
         }
-        confirmLabel="Remove"
+        confirmLabel="Remove environment"
         variant="destructive"
         onConfirm={() => {
           if (pendingDeleteEnvironment) {

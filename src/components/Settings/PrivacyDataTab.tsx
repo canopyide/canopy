@@ -395,9 +395,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
             ) : (
               <div className="space-y-3">
                 <div className="p-3 rounded-[var(--radius-md)] border border-status-error/20 bg-status-error/5">
-                  <p className="text-sm text-daintree-text font-medium mb-1">
-                    Are you sure you want to reset?
-                  </p>
+                  <p className="text-sm text-daintree-text font-medium mb-1">Reset all app data?</p>
                   <p className="text-xs text-daintree-text/60">
                     This will permanently delete all settings, API keys, session data, and logs. The
                     app will restart with factory defaults. This cannot be undone.
@@ -419,7 +417,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
                     className="text-text-inverse bg-status-error border-status-error hover:bg-status-error/80"
                   >
                     <AlertTriangle className="w-4 h-4" />
-                    Reset Everything & Restart
+                    Reset everything &amp; restart
                   </Button>
                 </div>
               </div>

@@ -988,9 +988,9 @@ export function ProjectSwitcherPalette({
         <ConfirmDialog
           isOpen={true}
           onClose={isRemovingProject ? undefined : onRemoveConfirmClose}
-          title={removeConfirmProject.isActive ? "Close Project?" : "Remove Project from List?"}
+          title={removeConfirmProject.isActive ? "Close project?" : "Remove project from list?"}
           zIndex="nested"
-          confirmLabel={removeConfirmProject.isActive ? "Close Project" : "Remove Project"}
+          confirmLabel={removeConfirmProject.isActive ? "Close project" : "Remove project"}
           cancelLabel="Cancel"
           onConfirm={onConfirmRemove}
           isConfirmLoading={isRemovingProject}

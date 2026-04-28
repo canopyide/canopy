@@ -332,13 +332,13 @@ export function RecipesTab({
 
       <ConfirmDialog
         isOpen={recipeToDelete !== null}
-        title="Delete Recipe"
+        title={`Delete '${recipes.find((r) => r.id === recipeToDelete)?.name ?? "recipe"}'?`}
         description={
           deleteError
             ? `Error: ${deleteError}`
-            : "Are you sure you want to delete this recipe? This action cannot be undone."
+            : "The recipe will be permanently removed. This cannot be undone."
         }
-        confirmLabel={deleteError ? "Retry" : "Delete"}
+        confirmLabel={deleteError ? "Retry" : "Delete recipe"}
         variant="destructive"
         onConfirm={() => {
           if (recipeToDelete) {
