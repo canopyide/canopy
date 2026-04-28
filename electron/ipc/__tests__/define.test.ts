@@ -349,6 +349,41 @@ describe("opValidated", () => {
     });
   });
 
+  it("withContext: true passes ctx + parsed payload, and rejects on parse failure", async () => {
+    const handler = vi.fn().mockResolvedValue([]);
+    const ns = defineIpcNamespace({
+      name: "slashCommands",
+      ops: {
+        list: opValidated(SLASH_LIST, SlashListSchema, handler, { withContext: true }),
+      },
+    });
+    ns.register();
+
+    const ipcHandler = ipcMainMock.handle.mock.calls.find(
+      (call) => call[0] === SLASH_LIST
+    )?.[1] as (event: unknown, ...args: unknown[]) => Promise<unknown>;
+    expect(ipcHandler).toBeDefined();
+
+    // Valid payload: handler receives `ctx` first, parsed payload second.
+    await ipcHandler({ sender: { id: 42 } } as unknown, {
+      agentId: "claude-code",
+      projectPath: "/tmp/project",
+    });
+    expect(handler).toHaveBeenCalledOnce();
+    const [ctx, payload] = handler.mock.calls[0];
+    expect(ctx).toMatchObject({ webContentsId: 42 });
+    expect(payload).toEqual({ agentId: "claude-code", projectPath: "/tmp/project" });
+
+    // Invalid payload: rejects before handler runs.
+    handler.mockClear();
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      ipcHandler({ sender: { id: 42 } } as unknown, { agentId: "wrong-id" })
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(handler).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
   it("non-validated and validated ops can coexist in the same namespace", () => {
     const ns = defineIpcNamespace({
       name: "mixed",
