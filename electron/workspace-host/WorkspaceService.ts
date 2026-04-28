@@ -235,7 +235,10 @@ export class WorkspaceService {
     try {
       this.projectRootPath = projectRootPath;
       if (wslGitByWorktree && typeof wslGitByWorktree === "object") {
-        this.wslGitByWorktree = { ...wslGitByWorktree };
+        // Merge instead of replacing: a `set-wsl-opt-in` message arriving
+        // during this load-project's async work would otherwise be silently
+        // overwritten. The most recent in-memory value wins on conflict.
+        this.wslGitByWorktree = { ...wslGitByWorktree, ...this.wslGitByWorktree };
       }
       // Merge: global (lowest priority) < project-level < DAINTREE_* (set in buildEnv)
       const projectEnvVars = await this.loadProjectEnvVars(projectRootPath);
@@ -420,7 +423,11 @@ export class WorkspaceService {
       this.wslDefaultDistroPromise = listFirstWslDistro().catch(() => null);
     }
     const defaultDistro = await this.wslDefaultDistroPromise;
-    const eligible = defaultDistro !== null && defaultDistro === detected.distro;
+    // UNC paths are case-insensitive on Windows; `wsl --list --quiet` returns
+    // the canonical case (e.g. "Ubuntu"). Normalize before comparing so a
+    // worktree opened via `\\wsl$\ubuntu\...` still matches the default.
+    const eligible =
+      defaultDistro !== null && defaultDistro.toLowerCase() === detected.distro.toLowerCase();
     const persisted = this.wslGitByWorktree[wt.id];
 
     return {

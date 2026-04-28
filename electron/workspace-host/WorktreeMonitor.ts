@@ -199,7 +199,11 @@ export class WorktreeMonitor {
     if (process.platform !== "win32") return undefined;
     if (!this._isWslPath || !this._wslGitEligible || !this._wslGitOptIn) return undefined;
     if (!this._wslDistro || !this._wslPosixPath) return undefined;
-    return { distro: this._wslDistro, posixPath: this._wslPosixPath };
+    return {
+      distro: this._wslDistro,
+      uncPath: this.path,
+      posixPath: this._wslPosixPath,
+    };
   }
 
   /**

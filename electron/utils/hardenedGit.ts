@@ -63,7 +63,18 @@ export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit 
 export interface WslGitInvocation {
   /** WSL distro name extracted from the worktree's UNC path. */
   distro: string;
-  /** POSIX path inside the distro (must start with `/`). */
+  /**
+   * Original Windows UNC path (e.g. `\\wsl$\Ubuntu\home\user\repo`). Passed
+   * as `baseDir` so simple-git's synchronous folder-exists check (which calls
+   * `fs.statSync`) succeeds via the Windows-side 9P mount. `wsl.exe` then
+   * receives this UNC path as its spawn cwd and translates it automatically.
+   */
+  uncPath: string;
+  /**
+   * POSIX path inside the distro (must start with `/`). Retained for
+   * diagnostics and for future invocation strategies that need to issue
+   * `--cd` to wsl.exe directly.
+   */
   posixPath: string;
 }
 
@@ -81,8 +92,13 @@ export interface WslGitInvocation {
  * non-default distros are filtered out before reaching this factory by the
  * caller (see `wslGitEligible` in WorkspaceService).
  *
- * `baseDir` is set to the POSIX path inside the distro. `wsl.exe` inherits
- * this `cwd` from Node's spawn and translates it correctly.
+ * `baseDir` MUST be the Windows-side UNC path: simple-git validates the
+ * directory via `fs.statSync` synchronously at construction time, and a
+ * POSIX path like `/home/user/repo` resolves to a non-existent path on the
+ * current drive (`C:\home\user\repo`) on Windows, throwing
+ * `GitConstructError`. The UNC form (e.g. `\\wsl$\Ubuntu\home\user\repo`)
+ * resolves through the 9P mount and `wsl.exe` translates it back to POSIX
+ * internally when spawning the git child process.
  *
  * Windows-only: throws on other platforms.
  */
@@ -90,16 +106,19 @@ export function createWslHardenedGit(invocation: WslGitInvocation, signal?: Abor
   if (process.platform !== "win32") {
     throw new Error("createWslHardenedGit is only available on Windows");
   }
-  const { distro, posixPath } = invocation;
+  const { distro, uncPath, posixPath } = invocation;
   if (typeof distro !== "string" || !distro.trim()) {
     throw new Error("WSL distro name is required");
   }
   if (typeof posixPath !== "string" || !posixPath.startsWith("/")) {
     throw new Error("WSL posix path must start with /");
   }
+  if (typeof uncPath !== "string" || !uncPath.startsWith("\\\\wsl")) {
+    throw new Error("WSL UNC path must start with \\\\wsl");
+  }
 
   return simpleGit({
-    baseDir: posixPath,
+    baseDir: uncPath,
     binary: ["wsl.exe", "git"],
     config: [...HARDENED_GIT_CONFIG],
     timeout: { block: GIT_BLOCK_TIMEOUT_MS },

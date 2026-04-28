@@ -55,6 +55,11 @@ export function listFirstWslDistro(): Promise<string | null> {
         env: { ...process.env, WSL_UTF8: "1" },
         timeout: WSL_LIST_TIMEOUT_MS,
         windowsHide: true,
+        // Receive raw bytes so the UTF-16LE heuristic below can actually run.
+        // Without `encoding: "buffer"`, Node's execFile decodes stdout as
+        // UTF-8 by default — which on older WSL builds (pre-WSL_UTF8) yields
+        // a corrupted string before we ever see the bytes.
+        encoding: "buffer",
       },
       (err, stdout) => {
         if (err) {

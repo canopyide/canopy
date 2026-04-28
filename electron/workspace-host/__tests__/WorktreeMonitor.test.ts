@@ -1107,6 +1107,7 @@ describe("WorktreeMonitor", () => {
           ];
         expect(lastCall[1]?.wsl).toEqual({
           distro: "Ubuntu",
+          uncPath: "\\\\wsl$\\Ubuntu\\home\\user\\repo",
           posixPath: "/home/user/repo",
         });
 
@@ -1116,7 +1117,7 @@ describe("WorktreeMonitor", () => {
       }
     });
 
-    it("setWslOptIn re-emits snapshot when value changes", async () => {
+    it("setWslOptIn re-emits snapshot with updated fields when value changes", async () => {
       const original = process.platform;
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
       try {
@@ -1136,6 +1137,11 @@ describe("WorktreeMonitor", () => {
         monitor.setWslOptIn(true, true);
         const updateCallsAfter = (callbacks.onUpdate as ReturnType<typeof vi.fn>).mock.calls.length;
         expect(updateCallsAfter).toBeGreaterThan(updateCallsBefore);
+
+        const snapshot = monitor.getSnapshot();
+        expect(snapshot.wslGitOptIn).toBe(true);
+        expect(snapshot.wslGitDismissed).toBe(true);
+        expect(snapshot.isWslPath).toBe(true);
 
         monitor.stop();
       } finally {
