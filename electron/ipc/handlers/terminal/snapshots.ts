@@ -374,6 +374,32 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
   };
   handlers.push(typedHandle(CHANNELS.TERMINAL_GET_ALL, handleTerminalGetAll));
 
+  const handleTerminalSearchSemanticBuffers = async (
+    query: string,
+    isRegex: boolean
+  ): Promise<import("../../../../shared/types/ipc/terminal.js").SemanticSearchMatch[]> => {
+    if (typeof query !== "string") {
+      throw new Error("Invalid query: must be a string");
+    }
+    if (typeof isRegex !== "boolean") {
+      throw new Error("Invalid isRegex: must be a boolean");
+    }
+    // Cap query length so a pathological regex can't lock up the pty-host
+    // event loop scanning every terminal's buffer.
+    if (query.length === 0 || query.length > 500) {
+      return [];
+    }
+    try {
+      return await ptyClient.searchSemanticBuffersAsync(query, isRegex);
+    } catch (error) {
+      logWarn("terminal:searchSemanticBuffers failed", { error });
+      return [];
+    }
+  };
+  handlers.push(
+    typedHandle(CHANNELS.TERMINAL_SEARCH_SEMANTIC_BUFFERS, handleTerminalSearchSemanticBuffers)
+  );
+
   const handleTerminalReconnect = async (
     terminalId: string
   ): Promise<import("../../../../shared/types/ipc.js").TerminalReconnectResult> => {
