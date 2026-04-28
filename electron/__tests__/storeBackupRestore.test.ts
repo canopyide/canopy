@@ -228,6 +228,45 @@ describe("initializeStore", () => {
     expect(instance.get("_schemaVersion")).toBe(0);
     // Backup must remain untouched — recovery is still possible
     expect(fs.readFileSync(`${configPath}.bak`, "utf8")).toBe(lastGood);
+    // …and recovery state should reflect the silent reset
+    expect(consumePendingSettingsRecovery()).toEqual({ kind: "reset-to-defaults" });
+  });
+
+  it("refreshes backup when conf merges new defaults into a valid config (app upgrade scenario)", () => {
+    const configPath = path.join(tempDir, "config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ _schemaVersion: 5 }), "utf8");
+
+    const opts = testOptions(tempDir);
+    // Simulate app upgrade adding a new default key the existing config lacks
+    opts.defaults = { _schemaVersion: 0, newDefault: "added" };
+
+    const instance = initializeStore(opts);
+    expect(instance.get("_schemaVersion")).toBe(5);
+    expect(instance.get("newDefault")).toBe("added");
+    // Backup must reflect the merged-on-disk content, not stay frozen
+    const backup = JSON.parse(fs.readFileSync(`${configPath}.bak`, "utf8"));
+    expect(backup._schemaVersion).toBe(5);
+    expect(backup.newDefault).toBe("added");
+    // No phantom recovery notification on a benign merge
+    expect(consumePendingSettingsRecovery()).toBeNull();
+  });
+
+  it("preserves restored-from-backup recovery when conf merges defaults into restored backup", () => {
+    const configPath = path.join(tempDir, "config.json");
+    // Main config is corrupt (preflight will quarantine it and restore .bak)
+    fs.writeFileSync(configPath, "{corrupt!", "utf8");
+    // Backup is valid but missing a current default key (typical post-upgrade state)
+    fs.writeFileSync(`${configPath}.bak`, JSON.stringify({ _schemaVersion: 7 }), "utf8");
+
+    const opts = testOptions(tempDir);
+    opts.defaults = { _schemaVersion: 0, newDefault: "added" };
+
+    const instance = initializeStore(opts);
+    expect(instance.get("_schemaVersion")).toBe(7);
+
+    const recovery = consumePendingSettingsRecovery();
+    expect(recovery?.kind).toBe("restored-from-backup");
+    expect(recovery?.quarantinedPath).toBeDefined();
   });
 
   describe("consumePendingSettingsRecovery", () => {

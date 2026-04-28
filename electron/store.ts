@@ -421,6 +421,44 @@ function readRawSnapshot(filePath: string): Buffer | null {
   }
 }
 
+// A "wipe" is an electron-store rewrite that loses user data (clearInvalidConfig
+// path). A "merge" is an electron-store rewrite that adds missing default keys
+// while preserving every user value. Byte-equality cannot tell them apart, so
+// we parse pre/post and check whether every key from pre survives in post with
+// an identical value. Any dropped or changed user value means the file was
+// wiped.
+function detectStoreWipe(pre: Buffer, post: Buffer | null): boolean {
+  if (post === null) return true;
+  if (pre.equals(post)) return false;
+  let preObj: unknown;
+  let postObj: unknown;
+  try {
+    preObj = JSON.parse(pre.toString("utf8"));
+  } catch {
+    // Pre-content was not parseable JSON; preflight should have caught this,
+    // but if we got here the safest move is to treat the rewrite as a wipe.
+    return true;
+  }
+  try {
+    postObj = JSON.parse(post.toString("utf8"));
+  } catch {
+    return true;
+  }
+  if (typeof preObj !== "object" || preObj === null || Array.isArray(preObj)) {
+    return false;
+  }
+  if (typeof postObj !== "object" || postObj === null || Array.isArray(postObj)) {
+    return true;
+  }
+  const preRecord = preObj as Record<string, unknown>;
+  const postRecord = postObj as Record<string, unknown>;
+  for (const key of Object.keys(preRecord)) {
+    if (!Object.prototype.hasOwnProperty.call(postRecord, key)) return true;
+    if (JSON.stringify(preRecord[key]) !== JSON.stringify(postRecord[key])) return true;
+  }
+  return false;
+}
+
 function createInMemoryFallback(): Store<StoreSchema> {
   const memoryStore = new Map();
   return {
@@ -469,13 +507,15 @@ export function initializeStore(options: typeof storeOptions = storeOptions): St
     });
     const postSnapshot = configPath ? readRawSnapshot(configPath) : null;
     const wipedDuringConstruction =
-      preSnapshot !== null &&
-      (postSnapshot === null || !preSnapshot.equals(postSnapshot));
+      preSnapshot !== null && detectStoreWipe(preSnapshot, postSnapshot);
     if (wipedDuringConstruction) {
       console.warn(
         "[Store] electron-store silently replaced config.json during construction; preserving .bak"
       );
-      pendingSettingsRecovery = { kind: "reset-to-defaults" };
+      // Don't clobber a more specific recovery state already set by preflight.
+      if (pendingSettingsRecovery === null) {
+        pendingSettingsRecovery = { kind: "reset-to-defaults" };
+      }
     } else {
       refreshBackup(instance.path);
     }
