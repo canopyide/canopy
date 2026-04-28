@@ -210,6 +210,9 @@ export function SettingsShortcutCapture({
         message: `Unbound ${conflict.description || conflict.actionId}`,
         duration: 5000,
         priority: "high",
+        // Time-bound Undo (5s) — must surface even during quiet hours, otherwise
+        // the user has no path to recover from an accidental unbind.
+        urgent: true,
         action: {
           label: "Undo",
           onClick: async () => {

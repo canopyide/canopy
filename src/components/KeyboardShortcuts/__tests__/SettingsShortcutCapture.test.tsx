@@ -584,6 +584,7 @@ describe("SettingsShortcutCapture", () => {
         message: "Unbound Conflicting Action",
         duration: 5000,
         priority: "high",
+        urgent: true,
         action: expect.objectContaining({
           label: "Undo",
           onClick: expect.any(Function),
