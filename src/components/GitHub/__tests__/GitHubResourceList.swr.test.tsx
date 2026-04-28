@@ -98,8 +98,12 @@ vi.mock("react-virtuoso", () => ({
   },
 }));
 
+const { formatTimeAgoMock } = vi.hoisted(() => ({
+  formatTimeAgoMock: vi.fn<(value: number | string) => string>(() => "1m ago"),
+}));
+
 vi.mock("@/utils/timeAgo", () => ({
-  formatTimeAgo: () => "1m ago",
+  formatTimeAgo: formatTimeAgoMock,
 }));
 
 import { GitHubResourceList } from "../GitHubResourceList";
@@ -126,6 +130,8 @@ beforeEach(() => {
   mockListPRs.mockReset();
   mockGetIssueByNumber.mockReset();
   mockGetPRByNumber.mockReset();
+  formatTimeAgoMock.mockClear();
+  formatTimeAgoMock.mockImplementation(() => "1m ago");
   const filterStore = useGitHubFilterStore.getState();
   filterStore.setIssueSearchQuery("");
   filterStore.setPrSearchQuery("");
@@ -197,11 +203,12 @@ describe("GitHubResourceList SWR behavior", () => {
 
   it("preserves cached data when background refresh fails", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    const seededTimestamp = Date.now() - 5 * 60 * 1000;
     setCache(cacheKey, {
       items: [makeIssue(20)],
       endCursor: null,
       hasNextPage: false,
-      timestamp: Date.now(),
+      timestamp: seededTimestamp,
     });
 
     mockListIssues.mockRejectedValue(new Error("Network error"));
@@ -217,6 +224,8 @@ describe("GitHubResourceList SWR behavior", () => {
     });
     expect(screen.getByTestId("item-20")).toBeTruthy();
     expect(screen.getByText(/Updated 1m ago/)).toBeTruthy();
+    // The label must reflect the cached timestamp, not Date.now() of the failure.
+    expect(formatTimeAgoMock).toHaveBeenCalledWith(seededTimestamp);
   });
 
   it("clears error banner and refreshes timestamp after successful retry", async () => {

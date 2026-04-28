@@ -322,6 +322,12 @@ export function GitHubResourceList({
         }
 
         if (lastError != null) {
+          // Same generation guard as the success path: a stale background
+          // fetch finishing after the user switched filter/sort must not
+          // surface its error or wipe the freshly-loaded view.
+          if (options?.generation != null && options.cacheKey != null) {
+            if (getGeneration(options.cacheKey) !== options.generation) return;
+          }
           const message = formatErrorMessage(lastError, "Failed to fetch data");
           if (append) {
             setLoadMoreError(message);
