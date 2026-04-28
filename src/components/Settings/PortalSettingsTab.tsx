@@ -434,7 +434,7 @@ export function PortalSettingsTab() {
             <button
               onClick={handleAddLink}
               disabled={!newLinkName.trim() || !newLinkUrl.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-daintree-accent text-daintree-bg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-daintree-accent/90 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-daintree-accent text-daintree-bg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none hover:bg-daintree-accent/90 transition-colors"
             >
               <Plus className="w-4 h-4" />
               Add
