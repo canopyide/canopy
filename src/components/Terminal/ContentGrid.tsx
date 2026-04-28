@@ -17,6 +17,7 @@ import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { useProjectStore } from "@/store/projectStore";
 import { isAgentReady } from "../../../shared/utils/agentAvailability";
 import { computeGridCanLaunch, computeGridSelectedAgentIds } from "./contentGridAgentFilter";
+import { buildFleetPanels } from "./contentGridFleetPanels";
 import { GridPanel } from "./GridPanel";
 import { GridTabGroup } from "./GridTabGroup";
 import { GridNotificationBar } from "./GridNotificationBar";
@@ -712,17 +713,11 @@ export function ContentGrid({
   // Fleet scope projection: order is the user's arm order, dropping any ids
   // that have since been pruned, trashed, or moved to the dock. We resolve
   // against panelsById once here so GridPanel cells receive stable refs.
+  // Shared with useGridNavigation so the focus model never drifts from
+  // what's rendered (#5989).
   const fleetPanels = useMemo(() => {
     if (!isFleetScopeEnabled) return [];
-    const result: TerminalInstance[] = [];
-    for (const id of armOrder) {
-      if (!armedIds.has(id)) continue;
-      const t = panelsById[id];
-      if (!t) continue;
-      if (t.location === "trash" || t.location === "background" || t.location === "dock") continue;
-      result.push(t);
-    }
-    return result;
+    return buildFleetPanels(armOrder, armedIds, panelsById);
   }, [isFleetScopeEnabled, armOrder, armedIds, panelsById]);
 
   // Only render the fleet grid if at least one armed panel is actually
