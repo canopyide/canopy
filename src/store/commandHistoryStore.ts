@@ -52,7 +52,7 @@ export const useCommandHistoryStore = create<CommandHistoryState>()(
             return false;
           });
           const entry: PromptHistoryEntry = {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            id: `cmdhist-${crypto.randomUUID()}`,
             prompt: trimmed,
             agentId: agentId ?? null,
             addedAt: Date.now(),

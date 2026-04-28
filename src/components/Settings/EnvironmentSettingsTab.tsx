@@ -19,7 +19,7 @@ function envVarsFromRecord(record: Record<string, string> | undefined): EnvVar[]
   return Object.entries(record)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => ({
-      id: `env-${Date.now()}-${Math.random()}`,
+      id: `env-${crypto.randomUUID()}`,
       key,
       value,
     }));
@@ -104,10 +104,7 @@ export function EnvironmentSettingsTab() {
   }, []);
 
   const addRow = useCallback(() => {
-    setEnvRows((prev) => [
-      ...prev,
-      { id: `env-${Date.now()}-${Math.random()}`, key: "", value: "" },
-    ]);
+    setEnvRows((prev) => [...prev, { id: `env-${crypto.randomUUID()}`, key: "", value: "" }]);
     setIsDirty(true);
   }, []);
 

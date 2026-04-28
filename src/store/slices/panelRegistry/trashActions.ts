@@ -119,7 +119,7 @@ export const createTrashActions = (
     }
 
     const expiresAt = Date.now() + TRASH_TTL_MS;
-    const groupRestoreId = `group-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const groupRestoreId = `group-${crypto.randomUUID()}`;
     const panelIds = [...group.panelIds];
     const activeTabId = group.activeTabId ?? panelIds[0] ?? "";
     const state = get();

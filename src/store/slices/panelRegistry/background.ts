@@ -32,7 +32,7 @@ export const createBackgroundActions = (
     let groupMetadata: import("./types").TrashedTerminalGroupMetadata | undefined;
 
     if (group) {
-      groupRestoreId = `group-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      groupRestoreId = `group-${crypto.randomUUID()}`;
       groupMetadata = {
         panelIds: [...group.panelIds],
         activeTabId: group.activeTabId ?? group.panelIds[0] ?? "",
@@ -99,7 +99,7 @@ export const createBackgroundActions = (
       return;
     }
 
-    const groupRestoreId = `group-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const groupRestoreId = `group-${crypto.randomUUID()}`;
     const panelIds = [...group.panelIds];
     const activeTabId = group.activeTabId ?? panelIds[0] ?? "";
     const state = get();

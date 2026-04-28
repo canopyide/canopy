@@ -119,7 +119,7 @@ const createPortalStore: StateCreator<PortalState & PortalActions> = (set, get) 
     setActiveTab: (id) => set({ activeTabId: id }),
 
     createTab: (url, title) => {
-      const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const newTabId = `tab-${crypto.randomUUID()}`;
       const newTab: PortalTab = { id: newTabId, url, title };
       set((s) => ({
         tabs: [...s.tabs, newTab],
@@ -137,7 +137,7 @@ const createPortalStore: StateCreator<PortalState & PortalActions> = (set, get) 
         return existingBlank.id;
       }
 
-      const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const newTabId = `tab-${crypto.randomUUID()}`;
       const newTab: PortalTab = { id: newTabId, url: null, title: "New Tab" };
       set((s) => ({
         tabs: [...s.tabs, newTab],
@@ -215,7 +215,7 @@ const createPortalStore: StateCreator<PortalState & PortalActions> = (set, get) 
       const tab = state.tabs.find((t) => t.id === id);
       if (!tab?.url) return null;
 
-      const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const newTabId = `tab-${crypto.randomUUID()}`;
       const newTab: PortalTab = {
         id: newTabId,
         url: tab.url,
@@ -318,7 +318,7 @@ const createPortalStore: StateCreator<PortalState & PortalActions> = (set, get) 
             ...s.links,
             {
               ...link,
-              id: `user-${Date.now()}`,
+              id: `user-${crypto.randomUUID()}`,
               type: "user",
               enabled: true,
               order: maxOrder + 1,

@@ -59,7 +59,7 @@ export function EnvironmentVariablesEditor({
   }, [globalEnvironmentVariables]);
 
   const addRow = () => {
-    setRows((prev) => [...prev, { id: `env-${Date.now()}-${Math.random()}`, key: "", value: "" }]);
+    setRows((prev) => [...prev, { id: `env-${crypto.randomUUID()}`, key: "", value: "" }]);
   };
 
   const deleteRow = (index: number, id: string) => {

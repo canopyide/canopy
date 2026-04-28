@@ -62,7 +62,7 @@ export const createTabGroupActions = (
   },
 
   createTabGroup: (location, worktreeId, panelIds, activeTabId) => {
-    const groupId = `tabgroup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const groupId = `tabgroup-${crypto.randomUUID()}`;
     const group: TabGroup = {
       id: groupId,
       location,

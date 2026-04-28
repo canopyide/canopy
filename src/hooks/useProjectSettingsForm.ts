@@ -206,7 +206,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     const initialRunCommands = projectSettings.runCommands || [];
     const envVars = projectSettings.environmentVariables || {};
     const initialEnvVars = Object.entries(envVars).map(([key, value]) => ({
-      id: `env-${Date.now()}-${Math.random()}`,
+      id: `env-${crypto.randomUUID()}`,
       key,
       value,
     }));

@@ -223,9 +223,7 @@ export const createCorePanelActions = (
 
     // Handle panels that use custom UI (browser, dev-preview, extensions) separately
     if (!panelKindUsesTerminalUi(requestedKind)) {
-      const id =
-        options.requestedId ||
-        `${requestedKind}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const id = options.requestedId || `${requestedKind}-${crypto.randomUUID()}`;
       const title = options.title || getDefaultTitle(requestedKind);
 
       const targetWorktreeId = options.worktreeId ?? null;
@@ -363,10 +361,7 @@ export const createCorePanelActions = (
     // Reserve the id up front so the panel can be committed to the store before
     // any async work (env fetch, spawn IPC). #5789: commit-then-spawn collapses
     // six rapid agent clicks from serialized spawns into six parallel placeholders.
-    const id =
-      options.existingId ??
-      options.requestedId ??
-      `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const id = options.existingId ?? options.requestedId ?? `${kind}-${crypto.randomUUID()}`;
 
     // For reconnects, use the backend's state directly - don't default to "working".
     // For new spawns, start with "working" in UI to show spinner immediately during boot.
