@@ -1078,6 +1078,34 @@ describe("errorHandlers", () => {
       expect(sentError.recoveryHint).toContain("NODE_EXTRA_CA_CERTS");
     });
 
+    it("does NOT match unrelated 'unable to verify' messages without TLS context", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      registerErrorHandlers(null, null);
+
+      const spawn = vi.fn(() => {
+        // Common non-TLS message that begins with "unable to verify" but is
+        // not the canonical OpenSSL signature. The fallback must NOT push
+        // a corporate-proxy fix at the user.
+        throw new Error("unable to verify user permissions");
+      });
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler({} as never, {
+        errorId: "e",
+        action: "terminal",
+        args: { id: "t", cwd: "/" },
+      }).catch(() => {});
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      if (sentError.recoveryHint) {
+        expect(sentError.recoveryHint).not.toContain("NODE_EXTRA_CA_CERTS");
+      }
+    });
+
     it("does NOT classify CERT_HAS_EXPIRED as a TLS-proxy error", async () => {
       const CHANNELS = await getChannels();
       const mockWindow = createMockWindow();

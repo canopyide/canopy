@@ -75,6 +75,10 @@ export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit 
   }).env({
     ...process.env,
     ...getGitLocaleEnv(),
+    // Clear inherited LC_ALL so the more specific LC_CTYPE / LC_MESSAGES
+    // values above actually take effect. POSIX locale resolution gives LC_ALL
+    // priority over every other LC_* variable.
+    LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
   });
@@ -177,6 +181,7 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
   }).env({
     ...process.env,
     ...getGitLocaleEnv(),
+    LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
     GIT_TERMINAL_PROMPT: "0",

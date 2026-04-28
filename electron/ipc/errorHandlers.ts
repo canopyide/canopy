@@ -105,12 +105,14 @@ function isTlsProxyError(error: unknown): boolean {
     return true;
   }
   // Fallback for cases where libraries strip `error.code` but preserve the
-  // OpenSSL message verbatim. Kept narrow to avoid catching unrelated cert
-  // errors (e.g. CERT_HAS_EXPIRED) that have a different recovery path.
-  const message = error instanceof Error ? error.message : "";
+  // OpenSSL message verbatim. Kept narrow to the canonical OpenSSL phrasings
+  // so unrelated "unable to verify ..." or "certificate ..." errors don't
+  // get pushed to the NODE_EXTRA_CA_CERTS recovery path. Case-insensitive in
+  // case a wrapper transforms the message.
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
   if (!message) return false;
   return (
-    message.includes("unable to verify") ||
+    message.includes("unable to verify the first certificate") ||
     message.includes("self signed certificate") ||
     message.includes("self-signed certificate") ||
     message.includes("unable to get local issuer certificate")

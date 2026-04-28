@@ -68,7 +68,7 @@ export function probeGitLfsAvailable(): Promise<boolean> {
       {
         timeout: LFS_PROBE_TIMEOUT_MS,
         windowsHide: true,
-        env: { ...process.env, ...getGitLocaleEnv() },
+        env: { ...process.env, ...getGitLocaleEnv(), LC_ALL: "" },
       },
       (err, stdout) => {
         if (err) {

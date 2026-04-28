@@ -179,6 +179,20 @@ describe("createHardenedGit", () => {
     expect(envArg.LC_CTYPE).toMatch(/UTF-8$/);
   });
 
+  it("clears inherited LC_ALL so the more specific LC_CTYPE / LC_MESSAGES win", () => {
+    const orig = process.env.LC_ALL;
+    process.env.LC_ALL = "C";
+    try {
+      createHardenedGit("/test/repo");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.LC_ALL).toBe("");
+    } finally {
+      if (orig === undefined) delete process.env.LC_ALL;
+      else process.env.LC_ALL = orig;
+    }
+  });
+
   it("does not apply hardened SSH command (blocked via config instead)", () => {
     const origSsh = process.env.GIT_SSH_COMMAND;
     delete process.env.GIT_SSH_COMMAND;
@@ -290,6 +304,20 @@ describe("createAuthenticatedGit", () => {
     const envArg = mockGitInstance.env.mock.calls[0][0];
     expect(typeof envArg.LC_CTYPE).toBe("string");
     expect(envArg.LC_CTYPE).toMatch(/UTF-8$/);
+  });
+
+  it("clears inherited LC_ALL so the more specific LC_CTYPE / LC_MESSAGES win", () => {
+    const orig = process.env.LC_ALL;
+    process.env.LC_ALL = "C";
+    try {
+      createAuthenticatedGit("/test/repo");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.LC_ALL).toBe("");
+    } finally {
+      if (orig === undefined) delete process.env.LC_ALL;
+      else process.env.LC_ALL = orig;
+    }
   });
 
   it("spreads process.env into the .env() call", () => {
