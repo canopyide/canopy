@@ -61,6 +61,7 @@ import {
   getSystemSleepService,
 } from "../services/SystemSleepService.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
+import { getIdleTerminalNotificationService } from "../services/IdleTerminalNotificationService.js";
 import {
   markPerformance,
   startEventLoopLagMonitor,
@@ -1241,6 +1242,9 @@ export async function setupWindowServices(
     globalServicesInitialized = false;
     resetDeferredQueue();
 
+    getHibernationService().stop();
+    getIdleTerminalNotificationService().stop();
+    getCrashRecoveryService().stopBackupTimer();
     getSystemSleepService().dispose();
     gitHubTokenHealthService.dispose();
     notificationService.dispose();
