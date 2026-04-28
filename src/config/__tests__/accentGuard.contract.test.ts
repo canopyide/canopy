@@ -13,6 +13,8 @@ const FORBIDDEN_UTILITIES = [
   "bg-daintree-accent",
   "text-daintree-accent",
   "border-daintree-accent",
+  "ring-daintree-accent",
+  "outline-daintree-accent",
   "bg-accent-primary",
   "text-accent-primary",
   "border-accent-primary",
@@ -22,15 +24,22 @@ const FORBIDDEN_UTILITIES = [
 
 // Matches a forbidden accent utility with optional opacity modifier: /10, /50, /[0.15], etc.
 const FORBIDDEN_PATTERN = new RegExp(
-  `(${FORBIDDEN_UTILITIES.join("|")})(?:\\/(?:\\[[\\d.]+\\]|\\d+))?(?![a-z-])`,
+  `(${FORBIDDEN_UTILITIES.join("|")})(?:\\/(?:\\[[\\d.]+\\]|\\d+))?(?![a-z0-9_-])`,
   "g"
 );
 
-// A focus-ring accent usage is border-daintree-accent preceded by any variant containing "focus".
-// For example: focus:border-daintree-accent, focus-visible:border-daintree-accent,
-// focus-within:border-daintree-accent.
+// Focus-ring auto-exclusion: border/ring/outline accent tokens preceded by a focus variant are
+// legitimate structural focus indicators. For example: focus:border-daintree-accent,
+// focus-visible:ring-daintree-accent/50, focus-within:outline-daintree-accent.
 // bg-* and text-* accent tokens with focus variants are still flagged (decorative, not structural).
-function isFocusRing(context: string, matchIndex: number): boolean {
+// group-focus/peer-focus are parent/sibling state selectors, not structural focus rings.
+function isFocusRing(context: string, matchIndex: number, utility: string): boolean {
+  if (
+    !["border-daintree-accent", "ring-daintree-accent", "outline-daintree-accent"].includes(utility)
+  ) {
+    return false;
+  }
+
   const before = context.substring(0, matchIndex);
   if (!before.endsWith(":")) return false;
 
@@ -40,6 +49,10 @@ function isFocusRing(context: string, matchIndex: number): boolean {
     i--;
   }
   const variant = before.substring(i + 1, before.length - 1);
+
+  // Exclude parent/sibling state selectors — only element-own focus pseudo-classes qualify
+  if (/\b(group|peer)-focus\b/i.test(variant)) return false;
+
   return /\bfocus\b/i.test(variant);
 }
 
@@ -246,6 +259,13 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
     "src/components/Worktree/WorktreePalette.tsx",
     "src/hooks/useUpdateListener.tsx",
     "src/components/agents/AgentCard.tsx",
+    "src/components/DragDrop/SortableTerminal.tsx",
+    "src/components/GitHub/CommitList.tsx",
+    "src/components/Layout/ContentDock.tsx",
+    "src/components/Layout/DockedTabGroup.tsx",
+    "src/components/Layout/DockedTerminalItem.tsx",
+    "src/components/Project/ProjectMruSwitcherOverlay.tsx",
+    "src/components/Pulse/PulseHeatmap.tsx",
   ],
 };
 
@@ -259,6 +279,9 @@ describe("accent guard", () => {
       "text-daintree-accent",
       "border-daintree-accent",
       "border-daintree-accent/[0.15]",
+      "ring-daintree-accent",
+      "ring-daintree-accent/50",
+      "outline-daintree-accent",
       "bg-accent-primary",
       "text-accent-primary",
       "border-accent-primary",
@@ -308,30 +331,47 @@ describe("accent guard", () => {
   });
 
   describe("focus ring auto-exclusion", () => {
+    const FOCUS_RING_UTILITIES = [
+      "border-daintree-accent",
+      "ring-daintree-accent",
+      "outline-daintree-accent",
+    ];
+
     function isExcluded(input: string): boolean {
       const matches = Array.from(input.matchAll(FORBIDDEN_PATTERN));
+      expect(matches.length, `no match found for: ${input}`).toBeGreaterThan(0);
       return matches.every((m) => {
-        const utility = m[1];
-        if (utility !== "border-daintree-accent") return false;
-        return isFocusRing(input, m.index!);
+        return isFocusRing(input, m.index!, m[1]);
       });
     }
 
     function hasViolation(input: string): boolean {
       const matches = Array.from(input.matchAll(FORBIDDEN_PATTERN));
+      expect(matches.length, `no match found for: ${input}`).toBeGreaterThan(0);
       return matches.some((m) => {
-        const utility = m[1];
-        if (utility !== "border-daintree-accent") return true; // non-border accent is always a violation
-        return !isFocusRing(input, m.index!);
+        if (!FOCUS_RING_UTILITIES.includes(m[1])) return true; // non-structural accent is always a violation
+        return !isFocusRing(input, m.index!, m[1]);
       });
     }
 
     const excluded = [
+      // border focus rings
       "focus:border-daintree-accent",
       "focus:border-daintree-accent/50",
       "focus-visible:border-daintree-accent",
       "focus-within:border-daintree-accent",
       "focus-within:border-daintree-accent/25",
+      // ring focus rings
+      "focus:ring-daintree-accent/50",
+      "focus-visible:ring-daintree-accent/20",
+      "focus-within:ring-daintree-accent/30",
+      // outline focus rings
+      "focus-visible:outline-daintree-accent",
+      "focus:outline-daintree-accent",
+      // custom focus mechanism
+      "data-[macro-focus=true]:ring-daintree-accent/60",
+      // stacked variants
+      "motion-safe:focus-visible:ring-daintree-accent/20",
     ];
 
     const stillFlagged = [
@@ -342,10 +382,19 @@ describe("accent guard", () => {
       "focus:text-daintree-accent",
       // hover:border-daintree-accent is an interactive state, not a focus ring
       "hover:border-daintree-accent/50",
+      // hover:ring-daintree-accent is an interactive state, not a focus ring
+      "hover:ring-daintree-accent/40",
       // data attribute state is not a focus ring (checked/selected state, not structural)
       "data-[state=checked]:border-daintree-accent",
-      // Plain border-daintree-accent without a variant is never a focus ring
+      // group-focus is a parent state selector, not an element-own focus ring
+      "group-focus:border-daintree-accent",
+      "group-focus:ring-daintree-accent/50",
+      // peer-focus is a sibling state selector
+      "peer-focus:border-daintree-accent",
+      // Plain border/ring/outline accent without a variant is never a focus ring
       "border-daintree-accent",
+      "ring-daintree-accent",
+      "outline-daintree-accent",
     ];
 
     for (const input of excluded) {
@@ -365,10 +414,7 @@ describe("accent guard", () => {
     it("flags bg-daintree-accent alongside an excluded focus ring", () => {
       const input = "focus-visible:outline-daintree-accent bg-daintree-accent";
       const matches = Array.from(input.matchAll(FORBIDDEN_PATTERN));
-      const violations = matches.filter((m) => {
-        if (m[1] !== "border-daintree-accent") return true;
-        return !isFocusRing(input, m.index!);
-      });
+      const violations = matches.filter((m) => !isFocusRing(input, m.index!, m[1]));
       expect(violations.length).toBe(1);
       expect(violations[0][1]).toBe("bg-daintree-accent");
     });
@@ -376,10 +422,7 @@ describe("accent guard", () => {
     it("excludes focus ring but flags accent text in the same string", () => {
       const input = "focus:border-daintree-accent text-daintree-accent";
       const matches = Array.from(input.matchAll(FORBIDDEN_PATTERN));
-      const violations = matches.filter((m) => {
-        if (m[1] !== "border-daintree-accent") return true;
-        return !isFocusRing(input, m.index!);
-      });
+      const violations = matches.filter((m) => !isFocusRing(input, m.index!, m[1]));
       expect(violations.length).toBe(1);
       expect(violations[0][1]).toBe("text-daintree-accent");
     });
@@ -388,11 +431,23 @@ describe("accent guard", () => {
       const input =
         "data-[state=checked]:border-daintree-accent data-[state=checked]:bg-daintree-accent";
       const matches = Array.from(input.matchAll(FORBIDDEN_PATTERN));
-      const violations = matches.filter((m) => {
-        if (m[1] !== "border-daintree-accent") return true;
-        return !isFocusRing(input, m.index!);
-      });
+      const violations = matches.filter((m) => !isFocusRing(input, m.index!, m[1]));
       expect(violations.length).toBe(2);
+    });
+
+    it("excludes ring focus ring but flags decorative ring in same string", () => {
+      const input = "focus:ring-daintree-accent/50 ring-daintree-accent/30";
+      const matches = Array.from(input.matchAll(FORBIDDEN_PATTERN));
+      const violations = matches.filter((m) => !isFocusRing(input, m.index!, m[1]));
+      expect(violations.length).toBe(1);
+      expect(violations[0][0]).toBe("ring-daintree-accent/30");
+    });
+
+    it("flags group-focus:ring-daintree-accent (parent state, not a focus ring)", () => {
+      const input = "group-focus:ring-daintree-accent/50";
+      const matches = Array.from(input.matchAll(FORBIDDEN_PATTERN));
+      const violations = matches.filter((m) => !isFocusRing(input, m.index!, m[1]));
+      expect(violations.length).toBe(1);
     });
   });
 
@@ -417,7 +472,7 @@ describe("accent guard", () => {
       for (const match of matches) {
         const utility = match[1];
 
-        if (utility === "border-daintree-accent" && isFocusRing(source, match.index!)) {
+        if (isFocusRing(source, match.index!, utility)) {
           continue;
         }
 
