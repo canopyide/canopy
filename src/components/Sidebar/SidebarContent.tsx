@@ -28,6 +28,7 @@ import {
   QuickStateFilterBar,
 } from "@/components/Worktree";
 import { BulkCreateWorktreeDialog } from "@/components/GitHub/BulkCreateWorktreeDialog";
+import { FleetArmingDialog } from "@/components/Fleet/FleetArmingDialog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { WorktreeCardErrorFallback } from "@/components/Worktree/WorktreeCardErrorFallback";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -327,6 +328,10 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   useEffect(() => {
     if (createDialog.isOpen) setHasOpenedNewWorktree(true);
   }, [createDialog.isOpen]);
+
+  const [isFleetArmingDialogOpen, setIsFleetArmingDialogOpen] = useState(false);
+  const openFleetArmingDialog = useCallback(() => setIsFleetArmingDialogOpen(true), []);
+  const closeFleetArmingDialog = useCallback(() => setIsFleetArmingDialogOpen(false), []);
 
   // Filter/sort state - destructured for stable memoization
   const {
@@ -931,16 +936,14 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() =>
-                    actionService.dispatch("terminal.armAll", { scope: "all" }, { source: "user" })
-                  }
+                  onClick={openFleetArmingDialog}
                   className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
-                  aria-label="Arm all terminals"
+                  aria-label="Select terminals to arm"
                 >
                   <Zap className="w-3.5 h-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Arm all terminals</TooltipContent>
+              <TooltipContent side="bottom">Select terminals to arm</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1149,6 +1152,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         selectedPRs={bulkCreateDialog.selectedPRs}
         onComplete={closeBulkCreateDialog}
       />
+
+      <FleetArmingDialog isOpen={isFleetArmingDialogOpen} onClose={closeFleetArmingDialog} />
     </div>
   );
 }
