@@ -1108,30 +1108,6 @@ export async function setupWindowServices(
     }
   }
 
-  // Event inspector (per-window: uses named listeners for safe per-window cleanup)
-  let eventInspectorActive = false;
-  const onEventInspectorSubscribe = () => {
-    eventInspectorActive = true;
-  };
-  const onEventInspectorUnsubscribe = () => {
-    eventInspectorActive = false;
-  };
-  ipcMain.on(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, onEventInspectorSubscribe);
-  ipcMain.on(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE, onEventInspectorUnsubscribe);
-
-  const unsubscribeFromEventBuffer = ctx.services.eventBuffer!.onRecord((record) => {
-    if (!eventInspectorActive) return;
-    sendToRenderer(win, CHANNELS.EVENT_INSPECTOR_EVENT, record);
-  });
-
-  ctx.cleanup.add(
-    toDisposable(() => {
-      unsubscribeFromEventBuffer();
-      ipcMain.removeListener(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, onEventInspectorSubscribe);
-      ipcMain.removeListener(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE, onEventInspectorUnsubscribe);
-    })
-  );
-
   // Smoke test
   if (isSmokeTest) {
     if (opts.smokeTestTimer) clearTimeout(opts.smokeTestTimer);
