@@ -194,15 +194,32 @@ export function FleetArmingRibbon(): ReactElement | null {
   // ⌘Esc chord. Single press (released; 350ms timeout) → exit broadcast
   // (clear selection, restore focus to lastArmedId). Rapid second press
   // within 350ms → cancel the pending exit and dispatch fleet.interrupt
-  // instead. Bare Escape is intentionally ignored: targets own it for
-  // menus/prompts under live echo (#5750). Listener is capture-phase so
-  // the chord fires before Radix popover dismissal.
+  // instead. Bare double-Escape ALSO dispatches fleet.interrupt — bare
+  // double-Esc is the universal interrupt for Claude/Codex/Gemini, and
+  // routing it through batchDoubleEscape gives every armed agent a
+  // deterministically-timed `\x1b\x1b` instead of two raw bytes whose
+  // inter-arrival timing depends on user typing speed and IPC latency
+  // (#5964). Single bare Escape still flows through onData →
+  // broadcastFleetRawInput so menu/prompt dismissal across the armed set
+  // continues to work. Listener is capture-phase so the chord fires
+  // before Radix popover dismissal.
   const lastEscapeMsRef = useRef<number>(0);
+  const lastBareEscapeMsRef = useRef<number>(0);
   const pendingExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitFleetRef = useRef(exitFleet);
   useEffect(() => {
     exitFleetRef.current = exitFleet;
   }, [exitFleet]);
+
+  // Mirror modal state into a ref so the capture-phase handler (whose
+  // effect only re-binds on armedCount change) can skip bare-Escape
+  // double-tap detection when an Escape-stack handler should win instead
+  // — pending confirm, popover, and pending broadcast all absorb bare
+  // Escape via useEscapeStack and must not also start a double-tap timer.
+  const bareEscapeBlockedRef = useRef(false);
+  useEffect(() => {
+    bareEscapeBlockedRef.current = pending !== null || popoverOpen || pendingBroadcast !== null;
+  }, [pending, popoverOpen, pendingBroadcast]);
 
   useEffect(() => {
     const clearPendingExit = () => {
@@ -214,12 +231,42 @@ export function FleetArmingRibbon(): ReactElement | null {
 
     if (armedCount === 0) {
       lastEscapeMsRef.current = 0;
+      lastBareEscapeMsRef.current = 0;
       clearPendingExit();
       return;
     }
 
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+
+      // Bare Escape branch: detect a double-tap to dispatch fleet.interrupt
+      // through batchDoubleEscape so every armed agent gets the
+      // deterministically-timed double-Esc gesture (#5964). The first tap
+      // passes through untouched so xterm still broadcasts a single raw
+      // \x1b for menu/prompt dismissal across the armed set; the second
+      // tap is consumed by the ribbon and translated into the action.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (bareEscapeBlockedRef.current) {
+          lastBareEscapeMsRef.current = 0;
+          return;
+        }
+        const nowBare = Date.now();
+        const prevBare = lastBareEscapeMsRef.current;
+        if (prevBare !== 0 && nowBare - prevBare <= DOUBLE_ESC_WINDOW_MS) {
+          lastBareEscapeMsRef.current = 0;
+          e.preventDefault();
+          e.stopPropagation();
+          void actionService.dispatch(
+            "fleet.interrupt",
+            { confirmed: true },
+            { source: "keybinding" }
+          );
+          return;
+        }
+        lastBareEscapeMsRef.current = nowBare;
+        return;
+      }
+
       if (!e.metaKey && !e.ctrlKey) return;
       const now = Date.now();
       const prev = lastEscapeMsRef.current;
@@ -246,6 +293,7 @@ export function FleetArmingRibbon(): ReactElement | null {
 
     const handleBlur = () => {
       lastEscapeMsRef.current = 0;
+      lastBareEscapeMsRef.current = 0;
       clearPendingExit();
     };
 

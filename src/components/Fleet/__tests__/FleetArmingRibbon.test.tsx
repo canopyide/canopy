@@ -376,7 +376,11 @@ describe("FleetArmingRibbon", () => {
     }
   });
 
-  it("bare Escape Escape does NOT dispatch fleet.interrupt (no Cmd modifier)", async () => {
+  it("bare Escape Escape within 350ms dispatches fleet.interrupt with confirmed:true", async () => {
+    // Bare double-Esc is the universal interrupt for Claude/Codex/Gemini;
+    // routing it through batchDoubleEscape gives every armed agent a
+    // deterministically-timed interrupt instead of two raw \x1b bytes
+    // whose IPC arrival timing depends on user typing speed (#5964).
     seed([makeAgent("t1", "working"), makeAgent("t2", "working")]);
     useFleetArmingStore.getState().armIds(["t1", "t2"]);
     const actionServiceModule = await import("@/services/ActionService");
@@ -384,9 +388,61 @@ describe("FleetArmingRibbon", () => {
     render(<FleetArmingRibbon />);
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.interrupt")).toBe(false);
-    // Fleet must remain armed — bare Esc belongs to the targets.
+    const interruptCalls = dispatchSpy.mock.calls.filter((c) => c[0] === "fleet.interrupt");
+    expect(interruptCalls.length).toBe(1);
+    expect(interruptCalls[0]?.[1]).toEqual({ confirmed: true });
+    expect(interruptCalls[0]?.[2]).toEqual({ source: "keybinding" });
+    // Fleet remains armed — interrupt doesn't clear selection.
     expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+    dispatchSpy.mockRestore();
+  });
+
+  it("single bare Escape does NOT dispatch fleet.interrupt", async () => {
+    // First bare Esc passes through so xterm still broadcasts a single
+    // raw \x1b for menu/prompt dismissal across the armed set.
+    seed([makeAgent("t1", "working"), makeAgent("t2", "working")]);
+    useFleetArmingStore.getState().armIds(["t1", "t2"]);
+    const actionServiceModule = await import("@/services/ActionService");
+    const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+    render(<FleetArmingRibbon />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.interrupt")).toBe(false);
+    expect(useFleetArmingStore.getState().armedIds.size).toBe(2);
+    dispatchSpy.mockRestore();
+  });
+
+  it("bare Escape Escape outside 350ms window does NOT dispatch fleet.interrupt", async () => {
+    vi.useFakeTimers();
+    try {
+      seed([makeAgent("t1", "working"), makeAgent("t2", "working")]);
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      const actionServiceModule = await import("@/services/ActionService");
+      const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+      render(<FleetArmingRibbon />);
+      fireEvent.keyDown(window, { key: "Escape" });
+      vi.setSystemTime(new Date(Date.now() + 500));
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.interrupt")).toBe(false);
+      dispatchSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bare Escape Escape while a pending action is open does NOT dispatch fleet.interrupt", async () => {
+    // A pending confirmation owns Escape via useEscapeStack; the bare-tap
+    // detector must yield so the user can cancel the confirm cleanly.
+    seed([makeAgent("t1", "working"), makeAgent("t2", "working"), makeAgent("t3", "working")]);
+    useFleetArmingStore.getState().armIds(["t1", "t2", "t3"]);
+    useFleetPendingActionStore.setState({
+      pending: { kind: "interrupt", targetCount: 3, sessionLossCount: 0 },
+    });
+    const actionServiceModule = await import("@/services/ActionService");
+    const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+    render(<FleetArmingRibbon />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.interrupt")).toBe(false);
     dispatchSpy.mockRestore();
   });
 
