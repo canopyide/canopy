@@ -168,7 +168,7 @@ describe("EmptyState", () => {
   describe("falsy description handling", () => {
     it("does not render an empty paragraph when description is false", () => {
       const { container } = render(
-        <EmptyState variant="zero-data" title="No items" description={false && "hidden"} />
+        <EmptyState variant="zero-data" title="No items" description={false as unknown as string} />
       );
       const paragraphs = container.querySelectorAll("p");
       // Only the title paragraph should render; no empty description paragraph.
