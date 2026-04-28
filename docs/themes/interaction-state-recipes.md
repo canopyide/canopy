@@ -156,7 +156,7 @@ This document maps each interactive component role to its canonical Tailwind cla
 "border-daintree-border text-daintree-text";
 ```
 
-**Usage:** The row card always uses neutral border and text. A 2px left rail (`bg-daintree-accent`) on the row signals modified state. The switch track uses `bg-daintree-border` in OFF state and `data-[state=checked]:bg-daintree-accent` in ON state — accent is exclusively on the switch widget. Apply `focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2` to the switch Root for keyboard focus. Used in `SettingsSwitchCard.tsx` + `SettingsSwitch.tsx`.
+**Usage:** The row card always uses neutral border and text. A 2px left rail (`bg-daintree-accent`) on the row signals modified state. The switch track uses `bg-daintree-border` in OFF state and `data-[state=checked]:bg-daintree-accent` in ON state — accent is constrained to the switch track, the modified-state rail, and enabled-state icons, never the full row card. Apply `focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2` to the switch Root for keyboard focus. Used in `SettingsSwitchCard.tsx` + `SettingsSwitch.tsx`.
 
 ---
 
@@ -212,7 +212,7 @@ The overlay ladder drives most hover/fill states. See `theme-tokens.md` for full
 
 ## Usage Pattern
 
-Each recipe is a class fragment to apply to a suitable base component, not a standalone implementation. When a canonical example is cited, prefer extending it over recreating the pattern. All recipes document current app behavior — if a pattern changes in a component, update this document to match.
+Each recipe is a class fragment to apply to a suitable base component, not a standalone implementation. When a canonical example is cited, prefer extending it over recreating the pattern. Recipes document canonical app behavior. When a recipe prescribes a target that differs from the current implementation, the divergence is noted in Usage.
 
 ## Canonical Examples
 
