@@ -223,12 +223,6 @@ export async function initializeTelemetry(): Promise<void> {
 
 export type TelemetryLevel = "off" | "errors" | "full";
 
-const DEFAULT_PRIVACY = {
-  telemetryLevel: "off" as const,
-  hasSeenPrompt: false,
-  logRetentionDays: 30 as const,
-};
-
 export function getTelemetryLevel(): TelemetryLevel {
   return store.get("privacy")?.telemetryLevel ?? "off";
 }
@@ -238,8 +232,7 @@ export function isTelemetryEnabled(): boolean {
 }
 
 export async function setTelemetryLevel(level: TelemetryLevel): Promise<void> {
-  const privacy = store.get("privacy") ?? DEFAULT_PRIVACY;
-  store.set("privacy", { ...privacy, telemetryLevel: level });
+  store.set("privacy.telemetryLevel", level);
 
   if (level === "full") {
     await initializeTelemetry();
@@ -410,8 +403,7 @@ export function setOnboardingCompleteTag(completed: boolean): void {
 }
 
 export function markTelemetryPromptShown(): void {
-  const privacy = store.get("privacy") ?? DEFAULT_PRIVACY;
-  store.set("privacy", { ...privacy, hasSeenPrompt: true });
+  store.set("privacy.hasSeenPrompt", true);
 }
 
 export function _getPreConsentBufferLength(): number {

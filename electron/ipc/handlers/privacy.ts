@@ -41,12 +41,7 @@ export function registerPrivacyHandlers(): () => void {
         !VALID_RETENTION.includes(days as (typeof VALID_RETENTION)[number])
       )
         return;
-      const privacy = store.get("privacy") ?? {
-        telemetryLevel: "off" as const,
-        hasSeenPrompt: false,
-        logRetentionDays: 30 as const,
-      };
-      store.set("privacy", { ...privacy, logRetentionDays: days as 7 | 30 | 90 | 0 });
+      store.set("privacy.logRetentionDays", days as 7 | 30 | 90 | 0);
     })
   );
 

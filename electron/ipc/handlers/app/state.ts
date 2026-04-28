@@ -270,8 +270,6 @@ export function registerAppStateHandlers(): () => void {
       // store schema to keep the `updates` object compatible with persistence types.
       const partialState = incoming as Partial<typeof store.store.appState>;
 
-      const currentState = store.get("appState");
-
       const updates: Partial<typeof store.store.appState> = {};
 
       if ("sidebarWidth" in partialState) {
@@ -470,7 +468,9 @@ export function registerAppStateHandlers(): () => void {
         }
       }
 
-      store.set("appState", { ...currentState, ...updates });
+      for (const [field, value] of Object.entries(updates)) {
+        store.set(`appState.${field}`, value);
+      }
 
       // Note: We intentionally do NOT save per-project terminal state.
       // Terminals stay running in the backend and are discovered on hydration.
