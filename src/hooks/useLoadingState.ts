@@ -17,10 +17,10 @@ export function useLoadingState(
   const [isOverdue, setIsOverdue] = useState(false);
 
   useEffect(() => {
+    setShowSpinner(false);
+    setIsSlow(false);
+    setIsOverdue(false);
     if (!isPending) {
-      setShowSpinner(false);
-      setIsSlow(false);
-      setIsOverdue(false);
       return;
     }
     const deferTimer = setTimeout(() => setShowSpinner(true), deferDelay);

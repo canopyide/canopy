@@ -54,7 +54,12 @@ describe("useLoadingState", () => {
     const { result } = renderHook(() => useLoadingState(true));
 
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(2999);
+    });
+    expect(result.current.isSlow).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
     });
     expect(result.current.showSpinner).toBe(true);
     expect(result.current.isSlow).toBe(true);
@@ -65,7 +70,12 @@ describe("useLoadingState", () => {
     const { result } = renderHook(() => useLoadingState(true));
 
     act(() => {
-      vi.advanceTimersByTime(10000);
+      vi.advanceTimersByTime(9999);
+    });
+    expect(result.current.isOverdue).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
     });
     expect(result.current).toEqual({
       showSpinner: true,
@@ -189,5 +199,79 @@ describe("useLoadingState", () => {
       vi.advanceTimersByTime(300);
     });
     expect(result.current.showSpinner).toBe(true);
+  });
+
+  it("clears already-set isSlow flag when slowThreshold extends mid-cycle", () => {
+    const { result, rerender } = renderHook(
+      ({ slow }: { slow: number }) => useLoadingState(true, 200, slow, 10000),
+      { initialProps: { slow: 500 } }
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(result.current.isSlow).toBe(true);
+
+    rerender({ slow: 2000 });
+    expect(result.current.isSlow).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(result.current.isSlow).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(result.current.isSlow).toBe(true);
+  });
+
+  it("clears already-set isOverdue flag when overdueThreshold extends mid-cycle", () => {
+    const { result, rerender } = renderHook(
+      ({ overdue }: { overdue: number }) => useLoadingState(true, 200, 3000, overdue),
+      { initialProps: { overdue: 1000 } }
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(result.current.isOverdue).toBe(true);
+
+    rerender({ overdue: 5000 });
+    expect(result.current.isOverdue).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(result.current.isOverdue).toBe(false);
+  });
+
+  it("clears flags from a prior pending cycle when isPending toggles back on", () => {
+    const { result, rerender } = renderHook(
+      ({ pending }: { pending: boolean }) => useLoadingState(pending),
+      { initialProps: { pending: true } }
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(result.current).toEqual({
+      showSpinner: true,
+      isSlow: true,
+      isOverdue: true,
+    });
+
+    rerender({ pending: false });
+    rerender({ pending: true });
+    expect(result.current).toEqual({
+      showSpinner: false,
+      isSlow: false,
+      isOverdue: false,
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(199);
+    });
+    expect(result.current.showSpinner).toBe(false);
   });
 });
