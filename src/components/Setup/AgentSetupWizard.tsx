@@ -12,11 +12,7 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { cliAvailabilityClient } from "@/clients";
 import { logError } from "@/utils/logger";
 import type { CliAvailability } from "@shared/types";
-import {
-  isAgentInstalled,
-  isAgentReady,
-  isAgentLaunchable,
-} from "../../../shared/utils/agentAvailability";
+import { isAgentInstalled, isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import { Sparkles, ChevronLeft, ChevronRight, ArrowRight, Check, Sun, Moon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import { Sprout } from "@/components/icons";
@@ -261,7 +257,8 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     case "SELECTION_CONTINUE": {
       const selectedIds = Object.keys(state.selections).filter((id) => state.selections[id]);
       const allSelectedInstalled =
-        selectedIds.length > 0 && selectedIds.every((id) => isAgentReady(state.availability[id]));
+        selectedIds.length > 0 &&
+        selectedIds.every((id) => isAgentLaunchable(state.availability[id]));
       return {
         ...state,
         step: allSelectedInstalled ? { type: "complete" } : { type: "cli" },
@@ -411,7 +408,7 @@ export function AgentSetupWizard({
     initRef.current = true;
     const initial: Record<string, boolean> = {};
     for (const agentId of AGENT_ORDER) {
-      initial[agentId] = isAgentReady(state.availability[agentId]);
+      initial[agentId] = isAgentLaunchable(state.availability[agentId]);
     }
     dispatch({ type: "INIT_SELECTIONS", payload: initial });
   }, [isOpen, isAvailabilityLoading, state.availability, state.selectionsInitialized]);
