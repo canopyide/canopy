@@ -15,7 +15,7 @@ import {
 import path from "path";
 import { createWindowWithState } from "../windowState.js";
 import { store } from "../store.js";
-import { resolveAppTheme, normalizeAppColorScheme } from "../../shared/theme/index.js";
+import { resolveAppTheme } from "../../shared/theme/index.js";
 import type { AppColorScheme } from "../../shared/theme/index.js";
 
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
@@ -146,22 +146,9 @@ export function setupBrowserWindow(
     colorSchemeId = nativeTheme.shouldUseDarkColors ? "daintree" : "bondi";
   }
 
-  let customSchemes: AppColorScheme[] = [];
-  if (
-    themeConfig &&
-    typeof themeConfig === "object" &&
-    !Array.isArray(themeConfig) &&
-    "customSchemes" in themeConfig &&
-    typeof themeConfig.customSchemes === "string"
-  ) {
-    try {
-      const parsed = JSON.parse(themeConfig.customSchemes);
-      if (Array.isArray(parsed))
-        customSchemes = parsed.map((s: AppColorScheme) => normalizeAppColorScheme(s));
-    } catch {
-      // Malformed custom schemes — fall back to built-in only
-    }
-  }
+  const customSchemes: AppColorScheme[] = Array.isArray(themeConfig?.customSchemes)
+    ? themeConfig.customSchemes
+    : [];
 
   const scheme = resolveAppTheme(colorSchemeId, customSchemes);
   const windowBg = scheme.tokens["surface-canvas"];

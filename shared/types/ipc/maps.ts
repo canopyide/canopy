@@ -1036,7 +1036,7 @@ export interface IpcInvokeMap {
     result: void;
   };
   "terminal-config:set-custom-schemes": {
-    args: [schemesJson: string];
+    args: [schemes: unknown];
     result: void;
   };
   "terminal-config:import-color-scheme": {
@@ -1476,7 +1476,7 @@ export interface IpcInvokeMap {
     result: void;
   };
   "app-theme:set-custom-schemes": {
-    args: [schemesJson: string];
+    args: [schemes: unknown];
     result: void;
   };
   "app-theme:import": {
