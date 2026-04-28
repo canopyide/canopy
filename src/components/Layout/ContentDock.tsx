@@ -45,7 +45,7 @@ import {
 } from "@/components/ui/context-menu";
 
 import { getAgentConfig, getAgentIds } from "@/config/agents";
-import { isAgentReady } from "@shared/utils/agentAvailability";
+import { isAgentInstalled, isAgentReady } from "@shared/utils/agentAvailability";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { buildDockRenderItems, type DockRenderItem } from "./dockRenderItems";
 import type { DockDensity } from "@/store/preferencesStore";
@@ -117,16 +117,18 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
     const baseIds = getAgentIds();
     const settingsIds = agentSettings?.agents ? Object.keys(agentSettings.agents) : [];
     const extraIds = settingsIds.filter((id) => !baseIds.includes(id)).sort();
-    return [...baseIds, ...extraIds].map((id) => {
-      const config = getAgentConfig(id);
-      return {
-        id,
-        name: config?.name ?? id,
-        icon: config?.icon,
-        brandColor: config?.color,
-        isEnabled: isAgentReady(agentAvailability?.[id]),
-      };
-    });
+    return [...baseIds, ...extraIds]
+      .filter((id) => isAgentInstalled(agentAvailability?.[id]))
+      .map((id) => {
+        const config = getAgentConfig(id);
+        return {
+          id,
+          name: config?.name ?? id,
+          icon: config?.icon,
+          brandColor: config?.color,
+          isEnabled: isAgentReady(agentAvailability?.[id]),
+        };
+      });
   }, [agentAvailability, agentSettings]);
 
   const recipeContext = activeWorktree
