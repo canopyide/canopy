@@ -195,7 +195,7 @@ describe("worktree resource action definitions", () => {
     const def = registry.get("worktree.resource.provision")!();
     await def.run!({}, { activeWorktreeId: "/test" });
 
-    const callArgs = mockNotify.mock.calls[0][0];
+    const callArgs = mockNotify.mock.calls[0]![0];
     expect(callArgs.action.label).toBe("Copy details");
     await callArgs.action.onClick();
 
