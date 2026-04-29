@@ -1046,8 +1046,7 @@ export class TerminalProcess {
     // capture loop for non-`session-id` agents — directory-scoped sessions
     // (Kiro) don't emit IDs and the ghost regex would either time out or
     // false-positive on unrelated output.
-    const pattern =
-      resume.kind === "session-id" ? new RegExp(resume.sessionIdPattern) : null;
+    const pattern = resume.kind === "session-id" ? new RegExp(resume.sessionIdPattern) : null;
 
     let shutdownBuffer = "";
     let resolved = false;

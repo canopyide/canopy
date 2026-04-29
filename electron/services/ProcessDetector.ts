@@ -30,9 +30,10 @@ function packageTail(pkg: string | undefined): string | undefined {
 }
 
 /** Reads `packages.npm` first; falls back to deprecated top-level `npmGlobalPackage`. */
-function effectiveNpmPackage(config: { packages?: { npm?: string }; npmGlobalPackage?: string }):
-  | string
-  | undefined {
+function effectiveNpmPackage(config: {
+  packages?: { npm?: string };
+  npmGlobalPackage?: string;
+}): string | undefined {
   return config.packages?.npm ?? config.npmGlobalPackage;
 }
 

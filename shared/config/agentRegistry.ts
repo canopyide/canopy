@@ -318,9 +318,7 @@ export interface AgentConfig {
    * Recognised keys mirror {@link AgentPackages} plus shell-script flavours
    * (`curl`, `powershell`); unknown keys are surfaced verbatim by the UI.
    */
-  update?: Partial<
-    Record<keyof AgentPackages | "curl" | "powershell" | (string & {}), string>
-  >;
+  update?: Partial<Record<keyof AgentPackages | "curl" | "powershell" | (string & {}), string>>;
   /**
    * Routing configuration for intelligent agent dispatch.
    * Used by orchestrators to select the best agent for a given task.

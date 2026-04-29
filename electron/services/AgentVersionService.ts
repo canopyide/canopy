@@ -271,8 +271,10 @@ export class AgentVersionService {
       } finally {
         clearTimeout(timeoutId);
       }
-    } catch (error: any) {
-      throw new Error(`Failed to fetch PyPI version: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to fetch PyPI version: ${this.toErrorString(error)}`, {
+        cause: error,
+      });
     }
   }
 

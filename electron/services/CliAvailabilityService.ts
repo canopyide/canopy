@@ -450,9 +450,7 @@ export class CliAvailabilityService {
     // through its primary install path first.
     const pypiPackage = config.packages?.pypi;
     if (pypiPackage) {
-      const pypiProbe = await this.probeNativePaths(
-        synthesisePypiProbePaths(command, pypiPackage)
-      );
+      const pypiProbe = await this.probeNativePaths(synthesisePypiProbePaths(command, pypiPackage));
       if (pypiProbe.status !== "missing") {
         return pypiProbe;
       }

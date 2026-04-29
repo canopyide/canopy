@@ -6,6 +6,17 @@ const registryMock = vi.hoisted(() => ({
   getEffectiveAgentConfig: vi.fn(),
 }));
 
+// Hoisted execFile mock — vi.spyOn can't redefine ESM-namespace exports of
+// `child_process`, so we substitute the whole module at hoist time. Tests
+// that need a custom impl mutate `execFileMock` via mockImplementationOnce.
+const { execFileMock } = vi.hoisted(() => ({
+  execFileMock: vi.fn(),
+}));
+
+vi.mock("child_process", () => ({
+  execFile: execFileMock,
+}));
+
 vi.mock("../../../shared/config/agentRegistry.js", () => registryMock);
 
 import { AgentVersionService } from "../AgentVersionService.js";
@@ -16,7 +27,7 @@ describe("AgentVersionService resilience", () => {
     vi.clearAllMocks();
   });
 
-  function createService(checkAvailabilityImpl: () => Promise<Record<string, boolean>>) {
+  function createService(checkAvailabilityImpl: () => Promise<Record<string, unknown>>) {
     const cliAvailabilityService = {
       checkAvailability: vi.fn(checkAvailabilityImpl),
     } as unknown as CliAvailabilityService;
@@ -108,9 +119,8 @@ describe("AgentVersionService resilience", () => {
     // execFile is used for the installed-version probe; default to a synthetic
     // success so getInstalledVersion returns a parseable value and the
     // assertion focuses on the latest-version branch.
-    function mockExecFileVersion(): ReturnType<typeof vi.spyOn> {
-      const cp = require("child_process") as { execFile: typeof import("child_process").execFile };
-      return vi.spyOn(cp, "execFile").mockImplementation(((
+    function setExecFileSuccess(): void {
+      execFileMock.mockImplementation(((
         _cmd: string,
         _args: readonly string[],
         _opts: unknown,
@@ -119,6 +129,10 @@ describe("AgentVersionService resilience", () => {
         cb(null, "1.0.0\n", "");
       }) as never);
     }
+
+    beforeEach(() => {
+      execFileMock.mockReset();
+    });
 
     it("fetches the latest version from pypi.org/pypi/<pkg>/json", async () => {
       (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
@@ -134,7 +148,7 @@ describe("AgentVersionService resilience", () => {
         json: async () => ({ info: { version: "1.2.3" } }),
         headers: new Headers(),
       } as Response);
-      const execSpy = mockExecFileVersion();
+      setExecFileSuccess();
 
       const { service } = createService(async () => ({ "py-agent": "ready" }));
       const result = await service.getVersion("py-agent" as AgentId);
@@ -147,7 +161,6 @@ describe("AgentVersionService resilience", () => {
         })
       );
       fetchSpy.mockRestore();
-      execSpy.mockRestore();
     });
 
     it("returns null without erroring when PyPI returns 200 with missing version", async () => {
@@ -164,7 +177,7 @@ describe("AgentVersionService resilience", () => {
         json: async () => ({ info: {} }),
         headers: new Headers(),
       } as Response);
-      const execSpy = mockExecFileVersion();
+      setExecFileSuccess();
 
       const { service } = createService(async () => ({ "py-agent": "ready" }));
       const result = await service.getVersion("py-agent" as AgentId);
@@ -172,7 +185,6 @@ describe("AgentVersionService resilience", () => {
       expect(result.latestVersion).toBeNull();
       expect(result.error).toBeUndefined();
       fetchSpy.mockRestore();
-      execSpy.mockRestore();
     });
 
     it("surfaces an error when PyPI returns 404", async () => {
@@ -189,7 +201,7 @@ describe("AgentVersionService resilience", () => {
         json: async () => ({}),
         headers: new Headers(),
       } as Response);
-      const execSpy = mockExecFileVersion();
+      setExecFileSuccess();
 
       const { service } = createService(async () => ({ "py-agent": "ready" }));
       const result = await service.getVersion("py-agent" as AgentId);
@@ -197,7 +209,6 @@ describe("AgentVersionService resilience", () => {
       expect(result.latestVersion).toBeNull();
       expect(result.error ?? "").toMatch(/PyPI/);
       fetchSpy.mockRestore();
-      execSpy.mockRestore();
     });
   });
 });
