@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Plus, RotateCcw, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Eye, EyeOff, Plus, RotateCcw, Upload, X } from "lucide-react";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { looksLikeSecret } from "@/utils/secretDetection";
 import { isSensitiveEnvKey } from "../../../shared/utils/envVars";
@@ -49,10 +50,8 @@ export interface EnvVarEditorProps {
   env: Record<string, string>;
   /** Called with the new map when a valid change occurs. Empty map → {}. */
   onChange: (env: Record<string, string>) => void;
-  /** Optional datalist of suggested KEY names to speed up common setups. */
+  /** Optional list of suggested KEY names (with hints) to speed up common setups. */
   suggestions?: EnvVarSuggestion[];
-  /** HTML id used for the shared datalist element (must be unique per page). */
-  datalistId?: string;
   /** Optional "keyed" identity (e.g. presetId) — used to reset draft rows when the parent context changes. */
   contextKey?: string;
   /** Placeholder text for the value input. */
@@ -157,11 +156,232 @@ function isValid(rows: DraftRow[]): boolean {
   return true;
 }
 
+const EMPTY_SUGGESTIONS: EnvVarSuggestion[] = [];
+
+interface EnvVarKeyCellProps {
+  rowId: string;
+  value: string;
+  suggestions: EnvVarSuggestion[];
+  usedKeys: Set<string>;
+  disabled: boolean;
+  isEmptyKey: boolean;
+  isDuplicate: boolean;
+  onChange: (rowId: string, newKey: string) => void;
+  onBlur: (rowId: string) => void;
+  /**
+   * Picker selection — must commit synchronously. Distinct from `onChange` so
+   * the parent can both update the row AND drive `onChange(env)` in the same
+   * pass (clicking a suggestion otherwise loses the selection: the input's
+   * blur fires before the option's click, and the blur path commits the OLD
+   * key before the click can update the row).
+   */
+  onSelect: (rowId: string, newKey: string) => void;
+  registerRef: (rowId: string, el: HTMLInputElement | null) => void;
+}
+
+/**
+ * Per-row key cell with a Radix Popover suggestion picker.
+ *
+ * Replaces the native `<datalist>` indicator (Chromium's is unreliable in
+ * Electron — clicks often do nothing, content can't be styled, hint text
+ * isn't surfaced). State (open / activeIndex) is local so opening one row's
+ * popover doesn't re-render other rows. Focus stays on the input while the
+ * popover is open via `onOpenAutoFocus` preventDefault, and is restored on
+ * close via `onCloseAutoFocus`.
+ */
+function EnvVarKeyCell({
+  rowId,
+  value,
+  suggestions,
+  usedKeys,
+  disabled,
+  isEmptyKey,
+  isDuplicate,
+  onChange,
+  onBlur,
+  onSelect,
+  registerRef,
+}: EnvVarKeyCellProps) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const listboxId = `env-key-suggestions-${rowId}`;
+
+  const trimmedValue = value.trim();
+  const availableSuggestions = useMemo(() => {
+    return suggestions.filter((s) => !usedKeys.has(s.key) && s.key !== trimmedValue);
+  }, [suggestions, usedKeys, trimmedValue]);
+
+  // Clamp activeIndex when the available list shrinks (another row took a key).
+  useEffect(() => {
+    setActiveIndex((i) => (i >= availableSuggestions.length ? availableSuggestions.length - 1 : i));
+  }, [availableSuggestions.length]);
+
+  // Reset highlight when the popover closes so the next open starts unhighlighted.
+  useEffect(() => {
+    if (!open) setActiveIndex(-1);
+  }, [open]);
+
+  const handleSelect = useCallback(
+    (key: string) => {
+      onSelect(rowId, key);
+      setOpen(false);
+    },
+    [onSelect, rowId]
+  );
+
+  const showChevron = availableSuggestions.length > 0 && !disabled;
+
+  return (
+    <div className="relative">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverAnchor asChild>
+          <input
+            ref={(el) => {
+              inputRef.current = el;
+              registerRef(rowId, el);
+            }}
+            type="text"
+            className={cn(
+              "w-full h-full bg-transparent border-0 outline-none py-2 font-mono text-[12px]",
+              "focus:ring-2 focus:ring-inset focus:ring-daintree-accent/40",
+              "disabled:cursor-default",
+              showChevron ? "pl-2.5 pr-8" : "px-2.5",
+              disabled
+                ? "text-daintree-text/40"
+                : isEmptyKey
+                  ? "text-status-error"
+                  : isDuplicate
+                    ? "text-amber-500"
+                    : "text-daintree-text/80"
+            )}
+            value={value}
+            placeholder="KEY"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            disabled={disabled}
+            aria-label={`Env var key for row ${rowId}`}
+            aria-invalid={isEmptyKey || isDuplicate ? "true" : undefined}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={listboxId}
+            aria-autocomplete="list"
+            aria-activedescendant={
+              open && activeIndex >= 0 ? `env-key-option-${rowId}-${activeIndex}` : undefined
+            }
+            onChange={(e) => onChange(rowId, e.target.value)}
+            onBlur={() => onBlur(rowId)}
+            onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                if (availableSuggestions.length === 0) return;
+                e.preventDefault();
+                if (!open) {
+                  setOpen(true);
+                  setActiveIndex(0);
+                } else {
+                  setActiveIndex((i) =>
+                    i + 1 >= availableSuggestions.length ? availableSuggestions.length - 1 : i + 1
+                  );
+                }
+              } else if (e.key === "ArrowUp") {
+                if (!open) return;
+                e.preventDefault();
+                setActiveIndex((i) => (i <= 0 ? 0 : i - 1));
+              } else if (e.key === "Enter" && open && activeIndex >= 0) {
+                e.preventDefault();
+                const sel = availableSuggestions[activeIndex];
+                if (sel) handleSelect(sel.key);
+              } else if (e.key === "Escape") {
+                if (open) {
+                  // Close the popover first; don't bubble to the surrounding
+                  // dialog's Escape handler.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOpen(false);
+                } else {
+                  e.currentTarget.blur();
+                }
+              }
+            }}
+            data-testid="env-editor-key"
+          />
+        </PopoverAnchor>
+        {showChevron && (
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Show key suggestions"
+              tabIndex={-1}
+              onMouseDown={(e) => {
+                // Keep focus on the input — without this, clicking the chevron
+                // moves focus to the button and subsequent keyboard nav (Arrow,
+                // Enter) wouldn't fire on the input's onKeyDown handler.
+                e.preventDefault();
+                inputRef.current?.focus();
+              }}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-daintree-text/40 hover:text-daintree-text/70 hover:bg-daintree-bg/60 transition-colors"
+              data-testid="env-editor-key-suggestions-trigger"
+            >
+              <ChevronDown size={12} aria-hidden="true" />
+            </button>
+          </PopoverTrigger>
+        )}
+        <PopoverContent
+          align="start"
+          sideOffset={4}
+          className="p-1 min-w-52 w-auto"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            inputRef.current?.focus();
+          }}
+          data-testid="env-editor-key-suggestions-listbox"
+        >
+          <div role="listbox" id={listboxId} aria-label="Env var key suggestions">
+            {availableSuggestions.map((s, idx) => (
+              <div
+                key={s.key}
+                id={`env-key-option-${rowId}-${idx}`}
+                role="option"
+                aria-selected={idx === activeIndex}
+                onClick={() => handleSelect(s.key)}
+                onMouseEnter={() => setActiveIndex(idx)}
+                className={cn(
+                  "flex items-start gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] cursor-pointer",
+                  idx === activeIndex && "bg-overlay-soft"
+                )}
+                data-testid="env-editor-key-suggestion"
+              >
+                <span className="font-mono text-xs text-daintree-text/80 shrink-0">{s.key}</span>
+                {s.hint && (
+                  <span className="text-[11px] text-daintree-text/50 leading-snug">{s.hint}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {(isEmptyKey || isDuplicate) && (
+        <p
+          className={cn(
+            "absolute left-2.5 bottom-0.5 text-[9px] leading-none pointer-events-none",
+            isEmptyKey ? "text-status-error" : "text-amber-500"
+          )}
+          data-testid={isEmptyKey ? "env-editor-error-empty" : "env-editor-error-duplicate"}
+        >
+          {isEmptyKey ? "Key required" : "Duplicate key"}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function EnvVarEditor({
   env,
   onChange,
   suggestions,
-  datalistId,
   contextKey,
   valuePlaceholder = "value or ${ENV_VAR}",
   "data-testid": dataTestId,
@@ -297,6 +517,23 @@ export function EnvVarEditor({
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r)));
   }, []);
 
+  const handleKeySelect = useCallback(
+    (rowId: string, newKey: string) => {
+      // Picker selection commits synchronously. The input's blur fires before
+      // the option's click, so a typing-style onChange + later blur loses the
+      // pick (blur commits the OLD key before the click can update rows).
+      // Mark the row touched so a subsequent blank-out still surfaces the
+      // empty-key error.
+      setTouchedKeys((prev) => ({ ...prev, [rowId]: true }));
+      setRows((prev) => {
+        const next = prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r));
+        commitIfValid(next);
+        return next;
+      });
+    },
+    [commitIfValid]
+  );
+
   const handleValueChange = useCallback((rowId: string, newValue: string) => {
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, value: newValue } : r)));
   }, []);
@@ -410,13 +647,6 @@ export function EnvVarEditor({
       className="rounded-[var(--radius-md)] border border-daintree-border overflow-hidden bg-daintree-bg/30"
       data-testid={dataTestId}
     >
-      {datalistId && suggestions && suggestions.length > 0 && (
-        <datalist id={datalistId}>
-          {suggestions.map(({ key }) => (
-            <option key={key} value={key} />
-          ))}
-        </datalist>
-      )}
       {/* Header */}
       <div className="grid grid-cols-[2fr_3fr_auto] text-[10px] uppercase tracking-wide text-daintree-text/50 bg-daintree-bg/40 border-b border-daintree-border">
         <div className="px-2.5 py-1.5">Key</div>
@@ -466,6 +696,17 @@ export function EnvVarEditor({
                 : isOverride
                   ? "before:bg-daintree-accent"
                   : "before:bg-transparent";
+            // Keys taken by *other* editable rows — used to filter the
+            // suggestion popover so a single key can't be picked twice.
+            // Inherited rows don't count: a suggested key that matches an
+            // inherited entry should still be pickable as an override.
+            const usedKeys = new Set<string>();
+            for (const r of rows) {
+              if (r.rowId === row.rowId) continue;
+              if (r.isInherited) continue;
+              const k = r.key.trim();
+              if (k) usedKeys.add(k);
+            }
             return (
               <div
                 key={row.rowId}
@@ -477,56 +718,19 @@ export function EnvVarEditor({
                 )}
                 data-testid={row.isInherited ? "env-editor-row-inherited" : "env-editor-row"}
               >
-                {/* Key cell */}
-                <div className="relative">
-                  <input
-                    ref={(el) => registerKeyInput(row.rowId, el)}
-                    type="text"
-                    className={cn(
-                      "w-full h-full bg-transparent border-0 outline-none px-2.5 py-2 font-mono text-[12px]",
-                      "focus:ring-2 focus:ring-inset focus:ring-daintree-accent/40",
-                      "disabled:cursor-default",
-                      row.isInherited
-                        ? "text-daintree-text/40"
-                        : isEmptyKey
-                          ? "text-status-error"
-                          : isDuplicate
-                            ? "text-amber-500"
-                            : "text-daintree-text/80"
-                    )}
-                    value={row.key}
-                    placeholder="KEY"
-                    list={datalistId}
-                    spellCheck={false}
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    disabled={row.isInherited}
-                    aria-label={`Env var key for row ${row.rowId}`}
-                    aria-invalid={isEmptyKey || isDuplicate ? "true" : undefined}
-                    onChange={(e) => handleKeyChange(row.rowId, e.target.value)}
-                    onBlur={() => handleKeyBlur(row.rowId)}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        e.currentTarget.blur();
-                      }
-                    }}
-                    data-testid="env-editor-key"
-                  />
-                  {(isEmptyKey || isDuplicate) && (
-                    <p
-                      className={cn(
-                        "absolute left-2.5 bottom-0.5 text-[9px] leading-none pointer-events-none",
-                        isEmptyKey ? "text-status-error" : "text-amber-500"
-                      )}
-                      data-testid={
-                        isEmptyKey ? "env-editor-error-empty" : "env-editor-error-duplicate"
-                      }
-                    >
-                      {isEmptyKey ? "Key required" : "Duplicate key"}
-                    </p>
-                  )}
-                </div>
+                <EnvVarKeyCell
+                  rowId={row.rowId}
+                  value={row.key}
+                  suggestions={suggestions ?? EMPTY_SUGGESTIONS}
+                  usedKeys={usedKeys}
+                  disabled={row.isInherited}
+                  isEmptyKey={isEmptyKey}
+                  isDuplicate={isDuplicate}
+                  onChange={handleKeyChange}
+                  onBlur={handleKeyBlur}
+                  onSelect={handleKeySelect}
+                  registerRef={registerKeyInput}
+                />
                 {/* Value cell */}
                 <div className="relative border-l border-daintree-border/60">
                   <input
