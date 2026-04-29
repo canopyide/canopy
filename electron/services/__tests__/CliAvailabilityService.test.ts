@@ -1267,8 +1267,8 @@ describe("CliAvailabilityService", () => {
 
     it("fires exactly one npm-global probe per agent with npmGlobalPackage", async () => {
       // Shell probe misses for all agents, so every agent walks the full
-      // fallback chain. Only the 3 agents declaring npmGlobalPackage
-      // (claude, gemini, codex) should reach the npm-global layer — the
+      // fallback chain. Only the 4 agents declaring npmGlobalPackage
+      // (claude, gemini, codex, qwen) should reach the npm-global layer — the
       // other 4 (opencode, cursor, kiro, copilot) must not trigger npm.
       mockedExecFileSync.mockImplementation(() => {
         throw Object.assign(new Error("not found"), { code: "ENOENT" });
@@ -1285,7 +1285,7 @@ describe("CliAvailabilityService", () => {
       await service.checkAvailability();
 
       const npmCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "npm");
-      expect(npmCalls).toHaveLength(3);
+      expect(npmCalls).toHaveLength(4);
       // Deterministic probe form — guards against arg-drift regressions.
       for (const call of npmCalls) {
         expect(call[1]).toEqual(["config", "get", "prefix"]);
