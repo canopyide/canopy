@@ -1406,11 +1406,11 @@ body,
     transition: none;
   }
 
-  button,
-  [role="button"],
-  [type="button"],
-  [type="submit"],
-  [type="reset"] {
+  button:not([data-state="open"]):not([data-state="closed"]),
+  [role="button"]:not([data-state="open"]):not([data-state="closed"]),
+  [type="button"]:not([data-state="open"]):not([data-state="closed"]),
+  [type="submit"]:not([data-state="open"]):not([data-state="closed"]),
+  [type="reset"]:not([data-state="open"]):not([data-state="closed"]) {
     transform: none !important;
     transition: none !important;
   }
@@ -1477,7 +1477,13 @@ body[data-reduce-animations="true"]
 }
 
 body[data-reduce-animations="true"]
-  :is(button, [role="button"], [type="button"], [type="submit"], [type="reset"]) {
+  :is(
+    button:not([data-state="open"]):not([data-state="closed"]),
+    [role="button"]:not([data-state="open"]):not([data-state="closed"]),
+    [type="button"]:not([data-state="open"]):not([data-state="closed"]),
+    [type="submit"]:not([data-state="open"]):not([data-state="closed"]),
+    [type="reset"]:not([data-state="open"]):not([data-state="closed"])
+  ) {
   transform: none !important;
   transition: none !important;
 }
