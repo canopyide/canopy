@@ -778,11 +778,25 @@ export function ContentGrid({
   // promote every mounted fleet cell to VISIBLE so cross-worktree terminals
   // keep streaming output — worktreeStore's per-worktree policy would
   // otherwise demote them to BACKGROUND (showing stale frames).
+  const prevFleetGridColsRef = useRef(fleetGridCols);
   useEffect(() => {
-    if (!isFleetScopeRender) return;
+    if (!isFleetScopeRender) {
+      prevFleetGridColsRef.current = fleetGridCols;
+      return;
+    }
     const ids = fleetPanels.map((t) => t.id);
     for (const id of ids) {
       terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+    }
+    // Mirror the main grid: lock resizes for the FLIP window when fleet column
+    // count changes so motion.div translations don't trigger spurious SIGWINCH.
+    const fleetColsChanged = prevFleetGridColsRef.current !== fleetGridCols;
+    prevFleetGridColsRef.current = fleetGridCols;
+    if (fleetColsChanged && !isDraggingRef.current && ids.length > 0) {
+      terminalInstanceService.suppressResizesDuringLayoutTransition(
+        ids,
+        GRID_TRANSITION_DURATION_MS
+      );
     }
     const cancelRef = { cancelled: false };
     const timeoutId = window.setTimeout(() => {
@@ -837,6 +851,9 @@ export function ContentGrid({
   // similar PTY-sensitive CLIs — are deferred until the panels settle. The
   // batch-fit then runs `GRID_FIT_DELAY_MS` later (200ms animation + 50ms
   // safety buffer), once geometry is final. See lessons #4170 and #4467.
+  // We deliberately skip the suppress call while a drag is active: the unlock
+  // fires unconditionally after 200ms and would prematurely clear a drag-held
+  // resize lock if a drop crosses a column threshold.
   const prevGridColsRef = useRef(gridCols);
   useEffect(() => {
     void gridCols;
@@ -845,7 +862,7 @@ export function ContentGrid({
     const colsChanged = prevGridColsRef.current !== gridCols;
     prevGridColsRef.current = gridCols;
 
-    if (colsChanged && !isProjectSwitching) {
+    if (colsChanged && !isProjectSwitching && !isDraggingRef.current) {
       const realPanelIds = panelIds.filter((id) => id !== GRID_PLACEHOLDER_ID);
       if (realPanelIds.length > 0) {
         terminalInstanceService.suppressResizesDuringLayoutTransition(
