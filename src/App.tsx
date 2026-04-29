@@ -41,6 +41,7 @@ import { useSoundPlaybackListener } from "./hooks/useSoundPlaybackListener";
 import { useHeldShortcutReveal } from "./hooks/useHeldShortcutReveal";
 import { removeStartupSkeleton } from "./utils/removeStartupSkeleton";
 import { logWarn } from "./utils/logger";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useCrashRecoveryGate } from "./hooks/app/useCrashRecoveryGate";
 import { CrashRecoveryDialog } from "./components/Recovery/CrashRecoveryDialog";
 import { SafeModeBanner } from "./components/Recovery/SafeModeBanner";
@@ -362,7 +363,7 @@ function App() {
           logWarn("Default agent auto-launch failed", {
             primaryAgent,
             worktreeId: activeWorktreeId ?? null,
-            error: err instanceof Error ? err.message : String(err),
+            error: formatErrorMessage(err, "Auto-launch failed"),
           });
         });
       }

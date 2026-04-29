@@ -27,6 +27,7 @@ import { SettingsNumberInput } from "@/components/Settings/SettingsNumberInput";
 import { SettingsSubtabBar } from "./SettingsSubtabBar";
 import type { SettingsSubtabItem } from "./SettingsSubtabBar";
 import { logError, logWarn } from "@/utils/logger";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import {
   useLayoutConfigStore,
@@ -164,7 +165,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       .catch((err) => {
         // Background probe — the UI gracefully renders without hardware info.
         logWarn("Failed to load hardware info", {
-          error: err instanceof Error ? err.message : String(err),
+          error: formatErrorMessage(err, "Hardware info probe failed"),
         });
       });
   }, [initializeFromHardware]);

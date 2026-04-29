@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { logError, logWarn } from "@/utils/logger";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useTerminalFontStore, useScreenReaderStore } from "@/store";
 import { useTerminalColorSchemeStore } from "@/store/terminalColorSchemeStore";
 import { useAppThemeStore } from "@/store/appThemeStore";
@@ -77,7 +78,7 @@ export function useTerminalConfig() {
         // Background probe — `onSupportChanged` will repopulate state when the
         // OS event fires. Falling through with the prior store value is fine.
         logWarn("Failed to read OS accessibility state", {
-          error: err instanceof Error ? err.message : String(err),
+          error: formatErrorMessage(err, "Accessibility probe failed"),
         });
       });
 

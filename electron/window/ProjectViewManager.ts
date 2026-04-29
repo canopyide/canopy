@@ -24,6 +24,7 @@ import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { getPtyManager } from "../services/PtyManager.js";
 import { notifyError } from "../ipc/errorHandlers.js";
 import { logInfo, logWarn } from "../utils/logger.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { injectSkeletonCss } from "./skeletonCss.js";
 import {
   attachRendererConsoleCapture,
@@ -454,7 +455,7 @@ export class ProjectViewManager {
         logWarn("Project view loadURL rejected", {
           projectId,
           url,
-          error: err instanceof Error ? err.message : String(err),
+          error: formatErrorMessage(err, "loadURL failed"),
         });
       };
       if (process.env.NODE_ENV === "development") {

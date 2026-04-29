@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { WebviewDialogRequest } from "@/components/Browser/WebviewDialog";
 import { logError, logWarn } from "@/utils/logger";
 import { notify } from "@/lib/notify";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 export function useWebviewDialog(
   panelId: string,
@@ -20,7 +21,7 @@ export function useWebviewDialog(
         // warn (not error) since native fallback is a working UX, not broken.
         logWarn("Webview dialog registration failed", {
           panelId,
-          error: err instanceof Error ? err.message : String(err),
+          error: formatErrorMessage(err, "Panel registration failed"),
         });
       });
     } catch {

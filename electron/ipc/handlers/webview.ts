@@ -723,7 +723,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
                 logWarn("OAuth CDP non-token continueRequest failed", {
                   panelId,
                   url: p.request.url,
-                  error: err instanceof Error ? err.message : String(err),
+                  error: formatErrorMessage(err, "CDP continueRequest failed"),
                 });
               });
             return;
