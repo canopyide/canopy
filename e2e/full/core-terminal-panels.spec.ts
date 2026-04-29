@@ -310,7 +310,7 @@ test.describe.serial("Core: Terminal & Panels", () => {
         const dock = window.locator(SEL.dock.container);
         let dockCount = await getDockPanelCount(window);
         while (dockCount > 0) {
-          const dockItem = dock.locator("button").first();
+          const dockItem = dock.locator('button[aria-label*="move to grid"]').first();
           await dockItem.dblclick();
           await expect
             .poll(() => getDockPanelCount(window), { timeout: T_MEDIUM })

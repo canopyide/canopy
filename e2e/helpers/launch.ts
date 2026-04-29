@@ -367,12 +367,12 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
   await newWindow
     .locator('[aria-label="Worktrees"] a, [aria-label="Worktrees"] [role="button"], .worktree-item')
     .first()
-    .waitFor({ state: "attached", timeout: 10_000 })
+    .waitFor({ state: "attached", timeout: refreshTimeout })
     .catch(async () => {
       // Fallback: just wait for the loading text to disappear.
       await newWindow
         .locator("text=Loading worktrees...")
-        .waitFor({ state: "hidden", timeout: 5_000 })
+        .waitFor({ state: "hidden", timeout: refreshTimeout })
         .catch(() => {});
     });
 
