@@ -19,6 +19,7 @@ interface UseGridNavigationOptions {
 }
 
 export function useGridNavigation(options: UseGridNavigationOptions = {}) {
+  "use no memo";
   const { containerSelector = "#panel-grid" } = options;
 
   const { panelIds, panelsById, focusedId, tabGroups, getTabGroups } = usePanelStore(
@@ -139,10 +140,13 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   const gridCols = useMemo(() => {
     const { strategy, value } = layoutConfig;
     const count = isFleetScopeRender ? Math.max(fleetPanels.length, 1) : gridGroups.length;
-    const previousCols = isFleetScopeRender
-      ? hysteresisNavFleetColsRef.current
-      : hysteresisNavGridColsRef.current;
-    return computeGridColumns(count, gridWidth, strategy, value, previousCols);
+    return computeGridColumns(
+      count,
+      gridWidth,
+      strategy,
+      value,
+      isFleetScopeRender ? hysteresisNavFleetColsRef.current : hysteresisNavGridColsRef.current
+    );
   }, [isFleetScopeRender, fleetPanels.length, gridGroups.length, layoutConfig, gridWidth]);
 
   useEffect(() => {
