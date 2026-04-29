@@ -64,9 +64,9 @@ export function SettingsSelect({
     <span
       className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
         scope === "project"
-          ? "bg-daintree-accent/10 text-daintree-accent dark:bg-daintree-accent/20"
+          ? "bg-status-info/10 text-status-info"
           : scope === "global"
-            ? "bg-blue-500/10 text-blue-500 dark:bg-blue-500/20"
+            ? "bg-status-info/10 text-status-info"
             : "bg-text-secondary/10 text-text-secondary dark:bg-text-secondary/20"
       }`}
     >
@@ -82,14 +82,14 @@ export function SettingsSelect({
         </label>
         {scopeBadge}
         {isModified && (
-          <span className="w-1.5 h-1.5 rounded-full bg-daintree-accent" aria-hidden="true" />
+          <span className="w-1.5 h-1.5 rounded-full bg-state-modified" aria-hidden="true" />
         )}
         {showReset && (
           <button
             type="button"
             aria-label={resetAriaLabel ?? `Reset ${label} to default`}
             className={cn(
-              "p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-accent",
+              "p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-text",
               "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
               "transition-colors"

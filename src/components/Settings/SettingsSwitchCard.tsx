@@ -60,9 +60,9 @@ export function SettingsSwitchCard({
     <span
       className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
         scope === "project"
-          ? "bg-daintree-accent/10 text-daintree-accent dark:bg-daintree-accent/20"
+          ? "bg-status-info/10 text-status-info"
           : scope === "global"
-            ? "bg-blue-500/10 text-blue-500 dark:bg-blue-500/20"
+            ? "bg-status-info/10 text-status-info"
             : "bg-text-secondary/10 text-text-secondary dark:bg-text-secondary/20"
       }`}
     >
@@ -83,7 +83,7 @@ export function SettingsSwitchCard({
     >
       {isModified && isCard && (
         <div
-          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-daintree-accent"
+          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-state-modified"
           aria-hidden="true"
         />
       )}
@@ -99,7 +99,7 @@ export function SettingsSwitchCard({
             {title}
             {scopeBadge}
             {lifecycleBadge && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-daintree-accent/10 border border-daintree-border/50 text-daintree-text/50 uppercase tracking-wide">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-overlay-subtle border border-daintree-border/50 text-daintree-text/50 uppercase tracking-wide">
                 {lifecycleBadge}
               </span>
             )}
@@ -134,7 +134,7 @@ export function SettingsSwitchCard({
           aria-label={resetAriaLabel ?? `Reset ${title} to default`}
           className={cn(
             "absolute top-1/2 -translate-y-1/2 z-10 p-1 rounded-sm",
-            "text-daintree-text/40 hover:text-daintree-accent",
+            "text-daintree-text/40 hover:text-daintree-text",
             "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
             "transition-colors",

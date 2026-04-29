@@ -886,13 +886,13 @@ export function AgentSettings({
                             {scopeKind === "custom" && customFlagsOverride !== undefined && (
                               <>
                                 <span
-                                  className="w-1.5 h-1.5 rounded-full bg-daintree-accent"
+                                  className="w-1.5 h-1.5 rounded-full bg-state-modified"
                                   aria-hidden="true"
                                 />
                                 <button
                                   type="button"
                                   aria-label={`Reset custom arguments override for ${scopeLabel}`}
-                                  className="p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-accent invisible group-hover/args:visible group-focus-within/args:visible focus-visible:visible focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent transition-colors"
+                                  className="p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-text invisible group-hover/args:visible group-focus-within/args:visible focus-visible:visible focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent transition-colors"
                                   onClick={handleCustomFlagsOverrideReset}
                                   data-testid="preset-custom-flags-reset"
                                 >
