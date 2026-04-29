@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import { CHANNELS } from "../channels.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { safeRecipeFilename } from "../../utils/recipeFilename.js";
+import { stableInRepoId } from "../../../shared/utils/recipeFilename.js";
 import type { HandlerDependencies } from "../types.js";
 import type { TerminalRecipe } from "../../types/index.js";
 import { typedHandle, typedHandleWithContext } from "../utils.js";
@@ -13,6 +14,14 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
   const handleProjectGetRecipes = async (projectId: string): Promise<TerminalRecipe[]> => {
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
+    }
+    const project = projectStore.getProjectById(projectId);
+    if (project) {
+      try {
+        await projectStore.reconcileProjectRecipes(project.path, projectId);
+      } catch (error) {
+        console.error(`[projectRecipes] Reconciliation failed for ${projectId}:`, error);
+      }
     }
     return projectStore.getRecipes(projectId);
   };
@@ -98,6 +107,21 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
     }
     if (typeof recipeId !== "string" || !recipeId) {
       throw new Error("Invalid recipe ID");
+    }
+    // If this recipe also exists in .daintree/ (e.g. a promoted legacy recipe
+    // whose ID doesn't start with inrepo-), clean the canonical copy too.
+    // Otherwise reconciliation on next load will resurrect it.
+    const project = projectStore.getProjectById(projectId);
+    if (project) {
+      try {
+        const inRepoRecipes = await projectStore.readInRepoRecipes(project.path);
+        const match = inRepoRecipes.find((r) => r.id === recipeId);
+        if (match) {
+          await projectStore.deleteInRepoRecipe(project.path, match.name);
+        }
+      } catch (error) {
+        console.error(`[projectRecipes] Failed to clean in-repo copy for ${recipeId}:`, error);
+      }
     }
     return projectStore.deleteRecipe(projectId, recipeId);
   };
@@ -229,7 +253,21 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
     }
+    let recipeId: string | null = null;
+    try {
+      const inRepoRecipes = await projectStore.readInRepoRecipes(project.path);
+      const match = inRepoRecipes.find((r) => r.name === recipeName);
+      if (match) recipeId = match.id;
+    } catch {
+      // If we can't read in-repo, fall back to the computed ID
+    }
     await projectStore.deleteInRepoRecipe(project.path, recipeName);
+    try {
+      const targetId = recipeId ?? stableInRepoId(recipeName);
+      await projectStore.deleteRecipe(projectId, targetId);
+    } catch {
+      // Best-effort: reconciliation on next load will catch any misses
+    }
   };
   handlers.push(
     typedHandle(CHANNELS.PROJECT_DELETE_INREPO_RECIPE, handleProjectDeleteInRepoRecipe)
