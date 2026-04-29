@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Check, X } from "lucide-react";
+import { HexColorInput, HexColorPicker } from "react-colorful";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 /**
- * Preset color picker — replaces the hidden native `<input type="color">` that
- * opened macOS NSColorPanel (a heavyweight floating window that obscured the
- * settings panel and offered no "reset" affordance).
+ * Preset color picker — inline HSV picker with a curated palette.
  *
- * Shows a 2×5 grid of curated dark-mode swatches, a "Clear" (inherit from
- * agent) option, and a "Custom…" escape hatch that invokes the native picker
- * only when the user explicitly wants a non-palette color.
+ * Earlier revisions opened macOS NSColorPanel via a hidden `<input type="color">`,
+ * but Radix's DismissableLayer fires focus/pointer events when the OS-level panel
+ * steals focus, dismissing the popover before the user could pick a color (#6118).
+ * Keeping all interaction inside the renderer avoids that race entirely.
  *
  * Palette borrowed from popular dark-themed tools (Linear, Raycast, GitHub
  * labels) — tuned for sufficient contrast on the dark Daintree background.
@@ -28,6 +28,16 @@ const PALETTE = [
   "#7c8fa8", // blue-gray
   "#abb2bf", // light gray
 ] as const;
+
+const FALLBACK_COLOR = "#e06c75";
+
+const isValidHex = (value: string): value is `#${string}` => /^#[0-9a-f]{6}$/i.test(value);
+
+const resolveInitialDraft = (color: string | undefined, agentColor: string): string => {
+  if (color && isValidHex(color)) return color;
+  if (isValidHex(agentColor)) return agentColor;
+  return FALLBACK_COLOR;
+};
 
 export interface PresetColorPickerProps {
   /** Current color (hex) or undefined to inherit from the agent's default. */
@@ -47,46 +57,31 @@ export function PresetColorPicker({
   ariaLabel = "Pick preset color",
 }: PresetColorPickerProps) {
   const [open, setOpen] = useState(false);
-  const nativeInputRef = useRef<HTMLInputElement>(null);
-  // True while the native `<input type="color">` has opened NSColorPanel and the
-  // renderer has lost focus. Used to suppress Radix's focus-outside dismissal so
-  // the hidden input stays mounted for the duration of the OS picker session.
-  const customColorOpenRef = useRef(false);
-
-  useEffect(() => {
-    const clearGuard = () => {
-      customColorOpenRef.current = false;
-    };
-    window.addEventListener("focus", clearGuard);
-    return () => window.removeEventListener("focus", clearGuard);
-  }, []);
+  const [draftColor, setDraftColor] = useState<string>(() =>
+    resolveInitialDraft(color, agentColor)
+  );
 
   const effectiveColor = color ?? agentColor;
 
-  const isValidHex = (value: string): value is `#${string}` => /^#[0-9a-f]{6}$/i.test(value);
+  const handleOpenChange = (next: boolean) => {
+    if (next) setDraftColor(resolveInitialDraft(color, agentColor));
+    setOpen(next);
+  };
 
-  const pickerValue =
-    color && isValidHex(color) ? color : isValidHex(agentColor) ? agentColor : "#e06c75";
+  const handleDone = () => {
+    if (isValidHex(draftColor)) {
+      onChange(draftColor);
+      setOpen(false);
+    }
+  };
 
-  const handleSelect = (next: string | undefined) => {
-    onChange(next);
+  const handleClear = () => {
+    onChange(undefined);
     setOpen(false);
   };
 
-  const handleCustomClick = () => {
-    if (!nativeInputRef.current) return;
-    customColorOpenRef.current = true;
-    nativeInputRef.current.click();
-  };
-
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) customColorOpenRef.current = false;
-        setOpen(next);
-      }}
-    >
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -104,21 +99,18 @@ export function PresetColorPicker({
       <PopoverContent
         align="start"
         sideOffset={6}
-        className="w-auto p-2 space-y-2"
+        className="w-56 p-3 space-y-3"
         data-testid="preset-color-picker-popover"
-        onFocusOutside={(e) => {
-          // NSColorPanel opens an OS-level window that steals renderer focus
-          // without firing a pointerdown. Suppress Radix's focus-outside close
-          // only while the guard is set AND the document has actually lost focus.
-          // The hasFocus check is a self-recovery: if the guard is stuck true
-          // (e.g., the OS picker never opened), normal in-window dismissals
-          // still work because they fire with document.hasFocus() === true.
-          if (customColorOpenRef.current && !document.hasFocus()) e.preventDefault();
-        }}
       >
+        <HexColorPicker
+          color={draftColor}
+          onChange={setDraftColor}
+          className="!w-full"
+          data-testid="preset-color-hex-picker"
+        />
         <div className="grid grid-cols-5 gap-1">
           {PALETTE.map((c) => {
-            const isSelected = color?.toLowerCase() === c.toLowerCase();
+            const isSelected = draftColor.toLowerCase() === c.toLowerCase();
             return (
               <button
                 key={c}
@@ -130,7 +122,7 @@ export function PresetColorPicker({
                 style={{ backgroundColor: c }}
                 aria-label={`Color ${c}`}
                 aria-pressed={isSelected}
-                onClick={() => handleSelect(c)}
+                onClick={() => setDraftColor(c)}
                 data-testid={`preset-color-swatch-${c.replace("#", "")}`}
               >
                 {isSelected && (
@@ -144,11 +136,20 @@ export function PresetColorPicker({
             );
           })}
         </div>
-        <div className="flex items-center justify-between gap-2 pt-1 border-t border-daintree-border/50">
+        <div className="flex items-center gap-2 pt-1 border-t border-daintree-border/50">
+          <HexColorInput
+            color={draftColor}
+            onChange={setDraftColor}
+            prefixed
+            className="w-20 rounded border border-daintree-border/60 bg-daintree-bg px-1.5 py-0.5 text-[11px] font-mono uppercase text-daintree-text focus:outline-none focus:border-daintree-accent"
+            aria-label="Hex color"
+            data-testid="preset-color-hex-input"
+          />
+          <div className="flex-1" />
           <button
             type="button"
             className="flex items-center gap-1 text-[11px] text-daintree-text/60 hover:text-daintree-text transition-colors"
-            onClick={() => handleSelect(undefined)}
+            onClick={handleClear}
             data-testid="preset-color-clear"
           >
             <X size={11} />
@@ -156,24 +157,13 @@ export function PresetColorPicker({
           </button>
           <button
             type="button"
-            className="text-[11px] text-daintree-accent hover:text-daintree-accent/80 transition-colors"
-            onClick={handleCustomClick}
-            data-testid="preset-color-custom"
+            className="text-[11px] font-medium text-daintree-accent hover:text-daintree-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleDone}
+            disabled={!isValidHex(draftColor)}
+            data-testid="preset-color-done"
           >
-            Custom…
+            Done
           </button>
-          <input
-            ref={nativeInputRef}
-            type="color"
-            className="sr-only"
-            value={pickerValue}
-            onChange={(e) => {
-              customColorOpenRef.current = false;
-              handleSelect(e.target.value);
-            }}
-            aria-hidden="true"
-            tabIndex={-1}
-          />
         </div>
       </PopoverContent>
     </Popover>
