@@ -360,7 +360,7 @@ describe("actions.list", () => {
     ]);
 
     const def = registry.get("actions.list")!();
-    await expect(def.run({ search: "alpha" }, stubCtx)).resolves.toBeDefined();
+    await expect(def.run({ search: "alpha" } as never, stubCtx)).resolves.toBeDefined();
   });
 
   it("matches by id when title/description are undefined", async () => {
@@ -374,7 +374,7 @@ describe("actions.list", () => {
     ]);
 
     const def = registry.get("actions.list")!();
-    const result = (await def.run({ search: "findMe" }, stubCtx)) as ActionManifestEntry[];
+    const result = (await def.run({ search: "findMe" } as never, stubCtx)) as ActionManifestEntry[];
 
     expect(result.map((a) => a.id)).toEqual(["actions.findMe"]);
   });
