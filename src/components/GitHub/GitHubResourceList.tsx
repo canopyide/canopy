@@ -1,7 +1,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef, type KeyboardEvent } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Search, ExternalLink, RefreshCw, WifiOff, Plus, Settings, X, Filter } from "lucide-react";
+import {
+  Search,
+  ExternalLink,
+  RefreshCw,
+  WifiOff,
+  Plus,
+  Settings,
+  X,
+  Filter,
+  Github,
+} from "lucide-react";
 import {
   buildCacheKey,
   getCache,
@@ -11,6 +21,7 @@ import {
 } from "@/lib/githubResourceCache";
 import { isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients/githubClient";
@@ -25,6 +36,7 @@ import {
   type IssueStateFilter,
   type PRStateFilter,
 } from "@/store/githubFilterStore";
+import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import type { GitHubIssue, GitHubPR, GitHubSortOrder } from "@shared/types/github";
 import { parseNumberQuery, MULTI_FETCH_CAP } from "@/lib/parseNumberQuery";
 import {
@@ -156,6 +168,17 @@ export function GitHubResourceList({
   const setSortOrder = useGitHubFilterStore((s) =>
     type === "issue" ? s.setIssueSortOrder : s.setPrSortOrder
   ) as (o: GitHubSortOrder) => void;
+  const githubConfigInitialized = useGitHubConfigStore((s) => s.isInitialized);
+  const githubConfig = useGitHubConfigStore((s) => s.config);
+  const showNoTokenEmptyState =
+    githubConfigInitialized && githubConfig !== null && !githubConfig.hasToken;
+
+  // Self-init the GitHub config store so the no-token empty state can render
+  // before any other code path has triggered initialization. This mirrors the
+  // pattern used in BulkCreateWorktreeDialog.
+  useEffect(() => {
+    void useGitHubConfigStore.getState().initialize();
+  }, []);
   const cacheKey = useMemo(
     () => buildCacheKey(projectPath, type, filterState as string, sortOrder),
     [projectPath, type, filterState, sortOrder]
@@ -230,6 +253,10 @@ export function GitHubResourceList({
       options?: { revalidating?: boolean; generation?: number; cacheKey?: string }
     ) => {
       if (!projectPath) return;
+      // Skip the fetch entirely when no token is configured. The render path
+      // shows a dedicated empty state; firing fetches here would just produce
+      // a token-error toast for users who haven't set up GitHub yet.
+      if (githubConfig && !githubConfig.hasToken) return;
 
       const isRevalidate = options?.revalidating ?? false;
 
@@ -349,7 +376,7 @@ export function GitHubResourceList({
         }
       }
     },
-    [projectPath, debouncedSearch, filterState, type, sortOrder, numberQuery]
+    [projectPath, debouncedSearch, filterState, type, sortOrder, numberQuery, githubConfig]
   );
 
   useEffect(() => {
@@ -430,6 +457,12 @@ export function GitHubResourceList({
 
   useEffect(() => {
     if (numberQuery === null) {
+      return;
+    }
+    // Skip numeric fetches when no token is configured — the empty state
+    // takes over the UI and any leftover store search would otherwise
+    // produce a token error.
+    if (githubConfig && !githubConfig.hasToken) {
       return;
     }
 
@@ -560,7 +593,7 @@ export function GitHubResourceList({
     return () => {
       abortController.abort();
     };
-  }, [numberQuery, projectPath, type, filterState, retryKey]);
+  }, [numberQuery, projectPath, type, filterState, retryKey, githubConfig]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -796,6 +829,26 @@ export function GitHubResourceList({
       </div>
     );
   };
+
+  if (showNoTokenEmptyState) {
+    return (
+      <div className="relative w-[450px] flex flex-col h-[500px]">
+        <EmptyState
+          variant="zero-data"
+          icon={<Github />}
+          title="GitHub not connected"
+          description="Add a personal access token to browse issues and pull requests for this project."
+          action={
+            <Button variant="outline" size="sm" onClick={handleOpenGitHubSettings}>
+              <Settings className="h-3.5 w-3.5" />
+              Add GitHub token
+            </Button>
+          }
+          className="flex-1 justify-center"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-[450px] flex flex-col h-[500px]">

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Workflow } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -303,20 +304,33 @@ export function RecipeManager({
             </h3>
             <p className="text-xs text-daintree-text/60 mb-3">Available across all projects</p>
             {globalRecipes.length === 0 ? (
-              <div className="text-sm text-daintree-text/60 text-center py-4 border border-dashed border-daintree-border rounded-[var(--radius-md)]">
-                No global recipes
+              <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
+                <EmptyState
+                  variant="zero-data"
+                  icon={<Workflow />}
+                  title="No global recipes"
+                  description="Save a terminal layout once and launch it in any project."
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => onCreateRecipe("global")}>
+                      <Plus className="h-3 w-3" />
+                      New global recipe
+                    </Button>
+                  }
+                />
               </div>
             ) : (
-              <div className="border border-daintree-border rounded-[var(--radius-md)] divide-y divide-daintree-border">
-                {globalRecipes.map((r) => renderRecipeRow(r))}
-              </div>
+              <>
+                <div className="border border-daintree-border rounded-[var(--radius-md)] divide-y divide-daintree-border">
+                  {globalRecipes.map((r) => renderRecipeRow(r))}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button variant="outline" size="sm" onClick={() => onCreateRecipe("global")}>
+                    <Plus className="h-3 w-3" />
+                    New global recipe
+                  </Button>
+                </div>
+              </>
             )}
-            <div className="flex gap-2 mt-2">
-              <Button variant="outline" size="sm" onClick={() => onCreateRecipe("global")}>
-                <Plus className="h-3 w-3" />
-                New global recipe
-              </Button>
-            </div>
           </div>
 
           {/* Team Recipes Section (in-repo) */}
@@ -348,32 +362,59 @@ export function RecipeManager({
             </h3>
             <p className="text-xs text-daintree-text/60 mb-3">Specific to the current project</p>
             {projectRecipes.length === 0 ? (
-              <div className="text-sm text-daintree-text/60 text-center py-4 border border-dashed border-daintree-border rounded-[var(--radius-md)]">
-                No project recipes
+              <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
+                <EmptyState
+                  variant="zero-data"
+                  icon={<Workflow />}
+                  title="No project recipes"
+                  description="Project recipes stay private to this machine until you save them to the repo."
+                  action={
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      <Button variant="outline" size="sm" onClick={() => onCreateRecipe("project")}>
+                        <Plus className="h-3 w-3" />
+                        New project recipe
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
+                        <FileDown className="h-3 w-3" />
+                        Import from clipboard
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void importRecipeFromFile(currentProject?.id)}
+                      >
+                        <FileUp className="h-3 w-3" />
+                        Import from file
+                      </Button>
+                    </div>
+                  }
+                />
               </div>
             ) : (
-              <div className="border border-daintree-border rounded-[var(--radius-md)] divide-y divide-daintree-border">
-                {projectRecipes.map((r) => renderRecipeRow(r))}
-              </div>
+              <>
+                <div className="border border-daintree-border rounded-[var(--radius-md)] divide-y divide-daintree-border">
+                  {projectRecipes.map((r) => renderRecipeRow(r))}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button variant="outline" size="sm" onClick={() => onCreateRecipe("project")}>
+                    <Plus className="h-3 w-3" />
+                    New project recipe
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
+                    <FileDown className="h-3 w-3" />
+                    Import from clipboard
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void importRecipeFromFile(currentProject?.id)}
+                  >
+                    <FileUp className="h-3 w-3" />
+                    Import from file
+                  </Button>
+                </div>
+              </>
             )}
-            <div className="flex gap-2 mt-2">
-              <Button variant="outline" size="sm" onClick={() => onCreateRecipe("project")}>
-                <Plus className="h-3 w-3" />
-                New project recipe
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
-                <FileDown className="h-3 w-3" />
-                Import from clipboard
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void importRecipeFromFile(currentProject?.id)}
-              >
-                <FileUp className="h-3 w-3" />
-                Import from file
-              </Button>
-            </div>
           </div>
         </AppDialog.Body>
       </AppDialog>
