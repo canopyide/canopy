@@ -427,7 +427,27 @@ describe("EnvVarEditor", () => {
       expect(optionTexts.some((t) => t.includes("DEBUG"))).toBe(false);
     });
 
-    it("clicking a suggestion replaces the key and closes the popover", () => {
+    it("clicking a suggestion commits the new key without requiring a follow-up blur", () => {
+      const { getAllByTestId } = render(
+        <EnvVarEditor env={{ FOO: "v" }} onChange={onChange} suggestions={sampleSuggestions} />
+      );
+      const options = getAllByTestId("env-editor-key-suggestion");
+      const anthropicOption = options.find((el) =>
+        (el.textContent ?? "").includes("ANTHROPIC_API_KEY")
+      );
+      expect(anthropicOption).toBeTruthy();
+
+      // No blur after click — picker selections must commit synchronously,
+      // otherwise the blur-before-click race (browser fires input.blur before
+      // option.click) loses the selection: the blur commits the OLD key, then
+      // the click updates rows but never commits, leaving the parent stuck
+      // with the pre-pick value.
+      fireEvent.click(anthropicOption!);
+
+      expect(onChange).toHaveBeenLastCalledWith({ ANTHROPIC_API_KEY: "v" });
+    });
+
+    it("blur firing before a suggestion click does NOT lose the selection", () => {
       const { getAllByTestId } = render(
         <EnvVarEditor env={{ FOO: "v" }} onChange={onChange} suggestions={sampleSuggestions} />
       );
@@ -438,8 +458,9 @@ describe("EnvVarEditor", () => {
       );
       expect(anthropicOption).toBeTruthy();
 
-      fireEvent.click(anthropicOption!);
+      // Replicate the real browser event order: blur first, then click.
       fireEvent.blur(keyInput);
+      fireEvent.click(anthropicOption!);
 
       expect(onChange).toHaveBeenLastCalledWith({ ANTHROPIC_API_KEY: "v" });
     });
@@ -454,11 +475,10 @@ describe("EnvVarEditor", () => {
       fireEvent.keyDown(keyInput, { key: "ArrowDown" });
       expect(keyInput.getAttribute("aria-expanded")).toBe("true");
 
+      // Enter on a highlighted suggestion goes through the picker-select path
+      // and commits synchronously — no follow-up blur required.
       fireEvent.keyDown(keyInput, { key: "Enter" });
-      fireEvent.blur(keyInput);
 
-      // Row "FOO" had no override key in suggestions — first available is
-      // ANTHROPIC_API_KEY. After Enter, popover closes and value commits.
       expect(keyInput.getAttribute("aria-expanded")).toBe("false");
       expect(onChange).toHaveBeenLastCalledWith({ ANTHROPIC_API_KEY: "v" });
     });

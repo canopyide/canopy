@@ -168,6 +168,14 @@ interface EnvVarKeyCellProps {
   isDuplicate: boolean;
   onChange: (rowId: string, newKey: string) => void;
   onBlur: (rowId: string) => void;
+  /**
+   * Picker selection — must commit synchronously. Distinct from `onChange` so
+   * the parent can both update the row AND drive `onChange(env)` in the same
+   * pass (clicking a suggestion otherwise loses the selection: the input's
+   * blur fires before the option's click, and the blur path commits the OLD
+   * key before the click can update the row).
+   */
+  onSelect: (rowId: string, newKey: string) => void;
   registerRef: (rowId: string, el: HTMLInputElement | null) => void;
 }
 
@@ -191,6 +199,7 @@ function EnvVarKeyCell({
   isDuplicate,
   onChange,
   onBlur,
+  onSelect,
   registerRef,
 }: EnvVarKeyCellProps) {
   const [open, setOpen] = useState(false);
@@ -215,10 +224,10 @@ function EnvVarKeyCell({
 
   const handleSelect = useCallback(
     (key: string) => {
-      onChange(rowId, key);
+      onSelect(rowId, key);
       setOpen(false);
     },
-    [onChange, rowId]
+    [onSelect, rowId]
   );
 
   const showChevron = availableSuggestions.length > 0 && !disabled;
@@ -305,6 +314,13 @@ function EnvVarKeyCell({
               type="button"
               aria-label="Show key suggestions"
               tabIndex={-1}
+              onMouseDown={(e) => {
+                // Keep focus on the input — without this, clicking the chevron
+                // moves focus to the button and subsequent keyboard nav (Arrow,
+                // Enter) wouldn't fire on the input's onKeyDown handler.
+                e.preventDefault();
+                inputRef.current?.focus();
+              }}
               className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-daintree-text/40 hover:text-daintree-text/70 hover:bg-daintree-bg/60 transition-colors"
               data-testid="env-editor-key-suggestions-trigger"
             >
@@ -501,6 +517,23 @@ export function EnvVarEditor({
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r)));
   }, []);
 
+  const handleKeySelect = useCallback(
+    (rowId: string, newKey: string) => {
+      // Picker selection commits synchronously. The input's blur fires before
+      // the option's click, so a typing-style onChange + later blur loses the
+      // pick (blur commits the OLD key before the click can update rows).
+      // Mark the row touched so a subsequent blank-out still surfaces the
+      // empty-key error.
+      setTouchedKeys((prev) => ({ ...prev, [rowId]: true }));
+      setRows((prev) => {
+        const next = prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r));
+        commitIfValid(next);
+        return next;
+      });
+    },
+    [commitIfValid]
+  );
+
   const handleValueChange = useCallback((rowId: string, newValue: string) => {
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, value: newValue } : r)));
   }, []);
@@ -695,6 +728,7 @@ export function EnvVarEditor({
                   isDuplicate={isDuplicate}
                   onChange={handleKeyChange}
                   onBlur={handleKeyBlur}
+                  onSelect={handleKeySelect}
                   registerRef={registerKeyInput}
                 />
                 {/* Value cell */}
