@@ -20,12 +20,39 @@ const storeState = vi.hoisted(() => ({
   } as Record<string, unknown>,
 }));
 
-const storeMock = vi.hoisted(() => ({
-  get: vi.fn((key: string) => storeState.data[key]),
-  set: vi.fn((key: string, value: unknown) => {
-    storeState.data[key] = value;
-  }),
-}));
+const storeMock = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getDeep = (key: string): any => {
+    if (!key.includes(".")) return storeState.data[key];
+    const parts = key.split(".");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = storeState.data;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  };
+  const setDeep = (key: string, value: unknown): void => {
+    if (!key.includes(".")) {
+      storeState.data[key] = value;
+      return;
+    }
+    const parts = key.split(".");
+    const last = parts.pop()!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = storeState.data;
+    for (const p of parts) {
+      if (typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
+      cur = cur[p];
+    }
+    cur[last] = value;
+  };
+  return {
+    get: vi.fn(getDeep),
+    set: vi.fn(setDeep),
+  };
+});
 
 const osState = vi.hoisted(() => ({ totalmem: 8 * 1024 ** 3 }));
 

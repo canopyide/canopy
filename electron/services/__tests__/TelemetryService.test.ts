@@ -11,12 +11,44 @@ const storeMock = vi.hoisted(() => {
   const data: Record<string, unknown> = {
     privacy: { telemetryLevel: "off", hasSeenPrompt: false, logRetentionDays: 30 },
   };
-  return {
-    get: vi.fn((key: string) => data[key]),
-    set: vi.fn((key: string, value: unknown) => {
+  // Mirror conf's dot-notation semantics so production code that does
+  // `store.set("privacy.telemetryLevel", level)` updates the nested object
+  // rather than a flat key — otherwise reads via `store.get("privacy")` see
+  // stale state and code paths gated on the new value (e.g. mid-session
+  // telemetry init) skip themselves in tests.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getDeep = (key: string): any => {
+    if (!key.includes(".")) return data[key];
+    const parts = key.split(".");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = data;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  };
+  const setDeep = (key: string, value: unknown): void => {
+    if (!key.includes(".")) {
       data[key] = value;
-    }),
+      return;
+    }
+    const parts = key.split(".");
+    const last = parts.pop()!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = data;
+    for (const p of parts) {
+      if (typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
+      cur = cur[p];
+    }
+    cur[last] = value;
+  };
+  return {
+    get: vi.fn(getDeep),
+    set: vi.fn(setDeep),
     _data: data,
+    _getDeep: getDeep,
+    _setDeep: setDeep,
   };
 });
 
@@ -60,7 +92,11 @@ function setPrivacy(patch: {
     ...(storeMock._data.privacy as Record<string, unknown>),
     ...patch,
   };
-  storeMock.get.mockImplementation((key: string) => storeMock._data[key]);
+  // Restore the deep impls — tests that override `get` via `mockReturnValue`
+  // would otherwise leak across test boundaries (vi.clearAllMocks doesn't
+  // reset implementations).
+  storeMock.get.mockImplementation(storeMock._getDeep);
+  storeMock.set.mockImplementation(storeMock._setDeep);
 }
 
 describe("sanitizePath", () => {
@@ -397,22 +433,20 @@ describe("setTelemetryLevel", () => {
 
   it("writes telemetryLevel to privacy without touching any legacy telemetry key", async () => {
     await setTelemetryLevel("errors");
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "privacy",
-      expect.objectContaining({ telemetryLevel: "errors" })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("privacy.telemetryLevel", "errors");
     for (const call of storeMock.set.mock.calls) {
       expect(call[0]).not.toBe("telemetry");
+      expect(call[0]).not.toMatch(/^telemetry($|\.)/);
     }
   });
 
   it("preserves hasSeenPrompt when writing telemetryLevel", async () => {
     setPrivacy({ telemetryLevel: "off", hasSeenPrompt: true });
     await setTelemetryLevel("full");
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "privacy",
-      expect.objectContaining({ telemetryLevel: "full", hasSeenPrompt: true })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("privacy.telemetryLevel", "full");
+    // Dot-path writes don't touch sibling fields — hasSeenPrompt stays true.
+    expect((storeMock._data.privacy as { hasSeenPrompt: boolean }).hasSeenPrompt).toBe(true);
+    expect((storeMock._data.privacy as { telemetryLevel: string }).telemetryLevel).toBe("full");
   });
 });
 
@@ -500,19 +534,13 @@ describe("setTelemetryEnabled (compat shim)", () => {
 
   it("maps true to 'errors'", async () => {
     await setTelemetryEnabled(true);
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "privacy",
-      expect.objectContaining({ telemetryLevel: "errors" })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("privacy.telemetryLevel", "errors");
   });
 
   it("maps false to 'off'", async () => {
     setPrivacy({ telemetryLevel: "errors" });
     await setTelemetryEnabled(false);
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "privacy",
-      expect.objectContaining({ telemetryLevel: "off" })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("privacy.telemetryLevel", "off");
   });
 });
 
@@ -545,22 +573,20 @@ describe("markTelemetryPromptShown", () => {
 
   it("writes hasSeenPrompt=true on the privacy object (not telemetry)", () => {
     markTelemetryPromptShown();
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "privacy",
-      expect.objectContaining({ hasSeenPrompt: true })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("privacy.hasSeenPrompt", true);
     for (const call of storeMock.set.mock.calls) {
       expect(call[0]).not.toBe("telemetry");
+      expect(call[0]).not.toMatch(/^telemetry($|\.)/);
     }
   });
 
   it("preserves telemetryLevel and other privacy fields", () => {
     setPrivacy({ telemetryLevel: "full", hasSeenPrompt: false });
     markTelemetryPromptShown();
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "privacy",
-      expect.objectContaining({ telemetryLevel: "full", hasSeenPrompt: true })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("privacy.hasSeenPrompt", true);
+    // Dot-path write must not touch sibling fields.
+    expect((storeMock._data.privacy as { telemetryLevel: string }).telemetryLevel).toBe("full");
+    expect((storeMock._data.privacy as { hasSeenPrompt: boolean }).hasSeenPrompt).toBe(true);
   });
 });
 

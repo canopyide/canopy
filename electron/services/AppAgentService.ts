@@ -12,8 +12,11 @@ export class AppAgentService {
   }
 
   setConfig(config: Partial<AppAgentConfig>): void {
-    const currentConfig = store.get("appAgentConfig");
-    store.set("appAgentConfig", { ...currentConfig, ...config });
+    if (!config || typeof config !== "object") return;
+    for (const [field, value] of Object.entries(config)) {
+      if (value === undefined) continue;
+      store.set(`appAgentConfig.${field}`, value);
+    }
   }
 
   hasApiKey(): boolean {

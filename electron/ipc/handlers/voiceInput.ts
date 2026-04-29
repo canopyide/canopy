@@ -443,8 +443,11 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
   };
 
   const handleSetSettings = async (patch: Partial<VoiceInputSettings>) => {
-    const current = getVoiceSettings();
-    store.set("voiceInput", { ...current, ...patch });
+    if (!patch || typeof patch !== "object") return;
+    for (const [field, value] of Object.entries(patch)) {
+      if (value === undefined) continue;
+      store.set(`voiceInput.${field}`, value);
+    }
   };
 
   const handleStart = async (ctx: IpcContext) => {

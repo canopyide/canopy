@@ -84,15 +84,19 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     };
     // Strip retired legacy keys — never persist them back
     const { selected: _s, enabled: _e, ...safeEntry } = merged as Record<string, unknown>;
-    const updatedSettings = {
-      ...currentSettings.root,
-      agents: {
-        ...currentSettings.agents,
-        [safeAgentType]: safeEntry,
-      },
+    const updatedAgents = {
+      ...currentSettings.agents,
+      [safeAgentType]: safeEntry,
     };
-    store.set("agentSettings", updatedSettings);
-    return updatedSettings;
+    // Write the agents record at slice.field level rather than the whole slice,
+    // so other agentSettings root defaults aren't baked into config.json. We can't
+    // address per-agent leaves via dot-path because user-defined agent IDs may
+    // contain dots, which dot-prop would interpret as nested keys.
+    store.set("agentSettings.agents", updatedAgents);
+    return {
+      ...currentSettings.root,
+      agents: updatedAgents,
+    };
   };
   handlers.push(typedHandle(CHANNELS.AGENT_SETTINGS_SET, handleAgentSettingsSet));
 
@@ -102,16 +106,17 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
       const currentSettings = normalizeAgentSettings(
         store.get("agentSettings", DEFAULT_AGENT_SETTINGS)
       );
-      const updatedSettings = {
-        ...currentSettings.root,
-        agents: {
-          ...currentSettings.agents,
-          [safeAgentType]: DEFAULT_AGENT_SETTINGS.agents[safeAgentType] ?? {},
-        },
+      const updatedAgents = {
+        ...currentSettings.agents,
+        [safeAgentType]: DEFAULT_AGENT_SETTINGS.agents[safeAgentType] ?? {},
       };
-      store.set("agentSettings", updatedSettings);
-      return updatedSettings;
+      store.set("agentSettings.agents", updatedAgents);
+      return {
+        ...currentSettings.root,
+        agents: updatedAgents,
+      };
     } else {
+      // Full reset: replace the whole slice with defaults intentionally.
       store.set("agentSettings", DEFAULT_AGENT_SETTINGS);
       return DEFAULT_AGENT_SETTINGS;
     }

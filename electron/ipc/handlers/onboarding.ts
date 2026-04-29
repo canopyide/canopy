@@ -96,63 +96,46 @@ export function registerOnboardingHandlers(): () => void {
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_SET_STEP, (arg: unknown) => {
-      const state = getOnboardingState();
       if (arg !== null && typeof arg === "object" && !Array.isArray(arg)) {
         const payload = arg as { step?: unknown; agentSetupIds?: unknown };
         const step = typeof payload.step === "string" ? payload.step : null;
-        const agentSetupIds = Array.isArray(payload.agentSetupIds)
-          ? (payload.agentSetupIds as string[]).filter((id) => typeof id === "string")
-          : state.agentSetupIds;
-        store.set("onboarding", { ...state, currentStep: step, agentSetupIds });
+        store.set("onboarding.currentStep", step);
+        if (Array.isArray(payload.agentSetupIds)) {
+          const agentSetupIds = (payload.agentSetupIds as unknown[]).filter(
+            (id): id is string => typeof id === "string"
+          );
+          store.set("onboarding.agentSetupIds", agentSetupIds);
+        }
       } else {
-        store.set("onboarding", {
-          ...state,
-          currentStep: typeof arg === "string" ? arg : null,
-        });
+        store.set("onboarding.currentStep", typeof arg === "string" ? arg : null);
       }
     })
   );
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_COMPLETE, () => {
-      const state = getOnboardingState();
-      store.set("onboarding", {
-        ...state,
-        completed: true,
-        currentStep: null,
-        agentSetupIds: [],
-      });
+      store.set("onboarding.completed", true);
+      store.set("onboarding.currentStep", null);
+      store.set("onboarding.agentSetupIds", []);
       setOnboardingCompleteTag(true);
     })
   );
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_MARK_TOAST_SEEN, () => {
-      const state = getOnboardingState();
-      store.set("onboarding", {
-        ...state,
-        firstRunToastSeen: true,
-      });
+      store.set("onboarding.firstRunToastSeen", true);
     })
   );
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_MARK_NEWSLETTER_SEEN, () => {
-      const state = getOnboardingState();
-      store.set("onboarding", {
-        ...state,
-        newsletterPromptSeen: true,
-      });
+      store.set("onboarding.newsletterPromptSeen", true);
     })
   );
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_MARK_WAITING_NUDGE_SEEN, () => {
-      const state = getOnboardingState();
-      store.set("onboarding", {
-        ...state,
-        waitingNudgeSeen: true,
-      });
+      store.set("onboarding.waitingNudgeSeen", true);
     })
   );
 
@@ -172,27 +155,23 @@ export function registerOnboardingHandlers(): () => void {
         }
       }
       if (!changed) return state;
-      const updated: OnboardingState = { ...state, seenAgentIds: Array.from(existing) };
-      store.set("onboarding", updated);
-      return updated;
+      const seenAgentIds = Array.from(existing);
+      store.set("onboarding.seenAgentIds", seenAgentIds);
+      return { ...state, seenAgentIds };
     })
   );
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_DISMISS_WELCOME_CARD, () => {
-      const state = getOnboardingState();
-      const updated: OnboardingState = { ...state, welcomeCardDismissed: true };
-      store.set("onboarding", updated);
-      return updated;
+      store.set("onboarding.welcomeCardDismissed", true);
+      return { ...getOnboardingState(), welcomeCardDismissed: true };
     })
   );
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_DISMISS_SETUP_BANNER, () => {
-      const state = getOnboardingState();
-      const updated: OnboardingState = { ...state, setupBannerDismissed: true };
-      store.set("onboarding", updated);
-      return updated;
+      store.set("onboarding.setupBannerDismissed", true);
+      return { ...getOnboardingState(), setupBannerDismissed: true };
     })
   );
 
@@ -200,21 +179,13 @@ export function registerOnboardingHandlers(): () => void {
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_CHECKLIST_DISMISS, () => {
-      const state = getOnboardingState();
-      store.set("onboarding", {
-        ...state,
-        checklist: { ...state.checklist, dismissed: true },
-      });
+      store.set("onboarding.checklist.dismissed", true);
     })
   );
 
   cleanups.push(
     typedHandle(CHANNELS.ONBOARDING_CHECKLIST_MARK_CELEBRATION_SHOWN, () => {
-      const state = getOnboardingState();
-      store.set("onboarding", {
-        ...state,
-        checklist: { ...state.checklist, celebrationShown: true },
-      });
+      store.set("onboarding.checklist.celebrationShown", true);
     })
   );
 
@@ -230,13 +201,7 @@ export function registerOnboardingHandlers(): () => void {
       const state = getOnboardingState();
       const key = item as keyof typeof state.checklist.items;
       if (state.checklist.items[key]) return;
-      store.set("onboarding", {
-        ...state,
-        checklist: {
-          ...state.checklist,
-          items: { ...state.checklist.items, [key]: true },
-        },
-      });
+      store.set(`onboarding.checklist.items.${key}`, true);
     })
   );
 

@@ -270,8 +270,6 @@ export function registerAppStateHandlers(): () => void {
       // store schema to keep the `updates` object compatible with persistence types.
       const partialState = incoming as Partial<typeof store.store.appState>;
 
-      const currentState = store.get("appState");
-
       const updates: Partial<typeof store.store.appState> = {};
 
       if ("sidebarWidth" in partialState) {
@@ -470,7 +468,17 @@ export function registerAppStateHandlers(): () => void {
         }
       }
 
-      store.set("appState", { ...currentState, ...updates });
+      for (const [field, value] of Object.entries(updates)) {
+        if (value === undefined) {
+          // electron-store v11 throws on `set(key, undefined)`. Use delete to
+          // clear the field — matches the prior bulk-spread behavior, where
+          // `JSON.stringify` silently omitted undefined values from the slice.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (store.delete as (k: string) => void)(`appState.${field}` as any);
+        } else {
+          store.set(`appState.${field}`, value);
+        }
+      }
 
       // Note: We intentionally do NOT save per-project terminal state.
       // Terminals stay running in the backend and are discovered on hydration.

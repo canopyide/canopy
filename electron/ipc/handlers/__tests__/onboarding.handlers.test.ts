@@ -9,11 +9,36 @@ vi.mock("electron", () => ({ ipcMain: ipcMainMock }));
 
 const storeMock = vi.hoisted(() => {
   const data: Record<string, unknown> = {};
-  return {
-    get: vi.fn((key: string) => data[key]),
-    set: vi.fn((key: string, value: unknown) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getDeep = (key: string): any => {
+    if (!key.includes(".")) return data[key];
+    const parts = key.split(".");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = data;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  };
+  const setDeep = (key: string, value: unknown): void => {
+    if (!key.includes(".")) {
       data[key] = value;
-    }),
+      return;
+    }
+    const parts = key.split(".");
+    const last = parts.pop()!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = data;
+    for (const p of parts) {
+      if (typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
+      cur = cur[p];
+    }
+    cur[last] = value;
+  };
+  return {
+    get: vi.fn(getDeep),
+    set: vi.fn(setDeep),
     _data: data,
   };
 });
@@ -119,10 +144,8 @@ describe("registerOnboardingHandlers — discovery IPC", () => {
     };
     expect(result.seenAgentIds.sort()).toEqual(["claude", "codex", "gemini"]);
     expect(storeMock.set).toHaveBeenCalledWith(
-      "onboarding",
-      expect.objectContaining({
-        seenAgentIds: expect.arrayContaining(["claude", "codex", "gemini"]),
-      })
+      "onboarding.seenAgentIds",
+      expect.arrayContaining(["claude", "codex", "gemini"])
     );
   });
 
@@ -163,10 +186,7 @@ describe("registerOnboardingHandlers — discovery IPC", () => {
     const dismiss = getHandler("onboarding:dismiss-welcome-card");
     const result = dismiss(null) as { welcomeCardDismissed: boolean };
     expect(result.welcomeCardDismissed).toBe(true);
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "onboarding",
-      expect.objectContaining({ welcomeCardDismissed: true })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("onboarding.welcomeCardDismissed", true);
   });
 
   it("dismissWelcomeCard is idempotent once dismissed", () => {
@@ -204,10 +224,7 @@ describe("registerOnboardingHandlers — discovery IPC", () => {
     const dismiss = getHandler("onboarding:dismiss-setup-banner");
     const result = dismiss(null) as { setupBannerDismissed: boolean };
     expect(result.setupBannerDismissed).toBe(true);
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "onboarding",
-      expect.objectContaining({ setupBannerDismissed: true })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("onboarding.setupBannerDismissed", true);
   });
 
   it("dismissSetupBanner is idempotent once dismissed", () => {

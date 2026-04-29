@@ -189,16 +189,11 @@ describe("ai handler payload validation", () => {
       } as never
     );
 
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "agentSettings",
-      expect.objectContaining({
-        agents: {
-          claude: {
-            customFlags: "--foo",
-          },
-        },
-      })
-    );
+    expect(storeMock.set).toHaveBeenCalledWith("agentSettings.agents", {
+      claude: {
+        customFlags: "--foo",
+      },
+    });
     expect(result).toEqual(
       expect.objectContaining({
         agents: expect.objectContaining({
@@ -225,13 +220,10 @@ describe("ai handler payload validation", () => {
     const result = await handler({} as never, "claude");
 
     expect(storeMock.set).toHaveBeenCalledWith(
-      "agentSettings",
+      "agentSettings.agents",
       expect.objectContaining({
-        misc: true,
-        agents: expect.objectContaining({
-          claude: expect.objectContaining({
-            dangerousEnabled: false,
-          }),
+        claude: expect.objectContaining({
+          dangerousEnabled: false,
         }),
       })
     );
@@ -269,13 +261,11 @@ describe("ai handler payload validation", () => {
     );
 
     expect(storeMock.set).toHaveBeenCalledWith(
-      "agentSettings",
+      "agentSettings.agents",
       expect.objectContaining({
-        agents: {
-          claude: expect.objectContaining({
-            pinned: false,
-          }),
-        },
+        claude: expect.objectContaining({
+          pinned: false,
+        }),
       })
     );
     expect(result).toEqual(
@@ -297,12 +287,10 @@ describe("ai handler payload validation", () => {
     await handler({} as never, " claude ");
 
     expect(storeMock.set).toHaveBeenCalledWith(
-      "agentSettings",
+      "agentSettings.agents",
       expect.objectContaining({
-        agents: expect.objectContaining({
-          claude: expect.objectContaining({
-            dangerousEnabled: false,
-          }),
+        claude: expect.objectContaining({
+          dangerousEnabled: false,
         }),
       })
     );

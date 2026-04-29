@@ -121,8 +121,9 @@ export function registerNotificationHandlers(_deps: HandlerDependencies): () => 
       allowed.quietHoursWeekdays = Array.from(new Set(days));
     }
 
-    const current = store.get("notificationSettings");
-    store.set("notificationSettings", { ...current, ...allowed });
+    for (const [field, value] of Object.entries(allowed)) {
+      store.set(`notificationSettings.${field}`, value);
+    }
   };
 
   const handlePlaySound = async (soundFile: unknown): Promise<void> => {

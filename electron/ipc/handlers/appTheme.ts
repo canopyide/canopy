@@ -40,10 +40,10 @@ function getAppThemeConfig(): AppThemeConfig {
       );
       if (result.migrated) {
         try {
-          store.set("appTheme", {
-            ...cfg,
-            customSchemes: result.schemes.length > 0 ? (result.schemes as AppColorScheme[]) : [],
-          } satisfies AppThemeConfig);
+          store.set(
+            "appTheme.customSchemes",
+            result.schemes.length > 0 ? (result.schemes as AppColorScheme[]) : []
+          );
         } catch {
           // Non-fatal: config parsed but migration write failed
         }
@@ -77,11 +77,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
         console.warn("Invalid app theme colorSchemeId:", schemeId);
         return;
       }
-      const current = getAppThemeConfig();
-      store.set("appTheme", {
-        ...current,
-        colorSchemeId: schemeId.trim(),
-      } satisfies AppThemeConfig);
+      store.set("appTheme.colorSchemeId", schemeId.trim());
     })
   );
 
@@ -92,11 +88,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
         console.warn("Invalid app custom schemes:", result.error.message);
         return;
       }
-      const current = getAppThemeConfig();
-      store.set("appTheme", {
-        ...current,
-        customSchemes: result.data as AppColorScheme[],
-      } satisfies AppThemeConfig);
+      store.set("appTheme.customSchemes", result.data as AppColorScheme[]);
     })
   );
 
@@ -107,11 +99,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
         console.warn("Invalid color vision mode:", mode);
         return;
       }
-      const current = getAppThemeConfig();
-      store.set("appTheme", {
-        ...current,
-        colorVisionMode: mode,
-      } satisfies AppThemeConfig);
+      store.set("appTheme.colorVisionMode", mode);
     })
   );
 
@@ -179,30 +167,21 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
   handlers.push(
     typedHandle(CHANNELS.APP_THEME_SET_FOLLOW_SYSTEM, async (enabled: boolean) => {
       if (typeof enabled !== "boolean") return;
-      const current = getAppThemeConfig();
-      store.set("appTheme", { ...current, followSystem: enabled } satisfies AppThemeConfig);
+      store.set("appTheme.followSystem", enabled);
     })
   );
 
   handlers.push(
     typedHandle(CHANNELS.APP_THEME_SET_PREFERRED_DARK_SCHEME, async (schemeId: string) => {
       if (typeof schemeId !== "string" || !schemeId.trim()) return;
-      const current = getAppThemeConfig();
-      store.set("appTheme", {
-        ...current,
-        preferredDarkSchemeId: schemeId.trim(),
-      } satisfies AppThemeConfig);
+      store.set("appTheme.preferredDarkSchemeId", schemeId.trim());
     })
   );
 
   handlers.push(
     typedHandle(CHANNELS.APP_THEME_SET_PREFERRED_LIGHT_SCHEME, async (schemeId: string) => {
       if (typeof schemeId !== "string" || !schemeId.trim()) return;
-      const current = getAppThemeConfig();
-      store.set("appTheme", {
-        ...current,
-        preferredLightSchemeId: schemeId.trim(),
-      } satisfies AppThemeConfig);
+      store.set("appTheme.preferredLightSchemeId", schemeId.trim());
     })
   );
 
@@ -216,11 +195,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
         .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
         .map((id) => id.trim());
       const sanitized = Array.from(new Set(trimmed)).slice(0, 5);
-      const current = getAppThemeConfig();
-      store.set("appTheme", {
-        ...current,
-        recentSchemeIds: sanitized,
-      } satisfies AppThemeConfig);
+      store.set("appTheme.recentSchemeIds", sanitized);
     })
   );
 
@@ -234,11 +209,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
           return;
         }
       }
-      const current = getAppThemeConfig();
-      store.set("appTheme", {
-        ...current,
-        accentColorOverride: normalized,
-      } satisfies AppThemeConfig);
+      store.set("appTheme.accentColorOverride", normalized);
     })
   );
 
@@ -258,7 +229,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
         ? (config.preferredDarkSchemeId ?? DEFAULT_DARK_SCHEME)
         : (config.preferredLightSchemeId ?? DEFAULT_LIGHT_SCHEME);
 
-      store.set("appTheme", { ...config, colorSchemeId: schemeId } satisfies AppThemeConfig);
+      store.set("appTheme.colorSchemeId", schemeId);
 
       const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
       if (!win || win.isDestroyed()) return;

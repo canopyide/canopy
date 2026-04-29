@@ -35,10 +35,10 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
         );
         if (result.migrated) {
           try {
-            store.set("terminalConfig", {
-              ...config,
-              customSchemes: result.schemes.length > 0 ? result.schemes : [],
-            });
+            store.set(
+              "terminalConfig.customSchemes",
+              result.schemes.length > 0 ? result.schemes : []
+            );
           } catch {
             // Non-fatal: config parsed but migration write failed
           }
@@ -72,8 +72,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn(error);
       throw new Error(error);
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, scrollbackLines });
+    store.set("terminalConfig.scrollbackLines", scrollbackLines);
   };
   handlers.push(
     typedHandle(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK, handleTerminalConfigSetScrollback)
@@ -84,8 +83,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal performanceMode:", performanceMode);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, performanceMode });
+    store.set("terminalConfig.performanceMode", performanceMode);
   };
   handlers.push(
     typedHandle(
@@ -103,8 +101,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal fontSize (out of range 8-24):", fontSize);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, fontSize });
+    store.set("terminalConfig.fontSize", fontSize);
   };
   handlers.push(
     typedHandle(CHANNELS.TERMINAL_CONFIG_SET_FONT_SIZE, handleTerminalConfigSetFontSize)
@@ -115,9 +112,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal fontFamily:", fontFamily);
       return;
     }
-    const trimmedFontFamily = fontFamily.trim();
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, fontFamily: trimmedFontFamily });
+    store.set("terminalConfig.fontFamily", fontFamily.trim());
   };
   handlers.push(
     typedHandle(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY, handleTerminalConfigSetFontFamily)
@@ -128,8 +123,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal hybridInputEnabled:", enabled);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, hybridInputEnabled: enabled });
+    store.set("terminalConfig.hybridInputEnabled", enabled);
   };
   handlers.push(
     typedHandle(
@@ -143,8 +137,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal hybridInputAutoFocus:", enabled);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, hybridInputAutoFocus: enabled });
+    store.set("terminalConfig.hybridInputAutoFocus", enabled);
   };
   handlers.push(
     typedHandle(
@@ -158,8 +151,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal colorScheme:", schemeId);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, colorSchemeId: schemeId.trim() });
+    store.set("terminalConfig.colorSchemeId", schemeId.trim());
   };
   handlers.push(
     typedHandle(CHANNELS.TERMINAL_CONFIG_SET_COLOR_SCHEME, handleTerminalConfigSetColorScheme)
@@ -171,8 +163,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal custom schemes:", result.error.message);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, customSchemes: result.data });
+    store.set("terminalConfig.customSchemes", result.data);
   };
   handlers.push(
     typedHandle(CHANNELS.TERMINAL_CONFIG_SET_CUSTOM_SCHEMES, handleTerminalConfigSetCustomSchemes)
@@ -187,8 +178,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
       .map((id) => id.trim());
     const sanitized = Array.from(new Set(trimmed)).slice(0, 5);
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, recentSchemeIds: sanitized });
+    store.set("terminalConfig.recentSchemeIds", sanitized);
   };
   handlers.push(
     typedHandle(
@@ -202,8 +192,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid screen reader mode:", mode);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, screenReaderMode: mode });
+    store.set("terminalConfig.screenReaderMode", mode);
   };
   handlers.push(
     typedHandle(
@@ -217,8 +206,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal resourceMonitoringEnabled:", enabled);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, resourceMonitoringEnabled: enabled });
+    store.set("terminalConfig.resourceMonitoringEnabled", enabled);
     deps?.ptyClient?.setResourceMonitoring(enabled);
   };
   handlers.push(
@@ -233,8 +221,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn("Invalid terminal memoryLeakDetectionEnabled:", enabled);
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, memoryLeakDetectionEnabled: enabled });
+    store.set("terminalConfig.memoryLeakDetectionEnabled", enabled);
   };
   handlers.push(
     typedHandle(
@@ -255,11 +242,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       );
       return;
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", {
-      ...currentConfig,
-      memoryLeakAutoRestartThresholdMb: thresholdMb,
-    });
+    store.set("terminalConfig.memoryLeakAutoRestartThresholdMb", thresholdMb);
   };
   handlers.push(
     typedHandle(
@@ -279,8 +262,7 @@ export function registerTerminalConfigHandlers(deps?: HandlerDependencies): () =
       console.warn(error);
       throw new Error(error);
     }
-    const currentConfig = getTerminalConfigObject();
-    store.set("terminalConfig", { ...currentConfig, cachedProjectViews });
+    store.set("terminalConfig.cachedProjectViews", cachedProjectViews);
     deps?.projectViewManager?.setCachedViewLimit(cachedProjectViews);
   };
   handlers.push(

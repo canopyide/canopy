@@ -31,12 +31,39 @@ const storeState = vi.hoisted(() => ({
   data: {} as Record<string, unknown>,
 }));
 
-const storeMock = vi.hoisted(() => ({
-  get: vi.fn((key: string) => storeState.data[key]),
-  set: vi.fn((key: string, value: unknown) => {
-    storeState.data[key] = value;
-  }),
-}));
+const storeMock = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getDeep = (key: string): any => {
+    if (!key.includes(".")) return storeState.data[key];
+    const parts = key.split(".");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = storeState.data;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  };
+  const setDeep = (key: string, value: unknown): void => {
+    if (!key.includes(".")) {
+      storeState.data[key] = value;
+      return;
+    }
+    const parts = key.split(".");
+    const last = parts.pop()!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = storeState.data;
+    for (const p of parts) {
+      if (typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
+      cur = cur[p];
+    }
+    cur[last] = value;
+  };
+  return {
+    get: vi.fn(getDeep),
+    set: vi.fn(setDeep),
+  };
+});
 
 vi.mock("../../../store.js", () => ({
   store: storeMock,
@@ -167,10 +194,7 @@ describe("appTheme handlers", () => {
     const handler = getHandler(CHANNELS.APP_THEME_SET_FOLLOW_SYSTEM);
     await handler({}, true);
 
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "appTheme",
-      expect.objectContaining({ followSystem: true, colorSchemeId: "daintree" })
-    );
+    expect(storeState.data.appTheme).toEqual({ colorSchemeId: "daintree", followSystem: true });
   });
 
   it("setPreferredDarkScheme stores the scheme id", async () => {
@@ -180,10 +204,7 @@ describe("appTheme handlers", () => {
     const handler = getHandler(CHANNELS.APP_THEME_SET_PREFERRED_DARK_SCHEME);
     await handler({}, "custom-dark");
 
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "appTheme",
-      expect.objectContaining({ preferredDarkSchemeId: "custom-dark" })
-    );
+    expect(storeState.data.appTheme).toMatchObject({ preferredDarkSchemeId: "custom-dark" });
   });
 
   it("setPreferredLightScheme stores the scheme id", async () => {
@@ -193,10 +214,7 @@ describe("appTheme handlers", () => {
     const handler = getHandler(CHANNELS.APP_THEME_SET_PREFERRED_LIGHT_SCHEME);
     await handler({}, "custom-light");
 
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "appTheme",
-      expect.objectContaining({ preferredLightSchemeId: "custom-light" })
-    );
+    expect(storeState.data.appTheme).toMatchObject({ preferredLightSchemeId: "custom-light" });
   });
 
   describe("setRecentSchemeIds", () => {
@@ -207,10 +225,9 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS);
       await handler({}, ["bondi", "dracula", "serengeti"]);
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({ recentSchemeIds: ["bondi", "dracula", "serengeti"] })
-      );
+      expect(storeState.data.appTheme).toMatchObject({
+        recentSchemeIds: ["bondi", "dracula", "serengeti"],
+      });
     });
 
     it("ignores non-array input without throwing", async () => {
@@ -222,8 +239,8 @@ describe("appTheme handlers", () => {
       await handler({}, null);
       await handler({}, 42);
 
-      const recentCalls = storeMock.set.mock.calls.filter(
-        (c: unknown[]) => (c[1] as { recentSchemeIds?: unknown }).recentSchemeIds !== undefined
+      const recentCalls = storeMock.set.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).endsWith(".recentSchemeIds")
       );
       expect(recentCalls).toHaveLength(0);
     });
@@ -235,10 +252,7 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS);
       await handler({}, ["bondi", "", "  ", 42, null, undefined, " dracula "]);
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({ recentSchemeIds: ["bondi", "dracula"] })
-      );
+      expect(storeState.data.appTheme).toMatchObject({ recentSchemeIds: ["bondi", "dracula"] });
     });
 
     it("caps the persisted list at 5 entries", async () => {
@@ -248,10 +262,9 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS);
       await handler({}, ["a", "b", "c", "d", "e", "f", "g"]);
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({ recentSchemeIds: ["a", "b", "c", "d", "e"] })
-      );
+      expect(storeState.data.appTheme).toMatchObject({
+        recentSchemeIds: ["a", "b", "c", "d", "e"],
+      });
     });
 
     it("preserves other appTheme fields when persisting", async () => {
@@ -265,15 +278,12 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_RECENT_SCHEME_IDS);
       await handler({}, ["bondi"]);
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({
-          colorSchemeId: "daintree",
-          followSystem: true,
-          preferredDarkSchemeId: "custom-dark",
-          recentSchemeIds: ["bondi"],
-        })
-      );
+      expect(storeState.data.appTheme).toEqual({
+        colorSchemeId: "daintree",
+        followSystem: true,
+        preferredDarkSchemeId: "custom-dark",
+        recentSchemeIds: ["bondi"],
+      });
     });
   });
 
@@ -285,10 +295,7 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_ACCENT_COLOR_OVERRIDE);
       await handler({}, "#AABBCC");
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({ accentColorOverride: "#aabbcc" })
-      );
+      expect(storeState.data.appTheme).toMatchObject({ accentColorOverride: "#aabbcc" });
     });
 
     it("accepts a hex without leading #", async () => {
@@ -298,10 +305,7 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_ACCENT_COLOR_OVERRIDE);
       await handler({}, "ff8040");
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({ accentColorOverride: "#ff8040" })
-      );
+      expect(storeState.data.appTheme).toMatchObject({ accentColorOverride: "#ff8040" });
     });
 
     it("persists null to clear the override", async () => {
@@ -314,10 +318,7 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_ACCENT_COLOR_OVERRIDE);
       await handler({}, null);
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({ accentColorOverride: null })
-      );
+      expect(storeState.data.appTheme).toMatchObject({ accentColorOverride: null });
     });
 
     it("ignores malformed strings without mutating the store", async () => {
@@ -329,9 +330,8 @@ describe("appTheme handlers", () => {
       await handler({}, "rgb(0,0,0)");
       await handler({}, 42);
 
-      const relevantCalls = storeMock.set.mock.calls.filter(
-        (c: unknown[]) =>
-          (c[1] as { accentColorOverride?: unknown }).accentColorOverride !== undefined
+      const relevantCalls = storeMock.set.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).endsWith(".accentColorOverride")
       );
       expect(relevantCalls).toHaveLength(0);
     });
@@ -347,15 +347,12 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_ACCENT_COLOR_OVERRIDE);
       await handler({}, "#112233");
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({
-          colorSchemeId: "daintree",
-          followSystem: true,
-          recentSchemeIds: ["bondi"],
-          accentColorOverride: "#112233",
-        })
-      );
+      expect(storeState.data.appTheme).toEqual({
+        colorSchemeId: "daintree",
+        followSystem: true,
+        recentSchemeIds: ["bondi"],
+        accentColorOverride: "#112233",
+      });
     });
   });
 
@@ -509,10 +506,7 @@ describe("appTheme handlers", () => {
     themeHandler();
     vi.advanceTimersByTime(300);
 
-    expect(storeMock.set).toHaveBeenCalledWith(
-      "appTheme",
-      expect.objectContaining({ colorSchemeId: "bondi" })
-    );
+    expect(storeState.data.appTheme).toMatchObject({ colorSchemeId: "bondi" });
   });
 
   describe("exportTheme", () => {
@@ -652,10 +646,7 @@ describe("appTheme handlers", () => {
       const handler = getHandler(CHANNELS.APP_THEME_SET_CUSTOM_SCHEMES);
       await handler({}, [validScheme]);
 
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({ customSchemes: [validScheme] })
-      );
+      expect(storeMock.set).toHaveBeenCalledWith("appTheme.customSchemes", [validScheme]);
     });
 
     it("rejects invalid scheme arrays", async () => {
@@ -695,12 +686,7 @@ describe("appTheme handlers", () => {
       expect(config.customSchemes).toHaveLength(1);
 
       // Verify it rewrote the store with the native array
-      expect(storeMock.set).toHaveBeenCalledWith(
-        "appTheme",
-        expect.objectContaining({
-          customSchemes: expect.any(Array),
-        })
-      );
+      expect(storeMock.set).toHaveBeenCalledWith("appTheme.customSchemes", expect.any(Array));
     });
 
     it("returns empty array for malformed legacy JSON", async () => {
