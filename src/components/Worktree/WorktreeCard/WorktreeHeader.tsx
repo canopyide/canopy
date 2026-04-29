@@ -946,7 +946,7 @@ export function WorktreeHeader({
                 aria-disabled={!isActive || undefined}
                 aria-label="View agent plan file"
               >
-                <FileText className="w-3 h-3 shrink-0 text-status-info/70" aria-hidden="true" />
+                <FileText className="w-3 h-3 shrink-0 text-daintree-text/50" aria-hidden="true" />
                 <span className={cn("font-mono", underlineOnHover && "hover:underline")}>
                   {worktree.planFilePath ?? "Plan"}
                 </span>

@@ -1202,7 +1202,7 @@ export function BulkCreateWorktreeDialog({
                 <Check className="w-5 h-5 text-status-success" />
               )
             ) : (
-              <FolderGit2 className="w-5 h-5 text-status-info" />
+              <FolderGit2 className="w-5 h-5 text-text-muted" />
             )
           }
         >
