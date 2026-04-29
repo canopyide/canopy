@@ -224,6 +224,23 @@ describe("IdentityWatcher", () => {
       watcher.stop();
       expect(watcher.pendingFallbackIdentity).toBeNull();
     });
+
+    it("onShellSubmit after dispose is inert", () => {
+      // After dispose, a late onShellSubmit must not arm a new poll interval
+      // or mutate any state — the watcher is dead.
+      const { delegate, state } = createFakeDelegate({
+        cursorLine: "user@host:~$ ",
+        visibleLines: ["user@host:~$ "],
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.dispose();
+      watcher.onShellSubmit("claude");
+
+      expect(watcher.pendingFallbackIdentity).toBeNull();
+      vi.advanceTimersByTime(5_000);
+      expect(state.detectionCalls).toHaveLength(0);
+    });
   });
 
   describe("seed", () => {
