@@ -295,6 +295,10 @@ function settingsWith(overrides: Record<string, { pinned?: boolean }>): AgentSet
   return { agents: overrides } as unknown as AgentSettings;
 }
 
+function avail(rows: Record<string, string>): CliAvailability {
+  return rows as unknown as CliAvailability;
+}
+
 function agentRows(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('[data-testid^="agent-tray-row-"]'))
     .map((el) => el.getAttribute("data-testid")?.replace("agent-tray-row-", "") ?? "")
@@ -419,10 +423,7 @@ describe("AgentTrayButton", () => {
   const PIN_HINT_TEXT = /hover an agent and click the pin to keep it on the toolbar/i;
 
   it("shows the pin discovery hint when launchable agents are present but none are pinned", () => {
-    const availability = {
-      claude: "ready",
-      gemini: "ready",
-    } as unknown as CliAvailability;
+    const availability = avail({ claude: "ready", gemini: "ready" });
     mockSettings = settingsWith({
       claude: { pinned: false },
       gemini: { pinned: false },
@@ -434,10 +435,7 @@ describe("AgentTrayButton", () => {
   });
 
   it("hides the pin hint once at least one agent is pinned", () => {
-    const availability = {
-      claude: "ready",
-      gemini: "ready",
-    } as unknown as CliAvailability;
+    const availability = avail({ claude: "ready", gemini: "ready" });
     mockSettings = settingsWith({
       claude: { pinned: true },
       gemini: { pinned: false },
