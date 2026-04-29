@@ -624,7 +624,10 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     checkRateLimit(CHANNELS.GIT_SNAPSHOT_REVERT, 3, 10_000);
     return preAgentSnapshotService.revertToSnapshot(worktreeId);
   };
-  handlers.push(typedHandle(CHANNELS.GIT_SNAPSHOT_REVERT, handleSnapshotRevert));
+  handlers.push(
+    // @ts-expect-error: SnapshotRevertResult contains {success} — pending migration to throw AppError. See #6020.
+    typedHandle(CHANNELS.GIT_SNAPSHOT_REVERT, handleSnapshotRevert)
+  );
 
   const handleSnapshotDelete = async (worktreeId: string): Promise<void> => {
     validateCwd(worktreeId);

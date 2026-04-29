@@ -815,6 +815,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     typedHandle(CHANNELS.WEBVIEW_STOP_CONSOLE_CAPTURE, handleStopConsoleCapture),
     typedHandle(CHANNELS.WEBVIEW_CLEAR_CONSOLE_CAPTURE, handleClearConsoleCapture),
     typedHandle(CHANNELS.WEBVIEW_GET_CONSOLE_PROPERTIES, handleGetConsoleProperties),
+    // @ts-expect-error: result type contains {success} | null — pending migration to throw AppError. See #6020.
     typedHandle(CHANNELS.WEBVIEW_OAUTH_LOOPBACK, handleOAuthLoopback),
     typedHandle(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, handleReloadIgnoringCache),
   ];

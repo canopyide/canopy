@@ -149,7 +149,10 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     }
     return userAgentRegistryService.addAgent(config);
   };
-  handlers.push(typedHandle(CHANNELS.USER_AGENT_REGISTRY_ADD, handleUserAgentRegistryAdd));
+  handlers.push(
+    // @ts-expect-error: handler returns {success: false, error} — pending migration to throw AppError. See #6020.
+    typedHandle(CHANNELS.USER_AGENT_REGISTRY_ADD, handleUserAgentRegistryAdd)
+  );
 
   const handleUserAgentRegistryUpdate = async (payload: {
     id: string;
@@ -167,7 +170,10 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     }
     return userAgentRegistryService.updateAgent(id, config);
   };
-  handlers.push(typedHandle(CHANNELS.USER_AGENT_REGISTRY_UPDATE, handleUserAgentRegistryUpdate));
+  handlers.push(
+    // @ts-expect-error: handler returns {success: false, error} — pending migration to throw AppError. See #6020.
+    typedHandle(CHANNELS.USER_AGENT_REGISTRY_UPDATE, handleUserAgentRegistryUpdate)
+  );
 
   const handleUserAgentRegistryRemove = async (id: string) => {
     if (!id || typeof id !== "string") {
@@ -175,7 +181,10 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     }
     return userAgentRegistryService.removeAgent(id);
   };
-  handlers.push(typedHandle(CHANNELS.USER_AGENT_REGISTRY_REMOVE, handleUserAgentRegistryRemove));
+  handlers.push(
+    // @ts-expect-error: handler returns {success: false, error} — pending migration to throw AppError. See #6020.
+    typedHandle(CHANNELS.USER_AGENT_REGISTRY_REMOVE, handleUserAgentRegistryRemove)
+  );
 
   const handleReloadConfig = async () => {
     userAgentRegistryService.reload();
@@ -192,7 +201,10 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
 
     return { success: true };
   };
-  handlers.push(typedHandle(CHANNELS.APP_RELOAD_CONFIG, handleReloadConfig));
+  handlers.push(
+    // @ts-expect-error: handler returns {success: true} — pending migration to throw AppError on failure and return void on success. See #6020.
+    typedHandle(CHANNELS.APP_RELOAD_CONFIG, handleReloadConfig)
+  );
 
   return () => handlers.forEach((cleanup) => cleanup());
 }
