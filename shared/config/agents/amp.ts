@@ -92,7 +92,9 @@ export const config: AgentConfig = {
       "amp\\s+v?\\d",
       // @generated:amp:bootCompletePatterns:end
     ],
-    promptPatterns: ["^\\s*>\\s*"],
+    // Anchor-bound to avoid matching `> npm test` or other tool-result
+    // chevrons; mirrors Copilot, the closest-prompt analog.
+    promptPatterns: ["^\\s*>\\s*$", "^\\s*>\\s"],
     promptHintPatterns: ["^\\s*>\\s*$"],
     scanLineCount: 10,
     primaryConfidence: 0.95,

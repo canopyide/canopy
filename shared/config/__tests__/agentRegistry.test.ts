@@ -666,6 +666,17 @@ describe("amp configuration", () => {
     }
   });
 
+  it("anchored promptHintPatterns reject chevrons embedded in tool output", () => {
+    const patterns = (getAgentConfig("amp")?.detection?.promptHintPatterns ?? []).map(
+      (p) => new RegExp(p, "im")
+    );
+    // The empty-prompt hint is the load-bearing signal — it must NOT match
+    // citation chevrons or shell-style hints inside tool results.
+    expect(patterns.some((p) => p.test("> "))).toBe(true);
+    expect(patterns.some((p) => p.test("> npm test"))).toBe(false);
+    expect(patterns.some((p) => p.test("> ls -la"))).toBe(false);
+  });
+
   it("omits models — Amp mode-switching is TUI-internal", () => {
     expect(getAgentConfig("amp")?.models).toBeUndefined();
   });

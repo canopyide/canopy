@@ -102,6 +102,7 @@ describe("CliAvailabilityService", () => {
     "GH_TOKEN",
     "COPILOT_GITHUB_TOKEN",
     "KIMI_API_KEY",
+    "AMP_API_KEY",
     "DAINTREE_CLI_PATH_PREPEND",
   ];
 
