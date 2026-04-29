@@ -482,7 +482,7 @@ export function FleetArmingDialog({
           ref={listContainerRef}
           onKeyDown={handleListKeyDown}
           tabIndex={-1}
-          className="flex-1 min-h-0 overflow-y-auto px-2 py-2 outline-none"
+          className="flex-1 min-h-0 overflow-y-auto px-2 py-2 outline-hidden"
           data-testid="fleet-arming-dialog-list"
         >
           {eligibleTerminals.length === 0 ? (

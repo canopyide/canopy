@@ -320,7 +320,7 @@ export function AgentSettings({
                 onChange={(e) =>
                   setDefaultAgent(e.target.value ? (e.target.value as DefaultAgentId) : undefined)
                 }
-                className="w-full px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-none transition-colors"
+                className="w-full px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors"
               >
                 <option value="">None (first available)</option>
                 {agentOptions.map((agent) => (
@@ -763,7 +763,7 @@ export function AgentSettings({
                         />
                         {editingPresetId === selectedPreset.id ? (
                           <input
-                            className="flex-1 text-sm font-medium bg-daintree-bg border border-daintree-accent rounded px-2 py-0.5 focus:outline-none"
+                            className="flex-1 text-sm font-medium bg-daintree-bg border border-daintree-accent rounded px-2 py-0.5 focus:outline-hidden"
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
                             onBlur={handleCommitEdit}
@@ -902,7 +902,7 @@ export function AgentSettings({
                             )}
                           </div>
                           <input
-                            className="w-full rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-daintree-accent/50 placeholder:text-text-muted"
+                            className="w-full rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 placeholder:text-text-muted"
                             value={customArgsValue}
                             onChange={(e) => handleCustomFlagsChange(e.target.value)}
                             placeholder={customArgsPlaceholder}

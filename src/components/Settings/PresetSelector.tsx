@@ -102,7 +102,7 @@ export function PresetSelector({
             "flex items-center gap-2 w-full px-3 py-1.5 text-sm rounded-[var(--radius-md)]",
             "border border-border-strong bg-daintree-bg text-daintree-text",
             "hover:border-daintree-accent/50 transition-colors",
-            "focus:outline-none focus:ring-2 focus:ring-daintree-accent/50"
+            "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50"
           )}
           data-testid="preset-selector-trigger"
         >
@@ -252,7 +252,7 @@ function PresetOption({
       tabIndex={0}
       className={cn(
         "flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-sm",
-        "hover:bg-overlay-soft focus:bg-overlay-soft focus:outline-none",
+        "hover:bg-overlay-soft focus:bg-overlay-soft focus:outline-hidden",
         isSelected && "text-daintree-text font-medium bg-overlay-selected"
       )}
     >

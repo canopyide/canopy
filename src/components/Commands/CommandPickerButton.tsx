@@ -25,7 +25,7 @@ export const CommandPickerButton = forwardRef<HTMLButtonElement, CommandPickerBu
               "h-6 w-6 rounded-[var(--radius-sm)]",
               "text-daintree-text/50 hover:text-daintree-text/80 hover:bg-tint/[0.06]",
               "transition-colors",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent",
+              "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent",
               disabled && "opacity-50 cursor-not-allowed",
               className
             )}

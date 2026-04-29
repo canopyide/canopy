@@ -235,7 +235,7 @@ export function WorktreeFilterPopover({ hideSearchInput = false }: WorktreeFilte
                     "w-full px-2.5 py-1.5 text-xs rounded",
                     "bg-daintree-bg border border-daintree-border",
                     "text-daintree-text placeholder-daintree-text/40",
-                    "focus:outline-none focus:border-daintree-accent/50"
+                    "focus:outline-hidden focus:border-daintree-accent/50"
                   )}
                 />
                 {localQuery && (

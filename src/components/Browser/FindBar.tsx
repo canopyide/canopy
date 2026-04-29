@@ -56,7 +56,7 @@ export function FindBar({ find }: FindBarProps) {
           setQuery(e.currentTarget.value);
         }}
         placeholder="Find in page"
-        className="w-44 bg-transparent text-xs text-daintree-text placeholder:text-daintree-text/40 outline-none"
+        className="w-44 bg-transparent text-xs text-daintree-text placeholder:text-daintree-text/40 outline-hidden"
         spellCheck={false}
       />
       {query && (

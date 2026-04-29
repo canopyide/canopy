@@ -294,7 +294,7 @@ AppPaletteDialog.Input = function AppPaletteInput({
         "w-full px-3 py-2 text-sm",
         "bg-daintree-sidebar border border-daintree-border rounded-[var(--radius-md)]",
         "text-daintree-text placeholder:text-text-muted",
-        "focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/20",
+        "focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/20",
         className
       )}
       {...props}

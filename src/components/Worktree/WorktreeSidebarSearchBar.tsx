@@ -110,7 +110,7 @@ export function WorktreeSidebarSearchBar({ inputRef }: WorktreeSidebarSearchBarP
           onKeyDown={handleKeyDown}
           placeholder="Search worktrees..."
           aria-label="Search worktrees"
-          className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder-daintree-text/40 focus:outline-none"
+          className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder-daintree-text/40 focus:outline-hidden"
         />
         <div className="flex shrink-0 items-center gap-0.5">
           {showClear && (

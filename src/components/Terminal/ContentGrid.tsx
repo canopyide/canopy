@@ -236,7 +236,7 @@ function RotatingTip() {
         <button
           type="button"
           onClick={() => void actionService.dispatch(tip.actionId!, undefined, { source: "user" })}
-          className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent/50 rounded px-1"
+          className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent/50 rounded px-1"
         >
           {tip.actionLabel}
         </button>
@@ -309,7 +309,7 @@ function EmptyState({
               <button
                 type="button"
                 onClick={handleOpenProjectSettings}
-                className="absolute -bottom-1 -right-1 p-1.5 bg-daintree-sidebar border border-daintree-border rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-daintree-bg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                className="absolute -bottom-1 -right-1 p-1.5 bg-daintree-sidebar border border-daintree-border rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-daintree-bg focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                 aria-label="Change project icon"
               >
                 <Settings className="h-3 w-3 text-daintree-text/70" />
@@ -356,7 +356,7 @@ function EmptyState({
             <button
               type="button"
               onClick={handleOpenHelp}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent/50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent/50"
             >
               <div className="w-0 h-0 border-t-[2.5px] border-t-transparent border-l-[5px] border-l-daintree-text/50 border-b-[2.5px] border-b-transparent group-hover:border-l-daintree-text/70 transition-colors" />
               <span className="text-xs text-daintree-text/50 group-hover:text-daintree-text/70 transition-colors">
@@ -1057,7 +1057,7 @@ export function ContentGrid({
         data-macro-focus={isMacroFocused ? "true" : undefined}
         onKeyDown={handleGridRegionKeyDown}
         className={cn(
-          "h-full flex flex-col outline-none",
+          "h-full flex flex-col outline-hidden",
           "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
           className
         )}
@@ -1162,7 +1162,7 @@ export function ContentGrid({
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
-              "h-full flex flex-col bg-daintree-bg outline-none",
+              "h-full flex flex-col bg-daintree-bg outline-hidden",
               "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
               className
             )}
@@ -1195,7 +1195,7 @@ export function ContentGrid({
             data-macro-focus={isMacroFocused ? "true" : undefined}
             onKeyDown={handleGridRegionKeyDown}
             className={cn(
-              "h-full flex flex-col bg-daintree-bg outline-none",
+              "h-full flex flex-col bg-daintree-bg outline-hidden",
               "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
               className
             )}
@@ -1229,7 +1229,7 @@ export function ContentGrid({
         data-macro-focus={isMacroFocused ? "true" : undefined}
         onKeyDown={handleGridRegionKeyDown}
         className={cn(
-          "h-full flex flex-col outline-none",
+          "h-full flex flex-col outline-hidden",
           "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
           className
         )}
@@ -1272,7 +1272,7 @@ export function ContentGrid({
       data-macro-focus={isMacroFocused ? "true" : undefined}
       onKeyDown={handleGridRegionKeyDown}
       className={cn(
-        "h-full flex flex-col outline-none",
+        "h-full flex flex-col outline-hidden",
         "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
         className
       )}

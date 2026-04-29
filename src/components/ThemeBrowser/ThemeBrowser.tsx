@@ -47,7 +47,7 @@ function ThemeRow({
       onClick={() => onSelect(scheme.id)}
       className={cn(
         "w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-colors",
-        "focus:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent/60",
+        "focus:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent/60",
         isActive ? "bg-daintree-accent/10" : "hover:bg-surface-hover"
       )}
     >
@@ -378,7 +378,7 @@ export function ThemeBrowser() {
             onKeyDown={handleSearchKeyDown}
             placeholder="Filter themes..."
             aria-label="Filter themes"
-            className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder:text-daintree-text/40 focus:outline-none"
+            className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden"
           />
         </div>
         <div className="flex rounded-[var(--radius-md)] border border-daintree-border overflow-hidden shrink-0">

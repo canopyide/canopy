@@ -279,7 +279,7 @@ export function McpServerSettingsTab() {
                   if (e.key === "Enter") handlePortSave();
                 }}
                 placeholder="45454"
-                className="w-40 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 font-mono focus:outline-none focus:ring-1 focus:ring-daintree-accent"
+                className="w-40 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 font-mono focus:outline-hidden focus:ring-1 focus:ring-daintree-accent"
               />
               <button
                 onClick={handlePortSave}

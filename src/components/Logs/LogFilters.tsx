@@ -99,7 +99,7 @@ export function LogFilters({
             "w-full px-2 py-1 text-xs rounded",
             "bg-daintree-bg border border-daintree-border",
             "text-daintree-text placeholder-daintree-text/40",
-            "focus:outline-none focus:border-status-info"
+            "focus:outline-hidden focus:border-status-info"
           )}
         />
         {searchValue && (

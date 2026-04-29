@@ -717,7 +717,7 @@ function SettingsDialogInner({
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               aria-label="Search settings"
-              className="settings-search-input flex-1 min-w-0 text-xs bg-transparent text-daintree-text focus:outline-none"
+              className="settings-search-input flex-1 min-w-0 text-xs bg-transparent text-daintree-text focus:outline-hidden"
             />
             {searchQuery && (
               <button

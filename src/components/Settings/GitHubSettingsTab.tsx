@@ -234,7 +234,7 @@ export function GitHubSettingsTab() {
               }
               aria-label="GitHub personal access token"
               autoComplete="new-password"
-              className="flex-1 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text placeholder:text-text-muted focus:outline-none focus:border-daintree-accent transition-colors"
+              className="flex-1 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text placeholder:text-text-muted focus:outline-hidden focus:border-daintree-accent transition-colors"
               disabled={isValidating || isTesting}
             />
             <Button

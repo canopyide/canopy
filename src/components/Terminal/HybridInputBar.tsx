@@ -1330,7 +1330,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               type="button"
               onClick={openPicker}
               disabled={disabled}
-              className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-daintree-accent/65 hover:text-daintree-accent/85 transition-colors cursor-pointer focus-visible:outline-none"
+              className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-daintree-accent/65 hover:text-daintree-accent/85 transition-colors cursor-pointer focus-visible:outline-hidden"
               aria-label="Open command picker"
             >
               ❯

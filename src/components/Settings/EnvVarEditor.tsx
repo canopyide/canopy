@@ -243,7 +243,7 @@ function EnvVarKeyCell({
             }}
             type="text"
             className={cn(
-              "w-full h-full bg-transparent border-0 outline-none py-2 font-mono text-[12px]",
+              "w-full h-full bg-transparent border-0 outline-hidden py-2 font-mono text-[12px]",
               "focus:ring-2 focus:ring-inset focus:ring-daintree-accent/40",
               "disabled:cursor-default",
               showChevron ? "pl-2.5 pr-8" : "px-2.5",
@@ -736,7 +736,7 @@ export function EnvVarEditor({
                   <input
                     type={valueInputType}
                     className={cn(
-                      "w-full h-full bg-transparent border-0 outline-none py-2 font-mono text-[12px]",
+                      "w-full h-full bg-transparent border-0 outline-hidden py-2 font-mono text-[12px]",
                       "focus:ring-2 focus:ring-inset focus:ring-daintree-accent/40",
                       "disabled:cursor-default",
                       isSecret ? "pl-2.5 pr-8" : "px-2.5",

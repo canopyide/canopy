@@ -99,7 +99,7 @@ export function PresetColorPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="shrink-0 rounded-full ring-1 ring-transparent hover:ring-daintree-accent/50 focus-visible:ring-daintree-accent focus-visible:outline-none transition-all"
+          className="shrink-0 rounded-full ring-1 ring-transparent hover:ring-daintree-accent/50 focus-visible:ring-daintree-accent focus-visible:outline-hidden transition-all"
           aria-label={ariaLabel}
           title={ariaLabel}
           data-testid="preset-color-picker-trigger"
@@ -130,7 +130,7 @@ export function PresetColorPicker({
                 key={c}
                 type="button"
                 className={cn(
-                  "w-5 h-5 rounded-full border border-daintree-border/60 relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent",
+                  "w-5 h-5 rounded-full border border-daintree-border/60 relative focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent",
                   "hover:scale-110 transition-transform"
                 )}
                 style={{ backgroundColor: c }}
@@ -155,7 +155,7 @@ export function PresetColorPicker({
             color={draftColor}
             onChange={setDraftColor}
             prefixed
-            className="w-20 rounded border border-daintree-border/60 bg-daintree-bg px-1.5 py-0.5 text-[11px] font-mono uppercase text-daintree-text focus:outline-none focus:border-daintree-accent"
+            className="w-20 rounded border border-daintree-border/60 bg-daintree-bg px-1.5 py-0.5 text-[11px] font-mono uppercase text-daintree-text focus:outline-hidden focus:border-daintree-accent"
             aria-label="Hex color"
             data-testid="preset-color-hex-input"
           />

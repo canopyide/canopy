@@ -115,7 +115,7 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
           aria-label={`View diff: ${file.path}`}
           className={cn(
             "flex min-w-0 flex-1 items-baseline rounded text-left",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
           )}
         >
           <span

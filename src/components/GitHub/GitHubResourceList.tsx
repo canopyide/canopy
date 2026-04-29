@@ -880,7 +880,7 @@ export function GitHubResourceList({
               aria-controls={listId}
               aria-activedescendant={activeItemId}
               aria-label={`Search ${type === "issue" ? "issues" : "pull requests"}`}
-              className="flex-1 min-w-0 text-sm bg-transparent text-daintree-text placeholder:text-muted-foreground focus:outline-none"
+              className="flex-1 min-w-0 text-sm bg-transparent text-daintree-text placeholder:text-muted-foreground focus:outline-hidden"
             />
             {searchQuery && (
               <button
@@ -994,7 +994,7 @@ export function GitHubResourceList({
                       selection.selectAll(data.map((item) => item.number));
                     }
                   }}
-                  className="text-xs text-daintree-text/50 hover:text-daintree-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent transition-colors px-1 py-0.5 rounded"
+                  className="text-xs text-daintree-text/50 hover:text-daintree-text focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent transition-colors px-1 py-0.5 rounded"
                 >
                   {allSelected ? "Deselect all" : `Select all (${data.length})`}
                 </button>
@@ -1004,7 +1004,7 @@ export function GitHubResourceList({
                     onClick={() => {
                       selection.selectAll(unassigned.map((item) => item.number));
                     }}
-                    className="text-xs text-daintree-text/50 hover:text-daintree-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent transition-colors px-1 py-0.5 rounded"
+                    className="text-xs text-daintree-text/50 hover:text-daintree-text focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent transition-colors px-1 py-0.5 rounded"
                   >
                     {`Select unassigned (${unassigned.length})`}
                   </button>

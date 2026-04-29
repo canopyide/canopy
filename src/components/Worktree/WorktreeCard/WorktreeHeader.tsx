@@ -496,7 +496,7 @@ export function WorktreeHeader({
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
-                      className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent"
+                      className="shrink-0 rounded focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
                       aria-label={`${worktree.worktreeMode} environment status`}
                     >
                       <EnvironmentIcon className={iconClass} />

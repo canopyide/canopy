@@ -141,7 +141,7 @@ export function ImportEnvDialog({ isOpen, onClose, env, onImport }: ImportEnvDia
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
-              className="w-full h-56 resize-y font-mono text-[12px] bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 outline-none focus:ring-2 focus:ring-daintree-accent/40 text-daintree-text"
+              className="w-full h-56 resize-y font-mono text-[12px] bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 outline-hidden focus:ring-2 focus:ring-daintree-accent/40 text-daintree-text"
               aria-label="Paste .env content"
               data-testid="import-env-textarea"
             />

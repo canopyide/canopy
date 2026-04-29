@@ -249,7 +249,7 @@ export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePan
   }, []);
 
   const buttonClass =
-    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent/50";
+    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent/50";
 
   return (
     <div className="flex flex-col border-t border-overlay bg-daintree-bg" style={{ height }}>
@@ -290,7 +290,7 @@ export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePan
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter…"
-          className="flex-1 min-w-0 max-w-[160px] px-2 py-0.5 text-[11px] rounded bg-daintree-bg border border-overlay focus:outline-none focus:border-border-strong text-daintree-text placeholder:text-daintree-text/30"
+          className="flex-1 min-w-0 max-w-[160px] px-2 py-0.5 text-[11px] rounded bg-daintree-bg border border-overlay focus:outline-hidden focus:border-border-strong text-daintree-text placeholder:text-daintree-text/30"
         />
 
         <div className="flex-1" />

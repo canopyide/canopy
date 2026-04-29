@@ -161,7 +161,7 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
             className={cn(
               "w-full pl-9 pr-9 py-2 text-sm rounded-[var(--radius-md)]",
               "bg-muted/50 border border-transparent",
-              "focus:bg-background focus:border-primary focus:outline-none",
+              "focus:bg-background focus:border-primary focus:outline-hidden",
               "placeholder:text-muted-foreground"
             )}
           />
@@ -191,7 +191,7 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
               className={cn(
                 "w-full pl-3 pr-9 py-2 text-sm rounded-[var(--radius-md)] font-mono",
                 "bg-muted/50 border border-transparent",
-                "focus:bg-background focus:border-primary focus:outline-none",
+                "focus:bg-background focus:border-primary focus:outline-hidden",
                 "placeholder:text-muted-foreground placeholder:font-sans"
               )}
             />

@@ -286,7 +286,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                             e.stopPropagation();
                             onResourceResume();
                           }}
-                          className="shrink-0 p-1 rounded transition-colors text-status-success/70 hover:text-status-success hover:bg-overlay-emphasis focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                          className="shrink-0 p-1 rounded transition-colors text-status-success/70 hover:text-status-success hover:bg-overlay-emphasis focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                           aria-label="Resume Resource"
                         >
                           <Play className="w-3 h-3" />
@@ -303,7 +303,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                             e.stopPropagation();
                             onResourcePause();
                           }}
-                          className="shrink-0 p-1 rounded transition-colors text-status-error/70 hover:text-status-error hover:bg-overlay-emphasis focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                          className="shrink-0 p-1 rounded transition-colors text-status-error/70 hover:text-status-error hover:bg-overlay-emphasis focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                           aria-label="Pause Resource"
                         >
                           <Square className="w-3 h-3" />
@@ -320,7 +320,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                             e.stopPropagation();
                             onResourceConnect!();
                           }}
-                          className="shrink-0 p-1 rounded transition-colors text-status-info/70 hover:text-status-info hover:bg-overlay-emphasis focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                          className="shrink-0 p-1 rounded transition-colors text-status-info/70 hover:text-status-info hover:bg-overlay-emphasis focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                           aria-label="Connect to Resource"
                         >
                           <Plug className="w-3 h-3" />
@@ -359,7 +359,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                     "shrink-0 border-l border-border-default px-2 py-1 transition-colors",
                     "text-[var(--color-state-active)]/70 hover:bg-[var(--color-state-active)]/10 hover:text-[var(--color-state-active)]",
                     "rounded-r-[var(--radius-lg)]",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                   )}
                   aria-label="Open Review & Commit"
                 >

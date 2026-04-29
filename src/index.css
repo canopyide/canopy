@@ -2232,6 +2232,20 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
     border-color: ButtonText;
   }
 
+  /* Radix highlighted items rely on background-color which is stripped here.
+     Fall back to a system outline so the active menu/select row stays visible. */
+  [data-highlighted] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  /* Macro-focus regions use a Tailwind ring (box-shadow) which is removed here.
+     Fall back to a system outline so the focused region stays visible. */
+  [data-macro-focus="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
   button,
   [role="button"],
   [type="button"],

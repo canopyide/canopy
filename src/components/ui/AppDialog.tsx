@@ -240,7 +240,7 @@ export function AppDialog({
             isVisible
               ? "opacity-100 translate-y-0 scale-100"
               : "opacity-0 translate-y-1 scale-[0.98]",
-            "outline-none",
+            "outline-hidden",
             className
           )}
           style={{

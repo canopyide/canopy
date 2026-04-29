@@ -168,7 +168,7 @@ export function DiagnosticsReviewDialog({
                   className={cn(
                     "h-7 text-xs flex-1 px-2 rounded border border-daintree-border bg-daintree-bg",
                     "text-daintree-text placeholder:text-daintree-text/30",
-                    "focus:outline-none focus:border-daintree-accent"
+                    "focus:outline-hidden focus:border-daintree-accent"
                   )}
                 />
                 <span className="text-daintree-text/40 text-xs">→</span>
@@ -180,7 +180,7 @@ export function DiagnosticsReviewDialog({
                   className={cn(
                     "h-7 text-xs flex-1 px-2 rounded border border-daintree-border bg-daintree-bg",
                     "text-daintree-text placeholder:text-daintree-text/30",
-                    "focus:outline-none focus:border-daintree-accent"
+                    "focus:outline-hidden focus:border-daintree-accent"
                   )}
                 />
                 {replacements.length > 1 && (
