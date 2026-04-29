@@ -852,6 +852,31 @@ describe("WorktreeHeader cleanup button", () => {
     expect(wrapper.contains(button)).toBe(true);
   });
 
+  it("shows the cleanup button on active cards", () => {
+    renderHeader({ onCleanupWorktree: vi.fn(), isActive: true, isCollapsed: false });
+    const wrapper = screen.getByTestId("worktree-actions-wrapper");
+    expect(wrapper.className).toContain("opacity-100");
+    expect(wrapper.className).not.toContain("opacity-0");
+  });
+
+  it("shows the cleanup button on collapsed cards", () => {
+    renderHeader({ onCleanupWorktree: vi.fn(), isActive: false, isCollapsed: true });
+    const wrapper = screen.getByTestId("worktree-actions-wrapper");
+    expect(wrapper.className).toContain("opacity-100");
+    expect(wrapper.className).not.toContain("opacity-0");
+  });
+
+  it("renders the cleanup button as the first action in the wrapper", () => {
+    renderHeader({
+      onCleanupWorktree: vi.fn(),
+      canCollapse: true,
+      onToggleCollapse: noop,
+    });
+    const wrapper = screen.getByTestId("worktree-actions-wrapper");
+    const cleanupButton = screen.getByTestId("worktree-cleanup-button");
+    expect(wrapper.firstElementChild).toBe(cleanupButton);
+  });
+
   it("uses muted destructive coloring at idle and full red on hover", () => {
     renderHeader({ onCleanupWorktree: vi.fn() });
     const button = screen.getByTestId("worktree-cleanup-button");
