@@ -75,10 +75,16 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
       intervals.length = 0;
     };
 
+    // Visibility may flip between scheduling and firing; bail out if hidden.
+    const tickIfVisible = () => {
+      if (document.hidden) return;
+      tick();
+    };
+
     const schedule = () => {
       if (isSessionMuted) {
         const delay = Math.max(0, quietUntil - Date.now());
-        timeouts.push(setTimeout(tick, delay + 50));
+        timeouts.push(setTimeout(tickIfVisible, delay + 50));
       }
 
       if (quietHoursEnabled) {
@@ -87,11 +93,9 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
         const msToNextMinute = 60_000 - (Date.now() % 60_000);
         timeouts.push(
           setTimeout(() => {
-            // Visibility may have flipped between this timeout being scheduled
-            // and firing; bail out if we've since been hidden.
             if (document.hidden) return;
             tick();
-            intervals.push(setInterval(tick, 60_000));
+            intervals.push(setInterval(tickIfVisible, 60_000));
           }, msToNextMinute + 50)
         );
       }

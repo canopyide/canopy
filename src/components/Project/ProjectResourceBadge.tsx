@@ -247,13 +247,13 @@ export function ProjectResourceBadge() {
         if ((currentStats[p.id]?.processCount ?? 0) > 0) running++;
       }
 
-      samplesRef.current = [
+      const nextSamples = [
         ...samplesRef.current.slice(-(MAX_SAMPLES - 1)),
         appMetrics.totalMemoryMB,
       ];
-      setSamples(samplesRef.current);
 
       return {
+        nextSamples,
         runningProjects: running,
         totalMemoryMB: appMetrics.totalMemoryMB,
         projects: projects.map((p: Project) => ({ id: p.id, name: p.name })),
@@ -271,7 +271,13 @@ export function ProjectResourceBadge() {
     const runFetch = async () => {
       const result = await fetchStats();
       if (!cancelled && result) {
-        setStats(result);
+        samplesRef.current = result.nextSamples;
+        setSamples(result.nextSamples);
+        setStats({
+          runningProjects: result.runningProjects,
+          totalMemoryMB: result.totalMemoryMB,
+          projects: result.projects,
+        });
         setIsLoading(false);
       }
     };
