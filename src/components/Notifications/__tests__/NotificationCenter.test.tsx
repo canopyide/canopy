@@ -332,7 +332,7 @@ describe("NotificationCenter pause menu", () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
-  it("routes 'Until 8:00 AM' to muteUntilNextMorning", async () => {
+  it("routes the morning mute option to muteUntilNextMorning", async () => {
     render(<NotificationCenter open onClose={() => {}} />);
     const trigger = screen.getByLabelText("Pause notifications");
     await act(async () => {
@@ -341,8 +341,9 @@ describe("NotificationCenter pause menu", () => {
       fireEvent.click(trigger);
     });
 
+    // Label is locale-formatted (e.g. "Until 8:00 AM" or "Until 8:00") — match the prefix.
     await act(async () => {
-      fireEvent.click(screen.getByText("Until 8:00 AM"));
+      fireEvent.click(screen.getByText(/^Until 8:00/));
     });
 
     expect(vi.mocked(notifyLib.muteUntilNextMorning)).toHaveBeenCalledTimes(1);
