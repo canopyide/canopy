@@ -32,9 +32,9 @@ function rgbaToHex(value: string): string | null {
     /^rgba?\(\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*(?:,\s*[\d.]+%?\s*)?\)$/
   );
   if (!match) return null;
-  const r = Math.min(255, Math.max(0, parseInt(match[1], 10)));
-  const g = Math.min(255, Math.max(0, parseInt(match[2], 10)));
-  const b = Math.min(255, Math.max(0, parseInt(match[3], 10)));
+  const r = Math.min(255, Math.max(0, parseInt(match[1]!, 10)));
+  const g = Math.min(255, Math.max(0, parseInt(match[2]!, 10)));
+  const b = Math.min(255, Math.max(0, parseInt(match[3]!, 10)));
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
