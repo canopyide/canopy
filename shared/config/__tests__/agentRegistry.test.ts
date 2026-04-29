@@ -38,6 +38,7 @@ describe("agentRegistry", () => {
       expect(ids).toContain("kiro");
       expect(ids).toContain("copilot");
       expect(ids).toContain("goose");
+      expect(ids).toContain("crush");
     });
 
     it("kiro only has macOS and Linux install blocks (no Windows)", () => {
