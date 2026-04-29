@@ -26,6 +26,7 @@ describe("agentIcons", () => {
     expect(AGENT_ICON_MAP["cursor"]).toBeDefined();
     expect(AGENT_ICON_MAP["kiro"]).toBeDefined();
     expect(AGENT_ICON_MAP["copilot"]).toBeDefined();
+    expect(AGENT_ICON_MAP["goose"]).toBeDefined();
   });
 
   it("normalizes icon filenames to lowercase iconIds", () => {
