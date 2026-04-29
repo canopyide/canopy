@@ -388,7 +388,7 @@ describe("opValidated", () => {
     const ns = defineIpcNamespace({
       name: "mixed",
       ops: {
-        plain: op(CH.writeText, async (_text: string) => ({ ok: true as const })),
+        plain: op(CH.writeText, async (_text: string) => undefined),
         validated: opValidated(SLASH_LIST, SlashListSchema, async () => []),
       },
     });
