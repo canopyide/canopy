@@ -31,6 +31,10 @@ vi.mock("../../../../services/pty/terminalShell.js", () => ({
   getDefaultShell: vi.fn(() => "/bin/zsh"),
 }));
 
+type SafeParseable = {
+  safeParse: (v: unknown) => { success: true; data: unknown } | { success: false; error: unknown };
+};
+
 vi.mock("../../../utils.js", () => ({
   waitForRateLimitSlot: vi.fn(async () => {}),
   consumeRestoreQuota: vi.fn(() => false),
@@ -53,6 +57,17 @@ vi.mock("../../../utils.js", () => ({
         return (handler as (...a: unknown[]) => unknown)(ctx, ...args);
       }
     );
+    return () => ipcMainMock.removeHandler(channel);
+  },
+  typedHandleValidated: (channel: string, schema: SafeParseable, handler: unknown) => {
+    ipcMainMock.handle(channel, async (_e: unknown, ...args: unknown[]) => {
+      const parsed = schema.safeParse(args[0]);
+      if (!parsed.success) {
+        console.error(`[IPC] Validation failed for ${channel}:`, parsed.error);
+        throw new Error(`IPC validation failed: ${channel}`);
+      }
+      return (handler as (payload: unknown) => unknown)(parsed.data);
+    });
     return () => ipcMainMock.removeHandler(channel);
   },
 }));
@@ -257,7 +272,7 @@ describe("agent command launch", () => {
         launchAgentId: "claude",
         command: "claude\nmalicious",
       })
-    ).rejects.toThrow(/Invalid spawn options/);
+    ).rejects.toThrow(/IPC validation failed: terminal:spawn/);
 
     expect(consoleSpy).toHaveBeenCalled();
     expect(ptyClient.spawn).not.toHaveBeenCalled();

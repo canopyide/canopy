@@ -15,6 +15,10 @@ const fileSearchServiceMock = vi.hoisted(() => ({
 
 const checkRateLimitMock = vi.hoisted(() => vi.fn());
 
+type SafeParseable = {
+  safeParse: (v: unknown) => { success: true; data: unknown } | { success: false; error: unknown };
+};
+
 vi.mock("../../utils.js", () => ({
   checkRateLimit: checkRateLimitMock,
   typedHandle: (channel: string, handler: unknown) => {
@@ -34,6 +38,35 @@ vi.mock("../../utils.js", () => ({
           projectId: null,
         };
         return (handler as (...a: unknown[]) => unknown)(ctx, ...args);
+      }
+    );
+    return () => ipcMainMock.removeHandler(channel);
+  },
+  typedHandleValidated: (channel: string, schema: SafeParseable, handler: unknown) => {
+    ipcMainMock.handle(channel, async (_e: unknown, ...args: unknown[]) => {
+      const parsed = schema.safeParse(args[0]);
+      if (!parsed.success) {
+        throw new Error(`IPC validation failed: ${channel}`);
+      }
+      return (handler as (payload: unknown) => unknown)(parsed.data);
+    });
+    return () => ipcMainMock.removeHandler(channel);
+  },
+  typedHandleWithContextValidated: (channel: string, schema: SafeParseable, handler: unknown) => {
+    ipcMainMock.handle(
+      channel,
+      async (event: { sender?: { id?: number } } | null | undefined, ...args: unknown[]) => {
+        const parsed = schema.safeParse(args[0]);
+        if (!parsed.success) {
+          throw new Error(`IPC validation failed: ${channel}`);
+        }
+        const ctx = {
+          event: event as unknown,
+          webContentsId: event?.sender?.id ?? 0,
+          senderWindow: null,
+          projectId: null,
+        };
+        return (handler as (ctx: unknown, payload: unknown) => unknown)(ctx, parsed.data);
       }
     );
     return () => ipcMainMock.removeHandler(channel);
@@ -80,7 +113,7 @@ describe("files:search handler", () => {
     });
   });
 
-  it("returns empty files for invalid payloads", async () => {
+  it("rejects invalid payloads at the wrapper boundary before invoking search", async () => {
     registerFilesHandlers();
     const calls = (ipcMain.handle as unknown as { mock: { calls: Array<[string, unknown]> } }).mock
       .calls;
@@ -90,9 +123,10 @@ describe("files:search handler", () => {
       payload: unknown
     ) => Promise<{ files: string[] }>;
 
-    const result = await handler({} as unknown, { cwd: "/tmp/project", query: 123 });
+    await expect(handler({} as unknown, { cwd: "/tmp/project", query: 123 })).rejects.toThrow(
+      /IPC validation failed/
+    );
 
-    expect(result).toEqual({ files: [] });
     expect(fileSearchServiceMock.search).not.toHaveBeenCalled();
   });
 

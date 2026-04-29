@@ -237,7 +237,7 @@ export const TerminalSpawnOptionsSchema = z.object({
   cwd: z.string().optional(),
   shell: z.string().optional(),
   cols: z.number().int().positive().max(500),
-  rows: z.number().int().positive(),
+  rows: z.number().int().positive().max(500),
   // `command` is interpolated raw into a shell startup script in
   // buildCommandLaunchShell — shell metacharacters are intentional (pipes,
   // redirects, env vars), but control characters are never legitimate and

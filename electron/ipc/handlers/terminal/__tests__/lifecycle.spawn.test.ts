@@ -33,6 +33,10 @@ vi.mock("../../../../services/pty/terminalShell.js", () => ({
   getDefaultShell: vi.fn(() => "/bin/zsh"),
 }));
 
+type SafeParseable = {
+  safeParse: (v: unknown) => { success: true; data: unknown } | { success: false; error: unknown };
+};
+
 vi.mock("../../../utils.js", () => ({
   waitForRateLimitSlot: waitForRateLimitSlotMock,
   consumeRestoreQuota: consumeRestoreQuotaMock,
@@ -55,6 +59,16 @@ vi.mock("../../../utils.js", () => ({
         return (handler as (...a: unknown[]) => unknown)(ctx, ...args);
       }
     );
+    return () => ipcMainMock.removeHandler(channel);
+  },
+  typedHandleValidated: (channel: string, schema: SafeParseable, handler: unknown) => {
+    ipcMainMock.handle(channel, async (_e: unknown, ...args: unknown[]) => {
+      const parsed = schema.safeParse(args[0]);
+      if (!parsed.success) {
+        throw new Error(`IPC validation failed: ${channel}`);
+      }
+      return (handler as (payload: unknown) => unknown)(parsed.data);
+    });
     return () => ipcMainMock.removeHandler(channel);
   },
 }));
@@ -321,7 +335,7 @@ describe("terminal spawn shell-injection hardening (#6065)", () => {
           command: "echo \x1B[31mred",
         } as unknown as Parameters<typeof handler>[1]
       )
-    ).rejects.toThrow(/Invalid spawn options/);
+    ).rejects.toThrow(/IPC validation failed: terminal:spawn/);
 
     expect(ptyClient.spawn).not.toHaveBeenCalled();
     expect(ptyClient.write).not.toHaveBeenCalled();
@@ -342,7 +356,7 @@ describe("terminal spawn shell-injection hardening (#6065)", () => {
           command: "evil\nrm -rf ~",
         } as unknown as Parameters<typeof handler>[1]
       )
-    ).rejects.toThrow(/Invalid spawn options/);
+    ).rejects.toThrow(/IPC validation failed: terminal:spawn/);
 
     expect(ptyClient.spawn).not.toHaveBeenCalled();
     expect(ptyClient.write).not.toHaveBeenCalled();
