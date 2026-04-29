@@ -47,4 +47,16 @@ describe("gitRepoOperationState", () => {
     expect(isRepoOperationInProgress(gitDir)).toBe(true);
     expect(vi.mocked(existsSync)).toHaveBeenCalledTimes(1);
   });
+
+  it("fails open when existsSync throws — treats sentinel as absent", () => {
+    // EPERM or similar permission errors must not propagate; the caller
+    // would otherwise stall every poll cycle for the worktree.
+    vi.mocked(existsSync).mockImplementation(() => {
+      const err = new Error("EPERM") as NodeJS.ErrnoException;
+      err.code = "EPERM";
+      throw err;
+    });
+    expect(() => isRepoOperationInProgress(gitDir)).not.toThrow();
+    expect(isRepoOperationInProgress(gitDir)).toBe(false);
+  });
 });

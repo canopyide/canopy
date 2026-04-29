@@ -1662,7 +1662,6 @@ describe("WorktreeMonitor", () => {
 
       expect(mockIsRepoOperationInProgress).toHaveBeenCalledWith("/test/worktree/.git");
       expect(mockGetWorktreeChangesWithStats).not.toHaveBeenCalled();
-      expect(callbacks.onUpdate).not.toHaveBeenCalled();
 
       monitor.stop();
     });
@@ -1696,6 +1695,24 @@ describe("WorktreeMonitor", () => {
 
       expect(mockGetWorktreeChangesWithStats).toHaveBeenCalledTimes(1);
       expect(callbacks.onUpdate).toHaveBeenCalled();
+
+      monitor.stop();
+    });
+
+    it("emits an initial snapshot when start() is skipped mid-operation", async () => {
+      vi.mocked(getGitDir).mockReturnValue("/test/worktree/.git");
+      mockIsRepoOperationInProgress.mockReturnValue(true);
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+
+      // The renderer must still receive a snapshot so the worktree is
+      // visible — otherwise it stays invisible until the operation ends.
+      expect(callbacks.onUpdate).toHaveBeenCalledTimes(1);
+      expect(monitor.hasInitialStatus).toBe(true);
+      expect(mockGetWorktreeChangesWithStats).not.toHaveBeenCalled();
 
       monitor.stop();
     });

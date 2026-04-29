@@ -1035,6 +1035,13 @@ export class WorktreeMonitor {
     // sentinels clear also picks up the change.
     const gitDir = getGitDir(this.path, { cache: true, logErrors: false });
     if (gitDir && isRepoOperationInProgress(gitDir)) {
+      // If we're skipping the very first poll (e.g. app started mid-rebase),
+      // emit a default snapshot so the renderer can still display the worktree.
+      // Mirrors startWithoutGitStatus()'s contract.
+      if (!this._hasInitialStatus) {
+        this._hasInitialStatus = true;
+        this.emitUpdate();
+      }
       return;
     }
 

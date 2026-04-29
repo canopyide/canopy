@@ -22,11 +22,19 @@ export const OPERATION_SENTINEL_NAMES = [
  * Returns true if any of the rebase/merge/cherry-pick/revert sentinel files
  * exist in `gitDir`. Synchronous so it's safe to call on hot paths (e.g.
  * before each git status poll) without adding an async round-trip.
+ *
+ * Fails open on filesystem errors (e.g. EPERM) — if we can't determine
+ * the state, let the regular polling/git invocations proceed. Surfacing a
+ * permission error here would stall every poll cycle for the worktree.
  */
 export function isRepoOperationInProgress(gitDir: string): boolean {
   for (const name of OPERATION_SENTINEL_NAMES) {
-    if (existsSync(pathJoin(gitDir, name))) {
-      return true;
+    try {
+      if (existsSync(pathJoin(gitDir, name))) {
+        return true;
+      }
+    } catch {
+      // Treat unreadable sentinel paths as absent and continue.
     }
   }
   return false;
