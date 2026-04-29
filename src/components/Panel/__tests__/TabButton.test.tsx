@@ -10,29 +10,30 @@ vi.mock("react-dom", async () => {
   return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-      ({ children, ...props }, ref) => {
-        const {
-          layoutId: _layoutId,
-          layout: _layout,
-          transition: _transition,
-          ...rest
-        } = props as Record<string, unknown>;
-        return (
-          <div
-            ref={ref}
-            data-testid="motion-div"
-            {...(rest as React.HTMLAttributes<HTMLDivElement>)}
-          >
-            {children}
-          </div>
-        );
-      }
-    ),
-  },
-}));
+vi.mock("framer-motion", () => {
+  const MotionDiv = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => {
+      const {
+        layoutId: _layoutId,
+        layout: _layout,
+        transition: _transition,
+        ...rest
+      } = props as Record<string, unknown>;
+      return (
+        <div ref={ref} data-testid="motion-div" {...(rest as React.HTMLAttributes<HTMLDivElement>)}>
+          {children}
+        </div>
+      );
+    }
+  );
+  return {
+    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    domAnimation: {},
+    domMax: {},
+    m: { div: MotionDiv },
+    motion: { div: MotionDiv },
+  };
+});
 
 vi.mock("@/components/ui/tooltip", () => ({
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,

@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { X } from "lucide-react";
 import { FolderGit2 } from "@/components/icons";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
@@ -45,7 +45,7 @@ export function BulkActionBar({
   return (
     <AnimatePresence>
       {count > 0 && (
-        <motion.div
+        <m.div
           key="bulk-bar"
           role="toolbar"
           aria-label="Bulk actions"
@@ -75,7 +75,7 @@ export function BulkActionBar({
           >
             <X className="w-3 h-3" />
           </Button>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

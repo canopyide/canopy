@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 
 function getThemeParticleColors(): string[] {
   if (typeof document === "undefined") {
@@ -57,7 +57,7 @@ export function CelebrationConfetti() {
     <div className="fixed inset-0 pointer-events-none z-[var(--z-toast)] flex items-center justify-center">
       <AnimatePresence>
         {particles.map((p) => (
-          <motion.div
+          <m.div
             key={p.id}
             className="absolute rounded-full"
             style={{ width: p.size, height: p.size, backgroundColor: p.color }}

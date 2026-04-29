@@ -3,19 +3,24 @@ import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 
-vi.mock("framer-motion", () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  motion: {
-    div: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-      ({ children, ...props }, ref) => (
-        <div ref={ref} {...props}>
-          {children}
-        </div>
-      )
-    ),
-  },
-  useReducedMotion: () => false,
-}));
+vi.mock("framer-motion", () => {
+  const MotionDiv = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => (
+      <div ref={ref} {...props}>
+        {children}
+      </div>
+    )
+  );
+  return {
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    domAnimation: {},
+    domMax: {},
+    m: { div: MotionDiv },
+    motion: { div: MotionDiv },
+    useReducedMotion: () => false,
+  };
+});
 
 vi.mock("@/hooks/useWorktreeColorMap", () => ({
   useWorktreeColorMap: () => null,

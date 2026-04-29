@@ -11,26 +11,31 @@ vi.mock("react-dom", async () => {
   return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock("framer-motion", () => ({
-  LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  motion: {
-    div: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-      ({ children, ...props }, ref) => {
-        const {
-          layoutId: _layoutId,
-          layout: _layout,
-          transition: _transition,
-          ...rest
-        } = props as Record<string, unknown>;
-        return (
-          <div ref={ref} {...(rest as React.HTMLAttributes<HTMLDivElement>)}>
-            {children}
-          </div>
-        );
-      }
-    ),
-  },
-}));
+vi.mock("framer-motion", () => {
+  const MotionDiv = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => {
+      const {
+        layoutId: _layoutId,
+        layout: _layout,
+        transition: _transition,
+        ...rest
+      } = props as Record<string, unknown>;
+      return (
+        <div ref={ref} {...(rest as React.HTMLAttributes<HTMLDivElement>)}>
+          {children}
+        </div>
+      );
+    }
+  );
+  return {
+    LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    domAnimation: {},
+    domMax: {},
+    m: { div: MotionDiv },
+    motion: { div: MotionDiv },
+  };
+});
 
 const mockScrollLeft = vi.fn();
 const mockScrollRight = vi.fn();
