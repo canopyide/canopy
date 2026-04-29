@@ -282,7 +282,7 @@ export function AutomationTab({
                   No global recipes available.{" "}
                   <button
                     onClick={onNavigateToRecipes}
-                    className="text-daintree-accent hover:underline"
+                    className="text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline"
                   >
                     Create a recipe
                   </button>
