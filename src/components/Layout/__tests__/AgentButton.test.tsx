@@ -573,6 +573,25 @@ describe("AgentButton preset UX", () => {
       expect(updateWorktreePresetMock).not.toHaveBeenCalled();
       expect(dispatchMock).not.toHaveBeenCalled();
     });
+
+    it("dropdown CCR preset selection persists without launching (separate code path)", () => {
+      // The chevron renders CCR, project-shared, and custom presets in three
+      // independent onSelect closures. Cover the CCR path explicitly so a
+      // regression that reintroduces launch in only one group is caught.
+      mockActiveWorktreeId = "wt-A";
+      mockSettings = settingsWith({ claude: {} });
+      mockMergedPresetsFn = () => [{ id: "ccr-sonnet", name: "CCR: Sonnet 4.5" }];
+
+      const { getAllByTestId } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+      const items = getAllByTestId("preset-item") as HTMLElement[];
+      const ccrItem = items.find((el) => el.textContent?.includes("Sonnet 4.5"))!;
+      fireEvent.click(ccrItem);
+
+      expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", "ccr-sonnet");
+      expect(dispatchMock).not.toHaveBeenCalled();
+    });
   });
 
   describe("tooltip surfaces active preset", () => {
@@ -719,6 +738,31 @@ describe("AgentButton preset UX", () => {
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
         { agentId: "claude", presetId: "user-blue" },
+        { source: "context-menu" }
+      );
+    });
+
+    it("context-menu Agent default clears the override and still launches with null preset", () => {
+      // The context-menu sub is intentionally a launcher (unlike the chevron).
+      // Verify the Agent default row mirrors that contract: clear the
+      // worktree-scoped override AND dispatch a null-preset launch.
+      mockActiveWorktreeId = "wt-A";
+      mockSettings = settingsWith({
+        claude: { worktreePresets: { "wt-A": "user-blue" } },
+      });
+      mockMergedPresetsFn = () => [{ id: "user-blue", name: "Blue" }];
+
+      const { getAllByTestId } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+      const items = getAllByTestId("context-radio-item") as HTMLElement[];
+      const defaultItem = items.find((el) => el.textContent?.includes("Agent default"))!;
+      fireEvent.click(defaultItem);
+
+      expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", undefined);
+      expect(dispatchMock).toHaveBeenCalledWith(
+        "agent.launch",
+        { agentId: "claude", presetId: null },
         { source: "context-menu" }
       );
     });
