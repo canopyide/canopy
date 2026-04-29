@@ -33,6 +33,7 @@ import {
   RESOURCE_ITEM_HEIGHT_PX,
 } from "./GitHubDropdownSkeletons";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { formatTimeAgo } from "@/utils/timeAgo";
 
 type StateFilter = IssueStateFilter | PRStateFilter;
 
@@ -168,6 +169,10 @@ export function GitHubResourceList({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(
+    () => cachedEntry?.timestamp ?? null
+  );
+  const [, setTick] = useState(0);
   const [exactNumberNotFound, setExactNumberNotFound] = useState<number | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [sortPopoverOpen, setSortPopoverOpen] = useState(false);
@@ -286,12 +291,14 @@ export function GitHubResourceList({
 
             // Write first-page results to cache (skip search-filtered results)
             if (!append && options?.cacheKey && !debouncedSearch) {
+              const now = Date.now();
               setCache(options.cacheKey, {
                 items: result.items,
                 endCursor: result.pageInfo.endCursor,
                 hasNextPage: result.pageInfo.hasNextPage,
-                timestamp: Date.now(),
+                timestamp: now,
               });
+              setLastUpdatedAt(now);
             }
             lastError = null;
             return;
@@ -315,6 +322,12 @@ export function GitHubResourceList({
         }
 
         if (lastError != null) {
+          // Same generation guard as the success path: a stale background
+          // fetch finishing after the user switched filter/sort must not
+          // surface its error or wipe the freshly-loaded view.
+          if (options?.generation != null && options.cacheKey != null) {
+            if (getGeneration(options.cacheKey) !== options.generation) return;
+          }
           const message = formatErrorMessage(lastError, "Failed to fetch data");
           if (append) {
             setLoadMoreError(message);
@@ -362,6 +375,7 @@ export function GitHubResourceList({
     setHasMore(false);
     setExactNumberNotFound(null);
     setData([]);
+    setLastUpdatedAt(null);
     fetchData(null, false, abortController.signal, {
       generation: gen,
       cacheKey,
@@ -590,6 +604,13 @@ export function GitHubResourceList({
   useEffect(() => {
     setActiveIndex(-1);
   }, [data]);
+
+  // Re-render the "Updated Xm ago" label every 60s while a stale-data banner is visible.
+  useEffect(() => {
+    if (lastUpdatedAt == null || error == null) return;
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [lastUpdatedAt, error]);
 
   useEffect(() => {
     if (activeIndex < 0) return;
@@ -941,6 +962,11 @@ export function GitHubResourceList({
               <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
                 <WifiOff className="h-3.5 w-3.5 shrink-0" />
                 <span className="text-xs truncate">{sanitizeIpcError(error)}</span>
+                {lastUpdatedAt != null && !debouncedSearch && (
+                  <span className="text-xs text-muted-foreground/70 shrink-0 whitespace-nowrap">
+                    · Updated {formatTimeAgo(lastUpdatedAt)}
+                  </span>
+                )}
                 {isTokenError ? (
                   <Button
                     variant="ghost"

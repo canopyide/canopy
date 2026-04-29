@@ -98,8 +98,12 @@ vi.mock("react-virtuoso", () => ({
   },
 }));
 
+const { formatTimeAgoMock } = vi.hoisted(() => ({
+  formatTimeAgoMock: vi.fn<(value: number | string) => string>(() => "1m ago"),
+}));
+
 vi.mock("@/utils/timeAgo", () => ({
-  formatTimeAgo: () => "1m ago",
+  formatTimeAgo: formatTimeAgoMock,
 }));
 
 import { GitHubResourceList } from "../GitHubResourceList";
@@ -126,8 +130,15 @@ beforeEach(() => {
   mockListPRs.mockReset();
   mockGetIssueByNumber.mockReset();
   mockGetPRByNumber.mockReset();
-  useGitHubFilterStore.getState().setIssueSearchQuery("");
-  useGitHubFilterStore.getState().setPrSearchQuery("");
+  formatTimeAgoMock.mockClear();
+  formatTimeAgoMock.mockImplementation(() => "1m ago");
+  const filterStore = useGitHubFilterStore.getState();
+  filterStore.setIssueSearchQuery("");
+  filterStore.setPrSearchQuery("");
+  filterStore.setIssueFilter("open");
+  filterStore.setPrFilter("open");
+  filterStore.setIssueSortOrder("created");
+  filterStore.setPrSortOrder("created");
 });
 
 afterEach(() => {
@@ -192,11 +203,12 @@ describe("GitHubResourceList SWR behavior", () => {
 
   it("preserves cached data when background refresh fails", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    const seededTimestamp = Date.now() - 5 * 60 * 1000;
     setCache(cacheKey, {
       items: [makeIssue(20)],
       endCursor: null,
       hasNextPage: false,
-      timestamp: Date.now(),
+      timestamp: seededTimestamp,
     });
 
     mockListIssues.mockRejectedValue(new Error("Network error"));
@@ -206,11 +218,74 @@ describe("GitHubResourceList SWR behavior", () => {
     // Cached data shown immediately
     expect(screen.getByTestId("item-20")).toBeTruthy();
 
-    // After error, data persists and error banner appears
+    // After error, data persists and error banner appears with stale timestamp
     await waitFor(() => {
       expect(screen.getByText(/Network error/)).toBeTruthy();
     });
     expect(screen.getByTestId("item-20")).toBeTruthy();
+    expect(screen.getByText(/Updated 1m ago/)).toBeTruthy();
+    // The label must reflect the cached timestamp, not Date.now() of the failure.
+    expect(formatTimeAgoMock).toHaveBeenCalledWith(seededTimestamp);
+  });
+
+  it("clears error banner and refreshes timestamp after successful retry", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(30)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now() - 60_000,
+    });
+
+    mockListIssues
+      .mockRejectedValueOnce(new Error("Network blip"))
+      .mockResolvedValue(makeResponse([makeIssue(30), makeIssue(31)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Banner appears after the failed background refresh
+    await waitFor(() => {
+      expect(screen.getByText(/Network blip/)).toBeTruthy();
+    });
+
+    // Click retry — second call succeeds
+    screen.getByRole("button", { name: /retry/i }).click();
+
+    // Error clears, new item appears, no banner
+    await waitFor(() => {
+      expect(screen.getByTestId("item-31")).toBeTruthy();
+    });
+    expect(screen.queryByText(/Network blip/)).toBeNull();
+    expect(screen.queryByText(/Updated/)).toBeNull();
+  });
+
+  it("does not bleed stale timestamp across filter changes", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(50)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    // Background revalidation for "open" fails — banner with timestamp appears
+    mockListIssues.mockRejectedValueOnce(new Error("Initial fail"));
+    // After filter switches to "closed", fetch never resolves so we can inspect transitional UI
+    mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Initial fail/)).toBeTruthy();
+    });
+    expect(screen.getByText(/Updated 1m ago/)).toBeTruthy();
+
+    useGitHubFilterStore.getState().setIssueFilter("closed");
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("item-50")).toBeNull();
+    });
+    expect(screen.queryByText(/Updated/)).toBeNull();
   });
 
   it("renders Load More footer when hasNextPage is true", async () => {
