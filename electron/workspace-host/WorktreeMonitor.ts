@@ -20,9 +20,12 @@ import { ensureSerializable } from "../../shared/utils/serialization.js";
 import { extractIssueNumberSync, extractIssueNumber } from "../services/issueExtractor.js";
 import { GitFileWatcher } from "../utils/gitFileWatcher.js";
 import { MutableDisposable, toDisposable, type IDisposable } from "../utils/lifecycle.js";
+import { Cache } from "../utils/cache.js";
 
 const GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000;
 const WATCHER_FALLBACK_POLL_INTERVAL_MS = 30_000;
+const NO_UPSTREAM_CACHE_TTL_MS = 5 * 60 * 1000;
+const UPSTREAM_NOT_FOUND_CACHE_TTL_MS = 2 * 60 * 1000;
 const WATCHER_RETRY_INTERVAL_MS = 30_000;
 const WATCHER_MAX_RETRIES = 5;
 const WATCHER_WORKTREE_MIN_DEBOUNCE_MS = 150;
@@ -82,6 +85,7 @@ export class WorktreeMonitor {
   // Upstream tracking state
   private aheadCount: number | undefined;
   private behindCount: number | undefined;
+  private upstreamFailureCache = new Cache<string, string>();
 
   // Issue/PR state
   private _issueNumber: number | undefined;
@@ -998,7 +1002,11 @@ export class WorktreeMonitor {
       const currentBranch = await this.readCurrentBranch();
       const branchChanged = currentBranch !== undefined && currentBranch !== this._branch;
       if (branchChanged) {
+        const oldCacheKey = this._branch ? `${this.path}:${this._branch}` : undefined;
         this._branch = currentBranch;
+        const newCacheKey = `${this.path}:${this._branch}`;
+        if (oldCacheKey) this.upstreamFailureCache.invalidate(oldCacheKey);
+        this.upstreamFailureCache.invalidate(newCacheKey);
         const hadPendingRefresh = this.gitWatchRefreshPending;
         this.updateWatcher();
         if (hadPendingRefresh) {
@@ -1168,6 +1176,11 @@ export class WorktreeMonitor {
       return { ahead: undefined, behind: undefined };
     }
 
+    const cacheKey = `${this.path}:${this._branch}`;
+    if (this.upstreamFailureCache.get(cacheKey)) {
+      return { ahead: undefined, behind: undefined };
+    }
+
     try {
       const wsl = this.wslInvocation;
       const git = wsl
@@ -1175,13 +1188,36 @@ export class WorktreeMonitor {
         : createHardenedGit(this.path, this._pollAbortController.signal);
       const output = await git.raw(["rev-list", "--left-right", "--count", "HEAD...@{u}"]);
       const [aheadStr, behindStr] = output.trim().split(/\s+/);
+
+      this.upstreamFailureCache.invalidate(cacheKey);
+
       return {
         ahead: parseInt(aheadStr, 10) || 0,
         behind: parseInt(behindStr, 10) || 0,
       };
-    } catch {
+    } catch (error) {
+      const classification = this.classifyUpstreamError(error);
+      if (classification) {
+        const ttl =
+          classification === "no-upstream"
+            ? NO_UPSTREAM_CACHE_TTL_MS
+            : UPSTREAM_NOT_FOUND_CACHE_TTL_MS;
+        this.upstreamFailureCache.set(cacheKey, classification, ttl);
+      }
       return { ahead: undefined, behind: undefined };
     }
+  }
+
+  private classifyUpstreamError(error: unknown): string | undefined {
+    if (!(error instanceof Error)) return undefined;
+    const msg = error.message;
+    if (msg.includes("no upstream configured") || msg.includes("bad revision '@{u}'")) {
+      return "no-upstream";
+    }
+    if (msg.includes("upstream branch") && msg.includes("not found")) {
+      return "upstream-not-found";
+    }
+    return undefined;
   }
 
   private calculateStateHash(changes: WorktreeChanges): string {
