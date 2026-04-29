@@ -361,7 +361,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
           "flex w-full items-center justify-between px-4 py-2 font-sans",
-          "text-text-muted transition-colors hover:bg-overlay-soft hover:text-text-secondary focus:outline-none"
+          "text-text-muted transition-colors hover:bg-overlay-soft hover:text-text-secondary focus:outline-hidden"
         )}
         aria-expanded={isExpanded}
         aria-controls="quick-run-panel"
@@ -417,7 +417,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                   aria-label="Command input"
                   className={cn(
                     "flex-1 bg-transparent py-2.5 text-xs font-mono text-daintree-text placeholder:text-text-muted",
-                    "focus:outline-none min-w-0"
+                    "focus:outline-hidden min-w-0"
                   )}
                   autoComplete="off"
                 />

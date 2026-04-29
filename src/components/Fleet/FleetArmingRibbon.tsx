@@ -645,7 +645,7 @@ export function FleetArmingRibbon(): ReactElement | null {
           tabIndex={-1}
           onKeyDown={handleRibbonKeyDown}
           className={cn(
-            "relative flex items-center gap-3 overflow-hidden border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text outline-none",
+            "relative flex items-center gap-3 overflow-hidden border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text outline-hidden",
             "bg-category-amber-subtle",
             // Non-color structural cue: 2px amber left-edge stripe. Mirrors the
             // panel-worktree-identity idiom so the "mode surface" reads even

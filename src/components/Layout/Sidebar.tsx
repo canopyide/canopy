@@ -108,7 +108,7 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
           data-macro-focus={isMacroFocused ? "true" : undefined}
           className={cn(
             "sidebar-root",
-            "relative shrink-0 flex flex-col outline-none overflow-hidden",
+            "relative shrink-0 flex flex-col outline-hidden overflow-hidden",
             "surface-chrome",
             "border-r border-divider",
             "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
@@ -136,7 +136,7 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
             aria-hidden={width === 0 ? "true" : undefined}
             className={cn(
               "group absolute top-0 -right-1.5 w-3 h-full cursor-col-resize flex items-center justify-center z-50",
-              "hover:bg-overlay-soft transition-colors focus-visible:outline-none focus-visible:bg-overlay-medium focus-visible:ring-1 focus-visible:ring-daintree-accent/50",
+              "hover:bg-overlay-soft transition-colors focus-visible:outline-hidden focus-visible:bg-overlay-medium focus-visible:ring-1 focus-visible:ring-daintree-accent/50",
               isResizing && "bg-daintree-accent/20"
             )}
             onMouseDown={startResizing}

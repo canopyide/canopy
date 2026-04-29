@@ -384,7 +384,7 @@ export function PortalDock() {
           aria-label="Portal"
           data-macro-focus={isMacroFocused ? "true" : undefined}
           className={cn(
-            "flex flex-col h-full bg-daintree-bg relative portal-dock outline-none",
+            "flex flex-col h-full bg-daintree-bg relative portal-dock outline-hidden",
             "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset"
           )}
           style={{ width }}
@@ -402,7 +402,7 @@ export function PortalDock() {
             tabIndex={0}
             className={cn(
               "group absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize flex items-center justify-center z-50",
-              "hover:bg-overlay-soft transition-colors focus:outline-none focus:bg-tint/[0.04] focus:ring-1 focus:ring-daintree-accent/50",
+              "hover:bg-overlay-soft transition-colors focus:outline-hidden focus:bg-tint/[0.04] focus:ring-1 focus:ring-daintree-accent/50",
               isResizing && "bg-daintree-accent/20"
             )}
             onMouseDown={handleResizeStart}

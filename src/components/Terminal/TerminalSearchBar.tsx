@@ -211,7 +211,7 @@ export function TerminalSearchBar({ terminalId, onClose, className }: TerminalSe
         className={cn(
           "w-44 px-2 py-1 text-sm",
           "bg-daintree-bg border border-daintree-border rounded",
-          "focus:outline-none focus:ring-1 focus:ring-status-info",
+          "focus:outline-hidden focus:ring-1 focus:ring-status-info",
           "text-daintree-text placeholder:text-text-muted"
         )}
       />

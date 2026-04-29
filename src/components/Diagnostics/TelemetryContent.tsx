@@ -41,7 +41,7 @@ function TelemetryRow({ event, isSelected, onSelect }: RowProps) {
       onClick={() => onSelect(event.id)}
       className={cn(
         "w-full text-left px-3 py-2 border-b border-daintree-border/40 transition-colors",
-        "hover:bg-tint/5 focus-visible:outline-none focus-visible:bg-tint/10",
+        "hover:bg-tint/5 focus-visible:outline-hidden focus-visible:bg-tint/10",
         isSelected && "bg-daintree-accent/10"
       )}
     >

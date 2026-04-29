@@ -228,7 +228,7 @@ export function GitHubListItem({
                 }
               }}
               className={cn(
-                "flex-1 min-w-0 text-sm font-medium text-foreground truncate text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
+                "flex-1 min-w-0 text-sm font-medium text-foreground truncate text-left cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded",
                 !isSelectionActive && "hover:underline"
               )}
             >
@@ -264,7 +264,7 @@ export function GitHubListItem({
                     e.stopPropagation();
                     void handleCopyNumber();
                   }}
-                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
+                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
                   aria-label={`Copy number ${item.number}`}
                 >
                   {copied ? <Check className="w-3 h-3 text-status-success" /> : <span>#</span>}
@@ -330,7 +330,7 @@ export function GitHubListItem({
                           { source: "user" }
                         );
                       }}
-                      className="shrink-0 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
+                      className="shrink-0 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
                       aria-label={`Linked PR #${item.linkedPR.number}`}
                     >
                       <GitPullRequest className="w-3 h-3" />
@@ -366,7 +366,7 @@ export function GitHubListItem({
                         e.stopPropagation();
                         onSwitchToWorktree(matchedWorktree.id);
                       }}
-                      className="shrink-0 text-github-open hover:text-github-open/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
+                      className="shrink-0 text-github-open hover:text-github-open/80 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
                       aria-label="Switch to worktree"
                     >
                       <FolderGit2 className="w-3.5 h-3.5" />
@@ -394,7 +394,7 @@ export function GitHubListItem({
                       e.stopPropagation();
                       onCreateWorktree(item);
                     }}
-                    className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
+                    className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded p-0.5"
                     aria-label="Create worktree"
                   >
                     <FolderGit2 className="w-3.5 h-3.5" />
@@ -410,7 +410,7 @@ export function GitHubListItem({
                   type="button"
                   onClick={(e) => e.stopPropagation()}
                   className={cn(
-                    "shrink-0 p-0.5 rounded hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "shrink-0 p-0.5 rounded hover:bg-muted transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                     isActive
                       ? "opacity-100"
                       : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"

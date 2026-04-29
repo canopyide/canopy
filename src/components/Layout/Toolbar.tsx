@@ -932,7 +932,7 @@ export function Toolbar({
           >
             <button
               data-toolbar-item=""
-              className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-none"
+              className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-hidden"
               data-testid="project-switcher-trigger"
               onClick={() => projectSwitcher.open("dropdown")}
             >

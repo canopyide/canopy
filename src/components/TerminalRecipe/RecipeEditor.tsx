@@ -273,7 +273,7 @@ export function RecipeEditor({
             value={recipeName}
             onChange={(e) => setRecipeName(e.target.value)}
             placeholder="e.g., Full Stack Dev"
-            className="w-full px-3 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-none focus:ring-2 focus:ring-daintree-accent"
+            className="w-full px-3 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
           />
         </div>
 
@@ -295,7 +295,7 @@ export function RecipeEditor({
               id="recipe-scope"
               value={scope}
               onChange={(e) => setScope(e.target.value as "global" | "project")}
-              className="w-full px-3 pr-8 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-none focus:ring-2 focus:ring-daintree-accent"
+              className="w-full px-3 pr-8 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
             >
               <option value="project">Project (current project only)</option>
               <option value="global">Global (all projects)</option>
@@ -335,7 +335,7 @@ export function RecipeEditor({
             value={autoAssign}
             onChange={(e) => setAutoAssign(e.target.value as "always" | "never" | "prompt")}
             aria-describedby="auto-assign-help"
-            className="w-full px-3 pr-8 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-none focus:ring-2 focus:ring-daintree-accent"
+            className="w-full px-3 pr-8 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
           >
             <option value="always">Always assign to me</option>
             <option value="prompt">Ask before assigning</option>

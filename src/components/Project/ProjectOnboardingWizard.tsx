@@ -224,7 +224,7 @@ export function ProjectOnboardingWizard({
                       handleFinish();
                     }
                   }}
-                  className="w-full bg-transparent border border-daintree-border rounded px-3 py-2 text-sm text-daintree-text focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30 transition placeholder:text-text-muted"
+                  className="w-full bg-transparent border border-daintree-border rounded px-3 py-2 text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30 transition placeholder:text-text-muted"
                   placeholder="My Project"
                 />
               </div>
@@ -264,7 +264,7 @@ export function ProjectOnboardingWizard({
                     type="text"
                     value={devServerCommand}
                     onChange={(e) => setDevServerCommand(e.target.value)}
-                    className="w-full bg-daintree-bg border border-daintree-border rounded px-3 py-2 text-sm text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30 transition placeholder:text-text-muted"
+                    className="w-full bg-daintree-bg border border-daintree-border rounded px-3 py-2 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30 transition placeholder:text-text-muted"
                     placeholder="npm run dev"
                     spellCheck={false}
                     autoCapitalize="off"
@@ -300,7 +300,7 @@ export function ProjectOnboardingWizard({
                                   return updated;
                                 });
                               }}
-                              className="w-full bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                              className="w-full bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                               placeholder="Command name"
                               aria-label="Run command name"
                             />
@@ -314,7 +314,7 @@ export function ProjectOnboardingWizard({
                                   return updated;
                                 });
                               }}
-                              className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-xs text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                              className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-xs text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                               placeholder="npm run build"
                               aria-label="Run command"
                             />

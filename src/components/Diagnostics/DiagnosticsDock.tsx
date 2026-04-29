@@ -45,7 +45,7 @@ const TabButton = memo(function TabButton({
       className={cn(
         "px-3 py-1.5 text-sm font-medium transition-colors relative rounded",
         "hover:text-daintree-text hover:bg-overlay-soft",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2 focus-visible:ring-offset-daintree-sidebar",
+        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2 focus-visible:ring-offset-daintree-sidebar",
         isActive ? "text-daintree-text" : "text-daintree-text/65"
       )}
       role="tab"
@@ -190,7 +190,7 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
       <div
         className={cn(
           "group h-3 cursor-ns-resize transition-colors flex items-center justify-center",
-          "hover:bg-overlay-soft focus-visible:outline-none focus-visible:bg-overlay-medium focus-visible:ring-1 focus-visible:ring-daintree-accent/50",
+          "hover:bg-overlay-soft focus-visible:outline-hidden focus-visible:bg-overlay-medium focus-visible:ring-1 focus-visible:ring-daintree-accent/50",
           isResizing && "bg-daintree-accent/20"
         )}
         onMouseDown={handleResizeStart}

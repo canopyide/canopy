@@ -155,7 +155,7 @@ export function ContextTab({
                     );
                     setTestConfigResult(null);
                   }}
-                  className="flex-1 bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                  className="flex-1 bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                   placeholder="node_modules/**"
                   aria-label="Excluded path glob pattern"
                 />
@@ -215,7 +215,7 @@ export function ContextTab({
                 }}
                 min={1}
                 placeholder="Default (unlimited)"
-                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
               />
               <p className="text-xs text-daintree-text/40 mt-1">Total size limit for all files</p>
             </div>
@@ -233,7 +233,7 @@ export function ContextTab({
                 }}
                 min={1}
                 placeholder="Default (50KB)"
-                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
               />
               <p className="text-xs text-daintree-text/40 mt-1">Skip files larger than this</p>
             </div>
@@ -255,7 +255,7 @@ export function ContextTab({
                 }}
                 min={1}
                 placeholder="Default (no truncation)"
-                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
               />
               <p className="text-xs text-daintree-text/40 mt-1">
                 Truncate each file to this many characters
@@ -272,7 +272,7 @@ export function ContextTab({
                   onCopyTreeSettingsChange({ ...copyTreeSettings, strategy: value || undefined });
                   setTestConfigResult(null);
                 }}
-                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                className="w-full bg-daintree-sidebar border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
               >
                 <option value="">Default (all files)</option>
                 <option value="all">Include all files</option>
@@ -308,7 +308,7 @@ export function ContextTab({
                       onCopyTreeSettingsChange({ ...copyTreeSettings, alwaysInclude: updated });
                       setTestConfigResult(null);
                     }}
-                    className="flex-1 bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                    className="flex-1 bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                     placeholder="**/*.md"
                     aria-label="Always include pattern"
                   />
@@ -370,7 +370,7 @@ export function ContextTab({
                       onCopyTreeSettingsChange({ ...copyTreeSettings, alwaysExclude: updated });
                       setTestConfigResult(null);
                     }}
-                    className="flex-1 bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-none focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                    className="flex-1 bg-transparent border border-daintree-border rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                     placeholder="**/*.lock"
                     aria-label="Always exclude pattern"
                   />

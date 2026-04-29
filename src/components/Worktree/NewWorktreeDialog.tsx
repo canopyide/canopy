@@ -889,7 +889,7 @@ export function NewWorktreeDialog({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
+                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
                         aria-label="Help for Link Issue field"
                         disabled={isPending}
                       >
@@ -1008,7 +1008,7 @@ export function NewWorktreeDialog({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
+                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
                         aria-label="Help for Base Branch field"
                         disabled={isPending}
                       >
@@ -1051,7 +1051,7 @@ export function NewWorktreeDialog({
                       <Search className="mr-2 h-4 w-4 opacity-50 shrink-0" />
                       <input
                         ref={branchInputRef}
-                        className="flex h-10 w-full rounded-[var(--radius-md)] bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex h-10 w-full rounded-[var(--radius-md)] bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
                         placeholder="Search branches..."
                         value={branchQuery}
                         onChange={(e) => setBranchQuery(e.target.value)}
@@ -1190,7 +1190,7 @@ export function NewWorktreeDialog({
                     <div className="flex items-center border-b border-daintree-border px-3">
                       <Search className="mr-2 h-4 w-4 opacity-50 shrink-0" />
                       <input
-                        className="flex h-10 w-full rounded-[var(--radius-md)] bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex h-10 w-full rounded-[var(--radius-md)] bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
                         placeholder="Search local branches..."
                         value={existingBranchQuery}
                         onChange={(e) => setExistingBranchQuery(e.target.value)}
@@ -1262,7 +1262,7 @@ export function NewWorktreeDialog({
                         }}
                         onKeyDown={handlePrefixKeyDown}
                         placeholder="feature/add-user-auth"
-                        className="w-full px-3 pr-10 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-none focus:ring-2 focus:ring-daintree-accent font-mono text-sm"
+                        className="w-full px-3 pr-10 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent font-mono text-sm"
                         disabled={isPending}
                         aria-invalid={errorField === "new-branch" ? true : undefined}
                         aria-describedby={
@@ -1363,7 +1363,7 @@ export function NewWorktreeDialog({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
+                      className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
                       aria-label="Help for Worktree Path field"
                       disabled={isPending}
                     >
@@ -1391,7 +1391,7 @@ export function NewWorktreeDialog({
                       setCreationError(null);
                     }}
                     placeholder="/path/to/worktree"
-                    className="w-full px-3 pr-10 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-none focus:ring-2 focus:ring-daintree-accent"
+                    className="w-full px-3 pr-10 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
                     disabled={isPending}
                     aria-invalid={errorField === "worktree-path" ? true : undefined}
                     aria-describedby={
@@ -1470,7 +1470,7 @@ export function NewWorktreeDialog({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
+                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
                         aria-label="Help for Environment field"
                         disabled={isPending}
                       >
@@ -1545,7 +1545,7 @@ export function NewWorktreeDialog({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
+                        className="text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent focus-visible:ring-offset-2"
                         aria-label="Help for Run Recipe field"
                         disabled={isPending}
                       >

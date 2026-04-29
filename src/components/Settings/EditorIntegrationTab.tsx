@@ -160,7 +160,7 @@ export function EditorIntegrationTab() {
               <select
                 value={selectedId}
                 onChange={(e) => setSelectedId(e.target.value as KnownEditorId)}
-                className="flex-1 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text focus:outline-none focus:border-daintree-accent transition-colors"
+                className="flex-1 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent transition-colors"
               >
                 {ORDERED_KNOWN_IDS.map((id) => {
                   const disc = availabilityMap.get(id);
@@ -220,7 +220,7 @@ export function EditorIntegrationTab() {
                   value={customCommand}
                   onChange={(e) => setCustomCommand(e.target.value)}
                   placeholder="e.g. code, nvim, subl"
-                  className="w-full bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text focus:outline-none focus:border-daintree-accent transition-colors font-mono"
+                  className="w-full bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent transition-colors font-mono"
                 />
               </div>
               <div className="space-y-1">
@@ -230,7 +230,7 @@ export function EditorIntegrationTab() {
                   value={customTemplate}
                   onChange={(e) => setCustomTemplate(e.target.value)}
                   placeholder="{file}:{line}:{col}"
-                  className="w-full bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text focus:outline-none focus:border-daintree-accent transition-colors font-mono"
+                  className="w-full bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent transition-colors font-mono"
                 />
                 <p className="text-xs text-daintree-text/40 select-text">
                   Use <code className="font-mono">{"{file}"}</code>,{" "}

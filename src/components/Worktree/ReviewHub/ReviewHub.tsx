@@ -123,7 +123,7 @@ function BaseBranchFileRow({ file, onClick }: BaseBranchFileRowProps) {
         className={cn(
           "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs",
           "hover:bg-tint/[0.05] transition-colors",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent"
+          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
         )}
       >
         <span className={cn("font-mono font-bold shrink-0 w-3 text-center", statusClass)}>
@@ -579,7 +579,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono",
                     "bg-tint/[0.07] border border-tint/[0.08]",
                     "hover:bg-tint/[0.12] transition-colors cursor-pointer",
-                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent"
+                    "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
                   )}
                   aria-label={`Open pull request #${worktreePR.prNumber} on GitHub`}
                 >
@@ -633,7 +633,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   onClick={() => handleDiffModeChange("working-tree")}
                   className={cn(
                     "px-2 py-1 transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent",
+                    "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent",
                     diffMode === "working-tree"
                       ? "bg-tint/[0.12] text-daintree-text"
                       : "text-daintree-text/50 hover:text-daintree-text hover:bg-tint/[0.06]"
@@ -647,7 +647,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   disabled={!status?.currentBranch || status.currentBranch === mainBranch}
                   className={cn(
                     "px-2 py-1 transition-colors border-l border-tint/[0.08]",
-                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-daintree-accent",
+                    "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent",
                     "disabled:opacity-40 disabled:cursor-not-allowed",
                     diffMode === "base-branch"
                       ? "bg-tint/[0.12] text-daintree-text"
@@ -666,7 +666,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   className={cn(
                     "p-1.5 rounded transition-colors",
                     "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                   )}
                   aria-label="Refresh"
                 >
@@ -684,7 +684,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 className={cn(
                   "p-1.5 rounded transition-colors",
                   "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                 )}
                 aria-label="Close"
                 data-testid="review-hub-close"
@@ -747,7 +747,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                             "inline-flex items-center gap-1 px-2 py-0.5 rounded",
                             "bg-status-warning/20 hover:bg-status-warning/30",
                             "text-status-warning text-[11px] font-medium transition-colors",
-                            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-status-warning"
+                            "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning"
                           )}
                         >
                           {config.cta.label}

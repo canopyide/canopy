@@ -214,7 +214,7 @@ export function NotificationSettingsTab() {
                     <select
                       value={settings.waitingEscalationDelayMs}
                       onChange={(e) => update({ waitingEscalationDelayMs: Number(e.target.value) })}
-                      className="px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-none transition-colors"
+                      className="px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors"
                     >
                       {ESCALATION_DELAY_OPTIONS.map(({ value, label }) => (
                         <option key={value} value={value}>
@@ -279,7 +279,7 @@ export function NotificationSettingsTab() {
                       <select
                         value={settings[field]}
                         onChange={(e) => update({ [field]: e.target.value })}
-                        className="flex-1 px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-none transition-colors"
+                        className="flex-1 px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors"
                       >
                         {AVAILABLE_SOUNDS.map(({ file, label: soundLabel }) => (
                           <option key={file} value={file}>
@@ -412,7 +412,7 @@ function QuietHoursTimeRow({
 }) {
   const { hour, minute } = splitMinutes(totalMinutes);
   const selectClass =
-    "px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-none transition-colors";
+    "px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors";
   return (
     <div className="space-y-1">
       <label className="text-sm font-medium text-daintree-text block">{label}</label>

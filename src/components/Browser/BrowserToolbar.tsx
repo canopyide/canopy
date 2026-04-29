@@ -479,7 +479,7 @@ export function BrowserToolbar({
               className={cn(
                 "w-full pl-7 pr-2 py-1 text-xs rounded",
                 "bg-daintree-bg border border-overlay",
-                "focus:outline-none focus:border-border-strong",
+                "focus:outline-hidden focus:border-border-strong",
                 "text-daintree-text placeholder:text-daintree-text/40",
                 error && "border-status-error/50"
               )}

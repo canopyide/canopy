@@ -460,7 +460,7 @@ export function WorktreeOverviewModal({
                     onClick={() => setHideMainWorktree(!hideMainWorktree)}
                     className={cn(
                       "flex items-center gap-1.5 px-2 py-1 rounded-full text-xs transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent",
+                      "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent",
                       hideMainWorktree
                         ? "bg-tint/[0.06] text-daintree-text/40 hover:text-daintree-text/60"
                         : "bg-tint/[0.10] text-daintree-text/70 hover:text-daintree-text/90"
@@ -500,7 +500,7 @@ export function WorktreeOverviewModal({
                       "text-daintree-text/60 hover:text-daintree-text",
                       "hover:bg-tint/[0.06]",
                       "transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                      "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                     )}
                     aria-label="Clear all filters"
                   >
@@ -519,7 +519,7 @@ export function WorktreeOverviewModal({
                 "p-2 rounded-lg transition-colors",
                 "text-daintree-text/60 hover:text-daintree-text",
                 "hover:bg-tint/[0.06]",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
               )}
               aria-label="Close overview"
             >

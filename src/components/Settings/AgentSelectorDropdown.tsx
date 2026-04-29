@@ -105,7 +105,7 @@ export function AgentSelectorDropdown({
             "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-[var(--radius-md)]",
             "border border-daintree-border bg-daintree-bg text-daintree-text",
             "hover:border-daintree-accent/50 transition-colors",
-            "focus:outline-none focus:ring-2 focus:ring-daintree-accent/50"
+            "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50"
           )}
         >
           {selectedAgent ? (
@@ -169,7 +169,7 @@ export function AgentSelectorDropdown({
             aria-activedescendant={
               items[activeIndex] ? `agent-selector-item-${items[activeIndex].id}` : undefined
             }
-            className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder:text-daintree-text/40 focus:outline-none"
+            className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden"
           />
         </div>
         <div role="listbox" id="agent-selector-list" className="overflow-y-auto max-h-60 p-1">

@@ -224,7 +224,7 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
             aria-controls={listId}
             aria-activedescendant={activeCommitId}
             aria-label="Search commits"
-            className="flex-1 min-w-0 text-sm bg-transparent text-daintree-text placeholder:text-muted-foreground focus:outline-none"
+            className="flex-1 min-w-0 text-sm bg-transparent text-daintree-text placeholder:text-muted-foreground focus:outline-hidden"
           />
         </div>
       </div>

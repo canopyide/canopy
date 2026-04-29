@@ -178,7 +178,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
             onChange={(e) => setUrl(e.target.value)}
             placeholder="owner/repo or https://github.com/user/repo.git"
             disabled={isCloning || isComplete}
-            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-none focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50"
+            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50"
           />
         </div>
 
@@ -216,7 +216,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
               setFolderNameEdited(true);
             }}
             disabled={isCloning || isComplete}
-            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-none focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50"
+            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50"
           />
         </div>
 

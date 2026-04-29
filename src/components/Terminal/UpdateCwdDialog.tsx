@@ -114,7 +114,7 @@ export function UpdateCwdDialog({ isOpen, terminalId, currentCwd, onClose }: Upd
                 setValidationError(undefined);
               }}
               onKeyDown={handleKeyDown}
-              className="w-full p-2 bg-daintree-bg border border-daintree-border rounded font-mono text-sm text-daintree-text focus:outline-none focus:border-daintree-accent"
+              className="w-full p-2 bg-daintree-bg border border-daintree-border rounded font-mono text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent"
               placeholder="/path/to/directory"
               aria-invalid={!!validationError}
               aria-describedby={validationError ? "cwd-error" : undefined}

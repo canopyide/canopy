@@ -855,7 +855,7 @@ function SelectionStep({
             </p>
             <button
               type="button"
-              className="text-xs text-daintree-accent hover:underline focus-visible:outline-none focus-visible:underline"
+              className="text-xs text-daintree-accent hover:underline focus-visible:outline-hidden focus-visible:underline"
               onClick={() =>
                 void actionService.dispatch(
                   "telemetry.togglePreview",

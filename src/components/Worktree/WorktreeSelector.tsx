@@ -24,7 +24,7 @@ export function WorktreeSelector({
         <select
           value={selectedId ?? ""}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none bg-surface-panel-elevated border border-border-default rounded-md pl-8 pr-3 py-2 text-sm text-text-primary focus:outline-none focus:border-border-default cursor-pointer"
+          className="w-full appearance-none bg-surface-panel-elevated border border-border-default rounded-md pl-8 pr-3 py-2 text-sm text-text-primary focus:outline-hidden focus:border-border-default cursor-pointer"
         >
           <option value="" disabled>
             Select worktree…

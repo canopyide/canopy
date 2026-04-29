@@ -100,7 +100,7 @@ export function CommitListItem({ commit, optionId, isActive }: CommitListItemPro
                   type="button"
                   onClick={handleCopyHash}
                   className={cn(
-                    "shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5 font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1",
+                    "shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5 font-mono focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded px-1",
                     copied && "text-status-success"
                   )}
                   aria-label={`Copy hash ${commit.shortHash}`}
