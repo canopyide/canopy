@@ -306,9 +306,9 @@ describe("useSlowCall", () => {
   });
 
   it("handles synchronous throw from fn", async () => {
-    const fn = vi.fn(() => {
+    const fn = vi.fn(async (_signal: AbortSignal): Promise<string> => {
       throw new Error("sync boom");
-    }) as unknown as (signal: AbortSignal) => Promise<string>;
+    });
     const { result } = renderHook(() => useSlowCall(fn));
 
     await act(async () => {
