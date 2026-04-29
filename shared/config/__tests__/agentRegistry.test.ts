@@ -42,6 +42,7 @@ describe("agentRegistry", () => {
       expect(ids).toContain("qwen");
       expect(ids).toContain("interpreter");
       expect(ids).toContain("mistral");
+      expect(ids).toContain("kimi");
     });
 
     it("kiro only has macOS and Linux install blocks (no Windows)", () => {
@@ -528,6 +529,72 @@ describe("copilot configuration", () => {
   });
 });
 
+describe("kimi configuration", () => {
+  it("has display name 'Kimi Code'", () => {
+    expect(getAgentConfig("kimi")?.name).toBe("Kimi Code");
+  });
+
+  it("has command 'kimi' (matching the binary name)", () => {
+    expect(getAgentConfig("kimi")?.command).toBe("kimi");
+  });
+
+  it("declares kimi-cli as the PyPI package", () => {
+    expect(getAgentConfig("kimi")?.packages?.pypi).toBe("kimi-cli");
+  });
+
+  it("does not use the deprecated npmGlobalPackage field", () => {
+    expect(getAgentConfig("kimi")?.npmGlobalPackage).toBeUndefined();
+  });
+
+  it("spawns with no subcommand (args is empty)", () => {
+    expect(getAgentConfig("kimi")?.args).toEqual([]);
+  });
+
+  it("does not block alt screen (inline rendering via prompt_toolkit)", () => {
+    expect(getAgentConfig("kimi")?.capabilities?.blockAltScreen).toBeUndefined();
+  });
+
+  it("has uv install for all platforms including Windows", () => {
+    const config = getAgentConfig("kimi");
+    for (const os of ["macos", "linux", "windows"] as const) {
+      const commands = config?.install?.byOs?.[os]?.[0]?.commands;
+      expect(commands).toContain("uv tool install kimi-cli");
+    }
+  });
+
+  it("has authCheck for KIMI_API_KEY and OAuth credential file", () => {
+    const config = getAgentConfig("kimi");
+    expect(config?.authCheck?.envVar).toContain("KIMI_API_KEY");
+    expect(config?.authCheck?.configPathsAll).toContain(".kimi/config.toml");
+    expect(config?.authCheck?.configPathsAll).toContain(".kimi/credentials/kimi-code.json");
+  });
+});
+
+describe("kimi detection patterns", () => {
+  function compilePatterns(key: string): RegExp[] {
+    const config = getAgentConfig("kimi");
+    const patterns = config?.detection?.[key as keyof typeof config.detection] as
+      | string[]
+      | undefined;
+    return (patterns ?? []).map((p: string) => new RegExp(p, "im"));
+  }
+
+  it.each(["✨", "💫", "📋", "$"])("matches prompt glyph %s", (glyph) => {
+    const patterns = compilePatterns("promptPatterns");
+    expect(patterns.some((p) => p.test(`${glyph} `))).toBe(true);
+  });
+
+  it("matches braille spinner with task description (primary)", () => {
+    const patterns = compilePatterns("primaryPatterns");
+    expect(patterns.some((p) => p.test("⠋ Thinking about the request"))).toBe(true);
+  });
+
+  it("matches braille spinner with single word (fallback)", () => {
+    const patterns = compilePatterns("fallbackPatterns");
+    expect(patterns.some((p) => p.test("⠹ Working"))).toBe(true);
+  });
+});
+
 describe("copilot detection patterns", () => {
   function compilePatterns(key: string): RegExp[] {
     const config = getAgentConfig("copilot");
@@ -792,6 +859,15 @@ describe("resume configuration", () => {
     }
   });
 
+  it("kimi is rolling-history and produces --continue args", () => {
+    const resume = getAgentConfig("kimi")?.resume;
+    expect(resume?.kind).toBe("rolling-history");
+    if (resume?.kind === "rolling-history") {
+      expect(resume.args()).toEqual(["--continue"]);
+      expect(resume.quitCommand).toBe("/exit");
+    }
+  });
+
   it("cursor has no resume config (no session resume model)", () => {
     expect(getAgentConfig("cursor")?.resume).toBeUndefined();
   });
@@ -1018,6 +1094,7 @@ describe("all built-in agents have Windows or generic install", () => {
     "qwen",
     "interpreter",
     "mistral",
+    "kimi",
   ])(
     "%s has windows or generic install block",
     (agentId) => {

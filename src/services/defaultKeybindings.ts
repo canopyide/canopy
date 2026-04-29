@@ -322,6 +322,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Agents",
   },
   {
+    actionId: "agent.kimi",
+    combo: "",
+    scope: "global",
+    priority: 0,
+    description: "Launch Kimi Code agent",
+    category: "Agents",
+  },
+  {
     actionId: "agent.terminal",
     combo: "Cmd+Alt+N",
     scope: "global",
