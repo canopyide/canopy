@@ -165,12 +165,12 @@ describe("CliAvailabilityService", () => {
         expect(detail?.authConfirmed).toBe(false);
       }
 
-      // Should have called execFileSync 14 times (once for each CLI).
+      // Should have called execFileSync 15 times (once for each CLI).
       // Fallback probes (native paths, npm-global, WSL) run via async execFile and
       // only fire when the which/where probe returns missing — in this test
       // every agent succeeds on the first probe, so execFileSync count
       // matches the registry size exactly.
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(14);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(15);
 
       // stdio is now [ignore, pipe, ignore] so we can capture the resolved
       // path from stdout while still suppressing any TTY output on stderr.
@@ -211,6 +211,7 @@ describe("CliAvailabilityService", () => {
       const result = await service.checkAvailability();
 
       expect(result).toEqual({
+        aider: "missing",
         claude: "missing",
         gemini: "missing",
         codex: "missing",
@@ -253,6 +254,7 @@ describe("CliAvailabilityService", () => {
 
       const result = await service.checkAvailability();
 
+      expect(result.aider).toBe("missing");
       expect(result.claude).toBe("ready");
       expect(result.gemini).toBe("missing");
       expect(result.codex).toBe("missing");
@@ -598,11 +600,11 @@ describe("CliAvailabilityService", () => {
       expect(refreshed.codex).toBe("missing");
 
       expect(service.getAvailability()).toEqual(refreshed);
-      // 14 successful primary calls + 13 BusyBox-style bare-`which` retries
-      // (the 13 agents whose mock throws a generic `Error` with no errno
+      // 15 successful primary calls + 14 BusyBox-style bare-`which` retries
+      // (the 14 agents whose mock throws a generic `Error` with no errno
       // code — which `probeViaShell` retries without `-a` to recover
       // BusyBox/minimal `which` builds that reject the flag).
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(27);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(29);
     });
 
     it("works on cold start before initial check", async () => {
@@ -630,7 +632,7 @@ describe("CliAvailabilityService", () => {
 
       await service.checkAvailability();
 
-      expect(executionOrder).toHaveLength(14);
+      expect(executionOrder).toHaveLength(15);
       expect(executionOrder).toContain("claude");
       expect(executionOrder).toContain("gemini");
       expect(executionOrder).toContain("codex");
@@ -645,6 +647,7 @@ describe("CliAvailabilityService", () => {
       expect(executionOrder).toContain("vibe");
       expect(executionOrder).toContain("kimi");
       expect(executionOrder).toContain("amp");
+      expect(executionOrder).toContain("aider");
     });
 
     it("deduplicates concurrent checkAvailability calls", async () => {
@@ -658,7 +661,7 @@ describe("CliAvailabilityService", () => {
 
       expect(result1).toEqual(result2);
       expect(result2).toEqual(result3);
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(14);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(15);
     });
 
     it("concurrent refresh calls each trigger a new check", async () => {
@@ -667,19 +670,19 @@ describe("CliAvailabilityService", () => {
       const [result1, result2] = await Promise.all([service.refresh(), service.refresh()]);
 
       expect(result1).toEqual(result2);
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(28);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(30);
     });
 
     it("allows sequential checks after first completes", async () => {
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
 
       await service.checkAvailability();
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(14);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(15);
 
       vi.clearAllMocks();
 
       await service.refresh();
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(14);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(15);
     });
   });
 
@@ -1542,7 +1545,7 @@ describe("CliAvailabilityService", () => {
     });
 
     it("does not synthesise PyPI paths when packages.pypi is unset", async () => {
-      // Agents that legitimately declare `packages.pypi` (interpreter, mistral, kimi)
+      // Agents that legitimately declare `packages.pypi` (interpreter, mistral, kimi, aider)
       // SHOULD probe uv/pipx layouts; every other built-in does not, and must not
       // produce PyPI-shaped fs.access calls. This guards against accidental
       // probing when an agent has e.g. `npmGlobalPackage` only.
@@ -1557,21 +1560,30 @@ describe("CliAvailabilityService", () => {
       await service.checkAvailability();
 
       // Filter out paths synthesised for agents whose `packages.pypi`
-      // legitimately triggers uv/pipx probing (interpreter, mistral, kimi).
+      // legitimately triggers uv/pipx probing (interpreter, mistral, kimi, aider).
       // Remaining probed paths must not include any uv/pipx layouts.
-      const probedPaths = mockedAccess.mock.calls
-        .map((c) => String(c[0]))
-        .filter(
-          (p) =>
-            !p.includes("open-interpreter") &&
-            !p.includes("/interpreter") &&
-            !p.includes("mistral") &&
-            !p.includes("/vibe") &&
-            !p.includes("kimi-cli") &&
-            !p.includes("/kimi")
-        );
+      const allProbedPaths = mockedAccess.mock.calls.map((c) => String(c[0]));
+      const probedPaths = allProbedPaths.filter(
+        (p) =>
+          !p.includes("open-interpreter") &&
+          !p.includes("/interpreter") &&
+          !p.includes("mistral") &&
+          !p.includes("/vibe") &&
+          !p.includes("kimi-cli") &&
+          !p.includes("/kimi") &&
+          !p.includes("aider")
+      );
       expect(probedPaths.some((p) => p.includes(".local/share/uv/tools"))).toBe(false);
       expect(probedPaths.some((p) => p.includes(".local/share/pipx/venvs"))).toBe(false);
+
+      // Aider declares packages.pypi so its uv/pipx paths SHOULD be probed.
+      const aiderUvPaths = allProbedPaths.filter(
+        (p) => p.includes(".local/share/uv/tools") && p.includes("aider")
+      );
+      const aiderPipxPaths = allProbedPaths.filter(
+        (p) => p.includes(".local/share/pipx/venvs") && p.includes("aider")
+      );
+      expect(aiderUvPaths.length > 0 || aiderPipxPaths.length > 0).toBe(true);
     });
   });
 
