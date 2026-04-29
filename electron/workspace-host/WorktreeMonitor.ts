@@ -245,6 +245,9 @@ export class WorktreeMonitor {
   }
 
   set branch(value: string | undefined) {
+    if (value !== this._branch && this._branch) {
+      this.upstreamFailureCache.invalidate(`${this.path}:${this._branch}`);
+    }
     this._branch = value;
   }
 
@@ -1025,7 +1028,7 @@ export class WorktreeMonitor {
 
       const noteData = await this.noteReader.read();
 
-      const upstreamCounts = await this.fetchUpstreamCounts();
+      const upstreamCounts = await this.fetchUpstreamCounts(forceRefresh);
 
       const detectedPlanFile = PLAN_FILE_CANDIDATES.find((candidate) =>
         existsSync(pathJoin(this.path, candidate))
@@ -1168,7 +1171,7 @@ export class WorktreeMonitor {
     }
   }
 
-  private async fetchUpstreamCounts(): Promise<{
+  private async fetchUpstreamCounts(force: boolean = false): Promise<{
     ahead: number | undefined;
     behind: number | undefined;
   }> {
@@ -1177,7 +1180,7 @@ export class WorktreeMonitor {
     }
 
     const cacheKey = `${this.path}:${this._branch}`;
-    if (this.upstreamFailureCache.get(cacheKey)) {
+    if (!force && this.upstreamFailureCache.get(cacheKey)) {
       return { ahead: undefined, behind: undefined };
     }
 
@@ -1211,7 +1214,11 @@ export class WorktreeMonitor {
   private classifyUpstreamError(error: unknown): string | undefined {
     if (!(error instanceof Error)) return undefined;
     const msg = error.message;
-    if (msg.includes("no upstream configured") || msg.includes("bad revision '@{u}'")) {
+    if (
+      msg.includes("no upstream configured") ||
+      msg.includes("bad revision '@{u}'") ||
+      msg.includes("ambiguous argument '@{u}'")
+    ) {
       return "no-upstream";
     }
     if (msg.includes("upstream branch") && msg.includes("not found")) {

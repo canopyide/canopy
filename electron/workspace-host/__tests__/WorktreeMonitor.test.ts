@@ -380,8 +380,8 @@ describe("WorktreeMonitor", () => {
       expect(snapshot1.aheadCount).toBeUndefined();
       expect(snapshot1.behindCount).toBeUndefined();
 
-      // Second poll within TTL — should hit the cache, no new git spawn
-      await monitor.refresh();
+      // Second poll without forceRefresh — should hit the cache, no new git spawn
+      await monitor.updateGitStatus(false);
 
       expect(mockGitRaw).toHaveBeenCalledTimes(1);
 
@@ -412,15 +412,15 @@ describe("WorktreeMonitor", () => {
 
       // Advance just under TTL — cache still valid
       await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
-      await monitor.refresh();
+      await monitor.updateGitStatus(false);
       const callsWithinTTL = mockGitRaw.mock.calls.filter(
         (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
       ).length;
       expect(callsWithinTTL).toBe(1);
 
-      // Advance past TTL
+      // Advance past TTL — cache expired
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-      await monitor.refresh();
+      await monitor.updateGitStatus(false);
       const callsAfterTTL = mockGitRaw.mock.calls.filter(
         (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
       ).length;
@@ -448,7 +448,7 @@ describe("WorktreeMonitor", () => {
 
       // Within short TTL — cached
       await vi.advanceTimersByTimeAsync(60 * 1000);
-      await monitor.refresh();
+      await monitor.updateGitStatus(false);
       const callsWithinShortTTL = mockGitRaw.mock.calls.filter(
         (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
       ).length;
@@ -456,7 +456,7 @@ describe("WorktreeMonitor", () => {
 
       // Past 2-min TTL — retries
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-      await monitor.refresh();
+      await monitor.updateGitStatus(false);
       const callsAfterTTL = mockGitRaw.mock.calls.filter(
         (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
       ).length;
@@ -525,6 +525,68 @@ describe("WorktreeMonitor", () => {
       await monitor.refresh();
       // Unclassified errors should retry every poll
       expect(mockGitRaw).toHaveBeenCalledTimes(2);
+
+      monitor.stop();
+    });
+
+    it("force-refresh bypasses the negative cache", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+      mockGitRaw.mockRejectedValue(
+        new Error("fatal: no upstream configured for branch 'test-branch'")
+      );
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Cache should be populated — first call from start
+      const callsAfterStart = mockGitRaw.mock.calls.filter(
+        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
+      ).length;
+      expect(callsAfterStart).toBe(1);
+
+      monitor.pausePolling();
+
+      // Non-force call within TTL — cache hit
+      await monitor.updateGitStatus(false);
+      const callsAfterNonForce = mockGitRaw.mock.calls.filter(
+        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
+      ).length;
+      expect(callsAfterNonForce).toBe(1);
+
+      // Force-refresh bypasses cache
+      await monitor.refresh();
+      const callsAfterForce = mockGitRaw.mock.calls.filter(
+        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
+      ).length;
+      expect(callsAfterForce).toBe(2);
+
+      monitor.stop();
+    });
+
+    it("classifies ambiguous argument @{u} as no-upstream", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+      mockGitRaw.mockRejectedValue(
+        new Error(
+          "fatal: ambiguous argument '@{u}': unknown revision or path not in the working tree."
+        )
+      );
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      const snapshot = monitor.getSnapshot();
+      expect(snapshot.aheadCount).toBeUndefined();
+      expect(snapshot.behindCount).toBeUndefined();
+
+      // Should be cached, so second call doesn't spawn git
+      monitor.pausePolling();
+      await monitor.updateGitStatus(false);
+      const revListCalls = mockGitRaw.mock.calls.filter(
+        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
+      ).length;
+      expect(revListCalls).toBe(1);
 
       monitor.stop();
     });
