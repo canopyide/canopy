@@ -436,7 +436,7 @@ export function GeneralTab({
                     { source: "user" }
                   )
                 }
-                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-daintree-accent transition-colors pt-1"
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-daintree-text transition-colors pt-1"
               >
                 <ExternalLink className="w-3 h-3" />
                 daintree.org
@@ -469,7 +469,7 @@ export function GeneralTab({
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          className="text-xs text-daintree-accent hover:underline"
+                          className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline"
                           onClick={() =>
                             window.dispatchEvent(
                               new CustomEvent("daintree:open-agent-setup-wizard")
@@ -481,7 +481,7 @@ export function GeneralTab({
                         {onNavigateToAgents && (
                           <button
                             type="button"
-                            className="text-xs text-daintree-accent hover:underline"
+                            className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline"
                             onClick={() => onNavigateToAgents?.()}
                           >
                             Browse available agents
@@ -540,7 +540,7 @@ export function GeneralTab({
                       <button
                         type="button"
                         onClick={() => onNavigateToAgents?.()}
-                        className="text-xs text-daintree-accent hover:underline"
+                        className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline"
                       >
                         {`Daintree supports ${hiddenCount} more ${hiddenCount === 1 ? "agent" : "agents"} →`}
                       </button>

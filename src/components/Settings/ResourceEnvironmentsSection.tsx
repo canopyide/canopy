@@ -436,35 +436,35 @@ export function ResourceEnvironmentsSection({
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
           <div>
-            <code className="text-daintree-accent/80">{"{branch}"}</code>
+            <code className="text-text-secondary">{"{branch}"}</code>
             <span className="text-daintree-text/40"> — branch name</span>
           </div>
           <div>
-            <code className="text-daintree-accent/80">{"{branch-slug}"}</code>
+            <code className="text-text-secondary">{"{branch-slug}"}</code>
             <span className="text-daintree-text/40"> — sanitized branch</span>
           </div>
           <div>
-            <code className="text-daintree-accent/80">{"{repo-name}"}</code>
+            <code className="text-text-secondary">{"{repo-name}"}</code>
             <span className="text-daintree-text/40"> — repository folder</span>
           </div>
           <div>
-            <code className="text-daintree-accent/80">{"{base-folder}"}</code>
+            <code className="text-text-secondary">{"{base-folder}"}</code>
             <span className="text-daintree-text/40"> — alias for repo-name</span>
           </div>
           <div>
-            <code className="text-daintree-accent/80">{"{parent-dir}"}</code>
+            <code className="text-text-secondary">{"{parent-dir}"}</code>
             <span className="text-daintree-text/40"> — parent directory</span>
           </div>
           <div>
-            <code className="text-daintree-accent/80">{"{worktree_name}"}</code>
+            <code className="text-text-secondary">{"{worktree_name}"}</code>
             <span className="text-daintree-text/40"> — worktree name</span>
           </div>
           <div>
-            <code className="text-daintree-accent/80">{"{worktree_path}"}</code>
+            <code className="text-text-secondary">{"{worktree_path}"}</code>
             <span className="text-daintree-text/40"> — full worktree path</span>
           </div>
           <div>
-            <code className="text-daintree-accent/80">{"{project_root}"}</code>
+            <code className="text-text-secondary">{"{project_root}"}</code>
             <span className="text-daintree-text/40"> — project root path</span>
           </div>
         </div>

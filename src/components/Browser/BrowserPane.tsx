@@ -1079,7 +1079,7 @@ export function BrowserPane({
                     onClick={handleRetryFromError}
                     variant="ghost"
                     size="sm"
-                    className="gap-1.5 px-2.5 py-1.5 group text-daintree-accent/70 hover:text-daintree-accent"
+                    className="gap-1.5 px-2.5 py-1.5 group"
                   >
                     <RotateCw className="h-3.5 w-3.5" />
                     <span className="text-xs">Retry</span>

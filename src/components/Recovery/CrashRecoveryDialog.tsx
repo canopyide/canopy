@@ -168,7 +168,7 @@ export function CrashRecoveryDialog({
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="cursor-pointer text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors"
+                  className="cursor-pointer text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors"
                   data-testid="toggle-all-button"
                 >
                   {allSelected ? "Deselect all" : "Select all"}

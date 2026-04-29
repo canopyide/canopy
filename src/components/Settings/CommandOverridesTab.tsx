@@ -546,7 +546,7 @@ function PromptEditor({ commandId, args, value, onChange }: PromptEditorProps) {
         <p className="text-xs text-daintree-text/60 mb-2 select-text">
           Define a custom prompt to send to the agent instead of executing the default command
           behavior. Use template variables like{" "}
-          <code className="text-daintree-accent">
+          <code className="text-text-secondary">
             {"{"}variableName{"}"}
           </code>{" "}
           to include argument values.

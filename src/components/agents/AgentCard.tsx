@@ -345,7 +345,6 @@ export function AgentInstallSection({
                 });
               }
             }}
-            className="text-daintree-accent hover:text-daintree-accent/80"
           >
             <ExternalLink size={14} />
             Open Install Docs

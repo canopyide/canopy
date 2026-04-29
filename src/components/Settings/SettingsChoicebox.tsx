@@ -135,7 +135,7 @@ export function SettingsChoicebox<T extends string = string>({
               type="button"
               aria-label={resetAriaLabel ?? `Reset ${label} to default`}
               className={cn(
-                "p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-accent",
+                "p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-text",
                 "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
                 "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
                 "transition-colors"
@@ -153,7 +153,7 @@ export function SettingsChoicebox<T extends string = string>({
             type="button"
             aria-label="Reset to default"
             className={cn(
-              "p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-accent",
+              "p-0.5 rounded-sm text-daintree-text/40 hover:text-daintree-text",
               "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
               "transition-colors"

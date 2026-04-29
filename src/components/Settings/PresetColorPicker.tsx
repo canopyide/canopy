@@ -171,7 +171,7 @@ export function PresetColorPicker({
           </button>
           <button
             type="button"
-            className="text-[11px] font-medium text-daintree-accent hover:text-daintree-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-[11px] font-medium text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleDone}
             disabled={!isValidHex(draftColor)}
             data-testid="preset-color-done"

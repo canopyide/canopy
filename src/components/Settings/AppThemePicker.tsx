@@ -351,7 +351,7 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
             <button
               type="button"
               onClick={handleChangeTheme}
-              className="text-xs font-medium text-daintree-accent hover:text-daintree-accent/80 transition-colors"
+              className="text-xs font-medium text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors"
             >
               Change theme…
             </button>
@@ -397,7 +397,7 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
             type="button"
             onClick={handleAccentReset}
             data-testid="accent-color-override-reset"
-            className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors shrink-0"
+            className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors shrink-0"
           >
             Reset to theme default
           </button>
@@ -407,13 +407,13 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
       <div className="flex items-center gap-3">
         <button
           onClick={handleExport}
-          className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors"
+          className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors"
         >
           Export app theme...
         </button>
         <button
           onClick={handleImport}
-          className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors"
+          className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors"
         >
           Import app theme...
         </button>
@@ -421,7 +421,7 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
           <button
             type="button"
             onClick={handleShuffle}
-            className="ml-auto flex items-center gap-1.5 text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors"
+            className="ml-auto flex items-center gap-1.5 text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors"
           >
             <Shuffle className="h-3 w-3" />
             Random theme

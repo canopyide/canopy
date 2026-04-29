@@ -64,7 +64,7 @@ export function RecipeRunnerGrid({
           className="group col-span-full flex items-center justify-center gap-2 px-3 py-2 mt-1 rounded-[var(--radius-md)] hover:bg-overlay-medium transition-colors text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent aria-selected:ring-2 aria-selected:ring-daintree-accent/60"
         >
           <Plus
-            className="h-3.5 w-3.5 text-text-muted group-hover:text-daintree-accent transition-colors shrink-0"
+            className="h-3.5 w-3.5 text-text-muted group-hover:text-daintree-text transition-colors shrink-0"
             aria-hidden
           />
           <span className="text-sm text-text-muted group-hover:text-daintree-text transition-colors">

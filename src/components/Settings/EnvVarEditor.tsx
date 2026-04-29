@@ -659,7 +659,7 @@ export function EnvVarEditor({
           <button
             type="button"
             onClick={handleAdd}
-            className="w-full flex items-center justify-center gap-1.5 py-4 text-[12px] text-daintree-text/50 hover:text-daintree-accent hover:bg-daintree-bg/50 transition-colors border border-dashed border-daintree-border/60 rounded-[var(--radius-sm)]"
+            className="w-full flex items-center justify-center gap-1.5 py-4 text-[12px] text-daintree-text/50 hover:text-daintree-text hover:bg-daintree-bg/50 transition-colors border border-dashed border-daintree-border/60 rounded-[var(--radius-sm)]"
             data-testid="env-editor-add"
           >
             <Plus size={12} aria-hidden="true" />
@@ -668,7 +668,7 @@ export function EnvVarEditor({
           <button
             type="button"
             onClick={() => setIsImportOpen(true)}
-            className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-daintree-text/50 hover:text-daintree-accent hover:bg-daintree-bg/50 transition-colors rounded-[var(--radius-sm)]"
+            className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-daintree-text/50 hover:text-daintree-text hover:bg-daintree-bg/50 transition-colors rounded-[var(--radius-sm)]"
             data-testid="env-editor-import"
           >
             <Upload size={12} aria-hidden="true" />
@@ -802,7 +802,7 @@ export function EnvVarEditor({
                   {row.isInherited ? (
                     <button
                       type="button"
-                      className="p-1 rounded text-daintree-text/40 hover:text-daintree-accent hover:bg-daintree-bg/60 transition-colors"
+                      className="p-1 rounded text-daintree-text/40 hover:text-daintree-text hover:bg-daintree-bg/60 transition-colors"
                       aria-label={`Override ${trimmedKey} in this preset`}
                       onClick={() => handleOverride(row.rowId)}
                       data-testid="env-editor-override"
@@ -813,7 +813,7 @@ export function EnvVarEditor({
                   ) : isOverride ? (
                     <button
                       type="button"
-                      className="p-1 rounded text-daintree-text/40 hover:text-daintree-accent hover:bg-daintree-bg/60 transition-colors"
+                      className="p-1 rounded text-daintree-text/40 hover:text-daintree-text hover:bg-daintree-bg/60 transition-colors"
                       aria-label={`Revert ${trimmedKey} to inherited value`}
                       onClick={() => handleRevert(row.rowId)}
                       data-testid="env-editor-revert"
@@ -844,7 +844,7 @@ export function EnvVarEditor({
           <button
             type="button"
             onClick={handleAdd}
-            className="flex items-center justify-center gap-1.5 py-2 text-[11px] text-daintree-text/50 hover:text-daintree-accent hover:bg-daintree-bg/50 transition-colors"
+            className="flex items-center justify-center gap-1.5 py-2 text-[11px] text-daintree-text/50 hover:text-daintree-text hover:bg-daintree-bg/50 transition-colors"
             data-testid="env-editor-add"
           >
             <Plus size={12} aria-hidden="true" />
@@ -853,7 +853,7 @@ export function EnvVarEditor({
           <button
             type="button"
             onClick={() => setIsImportOpen(true)}
-            className="flex items-center justify-center gap-1.5 py-2 text-[11px] text-daintree-text/50 hover:text-daintree-accent hover:bg-daintree-bg/50 transition-colors"
+            className="flex items-center justify-center gap-1.5 py-2 text-[11px] text-daintree-text/50 hover:text-daintree-text hover:bg-daintree-bg/50 transition-colors"
             data-testid="env-editor-import"
           >
             <Upload size={12} aria-hidden="true" />
