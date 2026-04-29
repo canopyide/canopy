@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { notify } from "@/lib/notify";
+import { logError } from "@/utils/logger";
 
 interface McpServerStatus {
   enabled: boolean;
@@ -34,6 +36,13 @@ export function McpServerSettingsTab() {
       settled = true;
       setError("Settings load timed out");
       setLoading(false);
+      notify({
+        type: "error",
+        title: "MCP status failed",
+        message: "Loading MCP server status timed out. The settings panel may be out of date.",
+        priority: "low",
+      });
+      logError("MCP status load timed out");
     }, 10_000);
     window.electron.mcpServer
       .getStatus()
@@ -46,6 +55,13 @@ export function McpServerSettingsTab() {
       .catch((err) => {
         if (settled) return;
         setError(formatErrorMessage(err, "Failed to load MCP status"));
+        notify({
+          type: "error",
+          title: "MCP status failed",
+          message: "Couldn't load MCP server status. The settings panel may be out of date.",
+          priority: "low",
+        });
+        logError("Failed to load MCP status", err);
       })
       .finally(() => {
         settled = true;
@@ -66,6 +82,13 @@ export function McpServerSettingsTab() {
       setStatus(newStatus);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update MCP server"));
+      notify({
+        type: "error",
+        title: "MCP server update failed",
+        message: "Couldn't update the MCP server state. Try again.",
+        priority: "low",
+      });
+      logError("Failed to update MCP server", err);
     }
   }, [status.enabled]);
 
@@ -77,6 +100,13 @@ export function McpServerSettingsTab() {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to copy config"));
+      notify({
+        type: "error",
+        title: "Config copy failed",
+        message: "Couldn't copy the MCP config. The server may not be running.",
+        priority: "low",
+      });
+      logError("Failed to copy MCP config", err);
     }
   }, []);
 
@@ -94,6 +124,13 @@ export function McpServerSettingsTab() {
       setPortInput(newStatus.configuredPort?.toString() ?? "");
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update port"));
+      notify({
+        type: "error",
+        title: "Port update failed",
+        message: "Couldn't save the port setting. Check the value and try again.",
+        priority: "low",
+      });
+      logError("Failed to update MCP port", err);
     }
   }, [portInput]);
 
@@ -106,6 +143,13 @@ export function McpServerSettingsTab() {
       setCopiedKey(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to generate API key"));
+      notify({
+        type: "error",
+        title: "API key generation failed",
+        message: "Couldn't generate a new API key. Try again.",
+        priority: "low",
+      });
+      logError("Failed to generate MCP API key", err);
     }
   }, []);
 
@@ -117,6 +161,13 @@ export function McpServerSettingsTab() {
       setCopiedKey(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to clear API key"));
+      notify({
+        type: "error",
+        title: "API key removal failed",
+        message: "Couldn't remove the API key. Try again.",
+        priority: "low",
+      });
+      logError("Failed to clear MCP API key", err);
     }
   }, []);
 
