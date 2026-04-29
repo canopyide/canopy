@@ -113,6 +113,7 @@ export const config: AgentConfig = {
   },
   authCheck: {
     configPaths: {
+      darwin: ["Library/Application Support/open-interpreter/profiles/default.yaml"],
       win32: ["AppData/Roaming/Open Interpreter/profiles/default.yaml"],
     },
     configPathsAll: [".config/open-interpreter/profiles/default.yaml"],
