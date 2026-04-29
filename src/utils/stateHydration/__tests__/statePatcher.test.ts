@@ -727,7 +727,7 @@ describe("buildArgsForRespawn", () => {
         location: "grid",
         agentPresetId: "user-live",
         agentPresetColor: "#00ff00",
-        title: "Claude (LivePreset)",
+        title: "LivePreset",
       },
       "agent",
       "/p",
