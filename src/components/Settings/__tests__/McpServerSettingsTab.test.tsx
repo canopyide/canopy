@@ -226,6 +226,49 @@ describe("McpServerSettingsTab", () => {
     expect(screen.queryByText("MCP server is off")).toBeNull();
   });
 
+  it("does not show the empty state when MCP status load fails", async () => {
+    window.electron = {
+      mcpServer: createMcpApi({
+        getStatus: vi.fn().mockRejectedValue(new Error("IPC down")),
+      }),
+    } as unknown as typeof window.electron;
+
+    const { container } = render(<McpServerSettingsTab />);
+
+    await waitForContent(container, "IPC down");
+
+    expect(screen.queryByText("MCP server is off")).toBeNull();
+  });
+
+  it("hides the empty state once MCP is enabled via the CTA", async () => {
+    const setEnabledMock = vi.fn().mockResolvedValue({
+      enabled: true,
+      port: 9020,
+      configuredPort: 9020,
+      apiKey: "",
+    });
+    window.electron = {
+      mcpServer: createMcpApi({
+        getStatus: vi.fn().mockResolvedValue({
+          enabled: false,
+          port: null,
+          configuredPort: null,
+          apiKey: "",
+        }),
+        setEnabled: setEnabledMock,
+      }),
+    } as unknown as typeof window.electron;
+
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "MCP server is off");
+
+    fireEvent.click(screen.getByRole("button", { name: /turn on mcp server/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("MCP server is off")).toBeNull();
+    });
+  });
+
   it("routes toggle IPC failure to inbox while keeping inline error", async () => {
     window.electron = {
       mcpServer: createMcpApi({

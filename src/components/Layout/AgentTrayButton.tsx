@@ -619,7 +619,7 @@ export function AgentTrayButton({
                 data-testid="agent-tray-pin-hint"
                 className="text-daintree-text/50 font-normal text-[11px] -mt-1 pb-1.5"
               >
-                Press P on any agent to pin it to the toolbar.
+                Hover an agent and click the pin to keep it on the toolbar.
               </DropdownMenuLabel>
             )}
             {launchable.map((row) => renderLaunchItem(row))}

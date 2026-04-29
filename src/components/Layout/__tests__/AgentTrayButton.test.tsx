@@ -416,7 +416,7 @@ describe("AgentTrayButton", () => {
     expect(agentRows(container)).toEqual(["claude", "gemini", "codex"]);
   });
 
-  const PIN_HINT_TEXT = /press p on any agent to pin it to the toolbar/i;
+  const PIN_HINT_TEXT = /hover an agent and click the pin to keep it on the toolbar/i;
 
   it("shows the pin discovery hint when launchable agents are present but none are pinned", () => {
     const availability = {

@@ -24,19 +24,34 @@ vi.mock("@/clients/githubClient", () => ({
 
 let mockGitHubConfig: { hasToken: boolean } | null = { hasToken: true };
 let mockGitHubConfigInitialized = true;
+const initializeMock = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("@/store/githubConfigStore", () => ({
-  useGitHubConfigStore: (
-    selector: (s: { isInitialized: boolean; config: { hasToken: boolean } | null }) => unknown
+vi.mock("@/store/githubConfigStore", () => {
+  const useGitHubConfigStore = (
+    selector: (s: {
+      isInitialized: boolean;
+      config: { hasToken: boolean } | null;
+      initialize: () => Promise<void>;
+    }) => unknown
   ) =>
     selector({
       isInitialized: mockGitHubConfigInitialized,
       config: mockGitHubConfig,
-    }),
-}));
+      initialize: initializeMock,
+    });
+  // Mirror Zustand's hook + getState API surface used by the component.
+  (useGitHubConfigStore as unknown as { getState: () => unknown }).getState = () => ({
+    isInitialized: mockGitHubConfigInitialized,
+    config: mockGitHubConfig,
+    initialize: initializeMock,
+  });
+  return { useGitHubConfigStore };
+});
+
+const dispatchMock = vi.fn();
 
 vi.mock("@/services/ActionService", () => ({
-  actionService: { dispatch: vi.fn() },
+  actionService: { dispatch: (...args: unknown[]) => dispatchMock(...args) },
 }));
 
 vi.mock("@/hooks/useIssueSelection", () => ({
@@ -145,6 +160,8 @@ beforeEach(() => {
   mockGetPRByNumber.mockReset();
   formatTimeAgoMock.mockClear();
   formatTimeAgoMock.mockImplementation(() => "1m ago");
+  dispatchMock.mockReset();
+  initializeMock.mockClear();
   mockGitHubConfig = { hasToken: true };
   mockGitHubConfigInitialized = true;
   const filterStore = useGitHubFilterStore.getState();
@@ -595,6 +612,44 @@ describe("GitHubResourceList no-token empty state", () => {
     await waitFor(() => {
       expect(screen.getByTestId("item-1")).toBeTruthy();
     });
+  });
+
+  it("renders the empty state for type='pr' and skips listPullRequests", () => {
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+
+    render(<GitHubResourceList type="pr" projectPath="/test/proj" />);
+
+    expect(screen.getByText("GitHub not connected")).toBeTruthy();
+    expect(mockListPRs).not.toHaveBeenCalled();
+  });
+
+  it("does not fire numeric fetches when the search store has a number but no token is set", () => {
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+    useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(mockGetIssueByNumber).not.toHaveBeenCalled();
+    expect(screen.getByText("GitHub not connected")).toBeTruthy();
+  });
+
+  it("'Add GitHub token' CTA dispatches the settings open action and closes", () => {
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+    const onClose = vi.fn();
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" onClose={onClose} />);
+
+    screen.getByRole("button", { name: /add github token/i }).click();
+
+    expect(dispatchMock).toHaveBeenCalledWith(
+      "app.settings.openTab",
+      { tab: "github", sectionId: "github-token" },
+      { source: "user" }
+    );
+    expect(onClose).toHaveBeenCalled();
   });
 });
 

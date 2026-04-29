@@ -172,6 +172,13 @@ export function GitHubResourceList({
   const githubConfig = useGitHubConfigStore((s) => s.config);
   const showNoTokenEmptyState =
     githubConfigInitialized && githubConfig !== null && !githubConfig.hasToken;
+
+  // Self-init the GitHub config store so the no-token empty state can render
+  // before any other code path has triggered initialization. This mirrors the
+  // pattern used in BulkCreateWorktreeDialog.
+  useEffect(() => {
+    void useGitHubConfigStore.getState().initialize();
+  }, []);
   const cacheKey = useMemo(
     () => buildCacheKey(projectPath, type, filterState as string, sortOrder),
     [projectPath, type, filterState, sortOrder]

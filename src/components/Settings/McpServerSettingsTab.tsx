@@ -198,7 +198,7 @@ export function McpServerSettingsTab() {
         disabled={loading}
       />
 
-      {!status.enabled && !loading && (
+      {!status.enabled && !loading && !error && (
         <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
           <EmptyState
             variant="zero-data"
