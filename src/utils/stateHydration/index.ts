@@ -264,6 +264,10 @@ export async function hydrateAppState(
         skippedPanelCount: hydrateResult.skippedPanelCount,
         lastCrashAt: hydrateResult.lastCrashAt,
       });
+    } else {
+      // Clear stale state when the main process has exited safe mode
+      // (e.g. stability timer fired or user restarted normally).
+      useSafeModeStore.getState().setSafeMode(false);
     }
 
     if (hydrateResult.gpuHardwareAccelerationDisabled && !gpuAccelNotified) {

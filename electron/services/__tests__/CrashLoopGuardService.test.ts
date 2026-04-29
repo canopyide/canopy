@@ -396,6 +396,45 @@ describe("CrashLoopGuardService", () => {
       expect(state.launches).toEqual([]);
     });
 
+    it("rethrows disk write failures and leaves in-memory flags unchanged", () => {
+      for (let i = 0; i < 3; i++) {
+        const guard = new CrashLoopGuardService();
+        guard.initialize();
+      }
+      const guard = new CrashLoopGuardService();
+      guard.initialize();
+      expect(guard.isSafeMode()).toBe(true);
+
+      // Force the underlying disk write to throw so the user-initiated reset
+      // surfaces the failure to the IPC layer instead of silently leaving
+      // the unclean sentinel on disk.
+      const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+        throw new Error("EROFS: read-only filesystem");
+      });
+
+      expect(() => guard.resetForNormalBoot()).toThrow(/read-only/);
+      expect(guard.isSafeMode()).toBe(true);
+      expect(guard.getCrashCount()).toBe(3);
+
+      writeSpy.mockRestore();
+    });
+
+    it("rejects state files with non-numeric launch entries", () => {
+      writeState({
+        version: 1,
+        crashes: 3,
+        launches: [Date.now() - 1000, "bad", null],
+        cleanExit: false,
+        lastReset: Date.now(),
+      });
+
+      const guard = new CrashLoopGuardService();
+      guard.initialize();
+
+      expect(guard.isSafeMode()).toBe(false);
+      expect(guard.getLastCrashTimestamp()).toBeUndefined();
+    });
+
     it("cancels the stability timer so it can't clobber the fresh state", () => {
       for (let i = 0; i < 3; i++) {
         const guard = new CrashLoopGuardService();

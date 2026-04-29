@@ -70,6 +70,21 @@ describe("SafeModeBanner", () => {
     expect(resetAndRelaunch).toHaveBeenCalledTimes(1);
   });
 
+  it("re-enables the restart button when resetAndRelaunch rejects", async () => {
+    resetAndRelaunch.mockRejectedValueOnce(new Error("EROFS"));
+    useSafeModeStore.setState({ safeMode: true });
+    render(<SafeModeBanner />);
+    const button = screen.getByRole("button", { name: /Restart normally/i }) as HTMLButtonElement;
+    fireEvent.click(button);
+    expect(button.disabled).toBe(true);
+    // Wait one microtask tick for the rejected promise to flush
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toMatch(/Restart normally/);
+  });
+
   it("hides the banner when dismiss is clicked", () => {
     useSafeModeStore.setState({ safeMode: true });
     const { container } = render(<SafeModeBanner />);

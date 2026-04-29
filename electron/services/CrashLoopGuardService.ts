@@ -109,21 +109,21 @@ export class CrashLoopGuardService {
   }
 
   /**
-   * User-initiated reset: cancel the stability timer first to avoid a race
-   * where the timer fires between our write and `app.exit(0)` and clobbers
-   * the fresh state with stale in-memory data, then atomically clear the
-   * state file and reset in-memory flags.
+   * User-initiated reset: cancel the stability timer first so it can't
+   * fire between our write and exit and clobber the fresh state, then
+   * atomically clear the state file and reset in-memory flags.
+   *
+   * Throws if the disk write fails. The caller (IPC handler) must propagate
+   * the failure so the renderer can re-enable the restart button — silently
+   * swallowing the error here would leave the unclean sentinel on disk and
+   * boot the user straight back into safe mode after relaunch.
    */
   resetForNormalBoot(): void {
     if (this.stabilityTimer) {
       clearTimeout(this.stabilityTimer);
       this.stabilityTimer = null;
     }
-    try {
-      this.writeState(freshState());
-    } catch (err) {
-      console.error("[CrashLoopGuard] Failed to reset state for normal boot:", err);
-    }
+    this.writeState(freshState());
     this.safeMode = false;
     this.relaunchAllowed = true;
     this.crashCount = 0;
@@ -174,6 +174,7 @@ export class CrashLoopGuardService {
         parsed.version === 1 &&
         typeof parsed.crashes === "number" &&
         Array.isArray(parsed.launches) &&
+        parsed.launches.every((ts) => typeof ts === "number" && Number.isFinite(ts)) &&
         typeof parsed.cleanExit === "boolean" &&
         typeof parsed.lastReset === "number"
       ) {
@@ -225,6 +226,7 @@ export function isSafeModeActive(userDataPath?: string): boolean {
       parsed.version === 1 &&
       typeof parsed.crashes === "number" &&
       Array.isArray(parsed.launches) &&
+      parsed.launches.every((ts) => typeof ts === "number" && Number.isFinite(ts)) &&
       typeof parsed.cleanExit === "boolean" &&
       typeof parsed.lastReset === "number"
     ) {
