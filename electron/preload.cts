@@ -491,13 +491,16 @@ ipcRenderer.on(
 );
 
 /**
- * Reconstruct `AppError` thrown in the main process. Electron's IPC strips
- * Error subclass prototypes, so the renderer-side `ClientAppError` class
- * (in `src/utils/clientAppError.ts`) provides the prototype identity. Here
- * we throw a plain `Error` with `name === "AppError"` and the discriminant
- * properties — the renderer's `isClientAppError(e)` guard duck-types on
- * `e.name === "AppError" && typeof e.code === "string"`, which is the
- * realm-safe pattern.
+ * Reconstruct `AppError` thrown in the main process. Electron's contextBridge
+ * deep-clones Error instances when they cross the preload→renderer realm
+ * boundary and strips ALL custom properties — including own `name` and any
+ * added fields like `code`. Only `message` and `stack` survive. The encoded
+ * prefix below is decoded by the renderer-side `isClientAppError` guard
+ * (`src/utils/clientAppError.ts`), which restores `e.name`, `e.code`,
+ * `e.userMessage`, and the cleaned `e.message` on the caught error.
+ *
+ * Format: `[AppError|<code>] <original message>`
+ *      or `[AppError|<code>|<urlencoded userMessage>] <original message>`
  */
 function _reconstructAppError(serialized: {
   name: string;
@@ -505,7 +508,14 @@ function _reconstructAppError(serialized: {
   code?: string;
   userMessage?: string;
 }): Error {
-  const error = new Error(serialized.message);
+  const code = serialized.code ?? "UNKNOWN";
+  const userMsgPart =
+    serialized.userMessage !== undefined ? `|${encodeURIComponent(serialized.userMessage)}` : "";
+  const encoded = `[AppError|${code}${userMsgPart}] ${serialized.message}`;
+  const error = new Error(encoded);
+  // Standard properties — set for callers in the same realm. They don't
+  // survive the contextBridge crossing; the message prefix is the source
+  // of truth on the renderer side.
   error.name = "AppError";
   (error as Error & { code: AppErrorCode }).code = serialized.code as AppErrorCode;
   if (serialized.userMessage !== undefined) {

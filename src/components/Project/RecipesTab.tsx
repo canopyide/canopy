@@ -196,12 +196,6 @@ export function RecipesTab({
                 icon={<Workflow />}
                 title="No recipes configured yet"
                 description="Create a recipe to spawn multiple terminals with predefined commands and settings."
-                action={
-                  <Button variant="outline" size="sm" onClick={handleAddRecipe}>
-                    <Plus />
-                    Add recipe
-                  </Button>
-                }
               />
             </div>
           ) : (

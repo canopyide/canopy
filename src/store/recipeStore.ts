@@ -314,7 +314,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       return next;
     };
     const nextGlobal = isGlobal ? applyUpdate(prevGlobal) : prevGlobal;
-    const nextProject = !isGlobal && !isInRepo ? applyUpdate(prevProject) : prevProject;
+    // For in-repo recipes, the file store carries a reconciled mirror that we
+    // must keep in sync — otherwise a name change leaves the old id behind in
+    // projectRecipes, and `mergeRecipes` surfaces it as a duplicate row.
+    const nextProject =
+      isInRepo || (!isGlobal && !isInRepo) ? applyUpdate(prevProject) : prevProject;
     const nextInRepo = isInRepo ? applyUpdate(prevInRepo) : prevInRepo;
     set({
       globalRecipes: nextGlobal,
