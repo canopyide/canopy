@@ -3,6 +3,7 @@ import { useProjectStore } from "@/store/projectStore";
 import type { DevServerErrorType } from "../../shared/utils/devServerErrors";
 import type { DevPreviewSessionState } from "../../shared/types/ipc/devPreview";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
 
 export type DevPreviewStatus = "stopped" | "starting" | "installing" | "running" | "error";
 
@@ -224,7 +225,9 @@ export function useDevServer({
         const pendingConfig = pendingEnsureConfigRef.current;
         if (pendingConfig && pendingConfig !== configKey) {
           pendingEnsureConfigRef.current = null;
-          void ensureLatestConfig(pendingConfig);
+          safeFireAndForget(ensureLatestConfig(pendingConfig), {
+            context: "Re-running queued dev preview ensure",
+          });
         } else if (pendingConfig === configKey) {
           pendingEnsureConfigRef.current = null;
         }
@@ -264,7 +267,9 @@ export function useDevServer({
     const requestVersion = requestVersionRef.current;
     const requestProjectId = latest.projectId;
     const requestPanelId = latest.panelId;
-    void window.electron.devPreview
+    // Rejection routes to applyInvokeError (UI-state recovery) — no
+    // safeFireAndForget needed; the .catch terminates the chain.
+    window.electron.devPreview
       .stop({ panelId: requestPanelId, projectId: requestProjectId })
       .then((state) => {
         if (isRequestCurrent(requestVersion, requestProjectId, requestPanelId)) {
@@ -336,7 +341,7 @@ export function useDevServer({
     }
 
     let cancelled = false;
-    void window.electron.devPreview
+    window.electron.devPreview
       .getState({ panelId, projectId: currentProjectId })
       .then((state) => {
         if (!cancelled) applyState(state);
@@ -374,7 +379,7 @@ export function useDevServer({
     lastEnsureConfigRef.current = "";
     pendingEnsureConfigRef.current = null;
     persistedEnsureCache.delete(panelId);
-    void window.electron.devPreview
+    window.electron.devPreview
       .stop({ panelId: requestPanelId, projectId: requestProjectId })
       .then((state) => {
         if (isRequestCurrent(requestVersion, requestProjectId, requestPanelId)) {
@@ -413,7 +418,9 @@ export function useDevServer({
       return;
     }
 
-    void ensureLatestConfig(configKey);
+    safeFireAndForget(ensureLatestConfig(configKey), {
+      context: "Ensuring dev preview config matches latest",
+    });
   }, [
     panelId,
     currentProjectId,
@@ -452,7 +459,7 @@ export function useDevServer({
         return;
 
       autoRecoveryAttemptsRef.current[requestStatus] += 1;
-      void window.electron.devPreview
+      window.electron.devPreview
         .restart({ panelId: requestPanelId, projectId: requestProjectId })
         .then((nextState) => {
           if (isRequestCurrent(requestVersion, requestProjectId, requestPanelId)) {

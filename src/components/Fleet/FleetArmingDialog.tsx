@@ -168,7 +168,7 @@ export function FleetArmingDialog({
 
     const issueId = ++searchRequestRef.current;
     const timer = window.setTimeout(() => {
-      void window.electron.terminal
+      window.electron.terminal
         .searchSemanticBuffers(trimmed, isRegexMode)
         .then((matches) => {
           if (searchRequestRef.current !== issueId) return;

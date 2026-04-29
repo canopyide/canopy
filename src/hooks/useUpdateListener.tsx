@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNotificationStore } from "@/store/notificationStore";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
 
 const AVAILABLE_HINT = 'Use "Check for Updates..." to check again.';
 const UPDATE_CORRELATION_ID = "app-update";
@@ -56,7 +57,12 @@ export function useUpdateListener(suppressToasts = false): void {
         correlationId: UPDATE_CORRELATION_ID,
         action: {
           label: "Restart to Update",
-          onClick: () => window.electron?.update?.quitAndInstall(),
+          onClick: () => {
+            const promise = window.electron?.update?.quitAndInstall();
+            if (promise) {
+              safeFireAndForget(promise, { context: "Quit and install update" });
+            }
+          },
         },
       });
     } else {
@@ -74,9 +80,10 @@ export function useUpdateListener(suppressToasts = false): void {
         // still downloading.
         action: undefined,
         onDismiss: () => {
-          void window.electron?.update
-            ?.notifyDismiss?.(version)
-            ?.catch((err) => logError("[useUpdateListener] notifyDismiss failed", err));
+          // why: stays on the lightweight logError path — analytics-grade
+          // forward to main, not worth surfacing through Sentry/error store.
+          const promise = window.electron?.update?.notifyDismiss?.(version);
+          promise?.catch((err) => logError("[useUpdateListener] notifyDismiss failed", err));
         },
       });
     }
@@ -115,9 +122,10 @@ export function useUpdateListener(suppressToasts = false): void {
         // Forwarded to main only when the user explicitly closes the toast —
         // MAX_VISIBLE_TOASTS eviction and programmatic dismissals bypass this.
         onDismiss: () => {
-          void window.electron?.update
-            ?.notifyDismiss?.(version)
-            ?.catch((err) => logError("[useUpdateListener] notifyDismiss failed", err));
+          // why: stays on the lightweight logError path — analytics-grade
+          // forward to main, not worth surfacing through Sentry/error store.
+          const promise = window.electron?.update?.notifyDismiss?.(version);
+          promise?.catch((err) => logError("[useUpdateListener] notifyDismiss failed", err));
         },
       });
     });
@@ -152,7 +160,12 @@ export function useUpdateListener(suppressToasts = false): void {
           onDismiss: undefined,
           action: {
             label: "Restart to Update",
-            onClick: () => window.electron?.update?.quitAndInstall(),
+            onClick: () => {
+              const promise = window.electron?.update?.quitAndInstall();
+              if (promise) {
+                safeFireAndForget(promise, { context: "Quit and install update" });
+              }
+            },
           },
         });
       } else {
@@ -170,7 +183,12 @@ export function useUpdateListener(suppressToasts = false): void {
           correlationId: UPDATE_CORRELATION_ID,
           action: {
             label: "Restart to Update",
-            onClick: () => window.electron?.update?.quitAndInstall(),
+            onClick: () => {
+              const promise = window.electron?.update?.quitAndInstall();
+              if (promise) {
+                safeFireAndForget(promise, { context: "Quit and install update" });
+              }
+            },
           },
         });
       }
