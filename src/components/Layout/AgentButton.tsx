@@ -269,7 +269,7 @@ export function AgentButton({
       : needsSetup
         ? `${config.name} needs setup. Click to configure.`
         : `${config.name} CLI not found. Click to install.`;
-  const chevronTooltip = `Choose ${config.name} preset`;
+  const chevronTooltip = `Set ${config.name} preset`;
 
   const ariaLabel = isLoading
     ? `Checking ${config.name} availability`
@@ -490,17 +490,12 @@ export function AgentButton({
                   value=""
                   onSelect={() => {
                     persistWorktreePick(undefined);
-                    void actionService.dispatch(
-                      "agent.launch",
-                      { agentId: type, presetId: null },
-                      { source: "user" }
-                    );
                   }}
                 >
                   <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
                     <config.icon brandColor={getBrandColorHex(type)} />
                   </span>
-                  Default
+                  Agent default
                 </DropdownMenuRadioItem>
                 {ccrPresetGroup.length > 0 && (
                   <>
@@ -512,11 +507,6 @@ export function AgentButton({
                         value={preset.id}
                         onSelect={() => {
                           persistWorktreePick(preset.id);
-                          void actionService.dispatch(
-                            "agent.launch",
-                            { agentId: type, presetId: preset.id },
-                            { source: "user" }
-                          );
                         }}
                       >
                         <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
@@ -539,11 +529,6 @@ export function AgentButton({
                         value={preset.id}
                         onSelect={() => {
                           persistWorktreePick(preset.id);
-                          void actionService.dispatch(
-                            "agent.launch",
-                            { agentId: type, presetId: preset.id },
-                            { source: "user" }
-                          );
                         }}
                       >
                         <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
@@ -564,11 +549,6 @@ export function AgentButton({
                         value={preset.id}
                         onSelect={() => {
                           persistWorktreePick(preset.id);
-                          void actionService.dispatch(
-                            "agent.launch",
-                            { agentId: type, presetId: preset.id },
-                            { source: "user" }
-                          );
                         }}
                       >
                         <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 mr-1.5">
@@ -642,7 +622,7 @@ export function AgentButton({
                     );
                   }}
                 >
-                  Default
+                  Agent default
                 </ContextMenuRadioItem>
                 {presets.map((preset) => (
                   <ContextMenuRadioItem
