@@ -84,9 +84,33 @@ export class McpServerService {
   private pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
   private pendingDispatches = new Map<string, PendingRequest<ActionDispatchResult>>();
   private cleanupListeners: Array<() => void> = [];
+  private statusListeners = new Set<(running: boolean) => void>();
 
   get isRunning(): boolean {
     return this.httpServer !== null && this.port !== null;
+  }
+
+  /**
+   * Register a subscriber that fires whenever the server transitions between
+   * running and stopped. Used by `ServiceConnectivityRegistry` to surface MCP
+   * reachability without polling.
+   */
+  onStatusChange(listener: (running: boolean) => void): () => void {
+    this.statusListeners.add(listener);
+    return () => {
+      this.statusListeners.delete(listener);
+    };
+  }
+
+  private emitStatusChange(): void {
+    const running = this.isRunning;
+    for (const listener of this.statusListeners) {
+      try {
+        listener(running);
+      } catch (err) {
+        console.error("[MCP] Status change listener threw:", err);
+      }
+    }
   }
 
   get currentPort(): number | null {
@@ -176,6 +200,7 @@ export class McpServerService {
     this.httpServer = server;
     await this.writeDiscoveryFile();
     console.log(`[MCP] Server started on http://127.0.0.1:${this.port}/sse`);
+    this.emitStatusChange();
   }
 
   async stop(): Promise<void> {
@@ -204,7 +229,9 @@ export class McpServerService {
       this.pendingDispatches.delete(id);
     }
 
+    let wasRunning = false;
     if (this.httpServer) {
+      wasRunning = true;
       await new Promise<void>((resolve) => {
         this.httpServer!.close(() => resolve());
       });
@@ -214,6 +241,9 @@ export class McpServerService {
 
     await this.removeDiscoveryFile();
     console.log("[MCP] Server stopped");
+    if (wasRunning) {
+      this.emitStatusChange();
+    }
   }
 
   getStatus(): {

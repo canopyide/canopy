@@ -49,6 +49,8 @@ import type {
   IssueNotFoundPayload,
   GitHubRateLimitPayload,
   GitHubTokenHealthPayload,
+  ServiceConnectivityPayload,
+  ServiceConnectivitySnapshot,
   GitStatus,
   KeyAction,
   TerminalRecipe,
@@ -1487,6 +1489,15 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.GITHUB_TOKEN_HEALTH_CHANGED, callback),
 
     getTokenHealth: () => _unwrappingInvoke(CHANNELS.GITHUB_GET_TOKEN_HEALTH),
+  },
+
+  // Per-service connectivity API
+  connectivity: {
+    getState: (): Promise<ServiceConnectivitySnapshot> =>
+      _unwrappingInvoke(CHANNELS.CONNECTIVITY_GET_STATE) as Promise<ServiceConnectivitySnapshot>,
+
+    onServiceChanged: (callback: (payload: ServiceConnectivityPayload) => void) =>
+      _typedOn(CHANNELS.CONNECTIVITY_SERVICE_CHANGED, callback),
   },
 
   // Dev Preview API

@@ -5,6 +5,7 @@ import type { ProjectStatsService } from "../services/ProjectStatsService.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { getAppWebContents } from "./webContentsRegistry.js";
 import { gitHubTokenHealthService } from "../services/github/GitHubTokenHealthService.js";
+import { agentConnectivityService } from "../services/connectivity/AgentConnectivityService.js";
 
 let resumeTimeout: NodeJS.Timeout | null = null;
 
@@ -63,6 +64,10 @@ export function setupPowerMonitor(deps: PowerMonitorDeps): void {
         // during a long laptop sleep would otherwise sit undetected until the
         // next 30-minute poll tick.
         void gitHubTokenHealthService.refresh({ force: true });
+        // Re-probe agent provider reachability on wake. A long sleep across a
+        // network change (Wi-Fi swap, airplane mode toggle) often invalidates
+        // the cached "reachable" state.
+        void agentConnectivityService.refresh({ force: true, reason: "resume" });
         BrowserWindow.getAllWindows().forEach((win) => {
           if (win && !win.isDestroyed()) {
             const wc = getAppWebContents(win);
@@ -162,6 +167,9 @@ function removeThrottle(): void {
   // service's own 5-minute cooldown so rapid window switching doesn't
   // hammer the API.
   void gitHubTokenHealthService.refresh();
+  // Same opportunistic re-check for agent reachability — internal cooldown
+  // prevents the alt-tab path from fanning out probes.
+  void agentConnectivityService.refresh({ reason: "focus" });
 }
 
 export function setupWindowFocusThrottle(deps: WindowFocusThrottleDeps): void {
