@@ -63,10 +63,10 @@ describe("useGlobalMinuteTicker", () => {
     const { result } = renderHook(() => useGlobalMinuteTicker());
     const initial = result.current;
 
-    act(() => vi.advanceTimersByTime(30_000));
+    void act(() => vi.advanceTimersByTime(30_000));
     expect(result.current).toBe(initial + 1);
 
-    act(() => vi.advanceTimersByTime(30_000));
+    void act(() => vi.advanceTimersByTime(30_000));
     expect(result.current).toBe(initial + 2);
   });
 
@@ -74,10 +74,10 @@ describe("useGlobalMinuteTicker", () => {
     const { result } = renderHook(() => useGlobalMinuteTicker());
     const initial = result.current;
 
-    act(() => vi.advanceTimersByTime(29_999));
+    void act(() => vi.advanceTimersByTime(29_999));
     expect(result.current).toBe(initial);
 
-    act(() => vi.advanceTimersByTime(1));
+    void act(() => vi.advanceTimersByTime(1));
     expect(result.current).toBe(initial + 1);
   });
 
@@ -85,16 +85,16 @@ describe("useGlobalMinuteTicker", () => {
     const { result } = renderHook(() => useGlobalMinuteTicker());
     const initial = result.current;
 
-    act(() => vi.advanceTimersByTime(30_000));
+    void act(() => vi.advanceTimersByTime(30_000));
     expect(result.current).toBe(initial + 1);
 
-    act(() => fireVisibilityChange("hidden"));
+    void act(() => fireVisibilityChange("hidden"));
     const tickAfterHide = result.current;
 
-    act(() => vi.advanceTimersByTime(150_000));
+    void act(() => vi.advanceTimersByTime(150_000));
     expect(result.current).toBe(tickAfterHide);
 
-    act(() => fireVisibilityChange("visible"));
+    void act(() => fireVisibilityChange("visible"));
     // Immediate catch-up tick on restore
     expect(result.current).toBe(tickAfterHide + 1);
   });
@@ -104,13 +104,13 @@ describe("useGlobalMinuteTicker", () => {
     const { result } = renderHook(() => useGlobalMinuteTicker());
     const initial = result.current;
 
-    act(() => vi.advanceTimersByTime(150_000));
+    void act(() => vi.advanceTimersByTime(150_000));
     expect(result.current).toBe(initial);
 
-    act(() => fireVisibilityChange("visible"));
+    void act(() => fireVisibilityChange("visible"));
     expect(result.current).toBe(initial + 1);
 
-    act(() => vi.advanceTimersByTime(30_000));
+    void act(() => vi.advanceTimersByTime(30_000));
     expect(result.current).toBe(initial + 2);
   });
 
@@ -125,7 +125,7 @@ describe("useGlobalMinuteTicker", () => {
     ).length;
     expect(minuteTickerCalls).toBe(1);
 
-    act(() => vi.advanceTimersByTime(30_000));
+    void act(() => vi.advanceTimersByTime(30_000));
     expect(a.result.current).toBe(b.result.current);
   });
 
