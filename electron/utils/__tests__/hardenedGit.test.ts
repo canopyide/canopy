@@ -138,6 +138,7 @@ describe("createHardenedGit", () => {
       "core.gitProxy=",
       "core.hooksPath=",
       "core.quotepath=false",
+      "core.precomposeunicode=true",
     ];
     for (const key of expectedKeys) {
       expect(options.config).toContain(key);
@@ -273,6 +274,8 @@ describe("createAuthenticatedGit", () => {
     expect(options.config).toContain("protocol.ext.allow=never");
     expect(options.config).toContain("core.gitProxy=");
     expect(options.config).toContain("core.hooksPath=");
+    expect(options.config).toContain("core.quotepath=false");
+    expect(options.config).toContain("core.precomposeunicode=true");
   });
 
   it("sets GIT_TERMINAL_PROMPT and hardened GIT_SSH_COMMAND via .env()", () => {
@@ -615,6 +618,7 @@ describe("config constants", () => {
       "core.gitProxy=",
       "core.hooksPath=",
       "core.quotepath=false",
+      "core.precomposeunicode=true",
     ];
     for (const entry of securityEntries) {
       expect(HARDENED_GIT_CONFIG).toContain(entry);
