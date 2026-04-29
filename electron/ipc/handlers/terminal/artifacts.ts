@@ -90,10 +90,7 @@ export function registerArtifactHandlers(deps: HandlerDependencies): () => void 
       });
     }
   };
-  handlers.push(
-    // @ts-expect-error: result type contains {success} | null — pending migration to throw AppError. See #6020.
-    typedHandle(CHANNELS.ARTIFACT_SAVE_TO_FILE, handleArtifactSaveToFile)
-  );
+  handlers.push(typedHandle(CHANNELS.ARTIFACT_SAVE_TO_FILE, handleArtifactSaveToFile));
 
   const handleArtifactApplyPatch = async (
     ctx: import("../../types.js").IpcContext,
@@ -206,10 +203,7 @@ export function registerArtifactHandlers(deps: HandlerDependencies): () => void 
       await fs.unlink(tmpPatchPath).catch(() => {});
     }
   };
-  handlers.push(
-    // @ts-expect-error: handler returns {success: false, error} — pending migration to throw AppError. See #6020.
-    typedHandleWithContext(CHANNELS.ARTIFACT_APPLY_PATCH, handleArtifactApplyPatch)
-  );
+  handlers.push(typedHandleWithContext(CHANNELS.ARTIFACT_APPLY_PATCH, handleArtifactApplyPatch));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

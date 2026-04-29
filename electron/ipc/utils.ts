@@ -438,7 +438,9 @@ export function typedHandleValidated<K extends keyof IpcInvokeMap, S extends z.Z
   const wrapped = (async (...args: unknown[]) => {
     const parsed = parseIpcPayload(channel as string, schema, args[0]);
     return handler(parsed);
-  }) as unknown as (...args: IpcInvokeMap[K]["args"]) => Promise<IpcInvokeMap[K]["result"]>;
+  }) as unknown as (
+    ...args: IpcInvokeMap[K]["args"]
+  ) => Promise<ForbidIpcEnvelopeKeys<IpcInvokeMap[K]["result"]>>;
   return typedHandle(channel, wrapped);
 }
 
@@ -533,7 +535,7 @@ export function typedHandleWithContextValidated<
   }) as unknown as (
     ctx: IpcContext,
     ...args: IpcInvokeMap[K]["args"]
-  ) => Promise<IpcInvokeMap[K]["result"]>;
+  ) => Promise<ForbidIpcEnvelopeKeys<IpcInvokeMap[K]["result"]>>;
   return typedHandleWithContext(channel, wrapped);
 }
 

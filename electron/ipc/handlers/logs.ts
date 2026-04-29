@@ -149,10 +149,7 @@ export function registerLogsHandlers(
     fanOut(current, deps);
     logInfo(`Verbose logging ${enabled ? "enabled" : "disabled"} by user`);
   };
-  handlers.push(
-    // @ts-expect-error: handler returns {success: ...} — pending migration to throw AppError on failure and return void on success. See #6020.
-    typedHandle(CHANNELS.LOGS_SET_VERBOSE, handleLogsSetVerbose)
-  );
+  handlers.push(typedHandle(CHANNELS.LOGS_SET_VERBOSE, handleLogsSetVerbose));
 
   const handleLogsGetVerbose = async () => {
     return isVerboseLogging();

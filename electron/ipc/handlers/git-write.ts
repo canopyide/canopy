@@ -362,10 +362,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       });
     }
   };
-  handlers.push(
-    // @ts-expect-error: handler returns {success: false, error, gitReason, recoveryAction} — pending migration to throw AppError. See #6020.
-    typedHandle(CHANNELS.GIT_PUSH, handlePush)
-  );
+  handlers.push(typedHandle(CHANNELS.GIT_PUSH, handlePush));
 
   const handleGetUsername = async (cwd: string): Promise<string | null> => {
     checkRateLimit(CHANNELS.GIT_GET_USERNAME, 20, 10_000);
