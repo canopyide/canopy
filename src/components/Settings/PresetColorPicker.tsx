@@ -31,11 +31,26 @@ const PALETTE = [
 
 const FALLBACK_COLOR = "#e06c75";
 
-const isValidHex = (value: string): value is `#${string}` => /^#[0-9a-f]{6}$/i.test(value);
+// Accept 3- or 6-digit hex. The preset sanitizer in `src/config/agents.ts`
+// stores 3-digit colors as-is, so a stored "#abc" must round-trip through the
+// picker without being treated as invalid (which would silently overwrite the
+// user's color on Done).
+const isValidHex = (value: string): value is `#${string}` =>
+  /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value);
+
+const normalizeHex = (value: string): string => {
+  if (/^#[0-9a-f]{3}$/i.test(value)) {
+    const r = value[1];
+    const g = value[2];
+    const b = value[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return value.toLowerCase();
+};
 
 const resolveInitialDraft = (color: string | undefined, agentColor: string): string => {
-  if (color && isValidHex(color)) return color;
-  if (isValidHex(agentColor)) return agentColor;
+  if (color && isValidHex(color)) return normalizeHex(color);
+  if (isValidHex(agentColor)) return normalizeHex(agentColor);
   return FALLBACK_COLOR;
 };
 
@@ -69,10 +84,9 @@ export function PresetColorPicker({
   };
 
   const handleDone = () => {
-    if (isValidHex(draftColor)) {
-      onChange(draftColor);
-      setOpen(false);
-    }
+    if (!isValidHex(draftColor)) return;
+    onChange(normalizeHex(draftColor));
+    setOpen(false);
   };
 
   const handleClear = () => {

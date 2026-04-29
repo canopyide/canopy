@@ -10,6 +10,10 @@ vi.mock("lucide-react", () => ({
 
 // Stub react-colorful: render simple controlled stand-ins so tests can drive
 // onChange directly without relying on pointer-event simulation in jsdom.
+// Note: the real HexColorInput only fires onChange for valid 3- or 6-char hex.
+// This mock is permissive (passes any string through) — the malformed-hex test
+// below exploits that to verify the Done-button guard, but in production the
+// guard defends against round-tripping legacy 3-digit data, not typed garbage.
 vi.mock("react-colorful", () => ({
   HexColorPicker: ({
     color,
@@ -47,18 +51,23 @@ vi.mock("react-colorful", () => ({
   ),
 }));
 
-// Capture onOpenChange so dismissal-without-Done can be simulated as a "cancel".
+// Capture onOpenChange (to simulate dismissal-without-Done as a "cancel") and
+// the latest `open` prop (to verify Done/Clear close the popover).
 let capturedOnOpenChange: ((next: boolean) => void) | undefined;
+let capturedOpen: boolean | undefined;
 
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({
     children,
+    open,
     onOpenChange,
   }: {
     children: React.ReactNode;
+    open?: boolean;
     onOpenChange?: (next: boolean) => void;
   }) => {
     capturedOnOpenChange = onOpenChange;
+    capturedOpen = open;
     return <>{children}</>;
   },
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -71,6 +80,7 @@ describe("PresetColorPicker", () => {
   beforeEach(() => {
     onChange = vi.fn<(color: string | undefined) => void>();
     capturedOnOpenChange = undefined;
+    capturedOpen = undefined;
   });
 
   it("trigger swatch reflects the current color", () => {
@@ -158,6 +168,29 @@ describe("PresetColorPicker", () => {
     );
     const swatch = getByTestId("preset-color-swatch-e06c75");
     expect(swatch.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("clicking Done closes the popover", () => {
+    const { getByTestId, rerender } = render(
+      <PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />
+    );
+    act(() => {
+      capturedOnOpenChange!(true);
+    });
+    rerender(<PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />);
+    expect(capturedOpen).toBe(true);
+    fireEvent.click(getByTestId("preset-color-done"));
+    rerender(<PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />);
+    expect(capturedOpen).toBe(false);
+    expect(onChange).toHaveBeenCalledWith("#ff0000");
+  });
+
+  it("3-digit hex prop is normalized to 6-digit on commit", () => {
+    const { getByTestId } = render(
+      <PresetColorPicker color="#abc" onChange={onChange} agentColor="#888888" />
+    );
+    fireEvent.click(getByTestId("preset-color-done"));
+    expect(onChange).toHaveBeenCalledWith("#aabbcc");
   });
 
   it("re-opening the popover resets the draft to the committed color", () => {
