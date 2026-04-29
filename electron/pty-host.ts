@@ -243,6 +243,7 @@ const resourceGovernor = new ResourceGovernor({
     backpressureManager.stats.pauseCount += count;
   },
   sendEvent,
+  getPendingBytesSnapshot: () => backpressureManager.getPendingBytesSnapshot(),
 });
 
 // Helper to convert data to string for IPC fallback (IPC events expect string)
