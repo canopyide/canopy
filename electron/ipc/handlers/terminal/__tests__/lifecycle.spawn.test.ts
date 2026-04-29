@@ -335,7 +335,7 @@ describe("terminal spawn shell-injection hardening (#6065)", () => {
           command: "echo \x1B[31mred",
         } as unknown as Parameters<typeof handler>[1]
       )
-    ).rejects.toThrow(/Invalid spawn options/);
+    ).rejects.toThrow(/IPC validation failed: terminal:spawn/);
 
     expect(ptyClient.spawn).not.toHaveBeenCalled();
     expect(ptyClient.write).not.toHaveBeenCalled();
@@ -356,7 +356,7 @@ describe("terminal spawn shell-injection hardening (#6065)", () => {
           command: "evil\nrm -rf ~",
         } as unknown as Parameters<typeof handler>[1]
       )
-    ).rejects.toThrow(/Invalid spawn options/);
+    ).rejects.toThrow(/IPC validation failed: terminal:spawn/);
 
     expect(ptyClient.spawn).not.toHaveBeenCalled();
     expect(ptyClient.write).not.toHaveBeenCalled();

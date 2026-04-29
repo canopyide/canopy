@@ -271,7 +271,7 @@ describe("agent command launch", () => {
         launchAgentId: "claude",
         command: "claude\nmalicious",
       })
-    ).rejects.toThrow(/Invalid spawn options/);
+    ).rejects.toThrow(/IPC validation failed: terminal:spawn/);
 
     expect(consoleSpy).toHaveBeenCalled();
     expect(ptyClient.spawn).not.toHaveBeenCalled();
