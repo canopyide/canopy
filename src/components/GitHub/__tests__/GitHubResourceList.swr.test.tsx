@@ -446,6 +446,78 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
     });
   });
 
+  it("revalidates a PR list on focus — the actual code path that ships ciStatus", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "pr", "open", "created");
+    const stalePR = {
+      ...makeIssue(7),
+      isDraft: false,
+      ciStatus: "SUCCESS" as const,
+    };
+    const updatedPR = { ...stalePR, ciStatus: "PENDING" as const };
+    setCache(cacheKey, {
+      items: [stalePR],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    mockListPRs
+      .mockResolvedValueOnce({
+        items: [stalePR],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      })
+      .mockResolvedValueOnce({
+        items: [updatedPR],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      });
+
+    render(<GitHubResourceList type="pr" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(mockListPRs).toHaveBeenCalledTimes(1);
+    });
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => {
+      expect(mockListPRs).toHaveBeenCalledTimes(2);
+    });
+    // Focus revalidation must request a backend refresh, not a cache read.
+    expect(mockListPRs.mock.calls[1]?.[0]).toMatchObject({ bypassCache: true });
+  });
+
+  it("removes focus and visibilitychange listeners on unmount", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    const { unmount } = render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    unmount();
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    window.dispatchEvent(new Event("focus"));
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockListIssues).toHaveBeenCalledTimes(1);
+  });
+
   it("does not revalidate on visibilitychange when the document is hidden", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(cacheKey, {
