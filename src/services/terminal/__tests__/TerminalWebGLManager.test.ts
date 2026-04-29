@@ -376,16 +376,44 @@ describe("TerminalWebGLManager", () => {
       manager.ensureContext("t1", managed);
       manager.releaseContext("t1");
       manager.ensureContext("t1", managed);
+      manager.releaseContext("t1");
+      manager.ensureContext("t1", managed);
 
-      // Fire stale handlers (the first two) — must NOT count toward breaker
+      // Fire all three stale handlers — must NOT trip the breaker
       handlers[0]();
       handlers[1]();
+      handlers[2]();
 
       const before = WebglAddonMock.mock.calls.length;
       const m2 = makeManagedTerminal();
       manager.ensureContext("t2", m2);
       expect(WebglAddonMock.mock.calls.length).toBe(before + 1);
       expect(manager.isActive("t2")).toBe(true);
+    });
+
+    it("does not log the software-GPU warning after the breaker trips", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const handlers = captureContextLossHandlers();
+
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+      const m3 = makeManagedTerminal();
+      manager.ensureContext("t1", m1);
+      manager.ensureContext("t2", m2);
+      manager.ensureContext("t3", m3);
+
+      handlers[0]();
+      handlers[1]();
+      handlers[2]();
+
+      const m4 = makeManagedTerminal();
+      manager.ensureContext("t4", m4);
+
+      const softwareWarnings = warnSpy.mock.calls.filter(
+        (args) => typeof args[0] === "string" && args[0].includes("software-only GPU")
+      );
+      expect(softwareWarnings).toHaveLength(0);
+      warnSpy.mockRestore();
     });
 
     it("logs the breaker-trip warning only once", () => {

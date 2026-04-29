@@ -45,7 +45,7 @@ export class TerminalWebGLManager {
   ensureContext(id: string, managed: ManagedTerminal): void {
     if (WEBGL_DISABLED) return;
     if (!this.hardwareAvailable) {
-      if (!this.hasLoggedSoftwareSkip) {
+      if (!this.hasLoggedSoftwareSkip && !this.hasLoggedBreakerTrip) {
         console.warn("[TerminalWebGLManager] Skipping WebGL: software-only GPU detected");
         this.hasLoggedSoftwareSkip = true;
       }
