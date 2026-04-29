@@ -38,8 +38,8 @@ vi.mock("@/components/ui/popover", () => ({
 import { projectClient, systemClient } from "@/clients";
 import { ProjectResourceBadge } from "../ProjectResourceBadge";
 
-const mockGetAll = projectClient.getAll as ReturnType<typeof vi.fn>;
-const mockGetAppMetrics = systemClient.getAppMetrics as ReturnType<typeof vi.fn>;
+const mockGetAll = vi.mocked(projectClient.getAll);
+const mockGetAppMetrics = vi.mocked(systemClient.getAppMetrics);
 
 describe("ProjectResourceBadge — visibility-aware polling", () => {
   let originalHidden: boolean;
