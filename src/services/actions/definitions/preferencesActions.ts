@@ -9,6 +9,7 @@ import {
   terminalConfigClient,
   worktreeConfigClient,
 } from "@/clients";
+import { dispatchEscape } from "@/lib/escapeStack";
 import { notify } from "@/lib/notify";
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
@@ -748,8 +749,7 @@ export function registerPreferencesActions(
     scope: "renderer",
     nonRepeatable: true,
     run: async () => {
-      // This is typically handled by the modal component itself via Escape key
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      dispatchEscape();
     },
   }));
 

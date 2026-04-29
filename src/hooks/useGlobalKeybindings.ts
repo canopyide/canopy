@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { keybindingService, normalizeKeyForBinding } from "../services/KeybindingService";
 import { actionService } from "../services/ActionService";
 import { logError } from "@/utils/logger";
+import { dispatchEscape, hasHandlers } from "@/lib/escapeStack";
 import { openPanelContextMenu } from "../lib/panelContextMenu";
 import { usePanelStore } from "../store";
 
@@ -86,6 +87,13 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
         e.stopPropagation();
 
         if (result.match) {
+          // When a dialog/palette is open, route Cmd+W to the escape stack so it
+          // dismisses the topmost layer instead of falling through to the terminal.
+          if (result.match.actionId === "terminal.close" && hasHandlers()) {
+            dispatchEscape();
+            return;
+          }
+
           // Dispatch through ActionService
           void actionService
             .dispatch(

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionService } from "@/services/ActionService";
+import { _resetForTests as resetEscapeStack, registerEscape } from "@/lib/escapeStack";
 import type { ActionId } from "@shared/types/actions";
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 
@@ -880,7 +881,9 @@ describe("preferences action hardening", () => {
   });
 
   it("calls Electron window actions directly and keeps quit actions confirmation-gated for agents", async () => {
-    const dispatchEvent = vi.spyOn(window, "dispatchEvent");
+    resetEscapeStack();
+    const escapeHandler = vi.fn();
+    registerEscape(escapeHandler);
     const { service } = buildService(registerPreferencesActions);
 
     await expect(service.dispatch("window.zoomIn")).resolves.toEqual({
@@ -890,8 +893,7 @@ describe("preferences action hardening", () => {
     expect(mocks.electronWindow.zoomIn).toHaveBeenCalledTimes(1);
 
     await expect(service.dispatch("modal.close")).resolves.toEqual({ ok: true, result: undefined });
-    expect(dispatchEvent).toHaveBeenCalledWith(expect.any(KeyboardEvent));
-    expect(dispatchEvent.mock.calls.at(-1)?.[0].type).toBe("keydown");
+    expect(escapeHandler).toHaveBeenCalledTimes(1);
 
     const quitResult = await service.dispatch("app.quit", undefined, { source: "agent" });
     expect(quitResult.ok).toBe(false);
