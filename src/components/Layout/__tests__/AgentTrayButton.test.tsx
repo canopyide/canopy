@@ -416,6 +416,47 @@ describe("AgentTrayButton", () => {
     expect(agentRows(container)).toEqual(["claude", "gemini", "codex"]);
   });
 
+  const PIN_HINT_TEXT = /press p on any agent to pin it to the toolbar/i;
+
+  it("shows the pin discovery hint when launchable agents are present but none are pinned", () => {
+    const availability = {
+      claude: "ready",
+      gemini: "ready",
+    } as unknown as CliAvailability;
+    mockSettings = settingsWith({
+      claude: { pinned: false },
+      gemini: { pinned: false },
+    });
+
+    const { queryByText } = render(<AgentTrayButton agentAvailability={availability} />);
+
+    expect(queryByText(PIN_HINT_TEXT)).toBeTruthy();
+  });
+
+  it("hides the pin hint once at least one agent is pinned", () => {
+    const availability = {
+      claude: "ready",
+      gemini: "ready",
+    } as unknown as CliAvailability;
+    mockSettings = settingsWith({
+      claude: { pinned: true },
+      gemini: { pinned: false },
+    });
+
+    const { queryByText } = render(<AgentTrayButton agentAvailability={availability} />);
+
+    expect(queryByText(PIN_HINT_TEXT)).toBeNull();
+  });
+
+  it("hides the pin hint while availability is still loading", () => {
+    mockSettings = settingsWith({ claude: { pinned: false } });
+    mockHasRealData = false;
+
+    const { queryByText } = render(<AgentTrayButton agentAvailability={undefined} />);
+
+    expect(queryByText(PIN_HINT_TEXT)).toBeNull();
+  });
+
   it("dispatches agent.launch when no active session exists", () => {
     const availability = { gemini: "ready" } as unknown as CliAvailability;
     mockSettings = settingsWith({ gemini: { pinned: false } });

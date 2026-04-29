@@ -22,6 +22,19 @@ vi.mock("@/clients/githubClient", () => ({
   },
 }));
 
+let mockGitHubConfig: { hasToken: boolean } | null = { hasToken: true };
+let mockGitHubConfigInitialized = true;
+
+vi.mock("@/store/githubConfigStore", () => ({
+  useGitHubConfigStore: (
+    selector: (s: { isInitialized: boolean; config: { hasToken: boolean } | null }) => unknown
+  ) =>
+    selector({
+      isInitialized: mockGitHubConfigInitialized,
+      config: mockGitHubConfig,
+    }),
+}));
+
 vi.mock("@/services/ActionService", () => ({
   actionService: { dispatch: vi.fn() },
 }));
@@ -132,6 +145,8 @@ beforeEach(() => {
   mockGetPRByNumber.mockReset();
   formatTimeAgoMock.mockClear();
   formatTimeAgoMock.mockImplementation(() => "1m ago");
+  mockGitHubConfig = { hasToken: true };
+  mockGitHubConfigInitialized = true;
   const filterStore = useGitHubFilterStore.getState();
   filterStore.setIssueSearchQuery("");
   filterStore.setPrSearchQuery("");
@@ -545,6 +560,41 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mockListIssues).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GitHubResourceList no-token empty state", () => {
+  it("renders 'GitHub not connected' when no token is configured", () => {
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.getByText("GitHub not connected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /add github token/i })).toBeTruthy();
+    expect(mockListIssues).not.toHaveBeenCalled();
+  });
+
+  it("does not render the search input when the no-token empty state is active", () => {
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.queryByPlaceholderText(/search issues/i)).toBeNull();
+  });
+
+  it("renders normally once a token is configured", async () => {
+    mockGitHubConfig = { hasToken: true };
+    mockGitHubConfigInitialized = true;
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.queryByText("GitHub not connected")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("item-1")).toBeTruthy();
+    });
   });
 });
 

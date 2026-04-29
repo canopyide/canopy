@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Copy, Check, AlertCircle, Key, Hash, Shield, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -195,6 +197,22 @@ export function McpServerSettingsTab() {
         ariaLabel="Enable MCP server"
         disabled={loading}
       />
+
+      {!status.enabled && !loading && (
+        <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
+          <EmptyState
+            variant="zero-data"
+            icon={<McpServerIcon />}
+            title="MCP server is off"
+            description="Turn it on to expose Daintree's actions as MCP tools agents can call."
+            action={
+              <Button variant="outline" size="sm" onClick={() => void handleToggle()}>
+                Turn on MCP server
+              </Button>
+            }
+          />
+        </div>
+      )}
 
       {status.enabled && (
         <>
