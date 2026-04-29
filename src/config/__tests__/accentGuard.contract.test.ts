@@ -116,7 +116,7 @@ const DURABLE_ALLOWLIST = new Set([
   // Setup wizard step indicators, accent icon, telemetry toggle (one-time setup flow)
   "src/components/Setup/AgentSetupWizard.tsx",
 
-  // PresetColorPicker color swatch text accent (interactive state on color picker)
+  // PresetColorPicker Done CTA (primary commit action) + focus-visible ring
   "src/components/Settings/PresetColorPicker.tsx",
 ]);
 

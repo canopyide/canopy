@@ -8,26 +8,70 @@ vi.mock("lucide-react", () => ({
   X: () => <span data-testid="x-icon" />,
 }));
 
-// Captures the onFocusOutside callback passed to PopoverContent so tests can
-// invoke it directly (matches the dockPopoverGuard test pattern — assert on
-// preventDefault rather than relying on jsdom to wire up Radix dismissal).
-let capturedOnFocusOutside: ((e: { preventDefault: () => void }) => void) | undefined;
+// Stub react-colorful: render simple controlled stand-ins so tests can drive
+// onChange directly without relying on pointer-event simulation in jsdom.
+// Note: the real HexColorInput only fires onChange for valid 3- or 6-char hex.
+// This mock is permissive (passes any string through) — the malformed-hex test
+// below exploits that to verify the Done-button guard, but in production the
+// guard defends against round-tripping legacy 3-digit data, not typed garbage.
+vi.mock("react-colorful", () => ({
+  HexColorPicker: ({
+    color,
+    onChange,
+    ...rest
+  }: {
+    color: string;
+    onChange: (next: string) => void;
+    [key: string]: unknown;
+  }) => (
+    <div
+      {...rest}
+      data-color={color}
+      data-testid="hex-color-picker"
+      onClick={() => onChange("#aabbcc")}
+    />
+  ),
+  HexColorInput: ({
+    color,
+    onChange,
+    prefixed,
+    ...rest
+  }: {
+    color: string;
+    onChange: (next: string) => void;
+    prefixed?: boolean;
+    [key: string]: unknown;
+  }) => (
+    <input
+      {...rest}
+      data-prefixed={prefixed ? "true" : "false"}
+      value={color}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}));
 
-// Radix Popover renders conditionally via portal — mock to render all children
-// inline so we can assert on the palette grid without real portal plumbing.
+// Capture onOpenChange (to simulate dismissal-without-Done as a "cancel") and
+// the latest `open` prop (to verify Done/Clear close the popover).
+let capturedOnOpenChange: ((next: boolean) => void) | undefined;
+let capturedOpen: boolean | undefined;
+
 vi.mock("@/components/ui/popover", () => ({
-  Popover: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  PopoverContent: ({
+  Popover: ({
     children,
-    onFocusOutside,
+    open,
+    onOpenChange,
   }: {
     children: React.ReactNode;
-    onFocusOutside?: (e: { preventDefault: () => void }) => void;
+    open?: boolean;
+    onOpenChange?: (next: boolean) => void;
   }) => {
-    capturedOnFocusOutside = onFocusOutside;
+    capturedOnOpenChange = onOpenChange;
+    capturedOpen = open;
     return <>{children}</>;
   },
+  PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  PopoverContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 describe("PresetColorPicker", () => {
@@ -35,7 +79,8 @@ describe("PresetColorPicker", () => {
 
   beforeEach(() => {
     onChange = vi.fn<(color: string | undefined) => void>();
-    capturedOnFocusOutside = undefined;
+    capturedOnOpenChange = undefined;
+    capturedOpen = undefined;
   });
 
   it("trigger swatch reflects the current color", () => {
@@ -54,105 +99,116 @@ describe("PresetColorPicker", () => {
     expect(trigger.querySelector("span")?.getAttribute("style")).toContain("rgb(0, 0, 255)");
   });
 
-  it("clicking a palette swatch invokes onChange with that hex", () => {
+  it("clicking a palette swatch updates draft only — does not call onChange", () => {
     const { container } = render(
-      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888888" />
     );
-    // Find the first palette swatch button by data-testid prefix.
     const swatch = container.querySelector(
       '[data-testid^="preset-color-swatch-"]'
     ) as HTMLButtonElement;
     expect(swatch).toBeTruthy();
     fireEvent.click(swatch);
-    expect(onChange).toHaveBeenCalledTimes(1);
-    const arg = onChange.mock.calls[0]![0];
-    expect(arg).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("clicking Clear invokes onChange with undefined (inherit)", () => {
+  it("clicking Done commits the draft color via onChange", () => {
     const { getByTestId } = render(
-      <PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888888" />
+    );
+    fireEvent.click(getByTestId("preset-color-swatch-98c379"));
+    fireEvent.click(getByTestId("preset-color-done"));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith("#98c379");
+  });
+
+  it("HexColorPicker drag updates draft and Done commits the new color", () => {
+    const { getByTestId } = render(
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888888" />
+    );
+    fireEvent.click(getByTestId("hex-color-picker")); // mock fires onChange("#aabbcc")
+    fireEvent.click(getByTestId("preset-color-done"));
+    expect(onChange).toHaveBeenCalledWith("#aabbcc");
+  });
+
+  it("clicking Clear invokes onChange with undefined", () => {
+    const { getByTestId } = render(
+      <PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />
     );
     fireEvent.click(getByTestId("preset-color-clear"));
     expect(onChange).toHaveBeenCalledWith(undefined);
   });
 
-  it("Custom… button programmatically opens the native color input", () => {
+  it("dismissing the popover without Done does not call onChange", () => {
     const { getByTestId } = render(
-      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888888" />
     );
-    // Spy on the hidden input's click handler — confirm the click propagates.
-    const customBtn = getByTestId("preset-color-custom") as HTMLButtonElement;
-    const nativeInput = customBtn.parentElement?.querySelector(
-      'input[type="color"]'
-    ) as HTMLInputElement;
-    expect(nativeInput).toBeTruthy();
-    const clickSpy = vi.spyOn(nativeInput, "click");
-    fireEvent.click(customBtn);
-    expect(clickSpy).toHaveBeenCalled();
+    fireEvent.click(getByTestId("preset-color-swatch-e06c75"));
+    expect(capturedOnOpenChange).toBeDefined();
+    act(() => {
+      capturedOnOpenChange!(false);
+    });
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("selected palette swatch is marked aria-pressed", () => {
+  it("Done is disabled and a no-op when the draft hex is malformed", () => {
     const { getByTestId } = render(
-      <PresetColorPicker color="#e06c75" onChange={onChange} agentColor="#888" />
+      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888888" />
+    );
+    const hexInput = getByTestId("preset-color-hex-input") as HTMLInputElement;
+    fireEvent.change(hexInput, { target: { value: "#zzz" } });
+    const done = getByTestId("preset-color-done") as HTMLButtonElement;
+    expect(done.disabled).toBe(true);
+    fireEvent.click(done);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("selected palette swatch is marked aria-pressed for the draft color", () => {
+    const { getByTestId } = render(
+      <PresetColorPicker color="#e06c75" onChange={onChange} agentColor="#888888" />
     );
     const swatch = getByTestId("preset-color-swatch-e06c75");
     expect(swatch.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("Custom… suppresses focus-outside dismissal while the native picker is open", () => {
-    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
-    try {
-      const { getByTestId } = render(
-        <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
-      );
-      fireEvent.click(getByTestId("preset-color-custom"));
-      expect(capturedOnFocusOutside).toBeDefined();
-      const preventDefault = vi.fn();
-      capturedOnFocusOutside!({ preventDefault });
-      expect(preventDefault).toHaveBeenCalledTimes(1);
-    } finally {
-      hasFocusSpy.mockRestore();
-    }
-  });
-
-  it("focus-outside dismissal is allowed when document still has focus (stuck-guard recovery)", () => {
-    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(true);
-    try {
-      const { getByTestId } = render(
-        <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
-      );
-      fireEvent.click(getByTestId("preset-color-custom"));
-      const preventDefault = vi.fn();
-      capturedOnFocusOutside!({ preventDefault });
-      expect(preventDefault).not.toHaveBeenCalled();
-    } finally {
-      hasFocusSpy.mockRestore();
-    }
-  });
-
-  it("focus-outside dismissal is allowed again after a color is picked", () => {
-    const { getByTestId, container } = render(
-      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
+  it("clicking Done closes the popover", () => {
+    const { getByTestId, rerender } = render(
+      <PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />
     );
-    fireEvent.click(getByTestId("preset-color-custom"));
-    const nativeInput = container.querySelector('input[type="color"]') as HTMLInputElement;
-    fireEvent.change(nativeInput, { target: { value: "#123456" } });
-    const preventDefault = vi.fn();
-    capturedOnFocusOutside!({ preventDefault });
-    expect(preventDefault).not.toHaveBeenCalled();
-  });
-
-  it("focus-outside dismissal is allowed again after window regains focus (cancel path)", () => {
-    const { getByTestId } = render(
-      <PresetColorPicker color={undefined} onChange={onChange} agentColor="#888" />
-    );
-    fireEvent.click(getByTestId("preset-color-custom"));
     act(() => {
-      window.dispatchEvent(new FocusEvent("focus"));
+      capturedOnOpenChange!(true);
     });
-    const preventDefault = vi.fn();
-    capturedOnFocusOutside!({ preventDefault });
-    expect(preventDefault).not.toHaveBeenCalled();
+    rerender(<PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />);
+    expect(capturedOpen).toBe(true);
+    fireEvent.click(getByTestId("preset-color-done"));
+    rerender(<PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />);
+    expect(capturedOpen).toBe(false);
+    expect(onChange).toHaveBeenCalledWith("#ff0000");
+  });
+
+  it("3-digit hex prop is normalized to 6-digit on commit", () => {
+    const { getByTestId } = render(
+      <PresetColorPicker color="#abc" onChange={onChange} agentColor="#888888" />
+    );
+    fireEvent.click(getByTestId("preset-color-done"));
+    expect(onChange).toHaveBeenCalledWith("#aabbcc");
+  });
+
+  it("re-opening the popover resets the draft to the committed color", () => {
+    const { getByTestId } = render(
+      <PresetColorPicker color="#ff0000" onChange={onChange} agentColor="#888888" />
+    );
+    // Drag to a new draft color, then dismiss without committing.
+    fireEvent.click(getByTestId("hex-color-picker"));
+    act(() => {
+      capturedOnOpenChange!(false);
+    });
+    // Re-open: draft should snap back to the prop color (#ff0000), not the
+    // dragged value. Verified via the hex input since the picker stub doesn't
+    // expose its color reactively.
+    act(() => {
+      capturedOnOpenChange!(true);
+    });
+    const hexInput = getByTestId("preset-color-hex-input") as HTMLInputElement;
+    expect(hexInput.value).toBe("#ff0000");
   });
 });

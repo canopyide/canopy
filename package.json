@@ -86,7 +86,8 @@
     "better-sqlite3": "^12.8.0",
     "copytree": "^0.14.2",
     "js-yaml": "^4.1.1",
-    "node-pty": "1.2.0-beta.12"
+    "node-pty": "1.2.0-beta.12",
+    "react-colorful": "^5.6.1"
   },
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0"
