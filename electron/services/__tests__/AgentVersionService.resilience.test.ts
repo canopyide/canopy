@@ -6,6 +6,17 @@ const registryMock = vi.hoisted(() => ({
   getEffectiveAgentConfig: vi.fn(),
 }));
 
+// Hoisted execFile mock — vi.spyOn can't redefine ESM-namespace exports of
+// `child_process`, so we substitute the whole module at hoist time. Tests
+// that need a custom impl mutate `execFileMock` via mockImplementationOnce.
+const { execFileMock } = vi.hoisted(() => ({
+  execFileMock: vi.fn(),
+}));
+
+vi.mock("child_process", () => ({
+  execFile: execFileMock,
+}));
+
 vi.mock("../../../shared/config/agentRegistry.js", () => registryMock);
 
 import { AgentVersionService } from "../AgentVersionService.js";
@@ -16,7 +27,7 @@ describe("AgentVersionService resilience", () => {
     vi.clearAllMocks();
   });
 
-  function createService(checkAvailabilityImpl: () => Promise<Record<string, boolean>>) {
+  function createService(checkAvailabilityImpl: () => Promise<Record<string, unknown>>) {
     const cliAvailabilityService = {
       checkAvailability: vi.fn(checkAvailabilityImpl),
     } as unknown as CliAvailabilityService;
@@ -102,5 +113,102 @@ describe("AgentVersionService resilience", () => {
         error: expect.stringContaining("bad config payload"),
       })
     );
+  });
+
+  describe("PyPI version feed", () => {
+    // execFile is used for the installed-version probe; default to a synthetic
+    // success so getInstalledVersion returns a parseable value and the
+    // assertion focuses on the latest-version branch.
+    function setExecFileSuccess(): void {
+      execFileMock.mockImplementation(((
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        cb: (err: unknown, stdout: string, stderr: string) => void
+      ) => {
+        cb(null, "1.0.0\n", "");
+      }) as never);
+    }
+
+    beforeEach(() => {
+      execFileMock.mockReset();
+    });
+
+    it("fetches the latest version from pypi.org/pypi/<pkg>/json", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "py-agent",
+        name: "Py Agent",
+        command: "py-agent",
+        version: { args: ["--version"], pypiPackage: "py-agent-pkg" },
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ info: { version: "1.2.3" } }),
+        headers: new Headers(),
+      } as Response);
+      setExecFileSuccess();
+
+      const { service } = createService(async () => ({ "py-agent": "ready" }));
+      const result = await service.getVersion("py-agent" as AgentId);
+
+      expect(result.latestVersion).toBe("1.2.3");
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://pypi.org/pypi/py-agent-pkg/json",
+        expect.objectContaining({
+          headers: expect.objectContaining({ "User-Agent": "Daintree-Electron" }),
+        })
+      );
+      fetchSpy.mockRestore();
+    });
+
+    it("returns null without erroring when PyPI returns 200 with missing version", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "py-agent",
+        name: "Py Agent",
+        command: "py-agent",
+        version: { args: ["--version"], pypiPackage: "py-agent-pkg" },
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ info: {} }),
+        headers: new Headers(),
+      } as Response);
+      setExecFileSuccess();
+
+      const { service } = createService(async () => ({ "py-agent": "ready" }));
+      const result = await service.getVersion("py-agent" as AgentId);
+
+      expect(result.latestVersion).toBeNull();
+      expect(result.error).toBeUndefined();
+      fetchSpy.mockRestore();
+    });
+
+    it("surfaces an error when PyPI returns 404", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "py-agent",
+        name: "Py Agent",
+        command: "py-agent",
+        version: { args: ["--version"], pypiPackage: "missing-pkg" },
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        headers: new Headers(),
+      } as Response);
+      setExecFileSuccess();
+
+      const { service } = createService(async () => ({ "py-agent": "ready" }));
+      const result = await service.getVersion("py-agent" as AgentId);
+
+      expect(result.latestVersion).toBeNull();
+      expect(result.error ?? "").toMatch(/PyPI/);
+      fetchSpy.mockRestore();
+    });
   });
 });

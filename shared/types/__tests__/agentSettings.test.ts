@@ -53,6 +53,13 @@ describe("buildResumeCommand", () => {
     expect(buildResumeCommand("my-custom-agent", "abc")).toBeUndefined();
   });
 
+  it("builds project-scoped (Kiro) resume command without using the sessionId param", () => {
+    // Kiro's `--resume` is directory-scoped — the session ID we pass in is
+    // ignored. Verify the schema dispatch correctly drops it instead of
+    // appending a stale ID after `--resume`.
+    expect(buildResumeCommand("kiro", "ignored-session-id")).toBe("kiro-cli --resume");
+  });
+
   it("escapes session IDs with special characters", () => {
     const cmd = buildResumeCommand("claude", "id with spaces");
     expect(cmd).toBeDefined();
