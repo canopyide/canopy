@@ -823,6 +823,20 @@ export class WorkspaceClient extends EventEmitter {
     }
   }
 
+  async refreshOnWake(): Promise<void> {
+    for (const entry of this.entries.values()) {
+      try {
+        const requestId = entry.host.generateRequestId();
+        await entry.host.sendWithResponse({
+          type: "refresh-on-wake",
+          requestId,
+        });
+      } catch {
+        // Host may be crashed
+      }
+    }
+  }
+
   async refreshPullRequests(): Promise<void> {
     for (const entry of this.entries.values()) {
       try {

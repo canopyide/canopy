@@ -793,6 +793,31 @@ export class WorkspaceService {
     }
   }
 
+  /**
+   * Refresh the workspace after the OS wakes from sleep.
+   *
+   * Resets each monitor's adaptive polling strategy synchronously before
+   * enqueuing the forced refresh, so pre-sleep operation durations and
+   * circuit-breaker counters don't poison the post-wake polling cadence.
+   */
+  async refreshOnWake(requestId: string): Promise<void> {
+    try {
+      for (const monitor of this.monitors.values()) {
+        monitor.resetPollingStrategy();
+      }
+      await this.refreshAll();
+      await pullRequestService.refresh();
+      this.sendEvent({ type: "refresh-result", requestId, success: true });
+    } catch (error) {
+      this.sendEvent({
+        type: "refresh-result",
+        requestId,
+        success: false,
+        error: (error as Error).message,
+      });
+    }
+  }
+
   private async discoverAndSyncWorktrees(): Promise<void> {
     if (!this.git) {
       return;
