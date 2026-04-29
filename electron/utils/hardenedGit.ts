@@ -46,6 +46,25 @@ export function validateCwd(cwd: unknown): asserts cwd is string {
 
 export const GIT_BLOCK_TIMEOUT_MS = 30_000;
 
+/**
+ * Locale env vars passed to every git invocation so non-ASCII paths survive
+ * iconv on Windows (where the default ANSI codepage rejects multi-byte
+ * sequences) and Linux containers built without a UTF-8 locale. macOS already
+ * ships `en_US.UTF-8` and lacks `C.UTF-8` entirely; setting `LC_ALL=C.UTF-8`
+ * there silently falls back to strict POSIX `C` and strips UTF-8 support.
+ */
+export function getGitLocaleEnv(
+  platform: NodeJS.Platform = process.platform
+): Record<string, string> {
+  if (platform === "win32") {
+    return { LC_CTYPE: "C.UTF-8", LANG: "C.UTF-8" };
+  }
+  if (platform === "darwin") {
+    return { LC_CTYPE: "en_US.UTF-8" };
+  }
+  return { LC_CTYPE: "C.UTF-8" };
+}
+
 export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit {
   return simpleGit({
     baseDir: cwd,
@@ -55,6 +74,11 @@ export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit 
     unsafe: UNSAFE_FLAGS,
   }).env({
     ...process.env,
+    ...getGitLocaleEnv(),
+    // Clear inherited LC_ALL so the more specific LC_CTYPE / LC_MESSAGES
+    // values above actually take effect. POSIX locale resolution gives LC_ALL
+    // priority over every other LC_* variable.
+    LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
   });
@@ -156,6 +180,8 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
     unsafe: UNSAFE_FLAGS,
   }).env({
     ...process.env,
+    ...getGitLocaleEnv(),
+    LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
     GIT_TERMINAL_PROMPT: "0",

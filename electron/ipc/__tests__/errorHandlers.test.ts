@@ -1015,6 +1015,123 @@ describe("errorHandlers", () => {
         ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
       )?.[1];
       expect(sentError.recoveryHint).toContain("network");
+      // ETIMEDOUT must NOT be classified as a TLS-proxy error.
+      expect(sentError.recoveryHint).not.toContain("NODE_EXTRA_CA_CERTS");
+    });
+
+    const TLS_PROXY_CASES: ReadonlyArray<[string, string]> = [
+      ["UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "unable to get local issuer certificate"],
+      ["SELF_SIGNED_CERT_IN_CHAIN", "self signed certificate in certificate chain"],
+      ["CERT_UNTRUSTED", "certificate not trusted"],
+      ["DEPTH_ZERO_SELF_SIGNED_CERT", "self signed certificate"],
+      ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "unable to verify the first certificate"],
+      ["ERR_TLS_CERT_ALTNAME_INVALID", "Hostname/IP does not match certificate's altnames"],
+    ];
+    it.each(TLS_PROXY_CASES)("returns NODE_EXTRA_CA_CERTS hint for %s", async (errCode, errMsg) => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      registerErrorHandlers(null, null);
+
+      const spawn = vi.fn(() => {
+        const err = new Error(errMsg) as NodeJS.ErrnoException;
+        err.code = errCode;
+        throw err;
+      });
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler({} as never, {
+        errorId: "e",
+        action: "terminal",
+        args: { id: "t", cwd: "/" },
+      }).catch(() => {});
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      expect(sentError.type).toBe("network");
+      expect(sentError.recoveryHint).toContain("NODE_EXTRA_CA_CERTS");
+      expect(sentError.recoveryHint).toContain("NODE_USE_SYSTEM_CA");
+    });
+
+    it("falls back to message substring when error.code is missing", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      registerErrorHandlers(null, null);
+
+      const spawn = vi.fn(() => {
+        // No `.code` set — only the OpenSSL message survives.
+        throw new Error("Error: self signed certificate in certificate chain");
+      });
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler({} as never, {
+        errorId: "e",
+        action: "terminal",
+        args: { id: "t", cwd: "/" },
+      }).catch(() => {});
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      expect(sentError.recoveryHint).toContain("NODE_EXTRA_CA_CERTS");
+    });
+
+    it("does NOT match unrelated 'unable to verify' messages without TLS context", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      registerErrorHandlers(null, null);
+
+      const spawn = vi.fn(() => {
+        // Common non-TLS message that begins with "unable to verify" but is
+        // not the canonical OpenSSL signature. The fallback must NOT push
+        // a corporate-proxy fix at the user.
+        throw new Error("unable to verify user permissions");
+      });
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler({} as never, {
+        errorId: "e",
+        action: "terminal",
+        args: { id: "t", cwd: "/" },
+      }).catch(() => {});
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      if (sentError.recoveryHint) {
+        expect(sentError.recoveryHint).not.toContain("NODE_EXTRA_CA_CERTS");
+      }
+    });
+
+    it("does NOT classify CERT_HAS_EXPIRED as a TLS-proxy error", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      registerErrorHandlers(null, null);
+
+      const spawn = vi.fn(() => {
+        const err = new Error("certificate has expired") as NodeJS.ErrnoException;
+        err.code = "CERT_HAS_EXPIRED";
+        throw err;
+      });
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler({} as never, {
+        errorId: "e",
+        action: "terminal",
+        args: { id: "t", cwd: "/" },
+      }).catch(() => {});
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      // Recovery hint (if any) must not push a corporate-proxy fix at the user.
+      if (sentError.recoveryHint) {
+        expect(sentError.recoveryHint).not.toContain("NODE_EXTRA_CA_CERTS");
+      }
     });
 
     it("returns git init hint for GitError with 'not a git repository'", async () => {

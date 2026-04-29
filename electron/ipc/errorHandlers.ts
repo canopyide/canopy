@@ -84,6 +84,41 @@ function parseRetryPayload(payload: unknown): RetryPayload {
   };
 }
 
+// TLS error codes emitted by Node when an upstream cert chain doesn't validate.
+// In corporate environments these almost always mean a TLS-inspection proxy is
+// re-signing traffic with a private CA that isn't in Node's bundled root store
+// — surface a recovery hint that points at NODE_EXTRA_CA_CERTS / NODE_USE_SYSTEM_CA
+// rather than a generic "check your network" message.
+const TLS_PROXY_CODES = new Set([
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "CERT_UNTRUSTED",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+function isTlsProxyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string" && TLS_PROXY_CODES.has(code)) {
+    return true;
+  }
+  // Fallback for cases where libraries strip `error.code` but preserve the
+  // OpenSSL message verbatim. Kept narrow to the canonical OpenSSL phrasings
+  // so unrelated "unable to verify ..." or "certificate ..." errors don't
+  // get pushed to the NODE_EXTRA_CA_CERTS recovery path. Case-insensitive in
+  // case a wrapper transforms the message.
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (!message) return false;
+  return (
+    message.includes("unable to verify the first certificate") ||
+    message.includes("self signed certificate") ||
+    message.includes("self-signed certificate") ||
+    message.includes("unable to get local issuer certificate")
+  );
+}
+
 function getErrorType(error: unknown): ErrorType {
   if (error instanceof ValidationError) return "validation";
   if (error instanceof GitError) return "git";
@@ -94,6 +129,9 @@ function getErrorType(error: unknown): ErrorType {
   if (error && typeof error === "object") {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ETIMEDOUT") {
+      return "network";
+    }
+    if (isTlsProxyError(error)) {
       return "network";
     }
   }
@@ -134,6 +172,10 @@ function getRecoveryHint(error: unknown): string | undefined {
   }
 
   if (!error || typeof error !== "object") return undefined;
+
+  if (isTlsProxyError(error)) {
+    return "TLS inspection proxy detected. Set NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem (or NODE_USE_SYSTEM_CA=1 to use the OS keychain), then restart Daintree.";
+  }
 
   const code = (error as NodeJS.ErrnoException).code;
   const spawn = isSpawnSyscall(error);

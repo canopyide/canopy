@@ -464,6 +464,12 @@ export class PtyClient extends EventEmitter {
           ...(process.env as Record<string, string>),
           DAINTREE_USER_DATA: app.getPath("userData"),
           DAINTREE_UTILITY_PROCESS_KIND: "pty-host",
+          // node-pty 1.x hangs intermittently on Linux kernels with io_uring
+          // enabled (microsoft/node-pty#630, closed as not planned). The fix
+          // is permanent and must be set inside the explicit env object — a
+          // mutation on process.env wouldn't survive utilityProcess.fork's
+          // env override.
+          ...(process.platform === "linux" ? { UV_USE_IO_URING: "0" } : {}),
         },
       });
       console.log(`[PtyClient] Pty Host started with ${this.config.memoryLimitMb}MB memory limit`);

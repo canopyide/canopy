@@ -52,6 +52,19 @@ describe("AgentVersionService resilience", () => {
     );
   });
 
+  it("uses a 10s probe timeout to tolerate cold starts and AV-scanned binaries", () => {
+    const cliAvailabilityService = {
+      checkAvailability: vi.fn(),
+    } as unknown as CliAvailabilityService;
+    const service = new AgentVersionService(cliAvailabilityService);
+
+    // The constant gates execFileAsync timeout AND the two AbortController-based
+    // fetch paths in getLatestNpmVersion / getLatestGitHubVersion. 5s was too
+    // tight on Windows AV-scanned PATH entries, slow npm CDN edges, and WSL2
+    // boundaries (issue #6041).
+    expect((service as unknown as { TIMEOUT_MS: number }).TIMEOUT_MS).toBe(10000);
+  });
+
   it("returns per-agent results even when one config lookup throws", async () => {
     (registryMock.getEffectiveAgentIds as Mock).mockReturnValue(["claude", "gemini"]);
     (registryMock.getEffectiveAgentConfig as Mock).mockImplementation((agentId: string) => {
