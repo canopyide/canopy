@@ -76,6 +76,8 @@ describe("AgentRouter", () => {
       events.emit("task:assigned", { taskId: "t11", agentId: "kiro", timestamp: Date.now() });
       events.emit("task:assigned", { taskId: "t12", agentId: "copilot", timestamp: Date.now() });
       events.emit("task:assigned", { taskId: "t13", agentId: "copilot", timestamp: Date.now() });
+      events.emit("task:assigned", { taskId: "t14", agentId: "goose", timestamp: Date.now() });
+      events.emit("task:assigned", { taskId: "t15", agentId: "goose", timestamp: Date.now() });
 
       // Now all agents should be at capacity
       const agentId = await router.routeTask({

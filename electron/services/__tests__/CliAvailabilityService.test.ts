@@ -163,12 +163,12 @@ describe("CliAvailabilityService", () => {
         expect(detail?.authConfirmed).toBe(false);
       }
 
-      // Should have called execFileSync 7 times (once for each CLI).
+      // Should have called execFileSync 8 times (once for each CLI).
       // Fallback probes (native paths, npm-global, WSL) run via async execFile and
       // only fire when the which/where probe returns missing — in this test
       // every agent succeeds on the first probe, so execFileSync count
       // matches the registry size exactly.
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(7);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(8);
 
       // stdio is now [ignore, pipe, ignore] so we can capture the resolved
       // path from stdout while still suppressing any TTY output on stderr.
@@ -662,7 +662,7 @@ describe("CliAvailabilityService", () => {
       vi.clearAllMocks();
 
       await service.refresh();
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(7);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(8);
     });
   });
 
