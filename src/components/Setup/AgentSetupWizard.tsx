@@ -14,7 +14,7 @@ import { logError } from "@/utils/logger";
 import type { CliAvailability } from "@shared/types";
 import { isAgentInstalled, isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import { Sparkles, ChevronLeft, ChevronRight, ArrowRight, Check, Sun, Moon } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
+import { AnimatePresence, m, useReducedMotion, type Variants } from "framer-motion";
 import { Plug } from "@/components/icons";
 import { UI_ENTER_DURATION, UI_EXIT_DURATION } from "@/lib/animationUtils";
 import { cn } from "@/lib/utils";
@@ -549,7 +549,7 @@ export function AgentSetupWizard({
       <AppDialog.Body>
         <div className="relative overflow-hidden">
           <AnimatePresence mode="wait" custom={directionRef.current}>
-            <motion.div
+            <m.div
               key={state.step.type}
               custom={directionRef.current}
               variants={prefersReducedMotion ? reducedStepVariants : stepVariants}
@@ -589,7 +589,7 @@ export function AgentSetupWizard({
                 />
               )}
               {state.step.type === "complete" && <CompleteStep installedAgents={installedAgents} />}
-            </motion.div>
+            </m.div>
           </AnimatePresence>
         </div>
       </AppDialog.Body>

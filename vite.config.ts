@@ -295,7 +295,7 @@ export default defineConfig(({ command, mode }) => {
               },
               {
                 name: "vendor-motion",
-                test: /node_modules[\\/]framer-motion[\\/]/,
+                test: /node_modules[\\/](framer-motion|motion-dom|motion-utils)[\\/]/,
                 priority: 50,
               },
               {

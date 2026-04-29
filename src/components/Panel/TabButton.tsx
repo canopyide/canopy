@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect, forwardRef } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { X, AlertTriangle } from "lucide-react";
 import type { PanelKind, AgentState } from "@/types";
 import type { WaitingReason } from "@shared/types/agent";
@@ -244,7 +244,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
           {...sortableListeners}
         >
           {isActive && (
-            <motion.div
+            <m.div
               layoutId="panel-tab-indicator"
               layout="position"
               className="absolute inset-x-0 bottom-0 h-0.5 bg-daintree-accent pointer-events-none"

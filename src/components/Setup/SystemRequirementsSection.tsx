@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronDown, CircleCheck, Loader2, RotateCw } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import { UI_ENTER_DURATION } from "@/lib/animationUtils";
 import { useSystemHealthCheck } from "./useSystemHealthCheck";
 import { PrerequisiteCard } from "./SystemToolsStep";
@@ -91,7 +91,7 @@ export function SystemRequirementsSection({
         )}
       </button>
 
-      <motion.div
+      <m.div
         animate={{ height: isExpanded ? "auto" : 0 }}
         initial={false}
         transition={
@@ -149,7 +149,7 @@ export function SystemRequirementsSection({
             {isChecking ? "Checking..." : "Re-check"}
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

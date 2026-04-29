@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { MoreHorizontal, X } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { isMac } from "@/lib/platform";
@@ -636,7 +636,7 @@ export function FleetArmingRibbon(): ReactElement | null {
   return (
     <div data-testid="fleet-arming-ribbon-group">
       <AnimatePresence initial={false}>
-        <motion.div
+        <m.div
           ref={ribbonRef}
           key="fleet-arming-ribbon"
           role={isBroadcastConfirmActive ? "alertdialog" : "status"}
@@ -726,7 +726,7 @@ export function FleetArmingRibbon(): ReactElement | null {
               </button>
             </div>
           )}
-        </motion.div>
+        </m.div>
       </AnimatePresence>
     </div>
   );
