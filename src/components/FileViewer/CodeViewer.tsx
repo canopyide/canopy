@@ -58,7 +58,7 @@ const highlightedLineField = StateField.define<DecorationSet>({
 
 const highlightLineTheme = EditorView.baseTheme({
   ".cm-highlightedLine": {
-    backgroundColor: "rgba(234, 179, 8, 0.1) !important",
+    backgroundColor: "var(--color-search-highlight-background) !important",
   },
 });
 
