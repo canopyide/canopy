@@ -124,6 +124,12 @@ describe("deriveRequiredCIStatus", () => {
     expect(r.ciSummary).toEqual({ requiredTotal: 2, requiredFailing: 0, requiredPending: 1 });
   });
 
+  it("falls back to raw rollup when contexts list is empty", () => {
+    const r = deriveRequiredCIStatus([], false, "PENDING");
+    expect(r.ciStatus).toBe("PENDING");
+    expect(r.ciSummary).toBeUndefined();
+  });
+
   it("falls back to raw FAILURE rollup when no required checks exist", () => {
     const r = deriveRequiredCIStatus(
       [
