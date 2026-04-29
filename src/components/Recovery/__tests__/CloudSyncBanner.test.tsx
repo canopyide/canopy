@@ -46,6 +46,8 @@ describe("CloudSyncBanner", () => {
   it("renders banner with detected service name", () => {
     useCloudSyncBannerStore.setState({ service: "Dropbox", projectId: "p1" });
     render(<CloudSyncBanner />);
+    const region = screen.getByRole("status");
+    expect(region.getAttribute("aria-live")).toBe("polite");
     expect(screen.getByText("Cloud sync detected")).toBeTruthy();
     expect(screen.getByText(/Dropbox-synced folder/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Got it" })).toBeTruthy();
