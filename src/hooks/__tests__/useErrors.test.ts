@@ -287,3 +287,185 @@ describe("useErrors — escalation of persistent transient errors", () => {
     unmount();
   });
 });
+
+describe("useErrors — humanized toast payload", () => {
+  let capturedOnError: (error: ErrorRecord) => void;
+
+  beforeEach(() => {
+    Object.defineProperty(window, "electron", {
+      value: { errors: {} },
+      writable: true,
+      configurable: true,
+    });
+
+    onErrorMock.mockImplementation((cb: (error: ErrorRecord) => void) => {
+      capturedOnError = cb;
+      return vi.fn();
+    });
+    getPendingMock.mockResolvedValue([]);
+    notifyMock.mockClear();
+    notifyMock.mockReturnValue("toast-id");
+    shouldEscalateMock.mockReset();
+    shouldEscalateMock.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("does not pass raw error.source as the toast title", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "filesystem",
+      source: "WorktreeMonitor",
+      message: "EBUSY: resource busy or locked",
+      isTransient: false,
+    });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(payload.title).not.toContain("WorktreeMonitor");
+    expect(payload.title).toBe("File operation failed");
+    unmount();
+  });
+
+  it("does not pass raw error.message as the toast body", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "filesystem",
+      source: "WorktreeMonitor",
+      message: "EBUSY: resource busy or locked /Users/me/proj",
+      isTransient: false,
+    });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(payload.message).not.toContain("EBUSY");
+    expect(payload.message).not.toContain("/Users/me/proj");
+    unmount();
+  });
+
+  it("uses gitReason-specific copy when present", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "git",
+      gitReason: "auth-failed",
+      message: "fatal: Authentication failed for 'https://...'",
+      isTransient: false,
+    });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(payload.title).toBe("Git authentication failed");
+    expect(payload.message).toBe("Check your Git credentials or SSH key configuration.");
+    unmount();
+  });
+
+  it("attaches a 'Copy details' action for high-priority errors", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "process", isTransient: false });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(payload.action).toBeDefined();
+    expect(payload.action.label).toBe("Copy details");
+    unmount();
+  });
+
+  it("omits the 'Copy details' action for low-priority errors", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "network", isTransient: true });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(payload.action).toBeUndefined();
+    unmount();
+  });
+
+  it("Copy details action writes the raw payload to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      writable: true,
+      configurable: true,
+    });
+
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "filesystem",
+      source: "WorktreeMonitor",
+      message: "EBUSY: resource busy",
+      details: "stack trace goes here",
+      correlationId: "corr-1",
+      context: { worktreeId: "wt-42", filePath: "/tmp/proj/src/foo.ts" },
+      isTransient: false,
+    });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    payload.action.onClick();
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const written = writeText.mock.calls[0]?.[0] ?? "";
+    expect(written).toContain("WorktreeMonitor");
+    expect(written).toContain("EBUSY: resource busy");
+    expect(written).toContain("corr-1");
+    expect(written).toContain("wt-42");
+    expect(written).toContain("/tmp/proj/src/foo.ts");
+    unmount();
+  });
+
+  it("does not leak token-bearing or path-bearing raw messages into title or body", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "git",
+      gitReason: "auth-failed",
+      source: "GitHubService",
+      message: "fatal: Authentication failed for 'https://ghp_secrettoken@github.com/org/repo'",
+      isTransient: false,
+    });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(payload.title).not.toContain("ghp_secrettoken");
+    expect(payload.title).not.toContain("github.com");
+    expect(payload.title).not.toContain("fatal:");
+    expect(payload.message).not.toContain("ghp_secrettoken");
+    expect(payload.message).not.toContain("github.com");
+    expect(payload.message).not.toContain("fatal:");
+    unmount();
+  });
+
+  it("clipboard rejection does not throw out of the action handler", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard blocked"));
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      writable: true,
+      configurable: true,
+    });
+
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({ type: "process", isTransient: false });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(() => payload.action.onClick()).not.toThrow();
+    unmount();
+  });
+});
