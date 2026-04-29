@@ -283,7 +283,6 @@ describe("initializeStore", () => {
     expect(consumePendingSettingsRecovery()).toBeNull();
   });
 
-
   describe("consumePendingSettingsRecovery", () => {
     it("returns null on normal startup", () => {
       initializeStore(testOptions(tempDir));
