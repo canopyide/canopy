@@ -147,6 +147,55 @@ describe("getAutoGridCols", () => {
       expect(getAutoGridCols(12, wideWidth)).toBe(4);
     });
   });
+
+  describe("breakpoint hysteresis", () => {
+    const wideWidth = MIN_TERMINAL_WIDTH_PX * 5; // Room for 5 columns
+
+    it("holds 3 columns at count=5 once widened (sticky narrow boundary)", () => {
+      // Was at 3 cols (count had reached ≥6), now back at 5 — must stay at 3.
+      expect(getAutoGridCols(5, wideWidth, 3)).toBe(3);
+    });
+
+    it("narrows to 2 columns at count=4 (drops at narrowAt)", () => {
+      expect(getAutoGridCols(4, wideWidth, 3)).toBe(2);
+    });
+
+    it("holds 4 columns at count=11 once widened (3→4 sticky)", () => {
+      expect(getAutoGridCols(11, wideWidth, 4)).toBe(4);
+    });
+
+    it("narrows to 3 columns at count=10 (3→4 narrowAt)", () => {
+      expect(getAutoGridCols(10, wideWidth, 4)).toBe(3);
+    });
+
+    it("maxFeasibleCols overrides sticky hysteresis", () => {
+      // Even with previousCols=3, a 1.5×min-width viewport only fits 1 column.
+      const narrowWidth = MIN_TERMINAL_WIDTH_PX * 1.5;
+      expect(getAutoGridCols(5, narrowWidth, 3)).toBe(1);
+    });
+
+    it("preserves backward-compatible behavior when previousCols is undefined", () => {
+      // Cold start (no prior state): pure count-based, symmetric.
+      expect(getAutoGridCols(5, wideWidth, undefined)).toBe(2);
+      expect(getAutoGridCols(11, wideWidth, undefined)).toBe(3);
+    });
+
+    it("does not widen past the natural target when previousCols is smaller", () => {
+      // previousCols=2 must not bias an upward widen — count drives that.
+      expect(getAutoGridCols(6, wideWidth, 2)).toBe(3);
+      expect(getAutoGridCols(12, wideWidth, 3)).toBe(4);
+    });
+
+    it("ignores stale previousCols beyond the natural target", () => {
+      // count=2 naturally caps at 2 cols even if a stale previousCols=4 leaks in.
+      expect(getAutoGridCols(2, wideWidth, 4)).toBe(2);
+    });
+
+    it("respects no-empty-columns rule under hysteresis", () => {
+      // count=2 wants ≤2 cols regardless of any sticky prior.
+      expect(getAutoGridCols(2, wideWidth, 3)).toBe(2);
+    });
+  });
 });
 
 describe("getMaxGridCapacity", () => {

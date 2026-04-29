@@ -126,13 +126,22 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
     return getTabGroups("grid", activeWorktreeId ?? undefined);
   }, [getTabGroups, activeWorktreeId, tabGroups, panelIds, panelsById]);
 
+  // Hysteresis input mirroring ContentGrid: keyboard-nav column count must
+  // track the visual grid through the same sticky boundaries, otherwise arrow
+  // navigation maps to wrong cells when count drops into the buffer zone.
+  const hysteresisNavColsRef = useRef<number | undefined>(undefined);
+
   // Compute gridCols using visual group count, matching ContentGrid's gridItemCount.
   // In fleet scope render, count is fleet panels (matches ContentGrid.fleetGridCols).
   const gridCols = useMemo(() => {
     const { strategy, value } = layoutConfig;
     const count = isFleetScopeRender ? Math.max(fleetPanels.length, 1) : gridGroups.length;
-    return computeGridColumns(count, gridWidth, strategy, value);
+    return computeGridColumns(count, gridWidth, strategy, value, hysteresisNavColsRef.current);
   }, [isFleetScopeRender, fleetPanels.length, gridGroups.length, layoutConfig, gridWidth]);
+
+  useEffect(() => {
+    hysteresisNavColsRef.current = gridCols;
+  }, [gridCols]);
 
   // Compute grid layout from visual groups (no DOM measurement). Fleet branch
   // treats each armed panel as its own single-cell position, mirroring how

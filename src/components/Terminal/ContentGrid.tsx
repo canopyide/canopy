@@ -670,6 +670,13 @@ export function ContentGrid({
     }
   }, [layoutConfig, clearPreMaximizeLayout]);
 
+  // Hysteresis input for the automatic-strategy column count: holds the prior
+  // committed value so a brief drop in panel count doesn't ricochet the grid
+  // back through a re-flow. Read by the useMemo below; updated in the
+  // existing prevGridColsRef effect (~line 858) to mirror the codebase's
+  // established "previous value via ref" pattern.
+  const hysteresisGridColsRef = useRef<number | undefined>(undefined);
+
   const gridCols = useMemo(() => {
     if (
       !maximizedId &&
@@ -683,7 +690,13 @@ export function ContentGrid({
       return preMaximizeLayout.gridCols;
     }
     const { strategy, value } = layoutConfig;
-    return computeGridColumns(gridItemCount, gridWidth, strategy, value);
+    return computeGridColumns(
+      gridItemCount,
+      gridWidth,
+      strategy,
+      value,
+      hysteresisGridColsRef.current
+    );
   }, [gridItemCount, layoutConfig, gridWidth, maximizedId, preMaximizeLayout, activeWorktreeId]);
 
   // FLIP transition shared across every panel in this grid. During project
@@ -764,10 +777,21 @@ export function ContentGrid({
     return fleetPanels.some((t) => (t.worktreeId ?? null) !== firstWorktreeId);
   }, [fleetPanels]);
 
+  // Independent hysteresis state for the fleet grid — must not share with the
+  // main grid because fleet spans different worktrees with its own panel
+  // count history.
+  const hysteresisFleetColsRef = useRef<number | undefined>(undefined);
+
   const fleetGridCols = useMemo(() => {
     if (!isFleetScopeRender) return 1;
     const { strategy, value } = layoutConfig;
-    return computeGridColumns(Math.max(fleetPanels.length, 1), gridWidth, strategy, value);
+    return computeGridColumns(
+      Math.max(fleetPanels.length, 1),
+      gridWidth,
+      strategy,
+      value,
+      hysteresisFleetColsRef.current
+    );
   }, [isFleetScopeRender, fleetPanels, layoutConfig, gridWidth]);
 
   // Dedicated fleet batch-fit: the main startBatchFit closure reads
@@ -782,6 +806,7 @@ export function ContentGrid({
   useEffect(() => {
     if (!isFleetScopeRender) {
       prevFleetGridColsRef.current = fleetGridCols;
+      hysteresisFleetColsRef.current = fleetGridCols;
       return;
     }
     const ids = fleetPanels.map((t) => t.id);
@@ -792,6 +817,7 @@ export function ContentGrid({
     // count changes so motion.div translations don't trigger spurious SIGWINCH.
     const fleetColsChanged = prevFleetGridColsRef.current !== fleetGridCols;
     prevFleetGridColsRef.current = fleetGridCols;
+    hysteresisFleetColsRef.current = fleetGridCols;
     if (fleetColsChanged && !isDraggingRef.current && ids.length > 0) {
       terminalInstanceService.suppressResizesDuringLayoutTransition(
         ids,
@@ -861,6 +887,7 @@ export function ContentGrid({
 
     const colsChanged = prevGridColsRef.current !== gridCols;
     prevGridColsRef.current = gridCols;
+    hysteresisGridColsRef.current = gridCols;
 
     if (colsChanged && !isProjectSwitching && !isDraggingRef.current) {
       const realPanelIds = panelIds.filter((id) => id !== GRID_PLACEHOLDER_ID);
