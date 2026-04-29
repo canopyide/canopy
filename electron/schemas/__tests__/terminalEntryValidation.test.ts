@@ -3,6 +3,8 @@ import {
   AppStateTerminalEntrySchema,
   TerminalSnapshotSchema,
   TerminalSpawnOptionsSchema,
+  RecipeTerminalSchema,
+  TerminalRecipeSchema,
   filterValidTerminalEntries,
 } from "../ipc.js";
 
@@ -552,6 +554,402 @@ describe("Terminal Entry Validation Schemas", () => {
 
       expect(result).toEqual([]);
       expect(consoleSpy).toHaveBeenCalledTimes(7);
+    });
+  });
+});
+
+describe("Recipe Validation Schemas", () => {
+  describe("RecipeTerminalSchema", () => {
+    it("accepts minimal valid terminal entry", () => {
+      const entry = { type: "terminal" };
+      const result = RecipeTerminalSchema.safeParse(entry);
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts terminal entry with all fields", () => {
+      const entry = {
+        type: "terminal",
+        title: "My Terminal",
+        command: "npm run dev",
+        env: { NODE_ENV: "development" },
+        initialPrompt: "Start coding",
+        args: "--model sonnet",
+        devCommand: "npm run dev",
+        exitBehavior: "keep",
+        agentModelId: "sonnet",
+        agentLaunchFlags: ["--verbose"],
+      };
+      const result = RecipeTerminalSchema.safeParse(entry);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.env).toEqual({ NODE_ENV: "development" });
+        expect(result.data.agentLaunchFlags).toEqual(["--verbose"]);
+      }
+    });
+
+    it("accepts agent type terminal entries", () => {
+      const agents = ["claude", "gemini", "codex", "opencode", "cursor", "custom-plugin-agent"];
+      for (const agent of agents) {
+        const entry = { type: agent };
+        const result = RecipeTerminalSchema.safeParse(entry);
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("accepts dev-preview type", () => {
+      const entry = { type: "dev-preview" };
+      const result = RecipeTerminalSchema.safeParse(entry);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects entry with empty type", () => {
+      const entry = { type: "" };
+      const result = RecipeTerminalSchema.safeParse(entry);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects entry with missing type", () => {
+      const entry = { title: "No type" };
+      const result = RecipeTerminalSchema.safeParse(entry);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects non-string type", () => {
+      expect(RecipeTerminalSchema.safeParse({ type: 123 }).success).toBe(false);
+      expect(RecipeTerminalSchema.safeParse({ type: true }).success).toBe(false);
+      expect(RecipeTerminalSchema.safeParse({ type: null }).success).toBe(false);
+    });
+
+    it("rejects invalid exitBehavior values", () => {
+      const result = RecipeTerminalSchema.safeParse({
+        type: "terminal",
+        exitBehavior: "invalid",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts all valid exitBehavior values", () => {
+      const behaviors = ["keep", "trash", "remove", "restart"];
+      for (const behavior of behaviors) {
+        const result = RecipeTerminalSchema.safeParse({
+          type: "terminal",
+          exitBehavior: behavior,
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects env with non-string values", () => {
+      const result = RecipeTerminalSchema.safeParse({
+        type: "terminal",
+        env: { KEY: 123 },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects non-object values", () => {
+      expect(RecipeTerminalSchema.safeParse(null).success).toBe(false);
+      expect(RecipeTerminalSchema.safeParse("string").success).toBe(false);
+      expect(RecipeTerminalSchema.safeParse(123).success).toBe(false);
+      expect(RecipeTerminalSchema.safeParse([]).success).toBe(false);
+    });
+
+    it("preserves unknown fields via passthrough", () => {
+      const entry = { type: "terminal", unknownField: "preserved", anotherExtra: 456 };
+      const result = RecipeTerminalSchema.safeParse(entry);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toHaveProperty("unknownField", "preserved");
+        expect(result.data).toHaveProperty("anotherExtra", 456);
+      }
+    });
+  });
+
+  describe("TerminalRecipeSchema", () => {
+    it("accepts valid minimal recipe", () => {
+      const recipe = {
+        id: "recipe-1",
+        name: "My Recipe",
+        terminals: [{ type: "terminal" }],
+        createdAt: 1700000000000,
+      };
+      const result = TerminalRecipeSchema.safeParse(recipe);
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts recipe with all fields", () => {
+      const recipe = {
+        id: "full-recipe",
+        name: "Full Recipe",
+        projectId: "proj-123",
+        worktreeId: "wt-456",
+        terminals: [
+          { type: "terminal", command: "npm start" },
+          { type: "claude", initialPrompt: "Review this code" },
+        ],
+        createdAt: 1700000000000,
+        showInEmptyState: true,
+        lastUsedAt: 1700100000000,
+        usageHistory: [1700000000000, 1700100000000],
+        autoAssign: "prompt",
+      };
+      const result = TerminalRecipeSchema.safeParse(recipe);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects recipe with empty id", () => {
+      const recipe = {
+        id: "",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+      };
+      const result = TerminalRecipeSchema.safeParse(recipe);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with empty name", () => {
+      const recipe = {
+        id: "r1",
+        name: "",
+        terminals: [],
+        createdAt: 0,
+      };
+      const result = TerminalRecipeSchema.safeParse(recipe);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with missing terminals", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        createdAt: 0,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with non-array terminals", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: "not-an-array",
+        createdAt: 0,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with invalid terminal in array", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [{ type: "ok" }, { type: "" }], // second terminal has empty type
+        createdAt: 0,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with non-number createdAt", () => {
+      expect(
+        TerminalRecipeSchema.safeParse({
+          id: "r1",
+          name: "Recipe",
+          terminals: [],
+          createdAt: "1700000000000",
+        }).success
+      ).toBe(false);
+    });
+
+    it("rejects invalid autoAssign values", () => {
+      expect(
+        TerminalRecipeSchema.safeParse({
+          id: "r1",
+          name: "Recipe",
+          terminals: [],
+          createdAt: 0,
+          autoAssign: "maybe",
+        }).success
+      ).toBe(false);
+    });
+
+    it("accepts all valid autoAssign values", () => {
+      for (const mode of ["always", "never", "prompt"]) {
+        const result = TerminalRecipeSchema.safeParse({
+          id: "r1",
+          name: "Recipe",
+          terminals: [],
+          createdAt: 0,
+          autoAssign: mode,
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects recipe with non-array usageHistory", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+        usageHistory: "not-array",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with non-number usageHistory items", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+        usageHistory: [1700000000000, "not-a-number"],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects non-object recipe values", () => {
+      expect(TerminalRecipeSchema.safeParse(null).success).toBe(false);
+      expect(TerminalRecipeSchema.safeParse("string").success).toBe(false);
+      expect(TerminalRecipeSchema.safeParse(123).success).toBe(false);
+      expect(TerminalRecipeSchema.safeParse([]).success).toBe(false);
+    });
+
+    it("preserves unknown fields via passthrough", () => {
+      const recipe = {
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+        unknownField: "kept",
+      };
+      const result = TerminalRecipeSchema.safeParse(recipe);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toHaveProperty("unknownField", "kept");
+      }
+    });
+  });
+
+  describe("filterValidTerminalEntries with TerminalRecipeSchema", () => {
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
+    it("returns all valid recipes unchanged", () => {
+      const recipes = [
+        { id: "r1", name: "Recipe 1", terminals: [{ type: "terminal" }], createdAt: 1000 },
+        { id: "r2", name: "Recipe 2", terminals: [], createdAt: 2000 },
+      ];
+
+      const result = filterValidTerminalEntries(recipes, TerminalRecipeSchema, "test");
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(recipes);
+    });
+
+    it("filters out recipes with invalid terminals", () => {
+      const recipes = [
+        { id: "r1", name: "Valid", terminals: [{ type: "terminal" }], createdAt: 1 },
+        { id: "r2", name: "Invalid terminal", terminals: [{ type: "" }], createdAt: 2 }, // empty type
+        { id: "r3", name: "Also valid", terminals: [], createdAt: 3 },
+      ];
+
+      const result = filterValidTerminalEntries(recipes, TerminalRecipeSchema, "test");
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe("r1");
+      expect(result[1].id).toBe("r3");
+    });
+
+    it("filters out recipes with deep field type errors", () => {
+      const recipes = [
+        { id: "r1", name: "Valid", terminals: [], createdAt: 1 },
+        {
+          id: "r2",
+          name: "command is number",
+          terminals: [{ type: "terminal", command: 123 }],
+          createdAt: 2,
+        }, // command should be string
+        {
+          id: "r3",
+          name: "env is array",
+          terminals: [{ type: "terminal", env: ["not", "a", "record"] }],
+          createdAt: 3,
+        },
+      ];
+
+      const result = filterValidTerminalEntries(recipes, TerminalRecipeSchema, "test");
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("r1");
+      expect(consoleSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("logs warnings for each filtered recipe", () => {
+      const recipes = [
+        { id: "r1", name: "Valid", terminals: [], createdAt: 1 },
+        { id: "r2", terminals: [], createdAt: 2 }, // missing name
+        { id: "", name: "Empty ID", terminals: [], createdAt: 3 }, // empty id
+      ];
+
+      filterValidTerminalEntries(recipes, TerminalRecipeSchema, "recipe-test");
+      expect(consoleSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("handles empty array", () => {
+      const result = filterValidTerminalEntries([], TerminalRecipeSchema, "test");
+      expect(result).toEqual([]);
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it("handles null/undefined entries in recipes array", () => {
+      const recipes = [
+        { id: "r1", name: "Valid", terminals: [], createdAt: 1 },
+        null,
+        undefined,
+        { id: "r2", name: "Also valid", terminals: [], createdAt: 2 },
+      ];
+
+      const result = filterValidTerminalEntries(recipes as unknown[], TerminalRecipeSchema, "test");
+      expect(result).toHaveLength(2);
+      expect(consoleSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("recovers valid recipes from heavily corrupted data", () => {
+      const corrupted = [
+        "string",
+        123,
+        null,
+        { id: "r1", name: "Good", terminals: [], createdAt: 1 },
+        {},
+        { partially: "wrong" },
+        { id: "r2", name: "Also good", terminals: [{ type: "claude" }], createdAt: 2 },
+        [],
+      ];
+
+      const result = filterValidTerminalEntries(
+        corrupted as unknown[],
+        TerminalRecipeSchema,
+        "corruption"
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe("r1");
+      expect(result[1].id).toBe("r2");
+    });
+
+    it("preserves ordering of valid entries", () => {
+      const entries = [
+        { id: "first", name: "First", terminals: [], createdAt: 1 },
+        { id: "", name: "Bad", terminals: [], createdAt: 2 },
+        { id: "second", name: "Second", terminals: [], createdAt: 3 },
+        { invalid: "entry" },
+        { id: "third", name: "Third", terminals: [], createdAt: 4 },
+      ];
+
+      const result = filterValidTerminalEntries(entries as unknown[], TerminalRecipeSchema, "test");
+      expect(result.map((e) => e.id)).toEqual(["first", "second", "third"]);
     });
   });
 });

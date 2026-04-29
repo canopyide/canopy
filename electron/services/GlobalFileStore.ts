@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { resilientRename, resilientAtomicWriteFile } from "../utils/fs.js";
+import { TerminalRecipeSchema, filterValidTerminalEntries } from "../schemas/ipc.js";
 
 const RECIPES_FILENAME = "recipes.json";
 
@@ -27,14 +28,7 @@ export class GlobalFileStore {
         return [];
       }
 
-      return parsed.filter(
-        (recipe: unknown): recipe is TerminalRecipe =>
-          recipe !== null &&
-          typeof recipe === "object" &&
-          typeof (recipe as TerminalRecipe).id === "string" &&
-          typeof (recipe as TerminalRecipe).name === "string" &&
-          Array.isArray((recipe as TerminalRecipe).terminals)
-      );
+      return filterValidTerminalEntries(parsed, TerminalRecipeSchema, "GlobalFileStore");
     } catch (error) {
       console.error("[GlobalFileStore] Failed to load recipes:", error);
       try {
