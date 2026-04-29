@@ -1489,6 +1489,29 @@ describe("CliAvailabilityService", () => {
       expect(service.getDetails()!["py-test"]?.resolvedPath).toBe(pipxBin);
     });
 
+    it("surfaces 'blocked' when a PyPI path exists but execution is denied (EACCES)", async () => {
+      await setupPypiAgent();
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      const uvSymlink = join(homedir(), ".local/bin/py-test");
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === uvSymlink) {
+          throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+        }
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      const result = await service.checkAvailability();
+      expect(result["py-test"]).toBe("blocked");
+      expect(service.getDetails()!["py-test"]?.via).toBe("native");
+      expect(service.getDetails()!["py-test"]?.resolvedPath).toBe(uvSymlink);
+    });
+
     it("returns missing when no PyPI install path resolves", async () => {
       await setupPypiAgent();
       mockedExecFileSync.mockImplementation(() => {

@@ -150,6 +150,31 @@ describe("AgentVersionService resilience", () => {
       execSpy.mockRestore();
     });
 
+    it("returns null without erroring when PyPI returns 200 with missing version", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "py-agent",
+        name: "Py Agent",
+        command: "py-agent",
+        version: { args: ["--version"], pypiPackage: "py-agent-pkg" },
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ info: {} }),
+        headers: new Headers(),
+      } as Response);
+      const execSpy = mockExecFileVersion();
+
+      const { service } = createService(async () => ({ "py-agent": "ready" }));
+      const result = await service.getVersion("py-agent" as AgentId);
+
+      expect(result.latestVersion).toBeNull();
+      expect(result.error).toBeUndefined();
+      fetchSpy.mockRestore();
+      execSpy.mockRestore();
+    });
+
     it("surfaces an error when PyPI returns 404", async () => {
       (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
         id: "py-agent",

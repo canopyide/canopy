@@ -245,4 +245,50 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     await expect(terminal.gracefulShutdown()).resolves.toBeNull();
     expect(handles.writeMock).not.toHaveBeenCalled();
   });
+
+  it("project-scoped (Kiro) skips the session-ID capture loop and resolves null", async () => {
+    // Lesson #4781: agents with directory-based sessions never emit session
+    // IDs. The capture regex must NOT run for `project-scoped` resume kinds
+    // — otherwise a stale match against unrelated terminal output could
+    // poison `terminal.agentSessionId` for the next launch.
+    const handles = createMockPty();
+    const opts: TerminalProcessOptions = {
+      cwd: process.cwd(),
+      cols: 80,
+      rows: 24,
+      kind: "terminal",
+      launchAgentId: "kiro",
+    };
+    const terminal = new TerminalProcess(
+      "t-kiro",
+      opts,
+      { emitData: () => {}, onExit: () => {} },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+        } as never,
+        ptyPool: null,
+        processTreeCache: null,
+      },
+      defaultSpawnContext(),
+      handles.pty
+    );
+
+    const shutdownPromise = terminal.gracefulShutdown();
+    await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
+
+    expect(handles.writeMock).toHaveBeenCalledTimes(2);
+    expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
+
+    // Emit a string that LOOKS like a Claude session-ID line — it must be
+    // ignored (Kiro doesn't have a sessionIdPattern at all in the new schema).
+    handles.emitData("claude --resume bogus-id\n");
+    handles.emitExit(0);
+
+    await expect(shutdownPromise).resolves.toBeNull();
+    expect(terminal.getInfo().agentSessionId).toBeUndefined();
+  });
 });

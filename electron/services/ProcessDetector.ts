@@ -29,13 +29,20 @@ function packageTail(pkg: string | undefined): string | undefined {
   return tail && tail.length > 0 ? tail : undefined;
 }
 
+/** Reads `packages.npm` first; falls back to deprecated top-level `npmGlobalPackage`. */
+function effectiveNpmPackage(config: { packages?: { npm?: string }; npmGlobalPackage?: string }):
+  | string
+  | undefined {
+  return config.packages?.npm ?? config.npmGlobalPackage;
+}
+
 const AGENT_CLI_NAMES: Record<string, BuiltInAgentId> = Object.fromEntries(
   Object.entries(AGENT_REGISTRY).flatMap(([id, config]) => {
     const entries: [string, BuiltInAgentId][] = [[config.command, id as BuiltInAgentId]];
     if (config.command !== id) {
       entries.push([id, id as BuiltInAgentId]);
     }
-    const tail = packageTail(config.npmGlobalPackage);
+    const tail = packageTail(effectiveNpmPackage(config));
     if (tail && tail !== config.command && tail !== id) {
       entries.push([tail, id as BuiltInAgentId]);
     }
@@ -51,7 +58,7 @@ const PROCESS_ICON_MAP: Record<string, string> = {
       if (config.command !== id) {
         entries.push([config.command, config.iconId]);
       }
-      const tail = packageTail(config.npmGlobalPackage);
+      const tail = packageTail(effectiveNpmPackage(config));
       if (tail && tail !== config.command && tail !== id) {
         entries.push([tail, config.iconId]);
       }

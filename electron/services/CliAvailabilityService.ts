@@ -73,7 +73,9 @@ function synthesisePypiProbePaths(command: string, pypiPackage: string): string[
       `%USERPROFILE%\\.local\\bin\\${command}.exe`,
       // uv tool venv layout (Roaming AppData, since uv >= 0.4)
       `%APPDATA%\\uv\\tools\\${pypiPackage}\\Scripts\\${command}.exe`,
-      // pipx default on Windows (≥ 1.4)
+      // pipx ≥ 1.4 default on Windows: PIPX_HOME = %USERPROFILE%\.local\pipx
+      `%USERPROFILE%\\.local\\pipx\\venvs\\${pypiPackage}\\Scripts\\${command}.exe`,
+      // pipx legacy default on Windows (older releases)
       `%LOCALAPPDATA%\\pipx\\pipx\\venvs\\${pypiPackage}\\Scripts\\${command}.exe`,
     ];
   }
