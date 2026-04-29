@@ -133,7 +133,6 @@ jobs:
           key: fontconfig-${{ runner.os }}-${{ runner.arch }}-${{ steps.fontconfig-cache-key.outputs.ubuntu }}-${{ steps.fontconfig-cache-key.outputs.fc_version }}-${{ steps.fontconfig-cache-key.outputs.font_pkg_hash }}
 
       - name: Warm fontconfig cache
-        if: steps.cache-fontconfig.outputs.cache-hit != 'true'
         run: fc-cache -fv
 
       - name: Install dependencies

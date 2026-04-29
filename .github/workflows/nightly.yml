@@ -175,7 +175,7 @@ jobs:
           key: fontconfig-${{ runner.os }}-${{ runner.arch }}-${{ steps.fontconfig-cache-key.outputs.ubuntu }}-${{ steps.fontconfig-cache-key.outputs.fc_version }}-${{ steps.fontconfig-cache-key.outputs.font_pkg_hash }}
 
       - name: Warm fontconfig cache
-        if: matrix.os == 'ubuntu-22.04' && steps.cache-fontconfig.outputs.cache-hit != 'true'
+        if: matrix.os == 'ubuntu-22.04'
         run: fc-cache -fv
 
       - name: Install dependencies (Windows)
