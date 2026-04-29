@@ -284,6 +284,9 @@ export default defineConfig(({ command, mode }) => {
             manualPureFunctions: ["console.log", "console.info", "console.warn", "console.debug"],
           },
         }),
+        experimental: {
+          lazyBarrel: true,
+        },
         output: {
           codeSplitting: {
             groups: [
