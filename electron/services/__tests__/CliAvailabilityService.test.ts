@@ -163,12 +163,12 @@ describe("CliAvailabilityService", () => {
         expect(detail?.authConfirmed).toBe(false);
       }
 
-      // Should have called execFileSync 12 times (once for each CLI).
+      // Should have called execFileSync 13 times (once for each CLI).
       // Fallback probes (native paths, npm-global, WSL) run via async execFile and
       // only fire when the which/where probe returns missing — in this test
       // every agent succeeds on the first probe, so execFileSync count
       // matches the registry size exactly.
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(12);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(13);
 
       // stdio is now [ignore, pipe, ignore] so we can capture the resolved
       // path from stdout while still suppressing any TTY output on stderr.
@@ -221,6 +221,7 @@ describe("CliAvailabilityService", () => {
         qwen: "missing",
         interpreter: "missing",
         mistral: "missing",
+        kimi: "missing",
       });
     });
 
@@ -257,6 +258,7 @@ describe("CliAvailabilityService", () => {
       expect(result.kiro).toBe("missing");
       expect(result.goose).toBe("missing");
       expect(result.qwen).toBe("missing");
+      expect(result.kimi).toBe("missing");
     });
 
     it("prefers DAINTREE_CLI_PATH_PREPEND over shell resolution", async () => {
@@ -593,11 +595,11 @@ describe("CliAvailabilityService", () => {
       expect(refreshed.codex).toBe("missing");
 
       expect(service.getAvailability()).toEqual(refreshed);
-      // 12 successful primary calls + 11 BusyBox-style bare-`which` retries
-      // (the 11 agents whose mock throws a generic `Error` with no errno
+      // 13 successful primary calls + 12 BusyBox-style bare-`which` retries
+      // (the 12 agents whose mock throws a generic `Error` with no errno
       // code — which `probeViaShell` retries without `-a` to recover
       // BusyBox/minimal `which` builds that reject the flag).
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(23);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(25);
     });
 
     it("works on cold start before initial check", async () => {
@@ -625,7 +627,7 @@ describe("CliAvailabilityService", () => {
 
       await service.checkAvailability();
 
-      expect(executionOrder).toHaveLength(12);
+      expect(executionOrder).toHaveLength(13);
       expect(executionOrder).toContain("claude");
       expect(executionOrder).toContain("gemini");
       expect(executionOrder).toContain("codex");
@@ -638,6 +640,7 @@ describe("CliAvailabilityService", () => {
       expect(executionOrder).toContain("qwen");
       expect(executionOrder).toContain("interpreter");
       expect(executionOrder).toContain("vibe");
+      expect(executionOrder).toContain("kimi");
     });
 
     it("deduplicates concurrent checkAvailability calls", async () => {
@@ -651,7 +654,7 @@ describe("CliAvailabilityService", () => {
 
       expect(result1).toEqual(result2);
       expect(result2).toEqual(result3);
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(12);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(13);
     });
 
     it("concurrent refresh calls each trigger a new check", async () => {
@@ -660,19 +663,19 @@ describe("CliAvailabilityService", () => {
       const [result1, result2] = await Promise.all([service.refresh(), service.refresh()]);
 
       expect(result1).toEqual(result2);
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(24);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(26);
     });
 
     it("allows sequential checks after first completes", async () => {
       mockedExecFileSync.mockImplementation(() => Buffer.from(""));
 
       await service.checkAvailability();
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(12);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(13);
 
       vi.clearAllMocks();
 
       await service.refresh();
-      expect(mockedExecFileSync).toHaveBeenCalledTimes(12);
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(13);
     });
   });
 
@@ -1535,10 +1538,10 @@ describe("CliAvailabilityService", () => {
     });
 
     it("does not synthesise PyPI paths when packages.pypi is unset", async () => {
-      // Built-in claude has no `packages.pypi`; verify our probe pipeline
-      // never dispatches PyPI-shaped fs.access calls for it. Mistral has `packages.pypi`
-      // so it WILL probe PyPI paths. This test guards against accidental probing for
-      // agents that have only `npmGlobalPackage`.
+      // Agents that legitimately declare `packages.pypi` (interpreter, mistral, kimi)
+      // SHOULD probe uv/pipx layouts; every other built-in does not, and must not
+      // produce PyPI-shaped fs.access calls. This guards against accidental
+      // probing when an agent has e.g. `npmGlobalPackage` only.
       const { access } = await import("fs/promises");
       const mockedAccess = vi.mocked(access);
 
@@ -1550,9 +1553,8 @@ describe("CliAvailabilityService", () => {
       await service.checkAvailability();
 
       // Filter out paths synthesised for agents whose `packages.pypi`
-      // legitimately triggers uv/pipx probing (interpreter, mistral). Remaining
-      // probed paths must not include any uv/pipx layouts — this guards
-      // against accidental probing for agents that don't declare PyPI.
+      // legitimately triggers uv/pipx probing (interpreter, mistral, kimi).
+      // Remaining probed paths must not include any uv/pipx layouts.
       const probedPaths = mockedAccess.mock.calls
         .map((c) => String(c[0]))
         .filter(
@@ -1560,7 +1562,9 @@ describe("CliAvailabilityService", () => {
             !p.includes("open-interpreter") &&
             !p.includes("/interpreter") &&
             !p.includes("mistral") &&
-            !p.includes("/vibe")
+            !p.includes("/vibe") &&
+            !p.includes("kimi-cli") &&
+            !p.includes("/kimi")
         );
       expect(probedPaths.some((p) => p.includes(".local/share/uv/tools"))).toBe(false);
       expect(probedPaths.some((p) => p.includes(".local/share/pipx/venvs"))).toBe(false);

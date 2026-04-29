@@ -18,13 +18,14 @@ describe("Skip permissions toggle gating", () => {
     expect(DEFAULT_DANGEROUS_ARGS).toHaveProperty("interpreter", "--auto_run");
   });
 
-  it("opencode, kiro, goose, crush, qwen, and mistral have no DEFAULT_DANGEROUS_ARGS entry", () => {
+  it("opencode, kiro, goose, crush, qwen, mistral, and kimi have no DEFAULT_DANGEROUS_ARGS entry", () => {
     expect(DEFAULT_DANGEROUS_ARGS).not.toHaveProperty("opencode");
     expect(DEFAULT_DANGEROUS_ARGS).not.toHaveProperty("kiro");
     expect(DEFAULT_DANGEROUS_ARGS).not.toHaveProperty("goose");
     expect(DEFAULT_DANGEROUS_ARGS).not.toHaveProperty("crush");
     expect(DEFAULT_DANGEROUS_ARGS).not.toHaveProperty("qwen");
     expect(DEFAULT_DANGEROUS_ARGS).not.toHaveProperty("mistral");
+    expect(DEFAULT_DANGEROUS_ARGS).not.toHaveProperty("kimi");
   });
 
   it("gating expression matches expected agents", () => {
@@ -46,6 +47,7 @@ describe("Skip permissions toggle gating", () => {
       "crush",
       "qwen",
       "mistral",
+      "kimi",
     ]);
   });
 

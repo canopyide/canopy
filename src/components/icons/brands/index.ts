@@ -11,6 +11,7 @@ export { CrushIcon } from "./CrushIcon";
 export { QwenIcon } from "./QwenIcon";
 export { InterpreterIcon } from "./InterpreterIcon";
 export { MistralIcon } from "./MistralIcon";
+export { KimiIcon } from "./KimiIcon";
 
 // JavaScript ecosystem
 export { NpmIcon } from "./NpmIcon";

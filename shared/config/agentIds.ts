@@ -11,6 +11,7 @@ export const BUILT_IN_AGENT_IDS = [
   "qwen",
   "interpreter",
   "mistral",
+  "kimi",
 ] as const;
 
 export type BuiltInAgentId = (typeof BUILT_IN_AGENT_IDS)[number];

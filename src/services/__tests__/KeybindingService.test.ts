@@ -353,6 +353,7 @@ describe("KeybindingService", () => {
       expect(agentLaunchDefaults).not.toContain("agent.cursor");
       expect(agentLaunchDefaults).not.toContain("agent.kiro");
       expect(agentLaunchDefaults).not.toContain("agent.copilot");
+      expect(agentLaunchDefaults).not.toContain("agent.kimi");
     });
 
     it("resolves Cmd+Alt+K to agent.focusNextAgent (no collision with agent.kiro)", () => {
