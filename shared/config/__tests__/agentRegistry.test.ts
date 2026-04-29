@@ -37,6 +37,7 @@ describe("agentRegistry", () => {
       expect(ids).toContain("cursor");
       expect(ids).toContain("kiro");
       expect(ids).toContain("copilot");
+      expect(ids).toContain("goose");
     });
 
     it("kiro only has macOS and Linux install blocks (no Windows)", () => {
@@ -721,6 +722,30 @@ describe("resume configuration", () => {
   it("cursor has no resume config (no session resume model)", () => {
     expect(getAgentConfig("cursor")?.resume).toBeUndefined();
   });
+
+  it("goose is session-id and produces session subcommand resume args", () => {
+    const resume = getAgentConfig("goose")?.resume;
+    expect(resume?.kind).toBe("session-id");
+    if (resume?.kind === "session-id") {
+      expect(resume.args("20260429_1")).toEqual([
+        "session",
+        "--resume",
+        "--session-id",
+        "20260429_1",
+      ]);
+      expect(resume.quitCommand).toBe("/exit");
+    }
+  });
+
+  it("goose sessionIdPattern extracts the id from the session-closed line", () => {
+    const resume = getAgentConfig("goose")?.resume;
+    expect(resume?.kind).toBe("session-id");
+    if (resume?.kind === "session-id") {
+      const re = new RegExp(resume.sessionIdPattern);
+      const match = re.exec("● session closed · 20260429_1");
+      expect(match?.[1]).toBe("20260429_1");
+    }
+  });
 });
 
 describe("titleStatePatterns", () => {
@@ -902,7 +927,7 @@ describe("cursor install metadata", () => {
 });
 
 describe("all built-in agents have Windows or generic install", () => {
-  it.each(["claude", "gemini", "codex", "opencode", "cursor", "copilot"])(
+  it.each(["claude", "gemini", "codex", "opencode", "cursor", "copilot", "goose"])(
     "%s has windows or generic install block",
     (agentId) => {
       const config = getAgentConfig(agentId);
@@ -1037,6 +1062,95 @@ describe("opencode detection patterns", () => {
     it("does not match old Gemini braille spinners", () => {
       const patterns = compileAgentPatterns("opencode", "fallbackPatterns");
       expect(patterns.some((p) => p.test("⠋ working"))).toBe(false);
+    });
+  });
+});
+
+describe("goose detection patterns", () => {
+  function compileAgentPatterns(agentId: string, key: string): RegExp[] {
+    const config = getAgentConfig(agentId);
+    const patterns = config?.detection?.[key as keyof typeof config.detection] as
+      | string[]
+      | undefined;
+    return (patterns ?? []).map((p: string) => new RegExp(p, "im"));
+  }
+
+  describe("primaryPatterns", () => {
+    it.each([
+      "Thinking (Ctrl+C to interrupt)",
+      "Generating response (Ctrl+C to interrupt)",
+      "⠋ Reading files (Ctrl+C to interrupt)",
+    ])("matches Ctrl+C interrupt hint: %s", (line) => {
+      const patterns = compileAgentPatterns("goose", "primaryPatterns");
+      expect(patterns.some((p) => p.test(line))).toBe(true);
+    });
+
+    it("does not match plain text without the interrupt hint", () => {
+      const patterns = compileAgentPatterns("goose", "primaryPatterns");
+      expect(patterns.some((p) => p.test("Thinking about something"))).toBe(false);
+    });
+  });
+
+  describe("fallbackPatterns", () => {
+    it.each([
+      "⠋ Working",
+      "⠙ Generating",
+      "⠹ Reading",
+      "⠸ Thinking",
+      "⠼ Calling",
+      "⠴ Streaming",
+      "⠦ Planning",
+      "⠧ Analyzing",
+      "⠇ Searching",
+      "⠏ Editing",
+    ])("matches cliclack braille spinner: %s", (line) => {
+      const patterns = compileAgentPatterns("goose", "fallbackPatterns");
+      expect(patterns.some((p) => p.test(line))).toBe(true);
+    });
+
+    it.each(["▸ developer__shell", "▸ developer__text_editor"])(
+      "matches tool-call marker: %s",
+      (line) => {
+        const patterns = compileAgentPatterns("goose", "fallbackPatterns");
+        expect(patterns.some((p) => p.test(line))).toBe(true);
+      }
+    );
+
+    it("does not match Bubble Tea braille spinners (OpenCode set)", () => {
+      const patterns = compileAgentPatterns("goose", "fallbackPatterns");
+      expect(patterns.some((p) => p.test("⣾ working"))).toBe(false);
+      expect(patterns.some((p) => p.test("⣷ processing"))).toBe(false);
+    });
+  });
+
+  describe("promptPatterns", () => {
+    it.each(["🪿 ", "🪿 follow-up question?"])("matches goose emoji prompt: %s", (line) => {
+      const patterns = compileAgentPatterns("goose", "promptPatterns");
+      expect(patterns.some((p) => p.test(line))).toBe(true);
+    });
+  });
+
+  describe("bootCompletePatterns", () => {
+    it("matches 'goose is ready' boot line", () => {
+      const patterns = compileAgentPatterns("goose", "bootCompletePatterns");
+      expect(patterns.some((p) => p.test("goose is ready — provider: anthropic"))).toBe(true);
+    });
+  });
+
+  describe("completionPatterns", () => {
+    it.each(["● session closed · 20260429_1", "session closed · abc-123"])(
+      "matches session-closed line: %s",
+      (line) => {
+        const patterns = compileAgentPatterns("goose", "completionPatterns");
+        expect(patterns.some((p) => p.test(line))).toBe(true);
+      }
+    );
+
+    it("does not match unrelated logs that mention 'session closed' mid-sentence", () => {
+      const patterns = compileAgentPatterns("goose", "completionPatterns");
+      expect(
+        patterns.some((p) => p.test("The websocket session closed unexpectedly; retrying..."))
+      ).toBe(false);
     });
   });
 });

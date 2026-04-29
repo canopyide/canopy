@@ -6,6 +6,7 @@ export { OpenCodeIcon } from "./OpenCodeIcon";
 export { CursorIcon } from "./CursorIcon";
 export { KiroIcon } from "./KiroIcon";
 export { CopilotIcon } from "./CopilotIcon";
+export { GooseIcon } from "./GooseIcon";
 
 // JavaScript ecosystem
 export { NpmIcon } from "./NpmIcon";
