@@ -31,17 +31,23 @@ export interface SystemWakePayload {
  *
  * - `missing`: binary not found via any probe (PATH, native installer path, npm global bin).
  * - `installed`: binary found but cannot be launched directly (e.g. WSL-detected on
- *   Windows, where direct spawn isn't wired up yet). Agents whose binary is on PATH
- *   are always `ready`, regardless of whether a credential file was detected.
- * - `ready`: binary found and launchable. Auth discovery runs in parallel and is
- *   surfaced via {@link AgentCliDetail.authConfirmed} for onboarding nudges; it does
- *   not gate launch.
+ *   Windows, where direct spawn isn't wired up yet).
+ * - `ready`: binary found, launchable, and credentials confirmed. Auth discovery
+ *   succeeded — the agent can start without a login prompt.
  * - `blocked`: binary exists but execution was denied (security software like Santa,
  *   CrowdStrike, SentinelOne, or Windows Defender, or missing execute permission).
  *   Distinct from `missing` because the fix is a permissions/allowlist change, not
  *   a reinstall.
+ * - `unauthenticated`: binary found and launchable, but the passive auth probe found
+ *   no credentials. The CLI will prompt for login on first launch. Distinct from
+ *   `ready` so the UI can show a "Login required" nudge without gating launch.
  */
-export type AgentAvailabilityState = "missing" | "installed" | "ready" | "blocked";
+export type AgentAvailabilityState =
+  | "missing"
+  | "installed"
+  | "ready"
+  | "blocked"
+  | "unauthenticated";
 
 /** CLI availability status for AI agents */
 export type CliAvailability = Record<AgentId, AgentAvailabilityState>;

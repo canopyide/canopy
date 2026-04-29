@@ -281,7 +281,7 @@ describe("persistence boundary hardening", () => {
   it("cliAvailabilityStore loadCache discards corrupt persisted cache without throwing", async () => {
     installLocalStorage(
       createStorageMock({
-        getItem: (key) => (key === "daintree:cliAvailability:v2" ? "{corrupt" : null),
+        getItem: (key) => (key === "daintree:cliAvailability:v3" ? "{corrupt" : null),
       })
     );
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

@@ -658,15 +658,17 @@ describe("AgentButton preset UX", () => {
     });
 
     it("preserves the preset segment when the sign-in probe is unconfirmed", () => {
-      // Edge case: agent is `ready` but the auth probe came back empty.
+      // Agent is `unauthenticated` — binary found but no credential detected.
       // The user still has an armed preset that will fire on click — the
       // tooltip should surface it rather than silently dropping the segment.
       mockSettings = settingsWith({ claude: { presetId: "user-blue" } });
       mockMergedPresetsFn = () => [{ id: "user-blue", name: "Blue" }];
-      mockCliDetails = { claude: { authConfirmed: false } };
 
       const { getAllByTestId } = render(
-        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+        <AgentButton
+          type="claude"
+          availability={"unauthenticated" as unknown as CliAvailability[string]}
+        />
       );
       const texts = tooltipTexts(getAllByTestId);
       const launchTooltip = texts.find((t) => t.startsWith("Start "));

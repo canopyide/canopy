@@ -130,7 +130,7 @@ import {
   usePreferencesStore,
 } from "./store";
 import { useAgentSettingsStore } from "./store/agentSettingsStore";
-import { isAgentReady } from "../shared/utils/agentAvailability";
+import { isAgentLaunchable } from "../shared/utils/agentAvailability";
 import { isAgentPinned } from "../shared/utils/agentPinned";
 import { useShallow } from "zustand/react/shallow";
 import { MotionConfig } from "framer-motion";
@@ -351,7 +351,7 @@ function App() {
         : [];
       const primaryAgent = defaultAgent ?? selected[0];
 
-      if (primaryAgent && isAgentReady(availability[primaryAgent])) {
+      if (primaryAgent && isAgentLaunchable(availability[primaryAgent])) {
         launchAgent(primaryAgent, {
           worktreeId: activeWorktreeId ?? undefined,
         }).catch(() => {});

@@ -1,5 +1,5 @@
 import type { CliAvailability } from "@shared/types";
-import { isAgentInstalled, isAgentReady } from "../../../shared/utils/agentAvailability";
+import { isAgentInstalled, isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 
 /**
  * Compute the set of agent IDs visible in the grid's right-click launch menu.
@@ -33,5 +33,5 @@ export function computeGridCanLaunch(
 ): boolean {
   if (id === "terminal") return true;
   if (!isAvailabilityInitialized || !agentAvailability) return true;
-  return isAgentReady(agentAvailability[id]);
+  return isAgentLaunchable(agentAvailability[id]);
 }
