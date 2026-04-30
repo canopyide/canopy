@@ -247,13 +247,13 @@ export function ProjectResourceBadge() {
         if ((currentStats[p.id]?.processCount ?? 0) > 0) running++;
       }
 
-      samplesRef.current = [
+      const nextSamples = [
         ...samplesRef.current.slice(-(MAX_SAMPLES - 1)),
         appMetrics.totalMemoryMB,
       ];
-      setSamples(samplesRef.current);
 
       return {
+        nextSamples,
         runningProjects: running,
         totalMemoryMB: appMetrics.totalMemoryMB,
         projects: projects.map((p: Project) => ({ id: p.id, name: p.name })),
@@ -266,21 +266,52 @@ export function ProjectResourceBadge() {
 
   useEffect(() => {
     let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     const runFetch = async () => {
       const result = await fetchStats();
       if (!cancelled && result) {
-        setStats(result);
+        samplesRef.current = result.nextSamples;
+        setSamples(result.nextSamples);
+        setStats({
+          runningProjects: result.runningProjects,
+          totalMemoryMB: result.totalMemoryMB,
+          projects: result.projects,
+        });
         setIsLoading(false);
       }
     };
 
-    void runFetch();
-    const interval = setInterval(() => void runFetch(), BADGE_POLL_MS);
+    const startInterval = () => {
+      if (interval !== null) return;
+      interval = setInterval(() => void runFetch(), BADGE_POLL_MS);
+    };
+
+    const stopInterval = () => {
+      if (interval === null) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopInterval();
+      } else {
+        void runFetch();
+        startInterval();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    if (!document.hidden) {
+      void runFetch();
+      startInterval();
+    }
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      stopInterval();
     };
   }, [fetchStats]);
 
