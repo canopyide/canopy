@@ -511,6 +511,7 @@ export const GitHubStatsToolbarButton = memo(
           anchorRef={issuesButtonRef}
           className="p-0 w-[450px]"
           persistThroughChildOverlays
+          keepMounted
         >
           {ResourceListComponent ? (
             <ResourceListComponent
@@ -621,6 +622,7 @@ export const GitHubStatsToolbarButton = memo(
           }}
           anchorRef={prsButtonRef}
           className="p-0 w-[450px]"
+          keepMounted
         >
           {ResourceListComponent ? (
             <ResourceListComponent

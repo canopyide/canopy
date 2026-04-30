@@ -208,6 +208,15 @@ export function GitHubResourceList({
   const inputRef = useRef<HTMLInputElement>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const mountedRef = useRef(false);
+  // Tracks the last set of inputs the load effect handled. When the body is
+  // hidden via React 19.2 `<Activity>` and re-revealed, effects unmount +
+  // remount but state (and `mountedRef`) is preserved. Without this we'd
+  // treat the reveal as a "filter/sort change while mounted" and clear the
+  // data + show a skeleton — defeating the entire reason we keepMounted in
+  // the first place. The key includes `debouncedSearch` because search isn't
+  // part of `cacheKey`, so otherwise a search-query change would be
+  // indistinguishable from an Activity reveal.
+  const lastLoadedEffectKeyRef = useRef<string | null>(null);
 
   const selection = useIssueSelection();
   const issueCacheRef = useRef<Map<number, GitHubIssue>>(new Map());
@@ -419,8 +428,17 @@ export function GitHubResourceList({
     loadMoreAbortRef.current?.abort();
     const gen = nextGeneration(cacheKey);
     const isFirstMount = !mountedRef.current;
+    // The cacheKey doesn't include `debouncedSearch` (search results aren't
+    // cached). Combine them so a search-query change isn't mistaken for an
+    // Activity reveal of the same key.
+    const effectKey = `${cacheKey}|${debouncedSearch}`;
+    // Activity reveal of identical inputs: effects re-fired but state (and
+    // mountedRef) survived. Treat as a fresh-mount revalidate path so we
+    // don't clear the rows that are already on screen.
+    const isActivityRevealOfSameInputs =
+      !isFirstMount && lastLoadedEffectKeyRef.current === effectKey;
 
-    if (isFirstMount) {
+    if (isFirstMount || isActivityRevealOfSameInputs) {
       mountedRef.current = true;
       // Re-check cache on the effect tick — the useState initializer at
       // mount-render time may have missed a write that lands between render
@@ -442,13 +460,27 @@ export function GitHubResourceList({
           generation: gen,
           cacheKey,
         });
+        lastLoadedEffectKeyRef.current = effectKey;
+        return () => abortController.abort();
+      }
+      // Cache miss on Activity reveal: rows are stale but visible — keep them
+      // up while the network fetch lands, no skeleton flash.
+      if (isActivityRevealOfSameInputs) {
+        setError(null);
+        fetchData(null, false, abortController.signal, {
+          revalidating: true,
+          generation: gen,
+          cacheKey,
+        });
+        lastLoadedEffectKeyRef.current = effectKey;
         return () => abortController.abort();
       }
     }
 
-    // Filter/sort changed while mounted: clear and refetch with skeleton.
-    // First-mount cache miss skips the explicit clear (data is already []
-    // from the useState initializer) so no spurious setState/render churn.
+    // Filter/sort changed while mounted (or projectPath changed via the
+    // keepMounted body): clear and refetch with skeleton. First-mount cache
+    // miss skips the explicit clear (data is already [] from the useState
+    // initializer) so no spurious setState/render churn.
     if (!isFirstMount) {
       setCursor(null);
       setHasMore(false);
@@ -460,6 +492,7 @@ export function GitHubResourceList({
       generation: gen,
       cacheKey,
     });
+    lastLoadedEffectKeyRef.current = effectKey;
 
     return () => abortController.abort();
   }, [debouncedSearch, filterState, projectPath, type, fetchData, numberQuery, cacheKey]);
