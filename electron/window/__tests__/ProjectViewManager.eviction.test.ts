@@ -357,7 +357,7 @@ describe("ProjectViewManager — eviction safety", () => {
     // proj-a (oldest LRU) is small; proj-b is the heaviest cached renderer.
     // Memory-sorted eviction should target proj-b even though proj-a is older.
     const wcBEntry = managerWithLimit.getAllViews().find((v) => v.projectId === "proj-b");
-    const wcB = wcBEntry?.view.webContents as ReturnType<typeof createMockWebContents>;
+    const wcB = wcBEntry?.view.webContents as unknown as ReturnType<typeof createMockWebContents>;
     mockGetAppMetrics.mockReturnValue([
       { pid: wcA.osPid, memory: { privateBytes: 50 * 1024 } },
       { pid: wcB.osPid, memory: { privateBytes: 800 * 1024 } },
@@ -443,7 +443,7 @@ describe("ProjectViewManager — eviction safety", () => {
       {
         pid: (
           managerWithLimit.getAllViews().find((v) => v.projectId === "proj-b")?.view
-            .webContents as ReturnType<typeof createMockWebContents>
+            .webContents as unknown as ReturnType<typeof createMockWebContents>
         ).osPid,
         memory: { privateBytes: 100 * 1024 },
       },
@@ -523,9 +523,9 @@ describe("ProjectViewManager — eviction safety", () => {
     await managerWithLimit.switchTo("proj-d", "/path/d");
 
     const wcB = managerWithLimit.getAllViews().find((v) => v.projectId === "proj-b")?.view
-      .webContents as ReturnType<typeof createMockWebContents>;
+      .webContents as unknown as ReturnType<typeof createMockWebContents>;
     const wcC = managerWithLimit.getAllViews().find((v) => v.projectId === "proj-c")?.view
-      .webContents as ReturnType<typeof createMockWebContents>;
+      .webContents as unknown as ReturnType<typeof createMockWebContents>;
 
     // proj-d is active. Among the cached three (a, b, c), expect c (900) to
     // evict before a (800), with b (100) surviving once limit drops to 2.
