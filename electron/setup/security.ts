@@ -58,6 +58,9 @@ export function enforceIpcSenderValidation(): void {
           console.error(`[IPC] Error on channel ${channel}:`, error);
           const serialized = serializeError(error);
           serialized.message = sanitizeErrorForRenderer(serialized.message);
+          if (typeof serialized.userMessage === "string") {
+            serialized.userMessage = sanitizeErrorForRenderer(serialized.userMessage);
+          }
           serialized.stack = undefined;
           serialized.path = undefined;
           serialized.context = undefined;

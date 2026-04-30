@@ -601,7 +601,10 @@ function emit(source: string, level: LogLevel, message: string, context?: LogCon
     const prefix = `[${level.toUpperCase()}] [${source}]`;
     const consoleFn =
       level === "error" ? console.error : level === "warn" ? console.warn : console.log;
-    consoleFn(`${prefix} ${scrubSecrets(message)}`, context ? safeStringify(safeContext) : "");
+    consoleFn(
+      `${prefix} ${scrubSecrets(message)}`,
+      context ? scrubSecrets(safeStringify(safeContext)) : ""
+    );
   }
 }
 
@@ -625,8 +628,8 @@ function emitError(source: string, message: string, error?: unknown, context?: L
   if (!IS_TEST) {
     console.error(
       `[ERROR] [${source}] ${scrubSecrets(message)}`,
-      errorDetails ? safeStringify(errorDetails) : "",
-      context ? safeStringify(context) : ""
+      errorDetails ? scrubSecrets(safeStringify(errorDetails)) : "",
+      context ? scrubSecrets(safeStringify(context)) : ""
     );
   }
 }
