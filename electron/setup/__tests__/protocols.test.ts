@@ -659,7 +659,7 @@ describe("setupWebviewCSP — partition CSP wiring", () => {
     expect(partitions).toContain("persist:daintree");
   });
 
-  it("uses the daintree app CSP for persist:daintree (not the localhost dev CSP)", async () => {
+  it("uses the daintree app CSP for persist:daintree (and skips localhost dev CSP for browser)", async () => {
     const { getDaintreeAppCSP, getLocalhostDevCSP } = await import("../../utils/webviewCsp.js");
     const daintreeCspMock = vi.mocked(getDaintreeAppCSP);
     const localhostCspMock = vi.mocked(getLocalhostDevCSP);
@@ -667,7 +667,7 @@ describe("setupWebviewCSP — partition CSP wiring", () => {
     setupWebviewCSP();
 
     expect(daintreeCspMock).toHaveBeenCalledTimes(1);
-    expect(localhostCspMock).toHaveBeenCalledTimes(1);
+    expect(localhostCspMock).not.toHaveBeenCalled();
   });
 
   it("passes isDev=false to getDaintreeAppCSP when NODE_ENV is not 'development'", async () => {
@@ -698,7 +698,7 @@ describe("setupWebviewCSP — partition CSP wiring", () => {
     }
   });
 
-  it("attaches an onHeadersReceived listener for both static partitions", async () => {
+  it("attaches an onHeadersReceived listener for persist:daintree only (browser is excluded)", async () => {
     const { session } = await import("electron");
     const fromPartition = vi.mocked(session.fromPartition);
     const onHeadersReceivedRegistrations: string[] = [];
@@ -713,7 +713,7 @@ describe("setupWebviewCSP — partition CSP wiring", () => {
 
     setupWebviewCSP();
 
-    expect(onHeadersReceivedRegistrations).toEqual(["persist:browser", "persist:daintree"]);
+    expect(onHeadersReceivedRegistrations).toEqual(["persist:daintree"]);
   });
 
   it("invokes the callback with the daintree CSP string for the persist:daintree session", async () => {
@@ -735,24 +735,16 @@ describe("setupWebviewCSP — partition CSP wiring", () => {
     setupWebviewCSP();
 
     const daintreeListener = callbacksByPartition.get("persist:daintree");
-    const browserListener = callbacksByPartition.get("persist:browser");
     expect(daintreeListener).toBeDefined();
-    expect(browserListener).toBeDefined();
+    expect(callbacksByPartition.has("persist:browser")).toBe(false);
 
     let daintreeResponse: { responseHeaders?: Record<string, string[]> } | undefined;
     daintreeListener!({ responseHeaders: {} }, (response: unknown) => {
       daintreeResponse = response as typeof daintreeResponse;
     });
-    let browserResponse: { responseHeaders?: Record<string, string[]> } | undefined;
-    browserListener!({ responseHeaders: {} }, (response: unknown) => {
-      browserResponse = response as typeof browserResponse;
-    });
 
     expect(daintreeResponse?.responseHeaders?.["Content-Security-Policy"]?.[0]).toContain(
       "/* daintree */"
-    );
-    expect(browserResponse?.responseHeaders?.["Content-Security-Policy"]?.[0]).toContain(
-      "/* browser */"
     );
   });
 });
