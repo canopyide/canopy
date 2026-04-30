@@ -5,8 +5,8 @@ export type SearchStatus = "idle" | "found" | "none" | "invalidRegex";
 
 type SearchDecorationOptions = NonNullable<ISearchOptions["decorations"]>;
 
-const FALLBACK_MATCH_COLOR = "#6366f1";
-const FALLBACK_ACTIVE_MATCH_COLOR = "#0ea5e9";
+const FALLBACK_MATCH_COLOR = "#71717a";
+const FALLBACK_ACTIVE_MATCH_COLOR = "#22c55e";
 
 export function validateRegexTerm(
   term: string,
@@ -27,6 +27,17 @@ export function validateRegexTerm(
   }
 }
 
+function rgbaToHex(value: string): string | null {
+  const match = value.match(
+    /^rgba?\(\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*(?:,\s*[\d.]+%?\s*)?\)$/
+  );
+  if (!match) return null;
+  const r = Math.min(255, Math.max(0, parseInt(match[1]!, 10)));
+  const g = Math.min(255, Math.max(0, parseInt(match[2]!, 10)));
+  const b = Math.min(255, Math.max(0, parseInt(match[3]!, 10)));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 export function getSearchDecorationColors(): SearchDecorationOptions {
   if (typeof document === "undefined") {
     return {
@@ -43,8 +54,10 @@ export function getSearchDecorationColors(): SearchDecorationOptions {
     return /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
   };
 
-  const matchColor = read("--theme-status-info", FALLBACK_MATCH_COLOR);
-  const activeColor = read("--theme-accent-primary", FALLBACK_ACTIVE_MATCH_COLOR);
+  const bgValue = styles.getPropertyValue("--theme-search-highlight-background").trim();
+  const matchColor = rgbaToHex(bgValue) ?? FALLBACK_MATCH_COLOR;
+  // search-highlight-text is a solid hex by design — suitable for xterm's active-match background
+  const activeColor = read("--theme-search-highlight-text", FALLBACK_ACTIVE_MATCH_COLOR);
 
   return {
     matchBackground: matchColor,
