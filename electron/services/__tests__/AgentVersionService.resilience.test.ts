@@ -122,7 +122,9 @@ describe("AgentVersionService resilience", () => {
       process.env = originalEnv;
     });
 
-    function setExecFileImpl(impl: (...args: unknown[]) => void): void {
+    function setExecFileImpl(
+      impl: (cmd: string, args: string[], opts: unknown, cb: (...cbArgs: unknown[]) => void) => void
+    ): void {
       execFileMock.mockImplementation(impl as never);
     }
 
@@ -144,7 +146,7 @@ describe("AgentVersionService resilience", () => {
       setExecFileImpl(
         (
           _cmd: string,
-          _args: readonly string[],
+          _args: string[],
           _opts: unknown,
           cb: (err: unknown, stdout: string, stderr: string) => void
         ) => {
@@ -173,7 +175,7 @@ describe("AgentVersionService resilience", () => {
       });
 
       setExecFileImpl(
-        (_cmd: string, _args: readonly string[], _opts: unknown, cb: (err: unknown) => void) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: unknown) => void) => {
           const err = new Error(leakingMessage) as NodeJS.ErrnoException & {
             stdout?: string;
             stderr?: string;
