@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { render, screen, cleanup, waitFor, act } from "@testing-library/react";
+import { Activity, type ReactNode } from "react";
 import type { GitHubIssue, GitHubListResponse } from "@shared/types/github";
 import { setCache, buildCacheKey, _resetForTests } from "@/lib/githubResourceCache";
 import { useGitHubFilterStore } from "@/store/githubFilterStore";
@@ -832,5 +832,90 @@ describe("GitHubResourceList retry behavior", () => {
 
     expect(mockListIssues).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("item-20")).toBeTruthy();
+  });
+});
+
+describe("GitHubResourceList Activity reveal vs filter change — PR #6288", () => {
+  it("preserves rows and re-runs the SWR revalidate path on Activity reveal of identical inputs", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(40), makeIssue(41)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(40), makeIssue(41)]));
+
+    function Harness({ mode }: { mode: "visible" | "hidden" }) {
+      return (
+        <Activity mode={mode}>
+          <GitHubResourceList type="issue" projectPath="/test/proj" />
+        </Activity>
+      );
+    }
+
+    const { rerender } = render(<Harness mode="visible" />);
+
+    // Cache hit on initial mount → no skeleton, items rendered immediately.
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+    expect(screen.getByTestId("item-40")).toBeTruthy();
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Hide via Activity — effects clean up but state + refs survive.
+    rerender(<Harness mode="hidden" />);
+    // Re-reveal — the load effect re-fires with the same effectKey, hitting
+    // the isActivityRevealOfSameInputs branch: no skeleton, no row clear,
+    // background revalidate runs.
+    rerender(<Harness mode="visible" />);
+
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+    expect(screen.getByTestId("item-40")).toBeTruthy();
+    expect(screen.getByTestId("item-41")).toBeTruthy();
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
+    // Both fetch calls used the revalidate path (same project / filter / sort).
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+  });
+
+  it("clears rows and shows the skeleton when the filter changes while keepMounted", async () => {
+    const openKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(openKey, {
+      items: [makeIssue(60)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues
+      .mockResolvedValueOnce(makeResponse([makeIssue(60)]))
+      // Closed-filter fetch hangs so the transitional UI is observable.
+      .mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Cache hit — items render, no skeleton.
+    expect(screen.getByTestId("item-60")).toBeTruthy();
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueFilter("closed");
+    });
+
+    // Filter change → effectKey differs from lastLoadedEffectKeyRef → real
+    // remount path: rows cleared, skeleton shown for the in-flight fetch.
+    await waitFor(() => {
+      expect(screen.queryByTestId("item-60")).toBeNull();
+    });
+    expect(screen.getByTestId("skeleton")).toBeTruthy();
+    expect(mockListIssues.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mockListIssues.mock.calls[mockListIssues.mock.calls.length - 1]?.[0]).toMatchObject({
+      state: "closed",
+    });
   });
 });
