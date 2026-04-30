@@ -349,6 +349,75 @@ describe("files:read handler", () => {
     });
   });
 
+  it("throws AppError(OUTSIDE_ROOT) for sibling-prefix escape (root '/tmp/project', file '/tmp/project-evil/x')", async () => {
+    const evilFile = path.resolve("/tmp/project-evil/secret.txt");
+    registerFilesHandlers();
+
+    await expect(getReadHandler()({}, { path: evilFile, rootPath: root })).rejects.toMatchObject({
+      name: "AppError",
+      code: "OUTSIDE_ROOT",
+    });
+    expect(fsMock.open).not.toHaveBeenCalled();
+  });
+
+  it("accepts a file when both root and file canonicalize through symlinked paths", async () => {
+    const linkedRoot = path.resolve("/tmp/project-link");
+    const linkedFile = path.join(linkedRoot, "a.txt");
+    const realProject = path.resolve("/private/tmp/project");
+    const realFile = path.join(realProject, "a.txt");
+    fsMock.realpath.mockImplementation(async (p: string) => {
+      if (p === linkedRoot) return realProject;
+      if (p === linkedFile) return realFile;
+      return p;
+    });
+    const content = Buffer.from("ok", "utf-8");
+    fsMock.stat.mockResolvedValue({ size: content.length });
+    fsMock.open.mockResolvedValue(makeFileHandle(content));
+    registerFilesHandlers();
+
+    const result = await getReadHandler()({}, { path: linkedFile, rootPath: linkedRoot });
+
+    expect(result).toEqual({ content: "ok" });
+  });
+
+  it("returns the readFile error (not the close error) when both reject", async () => {
+    fsMock.stat.mockResolvedValue({ size: 100 });
+    const handle = {
+      readFile: vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("file disappeared"), { code: "ENOENT" })),
+      close: vi.fn().mockRejectedValue(Object.assign(new Error("bad fd"), { code: "EBADF" })),
+    };
+    fsMock.open.mockResolvedValue(handle);
+    registerFilesHandlers();
+
+    await expect(getReadHandler()({}, { path: file, rootPath: root })).rejects.toMatchObject({
+      name: "AppError",
+      code: "NOT_FOUND",
+    });
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a file at the exact size limit and rejects one byte over", async () => {
+    const limit = 512 * 1024;
+    fsMock.stat.mockResolvedValue({ size: limit });
+    fsMock.open.mockResolvedValue(makeFileHandle(Buffer.alloc(limit, 0x61)));
+    registerFilesHandlers();
+
+    const result = await getReadHandler()({}, { path: file, rootPath: root });
+    expect(result.content.length).toBe(limit);
+
+    vi.clearAllMocks();
+    fsMock.realpath.mockImplementation(async (p: string) => p);
+    fsMock.stat.mockResolvedValue({ size: limit + 1 });
+    registerFilesHandlers();
+
+    await expect(getReadHandler()({}, { path: file, rootPath: root })).rejects.toMatchObject({
+      name: "AppError",
+      code: "FILE_TOO_LARGE",
+    });
+  });
+
   describe("schema validation", () => {
     it("rejects null byte in path", async () => {
       registerFilesHandlers();
@@ -364,6 +433,17 @@ describe("files:read handler", () => {
       await expect(
         getReadHandler()({}, { path: file, rootPath: `${root}\x00evil` })
       ).rejects.toThrow(/IPC validation failed/);
+    });
+
+    it("rejects path longer than 4096 chars without touching the filesystem", async () => {
+      registerFilesHandlers();
+      const longPath = path.join(root, "a".repeat(4097));
+
+      await expect(getReadHandler()({}, { path: longPath, rootPath: root })).rejects.toThrow(
+        /IPC validation failed/
+      );
+      expect(fsMock.realpath).not.toHaveBeenCalled();
+      expect(fsMock.open).not.toHaveBeenCalled();
     });
   });
 });

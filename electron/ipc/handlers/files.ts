@@ -124,7 +124,14 @@ export function registerFilesHandlers(): () => void {
       throw fsErrorToAppError(error, "Could not resolve file path");
     }
 
-    if (!realFile.startsWith(realRoot + path.sep) && realFile !== realRoot) {
+    // Root === path.sep (POSIX "/") is a degenerate case: realRoot + path.sep
+    // becomes "//", which never prefix-matches a real path. Treat any absolute
+    // file as contained when the root is the filesystem root.
+    const contained =
+      realRoot === path.sep
+        ? realFile.startsWith(path.sep)
+        : realFile === realRoot || realFile.startsWith(realRoot + path.sep);
+    if (!contained) {
       throw new AppError({
         code: "OUTSIDE_ROOT",
         message: "File is outside the project root",
@@ -164,7 +171,8 @@ export function registerFilesHandlers(): () => void {
     } catch (error) {
       throw fsErrorToAppError(error, "Could not read file");
     } finally {
-      await fileHandle.close();
+      // Swallow close errors so they don't mask a preceding readFile failure.
+      await fileHandle.close().catch(() => {});
     }
 
     // Binary detection: check for null bytes in first 8 KB
