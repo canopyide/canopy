@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, WebContentsView, app, clipboard } from "electron";
 import type { PortalBounds, PortalNavEvent } from "../../shared/types/portal.js";
+import { isSafeNavigationUrl } from "../../shared/utils/urlUtils.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
 import { getAppWebContents } from "../window/webContentsRegistry.js";
@@ -267,6 +268,20 @@ export class PortalManager {
 
         const menu = Menu.buildFromTemplate(template);
         menu.popup({ window: win });
+      });
+
+      view.webContents.on("will-navigate", (event, navigationUrl) => {
+        if (!isSafeNavigationUrl(navigationUrl)) {
+          console.warn(`[PortalManager] Blocked portal navigation to unsafe URL: ${navigationUrl}`);
+          event.preventDefault();
+        }
+      });
+
+      view.webContents.on("will-redirect", (event, redirectUrl) => {
+        if (!isSafeNavigationUrl(redirectUrl)) {
+          console.warn(`[PortalManager] Blocked portal redirect to unsafe URL: ${redirectUrl}`);
+          event.preventDefault();
+        }
       });
 
       view.webContents.loadURL(url).catch((err) => {

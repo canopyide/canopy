@@ -147,4 +147,88 @@ describe("PortalManager adversarial", () => {
     expect(manager.hasTab("tab-1")).toBe(false);
     expect(evictedWebContents.close).toHaveBeenCalledTimes(1);
   });
+
+  describe("navigation gating", () => {
+    type WebContentsMock = ReturnType<typeof createMockWebContents>;
+    type EventCall = [string, (event: { preventDefault: () => void }, url: string) => void];
+
+    const findHandler = (wc: WebContentsMock, eventName: "will-navigate" | "will-redirect") => {
+      const call = (wc.on.mock.calls as EventCall[]).find(([name]) => name === eventName);
+      if (!call) throw new Error(`No ${eventName} handler registered`);
+      return call[1];
+    };
+
+    const blockedUrls = [
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "blob:https://example.com/abc-123",
+      "about:blank",
+      "vbscript:msgbox(1)",
+      "ftp://example.com/file",
+      "",
+      "   ",
+      "not a url",
+    ];
+
+    const allowedUrls = [
+      "http://example.com/",
+      "https://example.com/path?q=1",
+      "http://localhost:3001/",
+    ];
+
+    it("registers will-navigate and will-redirect handlers on createTab", () => {
+      const manager = new PortalManagerClass(mockWindow);
+      manager.createTab("tab-1", "http://localhost:3001");
+
+      const wc = createdWebContents[0];
+      const eventNames = (wc.on.mock.calls as EventCall[]).map(([name]) => name);
+      expect(eventNames).toContain("will-navigate");
+      expect(eventNames).toContain("will-redirect");
+    });
+
+    it.each(blockedUrls)("blocks will-navigate to unsafe URL: %s", (url) => {
+      const manager = new PortalManagerClass(mockWindow);
+      manager.createTab("tab-1", "http://localhost:3001");
+
+      const handler = findHandler(createdWebContents[0], "will-navigate");
+      const event = { preventDefault: vi.fn() };
+      handler(event, url);
+
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(blockedUrls)("blocks will-redirect to unsafe URL: %s", (url) => {
+      const manager = new PortalManagerClass(mockWindow);
+      manager.createTab("tab-1", "http://localhost:3001");
+
+      const handler = findHandler(createdWebContents[0], "will-redirect");
+      const event = { preventDefault: vi.fn() };
+      handler(event, url);
+
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(allowedUrls)("allows will-navigate to safe http(s) URL: %s", (url) => {
+      const manager = new PortalManagerClass(mockWindow);
+      manager.createTab("tab-1", "http://localhost:3001");
+
+      const handler = findHandler(createdWebContents[0], "will-navigate");
+      const event = { preventDefault: vi.fn() };
+      handler(event, url);
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it.each(allowedUrls)("allows will-redirect to safe http(s) URL: %s", (url) => {
+      const manager = new PortalManagerClass(mockWindow);
+      manager.createTab("tab-1", "http://localhost:3001");
+
+      const handler = findHandler(createdWebContents[0], "will-redirect");
+      const event = { preventDefault: vi.fn() };
+      handler(event, url);
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+  });
 });
