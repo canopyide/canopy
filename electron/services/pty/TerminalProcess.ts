@@ -1494,6 +1494,7 @@ export class TerminalProcess {
     // No-op: SAB mode is always used, flow control handled by pty-host.ts
   }
 
+  // xterm 6.0 actively resizes the buffer when scrollback shrinks (verified in headless-scrollback-trim.test.ts).
   trimScrollback(targetLines: number): void {
     if (this._scrollback <= targetLines) return;
     if (!this.terminalInfo.headlessTerminal) return;
