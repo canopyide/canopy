@@ -1,4 +1,8 @@
 import type { OnHeadersReceivedListenerDetails } from "electron";
+import {
+  getDevServerOrigins,
+  getDevServerWebSocketOrigins,
+} from "../../shared/config/devServer.js";
 
 export type WebviewPartitionType = "browser" | "dev-preview" | "portal" | "project" | "unknown";
 
@@ -55,6 +59,58 @@ export function getLocalhostDevCSP(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self' http://localhost:* http://127.0.0.1:* http://[::1]:* https://localhost:* https://127.0.0.1:* https://[::1]:*",
+  ].join("; ");
+}
+
+/**
+ * Returns the CSP policy for the trusted Daintree app renderer (`persist:daintree`).
+ *
+ * Defense-in-depth hardening: this CSP applies to the React shell loaded from
+ * `app://daintree` (production) or the Vite dev server (development). It does not
+ * replace existing security boundaries (preload contextIsolation, navigation guards,
+ * IPC sender validation) — it limits the blast radius if any of those fail.
+ *
+ * Production: strict policy with no `'unsafe-eval'`. `'unsafe-inline'` is kept in
+ * `style-src` because Vite still injects inline `<style>` tags for CSS chunk loading.
+ *
+ * Development: appends Vite dev-server HTTP origins to script/style/connect/img/font,
+ * adds WebSocket origins to connect-src for HMR, and re-enables `'unsafe-eval'` +
+ * `'unsafe-inline'` in script-src for Vite's HMR runtime + module bootstrap.
+ */
+export function getDaintreeAppCSP(isDev: boolean): string {
+  if (!isDev) {
+    return [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "connect-src 'self'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "media-src 'self'",
+      "worker-src 'self' blob:",
+      "frame-src 'none'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ");
+  }
+
+  const httpOrigins = getDevServerOrigins().join(" ");
+  const wsOrigins = getDevServerWebSocketOrigins().join(" ");
+
+  return [
+    `default-src 'self' ${httpOrigins}`,
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${httpOrigins}`,
+    `style-src 'self' 'unsafe-inline' ${httpOrigins}`,
+    `connect-src 'self' ${httpOrigins} ${wsOrigins}`,
+    `img-src 'self' data: blob: ${httpOrigins}`,
+    `font-src 'self' data: ${httpOrigins}`,
+    "media-src 'self'",
+    "worker-src 'self' blob:",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
   ].join("; ");
 }
 

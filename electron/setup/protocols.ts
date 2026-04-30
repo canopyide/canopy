@@ -6,6 +6,7 @@ import { pathToFileURL } from "url";
 import { resolveAppUrlToDistPath, getMimeType, buildHeaders } from "../utils/appProtocol.js";
 import {
   classifyPartition,
+  getDaintreeAppCSP,
   getLocalhostDevCSP,
   mergeCspHeaders,
   isDevPreviewPartition,
@@ -194,7 +195,10 @@ export function setupWebviewCSP(): void {
     }
 
     const ses = session.fromPartition(partition);
-    const cspPolicy = getLocalhostDevCSP();
+    const cspPolicy =
+      partitionType === "project"
+        ? getDaintreeAppCSP(process.env.NODE_ENV === "development")
+        : getLocalhostDevCSP();
 
     ses.webRequest.onHeadersReceived((details, callback) => {
       callback({
@@ -205,9 +209,12 @@ export function setupWebviewCSP(): void {
     configuredPartitions.add(partition);
   };
 
-  // No static partitions get a CSP overlay — browser hosts arbitrary remote
-  // sites (handled above), portal/unknown are excluded, and dev-preview
-  // partitions are wired dynamically via will-attach-webview below.
+  // Configure static partitions:
+  // - persist:daintree: trusted Daintree renderer shell (strict app CSP)
+  // Browser hosts arbitrary remote sites (skipped by classifyPartition guard above
+  // to avoid intersecting with site CSPs), portal/unknown are excluded, and
+  // dev-preview partitions are wired dynamically via will-attach-webview below.
+  applyCSP("persist:daintree");
 
   // Singleton for the browser partition session — used for identity comparison in navigation handlers.
   const browserSession = session.fromPartition("persist:browser");
