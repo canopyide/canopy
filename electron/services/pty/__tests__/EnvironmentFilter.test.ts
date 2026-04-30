@@ -250,6 +250,13 @@ describe("filterEnvironment + injectDaintreeMetadata integration", () => {
       AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG",
       DATABASE_URL: "postgres://localhost/dev",
       MY_CUSTOM_TOKEN: "tok_abc123",
+      AWS_BEARER_TOKEN_BEDROCK: "bedrock-bearer",
+      ANTHROPIC_AUTH_TOKEN: "ant-auth",
+      OPENAI_WEBHOOK_SECRET: "whsec_xyz",
+      COPILOT_CLI_TOKEN: "copilot-tok",
+      SRC_ACCESS_TOKEN: "sgp_abc",
+      GH_ENTERPRISE_TOKEN: "ghe-tok",
+      GITHUB_ENTERPRISE_TOKEN: "github-ent-tok",
       // Pre-existing DAINTREE_ vars should be stripped
       DAINTREE_PANE_ID: "old-id",
     };
@@ -274,6 +281,13 @@ describe("filterEnvironment + injectDaintreeMetadata integration", () => {
     expect(final.AWS_SECRET_ACCESS_KEY).toBeUndefined();
     expect(final.DATABASE_URL).toBeUndefined();
     expect(final.MY_CUSTOM_TOKEN).toBeUndefined();
+    expect(final.AWS_BEARER_TOKEN_BEDROCK).toBeUndefined();
+    expect(final.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(final.OPENAI_WEBHOOK_SECRET).toBeUndefined();
+    expect(final.COPILOT_CLI_TOKEN).toBeUndefined();
+    expect(final.SRC_ACCESS_TOKEN).toBeUndefined();
+    expect(final.GH_ENTERPRISE_TOKEN).toBeUndefined();
+    expect(final.GITHUB_ENTERPRISE_TOKEN).toBeUndefined();
 
     // DAINTREE_* freshly injected (not spoofed)
     expect(final.DAINTREE_PANE_ID).toBe("new-pane-id");
