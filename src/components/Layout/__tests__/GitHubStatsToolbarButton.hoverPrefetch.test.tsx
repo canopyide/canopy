@@ -63,6 +63,15 @@ vi.mock("@/services/ActionService", () => ({
   actionService: { dispatch: vi.fn() },
 }));
 
+let mockGitHubConfig: { hasToken: boolean } | null = { hasToken: true };
+vi.mock("@/store/githubConfigStore", () => {
+  const useGitHubConfigStore = () => mockGitHubConfig;
+  (useGitHubConfigStore as unknown as { getState: () => unknown }).getState = () => ({
+    config: mockGitHubConfig,
+  });
+  return { useGitHubConfigStore };
+});
+
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
   TooltipContent: () => null,
@@ -160,6 +169,7 @@ beforeEach(() => {
   refreshStatsMock.mockClear();
   mockIsTokenError = false;
   mockRateLimitResetAt = null;
+  mockGitHubConfig = { hasToken: true };
   const filterStore = useGitHubFilterStore.getState();
   filterStore.setIssueFilter("open");
   filterStore.setPrFilter("open");
@@ -432,5 +442,87 @@ describe("GitHubStatsToolbarButton hover prefetch", () => {
     fireEvent.click(button);
 
     expect(refreshStatsMock).toHaveBeenCalledWith({ force: true });
+  });
+
+  it("hover-then-click within the debounce window cancels the pending prefetch", async () => {
+    const { container } = renderToolbar();
+    const button = getIssuesButton(container);
+
+    pointerEnter(button);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    fireEvent.click(button);
+    refreshStatsMock.mockClear();
+    mockListIssues.mockClear();
+
+    // Even though the timer was scheduled before the click, the dropdown is
+    // now open and the timer must short-circuit when it fires.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+
+    expect(mockListIssues).not.toHaveBeenCalled();
+    expect(refreshStatsMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the in-flight ref after a rejection so a subsequent hover refetches", async () => {
+    mockListIssues
+      .mockRejectedValueOnce(new Error("network blip"))
+      .mockResolvedValue(makeIssueResponse([makeIssue(7)]));
+    const { container } = renderToolbar();
+    const button = getIssuesButton(container);
+
+    pointerEnter(button);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    // Let the rejection settle through the .catch/.finally chain.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mockListIssues).toHaveBeenCalledTimes(1);
+
+    // Second hover after rejection should refetch — but the cached freshness
+    // skip would block it if a stale entry got written. Verify no entry
+    // exists, then re-hover.
+    expect(getCache(buildCacheKey("/test/proj", "issue", "open", "created"))).toBeUndefined();
+    pointerLeave(button);
+    pointerEnter(button);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+
+    expect(mockListIssues).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips the prefetch when the user has no GitHub token configured", async () => {
+    mockGitHubConfig = { hasToken: false };
+    const { container } = renderToolbar();
+
+    pointerEnter(getIssuesButton(container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+
+    expect(mockListIssues).not.toHaveBeenCalled();
+    expect(refreshStatsMock).not.toHaveBeenCalled();
+  });
+
+  it("treats a cache entry exactly at the freshness boundary (10s old) as stale", async () => {
+    setCache(buildCacheKey("/test/proj", "issue", "open", "created"), {
+      items: [makeIssue(99)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now() - 10_000,
+    });
+    const { container } = renderToolbar();
+
+    pointerEnter(getIssuesButton(container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+
+    expect(mockListIssues).toHaveBeenCalledTimes(1);
   });
 });

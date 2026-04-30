@@ -27,6 +27,7 @@ import {
 import { GitHubStatusIndicator, type GitHubStatusIndicatorStatus } from "./GitHubStatusIndicator";
 import { githubClient } from "@/clients/githubClient";
 import { buildCacheKey, getCache, setCache } from "@/lib/githubResourceCache";
+import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import type { Project } from "@shared/types";
 import type { RepositoryStats } from "@shared/types";
 
@@ -188,6 +189,21 @@ export const GitHubStatsToolbarButton = memo(
     const issuesPrefetchInFlightRef = useRef(false);
     const prsPrefetchInFlightRef = useRef(false);
 
+    // Mirror open state into refs so the trailing-edge timer can re-check at
+    // fire time. The guard inside `handlePrefetchPointerEnter` is evaluated at
+    // schedule time; if the user clicks during the 150ms debounce window the
+    // dropdown opens and the mounted GitHubResourceList starts its own fetch
+    // — without this ref the timer would still fire and race a duplicate
+    // request that could overwrite fresh mount-fetch data in the cache.
+    const issuesOpenRef = useRef(issuesOpen);
+    const prsOpenRef = useRef(prsOpen);
+    useEffect(() => {
+      issuesOpenRef.current = issuesOpen;
+    }, [issuesOpen]);
+    useEffect(() => {
+      prsOpenRef.current = prsOpen;
+    }, [prsOpen]);
+
     useEffect(() => {
       return () => {
         if (issuesHoverTimerRef.current !== null) {
@@ -204,6 +220,16 @@ export const GitHubStatsToolbarButton = memo(
     const prefetchResourceList = useCallback(
       (type: "issue" | "pr") => {
         if (!currentProject || isTokenError || rateLimitActive) return;
+        // Mount-time race guard: a click during the debounce window flips the
+        // open state. Re-check here so a queued timer doesn't fire a duplicate
+        // request alongside the dropdown's own mount fetch.
+        const isOpenRef = type === "issue" ? issuesOpenRef : prsOpenRef;
+        if (isOpenRef.current) return;
+        // No-token short-circuit — mirrors GitHubResourceList's own skip path
+        // so we don't fire a list IPC that the dropdown would refuse to make.
+        const config = useGitHubConfigStore.getState().config;
+        if (config && !config.hasToken) return;
+
         const inFlightRef = type === "issue" ? issuesPrefetchInFlightRef : prsPrefetchInFlightRef;
         if (inFlightRef.current) return;
 
