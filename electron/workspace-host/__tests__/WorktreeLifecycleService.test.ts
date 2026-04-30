@@ -248,6 +248,44 @@ describe("WorktreeLifecycleService", () => {
       return child;
     }
 
+    function makeFakeProcessWithOutput(stdoutData: string, exitCode: number = 0) {
+      const stdoutListeners: ((chunk: Buffer) => void)[] = [];
+      const stderrListeners: ((chunk: Buffer) => void)[] = [];
+      const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+
+      const stdout = {
+        on: vi.fn((event: string, cb: (chunk: Buffer) => void) => {
+          if (event === "data") stdoutListeners.push(cb);
+        }),
+      };
+      const stderr = {
+        on: vi.fn((event: string, cb: (chunk: Buffer) => void) => {
+          if (event === "data") stderrListeners.push(cb);
+        }),
+      };
+
+      const child = {
+        pid: 12345,
+        stdout,
+        stderr,
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          listeners[event] ??= [];
+          listeners[event].push(cb);
+        }),
+        kill: vi.fn(),
+        emit: (event: string, ...args: unknown[]) => {
+          listeners[event]?.forEach((cb) => cb(...args));
+        },
+      };
+
+      setTimeout(() => {
+        stdoutListeners.forEach((cb) => cb(Buffer.from(stdoutData)));
+        child.emit("close", exitCode);
+      }, 0);
+
+      return child;
+    }
+
     it("returns success when command exits with code 0", async () => {
       mockSpawn.mockReturnValue(makeFakeProcess(0));
 
@@ -358,6 +396,43 @@ describe("WorktreeLifecycleService", () => {
           }),
         })
       );
+    });
+
+    it("scrubs secrets from captured stdout before returning", async () => {
+      const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD";
+      const stdoutText = `Setup complete. token=${token} remaining work to do.`;
+      mockSpawn.mockReturnValue(makeFakeProcessWithOutput(stdoutText, 0));
+
+      const result = await service.runCommands(["./setup.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).not.toContain(token);
+      expect(result.output).toContain("[REDACTED]");
+      expect(result.output).toContain("Setup complete.");
+      expect(result.output).toContain("remaining work to do.");
+    });
+
+    it("preserves valid JSON structure when scrubbing a secret inside a string value", async () => {
+      const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD";
+      const json = JSON.stringify({ status: "ok", endpoint: "https://api.example.com", token });
+      mockSpawn.mockReturnValue(makeFakeProcessWithOutput(json, 0));
+
+      const result = await service.runCommands(["./status.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).not.toContain(token);
+      const parsed = JSON.parse(result.output) as Record<string, string>;
+      expect(parsed.status).toBe("ok");
+      expect(parsed.endpoint).toBe("https://api.example.com");
+      expect(parsed.token).toBe("[REDACTED]");
     });
 
     it("uses detached conditionally based on platform", async () => {
