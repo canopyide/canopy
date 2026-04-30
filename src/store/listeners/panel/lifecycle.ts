@@ -13,6 +13,7 @@ import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { notify } from "@/lib/notify";
+import { actionService } from "@/services/ActionService";
 
 /**
  * Per-terminal reentrancy guard for fallback activations. A single slow exit
@@ -22,7 +23,7 @@ import { notify } from "@/lib/notify";
  */
 const fallbackInFlight = new Set<string>();
 
-async function handleFallbackTriggered(data: {
+export async function handleFallbackTriggered(data: {
   terminalId: string;
   agentId: string;
   fromPresetId: string;
@@ -41,6 +42,8 @@ async function handleFallbackTriggered(data: {
   // and advancing the chain again would skip a preset.
   if (panel.agentPresetId !== fromPresetId) return;
 
+  fallbackInFlight.add(terminalId);
+
   const originalPresetId = panel.originalPresetId ?? data.originalPresetId ?? fromPresetId;
 
   // Resolve the original preset's fallbacks[] chain from the agent settings store
@@ -56,7 +59,6 @@ async function handleFallbackTriggered(data: {
   const currentIndex = panel.fallbackChainIndex ?? 0;
   const nextPresetId = chain[currentIndex];
 
-  // Always lookup a fresh preset name, using the panel title as last resort.
   const fromPreset = mergedPresets.find((p) => p.id === fromPresetId);
   const fromName = fromPreset?.name ?? fromPresetId;
 
@@ -68,10 +70,23 @@ async function handleFallbackTriggered(data: {
       priority: "high",
       title: isExhausted ? "Fallback chain exhausted" : `${fromName} unavailable`,
       message: isExhausted
-        ? `All fallback presets tried. Terminal will stay exited.`
+        ? `All fallback presets were tried. Configure fallback presets or restart the terminal manually.`
         : `${fromName} provider is unreachable. Configure fallbacks in Settings to auto-recover.`,
       duration: 12000,
+      action: {
+        label: "Open agent settings",
+        actionId: "app.settings.openTab",
+        actionArgs: { tab: "agents" },
+        onClick: () => {
+          void actionService.dispatch(
+            "app.settings.openTab",
+            { tab: "agents" },
+            { source: "user" }
+          );
+        },
+      },
     });
+    fallbackInFlight.delete(terminalId);
     return;
   }
 
@@ -81,13 +96,25 @@ async function handleFallbackTriggered(data: {
       type: "error",
       priority: "high",
       title: "Fallback preset missing",
-      message: `Preset "${nextPresetId}" is no longer configured. Skipping.`,
+      message: `Preset "${nextPresetId}" is no longer configured. Check fallback settings or restart the terminal.`,
       duration: 12000,
+      action: {
+        label: "Open agent settings",
+        actionId: "app.settings.openTab",
+        actionArgs: { tab: "agents" },
+        onClick: () => {
+          void actionService.dispatch(
+            "app.settings.openTab",
+            { tab: "agents" },
+            { source: "user" }
+          );
+        },
+      },
     });
+    fallbackInFlight.delete(terminalId);
     return;
   }
 
-  fallbackInFlight.add(terminalId);
   try {
     logInfo("[TerminalStore] Activating fallback preset", {
       terminalId,
