@@ -198,7 +198,7 @@ describe("PtyClient Handshake Protocol", () => {
         expect.any(String),
         [],
         expect.objectContaining({
-          execArgv: ["--max-old-space-size=512"],
+          execArgv: expect.arrayContaining(["--max-old-space-size=512"]),
         })
       );
     });
@@ -209,7 +209,18 @@ describe("PtyClient Handshake Protocol", () => {
         expect.any(String),
         [],
         expect.objectContaining({
-          execArgv: ["--max-old-space-size=1024"],
+          execArgv: expect.arrayContaining(["--max-old-space-size=1024"]),
+        })
+      );
+    });
+
+    it("should pass --diagnostic-dir pointing at the logs path", () => {
+      createClient();
+      expect(forkMock).toHaveBeenCalledWith(
+        expect.any(String),
+        [],
+        expect.objectContaining({
+          execArgv: expect.arrayContaining(["--diagnostic-dir=/mock/user/data"]),
         })
       );
     });

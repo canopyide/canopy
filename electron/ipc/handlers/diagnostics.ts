@@ -18,6 +18,7 @@ import type {
   DiagnosticsBundleSavePayload,
 } from "../../../shared/types/ipc/system.js";
 import type * as DiagnosticsCollectorModule from "../../services/DiagnosticsCollector.js";
+import { recordBlinkSample } from "../../services/ProcessMemoryMonitor.js";
 
 let cachedDiagnosticsCollector: typeof DiagnosticsCollectorModule | null = null;
 async function getDiagnosticsCollector(): Promise<typeof DiagnosticsCollectorModule> {
@@ -33,7 +34,7 @@ import {
   applyReplacements,
   type ReplacementRule,
 } from "../../../shared/utils/diagnosticsTransform.js";
-import { typedHandle } from "../utils.js";
+import { typedHandle, typedHandleWithContext } from "../utils.js";
 
 let eventLoopHistogram: IntervalHistogram | null = null;
 
@@ -159,6 +160,27 @@ export function registerDiagnosticsHandlers(deps: HandlerDependencies): () => vo
     }
   };
   handlers.push(typedHandle(CHANNELS.DIAGNOSTICS_GET_INFO, handleGetDiagnosticsInfo));
+
+  // Renderer report → ProcessMemoryMonitor. webContents id is taken from
+  // event.sender.id (cannot be spoofed by the renderer payload).
+  handlers.push(
+    typedHandleWithContext(CHANNELS.SYSTEM_REPORT_BLINK_MEMORY, (ctx, payload) => {
+      // Number.isFinite filters NaN/Infinity that `typeof === "number"` would
+      // otherwise accept; observability data should not be silently corrupted.
+      if (!payload || !Number.isFinite(payload.allocated)) return;
+      // Late IPC reply against an evicted view: don't reinsert into the
+      // sample map (forgetBlinkSample already cleaned it up on cleanupEntry).
+      if (ctx.event.sender.isDestroyed()) return;
+      const optionalKb = (v: unknown): number | undefined =>
+        Number.isFinite(v) ? (v as number) : undefined;
+      recordBlinkSample(ctx.webContentsId, {
+        allocated: payload.allocated,
+        marked: optionalKb(payload.marked),
+        total: optionalKb(payload.total),
+        partitionAlloc: optionalKb(payload.partitionAlloc),
+      });
+    })
+  );
 
   const handleGetHardwareInfo = (): HardwareInfo => {
     try {
