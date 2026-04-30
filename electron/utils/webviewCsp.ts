@@ -1,4 +1,7 @@
 import type { OnHeadersReceivedListenerDetails } from "electron";
+import { getDaintreeAppCSP } from "../../shared/config/csp.js";
+
+export { getDaintreeAppCSP };
 
 export type WebviewPartitionType = "browser" | "dev-preview" | "portal" | "project" | "unknown";
 

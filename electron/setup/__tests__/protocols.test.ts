@@ -42,8 +42,11 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("../../utils/webviewCsp.js", () => ({
-  classifyPartition: vi.fn(() => "browser"),
-  getLocalhostDevCSP: vi.fn(() => "default-src 'self'"),
+  classifyPartition: vi.fn((partition: string) =>
+    partition === "persist:daintree" ? "project" : "browser"
+  ),
+  getDaintreeAppCSP: vi.fn(() => "default-src 'self' /* daintree */"),
+  getLocalhostDevCSP: vi.fn(() => "default-src 'self' /* browser */"),
   mergeCspHeaders: vi.fn((_details: unknown, csp: string) => ({
     "Content-Security-Policy": [csp],
   })),
@@ -636,6 +639,121 @@ describe("setupWebviewCSP — webview guest navigation restriction", () => {
       expect(event.preventDefault).toHaveBeenCalledTimes(1);
       expect(mockSend).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("setupWebviewCSP — partition CSP wiring", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    webContentsCreatedListeners.length = 0;
+  });
+
+  it("registers CSP on persist:browser and persist:daintree", async () => {
+    const { session } = await import("electron");
+    const fromPartition = vi.mocked(session.fromPartition);
+
+    setupWebviewCSP();
+
+    const partitions = fromPartition.mock.calls.map((call) => call[0]);
+    expect(partitions).toContain("persist:browser");
+    expect(partitions).toContain("persist:daintree");
+  });
+
+  it("uses the daintree app CSP for persist:daintree (not the localhost dev CSP)", async () => {
+    const { getDaintreeAppCSP, getLocalhostDevCSP } = await import("../../utils/webviewCsp.js");
+    const daintreeCspMock = vi.mocked(getDaintreeAppCSP);
+    const localhostCspMock = vi.mocked(getLocalhostDevCSP);
+
+    setupWebviewCSP();
+
+    expect(daintreeCspMock).toHaveBeenCalledTimes(1);
+    expect(localhostCspMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes isDev=false to getDaintreeAppCSP when NODE_ENV is not 'development'", async () => {
+    const { getDaintreeAppCSP } = await import("../../utils/webviewCsp.js");
+    const daintreeCspMock = vi.mocked(getDaintreeAppCSP);
+    const original = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+
+    try {
+      setupWebviewCSP();
+      expect(daintreeCspMock).toHaveBeenCalledWith(false);
+    } finally {
+      process.env.NODE_ENV = original;
+    }
+  });
+
+  it("passes isDev=true to getDaintreeAppCSP when NODE_ENV is 'development'", async () => {
+    const { getDaintreeAppCSP } = await import("../../utils/webviewCsp.js");
+    const daintreeCspMock = vi.mocked(getDaintreeAppCSP);
+    const original = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+
+    try {
+      setupWebviewCSP();
+      expect(daintreeCspMock).toHaveBeenCalledWith(true);
+    } finally {
+      process.env.NODE_ENV = original;
+    }
+  });
+
+  it("attaches an onHeadersReceived listener for both static partitions", async () => {
+    const { session } = await import("electron");
+    const fromPartition = vi.mocked(session.fromPartition);
+    const onHeadersReceivedRegistrations: string[] = [];
+    fromPartition.mockImplementation((partition: string) => {
+      const onHeadersReceived = vi.fn(() => {
+        onHeadersReceivedRegistrations.push(partition);
+      });
+      return {
+        webRequest: { onHeadersReceived },
+      } as unknown as Electron.Session;
+    });
+
+    setupWebviewCSP();
+
+    expect(onHeadersReceivedRegistrations).toEqual(["persist:browser", "persist:daintree"]);
+  });
+
+  it("invokes the callback with the daintree CSP string for the persist:daintree session", async () => {
+    const { session } = await import("electron");
+    const fromPartition = vi.mocked(session.fromPartition);
+    const callbacksByPartition = new Map<
+      string,
+      (details: unknown, callback: (response: unknown) => void) => void
+    >();
+    fromPartition.mockImplementation((partition: string) => {
+      const onHeadersReceived = vi.fn((listener) => {
+        callbacksByPartition.set(partition, listener);
+      });
+      return {
+        webRequest: { onHeadersReceived },
+      } as unknown as Electron.Session;
+    });
+
+    setupWebviewCSP();
+
+    const daintreeListener = callbacksByPartition.get("persist:daintree");
+    const browserListener = callbacksByPartition.get("persist:browser");
+    expect(daintreeListener).toBeDefined();
+    expect(browserListener).toBeDefined();
+
+    let daintreeResponse: { responseHeaders?: Record<string, string[]> } | undefined;
+    daintreeListener!({ responseHeaders: {} }, (response: unknown) => {
+      daintreeResponse = response as typeof daintreeResponse;
+    });
+    let browserResponse: { responseHeaders?: Record<string, string[]> } | undefined;
+    browserListener!({ responseHeaders: {} }, (response: unknown) => {
+      browserResponse = response as typeof browserResponse;
+    });
+
+    expect(daintreeResponse?.responseHeaders?.["Content-Security-Policy"]?.[0]).toContain(
+      "/* daintree */"
+    );
+    expect(browserResponse?.responseHeaders?.["Content-Security-Policy"]?.[0]).toContain(
+      "/* browser */"
+    );
   });
 });
 
