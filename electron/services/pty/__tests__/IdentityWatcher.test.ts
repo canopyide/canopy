@@ -400,6 +400,36 @@ describe("IdentityWatcher", () => {
         isBusy: false,
       });
     });
+
+    // macOS CI runners ship `\h:\W \u\$ ` (no `@`, `:` separator); regression
+    // for the "claude exits, prompt back, badge stuck" failure on those hosts.
+    it("demotes after macOS bash default prompt returns (host:cwd user$)", async () => {
+      const { delegate, state } = createFakeDelegate({
+        visibleLines: ["claude\r\n", "Starting Claude Code..."],
+        cursorLine: "Starting Claude Code...",
+        ptyDescendantCount: 1,
+        foreground: { shellPgid: 123, foregroundPgid: 123 },
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      const macOsBashPrompt =
+        "iad20-fj920-8588b331-e81f-4e5d-b027-88cf9594933d-165A4DA9C335:daintree-e2e-terminal-agent-promotion-1EOmA5 runner$ ";
+      state.visibleLines = [macOsBashPrompt];
+      state.cursorLine = macOsBashPrompt;
+      state.ptyDescendantCount = 0;
+      await vi.advanceTimersByTimeAsync(600);
+
+      const lastCall = state.detectionCalls[state.detectionCalls.length - 1];
+      expect(lastCall).toMatchObject({
+        agentType: undefined,
+        processIconId: undefined,
+        isBusy: false,
+      });
+    });
   });
 
   describe("hasRecentCommandFailureOutput — locale-independent detection", () => {

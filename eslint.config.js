@@ -327,6 +327,7 @@ export default tseslint.config(
       "scripts/**",
       "build/**",
       "public/**",
+      ".claude/**",
     ],
   }
 );

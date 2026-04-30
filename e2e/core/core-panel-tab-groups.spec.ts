@@ -184,8 +184,12 @@ test.describe.serial("Core: Panel Tab Groups", () => {
       // Removed in #5957 — guard against accidental re-introduction
       await expect(window.getByRole("menuitem", { name: "View Terminal Info" })).toHaveCount(0);
 
-      // Close the menu
+      // Close the menu and wait for it to fully unmount. Without this assertion
+      // the next test races against Radix's close animation: the menu's
+      // FocusScope keeps focus and its typeahead handler swallows the keys
+      // typed by `runTerminalCommand`, so the command never reaches the PTY.
       await window.keyboard.press("Escape");
+      await expect(window.locator('[role="menu"]')).toHaveCount(0, { timeout: T_SHORT });
     });
 
     test("restart confirmation flow works", async () => {

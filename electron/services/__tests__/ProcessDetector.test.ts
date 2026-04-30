@@ -1072,6 +1072,53 @@ describe("ProcessDetector", () => {
       expect(callback.mock.calls.some(([r]) => r.detectionState === "no_agent")).toBe(true);
     });
 
+    it("prompt-return demotes a tree-corroborated process icon (no agent)", () => {
+      // Regression guard for #5813: when the user types `node -e ...`, the
+      // process tree picks up the node child first and commits with
+      // `evidenceSource: "process_tree"`, then the IdentityWatcher's shell
+      // injection arrives ~1.2s later. If the next process-tree poll fires
+      // BEFORE the IdentityWatcher's prompt-return cleanup, an upgrade path
+      // can rewrite `lastEvidenceSource` to "shell_command" and the demotion
+      // works. But under load (slow `ps`, adaptive backoff) the poll can run
+      // after the prompt-return cleanup — leaving `lastEvidenceSource` at
+      // "process_tree" — and the earlier `shellWasSoleSupport` gate then
+      // refused to demote the icon. The badge stays stuck for the full poll
+      // cycle (up to 15s with backoff) or indefinitely if the cache is in
+      // error state.
+      const cache = createCacheMock();
+      const callback = vi.fn();
+      const detector = new ProcessDetector(
+        "terminal-process-icon-prompt-return",
+        Date.now(),
+        100,
+        callback,
+        cache as never
+      );
+      detector.start();
+
+      // Tree commits "node" first via process_tree evidence (the typical
+      // race winner because the process spawns within ~150ms of submit but
+      // the IdentityWatcher waits 1200ms before injecting).
+      cache.setChildren(100, [{ pid: 200, comm: "node", command: "node -e setTimeout" }]);
+      cache.emitRefresh();
+      cache.emitRefresh();
+
+      // Shell evidence arrives ~1.2s later. Tree still corroborates.
+      detector.injectShellCommandEvidence(
+        { processIconId: "node", processName: "node" },
+        'node -e "setTimeout(()=>{}, 8000)"'
+      );
+
+      // Process exits. The IdentityWatcher's prompt-return cleanup runs
+      // BEFORE the next ProcessTreeCache poll picks up the empty tree —
+      // simulating the race that strands the badge.
+      callback.mockClear();
+      detector.clearShellCommandEvidence("prompt-return");
+
+      const noAgentCalls = callback.mock.calls.filter(([r]) => r.detectionState === "no_agent");
+      expect(noAgentCalls.length).toBeGreaterThan(0);
+    });
+
     it("holds agent identity at sticky and expiry boundaries until prompt return", () => {
       // Sticky TTL (12 s) still suppresses off-streaks for all shell evidence,
       // but agent evidence also survives the old 30 s expiry. Demotion now

@@ -456,8 +456,21 @@ export class ProcessDetector {
       this.lastEvidenceSource === "shell_command" &&
       (this.lastDetected !== null || this.lastProcessIconId !== null);
     const shouldDemoteCommittedAgent = promptReturned && this.lastDetected !== null;
+    // Prompt-return is an explicit lifecycle signal: the typed command has
+    // finished, so any badge that command produced (npm/node/docker/etc.) is
+    // stale and must clear. The earlier `shellWasSoleSupport` gate over-
+    // restricted this — the process-tree path can independently corroborate
+    // the icon (Case C in mergeWithShellEvidence stamps `evidenceSource:
+    // "process_tree"`), and a race where shell-evidence clears before the
+    // tree-only-empty off-streak commits would otherwise strand the badge
+    // for the full ProcessTreeCache poll cycle (up to 15s under adaptive
+    // backoff) — or indefinitely if the cache enters an error state. For
+    // manual/expired clears we still require sole support so a still-
+    // running tree-corroborated process keeps its icon. #5813
     const shouldDemoteCommittedProcessIcon =
-      this.lastDetected === null && this.lastProcessIconId !== null && shellWasSoleSupport;
+      this.lastDetected === null &&
+      this.lastProcessIconId !== null &&
+      (promptReturned || shellWasSoleSupport);
 
     if (this.shellCommandIdentity !== null) {
       logIdentityDebug(

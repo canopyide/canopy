@@ -16,8 +16,14 @@ export const SHELL_INPUT_BUFFER_MAX = 4096;
 
 const SHELL_PROMPT_PATTERNS = [
   /^\s*[>›❯⟩$#%]\s*$/,
-  /^\s*[A-Za-z0-9_.-]+@[\w.-]+(?:\s+[^\r\n]*)?\s*[#$%>]\s*$/,
+  // `user@host:/path $` style — bash default with hostname. Path token may
+  // contain `/`, `:`, `~`, etc., so use \S+ rather than \w/.- only.
+  /^\s*[A-Za-z0-9_.-]+@\S+(?:\s+[^\r\n]*)?\s*[#$%>]\s*$/,
   /^\s*[➜➤➟➔❯›]\s+.*$/,
+  // macOS bash default — `host:cwd user$` (no `@`, `:` separator). Two
+  // whitespace-separated tokens followed by a single trailing prompt char so
+  // command output like `cat <foo>` or `foo > bar.txt` doesn't false-positive.
+  /^\s*\S+:\S+\s+\S+\s*[#$%>]\s*$/,
 ] as const;
 
 // Locale-independent fallback signals for "command not found" detection. POSIX
