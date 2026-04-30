@@ -43,6 +43,8 @@ interface SetupOptions {
   entry?: ViewEntryLike | null;
   backupTimestamp?: number | null;
   onViewCrashed?: (wc: ReturnType<typeof createMockWebContents>) => void;
+  /** Mirrors `projectId === activeProjectId` in the real PVM. Defaults to true. */
+  isActiveProject?: boolean;
 }
 
 /**
@@ -55,7 +57,12 @@ function setupCrashRecovery(
   wc: ReturnType<typeof createMockWebContents>,
   options: SetupOptions = {}
 ) {
-  const { entry = null, backupTimestamp = null, onViewCrashed } = options;
+  const {
+    entry = null,
+    backupTimestamp = null,
+    onViewCrashed,
+    isActiveProject = true,
+  } = options;
   const crashTimestamps: number[] = entry?.crashTimestamps ?? [];
 
   wc.on("render-process-gone", (_event, ...args) => {
@@ -64,7 +71,9 @@ function setupCrashRecovery(
     if (win.isDestroyed()) return;
     if (entry?.state === "loading") return;
 
-    onViewCrashed?.(wc);
+    if (isActiveProject) {
+      onViewCrashed?.(wc);
+    }
 
     const now = Date.now();
     while (crashTimestamps.length > 0 && now - crashTimestamps[0] > CRASH_LOOP_WINDOW_MS) {
@@ -290,5 +299,25 @@ describe("ProjectViewManager — onViewCrashed callback (#6244)", () => {
     crashThrice(wc);
 
     expect(onViewCrashed).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not fire when a cached (non-active) project view crashes", () => {
+    // The per-window PTY MessagePort is only ever held by the active view
+    // (handleDidFinishLoad gates onViewReady on activeProjectId). Tearing
+    // it down on a cached-view crash would leave the active terminals with
+    // no port and no recovery path — worse than the bug being fixed.
+    const win = createMockWindow();
+    const wc = createMockWebContents();
+    const entry: ViewEntryLike = {
+      projectPath: "/home/user/proj-cached",
+      crashTimestamps: [],
+      state: "cached",
+    };
+    const onViewCrashed = vi.fn();
+    setupCrashRecovery(win, wc, { entry, onViewCrashed, isActiveProject: false });
+
+    wc._emit("render-process-gone", { reason: "crashed", exitCode: 1 });
+
+    expect(onViewCrashed).not.toHaveBeenCalled();
   });
 });

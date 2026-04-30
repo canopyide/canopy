@@ -587,7 +587,12 @@ export class ProjectViewManager {
       // MessagePorts can be torn down before reload re-issues fresh ones.
       // Without this, a stale port can keep PortQueueManager wedged in a
       // backpressure-pause loop for the entire reload window (#6244).
-      this.onViewCrashed?.(wc);
+      // Scoped to the active project: only the active view ever owns the
+      // per-window port (handleDidFinishLoad gates onViewReady on
+      // activeProjectId), so a cached-view crash must not tear it down.
+      if (projectId && projectId === this.activeProjectId) {
+        this.onViewCrashed?.(wc);
+      }
 
       const crashTimestamps = crashEntry?.crashTimestamps ?? [];
       const now = Date.now();
