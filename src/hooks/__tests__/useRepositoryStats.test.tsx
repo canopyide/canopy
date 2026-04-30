@@ -7,12 +7,14 @@ const {
   getCurrentMock,
   onSwitchMock,
   getRepoStatsMock,
+  getFirstPageCacheMock,
   onRateLimitChangedMock,
   onRepoStatsAndPageUpdatedMock,
 } = vi.hoisted(() => ({
   getCurrentMock: vi.fn(),
   onSwitchMock: vi.fn(),
   getRepoStatsMock: vi.fn(),
+  getFirstPageCacheMock: vi.fn().mockResolvedValue(null),
   onRateLimitChangedMock: vi.fn<(cb: (payload: unknown) => void) => () => void>(() => () => {}),
   onRepoStatsAndPageUpdatedMock: vi.fn<(cb: (payload: unknown) => void) => () => void>(
     () => () => {}
@@ -26,6 +28,7 @@ vi.mock("@/clients", () => ({
   },
   githubClient: {
     getRepoStats: getRepoStatsMock,
+    getFirstPageCache: getFirstPageCacheMock,
     onRateLimitChanged: onRateLimitChangedMock,
     onRepoStatsAndPageUpdated: onRepoStatsAndPageUpdatedMock,
   },

@@ -103,6 +103,7 @@ import type {
   GitHubRateLimitPayload,
   GitHubTokenHealthPayload,
   RepoStatsAndPagePayload,
+  GitHubFirstPageCachePayload,
   PRDetectedPayload,
   PRClearedPayload,
   IssueDetectedPayload,
@@ -914,6 +915,10 @@ export interface IpcInvokeMap {
   "github:get-repo-stats": {
     args: [cwd: string, bypassCache?: boolean];
     result: RepositoryStats;
+  };
+  "github:get-first-page-cache": {
+    args: [cwd: string];
+    result: GitHubFirstPageCachePayload | null;
   };
   "github:get-project-health": {
     args: [cwd: string, bypassCache?: boolean];

@@ -2,6 +2,7 @@ import type { GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitService } from "./GitService.js";
 import { Cache } from "../utils/cache.js";
 import { GitHubStatsCache } from "./GitHubStatsCache.js";
+import { GitHubFirstPageCache } from "./GitHubFirstPageCache.js";
 import type {
   GitHubIssue,
   GitHubPR,
@@ -536,6 +537,25 @@ export async function getRepoStatsAndPage(
 
     const parsedIssues = (issuesData?.nodes ?? []).filter(Boolean).map(parseIssueNode);
     const parsedPRs = (prsData?.nodes ?? []).filter(Boolean).map(parsePRNode);
+
+    // Persist the first page to disk so that on the next cold start we can
+    // hydrate the renderer's resource cache before any network poll completes.
+    GitHubFirstPageCache.getInstance().set(
+      cacheKey,
+      {
+        issues: {
+          items: parsedIssues,
+          endCursor: issuesData?.pageInfo?.endCursor ?? null,
+          hasNextPage: issuesData?.pageInfo?.hasNextPage ?? false,
+        },
+        prs: {
+          items: parsedPRs,
+          endCursor: prsData?.pageInfo?.endCursor ?? null,
+          hasNextPage: prsData?.pageInfo?.hasNextPage ?? false,
+        },
+      },
+      cwd
+    );
 
     // Prime the per-list memory caches under the default-filter key so a
     // subsequent click-time `listIssues({ state: "open", sortOrder:
@@ -1342,6 +1362,9 @@ export function clearGitHubCaches(): void {
   prTooltipCache.clear();
   prETagCache.clear();
   prRequiredStatusCache.clear();
+  // Token rotation invalidates persisted first-page data — a different
+  // identity may have access to a different repo set.
+  GitHubFirstPageCache.getInstance().clear();
 }
 
 export function clearPRCaches(): void {

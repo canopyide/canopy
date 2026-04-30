@@ -1415,6 +1415,9 @@ const api: ElectronAPI = {
     getRepoStats: (cwd: string, bypassCache?: boolean) =>
       _unwrappingInvoke(CHANNELS.GITHUB_GET_REPO_STATS, cwd, bypassCache),
 
+    getFirstPageCache: (cwd: string) =>
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_FIRST_PAGE_CACHE, cwd),
+
     getProjectHealth: (cwd: string, bypassCache?: boolean) =>
       _unwrappingInvoke(CHANNELS.GITHUB_GET_PROJECT_HEALTH, cwd, bypassCache),
 

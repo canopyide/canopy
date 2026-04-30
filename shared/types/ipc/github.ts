@@ -158,6 +158,30 @@ export interface IssueNotFoundPayload {
 }
 
 /**
+ * Disk-persisted first page returned by `getFirstPageCache`. Surfaces the same
+ * shape the renderer's `githubResourceCache` expects — minus a wall-clock
+ * `timestamp`, which the renderer derives from `lastUpdated`.
+ */
+export interface GitHubFirstPageCachePayload {
+  /** Absolute project path the entry was written for. */
+  projectPath: string;
+  /** First page of open issues, sorted by created-at desc, as last seen. */
+  issues: {
+    items: import("../github.js").GitHubIssue[];
+    endCursor: string | null;
+    hasNextPage: boolean;
+  };
+  /** First page of open pull requests, sorted by created-at desc, as last seen. */
+  prs: {
+    items: import("../github.js").GitHubPR[];
+    endCursor: string | null;
+    hasNextPage: boolean;
+  };
+  /** Wall-clock timestamp (ms) when the entry was written. */
+  lastUpdated: number;
+}
+
+/**
  * Push payload broadcast after every successful repo-stats-and-first-page poll.
  * Carries both the count badges (matching `RepositoryStats`) and the first page
  * of open issues + open PRs in the default sort (created-desc), so the renderer

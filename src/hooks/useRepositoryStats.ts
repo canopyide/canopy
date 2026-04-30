@@ -3,7 +3,7 @@ import type { GitHubRateLimitKind, RepositoryStats } from "../types";
 import { githubClient, projectClient } from "@/clients";
 import { isTokenRelatedError } from "@/lib/githubErrors";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
-import { buildCacheKey, setCache } from "@/lib/githubResourceCache";
+import { buildCacheKey, getCache, setCache } from "@/lib/githubResourceCache";
 
 function isValidPagePayload(page: unknown): page is {
   items: unknown[];
@@ -327,6 +327,55 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
 
     return cleanup;
   }, [fetchStats, scheduleNextPoll]);
+
+  // Cold-start hydration: before the first poll completes, ask main for the
+  // disk-persisted first page so the very first dropdown click after launch
+  // resolves against real rows. Entries older than the disk cache's freshness
+  // budget are dropped on read by the main-side cache and surface as `null`.
+  // Within-session project switches don't re-hydrate from disk — the broadcast
+  // subscription below seeds the renderer cache once the next poll completes.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const project = await projectClient.getCurrent();
+        if (!project || cancelled || !mountedRef.current) return;
+        const cached = await githubClient.getFirstPageCache(project.path);
+        if (!cached || cancelled || !mountedRef.current) return;
+        if (cached.projectPath !== project.path) return;
+
+        const issuesKey = buildCacheKey(project.path, "issue", "open", "created");
+        const prsKey = buildCacheKey(project.path, "pr", "open", "created");
+        // Don't downgrade a fresher entry — the broadcast push from the first
+        // poll can land before this hydration resolves, and disk data is up
+        // to 10 minutes old.
+        const existingIssues = getCache(issuesKey);
+        if (!existingIssues || existingIssues.timestamp < cached.lastUpdated) {
+          setCache(issuesKey, {
+            items: cached.issues.items,
+            endCursor: cached.issues.endCursor,
+            hasNextPage: cached.issues.hasNextPage,
+            timestamp: cached.lastUpdated,
+          });
+        }
+        const existingPRs = getCache(prsKey);
+        if (!existingPRs || existingPRs.timestamp < cached.lastUpdated) {
+          setCache(prsKey, {
+            items: cached.prs.items,
+            endCursor: cached.prs.endCursor,
+            hasNextPage: cached.prs.hasNextPage,
+            timestamp: cached.lastUpdated,
+          });
+        }
+      } catch {
+        // Disk hydration is best-effort; the network poll fallback covers
+        // any failure here.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Subscribe to the combined repo-stats-and-first-page push from the main
   // process. Whenever a poll completes successfully, main broadcasts the

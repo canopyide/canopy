@@ -101,6 +101,7 @@ import type {
   GitHubRateLimitPayload,
   GitHubTokenHealthPayload,
   RepoStatsAndPagePayload,
+  GitHubFirstPageCachePayload,
   PRDetectedPayload,
   PRClearedPayload,
   IssueDetectedPayload,
@@ -624,6 +625,7 @@ export interface ElectronAPI {
   };
   github: {
     getRepoStats(cwd: string, bypassCache?: boolean): Promise<RepositoryStats>;
+    getFirstPageCache(cwd: string): Promise<GitHubFirstPageCachePayload | null>;
     getProjectHealth(cwd: string, bypassCache?: boolean): Promise<ProjectHealthData>;
     openIssues(cwd: string, query?: string, state?: string): Promise<void>;
     openPRs(cwd: string, query?: string, state?: string): Promise<void>;

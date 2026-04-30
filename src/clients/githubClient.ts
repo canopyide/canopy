@@ -7,6 +7,7 @@ import type {
   GitHubRateLimitPayload,
   GitHubTokenHealthPayload,
   RepoStatsAndPagePayload,
+  GitHubFirstPageCachePayload,
   PRDetectedPayload,
   PRClearedPayload,
   IssueDetectedPayload,
@@ -22,6 +23,10 @@ import type {
 export const githubClient = {
   getRepoStats: (cwd: string, bypassCache = false): Promise<RepositoryStats> => {
     return window.electron.github.getRepoStats(cwd, bypassCache);
+  },
+
+  getFirstPageCache: (cwd: string): Promise<GitHubFirstPageCachePayload | null> => {
+    return window.electron.github.getFirstPageCache(cwd);
   },
 
   getProjectHealth: (cwd: string, bypassCache = false): Promise<ProjectHealthData> => {

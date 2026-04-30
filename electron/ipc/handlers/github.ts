@@ -11,6 +11,7 @@ import type {
   GitHubTokenConfig,
   GitHubTokenValidation,
   RepoStatsAndPagePayload,
+  GitHubFirstPageCachePayload,
 } from "../../types/index.js";
 import { gitHubRateLimitService, gitHubTokenHealthService } from "../../services/github/index.js";
 import { getWorkspaceClient } from "../../services/WorkspaceClient.js";
@@ -168,6 +169,49 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     }
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_REPO_STATS, handleGitHubGetRepoStats));
+
+  // Cold-start hydration: returns the disk-persisted first page for a project
+  // (open issues + open PRs in the default-created sort) so the renderer can
+  // seed `githubResourceCache` BEFORE the first poll completes. Combined with
+  // the broadcast push, this makes the very first dropdown click after app
+  // launch resolve against real data instead of a skeleton.
+  const handleGitHubGetFirstPageCache = async (
+    cwd: string
+  ): Promise<GitHubFirstPageCachePayload | null> => {
+    // Rate-limit at the same shape as `getRepoStats` — the renderer only
+    // calls this once per hook mount, but that includes every project view
+    // and we want a hard ceiling against accidental call-loops.
+    checkRateLimit(CHANNELS.GITHUB_GET_FIRST_PAGE_CACHE, 10, 10_000);
+    if (typeof cwd !== "string" || !cwd) return null;
+    if (!path.isAbsolute(cwd)) return null;
+
+    try {
+      const resolved = path.resolve(cwd);
+      const stat = await fs.stat(resolved);
+      if (!stat.isDirectory()) return null;
+
+      const { GitHubFirstPageCache } = await import("../../services/GitHubFirstPageCache.js");
+      const { getRepoContext } = await import("../../services/GitHubService.js");
+      const context = await getRepoContext(resolved);
+      if (!context) return null;
+      const repoKey = `${context.owner}/${context.repo}`;
+      const entry = GitHubFirstPageCache.getInstance().get(repoKey);
+      if (!entry) return null;
+
+      return {
+        projectPath: resolved,
+        issues: entry.issues,
+        prs: entry.prs,
+        lastUpdated: entry.lastUpdated,
+      };
+    } catch {
+      // Disk-cache reads are best-effort: a missing cache file, malformed
+      // JSON, or a transient repo-context lookup failure should not surface
+      // as a renderer error — the network poll fallback will populate the UI.
+      return null;
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GITHUB_GET_FIRST_PAGE_CACHE, handleGitHubGetFirstPageCache));
 
   const handleGitHubGetProjectHealth = async (
     cwd: string,
