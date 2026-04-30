@@ -17,13 +17,13 @@ import type { GitHubIssue, GitHubPR, GitHubListResponse } from "@shared/types/gi
 import { buildCacheKey, getCache, setCache, _resetForTests } from "@/lib/githubResourceCache";
 import { useGitHubFilterStore } from "@/store/githubFilterStore";
 
-const mockListIssues = vi.fn<() => Promise<GitHubListResponse<GitHubIssue>>>();
-const mockListPRs = vi.fn<() => Promise<GitHubListResponse<GitHubPR>>>();
+const mockListIssues = vi.fn<(args: unknown) => Promise<GitHubListResponse<GitHubIssue>>>();
+const mockListPRs = vi.fn<(args: unknown) => Promise<GitHubListResponse<GitHubPR>>>();
 
 vi.mock("@/clients/githubClient", () => ({
   githubClient: {
-    listIssues: (...args: unknown[]) => mockListIssues(...(args as [])),
-    listPullRequests: (...args: unknown[]) => mockListPRs(...(args as [])),
+    listIssues: (args: unknown) => mockListIssues(args),
+    listPullRequests: (args: unknown) => mockListPRs(args),
   },
 }));
 
@@ -101,10 +101,15 @@ vi.mock("@/components/GitHub/CommitList", () => ({
 }));
 
 import { GitHubStatsToolbarButton } from "../GitHubStatsToolbarButton";
+import type { Project } from "@shared/types";
 
-const PROJECT = { path: "/test/proj", name: "proj" } as Parameters<
-  typeof GitHubStatsToolbarButton
->[0]["currentProject"];
+const PROJECT: Project = {
+  id: "test-proj",
+  path: "/test/proj",
+  name: "proj",
+  emoji: "🌲",
+  lastOpened: 0,
+};
 
 const makeIssue = (n: number): GitHubIssue => ({
   number: n,
@@ -117,11 +122,10 @@ const makeIssue = (n: number): GitHubIssue => ({
   commentCount: 0,
 });
 
-const makePR = (n: number): GitHubPR =>
-  ({
-    ...makeIssue(n),
-    isDraft: false,
-  }) as unknown as GitHubPR;
+const makePR = (n: number): GitHubPR => {
+  const base = makeIssue(n) as unknown as Record<string, unknown>;
+  return { ...base, isDraft: false } as unknown as GitHubPR;
+};
 
 const makeIssueResponse = (items: GitHubIssue[]): GitHubListResponse<GitHubIssue> => ({
   items,
@@ -138,19 +142,19 @@ function renderToolbar() {
 }
 
 function getIssuesButton(container: HTMLElement): HTMLButtonElement {
-  const btn = container.querySelector(
+  const btn = container.querySelector<HTMLButtonElement>(
     'button[aria-label*="open issues"], button[aria-label*="Configure GitHub token to see issues"]'
   );
   if (!btn) throw new Error("Issues button not found");
-  return btn as HTMLButtonElement;
+  return btn;
 }
 
 function getPrsButton(container: HTMLElement): HTMLButtonElement {
-  const btn = container.querySelector(
+  const btn = container.querySelector<HTMLButtonElement>(
     'button[aria-label*="open pull requests"], button[aria-label*="Configure GitHub token to see pull requests"]'
   );
   if (!btn) throw new Error("PRs button not found");
-  return btn as HTMLButtonElement;
+  return btn;
 }
 
 function pointerEnter(el: Element, pointerType: "mouse" | "touch" | "pen" = "mouse"): void {
