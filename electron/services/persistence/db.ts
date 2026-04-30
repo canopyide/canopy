@@ -187,20 +187,30 @@ export function resetSharedInstance(): void {
   sharedInstance = null;
 }
 
+// Disk-pressure codes that a WAL truncate plus a single retry can plausibly
+// recover from. Other SQLITE_IOERR_* variants (lock, read, access, shmopen,
+// etc.) are not write-pressure failures, so we leave them to the caller.
+const RECOVERABLE_IOERR_CODES = new Set([
+  "SQLITE_IOERR_WRITE",
+  "SQLITE_IOERR_FSYNC",
+  "SQLITE_IOERR_TRUNCATE",
+  "SQLITE_IOERR_DIR_FSYNC",
+]);
+
 function isDiskFullError(error: unknown): boolean {
-  const code = (error as { code?: string } | null | undefined)?.code;
-  if (!code) return false;
-  return code === "SQLITE_FULL" || code.startsWith("SQLITE_IOERR");
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (typeof code !== "string") return false;
+  return code === "SQLITE_FULL" || RECOVERABLE_IOERR_CODES.has(code);
 }
 
-// Run `fn` against the SQLite handle; on SQLITE_FULL / SQLITE_IOERR* try to free
-// space by truncating the WAL and retry once. The retry is gated on disk-space
-// status — when the volume is critical, the WAL truncate would itself need to
-// write and is unlikely to recover, so we skip straight to re-throwing the
-// original error. The recovery checkpoint is wrapped in its own try/catch so a
-// failed checkpoint does not mask the caller's error or trigger a recursive
-// retry; we still attempt the retry afterwards in case the checkpoint freed
-// some pages before failing.
+// Run `fn` against the SQLite handle; on SQLITE_FULL or a write-side
+// SQLITE_IOERR_* code try to free space by truncating the WAL and retry once.
+// The retry is gated on disk-space status — when the volume is critical, the
+// WAL truncate would itself need to write and is unlikely to recover, so we
+// skip straight to re-throwing the original error. The recovery checkpoint is
+// wrapped in its own try/catch so a failed checkpoint does not mask the
+// caller's error or trigger a recursive retry; we still attempt the retry
+// afterwards in case the checkpoint freed some pages before failing.
 export function withDiskRecovery<T>(sqlite: Database.Database, fn: () => T): T {
   try {
     return fn();
