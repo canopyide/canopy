@@ -56,7 +56,13 @@ export function setupPowerMonitor(deps: PowerMonitorDeps): void {
         }
         if (workspaceClient) {
           await workspaceClient.waitForReady();
-          workspaceClient.setPollingEnabled(true);
+          // Only re-enable polling if a window is focused. If the app is
+          // still fully blurred (e.g. user suspended overnight, machine
+          // wakes before they return), leave polling paused —
+          // removeThrottle() will re-enable it on the next focus event.
+          if (BrowserWindow.getFocusedWindow()) {
+            workspaceClient.setPollingEnabled(true);
+          }
           workspaceClient.resumeHealthCheck();
           await workspaceClient.refreshOnWake();
         }
@@ -126,6 +132,7 @@ function applyThrottle(): void {
       pollIntervalActive: WORKSPACE_ACTIVE_NORMAL * THROTTLE_MULTIPLIER,
       pollIntervalBackground: WORKSPACE_BACKGROUND_NORMAL * THROTTLE_MULTIPLIER,
     });
+    workspaceClient.setPollingEnabled(false);
   }
 
   const statsService = focusThrottleDeps.getProjectStatsService();
@@ -149,6 +156,7 @@ function removeThrottle(): void {
       pollIntervalActive: WORKSPACE_ACTIVE_NORMAL,
       pollIntervalBackground: WORKSPACE_BACKGROUND_NORMAL,
     });
+    workspaceClient.setPollingEnabled(true);
     void workspaceClient.refresh();
   }
 
