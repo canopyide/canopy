@@ -236,7 +236,7 @@ function RotatingTip() {
         <button
           type="button"
           onClick={() => void actionService.dispatch(tip.actionId!, undefined, { source: "user" })}
-          className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent/50 rounded px-1"
+          className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 rounded px-1"
         >
           {tip.actionLabel}
         </button>

@@ -215,19 +215,19 @@ export function WorktreeSettingsTab() {
             </span>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="flex items-center gap-2 p-2 bg-daintree-bg/50 rounded-[var(--radius-md)] border border-daintree-border">
-                <code className="text-daintree-accent">{"{base-folder}"}</code>
+                <code className="text-text-secondary">{"{base-folder}"}</code>
                 <span className="text-daintree-text/50">Repository folder name</span>
               </div>
               <div className="flex items-center gap-2 p-2 bg-daintree-bg/50 rounded-[var(--radius-md)] border border-daintree-border">
-                <code className="text-daintree-accent">{"{branch-slug}"}</code>
+                <code className="text-text-secondary">{"{branch-slug}"}</code>
                 <span className="text-daintree-text/50">Sanitized branch name</span>
               </div>
               <div className="flex items-center gap-2 p-2 bg-daintree-bg/50 rounded-[var(--radius-md)] border border-daintree-border">
-                <code className="text-daintree-accent">{"{repo-name}"}</code>
+                <code className="text-text-secondary">{"{repo-name}"}</code>
                 <span className="text-daintree-text/50">Repository name</span>
               </div>
               <div className="flex items-center gap-2 p-2 bg-daintree-bg/50 rounded-[var(--radius-md)] border border-daintree-border">
-                <code className="text-daintree-accent">{"{parent-dir}"}</code>
+                <code className="text-text-secondary">{"{parent-dir}"}</code>
                 <span className="text-daintree-text/50">Parent directory path</span>
               </div>
             </div>
@@ -271,7 +271,7 @@ export function WorktreeSettingsTab() {
                 </div>
                 <div className="flex items-center gap-2 pt-1 border-t border-daintree-border mt-1">
                   <span className="text-daintree-text/50">Result:</span>
-                  <code className="text-daintree-accent break-all">{preview}</code>
+                  <code className="text-daintree-text break-all">{preview}</code>
                 </div>
               </div>
             </div>

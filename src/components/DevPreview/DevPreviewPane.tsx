@@ -1108,7 +1108,7 @@ export function DevPreviewPane({
                   onClick={handleRetry}
                   variant="ghost"
                   size="sm"
-                  className="gap-1.5 px-2.5 py-1.5 group text-daintree-accent/70 hover:text-daintree-accent"
+                  className="gap-1.5 px-2.5 py-1.5 group"
                 >
                   <RotateCw className="h-3.5 w-3.5" />
                   <span className="text-xs">Retry</span>
@@ -1154,7 +1154,7 @@ export function DevPreviewPane({
                           disabled={isAutoDetecting || isSettingsLoading}
                           variant="ghost"
                           size="sm"
-                          className="gap-1.5 px-2.5 py-1.5 group text-daintree-accent/70 hover:text-daintree-accent"
+                          className="gap-1.5 px-2.5 py-1.5 group"
                         >
                           <WandSparkles className="h-3.5 w-3.5" />
                           <span className="text-xs">
@@ -1241,7 +1241,7 @@ export function DevPreviewPane({
                           }
                           variant="ghost"
                           size="sm"
-                          className="gap-1.5 px-2.5 py-1.5 group text-daintree-accent/70 hover:text-daintree-accent"
+                          className="gap-1.5 px-2.5 py-1.5 group"
                         >
                           <RotateCw className="h-3.5 w-3.5" />
                           <span className="text-xs">

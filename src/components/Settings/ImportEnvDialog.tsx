@@ -265,7 +265,7 @@ function ConflictOption({
         data-testid={testId}
       />
       <div>
-        <span className="text-sm font-medium text-daintree-text group-hover:text-daintree-accent transition-colors">
+        <span className="text-sm font-medium text-daintree-text group-hover:text-daintree-text transition-colors">
           {label}
         </span>
         <p className="text-xs text-daintree-text/40">{description}</p>

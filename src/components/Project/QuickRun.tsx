@@ -582,7 +582,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                                 className="ml-2 shrink-0 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-overlay-soft"
                                 aria-label="Pin this command"
                               >
-                                <Pin className="h-3 w-3 text-text-muted hover:text-daintree-accent" />
+                                <Pin className="h-3 w-3 text-text-muted hover:text-daintree-text" />
                               </button>
                             )}
                           </div>

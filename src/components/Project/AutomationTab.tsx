@@ -282,7 +282,7 @@ export function AutomationTab({
                   No global recipes available.{" "}
                   <button
                     onClick={onNavigateToRecipes}
-                    className="text-daintree-accent hover:underline"
+                    className="text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline"
                   >
                     Create a recipe
                   </button>
@@ -401,7 +401,7 @@ export function AutomationTab({
         {branchPrefixMode !== "none" && (
           <div className="mt-3 p-3 rounded-[var(--radius-md)] bg-daintree-bg/50 border border-daintree-border">
             <span className="block text-xs font-medium text-daintree-text/70 mb-1">Preview:</span>
-            <code className="text-xs text-daintree-accent">
+            <code className="text-xs text-daintree-text">
               {branchPrefixMode === "username"
                 ? "alice/fix-bug"
                 : branchPrefixCustom.trim()
@@ -448,7 +448,7 @@ export function AutomationTab({
                 <span className="block text-xs font-medium text-daintree-text/70 mb-1">
                   Preview:
                 </span>
-                <code className="text-xs text-daintree-accent break-all">{preview}</code>
+                <code className="text-xs text-daintree-text break-all">{preview}</code>
               </div>
             );
           })()}
@@ -464,7 +464,7 @@ export function AutomationTab({
               key={v}
               className="text-xs p-2 rounded-[var(--radius-md)] bg-daintree-bg/30 border border-daintree-border"
             >
-              <code className="text-daintree-accent">{v}</code>
+              <code className="text-text-secondary">{v}</code>
               <span className="text-daintree-text/50 ml-1">{desc}</span>
             </div>
           ))}

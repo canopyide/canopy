@@ -999,7 +999,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                     { source: "user" }
                   )
                 }
-                className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1 text-daintree-accent hover:bg-daintree-accent/10 rounded transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1 text-text-secondary hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                 aria-label={`Arm ${filteredWorktrees.length} matching worktrees`}
               >
                 <Zap className="w-3 h-3" />

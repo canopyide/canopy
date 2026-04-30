@@ -274,7 +274,7 @@ export function ColorSchemePicker() {
 
       <button
         onClick={handleImport}
-        className="text-xs text-daintree-accent hover:text-daintree-accent/80 transition-colors"
+        className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors"
       >
         Import color scheme...
       </button>

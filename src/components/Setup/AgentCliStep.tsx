@@ -253,7 +253,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                     <span
                       role="link"
                       tabIndex={0}
-                      className="text-daintree-text/30 hover:text-daintree-accent transition-colors p-0.5 cursor-pointer"
+                      className="text-daintree-text/30 hover:text-daintree-text transition-colors p-0.5 cursor-pointer"
                       onClick={() => systemClient.openExternal(config.install!.docsUrl!)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ")

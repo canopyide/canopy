@@ -90,7 +90,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
                 setGlobalError("Failed to load global settings");
               });
           }}
-          className="text-daintree-accent underline hover:text-daintree-accent/80"
+          className="text-text-secondary hover:text-daintree-text underline-offset-2 underline hover:underline"
         >
           Retry
         </button>

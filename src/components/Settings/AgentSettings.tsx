@@ -677,7 +677,6 @@ export function AgentSettings({
                         size="sm"
                         variant="ghost"
                         data-testid="preset-add-button"
-                        className="text-daintree-accent hover:text-daintree-accent/80"
                         onClick={openAddDialog}
                       >
                         <Plus size={14} />
@@ -784,7 +783,7 @@ export function AgentSettings({
                           />
                         ) : (
                           <button
-                            className="flex items-center gap-1.5 text-sm font-medium text-daintree-text hover:text-daintree-accent transition-colors text-left"
+                            className="flex items-center gap-1.5 text-sm font-medium text-daintree-text hover:text-daintree-text/80 hover:underline underline-offset-2 transition-colors text-left"
                             onClick={() => handleStartEdit(selectedPreset)}
                             aria-label={`Edit ${selectedPreset.name}`}
                             title="Click to rename"

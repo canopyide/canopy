@@ -217,7 +217,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
               size="sm"
               variant="ghost"
               onClick={() => window.electron.system.openExternal(usageUrl)}
-              className="text-daintree-accent hover:text-daintree-accent/80 mt-2"
+              className="mt-2"
             >
               Install Instructions
             </Button>

@@ -432,7 +432,7 @@ function ApiKeyRow({
           ) : (
             <button
               onClick={() => window.electron?.system?.openExternal(helpUrl)}
-              className="text-xs text-daintree-accent hover:underline flex items-center gap-1"
+              className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline flex items-center gap-1"
             >
               {helpLabel}
               <ExternalLink className="w-3 h-3" />
@@ -562,7 +562,7 @@ function MicPermissionRow({
             <div className="flex gap-2">
               <button
                 onClick={onOpenSettings}
-                className="text-xs text-daintree-accent hover:underline flex items-center gap-1"
+                className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline flex items-center gap-1"
               >
                 Open {settingsLabel}
                 <ExternalLink className="w-3 h-3" />
