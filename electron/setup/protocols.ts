@@ -113,8 +113,8 @@ function createDaintreeFileProtocolHandler() {
       }
 
       const rel = path.relative(realRoot, realFile);
-      // isAbsolute catches Windows cross-drive escapes where path.relative returns an absolute path instead of "..".
-      if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      // Match exact ".." and "../*" — bare startsWith("..") would reject legitimate files like "..hidden/x". isAbsolute catches Windows cross-drive escapes.
+      if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) {
         return new Response("Not Found", { status: 404 });
       }
 

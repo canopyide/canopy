@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { pathToFileURL } from "url";
+import path from "path";
 
 type WebContentsCreatedListener = (event: unknown, contents: MockWebContents) => void;
 
@@ -839,5 +840,56 @@ describe("createDaintreeFileProtocolHandler — symlink containment", () => {
     const response = await handler(new Request(url.toString()) as GlobalRequest);
 
     expect(response.status).toBe(400);
+  });
+
+  it("permits files whose name starts with '..' but isn't parent traversal", async () => {
+    // Regression for the bare startsWith('..') guard — '..hidden/file.txt' is a
+    // legitimate in-root path and must not be misclassified as escape.
+    const fs = await import("fs/promises");
+    const realpath = vi.mocked(fs.realpath);
+    realpath.mockImplementation((p) => Promise.resolve(p as string));
+
+    const handler = await captureHandler("daintree-file");
+    const response = await handler(makeRequest("/project/..hidden/file.txt", "/project"));
+
+    expect(response.status).toBe(200);
+    const electron = await import("electron");
+    expect(electron.net.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a prefix-sibling escape (root=/tmp/project, target=/tmp/project-evil/...)", async () => {
+    const fs = await import("fs/promises");
+    const realpath = vi.mocked(fs.realpath);
+    realpath.mockImplementation((p) => Promise.resolve(p as string));
+
+    const handler = await captureHandler("daintree-file");
+    const response = await handler(
+      makeRequest("/tmp/project-evil/secret.env", "/tmp/project")
+    );
+
+    expect(response.status).toBe(404);
+    const electron = await import("electron");
+    expect(electron.net.fetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks via the path.isAbsolute(rel) branch (Windows cross-drive simulation)", async () => {
+    // Force path.relative to return an absolute path, isolating the isAbsolute guard
+    // from the '..' branch. This is the shape of path.relative on Windows when root
+    // and target are on different drives (e.g. relative('D:\\proj','C:\\win')==='C:\\win').
+    const fs = await import("fs/promises");
+    const realpath = vi.mocked(fs.realpath);
+    realpath.mockImplementation((p) => Promise.resolve(p as string));
+    const relativeSpy = vi.spyOn(path, "relative").mockReturnValue("/absolute/elsewhere");
+
+    try {
+      const handler = await captureHandler("daintree-file");
+      const response = await handler(makeRequest("/project/file.txt", "/project"));
+
+      expect(response.status).toBe(404);
+      const electron = await import("electron");
+      expect(electron.net.fetch).not.toHaveBeenCalled();
+    } finally {
+      relativeSpy.mockRestore();
+    }
   });
 });
