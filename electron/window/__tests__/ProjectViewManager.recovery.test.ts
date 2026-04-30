@@ -57,12 +57,7 @@ function setupCrashRecovery(
   wc: ReturnType<typeof createMockWebContents>,
   options: SetupOptions = {}
 ) {
-  const {
-    entry = null,
-    backupTimestamp = null,
-    onViewCrashed,
-    isActiveProject = true,
-  } = options;
+  const { entry = null, backupTimestamp = null, onViewCrashed, isActiveProject = true } = options;
   const crashTimestamps: number[] = entry?.crashTimestamps ?? [];
 
   wc.on("render-process-gone", (_event, ...args) => {
