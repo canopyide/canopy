@@ -1639,7 +1639,7 @@ function NavItem({
           <span
             className={cn(
               "absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full",
-              hasError ? "bg-status-warning" : "bg-daintree-accent"
+              hasError ? "bg-status-warning" : "bg-state-modified"
             )}
             title={hasError ? "Contains validation errors" : "Modified from default"}
           />

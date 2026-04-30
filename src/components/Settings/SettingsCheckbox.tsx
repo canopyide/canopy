@@ -38,7 +38,7 @@ export function SettingsCheckbox({
     <span
       className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
         scope === "project"
-          ? "bg-daintree-accent/10 text-daintree-accent dark:bg-daintree-accent/20"
+          ? "bg-status-info/10 text-status-info"
           : scope === "global"
             ? "bg-status-info/10 text-status-info"
             : "bg-text-secondary/10 text-text-secondary dark:bg-text-secondary/20"

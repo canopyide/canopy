@@ -156,7 +156,7 @@ This document maps each interactive component role to its canonical Tailwind cla
 "border-daintree-border text-daintree-text";
 ```
 
-**Usage:** The row card always uses neutral border and text. A 2px left rail (`bg-daintree-accent`) on the row signals modified state. The switch track uses `bg-daintree-border` in OFF state and `data-[state=checked]:bg-daintree-accent` in ON state — accent is constrained to the switch track, the modified-state rail, and enabled-state icons, never the full row card. Apply `focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2` to the switch Root for keyboard focus. Used in `SettingsSwitchCard.tsx` + `SettingsSwitch.tsx`.
+**Usage:** The row card always uses neutral border and text. A 2px left rail (`bg-state-modified`) on the row signals modified state — semantic info hue, not accent. The switch track uses `bg-daintree-border` in OFF state and `data-[state=checked]:bg-daintree-accent` in ON state — accent is constrained to the switch track and enabled-state icons, never the full row card or the modified-state rail. Apply `focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2` to the switch Root for keyboard focus. Used in `SettingsSwitchCard.tsx` + `SettingsSwitch.tsx`.
 
 ---
 
