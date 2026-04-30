@@ -188,6 +188,11 @@ export async function initializeTelemetry(): Promise<void> {
         dsn,
         release: app.getVersion(),
         environment: app.isPackaged ? "production" : "development",
+        // Drop the default minidump integration. Native .dmp payloads contain
+        // stack/register memory that may include env vars (API keys, tokens) at
+        // crash time, and JS-level beforeSend cannot scrub binary data. JS
+        // crashes remain captured via globalErrorHandlers.ts / main-crash.log.
+        integrations: (defaults) => defaults.filter((i) => i.name !== "SentryMinidump"),
         // Do not set `sampleRate` — it defaults to 1.0 (100% error capture). If
         // performance tracing is ever added, use `tracesSampleRate` instead.
         // The local `SentryEvent` interface is a narrower projection of the

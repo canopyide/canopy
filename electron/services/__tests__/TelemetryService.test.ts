@@ -626,6 +626,30 @@ describe("initializeTelemetry", () => {
     expect(options).not.toHaveProperty("sampleRate");
     process.env.SENTRY_DSN = original;
   });
+
+  // #6250 — sentryMinidumpIntegration is filtered out of the default integrations
+  // because native .dmp payloads can leak env-var secrets that beforeSend can't
+  // reach. Other defaults (e.g. ElectronMinidump alternative, breadcrumbs) stay.
+  it("filters SentryMinidump from default integrations, preserving others", async () => {
+    vi.resetModules();
+    const mod = await import("../TelemetryService.js");
+    setPrivacy({ telemetryLevel: "errors" });
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+    await mod.initializeTelemetry();
+    const options = sentryInitMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(typeof options.integrations).toBe("function");
+    const fn = options.integrations as (
+      defaults: Array<{ name: string }>
+    ) => Array<{ name: string }>;
+    const result = fn([
+      { name: "SentryMinidump" },
+      { name: "Other" },
+      { name: "ElectronMinidump" },
+    ]);
+    expect(result.map((i) => i.name)).toEqual(["Other", "ElectronMinidump"]);
+    process.env.SENTRY_DSN = original;
+  });
 });
 
 describe("trackEvent", () => {
