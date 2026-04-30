@@ -881,6 +881,99 @@ describe("GitHubResourceList Activity reveal vs filter change — PR #6288", () 
     expect(screen.queryByTestId("skeleton")).toBeNull();
   });
 
+  it("clears stale rows when the cache holds an empty page on Activity reveal", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    // Prime with one issue so the initial mount renders rows.
+    setCache(cacheKey, {
+      items: [makeIssue(70)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now() - 30_000,
+    });
+    // Mount-time revalidate returns the same single row; later reveal-time
+    // revalidate hangs so the transitional UI driven by the cache read is
+    // observable.
+    mockListIssues
+      .mockResolvedValueOnce(makeResponse([makeIssue(70)]))
+      .mockImplementation(() => new Promise(() => {}));
+
+    function Harness({ mode }: { mode: "visible" | "hidden" }) {
+      return (
+        <Activity mode={mode}>
+          <GitHubResourceList type="issue" projectPath="/test/proj" />
+        </Activity>
+      );
+    }
+
+    const { rerender } = render(<Harness mode="visible" />);
+    expect(screen.getByTestId("item-70")).toBeTruthy();
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Hide via Activity, then a broadcast lands while hidden that drops the
+    // last open issue (legitimate empty result for this filter).
+    rerender(<Harness mode="hidden" />);
+    setCache(cacheKey, {
+      items: [],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    rerender(<Harness mode="visible" />);
+
+    // On reveal the load effect re-reads the cache. With the fix in place,
+    // an empty cache page must clear stale rows immediately rather than
+    // letting them linger until revalidate resolves.
+    await waitFor(() => {
+      expect(screen.queryByTestId("item-70")).toBeNull();
+    });
+  });
+
+  it("clears rows and shows the skeleton when the filter changes while Activity is hidden", async () => {
+    const openKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(openKey, {
+      items: [makeIssue(80)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues
+      .mockResolvedValueOnce(makeResponse([makeIssue(80)]))
+      .mockImplementation(() => new Promise(() => {}));
+
+    function Harness({ mode }: { mode: "visible" | "hidden" }) {
+      return (
+        <Activity mode={mode}>
+          <GitHubResourceList type="issue" projectPath="/test/proj" />
+        </Activity>
+      );
+    }
+
+    const { rerender } = render(<Harness mode="visible" />);
+    expect(screen.getByTestId("item-80")).toBeTruthy();
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Hide, change filter (effectKey now differs from lastLoadedEffectKeyRef),
+    // reveal — must take the real-remount path: clear rows + show skeleton.
+    rerender(<Harness mode="hidden" />);
+    act(() => {
+      useGitHubFilterStore.getState().setIssueFilter("closed");
+    });
+    rerender(<Harness mode="visible" />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("item-80")).toBeNull();
+    });
+    expect(screen.getByTestId("skeleton")).toBeTruthy();
+    expect(mockListIssues.mock.calls[mockListIssues.mock.calls.length - 1]?.[0]).toMatchObject({
+      state: "closed",
+    });
+  });
+
   it("clears rows and shows the skeleton when the filter changes while keepMounted", async () => {
     const openKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(openKey, {

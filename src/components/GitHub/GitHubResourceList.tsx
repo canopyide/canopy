@@ -448,12 +448,14 @@ export function GitHubResourceList({
       // flash for data that's already available.
       const cached = getCache(cacheKey);
       if (cached) {
-        if (cached.items.length > 0) {
-          setData(cached.items);
-          setCursor(cached.endCursor);
-          setHasMore(cached.hasNextPage);
-          setLastUpdatedAt(cached.timestamp);
-        }
+        // Apply unconditionally — when the broadcast writes a legitimate
+        // empty page (the repo currently has zero matches for this filter),
+        // the previously-shown rows must clear on Activity reveal instead
+        // of lingering until the revalidate resolves.
+        setData(cached.items);
+        setCursor(cached.endCursor);
+        setHasMore(cached.hasNextPage);
+        setLastUpdatedAt(cached.timestamp);
         setError(null);
         fetchData(null, false, abortController.signal, {
           revalidating: true,

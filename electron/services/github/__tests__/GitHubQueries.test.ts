@@ -90,6 +90,28 @@ describe("REPO_STATS_AND_PAGE_QUERY", () => {
   it("includes statusCheckRollup on PRs so the toolbar can render CI badges from the broadcast", () => {
     expect(REPO_STATS_AND_PAGE_QUERY).toContain("statusCheckRollup");
   });
+
+  it("returns the issue fields the disk-cache validator (isIssueLike) requires", () => {
+    // GitHubFirstPageCache.isIssueLike rejects items missing author{login,
+    // avatarUrl} or assignees. Drop one of these from the query and the
+    // disk-cache write produces a null page, breaking cold-start hydration.
+    const issuesBlock = REPO_STATS_AND_PAGE_QUERY.slice(
+      REPO_STATS_AND_PAGE_QUERY.indexOf("issues(first: 20"),
+      REPO_STATS_AND_PAGE_QUERY.indexOf("pullRequests(first: 20")
+    );
+    expect(issuesBlock).toContain("author { login avatarUrl }");
+    expect(issuesBlock).toContain("assignees");
+  });
+
+  it("returns the PR fields the disk-cache validator (isPRLike) requires", () => {
+    // GitHubFirstPageCache.isPRLike requires author{login, avatarUrl} and
+    // isDraft. Same hydration-break risk if either is dropped.
+    const prsBlock = REPO_STATS_AND_PAGE_QUERY.slice(
+      REPO_STATS_AND_PAGE_QUERY.indexOf("pullRequests(first: 20")
+    );
+    expect(prsBlock).toContain("author { login avatarUrl }");
+    expect(prsBlock).toContain("isDraft");
+  });
 });
 
 describe("LIST_PRS_QUERY", () => {
