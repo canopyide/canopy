@@ -18,6 +18,7 @@ import {
   buildAgentLaunchFlags,
   resolveEffectivePresetId,
 } from "@shared/types";
+import { isAgentLaunchable } from "@shared/utils/agentAvailability";
 import { escapeShellArgOptional } from "@shared/utils/shellEscape";
 import {
   getAgentConfig,
@@ -383,12 +384,13 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               location: launchOptions?.location,
             };
 
-        // Soft launch gate: intercept when the CLI is not ready (missing, installed
-        // but not directly launchable, or blocked by security software). Creates a
-        // diagnostic panel instead of a failed PTY spawn.
+        // Soft launch gate: intercept when the CLI is not launchable (missing,
+        // installed-but-unlaunchable, or blocked by security software). Creates a
+        // diagnostic panel instead of a failed PTY spawn. `unauthenticated` is
+        // launchable — the CLI handles first-run auth itself.
         if (isAgent && !launchOptions?.force) {
           const launchCliDetail = await getCurrentLaunchCliDetail(agentId);
-          if (launchCliDetail && launchCliDetail.state !== "ready") {
+          if (launchCliDetail && !isAgentLaunchable(launchCliDetail.state)) {
             const gateId = `terminal-${crypto.randomUUID()}`;
             const gatePanel: TerminalInstance = {
               id: gateId,
