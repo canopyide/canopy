@@ -9,6 +9,8 @@ import type { AgentVersionInfo } from "../../shared/types/ipc/system.js";
 import type { AgentId } from "../../shared/types/agent.js";
 import { CliAvailabilityService } from "./CliAvailabilityService.js";
 import { isAgentInstalled } from "../../shared/utils/agentAvailability.js";
+import { buildProbeEnv } from "../utils/spawnEnv.js";
+import { scrubSecrets } from "../utils/secretScrubber.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -186,6 +188,7 @@ export class AgentVersionService {
         maxBuffer: this.MAX_BUFFER,
         shell: false,
         windowsHide: true,
+        env: buildProbeEnv(),
       });
       stdout = result.stdout || result.stderr || "";
     } catch (error: any) {
@@ -200,7 +203,7 @@ export class AgentVersionService {
       }
       stdout = error.stdout?.toString() || error.stderr?.toString() || "";
       if (!stdout) {
-        throw new Error(`Command failed: ${error.message}`);
+        throw new Error(`Command failed: ${scrubSecrets(error.message ?? "")}`);
       }
     }
 
