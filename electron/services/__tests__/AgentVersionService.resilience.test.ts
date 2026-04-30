@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { AgentId } from "../../../shared/types/agent.js";
 
 const registryMock = vi.hoisted(() => ({
@@ -113,6 +113,86 @@ describe("AgentVersionService resilience", () => {
         error: expect.stringContaining("bad config payload"),
       })
     );
+  });
+
+  describe("env sandboxing and secret scrubbing (issue #6247)", () => {
+    const originalEnv = process.env;
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    function setExecFileImpl(
+      impl: (cmd: string, args: string[], opts: unknown, cb: (...cbArgs: unknown[]) => void) => void
+    ): void {
+      execFileMock.mockImplementation(impl as never);
+    }
+
+    it("passes a sandboxed env to execFile (excludes ANTHROPIC_API_KEY, GITHUB_TOKEN)", async () => {
+      process.env = {
+        ...originalEnv,
+        ANTHROPIC_API_KEY: "sk-ant-x",
+        GITHUB_TOKEN: "ghp_x",
+        PATH: process.env.PATH ?? "/usr/bin",
+      } as NodeJS.ProcessEnv;
+
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "claude",
+        name: "Claude",
+        command: "claude",
+        version: { args: ["--version"] },
+      });
+
+      setExecFileImpl(
+        (
+          _cmd: string,
+          _args: string[],
+          _opts: unknown,
+          cb: (err: unknown, stdout: string, stderr: string) => void
+        ) => {
+          cb(null, "1.0.0\n", "");
+        }
+      );
+
+      const { service } = createService(async () => ({ claude: "ready" }));
+      await service.getVersion("claude" as AgentId);
+
+      const opts = execFileMock.mock.calls[0][2] as { env?: Record<string, string> };
+      expect(opts.env).toBeDefined();
+      expect(opts.env!.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(opts.env!.GITHUB_TOKEN).toBeUndefined();
+      expect(opts.env!.PATH).toBeTruthy();
+    });
+
+    it("scrubs secrets from error.message before they flow into AgentVersionInfo.error", async () => {
+      const leakingMessage = `spawn failed for ANTHROPIC_API_KEY=sk-ant-${"A".repeat(95)}`;
+
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "claude",
+        name: "Claude",
+        command: "claude",
+        version: { args: ["--version"] },
+      });
+
+      setExecFileImpl(
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: unknown) => void) => {
+          const err = new Error(leakingMessage) as NodeJS.ErrnoException & {
+            stdout?: string;
+            stderr?: string;
+          };
+          err.code = "EUNKNOWN";
+          err.stdout = "";
+          err.stderr = "";
+          cb(err);
+        }
+      );
+
+      const { service } = createService(async () => ({ claude: "ready" }));
+      const result = await service.getVersion("claude" as AgentId);
+
+      expect(result.error ?? "").not.toContain("sk-ant-");
+      expect(result.error ?? "").toContain("[REDACTED]");
+    });
   });
 
   describe("PyPI version feed", () => {

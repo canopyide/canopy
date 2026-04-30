@@ -4,6 +4,7 @@ import { join as pathJoin, basename, dirname } from "path";
 import os from "os";
 import { z } from "zod/v4";
 import { scrubSecrets } from "../utils/secretScrubber.js";
+import { buildProbeEnv } from "../utils/spawnEnv.js";
 
 const OUTPUT_TAIL_BYTES = 8192;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -507,25 +508,7 @@ function shellEscapeValue(value: string): string {
 }
 
 function buildSpawnEnv(customEnv: Record<string, string>): Record<string, string> {
-  if (process.platform === "win32") {
-    const sysRoot = process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows";
-    return {
-      PATH: process.env.PATH ?? `${sysRoot}\\System32;${sysRoot};${sysRoot}\\System32\\Wbem`,
-      PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD",
-      SystemRoot: sysRoot,
-      USERPROFILE: process.env.USERPROFILE ?? os.homedir(),
-      TEMP: process.env.TEMP ?? os.tmpdir(),
-      TMP: process.env.TMP ?? os.tmpdir(),
-      TERM: "dumb",
-      ...customEnv,
-    };
-  }
-  return {
-    PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-    HOME: process.env.HOME ?? os.homedir(),
-    TERM: "dumb",
-    ...customEnv,
-  };
+  return { ...buildProbeEnv(), ...customEnv };
 }
 
 function tailOutput(chunks: string[]): string {
