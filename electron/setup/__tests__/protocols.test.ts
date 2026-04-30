@@ -715,6 +715,46 @@ describe("setupWebviewCSP — partition CSP wiring", () => {
 
     expect(onHeadersReceivedRegistrations).toEqual(["persist:browser", "persist:daintree"]);
   });
+
+  it("invokes the callback with the daintree CSP string for the persist:daintree session", async () => {
+    const { session } = await import("electron");
+    const fromPartition = vi.mocked(session.fromPartition);
+    const callbacksByPartition = new Map<
+      string,
+      (details: unknown, callback: (response: unknown) => void) => void
+    >();
+    fromPartition.mockImplementation((partition: string) => {
+      const onHeadersReceived = vi.fn((listener) => {
+        callbacksByPartition.set(partition, listener);
+      });
+      return {
+        webRequest: { onHeadersReceived },
+      } as unknown as Electron.Session;
+    });
+
+    setupWebviewCSP();
+
+    const daintreeListener = callbacksByPartition.get("persist:daintree");
+    const browserListener = callbacksByPartition.get("persist:browser");
+    expect(daintreeListener).toBeDefined();
+    expect(browserListener).toBeDefined();
+
+    let daintreeResponse: { responseHeaders?: Record<string, string[]> } | undefined;
+    daintreeListener!({ responseHeaders: {} }, (response: unknown) => {
+      daintreeResponse = response as typeof daintreeResponse;
+    });
+    let browserResponse: { responseHeaders?: Record<string, string[]> } | undefined;
+    browserListener!({ responseHeaders: {} }, (response: unknown) => {
+      browserResponse = response as typeof browserResponse;
+    });
+
+    expect(daintreeResponse?.responseHeaders?.["Content-Security-Policy"]?.[0]).toContain(
+      "/* daintree */"
+    );
+    expect(browserResponse?.responseHeaders?.["Content-Security-Policy"]?.[0]).toContain(
+      "/* browser */"
+    );
+  });
 });
 
 describe("protocol registration", () => {

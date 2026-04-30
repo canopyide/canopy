@@ -248,16 +248,12 @@ describe("webviewCsp", () => {
         expect(directives["script-src"]).not.toContain("'unsafe-inline'");
       });
 
-      it("locks script-src to 'self' only", () => {
-        expect(directives["script-src"]).toBe("'self'");
+      it("retains 'wasm-unsafe-eval' in script-src for WASM compilation", () => {
+        expect(directives["script-src"]).toContain("'wasm-unsafe-eval'");
       });
 
       it("keeps 'unsafe-inline' in style-src for Vite inline style injection", () => {
         expect(directives["style-src"]).toContain("'unsafe-inline'");
-      });
-
-      it("denies all frames", () => {
-        expect(directives["frame-src"]).toBe("'none'");
       });
 
       it("denies plugins via object-src 'none'", () => {
@@ -268,15 +264,24 @@ describe("webviewCsp", () => {
         expect(directives["base-uri"]).toBe("'self'");
       });
 
-      it("locks form-action to 'self' (explicit, not inherited from default-src)", () => {
-        expect(directives["form-action"]).toBe("'self'");
+      it("denies all form submissions via form-action 'none'", () => {
+        expect(directives["form-action"]).toBe("'none'");
       });
 
-      it("allows blob: workers (xterm/parsers)", () => {
+      it("allows blob: workers", () => {
         expect(directives["worker-src"]).toContain("blob:");
       });
 
-      it("allows data: and blob: images", () => {
+      it("allows daintree-file: in connect-src for Web Audio fetches", () => {
+        expect(directives["connect-src"]).toContain("daintree-file:");
+        expect(directives["connect-src"]).toContain("canopy-file:");
+      });
+
+      it("allows daintree-file: + GitHub avatar host + data:/blob: in img-src", () => {
+        expect(directives["img-src"]).toContain("'self'");
+        expect(directives["img-src"]).toContain("daintree-file:");
+        expect(directives["img-src"]).toContain("canopy-file:");
+        expect(directives["img-src"]).toContain("https://avatars.githubusercontent.com");
         expect(directives["img-src"]).toContain("data:");
         expect(directives["img-src"]).toContain("blob:");
       });
@@ -285,18 +290,26 @@ describe("webviewCsp", () => {
         expect(directives["font-src"]).toContain("data:");
       });
 
-      it("does not include any localhost or dev server origins", () => {
-        expect(csp).not.toContain("localhost");
-        expect(csp).not.toContain("127.0.0.1");
-        expect(csp).not.toContain("[::1]");
-        expect(csp).not.toMatch(/\bws:/);
-        expect(csp).not.toMatch(/\bwss:/);
+      it("allows localhost frames so embedded <webview> guests can mount", () => {
+        expect(directives["frame-src"]).toContain("'self'");
+        expect(directives["frame-src"]).toContain("http://localhost:*");
+        expect(directives["frame-src"]).toContain("http://127.0.0.1:*");
+        expect(directives["frame-src"]).toContain("https://localhost:*");
+        expect(directives["frame-src"]).toContain("https://127.0.0.1:*");
       });
 
-      it("does not allow external HTTP(S) wildcard origins", () => {
-        expect(directives["default-src"]).not.toMatch(/(?:^|\s)https?:(?:\s|$)/);
+      it("does not include any dev server origins", () => {
+        expect(directives["default-src"]).not.toContain("http://localhost");
+        expect(directives["default-src"]).not.toContain("http://127.0.0.1");
+        expect(directives["script-src"]).not.toContain("http://localhost");
+        expect(directives["script-src"]).not.toContain("http://127.0.0.1");
+        expect(directives["script-src"]).not.toContain("ws:");
+        expect(directives["connect-src"]).not.toContain("ws:");
+      });
+
+      it("does not allow external HTTP(S) wildcard origins in script-src", () => {
         expect(directives["script-src"]).not.toMatch(/(?:^|\s)https?:(?:\s|$)/);
-        expect(directives["connect-src"]).not.toMatch(/(?:^|\s)https?:(?:\s|$)/);
+        expect(directives["default-src"]).not.toMatch(/(?:^|\s)https?:(?:\s|$)/);
       });
     });
 
@@ -306,10 +319,6 @@ describe("webviewCsp", () => {
 
       it("includes 'unsafe-eval' in script-src for Vite HMR", () => {
         expect(directives["script-src"]).toContain("'unsafe-eval'");
-      });
-
-      it("includes 'unsafe-inline' in script-src for Vite module bootstrap", () => {
-        expect(directives["script-src"]).toContain("'unsafe-inline'");
       });
 
       it("adds the dev server HTTP origin to script-src", () => {
@@ -327,6 +336,11 @@ describe("webviewCsp", () => {
         expect(directives["connect-src"]).toMatch(/ws:\/\/localhost:\d+/);
       });
 
+      it("retains daintree-file: in connect-src and img-src", () => {
+        expect(directives["connect-src"]).toContain("daintree-file:");
+        expect(directives["img-src"]).toContain("daintree-file:");
+      });
+
       it("adds the dev server HTTP origin to style-src, img-src, font-src", () => {
         expect(directives["style-src"]).toMatch(/http:\/\/127\.0\.0\.1:\d+/);
         expect(directives["img-src"]).toMatch(/http:\/\/127\.0\.0\.1:\d+/);
@@ -334,10 +348,9 @@ describe("webviewCsp", () => {
       });
 
       it("retains the strict directives that don't depend on the dev server", () => {
-        expect(directives["frame-src"]).toBe("'none'");
         expect(directives["object-src"]).toBe("'none'");
         expect(directives["base-uri"]).toBe("'self'");
-        expect(directives["form-action"]).toBe("'self'");
+        expect(directives["form-action"]).toBe("'none'");
       });
     });
   });

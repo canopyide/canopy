@@ -5,46 +5,19 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
-import {
-  getDevServerConfig,
-  getDevServerOrigins,
-  getDevServerWebSocketOrigins,
-} from "./shared/config/devServer";
+import { getDevServerConfig } from "./shared/config/devServer";
+import { getDaintreeAppDevCSP, getDaintreeAppProdCSP } from "./shared/config/csp";
 
 const devServerConfig = getDevServerConfig();
-const devServerOrigins = getDevServerOrigins();
-const devServerWebSocketOrigins = getDevServerWebSocketOrigins();
 
 const IS_LEGACY_BUILD = process.env.BUILD_VARIANT === "canopy";
-// Custom protocol schemes used by the app's file handlers. Both schemes stay
-// whitelisted through the 0.8 migration window so Daintree can still load
-// persisted canopy-file:// URLs after a manual reinstall from Canopy.
-const FILE_SCHEMES = "daintree-file: canopy-file:";
 
-// CSP definitions for development and production
-const DEV_CSP = [
-  `default-src 'self' ${devServerOrigins.join(" ")} ${devServerWebSocketOrigins.join(" ")}`,
-  `script-src 'self' ${devServerOrigins.join(" ")} 'unsafe-eval'`,
-  `style-src 'self' ${devServerOrigins.join(" ")} 'unsafe-inline'`,
-  "font-src 'self' data:",
-  `connect-src 'self' ${devServerOrigins.join(" ")} ${devServerWebSocketOrigins.join(" ")} ${FILE_SCHEMES}`,
-  `img-src 'self' ${devServerOrigins.join(" ")} https://avatars.githubusercontent.com ${FILE_SCHEMES} data:`,
-  "frame-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*",
-].join("; ");
-
-const PROD_CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data:",
-  `connect-src 'self' ${FILE_SCHEMES}`,
-  `img-src 'self' https://avatars.githubusercontent.com ${FILE_SCHEMES} data: blob:`,
-  "frame-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'none'",
-].join("; ");
+// CSP definitions for development and production. Single source of truth lives
+// in shared/config/csp.ts so the meta tag injected here and the HTTP header set
+// by the main process stay in sync — the browser intersects header + meta, so
+// any divergence silently tightens the effective policy and breaks the app.
+const DEV_CSP = getDaintreeAppDevCSP();
+const PROD_CSP = getDaintreeAppProdCSP();
 
 // Per-file accumulator written to dist/compiler-bailout-report.json after the
 // build completes. Counts come from babel-plugin-react-compiler's logger:
