@@ -75,6 +75,7 @@ vi.mock("../../../shared/utils/trustedRenderer.js", () => ({
 import {
   setupPermissionLockdown,
   enforceIpcSenderValidation,
+  sanitizeErrorForRenderer,
   _resetPermissionLockdownForTesting,
 } from "../security.js";
 import { assertIpcSecurityReady, _resetIpcGuardForTesting } from "../../ipc/ipcGuard.js";
@@ -460,5 +461,56 @@ describe("enforceIpcSenderValidation", () => {
     logSpy.mockRestore();
 
     expect(() => assertIpcSecurityReady("any:channel")).not.toThrow();
+  });
+});
+
+describe("sanitizeErrorForRenderer", () => {
+  it("strips POSIX user paths", () => {
+    const out = sanitizeErrorForRenderer("ENOENT: no file at /Users/alice/secret/code.ts");
+    expect(out).toContain("<path>");
+    expect(out).not.toContain("/Users/alice/secret/code.ts");
+  });
+
+  it("strips Windows paths", () => {
+    const out = sanitizeErrorForRenderer("Cannot open C:\\Users\\bob\\file.ts");
+    expect(out).toContain("<path>");
+    expect(out).not.toContain("C:\\Users\\bob\\file.ts");
+  });
+
+  it("scrubs GitHub personal access tokens", () => {
+    const pat = `ghp_${"A".repeat(40)}`;
+    const out = sanitizeErrorForRenderer(`bad credential: ${pat}`);
+    expect(out).toContain("[REDACTED]");
+    expect(out).not.toContain(pat);
+  });
+
+  it("scrubs Anthropic API keys", () => {
+    const key = `sk-ant-${"a".repeat(95)}`;
+    const out = sanitizeErrorForRenderer(`unauthorized: ${key}`);
+    expect(out).toContain("[REDACTED]");
+    expect(out).not.toContain(key);
+  });
+
+  it("scrubs Bearer tokens", () => {
+    const out = sanitizeErrorForRenderer(`Authorization: Bearer ${"x".repeat(60)}`);
+    expect(out).toContain("Bearer [REDACTED]");
+    expect(out).not.toMatch(/Bearer x{60}/);
+  });
+
+  it("strips paths and tokens in the same message", () => {
+    const pat = `ghp_${"B".repeat(40)}`;
+    const out = sanitizeErrorForRenderer(`failed at /Users/alice/x.ts using ${pat}`);
+    expect(out).toContain("<path>");
+    expect(out).toContain("[REDACTED]");
+    expect(out).not.toContain("/Users/alice/x.ts");
+    expect(out).not.toContain(pat);
+  });
+
+  it("passes clean strings through unchanged", () => {
+    expect(sanitizeErrorForRenderer("simple error")).toBe("simple error");
+  });
+
+  it("handles the empty string", () => {
+    expect(sanitizeErrorForRenderer("")).toBe("");
   });
 });
