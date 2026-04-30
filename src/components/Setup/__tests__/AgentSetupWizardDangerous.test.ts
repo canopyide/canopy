@@ -40,17 +40,17 @@ describe("Skip permissions toggle gating", () => {
       (id) => (DEFAULT_DANGEROUS_ARGS[id] ?? "") === ""
     );
 
-    expect(agentsWithToggle).toEqual(["claude", "gemini", "codex", "cursor", "interpreter", "amp"]);
+    expect(agentsWithToggle).toEqual(["claude", "gemini", "codex", "cursor", "amp", "interpreter"]);
     expect(agentsWithoutToggle).toEqual([
       "opencode",
-      "kiro",
+      "aider",
       "copilot",
       "goose",
       "crush",
       "qwen",
-      "mistral",
       "kimi",
-      "aider",
+      "mistral",
+      "kiro",
     ]);
   });
 

@@ -183,13 +183,17 @@ describe("help.launchAgent", () => {
     );
   });
 
-  it("resolves to codex when claude and gemini are unavailable", async () => {
+  it("resolves to codex when claude, opencode, and gemini are unavailable", async () => {
     (window.electron.help.getFolderPath as ReturnType<typeof vi.fn>).mockResolvedValue(
       "/mock/help"
     );
     mockGetAgentPrefsState.mockReturnValue({ defaultAgent: undefined });
     mockGetCliAvailabilityState.mockReturnValue({
-      availability: allAvailability({ claude: "missing", gemini: "missing" }),
+      availability: allAvailability({
+        claude: "missing",
+        opencode: "missing",
+        gemini: "missing",
+      }),
       isInitialized: true,
     });
 
