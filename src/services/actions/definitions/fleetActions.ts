@@ -19,6 +19,7 @@ import {
 import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useProjectStore } from "@/store/projectStore";
+import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { projectClient, terminalClient } from "@/clients";
 import { broadcastFleetLiteralPaste } from "@/components/Fleet/fleetExecution";
 import { notify } from "@/lib/notify";
@@ -371,15 +372,24 @@ export function registerFleetActions(actions: ActionRegistry): void {
       if (name.length === 0) return;
       const projectId = useProjectStore.getState().currentProject?.id ?? null;
       if (!projectId) return;
+      // Capture the snapshot's terminal IDs BEFORE the IPC round-trip so a
+      // user changing the armed set during the await doesn't end up saving a
+      // different selection than the one they clicked Save on.
+      const newScope = buildSavedScope(parsed);
+      if (!newScope) return;
       try {
         const current = await projectClient.getSettings(projectId);
-        // Re-check the project hasn't switched while the IPC was in flight —
-        // otherwise we'd persist this fleet into the wrong project's settings.
         if (useProjectStore.getState().currentProject?.id !== projectId) return;
-        const newScope = buildSavedScope(parsed);
-        if (!newScope) return;
         const next: FleetSavedScope[] = [...(current.fleetSavedScopes ?? []), newScope];
-        await projectClient.saveSettings(projectId, { ...current, fleetSavedScopes: next });
+        const nextSettings = { ...current, fleetSavedScopes: next };
+        await projectClient.saveSettings(projectId, nextSettings);
+        if (useProjectStore.getState().currentProject?.id !== projectId) return;
+        // Write-through: the SavedFleetsSection reads from useProjectSettingsStore,
+        // so the row only appears if the in-memory cache is updated. Without
+        // this the user clicks Save, the disk write succeeds, but no row shows.
+        if (useProjectSettingsStore.getState().projectId === projectId) {
+          useProjectSettingsStore.getState().setSettings(nextSettings);
+        }
         notify({
           type: "success",
           message: `Saved fleet "${newScope.name}"`,
@@ -446,7 +456,12 @@ export function registerFleetActions(actions: ActionRegistry): void {
         const existing = current.fleetSavedScopes ?? [];
         const next = existing.filter((s) => s.id !== id);
         if (next.length === existing.length) return;
-        await projectClient.saveSettings(projectId, { ...current, fleetSavedScopes: next });
+        const nextSettings = { ...current, fleetSavedScopes: next };
+        await projectClient.saveSettings(projectId, nextSettings);
+        if (useProjectStore.getState().currentProject?.id !== projectId) return;
+        if (useProjectSettingsStore.getState().projectId === projectId) {
+          useProjectSettingsStore.getState().setSettings(nextSettings);
+        }
       } catch (error) {
         notify({
           type: "error",
@@ -509,7 +524,8 @@ function applySavedScope(scope: FleetSavedScope): void {
   if (scope.kind === "snapshot") {
     const { panelsById } = usePanelStore.getState();
     const validIds: string[] = [];
-    for (const id of scope.terminalIds) {
+    const ids = Array.isArray(scope.terminalIds) ? scope.terminalIds : [];
+    for (const id of ids) {
       if (isFleetArmEligible(panelsById[id])) validIds.push(id);
     }
     fleet.armIds(validIds);
@@ -535,8 +551,9 @@ function generateScopeId(): string {
 export function computeSavedScopePaneCount(scope: FleetSavedScope): number {
   if (scope.kind === "snapshot") {
     const { panelsById } = usePanelStore.getState();
+    const ids = Array.isArray(scope.terminalIds) ? scope.terminalIds : [];
     let n = 0;
-    for (const id of scope.terminalIds) {
+    for (const id of ids) {
       if (isFleetArmEligible(panelsById[id])) n++;
     }
     return n;
