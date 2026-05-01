@@ -78,6 +78,8 @@ describe("useActionPalette", () => {
       },
     ]);
 
+    useActionMruStore.getState().hydrateActionMru(["ok.action", "bad.action"]);
+
     const { result } = renderHook(() => useActionPalette());
 
     act(() => {
@@ -89,7 +91,7 @@ describe("useActionPalette", () => {
     });
   });
 
-  it("sorts enabled actions alphabetically with no frecency and empty query", async () => {
+  it("returns empty results with empty query and empty MRU so the hint can render", async () => {
     listMock.mockReturnValue([
       makeEntry("c.action", "Charlie"),
       makeEntry("a.action", "Alpha"),
@@ -103,13 +105,15 @@ describe("useActionPalette", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.results.length).toBe(3);
+      expect(result.current.isOpen).toBe(true);
     });
 
-    expect(result.current.results.map((r) => r.id)).toEqual(["a.action", "b.action", "c.action"]);
+    expect(result.current.results).toEqual([]);
+    expect(result.current.totalResults).toBe(0);
+    expect(result.current.isShowingRecentlyUsed).toBe(false);
   });
 
-  it("boosts frecency actions to the top with empty query", async () => {
+  it("surfaces only recently-used actions on the empty query state", async () => {
     listMock.mockReturnValue([
       makeEntry("c.action", "Charlie"),
       makeEntry("a.action", "Alpha"),
@@ -125,20 +129,23 @@ describe("useActionPalette", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.results.length).toBe(3);
+      expect(result.current.results.length).toBe(2);
     });
 
-    expect(result.current.results.map((r) => r.id)).toEqual(["b.action", "c.action", "a.action"]);
+    expect(result.current.results.map((r) => r.id)).toEqual(["b.action", "c.action"]);
+    expect(result.current.isShowingRecentlyUsed).toBe(true);
   });
 
-  it("keeps disabled actions below enabled actions regardless of frecency", async () => {
+  it("keeps disabled MRU actions below enabled MRU actions on the empty state", async () => {
     listMock.mockReturnValue([
       makeEntry("a.action", "Alpha", true),
       makeEntry("b.action", "Bravo", false),
       makeEntry("c.action", "Charlie", true),
     ]);
 
-    useActionMruStore.getState().hydrateActionMru(["b.action"]);
+    // Seed all three into MRU so the recently-used filter has them to surface.
+    // MRU order is b, c, a — but the disabled entry b must drop below the enabled ones.
+    useActionMruStore.getState().hydrateActionMru(["b.action", "c.action", "a.action"]);
 
     const { result } = renderHook(() => useActionPalette());
 
@@ -150,9 +157,119 @@ describe("useActionPalette", () => {
       expect(result.current.results.length).toBe(3);
     });
 
-    expect(result.current.results[0]!.id).toBe("a.action");
-    expect(result.current.results[1]!.id).toBe("c.action");
-    expect(result.current.results[2]!.id).toBe("b.action");
+    expect(result.current.results.map((r) => r.id)).toEqual(["c.action", "a.action", "b.action"]);
+  });
+
+  it("ignores stale MRU ids that no longer exist in the action manifest", async () => {
+    listMock.mockReturnValue([makeEntry("a.action", "Alpha"), makeEntry("b.action", "Bravo")]);
+
+    useActionMruStore
+      .getState()
+      .hydrateActionMru(["missing.action", "b.action", "also-missing.action", "a.action"]);
+
+    const { result } = renderHook(() => useActionPalette());
+
+    act(() => {
+      result.current.open();
+    });
+
+    await waitFor(() => {
+      expect(result.current.results.length).toBe(2);
+    });
+
+    expect(result.current.results.map((r) => r.id)).toEqual(["b.action", "a.action"]);
+  });
+
+  it("caps recently-used results at 10 entries", async () => {
+    const entries = Array.from({ length: 15 }, (_, i) =>
+      makeEntry(`action.${i.toString().padStart(2, "0")}`, `Action ${i}`)
+    );
+    listMock.mockReturnValue(entries);
+
+    useActionMruStore.getState().hydrateActionMru(entries.map((e) => e.id));
+
+    const { result } = renderHook(() => useActionPalette());
+
+    act(() => {
+      result.current.open();
+    });
+
+    await waitFor(() => {
+      expect(result.current.results.length).toBe(10);
+    });
+
+    expect(result.current.isShowingRecentlyUsed).toBe(true);
+  });
+
+  it("does not let disabled MRU entries crowd out enabled ones at the cap boundary", async () => {
+    const disabled = Array.from({ length: 8 }, (_, i) =>
+      makeEntry(`disabled.${i}`, `Disabled ${i}`, false)
+    );
+    const enabled = Array.from({ length: 7 }, (_, i) =>
+      makeEntry(`enabled.${i}`, `Enabled ${i}`, true)
+    );
+    listMock.mockReturnValue([...disabled, ...enabled]);
+
+    // Order disabled first in MRU so the partition has to do real work to put
+    // enabled items above them within the 10-slot cap.
+    useActionMruStore
+      .getState()
+      .hydrateActionMru([...disabled.map((e) => e.id), ...enabled.map((e) => e.id)]);
+
+    const { result } = renderHook(() => useActionPalette());
+
+    act(() => {
+      result.current.open();
+    });
+
+    await waitFor(() => {
+      expect(result.current.results.length).toBe(10);
+    });
+
+    // All 7 enabled entries must appear (no disabled item displaces them),
+    // followed by the first 3 disabled by MRU order.
+    const ids = result.current.results.map((r) => r.id);
+    expect(ids.slice(0, 7)).toEqual(enabled.map((e) => e.id));
+    expect(ids.slice(7)).toEqual(disabled.slice(0, 3).map((e) => e.id));
+  });
+
+  it("treats whitespace-only query as the recently-used branch", async () => {
+    listMock.mockReturnValue([makeEntry("a.action", "Alpha"), makeEntry("b.action", "Bravo")]);
+    useActionMruStore.getState().hydrateActionMru(["b.action", "a.action"]);
+
+    const { result } = renderHook(() => useActionPalette());
+
+    act(() => {
+      result.current.open();
+    });
+
+    act(() => {
+      result.current.setQuery("   ");
+    });
+
+    await waitFor(() => {
+      expect(result.current.results.length).toBe(2);
+    });
+
+    expect(result.current.results.map((r) => r.id)).toEqual(["b.action", "a.action"]);
+    expect(result.current.isShowingRecentlyUsed).toBe(true);
+  });
+
+  it("clears the recently-used flag once the user starts typing", async () => {
+    listMock.mockReturnValue([makeEntry("a.action", "Alpha"), makeEntry("b.action", "Bravo")]);
+    useActionMruStore.getState().hydrateActionMru(["a.action"]);
+
+    const { result } = renderHook(() => useActionPalette());
+
+    act(() => result.current.open());
+
+    await waitFor(() => expect(result.current.isShowingRecentlyUsed).toBe(true));
+
+    act(() => result.current.setQuery("brav"));
+
+    await waitFor(() => expect(result.current.isShowingRecentlyUsed).toBe(false), {
+      timeout: 2000,
+    });
   });
 
   it("records frecency when executeAction is called on enabled item", async () => {
@@ -165,9 +282,16 @@ describe("useActionPalette", () => {
       result.current.open();
     });
 
-    await waitFor(() => {
-      expect(result.current.results.length).toBe(1);
+    act(() => {
+      result.current.setQuery("alpha");
     });
+
+    await waitFor(
+      () => {
+        expect(result.current.results.length).toBe(1);
+      },
+      { timeout: 2000 }
+    );
 
     act(() => {
       result.current.executeAction(result.current.results[0]!);
@@ -188,9 +312,16 @@ describe("useActionPalette", () => {
       result.current.open();
     });
 
-    await waitFor(() => {
-      expect(result.current.results.length).toBe(1);
+    act(() => {
+      result.current.setQuery("alpha");
     });
+
+    await waitFor(
+      () => {
+        expect(result.current.results.length).toBe(1);
+      },
+      { timeout: 2000 }
+    );
 
     act(() => {
       result.current.executeAction(result.current.results[0]!);

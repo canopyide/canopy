@@ -13,6 +13,7 @@ type ActionPaletteProps = Pick<
   | "results"
   | "totalResults"
   | "selectedIndex"
+  | "isShowingRecentlyUsed"
   | "close"
   | "setQuery"
   | "setSelectedIndex"
@@ -28,6 +29,7 @@ export function ActionPalette({
   results,
   totalResults,
   selectedIndex,
+  isShowingRecentlyUsed,
   close,
   setQuery,
   setSelectedIndex,
@@ -72,9 +74,14 @@ export function ActionPalette({
       searchAriaLabel="Search actions"
       listId="action-palette-list"
       itemIdPrefix="action-option"
-      emptyMessage="No actions available"
+      emptyMessage="No recently used actions"
       noMatchMessage={`No actions match "${query}"`}
       totalResults={totalResults}
+      beforeList={
+        isShowingRecentlyUsed ? (
+          <div className="px-3 pt-2 pb-1 text-xs text-daintree-text/40">Recently used</div>
+        ) : null
+      }
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">
           Actions depend on the focused panel and current context.
