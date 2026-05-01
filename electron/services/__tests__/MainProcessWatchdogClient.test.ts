@@ -231,6 +231,84 @@ describe("MainProcessWatchdogClient", () => {
     expect(argv[0]).toBe(`--main-pid=${process.pid}`);
   });
 
+  it("a watchdog that crashes during sleep restarts in paused state (sleep sent after arming ping)", () => {
+    const client = new WatchdogClient({ mainPid: 4242, maxRestartAttempts: 3 });
+    client.pause();
+
+    // Simulate the watchdog crashing during sleep.
+    const replacementChild = createMockChild();
+    shared.forkMock.mockReturnValue(replacementChild);
+    mockChild.emit("exit", 1);
+
+    // Drive the restart timer past the cap so the new fork happens.
+    vi.advanceTimersByTime(11_000);
+    expect(shared.forkMock).toHaveBeenCalledTimes(2);
+
+    // The replacement child must have received both an arming ping AND a
+    // "sleep" message — without "sleep", its tick interval would accumulate
+    // missed beats during sleep and SIGKILL main on wake.
+    const types = replacementChild.postMessage.mock.calls.map(
+      (c) => (c[0] as { type?: string })?.type
+    );
+    expect(types).toContain("ping");
+    expect(types).toContain("sleep");
+
+    // No ping interval should be running while paused — verify by advancing
+    // time and counting subsequent pings.
+    replacementChild.postMessage.mockClear();
+    vi.advanceTimersByTime(30_000);
+    const subsequentPings = replacementChild.postMessage.mock.calls.filter(
+      (c) => (c[0] as { type?: string })?.type === "ping"
+    );
+    expect(subsequentPings).toHaveLength(0);
+    client.dispose();
+  });
+
+  it("disposeMainProcessWatchdog() disposes the singleton instance", async () => {
+    const { getMainProcessWatchdogClient, disposeMainProcessWatchdog } =
+      await import("../MainProcessWatchdogClient.js");
+    const singleton = getMainProcessWatchdogClient({ mainPid: 4242 });
+    expect(singleton.isRunning()).toBe(true);
+
+    disposeMainProcessWatchdog();
+    expect(singleton.isRunning()).toBe(false);
+
+    // Subsequent calls return a fresh instance.
+    const next = getMainProcessWatchdogClient({ mainPid: 4242 });
+    expect(next).not.toBe(singleton);
+    next.dispose();
+  });
+
+  it("restartAttempts resets after the watchdog stays alive long enough to be considered stable", () => {
+    new WatchdogClient({ mainPid: 4242, maxRestartAttempts: 2 });
+
+    // Crash once → restart triggered, attempts=1.
+    let currentChild = mockChild;
+    let next = createMockChild();
+    shared.forkMock.mockReturnValueOnce(next);
+    currentChild.emit("exit", 1);
+    vi.advanceTimersByTime(11_000);
+    currentChild = next;
+    expect(shared.forkMock).toHaveBeenCalledTimes(2);
+
+    // Advance past the stability reset window so restartAttempts goes back to 0.
+    vi.advanceTimersByTime(31_000);
+
+    // Two more crashes should now be tolerated (counter has reset).
+    next = createMockChild();
+    shared.forkMock.mockReturnValueOnce(next);
+    currentChild.emit("exit", 1);
+    vi.advanceTimersByTime(11_000);
+    currentChild = next;
+    expect(shared.forkMock).toHaveBeenCalledTimes(3);
+
+    next = createMockChild();
+    shared.forkMock.mockReturnValueOnce(next);
+    currentChild.emit("exit", 1);
+    vi.advanceTimersByTime(11_000);
+    expect(shared.forkMock).toHaveBeenCalledTimes(4);
+  });
+
   it("pause() before resume() is a no-op when called on an already-paused client", () => {
     const client = new WatchdogClient({ mainPid: 4242 });
     client.pause();

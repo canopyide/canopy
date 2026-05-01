@@ -8,6 +8,7 @@ import { registerErrorHandlers, flushPendingErrors } from "../ipc/errorHandlers.
 import { PtyClient, disposePtyClient } from "../services/PtyClient.js";
 import {
   MainProcessWatchdogClient,
+  getMainProcessWatchdogClient,
   disposeMainProcessWatchdog,
 } from "../services/MainProcessWatchdogClient.js";
 import {
@@ -689,7 +690,9 @@ export async function setupWindowServices(
     // PtyClient still starts normally.
     if (!mainProcessWatchdogClient) {
       try {
-        mainProcessWatchdogClient = new MainProcessWatchdogClient();
+        // Use the singleton accessor so `disposeMainProcessWatchdog()` in
+        // shutdown.ts reaches the running instance instead of a no-op.
+        mainProcessWatchdogClient = getMainProcessWatchdogClient();
       } catch (err) {
         console.error("[MAIN] Failed to start main-process watchdog:", err);
         mainProcessWatchdogClient = null;

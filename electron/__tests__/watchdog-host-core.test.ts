@@ -27,6 +27,13 @@ describe("parseMainPid", () => {
   it("returns null when the value is empty", () => {
     expect(parseMainPid(["--main-pid="])).toBeNull();
   });
+
+  it("rejects partial-numeric inputs (parseInt would silently truncate)", () => {
+    expect(parseMainPid(["--main-pid=123abc"])).toBeNull();
+    expect(parseMainPid(["--main-pid=1.9"])).toBeNull();
+    expect(parseMainPid(["--main-pid= 42"])).toBeNull();
+    expect(parseMainPid(["--main-pid=42 "])).toBeNull();
+  });
 });
 
 describe("createWatchdog", () => {

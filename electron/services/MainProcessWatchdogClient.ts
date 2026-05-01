@@ -19,6 +19,13 @@ import path from "node:path";
 const PING_INTERVAL_MS = 5000;
 const SERVICE_NAME = "daintree-watchdog";
 
+// If the watchdog stays alive this long after a fork, treat it as stable and
+// reset the restart counter. Without this reset, three transient crashes
+// spread across a multi-hour session would permanently disable deadlock
+// detection. Any duration well above the cap of cumulative backoff
+// (≤30s for 3 attempts) is safe — we pick 30s for the symmetry.
+const RESTART_COUNTER_RESET_MS = 30_000;
+
 export interface MainProcessWatchdogClientConfig {
   /** Maximum restart attempts before giving up. After this, deadlock
    * detection is disabled until the next app launch. */
@@ -47,6 +54,7 @@ export class MainProcessWatchdogClient {
 
   private pingInterval: NodeJS.Timeout | null = null;
   private restartTimer: NodeJS.Timeout | null = null;
+  private stabilityTimer: NodeJS.Timeout | null = null;
   private restartAttempts = 0;
   private isDisposed = false;
   private isPaused = false;
@@ -114,6 +122,12 @@ export class MainProcessWatchdogClient {
       const wasDisposed = this.isDisposed;
       this.child = null;
       this.stopPingInterval();
+      // Cancel any pending stability timer — the new fork must accumulate
+      // its own grace period from scratch.
+      if (this.stabilityTimer) {
+        clearTimeout(this.stabilityTimer);
+        this.stabilityTimer = null;
+      }
 
       if (wasDisposed) return;
 
@@ -121,11 +135,32 @@ export class MainProcessWatchdogClient {
       this.scheduleRestart();
     });
 
+    // Reset the restart counter once this fork stays alive long enough to be
+    // considered stable. Cumulative restart backoff for 3 attempts is well
+    // under 30s, so 30s of uptime confirms we're past the recovery phase.
+    if (this.stabilityTimer) clearTimeout(this.stabilityTimer);
+    this.stabilityTimer = setTimeout(() => {
+      this.stabilityTimer = null;
+      if (this.isDisposed) return;
+      this.restartAttempts = 0;
+    }, RESTART_COUNTER_RESET_MS);
+
     // Immediately send the first ping so the watchdog arms (it stays inert
     // until `isArmed = true` to prevent killing a slow-booting main).
     this.sendPing();
 
-    if (!this.isPaused) {
+    if (this.isPaused) {
+      // The watchdog crashed-and-restarted while we're suspended. Without
+      // this, the new subprocess would be armed (by the ping above) and
+      // its tick interval would accumulate missed beats during sleep,
+      // leading to a false-positive SIGKILL on wake. Send "sleep" right
+      // after the arming ping to suppress the kill path.
+      try {
+        this.child.postMessage({ type: "sleep" });
+      } catch {
+        // Channel down — exit handler will reschedule another restart.
+      }
+    } else {
       this.startPingInterval();
     }
   }
@@ -233,6 +268,10 @@ export class MainProcessWatchdogClient {
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
+    }
+    if (this.stabilityTimer) {
+      clearTimeout(this.stabilityTimer);
+      this.stabilityTimer = null;
     }
 
     if (this.child) {

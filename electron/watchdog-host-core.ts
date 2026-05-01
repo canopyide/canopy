@@ -105,11 +105,15 @@ export function createWatchdog(deps: WatchdogDeps): Watchdog {
 
 /** Parse the `--main-pid=<pid>` flag out of argv. Returns null if missing
  * or malformed — Chromium injects positional arguments into `process.argv`,
- * so the named flag is the only reliable transport. */
+ * so the named flag is the only reliable transport. Strict parsing: rejects
+ * partial-numeric strings like "123abc" (which `parseInt` would silently
+ * truncate to 123). The PID we send SIGKILL to must be exactly the PID main
+ * intended us to watch. */
 export function parseMainPid(argv: readonly string[]): number | null {
   const arg = argv.find((a) => a.startsWith("--main-pid="));
   if (!arg) return null;
   const raw = arg.slice("--main-pid=".length);
-  const pid = Number.parseInt(raw, 10);
-  return Number.isFinite(pid) && pid > 0 ? pid : null;
+  if (!/^\d+$/.test(raw)) return null;
+  const pid = Number(raw);
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
 }
