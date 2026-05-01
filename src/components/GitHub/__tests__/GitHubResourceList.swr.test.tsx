@@ -361,6 +361,72 @@ describe("GitHubResourceList SWR behavior", () => {
     expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
   });
 
+  it("calls onFreshFetch after a successful background revalidation", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(10)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(10), makeIssue(11)]));
+    const onFreshFetch = vi.fn();
+
+    render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" onFreshFetch={onFreshFetch} />
+    );
+
+    // After revalidation lands, onFreshFetch fires once. The revalidation is
+    // the bypassCache:true path that triggers updateRepoStatsCount in main.
+    await waitFor(() => {
+      expect(onFreshFetch).toHaveBeenCalledTimes(1);
+    });
+    // Verify the listIssues call was made with bypassCache:true so we know
+    // we're on the path that updates main-process repoStatsCache.
+    expect(mockListIssues).toHaveBeenCalled();
+    expect(mockListIssues.mock.calls[0]?.[0]?.bypassCache).toBe(true);
+  });
+
+  it("does not call onFreshFetch on a cold-mount cache-miss fetch", async () => {
+    // No cache entry — cold mount uses bypassCache:false.
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    const onFreshFetch = vi.fn();
+
+    render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" onFreshFetch={onFreshFetch} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("item-1")).toBeTruthy();
+    });
+    expect(onFreshFetch).not.toHaveBeenCalled();
+    expect(mockListIssues.mock.calls[0]?.[0]?.bypassCache).toBe(false);
+  });
+
+  it("does not call onFreshFetch when the revalidation fails", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(20)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now() - 5_000,
+    });
+
+    mockListIssues.mockRejectedValue(new Error("Network error"));
+    const onFreshFetch = vi.fn();
+
+    render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" onFreshFetch={onFreshFetch} />
+    );
+
+    // Wait for the error to surface so we know the fetch resolved.
+    await waitFor(() => {
+      expect(screen.getByText(/Network error/)).toBeTruthy();
+    });
+    expect(onFreshFetch).not.toHaveBeenCalled();
+  });
+
   it("different project paths use separate cache entries", async () => {
     const keyA = buildCacheKey("/proj-a", "issue", "open", "created");
     setCache(keyA, {

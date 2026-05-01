@@ -275,6 +275,214 @@ describe("useRepositoryStats", () => {
     });
   });
 
+  describe("onRepoStatsAndPageUpdated push", () => {
+    beforeEach(() => {
+      resetGithubResourceCache();
+    });
+
+    function makePushPayload(
+      projectPath: string,
+      stats: RepositoryStats,
+      fetchedAt: number = Date.now()
+    ) {
+      return {
+        projectPath,
+        stats,
+        issues: { items: [], endCursor: null, hasNextPage: false, totalCount: 0 },
+        prs: { items: [], endCursor: null, hasNextPage: false, totalCount: 0 },
+        fetchedAt,
+      };
+    }
+
+    it("applies pushed stats to toolbar counts immediately without waiting for the next poll", async () => {
+      const project = { id: "p", path: "/repo/push" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+      // First poll lands a baseline so `lastUpdatedRef` is seeded.
+      getRepoStatsMock.mockResolvedValue({
+        commitCount: 5,
+        issueCount: 0,
+        prCount: 1,
+        loading: false,
+        stale: false,
+        lastUpdated: 1000,
+      });
+
+      let pushHandler: ((payload: unknown) => void) | undefined;
+      onRepoStatsAndPageUpdatedMock.mockImplementation((cb: (p: unknown) => void) => {
+        pushHandler = cb;
+        return () => {};
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.stats?.prCount).toBe(1);
+      });
+
+      // Push a fresher payload — count drops to 0 (e.g. PR was merged).
+      const pushedStats: RepositoryStats = {
+        commitCount: 6,
+        issueCount: 0,
+        prCount: 0,
+        loading: false,
+        stale: false,
+        lastUpdated: 2000,
+      };
+      await act(async () => {
+        pushHandler?.(makePushPayload(project.path, pushedStats, 2000));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(result.current.stats?.prCount).toBe(0);
+        expect(result.current.stats?.commitCount).toBe(6);
+        expect(result.current.lastUpdated).toBe(2000);
+      });
+    });
+
+    it("ignores a push payload whose fetchedAt is older than the last applied result", async () => {
+      const project = { id: "p", path: "/repo/stale" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+      getRepoStatsMock.mockResolvedValue({
+        commitCount: 10,
+        issueCount: 3,
+        prCount: 4,
+        loading: false,
+        stale: false,
+        lastUpdated: 5000,
+      });
+
+      let pushHandler: ((payload: unknown) => void) | undefined;
+      onRepoStatsAndPageUpdatedMock.mockImplementation((cb: (p: unknown) => void) => {
+        pushHandler = cb;
+        return () => {};
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.stats?.prCount).toBe(4);
+        expect(result.current.lastUpdated).toBe(5000);
+      });
+
+      // Older push must be ignored.
+      const olderStats: RepositoryStats = {
+        commitCount: 1,
+        issueCount: 0,
+        prCount: 0,
+        loading: false,
+        stale: false,
+        lastUpdated: 1000,
+      };
+      await act(async () => {
+        pushHandler?.(makePushPayload(project.path, olderStats, 1000));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.stats?.prCount).toBe(4);
+      expect(result.current.stats?.commitCount).toBe(10);
+      expect(result.current.lastUpdated).toBe(5000);
+    });
+
+    it("preserves last known counts when a stale push payload arrives with 0 counts", async () => {
+      const project = { id: "p", path: "/repo/preserve" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+      // Fresh poll establishes a known good count of 2 PRs.
+      getRepoStatsMock.mockResolvedValue({
+        commitCount: 7,
+        issueCount: 1,
+        prCount: 2,
+        loading: false,
+        stale: false,
+        lastUpdated: 1000,
+      });
+
+      let pushHandler: ((payload: unknown) => void) | undefined;
+      onRepoStatsAndPageUpdatedMock.mockImplementation((cb: (p: unknown) => void) => {
+        pushHandler = cb;
+        return () => {};
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.stats?.prCount).toBe(2);
+      });
+
+      // A fresher push lands but it's marked stale with 0 counts — should
+      // preserve the last good prCount=2 instead of flashing 0.
+      const stalePush: RepositoryStats = {
+        commitCount: 7,
+        issueCount: 0,
+        prCount: 0,
+        loading: false,
+        stale: true,
+        lastUpdated: 2000,
+      };
+      await act(async () => {
+        pushHandler?.(makePushPayload(project.path, stalePush, 2000));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(result.current.isStale).toBe(true);
+        // Preserved counts shown despite the 0 in the payload.
+        expect(result.current.stats?.prCount).toBe(2);
+        expect(result.current.stats?.issueCount).toBe(1);
+      });
+    });
+
+    it("ignores a push payload whose projectPath differs from the active project", async () => {
+      const project = { id: "p", path: "/repo/active" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+      getRepoStatsMock.mockResolvedValue({
+        commitCount: 5,
+        issueCount: 1,
+        prCount: 1,
+        loading: false,
+        stale: false,
+        lastUpdated: 1000,
+      });
+
+      let pushHandler: ((payload: unknown) => void) | undefined;
+      onRepoStatsAndPageUpdatedMock.mockImplementation((cb: (p: unknown) => void) => {
+        pushHandler = cb;
+        return () => {};
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.stats?.prCount).toBe(1);
+      });
+
+      const otherStats: RepositoryStats = {
+        commitCount: 99,
+        issueCount: 99,
+        prCount: 99,
+        loading: false,
+        stale: false,
+        lastUpdated: 9999,
+      };
+      await act(async () => {
+        pushHandler?.(makePushPayload("/repo/other", otherStats, 9999));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Must not be contaminated by the cross-project push.
+      expect(result.current.stats?.prCount).toBe(1);
+      expect(result.current.stats?.commitCount).toBe(5);
+    });
+  });
+
   describe("disk-cache hydration on mount", () => {
     beforeEach(() => {
       resetGithubResourceCache();

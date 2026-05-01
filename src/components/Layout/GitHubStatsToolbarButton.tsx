@@ -256,6 +256,17 @@ export const GitHubStatsToolbarButton = memo(
       };
     }, []);
 
+    // Wired to `GitHubResourceList`'s `onFreshFetch` callback. When the
+    // dropdown's SWR revalidation lands fresh first-page data, the main
+    // process has already written the new total count to `repoStatsCache`
+    // via `updateRepoStatsCount`. Calling `refreshStats()` (no force) reads
+    // that hot cache in a single IPC round-trip — no GitHub network call —
+    // and updates the toolbar count badge so the dropdown's count and the
+    // badge converge in the same user interaction.
+    const handleListFreshFetch = useCallback(() => {
+      void refreshStats();
+    }, [refreshStats]);
+
     const prefetchResourceList = useCallback(
       (type: "issue" | "pr") => {
         if (!currentProject || isTokenError || rateLimitActive) return;
@@ -523,6 +534,7 @@ export const GitHubStatsToolbarButton = memo(
                 issuesButtonRef.current?.focus();
               }}
               initialCount={stats?.issueCount}
+              onFreshFetch={handleListFreshFetch}
             />
           ) : (
             <Suspense
@@ -539,6 +551,7 @@ export const GitHubStatsToolbarButton = memo(
                   issuesButtonRef.current?.focus();
                 }}
                 initialCount={stats?.issueCount}
+                onFreshFetch={handleListFreshFetch}
               />
             </Suspense>
           )}
@@ -634,6 +647,7 @@ export const GitHubStatsToolbarButton = memo(
                 prsButtonRef.current?.focus();
               }}
               initialCount={stats?.prCount}
+              onFreshFetch={handleListFreshFetch}
             />
           ) : (
             <Suspense
@@ -648,6 +662,7 @@ export const GitHubStatsToolbarButton = memo(
                   prsButtonRef.current?.focus();
                 }}
                 initialCount={stats?.prCount}
+                onFreshFetch={handleListFreshFetch}
               />
             </Suspense>
           )}

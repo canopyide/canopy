@@ -144,6 +144,13 @@ interface GitHubResourceListProps {
   projectPath: string;
   onClose?: () => void;
   initialCount?: number | null;
+  /**
+   * Called after a successful background revalidation lands fresh first-page
+   * data. The toolbar count badge wires this to a stats refresh so the
+   * dropdown's just-updated count converges into the badge without waiting
+   * for the next 30s stats poll.
+   */
+  onFreshFetch?: () => void;
 }
 
 export function GitHubResourceList({
@@ -151,6 +158,7 @@ export function GitHubResourceList({
   projectPath,
   onClose,
   initialCount,
+  onFreshFetch,
 }: GitHubResourceListProps) {
   const searchQuery = useGitHubFilterStore((s) =>
     type === "issue" ? s.issueSearchQuery : s.prSearchQuery
@@ -372,6 +380,18 @@ export function GitHubResourceList({
                 timestamp: now,
               });
               setLastUpdatedAt(now);
+              // Notify parent (toolbar count badge) that fresh first-page data
+              // landed. Gated on `isRevalidate` so it fires only when
+              // `bypassCache: true` was sent — the main process's
+              // `updateRepoStatsCount` runs on the GraphQL path that follows a
+              // bypass, so the toolbar's `refresh()` call is guaranteed to see
+              // an updated `repoStatsCache` entry. Cold-mount fetches
+              // (`bypassCache: false`) may hit the main-process cache and
+              // skip the count update entirely; firing onFreshFetch there
+              // would be a wasted IPC round-trip.
+              if (isRevalidate) {
+                onFreshFetch?.();
+              }
             }
             lastError = null;
             return;
@@ -416,7 +436,7 @@ export function GitHubResourceList({
         }
       }
     },
-    [projectPath, debouncedSearch, filterState, type, sortOrder, numberQuery]
+    [projectPath, debouncedSearch, filterState, type, sortOrder, numberQuery, onFreshFetch]
   );
 
   useEffect(() => {
