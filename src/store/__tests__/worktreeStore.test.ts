@@ -210,6 +210,68 @@ describe("worktreeStore", () => {
     expect(createDialog.initialIssue).toBeNull();
   });
 
+  it("openBulkCreateDialog stores onComplete callback", () => {
+    const onComplete = vi.fn();
+    const issue = {
+      number: 1,
+      title: "issue",
+      url: "https://github.com/org/repo/issues/1",
+      state: "OPEN" as const,
+      updatedAt: new Date().toISOString(),
+      author: { login: "u", avatarUrl: "" },
+      assignees: [],
+      commentCount: 0,
+    };
+    useWorktreeSelectionStore.getState().openBulkCreateDialog([issue], onComplete);
+
+    const { bulkCreateDialog } = useWorktreeSelectionStore.getState();
+    expect(bulkCreateDialog.isOpen).toBe(true);
+    expect(bulkCreateDialog.mode).toBe("issue");
+    expect(bulkCreateDialog.onComplete).toBe(onComplete);
+  });
+
+  it("openBulkCreateDialogForPRs stores onComplete callback", () => {
+    const onComplete = vi.fn();
+    const pr = {
+      number: 1,
+      title: "pr",
+      url: "https://github.com/org/repo/pull/1",
+      state: "OPEN" as const,
+      isDraft: false,
+      updatedAt: new Date().toISOString(),
+      author: { login: "u", avatarUrl: "" },
+      headRefName: "feature/pr",
+    };
+    useWorktreeSelectionStore.getState().openBulkCreateDialogForPRs([pr], onComplete);
+
+    const { bulkCreateDialog } = useWorktreeSelectionStore.getState();
+    expect(bulkCreateDialog.isOpen).toBe(true);
+    expect(bulkCreateDialog.mode).toBe("pr");
+    expect(bulkCreateDialog.onComplete).toBe(onComplete);
+  });
+
+  it("closeBulkCreateDialog clears stored onComplete to prevent stale retention", () => {
+    const onComplete = vi.fn();
+    useWorktreeSelectionStore.getState().openBulkCreateDialog([], onComplete);
+    useWorktreeSelectionStore.getState().closeBulkCreateDialog();
+
+    const { bulkCreateDialog } = useWorktreeSelectionStore.getState();
+    expect(bulkCreateDialog.isOpen).toBe(false);
+    expect(bulkCreateDialog.onComplete).toBeUndefined();
+  });
+
+  it("opening bulk dialog twice replaces onComplete — no stale callback carryover", () => {
+    const cbA = vi.fn();
+    const cbB = vi.fn();
+    useWorktreeSelectionStore.getState().openBulkCreateDialog([], cbA);
+    useWorktreeSelectionStore.getState().closeBulkCreateDialog();
+    useWorktreeSelectionStore.getState().openBulkCreateDialog([], cbB);
+
+    const { bulkCreateDialog } = useWorktreeSelectionStore.getState();
+    expect(bulkCreateDialog.onComplete).toBe(cbB);
+    expect(bulkCreateDialog.onComplete).not.toBe(cbA);
+  });
+
   it("openCreateDialogForPR does not throw when window is unavailable", () => {
     const originalWindow = (globalThis as { window?: Window }).window;
     // @ts-expect-error - test intentionally removes browser global
