@@ -57,6 +57,7 @@ export const useFleetResolutionPreviewStore = create<FleetResolutionPreviewState
     },
 
     setOpen: (open: boolean) => {
+      if (open && !getState().hasVariables) return;
       if (open) {
         set({ open: true, userDismissed: false });
       } else {

@@ -126,8 +126,10 @@ const FleetResolutionRow = memo(function FleetResolutionRow({
               data-testid="fleet-resolution-resolved-text"
               className="text-[11px] leading-relaxed break-all text-daintree-text"
             >
-              {resolvedPayload || (
-                <span className="text-daintree-text/40">{draft || "(empty)"}</span>
+              {resolvedPayload !== "" ? (
+                resolvedPayload
+              ) : (
+                <span className="text-daintree-text/40">(empty)</span>
               )}
             </span>
           </div>
