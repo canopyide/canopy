@@ -203,7 +203,7 @@ export const PATTERNS: readonly SecretPattern[] = [
     name: "sendgrid-api-key",
     // Three-segment format: `SG.{22-char ID}.{43-char secret}`. No trailing
     // `\b` because the final segment can end with `-` (non-word char).
-    regex: /\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}/g,
+    regex: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g,
     replacement: REDACTED,
   },
   {
