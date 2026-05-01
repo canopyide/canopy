@@ -34,4 +34,21 @@ export function useKeybindingDisplay(actionId: string): string {
   return displayCombo;
 }
 
+export function useEffectiveCombo(actionId: string): string | undefined {
+  const [combo, setCombo] = useState<string | undefined>(() =>
+    keybindingService.getEffectiveCombo(actionId)
+  );
+
+  useEffect(() => {
+    const update = () => {
+      setCombo(keybindingService.getEffectiveCombo(actionId));
+    };
+
+    update();
+    return keybindingService.subscribe(update);
+  }, [actionId]);
+
+  return combo;
+}
+
 export { keybindingService };

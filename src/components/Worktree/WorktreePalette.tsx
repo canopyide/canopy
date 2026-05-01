@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import { useTruncationDetection } from "@/hooks/useTruncationDetection";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
 import type { WorktreeState } from "@/types";
@@ -86,6 +86,7 @@ export function WorktreePalette({
   onClose,
 }: WorktreePaletteProps) {
   const createWorktreeShortcut = useKeybindingDisplay("worktree.createDialog.open");
+  const worktreePaletteShortcut = useEffectiveCombo("worktree.openPalette");
 
   return (
     <SearchablePalette<WorktreeState>
@@ -110,7 +111,7 @@ export function WorktreePalette({
         />
       )}
       label="Worktree switcher"
-      keyHint="⌘K, W"
+      shortcut={worktreePaletteShortcut}
       ariaLabel="Worktree palette"
       searchPlaceholder="Search worktrees"
       searchAriaLabel="Search worktrees"

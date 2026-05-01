@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/context-menu";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatTimeAgo } from "@/utils/timeAgo";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 import { useModifierKeys } from "@/hooks/useModifierKeys";
 import { useOverlayClaim } from "@/hooks";
 import { usePaletteStore } from "@/store/paletteStore";
@@ -516,7 +516,7 @@ function ProjectPaletteInner({
   onTogglePinProject,
   onCopyPath,
 }: ProjectPaletteInnerProps) {
-  const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
+  const projectSwitcherShortcut = useEffectiveCombo("project.switcherPalette");
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0 && selectedIndex < results.length) {
@@ -600,7 +600,7 @@ function ProjectPaletteInner({
     <>
       <AppPaletteDialog.Header
         label="Switch Project"
-        keyHint={projectSwitcherShortcut}
+        shortcut={projectSwitcherShortcut}
         className="pb-2"
       >
         <AppPaletteDialog.Input

@@ -8,7 +8,7 @@ import type { FuseResultMatch } from "@/hooks/useSearchablePalette";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { usePanelStore } from "@/store/panelStore";
 import { usePanelLimitStore } from "@/store/panelLimitStore";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 
 interface PanelPaletteProps {
   isOpen: boolean;
@@ -102,7 +102,7 @@ export function PanelPalette({
     return count;
   });
   const hardLimit = usePanelLimitStore((state) => state.hardLimit);
-  const keyHint = useKeybindingDisplay("panel.palette");
+  const panelPaletteShortcut = useEffectiveCombo("panel.palette");
   const showCounter = hardLimit > 0 && panelCount / hardLimit >= 0.75;
 
   const isSearching = query.trim().length > 0;
@@ -187,7 +187,7 @@ export function PanelPalette({
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel="Panel palette">
       <AppPaletteDialog.Header
         label={showCounter ? `New Panel (${panelCount} / ${hardLimit})` : "New Panel"}
-        keyHint={keyHint || undefined}
+        shortcut={panelPaletteShortcut}
       >
         <AppPaletteDialog.Input
           inputRef={inputRef}

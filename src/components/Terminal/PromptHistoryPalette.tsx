@@ -132,7 +132,7 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
       getItemId={getItemId}
       renderItem={renderItem}
       label="Prompt History"
-      keyHint="⌘R"
+      shortcut="Cmd+R"
       ariaLabel="Prompt history search"
       searchPlaceholder="Search prompt history"
       listId="prompt-history-list"

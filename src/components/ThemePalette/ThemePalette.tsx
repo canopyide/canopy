@@ -4,6 +4,7 @@ import { logError } from "@/utils/logger";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { PaletteStrip } from "@/components/ui/PaletteStrip";
 import { useSearchablePalette } from "@/hooks/useSearchablePalette";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 import { useAppThemeStore, injectSchemeToDOM } from "@/store/appThemeStore";
 import { notify } from "@/lib/notify";
 import { appThemeClient } from "@/clients/appThemeClient";
@@ -68,6 +69,7 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
   const selectedSchemeId = useAppThemeStore((s) => s.selectedSchemeId);
   const customSchemes = useAppThemeStore((s) => s.customSchemes);
   const setSelectedSchemeId = useAppThemeStore((s) => s.setSelectedSchemeId);
+  const themePaletteShortcut = useEffectiveCombo("app.theme.pick");
 
   const allSchemes = useMemo(() => [...BUILT_IN_APP_SCHEMES, ...customSchemes], [customSchemes]);
 
@@ -195,7 +197,7 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
         />
       )}
       label="Theme switcher"
-      keyHint="⌘K, T"
+      shortcut={themePaletteShortcut}
       ariaLabel="Theme palette"
       searchPlaceholder="Search themes"
       searchAriaLabel="Search themes"

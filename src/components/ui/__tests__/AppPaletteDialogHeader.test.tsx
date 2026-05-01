@@ -15,6 +15,20 @@ vi.mock("@/store/paletteStore", () => ({
   usePaletteStore: { getState: () => ({ activePaletteId: null }) },
 }));
 
+vi.mock("@/components/ui/Kbd", () => ({
+  KbdChord: ({
+    shortcut,
+    "aria-label": ariaLabel,
+  }: {
+    shortcut: string;
+    "aria-label"?: string;
+  }) => (
+    <span data-testid="kbd-chord" data-shortcut={shortcut} aria-label={ariaLabel}>
+      {shortcut}
+    </span>
+  ),
+}));
+
 import { AppPaletteDialog } from "../AppPaletteDialog";
 import { UI_PALETTE_ENTER_DURATION, UI_PALETTE_EXIT_DURATION } from "@/lib/animationUtils";
 
@@ -87,5 +101,57 @@ describe("AppPaletteDialog.Header loading bar", () => {
     expect(screen.getByText("Quick switch")).toBeTruthy();
     expect(screen.getByText("⌘P")).toBeTruthy();
     expect(screen.getByLabelText("Search terminals")).toBeTruthy();
+  });
+
+  it("renders KbdChord when shortcut is provided", () => {
+    render(
+      <AppPaletteDialog.Header label="Quick switch" shortcut="Cmd+P">
+        <input aria-label="Search" />
+      </AppPaletteDialog.Header>
+    );
+    const chord = screen.getByTestId("kbd-chord");
+    expect(chord).toBeTruthy();
+    expect(chord.dataset.shortcut).toBe("Cmd+P");
+  });
+
+  it("prefers shortcut over keyHint when both are provided", () => {
+    render(
+      <AppPaletteDialog.Header label="Quick switch" shortcut="Cmd+P" keyHint="⌘P">
+        <input aria-label="Search" />
+      </AppPaletteDialog.Header>
+    );
+    expect(screen.getByTestId("kbd-chord")).toBeTruthy();
+    expect(screen.queryByText("⌘P")).toBeNull();
+  });
+
+  it("falls back to keyHint when shortcut is undefined", () => {
+    render(
+      <AppPaletteDialog.Header label="Quick switch" keyHint="⇧⇧">
+        <input aria-label="Search" />
+      </AppPaletteDialog.Header>
+    );
+    expect(screen.getByText("⇧⇧")).toBeTruthy();
+    expect(screen.queryByTestId("kbd-chord")).toBeNull();
+  });
+
+  it("renders nothing when neither shortcut nor keyHint is provided", () => {
+    render(
+      <AppPaletteDialog.Header label="Quick switch">
+        <input aria-label="Search" />
+      </AppPaletteDialog.Header>
+    );
+    expect(screen.queryByTestId("kbd-chord")).toBeNull();
+    // Only the label text should be present, no extra hint text
+    expect(screen.getByText("Quick switch")).toBeTruthy();
+  });
+
+  it("falls back to keyHint when shortcut is empty string", () => {
+    render(
+      <AppPaletteDialog.Header label="Quick switch" shortcut="" keyHint="⌘P">
+        <input aria-label="Search" />
+      </AppPaletteDialog.Header>
+    );
+    expect(screen.getByText("⌘P")).toBeTruthy();
+    expect(screen.queryByTestId("kbd-chord")).toBeNull();
   });
 });

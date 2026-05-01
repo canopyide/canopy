@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { Lock } from "lucide-react";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import type { SendToAgentItem } from "@/hooks/useSendToAgentPalette";
 
 export interface SendToAgentPaletteProps {
@@ -90,6 +90,7 @@ export function SendToAgentPalette({
   );
 
   const newTerminalShortcut = useKeybindingDisplay("terminal.new");
+  const sendToAgentShortcut = useEffectiveCombo("terminal.sendToAgent");
 
   return (
     <SearchablePalette<SendToAgentItem>
@@ -112,7 +113,7 @@ export function SendToAgentPalette({
         />
       )}
       label="Send selection to"
-      keyHint="⌘⇧E"
+      shortcut={sendToAgentShortcut}
       ariaLabel="Send selection to agent"
       searchPlaceholder="Search terminals and agents"
       searchAriaLabel="Search terminals and agents"
