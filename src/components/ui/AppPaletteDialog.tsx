@@ -349,6 +349,7 @@ interface AppPaletteEmptyProps {
   query: string;
   emptyMessage?: string;
   noMatchMessage?: string;
+  noMatchContent?: React.ReactNode;
   children?: React.ReactNode;
 }
 
@@ -356,6 +357,7 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
   query,
   emptyMessage = "No items available",
   noMatchMessage,
+  noMatchContent,
   children,
 }: AppPaletteEmptyProps) {
   const trimmedQuery = query.trim();
@@ -363,7 +365,8 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
     return (
       <EmptyState
         variant="filtered-empty"
-        title={noMatchMessage || `No items match "${trimmedQuery}"`}
+        title={noMatchMessage ?? "No results found"}
+        action={noMatchContent}
         className="px-3 py-8"
       />
     );

@@ -136,7 +136,7 @@ export function QuickCreatePalette({ palette }: QuickCreatePaletteProps) {
       )}
       label="Quick create worktree"
       ariaLabel="Quick create worktree palette"
-      searchPlaceholder="Search recipes..."
+      searchPlaceholder="Search recipes"
       searchAriaLabel="Search recipes"
       listId="quick-create-palette-list"
       itemIdPrefix="quick-create-option"
@@ -158,7 +158,6 @@ export function QuickCreatePalette({ palette }: QuickCreatePaletteProps) {
           </Button>
         </div>
       }
-      noMatchMessage={`No recipes match "${palette.query}"`}
       totalResults={palette.totalResults}
       afterList={
         showAssignToggle ? (

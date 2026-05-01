@@ -74,12 +74,11 @@ export function QuickSwitcher({
       keyHint="⌘P"
       ariaLabel="Quick switcher"
       isLoading={isLoading}
-      searchPlaceholder="Search terminals, agents, worktrees..."
+      searchPlaceholder="Find panels, agents, or worktrees"
       searchAriaLabel="Search terminals, agents, and worktrees"
       listId="quick-switcher-list"
       itemIdPrefix="qs-option"
       emptyMessage="No panels open"
-      noMatchMessage={`No items match "${query}"`}
       totalResults={totalResults}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">

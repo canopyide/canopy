@@ -158,7 +158,7 @@ export function CommandPicker({
         label="Commands"
         keyHint="⌘K"
         ariaLabel="Command picker"
-        searchPlaceholder="Search commands..."
+        searchPlaceholder="Search commands"
         searchAriaLabel="Search commands"
         listId="command-list"
         itemIdPrefix="command"
@@ -235,12 +235,11 @@ export function CommandPicker({
       label="Commands"
       keyHint="⌘K"
       ariaLabel="Command picker"
-      searchPlaceholder="Search commands..."
+      searchPlaceholder="Search commands"
       searchAriaLabel="Search commands"
       listId="command-list"
       itemIdPrefix="command"
       emptyMessage="No commands available"
-      noMatchMessage={`No commands match "${query}"`}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">
           Commands are context-dependent and may vary by project.
