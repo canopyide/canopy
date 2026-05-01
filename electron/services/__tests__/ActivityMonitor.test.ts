@@ -361,7 +361,7 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("should transition to idle when only spinner-style cosmetic redraws are present (Issue #3189)", () => {
+    it("should transition to idle once spinner stream stops and debounce expires (#3189 / #6365)", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         idleDebounceMs: 200,
@@ -371,13 +371,17 @@ describe("ActivityMonitor", () => {
       expect(monitor.getState()).toBe("busy");
       onStateChange.mockClear();
 
+      // Spinner ticks reset the debounce timer (#6365), so the agent stays busy
+      // throughout the stream.
       for (let i = 0; i < 5; i++) {
         monitor.onData("\r⠋ Working (esc to interrupt)");
         vi.advanceTimersByTime(100);
       }
+      expect(monitor.getState()).toBe("busy");
 
-      // Advance past debounce window — spinner redraws should NOT have reset it
-      vi.advanceTimersByTime(200);
+      // Stream stops — last reset was at the final tick. After debounce(200ms)
+      // expires with no further data, state goes idle.
+      vi.advanceTimersByTime(300);
 
       expect(monitor.getState()).toBe("idle");
 
@@ -385,8 +389,14 @@ describe("ActivityMonitor", () => {
     });
   });
 
-  describe("Cosmetic redraw filtering (Issue #3189)", () => {
-    it("should not reset debounce for Braille spinner redraws", () => {
+  describe("Cosmetic redraw filtering (Issue #3189 / #6365)", () => {
+    // #3189 introduced cosmetic-redraw classification so spinner-only output
+    // wouldn't escalate idle→busy on its own (becomeBusy gate). #6365 corrected
+    // the over-broad consequence: spinner ticks ARE liveness evidence and must
+    // reset the debounce timer when the agent is already busy. Tests below
+    // exercise both contracts.
+
+    it("should keep busy state alive across a Braille spinner stream (#6365)", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         idleDebounceMs: 300,
@@ -396,19 +406,19 @@ describe("ActivityMonitor", () => {
       expect(monitor.getState()).toBe("busy");
       onStateChange.mockClear();
 
-      // Send Braille spinner frames — these should be filtered as cosmetic
+      // Spinner ticks every 100ms across 1s — well past the 300ms debounce.
+      // Each tick must reset the debounce so state stays busy mid-thought.
       for (let i = 0; i < 10; i++) {
         monitor.onData("\r⠙ Working (esc to interrupt)");
         vi.advanceTimersByTime(100);
       }
 
-      // Debounce should have fired (300ms window, not reset by spinners)
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       monitor.dispose();
     });
 
-    it("should not reset debounce for Ink cursor-up redraws", () => {
+    it("should keep busy state alive across Ink cursor-up redraws (#6365)", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         idleDebounceMs: 300,
@@ -418,14 +428,13 @@ describe("ActivityMonitor", () => {
       expect(monitor.getState()).toBe("busy");
       onStateChange.mockClear();
 
-      // Send Ink-style cursor-up redraw frames (Claude Code / Gemini CLI)
+      // Ink-style cursor-up + erase-line + spinner (Claude Code / Gemini CLI)
       for (let i = 0; i < 10; i++) {
         monitor.onData("\x1b[1A\x1b[2K✽ Deliberating… (esc to interrupt)");
         vi.advanceTimersByTime(100);
       }
 
-      // Debounce should have fired
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       monitor.dispose();
     });
@@ -453,7 +462,7 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("should filter Gemini CLI tool-use status lines", () => {
+    it("should keep busy state alive across Gemini CLI tool-use status lines (#6365)", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         idleDebounceMs: 300,
@@ -468,7 +477,53 @@ describe("ActivityMonitor", () => {
         vi.advanceTimersByTime(100);
       }
 
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+    });
+
+    it("should go idle once spinner stream stops and debounce expires (#6365)", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        idleDebounceMs: 300,
+      });
+
+      monitor.onInput("run\r");
+      expect(monitor.getState()).toBe("busy");
+      onStateChange.mockClear();
+
+      // Spinner ticks for 1s — state stays busy
+      for (let i = 0; i < 10; i++) {
+        monitor.onData("\r⠙ Working (esc to interrupt)");
+        vi.advanceTimersByTime(100);
+      }
+      expect(monitor.getState()).toBe("busy");
+
+      // Stream stops — last reset was at the final tick, debounce(300ms) fires
+      vi.advanceTimersByTime(400);
       expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should not escalate idle→busy from spinner-only output (#3189)", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        idleDebounceMs: 300,
+      });
+
+      // Monitor starts idle. Spinner output alone must NOT escalate to busy —
+      // spinner is liveness evidence only when already in a busy cycle.
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      for (let i = 0; i < 10; i++) {
+        monitor.onData("\r⠙ Working (esc to interrupt)");
+        vi.advanceTimersByTime(100);
+      }
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
 
       monitor.dispose();
     });
@@ -499,6 +554,34 @@ describe("ActivityMonitor", () => {
       // After full debounce window with no more output, should go idle
       vi.advanceTimersByTime(300);
       expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should not escalate idle→busy from idle-noise sequences with low minBytes (#6365)", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        idleDebounceMs: 300,
+        outputActivityDetection: {
+          enabled: true,
+          windowMs: 1000,
+          minFrames: 2,
+          minBytes: 1,
+        },
+      });
+
+      // Monitor is idle. A stream of pure DECSET/OSC/CPR noise must not
+      // trigger volume-based idle→busy escalation now that minBytes is 1.
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      for (let i = 0; i < 20; i++) {
+        monitor.onData("\x1b[?25h\x1b]133;A\x07\x1b[24;80R\x1b[?25l");
+        vi.advanceTimersByTime(50);
+      }
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
 
       monitor.dispose();
     });

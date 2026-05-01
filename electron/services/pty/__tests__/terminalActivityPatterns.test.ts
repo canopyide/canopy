@@ -220,7 +220,7 @@ describe("buildActivityMonitorOptions", () => {
       enabled: true,
       windowMs: 1000,
       minFrames: 2,
-      minBytes: 32,
+      minBytes: 1,
     });
     expect(result.patternConfig).toBeDefined();
     expect(result.bootCompletePatterns).toBeDefined();
