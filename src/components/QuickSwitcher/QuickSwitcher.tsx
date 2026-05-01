@@ -8,15 +8,15 @@ import type {
   UseQuickSwitcherReturn,
 } from "@/hooks/useQuickSwitcher";
 
-function getQuickSwitcherActionLabel(item: QuickSwitcherItemData): string | undefined {
+function getQuickSwitcherActionLabel(item: QuickSwitcherItemData): string {
   switch (item.type) {
     case "terminal":
       return "Switch terminal";
     case "worktree":
       return "Switch worktree";
-    default:
-      return undefined;
   }
+  const _exhaustive: never = item.type;
+  return _exhaustive;
 }
 
 type QuickSwitcherProps = Pick<
@@ -62,8 +62,8 @@ export function QuickSwitcher({
 
   const getFooter = useCallback(
     (item: QuickSwitcherItemData | null): React.ReactNode => {
-      const label = item ? getQuickSwitcherActionLabel(item) : undefined;
-      if (!label) return undefined;
+      if (!item) return undefined;
+      const label = getQuickSwitcherActionLabel(item);
       return (
         <div id={footerHintId} className="w-full">
           <PaletteFooterHints

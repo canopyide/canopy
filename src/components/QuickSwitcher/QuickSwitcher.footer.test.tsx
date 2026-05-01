@@ -13,6 +13,9 @@ beforeAll(() => {
   if (typeof globalThis.ResizeObserver === "undefined") {
     globalThis.ResizeObserver = ResizeObserverStub as typeof ResizeObserver;
   }
+  if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = function scrollIntoView() {};
+  }
 });
 
 vi.mock("@/lib/utils", () => ({
@@ -106,9 +109,58 @@ describe("QuickSwitcher dynamic footer hint", () => {
   it("falls back to default hints when results are empty", () => {
     renderQuickSwitcher({ results: [], selectedIndex: -1 });
 
-    expect(document.body.textContent).toContain("to select");
+    expect(screen.getByText("to select")).toBeTruthy();
     expect(screen.queryByText("Switch terminal")).toBeNull();
     expect(screen.queryByText("Switch worktree")).toBeNull();
+  });
+
+  it("updates the footer when selection moves between item types", () => {
+    const props = {
+      isOpen: true,
+      query: "",
+      results: [terminalItem, worktreeItem],
+      totalResults: 2,
+      isLoading: false,
+      close: () => {},
+      setQuery: () => {},
+      setSelectedIndex: () => {},
+      selectPrevious: () => {},
+      selectNext: () => {},
+      selectItem: () => {},
+      confirmSelection: () => {},
+    };
+
+    const { rerender } = render(<QuickSwitcher {...props} selectedIndex={0} />);
+    expect(screen.getByText("Switch terminal")).toBeTruthy();
+
+    rerender(<QuickSwitcher {...props} selectedIndex={1} />);
+    expect(screen.getByText("Switch worktree")).toBeTruthy();
+    expect(screen.queryByText("Switch terminal")).toBeNull();
+  });
+
+  it("restores default hints when results transition from populated to empty", () => {
+    const baseProps = {
+      isOpen: true,
+      query: "",
+      totalResults: 0,
+      isLoading: false,
+      close: () => {},
+      setQuery: () => {},
+      setSelectedIndex: () => {},
+      selectPrevious: () => {},
+      selectNext: () => {},
+      selectItem: () => {},
+      confirmSelection: () => {},
+    };
+
+    const { rerender } = render(
+      <QuickSwitcher {...baseProps} results={[terminalItem]} selectedIndex={0} />
+    );
+    expect(screen.getByText("Switch terminal")).toBeTruthy();
+
+    rerender(<QuickSwitcher {...baseProps} results={[]} selectedIndex={-1} />);
+    expect(screen.queryByText("Switch terminal")).toBeNull();
+    expect(screen.getByText("to select")).toBeTruthy();
   });
 
   it("wires aria-describedby on each row to the footer hint id", () => {
