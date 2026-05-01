@@ -81,6 +81,7 @@ import {
   enforceIpcSenderValidation,
   sanitizeErrorForRenderer,
   validateIpcInvokeEnvelope,
+  containsBinary,
   MAX_IPC_ARG_COUNT,
   PAYLOAD_BUDGETS,
   DEFAULT_PAYLOAD_BUDGET,
@@ -620,8 +621,82 @@ describe("validateIpcInvokeEnvelope", () => {
     expect(() => validateIpcInvokeEnvelope("any:channel", [buf])).not.toThrow();
   });
 
+  it("falls through silently when a typed array is nested inside a plain object", () => {
+    const buf = new Uint8Array(DEFAULT_PAYLOAD_BUDGET + 1024);
+    expect(() => validateIpcInvokeEnvelope("any:channel", [{ blob: buf }])).not.toThrow();
+  });
+
+  it("falls through silently when payload contains a Map or Set", () => {
+    expect(() => validateIpcInvokeEnvelope("any:channel", [new Map()])).not.toThrow();
+    expect(() => validateIpcInvokeEnvelope("any:channel", [new Set([1, 2, 3])])).not.toThrow();
+  });
+
+  it("does not let BigInt silently bypass the byte budget", () => {
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    let caught: unknown;
+    try {
+      validateIpcInvokeEnvelope("any:channel", [{ data: oversize, n: 1n }]);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("PAYLOAD_TOO_LARGE");
+  });
+
+  it("rejects oversize payloads on artifact:apply-patch above the artifactOps budget", () => {
+    const oversize = "x".repeat(PAYLOAD_BUDGETS.artifactOps + 1024);
+    let caught: unknown;
+    try {
+      validateIpcInvokeEnvelope("artifact:apply-patch", [oversize]);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("PAYLOAD_TOO_LARGE");
+    expect((caught as AppError).context).toMatchObject({ category: "artifactOps" });
+  });
+
+  it("accepts artifact:apply-patch payloads under the artifactOps budget", () => {
+    const justUnder = "x".repeat(PAYLOAD_BUDGETS.artifactOps - 4096);
+    expect(() => validateIpcInvokeEnvelope("artifact:apply-patch", [justUnder])).not.toThrow();
+  });
+
   it("accepts an empty arg list", () => {
     expect(() => validateIpcInvokeEnvelope("any:channel", [])).not.toThrow();
+  });
+});
+
+describe("containsBinary", () => {
+  it("returns false for primitives", () => {
+    expect(containsBinary(null)).toBe(false);
+    expect(containsBinary(undefined)).toBe(false);
+    expect(containsBinary("string")).toBe(false);
+    expect(containsBinary(42)).toBe(false);
+    expect(containsBinary(true)).toBe(false);
+  });
+
+  it("detects ArrayBuffer and typed arrays at the top level", () => {
+    expect(containsBinary(new Uint8Array(8))).toBe(true);
+    expect(containsBinary(new ArrayBuffer(8))).toBe(true);
+    expect(containsBinary(new Int32Array(2))).toBe(true);
+  });
+
+  it("detects binary nested inside arrays", () => {
+    expect(containsBinary([1, 2, new Uint8Array(8)])).toBe(true);
+  });
+
+  it("detects binary nested inside plain objects", () => {
+    expect(containsBinary({ blob: new Uint8Array(8) })).toBe(true);
+    expect(containsBinary({ a: { b: { c: new Uint8Array(8) } } })).toBe(true);
+  });
+
+  it("treats Map and Set as binary-like (size unknowable via JSON)", () => {
+    expect(containsBinary(new Map())).toBe(true);
+    expect(containsBinary(new Set())).toBe(true);
+  });
+
+  it("returns false for plain object trees with no binary or Map/Set", () => {
+    expect(containsBinary({ a: 1, b: { c: "x", d: [1, 2, 3] } })).toBe(false);
   });
 });
 
@@ -711,6 +786,31 @@ describe("enforceIpcSenderValidation envelope guards", () => {
     expect(envelope.ok).toBe(false);
     expect(envelope.error?.code).toBe("ARG_COUNT_EXCEEDED");
     errSpy.mockRestore();
+  });
+
+  it("preserves PAYLOAD_TOO_LARGE through the packaged-build prod-strip path", async () => {
+    appMock.isPackaged = true;
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = vi.fn();
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    const envelope = (await invokeWrappedHandle("handle", "test:channel", handler, [oversize])) as {
+      ok: boolean;
+      error?: { code?: string; context?: unknown };
+    };
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("PAYLOAD_TOO_LARGE");
+    // context is stripped in packaged builds — must not leak budget/bytes
+    expect(envelope.error?.context).toBeUndefined();
+    errSpy.mockRestore();
+  });
+
+  it("rejects oversized payloads on ipcMain.handleOnce", async () => {
+    const handler = vi.fn();
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    const envelope = await invokeWrappedHandle("handleOnce", "once:channel", handler, [oversize]);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("PAYLOAD_TOO_LARGE");
+    expect(handler).not.toHaveBeenCalled();
   });
 });
 
