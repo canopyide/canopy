@@ -52,10 +52,12 @@ export function ErrorBanner({
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyGenerationRef = useRef(0);
 
   const isRetrying = !!error.retryProgress;
 
   useEffect(() => {
+    copyGenerationRef.current += 1;
     setCopiedId(false);
     if (copyTimeoutRef.current) {
       clearTimeout(copyTimeoutRef.current);
@@ -65,6 +67,7 @@ export function ErrorBanner({
 
   useEffect(() => {
     return () => {
+      copyGenerationRef.current += 1;
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
     };
   }, []);
@@ -92,8 +95,11 @@ export function ErrorBanner({
 
   const handleCopyCorrelationId = useCallback(() => {
     if (!error.correlationId) return;
+    if (!navigator.clipboard?.writeText) return;
+    const gen = copyGenerationRef.current;
     void navigator.clipboard.writeText(error.correlationId).then(
       () => {
+        if (gen !== copyGenerationRef.current) return;
         if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
         setCopiedId(true);
         copyTimeoutRef.current = setTimeout(() => {

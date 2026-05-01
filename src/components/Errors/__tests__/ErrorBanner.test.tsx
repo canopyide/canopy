@@ -110,6 +110,38 @@ describe("ErrorBanner", () => {
       expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
       expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     });
+
+    it("renders 'View errors' when isTransient is true but onRetry is missing", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("hides 'View errors' while a retry is in progress", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryProgress: { attempt: 1, maxAttempts: 3 },
+          })}
+          onDismiss={onDismiss}
+          onCancelRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    });
+
+    it("does not render 'View errors' in full (non-compact) mode", () => {
+      render(<ErrorBanner error={makeError()} onDismiss={onDismiss} />);
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
   });
 
   describe("retry button styling", () => {
@@ -206,6 +238,50 @@ describe("ErrorBanner", () => {
         vi.advanceTimersByTime(5000);
       });
       // No assertion error on unmounted state-updates — implicit pass.
+    });
+
+    it("resets the 'Copied' label when correlationId changes", async () => {
+      const otherId = "deadbeef-0000-0000-0000-000000000000";
+      const { rerender } = render(
+        <ErrorBanner error={makeError({ correlationId: fullId })} onDismiss={onDismiss} />
+      );
+      const button = screen.getByRole("button", { name: `Copy correlation ID ${fullId}` });
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      expect(screen.getByText("Ref: Copied")).toBeTruthy();
+      rerender(
+        <ErrorBanner
+          error={makeError({ id: "err-2", correlationId: otherId })}
+          onDismiss={onDismiss}
+        />
+      );
+      expect(screen.queryByText("Ref: Copied")).toBeNull();
+      expect(screen.getByText(`Ref: ${otherId}`)).toBeTruthy();
+    });
+
+    it("extends the 'Copied' window when clicked twice within 2s", async () => {
+      render(<ErrorBanner error={makeError({ correlationId: fullId })} onDismiss={onDismiss} />);
+      const button = screen.getByRole("button", { name: `Copy correlation ID ${fullId}` });
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(screen.getByText("Ref: Copied")).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(1500);
+      });
+      // 1500ms after the second click → still within the fresh 2s window.
+      expect(screen.getByText("Ref: Copied")).toBeTruthy();
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(screen.queryByText("Ref: Copied")).toBeNull();
     });
   });
 });
