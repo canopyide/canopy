@@ -16,8 +16,21 @@ export interface SearchablePaletteProps<T> {
 
   /** Unique key for each item */
   getItemId: (item: T) => string;
-  /** Render a list item */
-  renderItem: (item: T, index: number, isSelected: boolean) => React.ReactNode;
+  /**
+   * Render a list item. The optional 4th argument is a stable hover callback —
+   * forward it to the item's `onPointerMove` so mouse hover keeps `selectedIndex`
+   * in sync with the visually highlighted row. Use `onPointerMove` (not
+   * `onMouseEnter`) so keyboard scrolling doesn't trigger spurious selection
+   * changes when items move under a stationary cursor.
+   */
+  renderItem: (
+    item: T,
+    index: number,
+    isSelected: boolean,
+    onHoverIndex: (index: number) => void
+  ) => React.ReactNode;
+  /** Called when the pointer hovers a row, for keeping selectedIndex in sync. */
+  onHoverIndex?: (index: number) => void;
 
   /** Label shown above the search input */
   label: string;
@@ -77,6 +90,7 @@ export function SearchablePalette<T>({
   onClose,
   getItemId,
   renderItem,
+  onHoverIndex,
   label,
   keyHint,
   ariaLabel,
@@ -165,6 +179,9 @@ export function SearchablePalette<T>({
       ? `${itemIdPrefix}-${getItemId(results[selectedIndex]!)}`
       : undefined;
 
+  const noopHoverIndex = useCallback(() => {}, []);
+  const hoverIndexHandler = onHoverIndex ?? noopHoverIndex;
+
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel={ariaLabel}>
       <AppPaletteDialog.Header
@@ -204,7 +221,9 @@ export function SearchablePalette<T>({
               </AppPaletteDialog.Empty>
             ) : (
               <div ref={listRef} id={listId} role="listbox" aria-label={label}>
-                {results.map((item, index) => renderItem(item, index, index === selectedIndex))}
+                {results.map((item, index) =>
+                  renderItem(item, index, index === selectedIndex, hoverIndexHandler)
+                )}
               </div>
             )}
             {totalResults != null && (

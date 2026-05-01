@@ -31,6 +31,7 @@ export interface UseQuickSwitcherReturn {
   close: () => void;
   toggle: () => void;
   setQuery: (query: string) => void;
+  setSelectedIndex: (index: number) => void;
   selectPrevious: () => void;
   selectNext: () => void;
   selectItem: (item: QuickSwitcherItem) => void;
@@ -159,6 +160,7 @@ export function useQuickSwitcher(): UseQuickSwitcherReturn {
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
   } = useSearchablePalette<QuickSwitcherItem>({
@@ -215,6 +217,7 @@ export function useQuickSwitcher(): UseQuickSwitcherReturn {
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
     selectItem,

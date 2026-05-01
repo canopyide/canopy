@@ -9,12 +9,14 @@ export interface QuickSwitcherItemProps {
   item: QuickSwitcherItemData;
   isSelected: boolean;
   onSelect: (item: QuickSwitcherItemData) => void;
+  onHover?: () => void;
 }
 
 export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
   item,
   isSelected,
   onSelect,
+  onHover,
 }: QuickSwitcherItemProps) {
   return (
     <button
@@ -22,13 +24,14 @@ export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
       type="button"
       tabIndex={-1}
       onPointerDown={(e) => e.preventDefault()}
+      onPointerMove={onHover}
       className={cn(
-        "relative w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left",
-        "transition-colors",
-        "border",
-        isSelected
-          ? "bg-overlay-soft border-overlay text-daintree-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
-          : "border-transparent text-daintree-text/70 hover:bg-overlay-subtle hover:text-daintree-text"
+        "group relative w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left",
+        "transition-colors border border-transparent text-daintree-text/70",
+        "hover:bg-overlay-subtle hover:text-daintree-text",
+        "aria-selected:bg-overlay-soft aria-selected:border-overlay aria-selected:text-daintree-text",
+        "aria-selected:before:absolute aria-selected:before:left-0 aria-selected:before:top-2 aria-selected:before:bottom-2",
+        "aria-selected:before:w-[2px] aria-selected:before:rounded-r aria-selected:before:bg-daintree-accent aria-selected:before:content-['']"
       )}
       onClick={() => onSelect(item)}
       aria-selected={isSelected}

@@ -556,6 +556,7 @@ function App() {
                 isLoading={quickSwitcher.isLoading}
                 close={quickSwitcher.close}
                 setQuery={quickSwitcher.setQuery}
+                setSelectedIndex={quickSwitcher.setSelectedIndex}
                 selectPrevious={quickSwitcher.selectPrevious}
                 selectNext={quickSwitcher.selectNext}
                 selectItem={quickSwitcher.selectItem}
@@ -756,6 +757,7 @@ function App() {
                 selectedIndex={actionPalette.selectedIndex}
                 close={actionPalette.close}
                 setQuery={actionPalette.setQuery}
+                setSelectedIndex={actionPalette.setSelectedIndex}
                 selectPrevious={actionPalette.selectPrevious}
                 selectNext={actionPalette.selectNext}
                 executeAction={actionPalette.executeAction}

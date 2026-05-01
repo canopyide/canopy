@@ -36,6 +36,7 @@ export interface UseActionPaletteReturn {
   close: () => void;
   toggle: () => void;
   setQuery: (query: string) => void;
+  setSelectedIndex: (index: number) => void;
   selectPrevious: () => void;
   selectNext: () => void;
   executeAction: (item: ActionPaletteItem) => void;
@@ -122,6 +123,7 @@ export function useActionPalette(): UseActionPaletteReturn {
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
   } = useSearchablePalette<ActionPaletteItem>({
@@ -184,6 +186,7 @@ export function useActionPalette(): UseActionPaletteReturn {
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
     executeAction,

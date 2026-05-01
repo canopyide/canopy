@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ActionPaletteItem } from "./ActionPaletteItem";
 import type { ActionPaletteItem as ActionPaletteItemType } from "@/hooks/useActionPalette";
@@ -114,6 +114,64 @@ describe("ActionPaletteItem", () => {
     const button = container.querySelector("button");
     expect(button).toBeTruthy();
     expect(button?.getAttribute("aria-selected")).toBe("true");
-    expect(button?.className).toContain("bg-overlay-soft");
+    // Selected state is now CSS-driven via aria-selected: variants.
+    expect(button?.className).toContain("aria-selected:bg-overlay-soft");
+    expect(button?.className).toContain("aria-selected:before:bg-daintree-accent");
+    expect(button?.className).toContain("aria-selected:before:content-['']");
+  });
+
+  it("does not branch styling on isSelected — selection is purely aria-driven", () => {
+    const { container: selectedContainer } = render(
+      <ActionPaletteItem item={makeItem()} isSelected={true} onSelect={onSelect} />
+    );
+    const { container: unselectedContainer } = render(
+      <ActionPaletteItem item={makeItem()} isSelected={false} onSelect={onSelect} />
+    );
+
+    const selectedClass = selectedContainer.querySelector("button")?.className;
+    const unselectedClass = unselectedContainer.querySelector("button")?.className;
+    // Class lists must be identical — only aria-selected attribute differs.
+    expect(selectedClass).toBe(unselectedClass);
+  });
+
+  it("lifts keybinding glyph contrast on selection via group-aria-selected", () => {
+    const { container } = render(
+      <ActionPaletteItem
+        item={makeItem({ keybinding: "⌘K" })}
+        isSelected={true}
+        onSelect={onSelect}
+      />
+    );
+
+    const kbd = screen.getByText("⌘K");
+    expect(kbd.className).toContain("text-daintree-text/40");
+    expect(kbd.className).toContain("group-aria-selected:text-daintree-text/60");
+    expect(container.querySelector("button")?.className).toContain("group");
+  });
+
+  it("calls onHover when the pointer moves over the item", () => {
+    const onHover = vi.fn();
+    const { container } = render(
+      <ActionPaletteItem
+        item={makeItem()}
+        isSelected={false}
+        onSelect={onSelect}
+        onHover={onHover}
+      />
+    );
+
+    const button = container.querySelector("button");
+    expect(button).toBeTruthy();
+    fireEvent.pointerMove(button!);
+    expect(onHover).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw when onHover is omitted", () => {
+    const { container } = render(
+      <ActionPaletteItem item={makeItem()} isSelected={false} onSelect={onSelect} />
+    );
+
+    const button = container.querySelector("button");
+    expect(() => fireEvent.pointerMove(button!)).not.toThrow();
   });
 });
