@@ -141,6 +141,78 @@ describe("fleetArmingStore", () => {
     });
   });
 
+  describe("addToFleet (batch append)", () => {
+    beforeEach(() => {
+      seedPanels([
+        makeAgentTerminal("t1"),
+        makeAgentTerminal("t2"),
+        makeAgentTerminal("t3"),
+        makeAgentTerminal("t4"),
+      ]);
+    });
+
+    it("appends new ids to the existing armOrder, preserving order", () => {
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      useFleetArmingStore.getState().addToFleet(["t3", "t4"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2", "t3", "t4"]);
+      expect(s.armOrderById).toEqual({ t1: 1, t2: 2, t3: 3, t4: 4 });
+      expect(s.lastArmedId).toBe("t4");
+    });
+
+    it("dedupes ids already in the fleet without disturbing existing order", () => {
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      useFleetArmingStore.getState().addToFleet(["t2", "t3"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2", "t3"]);
+      expect(s.lastArmedId).toBe("t3");
+    });
+
+    it("dedupes within a single batch", () => {
+      useFleetArmingStore.getState().addToFleet(["t1", "t1", "t2", "t1"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2"]);
+      expect(s.lastArmedId).toBe("t2");
+    });
+
+    it("is a no-op (preserves lastArmedId) when every id is already armed", () => {
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      const before = useFleetArmingStore.getState().lastArmedId;
+      useFleetArmingStore.getState().addToFleet(["t1", "t2"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2"]);
+      expect(s.lastArmedId).toBe(before);
+    });
+
+    it("is a no-op (preserves lastArmedId) when called with an empty batch", () => {
+      useFleetArmingStore.getState().armIds(["t1"]);
+      const before = useFleetArmingStore.getState().lastArmedId;
+      useFleetArmingStore.getState().addToFleet([]);
+      expect(useFleetArmingStore.getState().lastArmedId).toBe(before);
+    });
+
+    it("filters out ineligible ids silently", () => {
+      seedPanels([
+        makeAgentTerminal("t1"),
+        makeAgentTerminal("t2", { location: "trash" }),
+        makeAgentTerminal("t3", { hasPty: false }),
+      ]);
+      useFleetArmingStore.getState().addToFleet(["t1", "t2", "t3", "unknown"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1"]);
+      expect(s.lastArmedId).toBe("t1");
+    });
+
+    it("seeds an empty fleet when armedIds is initially empty", () => {
+      useFleetArmingStore.getState().addToFleet(["t2", "t3"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t2", "t3"]);
+      expect(s.armedIds.has("t2")).toBe(true);
+      expect(s.armedIds.has("t3")).toBe(true);
+      expect(s.lastArmedId).toBe("t3");
+    });
+  });
+
   describe("armByState", () => {
     beforeEach(() => {
       seedPanels([
