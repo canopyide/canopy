@@ -150,7 +150,6 @@ export function registerProtocolsForSession(ses: Electron.Session, distPath: str
 
   ses.protocol.handle("app", createAppProtocolHandler(distPath));
   ses.protocol.handle("daintree-file", createDaintreeFileProtocolHandler());
-  ses.protocol.handle("canopy-file", createDaintreeFileProtocolHandler());
 }
 
 export function registerAppProtocol(distPath: string): void {
@@ -160,15 +159,6 @@ export function registerAppProtocol(distPath: string): void {
 
 export function registerDaintreeFileProtocol(): void {
   protocol.handle("daintree-file", createDaintreeFileProtocolHandler());
-}
-
-/**
- * Register the canopy-file:// alias during the temporary 0.7/0.8 migration
- * window. It intentionally stays available in both build variants so old
- * Canopy-era URLs continue to resolve after users manually install Daintree.
- */
-export function registerCanopyFileProtocol(): void {
-  protocol.handle("canopy-file", createDaintreeFileProtocolHandler());
 }
 
 /**

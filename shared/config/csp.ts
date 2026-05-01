@@ -1,9 +1,7 @@
 import { getDevServerOrigins, getDevServerWebSocketOrigins } from "./devServer.js";
 
-// Custom protocol schemes the renderer fetches/loads from. Both stay whitelisted
-// through the 0.8 migration window so the app can still load persisted
-// canopy-file:// URLs after a manual reinstall from Canopy.
-const FILE_SCHEMES = "daintree-file: canopy-file:";
+// Custom protocol scheme the renderer fetches/loads from.
+const FILE_SCHEMES = "daintree-file:";
 
 // Localhost origins allowed for embedded <webview> guests in BrowserPane and
 // DevPreviewPane. Without these in frame-src the host page cannot mount its

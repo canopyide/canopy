@@ -1,4 +1,3 @@
-const VALID_VARIANTS = ["daintree", "canopy"];
 const PACKAGE_VERSION = require("./package.json").version;
 
 // electron-builder 26.x enforces the channel enum: "alpha" | "beta" | "dev"
@@ -13,70 +12,13 @@ function getPublishChannel(version) {
   return null;
 }
 
-// TODO(0.9.0): Remove the `canopy` entry entirely when the dual-variant build
-// is retired. See github #5130.
-//
-// Each variant pins `debPackageName` so the canopy `.deb` ships as
-// `Package: canopy-app` (preserving in-place dpkg upgrades from old 0.6.x)
-// rather than defaulting to `package.json.name` ("daintree"). Both variants
-// currently share `daintree-updater` as their electron-updater cache dir;
-// electron-builder 26.x derives that from `package.json.name` and rejects
-// root-level overrides.
-const VARIANTS = {
-  daintree: {
-    appId: "org.daintree.app",
-    productName: "Daintree",
-    publishUrl: "https://updates.daintree.org/releases/",
-    nightlyPublishUrl: "https://updates.daintree.org/nightly/",
-    icon: "build/icon",
-    linuxExecutableName: "daintree",
-    linuxStartupWMClass: "daintree",
-    linuxApparmor: "build/linux/daintree.apparmor",
-    linuxPostInstall: "build/linux/postinst.sh",
-    linuxPostRemove: "build/linux/postrm.sh",
-    cliScript: "scripts/daintree-cli.sh",
-    cliScriptName: "daintree-cli.sh",
-    apparmorName: "daintree.apparmor",
-    debPackageName: "daintree",
-    microphoneDescription:
-      "Daintree uses the microphone for voice dictation into terminal inputs.",
-  },
-  canopy: {
-    appId: "com.canopyide.app",
-    productName: "Canopy",
-    publishUrl: "https://updates.canopyide.com/releases/",
-    icon: "build/legacy/icon",
-    linuxExecutableName: "canopy-app",
-    linuxStartupWMClass: "canopy-app",
-    linuxApparmor: "build/linux/legacy/canopy.apparmor",
-    linuxPostInstall: "build/linux/legacy/postinst.sh",
-    linuxPostRemove: "build/linux/legacy/postrm.sh",
-    cliScript: "scripts/legacy/canopy-cli.sh",
-    cliScriptName: "canopy-cli.sh",
-    apparmorName: "canopy.apparmor",
-    debPackageName: "canopy-app",
-    microphoneDescription:
-      "Canopy uses the microphone for voice dictation into terminal inputs.",
-  },
-};
+const PUBLISH_URL = "https://updates.daintree.org/releases/";
+const NIGHTLY_PUBLISH_URL = "https://updates.daintree.org/nightly/";
 
 module.exports = async function () {
-  const variant = process.env.BUILD_VARIANT || "daintree";
-  if (!VALID_VARIANTS.includes(variant)) {
-    throw new Error(
-      `Invalid BUILD_VARIANT: "${variant}". Must be one of: ${VALID_VARIANTS.join(", ")}`
-    );
-  }
-
-  const v = VARIANTS[variant];
   const publishChannel = getPublishChannel(PACKAGE_VERSION);
   const isNightly = PACKAGE_VERSION.includes("-nightly");
-  if (isNightly && !v.nightlyPublishUrl) {
-    throw new Error(
-      `Nightly builds are not supported for variant "${variant}" (no nightlyPublishUrl configured).`
-    );
-  }
-  const publishUrl = isNightly ? v.nightlyPublishUrl : v.publishUrl;
+  const publishUrl = isNightly ? NIGHTLY_PUBLISH_URL : PUBLISH_URL;
 
   // Only include `channel` when it's a valid enum value; passing null is
   // accepted but passing undefined via object-spread can still trip some
@@ -88,8 +30,8 @@ module.exports = async function () {
 
   return {
     asar: true,
-    appId: v.appId,
-    productName: v.productName,
+    appId: "org.daintree.app",
+    productName: "Daintree",
     publish: [publishEntry],
     electronUpdaterCompatibility: ">=2.16",
     npmRebuild: true,
@@ -127,7 +69,7 @@ module.exports = async function () {
     },
     afterPack: "./scripts/afterPack.cjs",
     mac: {
-      extraResources: [{ from: v.cliScript, to: v.cliScriptName }],
+      extraResources: [{ from: "scripts/daintree-cli.sh", to: "daintree-cli.sh" }],
       x64ArchFiles:
         "Contents/Resources/app.asar.unpacked/node_modules/node-pty/build/Release/**",
       forceCodeSigning: true,
@@ -136,11 +78,12 @@ module.exports = async function () {
         "Contents/Resources/app.asar.unpacked/node_modules/node-pty/build/Release/spawn-helper",
       ],
       category: "public.app-category.developer-tools",
-      icon: `${v.icon}.icns`,
+      icon: "build/icon.icns",
       extendInfo: {
         CFBundleIconName: "Icon",
         NSPrefersDisplaySafeAreaCompatibilityMode: false,
-        NSMicrophoneUsageDescription: v.microphoneDescription,
+        NSMicrophoneUsageDescription:
+          "Daintree uses the microphone for voice dictation into terminal inputs.",
       },
       target: [
         { target: "dmg", arch: ["arm64", "x64", "universal"] },
@@ -152,14 +95,14 @@ module.exports = async function () {
       entitlementsInherit: "build/entitlements.mac.plist",
     },
     dmg: {
-      icon: `${v.icon}.icns`,
+      icon: "build/icon.icns",
       contents: [
         { x: 130, y: 220 },
         { x: 410, y: 220, type: "link", path: "/Applications" },
       ],
     },
     win: {
-      icon: `${v.icon}.ico`,
+      icon: "build/icon.ico",
       target: [
         { target: "nsis", arch: ["x64"] },
         { target: "portable", arch: ["x64"] },
@@ -168,23 +111,23 @@ module.exports = async function () {
     nsis: {
       oneClick: false,
       allowToChangeInstallationDirectory: true,
-      installerIcon: `${v.icon}.ico`,
-      uninstallerIcon: `${v.icon}.ico`,
-      installerHeaderIcon: `${v.icon}.ico`,
+      installerIcon: "build/icon.ico",
+      uninstallerIcon: "build/icon.ico",
+      installerHeaderIcon: "build/icon.ico",
     },
     linux: {
-      icon: `${v.icon}.png`,
-      executableName: v.linuxExecutableName,
+      icon: "build/icon.png",
+      executableName: "daintree",
       target: ["AppImage", "deb"],
       category: "Development",
-      desktop: { entry: { StartupWMClass: v.linuxStartupWMClass } },
+      desktop: { entry: { StartupWMClass: "daintree" } },
       extraResources: [
-        { from: v.cliScript, to: v.cliScriptName },
-        { from: v.linuxApparmor, to: v.apparmorName },
+        { from: "scripts/daintree-cli.sh", to: "daintree-cli.sh" },
+        { from: "build/linux/daintree.apparmor", to: "daintree.apparmor" },
       ],
     },
     deb: {
-      packageName: v.debPackageName,
+      packageName: "daintree",
       depends: [
         "libc6 (>= 2.31)",
         "libgtk-3-0",
@@ -205,8 +148,8 @@ module.exports = async function () {
         "libsecret-1-0",
         "xdg-utils",
       ],
-      afterInstall: v.linuxPostInstall,
-      afterRemove: v.linuxPostRemove,
+      afterInstall: "build/linux/postinst.sh",
+      afterRemove: "build/linux/postrm.sh",
     },
   };
 };

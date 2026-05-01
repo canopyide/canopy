@@ -8,8 +8,6 @@ const root = path.join(__dirname, "..");
 
 const isWatch = process.argv.includes("--watch");
 const isProd = process.env.NODE_ENV === "production";
-const buildVariant = process.env.BUILD_VARIANT === "canopy" ? "canopy" : "daintree";
-const isLegacyBuild = buildVariant === "canopy";
 const buildReadyFile = path.join(root, "dist-electron/.build-ready.js");
 let buildReadyTimer = null;
 
@@ -32,8 +30,6 @@ const common = {
   pure: isProd ? ["console.log", "console.info", "console.warn", "console.debug"] : [],
   define: {
     "process.env.SENTRY_DSN": JSON.stringify(process.env.SENTRY_DSN || ""),
-    "process.env.BUILD_VARIANT": JSON.stringify(buildVariant),
-    IS_LEGACY_BUILD: JSON.stringify(isLegacyBuild),
   },
 };
 

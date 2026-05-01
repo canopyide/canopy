@@ -440,12 +440,12 @@ export function GeneralTab({
             type="checkbox"
             checked={turbopackEnabled}
             onChange={(e) => onTurbopackEnabledChange(e.target.checked)}
-            className="h-4 w-4 rounded border-canopy-border accent-canopy-accent cursor-pointer"
+            className="h-4 w-4 rounded border-daintree-border accent-daintree-accent cursor-pointer"
             aria-label="Auto-inject --turbopack for Next.js 15+ projects"
           />
           <label
             htmlFor="turbopack-enabled"
-            className="text-xs text-canopy-text/60 cursor-pointer select-none"
+            className="text-xs text-daintree-text/60 cursor-pointer select-none"
           >
             Auto-inject <code className="font-mono">--turbopack</code> for Next.js 15+ projects
           </label>

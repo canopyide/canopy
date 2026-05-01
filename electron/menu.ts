@@ -364,7 +364,7 @@ export function createApplicationMenu(
                   wc.send(CHANNELS.NOTIFICATION_SHOW_TOAST, {
                     type: "success",
                     title: "CLI installed",
-                    message: `The \`${PRODUCT_NAME.toLowerCase() === "canopy" ? "canopy-app" : "daintree"}\` command is now available at ${status.path}`,
+                    message: `The \`daintree\` command is now available at ${status.path}`,
                   });
                 }
               }

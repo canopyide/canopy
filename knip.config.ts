@@ -60,11 +60,6 @@ const config: KnipConfig = {
     // import graph never reaches this hook. Keep it available as a public
     // API surface for plugin authors.
     "src/hooks/useActiveWorktree.ts",
-
-    // why: Ambient global type declarations for `IS_LEGACY_BUILD` and
-    // `BUILD_VARIANT` — injected by esbuild `define` in scripts/build-main.mjs.
-    // Loaded implicitly by tsc via include globs, not via import.
-    "electron/types/buildVariant.d.ts",
   ],
 
   // why: these packages are consumed via mechanisms Knip can't trace:

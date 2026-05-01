@@ -10,8 +10,6 @@ import { getDaintreeAppDevCSP, getDaintreeAppProdCSP } from "./shared/config/csp
 
 const devServerConfig = getDevServerConfig();
 
-const IS_LEGACY_BUILD = process.env.BUILD_VARIANT === "canopy";
-
 // CSP definitions for development and production. Single source of truth lives
 // in shared/config/csp.ts so the meta tag injected here and the HTTP header set
 // by the main process stay in sync — the browser intersects header + meta, so
@@ -214,9 +212,6 @@ export default defineConfig(({ command, mode }) => {
     reactCompilerReportPlugin(command);
   return {
     envPrefix: ["VITE_", "DAINTREE_"],
-    define: {
-      IS_LEGACY_BUILD: JSON.stringify(IS_LEGACY_BUILD),
-    },
     // xterm 6.0 ships a bundled InputHandler that references an unminified
     // identifier in `requestMode`; Vite's default identifier mangling produces
     // `ReferenceError: i is not defined` at runtime. Disable identifier
