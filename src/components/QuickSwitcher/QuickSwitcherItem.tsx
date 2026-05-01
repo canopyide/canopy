@@ -10,6 +10,7 @@ export interface QuickSwitcherItemProps {
   isSelected: boolean;
   onSelect: (item: QuickSwitcherItemData) => void;
   onHover?: () => void;
+  ariaDescribedBy?: string;
 }
 
 export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
@@ -17,6 +18,7 @@ export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
   isSelected,
   onSelect,
   onHover,
+  ariaDescribedBy,
 }: QuickSwitcherItemProps) {
   return (
     <button
@@ -36,6 +38,7 @@ export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
       onClick={() => onSelect(item)}
       aria-selected={isSelected}
       aria-label={item.title}
+      aria-describedby={ariaDescribedBy}
       role="option"
     >
       <span className="shrink-0 text-daintree-text/70" aria-hidden="true">

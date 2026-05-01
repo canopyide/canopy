@@ -58,6 +58,14 @@ export interface SearchablePaletteProps<T> {
   onKeyDown?: (e: React.KeyboardEvent) => void;
   /** Custom footer content. Omit for default keyboard hints. */
   footer?: React.ReactNode;
+  /**
+   * Dynamic footer derived from the currently selected item. Receives `null`
+   * when there is no selection (empty results). Takes precedence over
+   * `footer` when both are provided. Consumed only by `SearchablePalette`
+   * itself — never forwarded to row items, so per-item `React.memo` stays
+   * intact when arrow keys move selection.
+   */
+  getFooter?: (selectedItem: T | null) => React.ReactNode;
   /** Additional className for AppPaletteDialog.Body */
   bodyClassName?: string;
   /** Custom content before the list */
@@ -103,6 +111,7 @@ export function SearchablePalette<T>({
   emptyContent,
   onKeyDown,
   footer,
+  getFooter,
   bodyClassName,
   beforeList,
   afterList,
@@ -182,6 +191,8 @@ export function SearchablePalette<T>({
   const noopHoverIndex = useCallback(() => {}, []);
   const hoverIndexHandler = onHoverIndex ?? noopHoverIndex;
 
+  const footerContent = getFooter ? getFooter(results[selectedIndex] ?? null) : footer;
+
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel={ariaLabel}>
       <AppPaletteDialog.Header
@@ -234,7 +245,7 @@ export function SearchablePalette<T>({
         )}
       </AppPaletteDialog.Body>
 
-      <AppPaletteDialog.Footer>{footer}</AppPaletteDialog.Footer>
+      <AppPaletteDialog.Footer>{footerContent}</AppPaletteDialog.Footer>
     </AppPaletteDialog>
   );
 }

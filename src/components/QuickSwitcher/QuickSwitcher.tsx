@@ -1,11 +1,23 @@
-import { useCallback } from "react";
+import { useCallback, useId } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { QuickSwitcherItem } from "./QuickSwitcherItem";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import type {
   QuickSwitcherItem as QuickSwitcherItemData,
   UseQuickSwitcherReturn,
 } from "@/hooks/useQuickSwitcher";
+
+function getQuickSwitcherActionLabel(item: QuickSwitcherItemData): string {
+  switch (item.type) {
+    case "terminal":
+      return "Switch terminal";
+    case "worktree":
+      return "Switch worktree";
+  }
+  const _exhaustive: never = item.type;
+  return _exhaustive;
+}
 
 type QuickSwitcherProps = Pick<
   UseQuickSwitcherReturn,
@@ -46,6 +58,28 @@ export function QuickSwitcher({
     [selectItem]
   );
 
+  const footerHintId = useId();
+
+  const getFooter = useCallback(
+    (item: QuickSwitcherItemData | null): React.ReactNode => {
+      if (!item) return undefined;
+      const label = getQuickSwitcherActionLabel(item);
+      return (
+        <div id={footerHintId} className="w-full">
+          <PaletteFooterHints
+            primaryHint={{ keys: ["↵"], label }}
+            hints={[
+              { keys: ["↑", "↓"], label: "to navigate" },
+              { keys: ["↵"], label },
+              { keys: ["Esc"], label: "to close" },
+            ]}
+          />
+        </div>
+      );
+    },
+    [footerHintId]
+  );
+
   const newTerminalShortcut = useKeybindingDisplay("terminal.new");
 
   return (
@@ -68,8 +102,10 @@ export function QuickSwitcher({
           isSelected={isSelected}
           onSelect={handleSelect}
           onHover={() => onHoverIndex(index)}
+          ariaDescribedBy={footerHintId}
         />
       )}
+      getFooter={getFooter}
       label="Quick switch"
       keyHint="⌘P"
       ariaLabel="Quick switcher"
