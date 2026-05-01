@@ -29,6 +29,15 @@ describe("formatNotificationCountGlyph", () => {
     expect(formatNotificationCountGlyph(Number.POSITIVE_INFINITY)).toBe("0");
     expect(formatNotificationCountGlyph(-3)).toBe("0");
   });
+
+  it("floors fractional counts toward the integer below", () => {
+    // .floor (not .round) is intentional: 1.9 stays sub-threshold for the
+    // chip's >1 visibility gate; 99.9 stays uncapped.
+    expect(formatNotificationCountGlyph(1.9)).toBe("1");
+    expect(formatNotificationCountGlyph(2.1)).toBe("2");
+    expect(formatNotificationCountGlyph(99.9)).toBe("99");
+    expect(formatNotificationCountGlyph(100.1)).toBe("99+");
+  });
 });
 
 describe("formatNotificationCountAriaLabel", () => {

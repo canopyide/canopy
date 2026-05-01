@@ -253,4 +253,17 @@ describe("NotificationCenterEntry thread count chip", () => {
     expect(chip.className).toMatch(/min-w-\[2\.5ch\]/);
     expect(chip.className).toMatch(/text-center/);
   });
+
+  it("renders no chip when threadCount is non-finite", () => {
+    // The render guard and the formatter guards must agree: a non-finite
+    // count must not produce a contradictory '0 events' chip.
+    const entry = makeEntry({ title: "Build" });
+    const { container, rerender } = render(
+      <NotificationCenterEntry entry={entry} threadCount={Number.POSITIVE_INFINITY} />
+    );
+    expect(container.querySelector('[aria-label$="events"]')).toBeNull();
+
+    rerender(<NotificationCenterEntry entry={entry} threadCount={Number.NaN} />);
+    expect(container.querySelector('[aria-label$="events"]')).toBeNull();
+  });
 });

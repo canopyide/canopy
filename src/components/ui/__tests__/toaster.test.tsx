@@ -782,6 +782,52 @@ describe("Toast count chip overflow & live-region throttling (issue #6427)", () 
 
     expect(screen.getByRole("status").getAttribute("aria-busy")).toBeNull();
   });
+
+  it("does not crash if the toast unmounts before the trailing busy timer fires", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<Toaster />);
+    let toastId: string;
+    await act(async () => {
+      toastId = addToast({ title: "Build", message: "x", count: 2 });
+      vi.advanceTimersByTime(16);
+    });
+
+    await act(async () => {
+      useNotificationStore.getState().updateNotification(toastId!, { count: 3 });
+    });
+    expect(screen.getByRole("status").getAttribute("aria-busy")).toBe("true");
+
+    // Dismiss within the 300ms trailing window; the busy timer must not
+    // fire setState on the unmounted component.
+    const dismissButton = screen.getByLabelText("Dismiss notification");
+    await act(async () => {
+      fireEvent.click(dismissButton);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    const stateUpdateOnUnmounted = consoleError.mock.calls.find(
+      (call) =>
+        typeof call[0] === "string" && call[0].includes("Can't perform a React state update")
+    );
+    expect(stateUpdateOnUnmounted).toBeUndefined();
+    consoleError.mockRestore();
+  });
+
+  it("renders no chip when notification.count is non-finite", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        title: "Build",
+        message: "x",
+        count: Number.POSITIVE_INFINITY as unknown as number,
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(screen.queryByLabelText(/events$/)).toBeNull();
+  });
 });
 
 describe("Toast overflow menu", () => {

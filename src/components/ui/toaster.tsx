@@ -237,16 +237,20 @@ function Toast({ notification }: { notification: Notification }) {
         {notification.title ? (
           <h4 className="font-medium leading-tight tracking-tight text-xs text-daintree-text flex items-center gap-1.5">
             <span className="min-w-0 truncate">{notification.title}</span>
-            {notification.count != null && notification.count > 1 && (
-              <span
-                aria-label={formatNotificationCountAriaLabel(notification.count)}
-                className="shrink-0 rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center"
-              >
-                {formatNotificationCountGlyph(notification.count, "×")}
-              </span>
-            )}
+            {notification.count != null &&
+              Number.isFinite(notification.count) &&
+              notification.count > 1 && (
+                <span
+                  aria-label={formatNotificationCountAriaLabel(notification.count)}
+                  className="shrink-0 rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center"
+                >
+                  {formatNotificationCountGlyph(notification.count, "×")}
+                </span>
+              )}
           </h4>
-        ) : notification.count != null && notification.count > 1 ? (
+        ) : notification.count != null &&
+          Number.isFinite(notification.count) &&
+          notification.count > 1 ? (
           <div>
             <span
               aria-label={formatNotificationCountAriaLabel(notification.count)}

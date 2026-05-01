@@ -53,7 +53,8 @@ export function NotificationCenterEntry({
   const config = TYPE_CONFIG[displayType ?? entry.type];
   const Icon = config.icon;
 
-  const showChip = typeof threadCount === "number" && threadCount > 1;
+  const showChip =
+    typeof threadCount === "number" && Number.isFinite(threadCount) && threadCount > 1;
   // Leading-edge throttle: bump the chip's React `key` to remount the span and
   // restart the CSS animation, but suppress re-fires within DURATION_250 so
   // chatty agent-state churn (#6427) doesn't strobe the chip. The displayed
