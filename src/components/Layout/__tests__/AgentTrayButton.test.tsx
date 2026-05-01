@@ -7,6 +7,7 @@ import type { ActionFrecencyEntry } from "@shared/types/actions";
 const dispatchMock = vi.fn();
 const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
 const updateWorktreePresetMock = vi.fn().mockResolvedValue(undefined);
+const updateAgentMock = vi.fn().mockResolvedValue(undefined);
 const setFocusedMock = vi.fn();
 const refreshAvailabilityMock = vi.fn().mockResolvedValue(undefined);
 let openChangeSpy: ((open: boolean) => void) | null = null;
@@ -53,12 +54,19 @@ type MockAgentStoreState = {
 };
 
 vi.mock("@/store/agentSettingsStore", () => ({
-  useAgentSettingsStore: (selector: (s: MockAgentStoreState) => unknown) =>
-    selector({
-      settings: mockSettings,
-      setAgentPinned: setAgentPinnedMock,
-      updateWorktreePreset: updateWorktreePresetMock,
-    }),
+  useAgentSettingsStore: Object.assign(
+    (selector: (s: MockAgentStoreState) => unknown) =>
+      selector({
+        settings: mockSettings,
+        setAgentPinned: setAgentPinnedMock,
+        updateWorktreePreset: updateWorktreePresetMock,
+      }),
+    {
+      getState: () => ({
+        updateAgent: updateAgentMock,
+      }),
+    }
+  ),
 }));
 
 vi.mock("@/store/actionMruStore", () => ({
@@ -310,6 +318,7 @@ describe("AgentTrayButton", () => {
     dispatchMock.mockClear();
     setAgentPinnedMock.mockClear();
     updateWorktreePresetMock.mockClear();
+    updateAgentMock.mockClear();
     setFocusedMock.mockClear();
     refreshAvailabilityMock.mockClear();
     openChangeSpy = null;
@@ -1070,6 +1079,7 @@ describe("AgentTrayButton", () => {
 
       fireEvent.keyDown(submenuTrigger, { key: "Enter" });
 
+      expect(updateAgentMock).toHaveBeenCalledWith("claude", { presetId: undefined });
       expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", undefined);
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
