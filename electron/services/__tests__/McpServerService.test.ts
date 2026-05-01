@@ -634,22 +634,120 @@ describe("McpServerService", () => {
   it("sets POSIX 0700/0600 mode on the discovery directory and file", async () => {
     if (process.platform === "win32") return;
 
-    const chmodSpy = vi.spyOn(fs, "chmod");
     const { window } = createMockWindow();
     const discoveryDir = path.join(testHomeDir, ".daintree");
     const discoveryFile = path.join(discoveryDir, "mcp.json");
 
     await service.start(window);
 
-    expect(chmodSpy).toHaveBeenCalledWith(discoveryDir, 0o700);
-    expect(chmodSpy).toHaveBeenCalledWith(discoveryFile, 0o600);
-
     const dirStat = await fs.stat(discoveryDir);
     const fileStat = await fs.stat(discoveryFile);
     expect(dirStat.mode & 0o777).toBe(0o700);
     expect(fileStat.mode & 0o777).toBe(0o600);
+  });
 
-    chmodSpy.mockRestore();
+  it("preserves 0600 mode on partial discovery file removal", async () => {
+    if (process.platform === "win32") return;
+
+    const { window } = createMockWindow();
+    const discoveryDir = path.join(testHomeDir, ".daintree");
+    const discoveryFile = path.join(discoveryDir, "mcp.json");
+
+    // Pre-populate with another MCP entry that should survive removal.
+    await fs.mkdir(discoveryDir, { recursive: true });
+    await fs.writeFile(
+      discoveryFile,
+      JSON.stringify(
+        {
+          mcpServers: {
+            other: { type: "sse", url: "http://other.local/sse" },
+          },
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    await service.start(window);
+    await service.stop();
+
+    const fileStat = await fs.stat(discoveryFile);
+    expect(fileStat.mode & 0o777).toBe(0o600);
+    const remaining = JSON.parse(await fs.readFile(discoveryFile, "utf8")) as {
+      mcpServers: Record<string, unknown>;
+    };
+    expect(remaining.mcpServers.other).toBeDefined();
+    expect(remaining.mcpServers.daintree).toBeUndefined();
+  });
+
+  it("invalidates the old bearer immediately after rotation", async () => {
+    const { window } = createMockWindow();
+    await service.start(window);
+
+    const oldKey = storeState.mcpServer.apiKey;
+    const newKey = await service.generateApiKey();
+    expect(newKey).not.toBe(oldKey);
+
+    const oldRequest = await requestSse(service.currentPort!, {
+      Authorization: `Bearer ${oldKey}`,
+    });
+    expect(oldRequest.status).toBe(401);
+
+    // New key works (peek + abort).
+    const port = service.currentPort!;
+    const newStatus = await new Promise<number>((resolve, reject) => {
+      const req = http.request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/sse",
+          method: "GET",
+          headers: { Authorization: `Bearer ${newKey}` },
+        },
+        (res) => {
+          const status = res.statusCode ?? 0;
+          req.destroy();
+          resolve(status);
+        }
+      );
+      req.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "ECONNRESET") return;
+        reject(err);
+      });
+      req.end();
+    });
+    expect(newStatus).toBe(200);
+  });
+
+  it("rejects POST /messages with a non-loopback Origin header", async () => {
+    const { window } = createMockWindow();
+    await service.start(window);
+
+    const port = service.currentPort!;
+    const auth = `Bearer ${storeState.mcpServer.apiKey}`;
+
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = http.request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/messages?sessionId=anything",
+          method: "POST",
+          headers: {
+            Authorization: auth,
+            Origin: "https://evil.example",
+            "Content-Type": "application/json",
+          },
+        },
+        (res) => {
+          resolve(res.statusCode ?? 0);
+        }
+      );
+      req.on("error", reject);
+      req.end("{}");
+    });
+    expect(status).toBe(403);
   });
 
   it("closes idle SSE sessions after the application-level timeout", async () => {

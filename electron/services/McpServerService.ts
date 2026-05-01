@@ -174,6 +174,7 @@ export class McpServerService {
   private httpServer: http.Server | null = null;
   private port: number | null = null;
   private registry: WindowRegistry | null = null;
+  private starting = false;
   private sessions = new Map<string, McpSseSession>();
   private pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
   private pendingDispatches = new Map<string, PendingRequest<ActionDispatchResult>>();
@@ -256,7 +257,7 @@ export class McpServerService {
   async start(registry: WindowRegistry): Promise<void> {
     this.registry = registry;
 
-    if (this.httpServer) {
+    if (this.httpServer || this.starting) {
       return;
     }
 
@@ -265,40 +266,45 @@ export class McpServerService {
       return;
     }
 
-    if (!this.getConfig().apiKey) {
-      await this.generateApiKey();
-    }
-
-    this.setupIpcListeners();
-
-    const server = http.createServer((req, res) => {
-      this.handleRequest(req, res).catch((err) => {
-        console.error("[MCP] Request handler error:", err);
-        if (!res.headersSent) {
-          res.writeHead(500, { "Content-Type": "text/plain" });
-          res.end("Internal server error");
-        }
-      });
-    });
-
-    const configuredPort = this.getConfig().port ?? DEFAULT_PORT;
-    const boundPort = await this.listenWithRetry(server, configuredPort);
-
-    if (boundPort === null) {
-      for (const cleanup of this.cleanupListeners) {
-        cleanup();
+    this.starting = true;
+    try {
+      if (!this.getConfig().apiKey) {
+        await this.generateApiKey();
       }
-      this.cleanupListeners = [];
-      throw new Error(
-        `Failed to bind MCP server: ports ${configuredPort}–${configuredPort + MAX_PORT_RETRIES} all in use`
-      );
-    }
 
-    this.port = boundPort;
-    this.httpServer = server;
-    await this.writeDiscoveryFile();
-    console.log(`[MCP] Server started on http://127.0.0.1:${this.port}/sse`);
-    this.emitStatusChange();
+      this.setupIpcListeners();
+
+      const server = http.createServer((req, res) => {
+        this.handleRequest(req, res).catch((err) => {
+          console.error("[MCP] Request handler error:", err);
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "text/plain" });
+            res.end("Internal server error");
+          }
+        });
+      });
+
+      const configuredPort = this.getConfig().port ?? DEFAULT_PORT;
+      const boundPort = await this.listenWithRetry(server, configuredPort);
+
+      if (boundPort === null) {
+        for (const cleanup of this.cleanupListeners) {
+          cleanup();
+        }
+        this.cleanupListeners = [];
+        throw new Error(
+          `Failed to bind MCP server: ports ${configuredPort}–${configuredPort + MAX_PORT_RETRIES} all in use`
+        );
+      }
+
+      this.port = boundPort;
+      this.httpServer = server;
+      await this.writeDiscoveryFile();
+      console.log(`[MCP] Server started on http://127.0.0.1:${this.port}/sse`);
+      this.emitStatusChange();
+    } finally {
+      this.starting = false;
+    }
   }
 
   async stop(): Promise<void> {
@@ -582,12 +588,7 @@ export class McpServerService {
 
   private isValidHost(req: http.IncomingMessage): boolean {
     const host = req.headers.host ?? "";
-    return (
-      host === `127.0.0.1:${this.port}` ||
-      host === `localhost:${this.port}` ||
-      host === "127.0.0.1" ||
-      host === "localhost"
-    );
+    return host === `127.0.0.1:${this.port}` || host === `localhost:${this.port}`;
   }
 
   private isAuthorized(req: http.IncomingMessage): boolean {
@@ -843,13 +844,9 @@ export class McpServerService {
       await resilientAtomicWriteFile(
         DISCOVERY_FILE,
         JSON.stringify({ ...existing, mcpServers }, null, 2) + "\n",
-        "utf-8"
+        "utf-8",
+        { mode: 0o600 }
       );
-      if (process.platform !== "win32") {
-        await fs.chmod(DISCOVERY_FILE, 0o600).catch((err) => {
-          console.error("[MCP] Failed to chmod discovery file:", err);
-        });
-      }
     } catch (err) {
       console.error("[MCP] Failed to write discovery file:", err);
     }
@@ -875,7 +872,8 @@ export class McpServerService {
         await resilientAtomicWriteFile(
           DISCOVERY_FILE,
           JSON.stringify(existing, null, 2) + "\n",
-          "utf-8"
+          "utf-8",
+          { mode: 0o600 }
         );
       }
     } catch {
