@@ -346,11 +346,21 @@ export class ActivityMonitor {
       return;
     }
 
+    // Filter idle-only protocol sequences (DECSET toggles, OSC metadata, CPR
+    // responses, DSR queries, bracketed-paste markers) before byte-volume gates
+    // see them — these carry no work-progress information and would otherwise
+    // spuriously escalate idle→busy at low minBytes thresholds. Computed up
+    // front because the debounce-reset path also gates on it: pure protocol
+    // noise must not keep a busy monitor alive forever.
+    const filteredLength = Buffer.byteLength(stripIdleTerminalSequences(data), "utf8");
+
     // Spinner frames and other cosmetic redraws ARE evidence the agent is alive —
     // long-running model thinking can emit only spinner ticks for tens of seconds.
     // Reset the debounce timer before short-circuiting on cosmetic redraws so
-    // already-busy agents don't flip to idle mid-thought (issue #6365).
-    if (this.state === "busy") {
+    // already-busy agents don't flip to idle mid-thought (issue #6365). Pure
+    // idle-protocol noise (filteredLength === 0 and not a spinner frame) is
+    // NOT liveness evidence and is excluded from this guard.
+    if (this.state === "busy" && (isCosmeticRedraw || filteredLength > 0)) {
       this.resetDebounceTimer();
     }
 
@@ -377,12 +387,6 @@ export class ActivityMonitor {
     if (this.isResizeSuppressed(now)) {
       return;
     }
-
-    // Filter idle-only protocol sequences (DECSET toggles, OSC metadata, CPR
-    // responses, DSR queries, bracketed-paste markers) before byte-volume gates
-    // see them — these carry no work-progress information and would otherwise
-    // spuriously escalate idle→busy at low minBytes thresholds.
-    const filteredLength = Buffer.byteLength(stripIdleTerminalSequences(data), "utf8");
 
     if (filteredLength === 0) {
       return;

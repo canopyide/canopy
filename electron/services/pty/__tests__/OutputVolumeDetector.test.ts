@@ -24,14 +24,43 @@ describe("OutputVolumeDetector", () => {
       expect(detector.update(100, 1050)).toBe(false);
     });
 
-    it("triggers when byte threshold met", () => {
-      expect(detector.update(3000, 1000)).toBe(true);
+    it("does not trigger on a single big burst (minFrames not met)", () => {
+      // minFrames is a noise gate — a single chunk, no matter how large, must
+      // pair with at least one follow-up frame before escalation fires.
+      expect(detector.update(3000, 1000)).toBe(false);
     });
 
     it("triggers when both frame and byte thresholds met", () => {
       detector.update(700, 1000);
       detector.update(700, 1050);
       expect(detector.update(700, 1100)).toBe(true);
+    });
+
+    it("does not trigger when frame threshold met but byte threshold missed", () => {
+      expect(detector.update(10, 1000)).toBe(false);
+      expect(detector.update(10, 1050)).toBe(false);
+      expect(detector.update(10, 1100)).toBe(false);
+    });
+
+    it("does not trigger on a single byte even at minBytes:1 (split-sequence guard)", () => {
+      const d = new OutputVolumeDetector({
+        enabled: true,
+        windowMs: 500,
+        minFrames: 2,
+        minBytes: 1,
+      });
+      expect(d.update(1, 1000)).toBe(false);
+    });
+
+    it("triggers on second byte after first at minBytes:1", () => {
+      const d = new OutputVolumeDetector({
+        enabled: true,
+        windowMs: 500,
+        minFrames: 2,
+        minBytes: 1,
+      });
+      d.update(1, 1000);
+      expect(d.update(1, 1050)).toBe(true);
     });
 
     it("resets window after expiry", () => {

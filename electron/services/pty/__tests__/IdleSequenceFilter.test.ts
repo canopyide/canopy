@@ -30,6 +30,14 @@ describe("stripIdleTerminalSequences", () => {
     expect(stripIdleTerminalSequences("\x1b]0;Window Title\x07")).toBe("");
   });
 
+  it("strips OSC 1 set-icon-name", () => {
+    expect(stripIdleTerminalSequences("\x1b]1;Icon\x07")).toBe("");
+  });
+
+  it("strips OSC 2 set-window-title-only", () => {
+    expect(stripIdleTerminalSequences("\x1b]2;Claude — Working\x07")).toBe("");
+  });
+
   it("strips OSC 7 set-cwd", () => {
     expect(stripIdleTerminalSequences("\x1b]7;file:///tmp\x07")).toBe("");
   });

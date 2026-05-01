@@ -10,11 +10,16 @@
 // All quantifiers are bounded so the patterns are safe against ReDoS even with
 // a malicious PTY peer. The OSC negation class [^\x07\x1b]{0,512} avoids the
 // catastrophic backtracking risk of .{0,N} when the terminator is missing.
+//
+// The filter is intentionally stateless — escape sequences split across PTY
+// chunk boundaries (rare in practice, since node-pty reads at OS boundaries
+// and most idle-noise sequences are short) are not stripped. OutputVolumeDetector's
+// minFrames gate is the secondary defense for those cases.
 
 // eslint-disable-next-line no-control-regex
 const DECSET_NOISE = /\x1b\[\?(?:25|1004|2004|2026|1049)[hl]/gu;
 // eslint-disable-next-line no-control-regex
-const OSC_NOISE = /\x1b\](?:[07-9]|133|633)[;:][^\x07\x1b]{0,512}(?:\x07|\x1b\\)/gu;
+const OSC_NOISE = /\x1b\](?:[0-9]|133|633)[;:][^\x07\x1b]{0,512}(?:\x07|\x1b\\)/gu;
 // eslint-disable-next-line no-control-regex
 const CPR_NOISE = /\x1b\[\d{1,4};\d{1,4}R/gu;
 // eslint-disable-next-line no-control-regex

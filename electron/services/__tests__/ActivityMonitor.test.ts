@@ -585,6 +585,86 @@ describe("ActivityMonitor", () => {
 
       monitor.dispose();
     });
+
+    it("should NOT keep busy alive forever from pure protocol noise (#6365)", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        idleDebounceMs: 300,
+      });
+
+      monitor.onInput("run\r");
+      expect(monitor.getState()).toBe("busy");
+      onStateChange.mockClear();
+
+      // After agent completion the shell may emit OSC 133 / DECSET noise on
+      // prompt redisplay. These bytes are NOT classified as cosmetic redraw
+      // (no \r + spinner pattern), so the older fix would have hit the broad
+      // `state === "busy"` debounce reset and held busy until MAX_WORKING_SILENCE_MS.
+      for (let i = 0; i < 30; i++) {
+        monitor.onData("\x1b[?25h\x1b]133;A\x07\x1b[24;80R\x1b[?25l");
+        vi.advanceTimersByTime(50);
+      }
+
+      // Total elapsed: 1500ms — well past 300ms debounce. Pure protocol noise
+      // must not have reset the timer. State must transition to idle.
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should not escalate idle→busy from OSC 2 window-title bursts (#6365)", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        idleDebounceMs: 300,
+        outputActivityDetection: {
+          enabled: true,
+          windowMs: 1000,
+          minFrames: 2,
+          minBytes: 1,
+        },
+      });
+
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // Some agents/shells set the window title via OSC 2 every prompt redraw.
+      // These must be filtered as idle-noise, not counted toward volume gates.
+      for (let i = 0; i < 10; i++) {
+        monitor.onData("\x1b]2;Claude — Working\x07");
+        vi.advanceTimersByTime(100);
+      }
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      monitor.dispose();
+    });
+
+    it("should not escalate idle→busy from a single noise frame at minBytes:1 (#6365)", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        idleDebounceMs: 300,
+        outputActivityDetection: {
+          enabled: true,
+          windowMs: 1000,
+          minFrames: 2,
+          minBytes: 1,
+        },
+      });
+
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // A single chunk that gets past the filter (e.g. an OSC variant we
+      // don't recognize) must not escalate idle→busy on its own — minFrames
+      // is the per-chunk guard once minBytes is lowered to 1.
+      monitor.onData("\x1b]999;some-experimental-payload\x07");
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      monitor.dispose();
+    });
   });
 
   describe("notifySubmission (hybrid input bar)", () => {
