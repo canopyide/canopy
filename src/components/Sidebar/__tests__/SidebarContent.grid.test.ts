@@ -139,5 +139,23 @@ describe("Worktree list keyboard grid — issue #6422", () => {
     it("handles Space to select the row's primary worktree button", () => {
       expect(source).toMatch(/aria-label\^='Select worktree'/);
     });
+
+    it("demotes every native focusable inside each row so the grid is one tab stop", () => {
+      // Without this, the absolute "Select worktree" button, terminal-section
+      // collapse buttons, PR/issue links, etc. all keep their native tab
+      // stops and the keyboard-exhaustion bug is unfixed.
+      expect(source).toMatch(/ROW_DESCENDANT_SELECTOR/);
+      expect(source).toMatch(/demoteRowDescendants/);
+    });
+
+    it("repairs DOM tab stops on window blur (not just modeRef)", () => {
+      // Stale tabIndex=0 on a toolbar item would let the next Tab land back
+      // inside that toolbar instead of on the row. Blur must clear it.
+      const blurEffect = source.match(
+        /useEffect\(\(\)\s*=>\s*\{[\s\S]*?addEventListener\("blur"[\s\S]*?\}\s*,\s*\[[^\]]*\]\)/
+      );
+      expect(blurEffect).toBeTruthy();
+      expect(blurEffect?.[0]).toContain("syncRowTabStops");
+    });
   });
 });

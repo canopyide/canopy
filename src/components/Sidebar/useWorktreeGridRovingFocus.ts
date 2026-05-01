@@ -7,6 +7,11 @@ const ROW_SELECTOR = "[data-worktree-row]";
 const TOOLBAR_SELECTOR = "[data-worktree-row-toolbar]";
 const TOOLBAR_ITEM_SELECTOR =
   "button:not(:disabled), [role='button']:not([aria-disabled='true']), [tabindex]:not([tabindex='-1'])";
+// Every natively-focusable element inside a row that isn't the row itself.
+// These are demoted to tabIndex=-1 so the grid presents exactly one tab stop;
+// access happens via the row → toolbar mode flow or directly via mouse.
+const ROW_DESCENDANT_SELECTOR =
+  "button, a[href], input, select, textarea, [tabindex]:not([data-worktree-row])";
 
 function isElementVisible(el: HTMLElement): boolean {
   return el.offsetParent !== null || el.getClientRects().length > 0;
@@ -39,10 +44,27 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
     );
   }, []);
 
-  const syncRowTabStops = useCallback((rows: HTMLElement[], activeIdx: number) => {
-    for (const row of rows) row.tabIndex = -1;
-    if (rows[activeIdx]) rows[activeIdx].tabIndex = 0;
+  // Force every native focusable inside the row out of the tab order. Called
+  // every render and on every navigation event — without it, every per-row
+  // button (select, collapse, PR link, etc.) keeps tabIndex=0 and the user
+  // still hits hundreds of tab stops to traverse the list.
+  const demoteRowDescendants = useCallback((row: HTMLElement) => {
+    const descendants = row.querySelectorAll<HTMLElement>(ROW_DESCENDANT_SELECTOR);
+    for (const el of descendants) {
+      if (el.tabIndex !== -1) el.tabIndex = -1;
+    }
   }, []);
+
+  const syncRowTabStops = useCallback(
+    (rows: HTMLElement[], activeIdx: number) => {
+      for (const row of rows) {
+        row.tabIndex = -1;
+        demoteRowDescendants(row);
+      }
+      if (rows[activeIdx]) rows[activeIdx].tabIndex = 0;
+    },
+    [demoteRowDescendants]
+  );
 
   const syncToolbarTabStops = useCallback((items: HTMLElement[], activeIdx: number) => {
     for (const el of items) el.tabIndex = -1;
@@ -125,14 +147,27 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
   });
 
   // Reset to list mode when the window loses focus so re-entering the grid
-  // always starts on a row, never inside a toolbar (lesson #4591).
+  // always starts on a row, never inside a toolbar (lesson #4591). Repairs the
+  // DOM tab stops too — leaving stale tabIndex=0 on a toolbar item would let
+  // the next Tab land back inside that toolbar instead of on the row.
   useEffect(() => {
     const handleBlur = () => {
+      const wasInToolbar = modeRef.current === "toolbar";
       modeRef.current = "list";
+      if (!wasInToolbar) return;
+      const rows = getRows();
+      if (rows.length === 0) return;
+      const rowIdx = Math.min(activeRowIndexRef.current, rows.length - 1);
+      const row = rows[rowIdx];
+      if (row) {
+        const items = getRowToolbarItems(row);
+        for (const el of items) el.tabIndex = -1;
+      }
+      syncRowTabStops(rows, rowIdx);
     };
     window.addEventListener("blur", handleBlur);
     return () => window.removeEventListener("blur", handleBlur);
-  }, []);
+  }, [getRows, getRowToolbarItems, syncRowTabStops]);
 
   const handleGridFocusCapture = useCallback(
     (e: React.FocusEvent<HTMLDivElement>) => {
@@ -174,9 +209,10 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
         }
       }
       // Focus landed somewhere inside the row but outside the toolbar (e.g.,
-      // the underlying full-card "Select worktree" button). Stay in list mode
-      // but hand the row's tabIndex off so re-entering the grid lands here.
-      syncRowTabStops(rows, containingRowIdx);
+      // the underlying full-card "Select worktree" button, or a click into a
+      // different row while we were in toolbar mode on row A). Always reset
+      // toolbar items in the previously active row before promoting this row.
+      enterListMode(rows, containingRowIdx);
     },
     [enterListMode, getRowToolbarItems, getRows, syncRowTabStops, syncToolbarTabStops]
   );
