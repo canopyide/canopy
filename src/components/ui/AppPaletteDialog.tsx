@@ -68,7 +68,8 @@ export function AppPaletteDialog({
 
   useEffect(() => {
     if (isOpen) {
-      previousFocusRef.current = document.activeElement as HTMLElement;
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) previousFocusRef.current = el;
       requestAnimationFrame(() => {
         const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
           'input, button, [tabindex]:not([tabindex="-1"])'
@@ -368,6 +369,7 @@ interface AppPaletteEmptyProps {
   query: string;
   emptyMessage?: string;
   noMatchMessage?: string;
+  noMatchContent?: React.ReactNode;
   children?: React.ReactNode;
 }
 
@@ -375,6 +377,7 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
   query,
   emptyMessage = "No items available",
   noMatchMessage,
+  noMatchContent,
   children,
 }: AppPaletteEmptyProps) {
   const trimmedQuery = query.trim();
@@ -382,7 +385,8 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
     return (
       <EmptyState
         variant="filtered-empty"
-        title={noMatchMessage || `No items match "${trimmedQuery}"`}
+        title={noMatchMessage ?? "No results found"}
+        action={noMatchContent}
         className="px-3 py-8"
       />
     );

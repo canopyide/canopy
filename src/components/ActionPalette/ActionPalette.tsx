@@ -70,12 +70,11 @@ export function ActionPalette({
       label="Actions"
       keyHint="⇧⇧"
       ariaLabel="Action palette"
-      searchPlaceholder="Search actions..."
+      searchPlaceholder="Find an action"
       searchAriaLabel="Search actions"
       listId="action-palette-list"
       itemIdPrefix="action-option"
       emptyMessage="No recently used actions"
-      noMatchMessage={`No actions match "${query}"`}
       totalResults={totalResults}
       beforeList={
         isShowingRecentlyUsed ? (

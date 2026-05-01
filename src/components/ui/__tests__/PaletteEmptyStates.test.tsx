@@ -43,7 +43,37 @@ describe("AppPaletteDialog.Empty", () => {
       </AppPaletteDialog.Empty>
     );
     expect(screen.queryByTestId("cta")).toBeNull();
-    expect(screen.getByText(/No items match "foo"/)).toBeTruthy();
+    expect(screen.getByText("No results found")).toBeTruthy();
+  });
+
+  it("renders noMatchContent when query has text (no-match state)", () => {
+    render(
+      <AppPaletteDialog.Empty
+        query="foo"
+        emptyMessage="No items available"
+        noMatchContent={<span data-testid="productive-row">Create action</span>}
+      >
+        <span data-testid="cta">Create a terminal</span>
+      </AppPaletteDialog.Empty>
+    );
+    expect(screen.getByText("No results found")).toBeTruthy();
+    expect(screen.getByTestId("productive-row")).toBeTruthy();
+    expect(screen.queryByTestId("cta")).toBeNull();
+  });
+
+  it("does NOT render noMatchContent when query is empty (zero-data state)", () => {
+    render(
+      <AppPaletteDialog.Empty
+        query=""
+        emptyMessage="No items available"
+        noMatchContent={<span data-testid="productive-row">Create action</span>}
+      >
+        <span data-testid="cta">Create a terminal</span>
+      </AppPaletteDialog.Empty>
+    );
+    expect(screen.getByText("No items available")).toBeTruthy();
+    expect(screen.getByTestId("cta")).toBeTruthy();
+    expect(screen.queryByTestId("productive-row")).toBeNull();
   });
 
   it("renders without children when none provided", () => {
@@ -85,8 +115,8 @@ describe("AppPaletteDialog.Empty", () => {
     expect(status.getAttribute("aria-live")).toBe("polite");
   });
 
-  it("trims whitespace from query when rendering the default no-match copy", () => {
+  it("trims whitespace from query when rendering the no-match state", () => {
     render(<AppPaletteDialog.Empty query="  foo  " emptyMessage="No items available" />);
-    expect(screen.getByText('No items match "foo"')).toBeTruthy();
+    expect(screen.getByText("No results found")).toBeTruthy();
   });
 });

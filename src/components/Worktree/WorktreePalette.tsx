@@ -109,12 +109,11 @@ export function WorktreePalette({
       label="Worktree switcher"
       keyHint="⌘K, W"
       ariaLabel="Worktree palette"
-      searchPlaceholder="Search worktrees..."
+      searchPlaceholder="Search worktrees"
       searchAriaLabel="Search worktrees"
       listId="worktree-palette-list"
       itemIdPrefix="worktree-option"
       emptyMessage="No worktrees yet"
-      noMatchMessage={`No worktrees match "${query}"`}
       totalResults={totalResults}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">

@@ -134,11 +134,10 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
       label="Prompt History"
       keyHint="⌘R"
       ariaLabel="Prompt history search"
-      searchPlaceholder="Search prompt history..."
+      searchPlaceholder="Search prompt history"
       listId="prompt-history-list"
       itemIdPrefix="prompt-history-option"
       emptyMessage="No history yet"
-      noMatchMessage="No prompts match your search"
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">
           History appears here as you send prompts to agents.

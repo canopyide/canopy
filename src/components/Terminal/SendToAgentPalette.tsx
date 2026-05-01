@@ -114,12 +114,11 @@ export function SendToAgentPalette({
       label="Send selection to"
       keyHint="⌘⇧E"
       ariaLabel="Send selection to agent"
-      searchPlaceholder="Search terminals and agents..."
+      searchPlaceholder="Search terminals and agents"
       searchAriaLabel="Search terminals and agents"
       listId="send-to-agent-list"
       itemIdPrefix="send-to-agent-option"
       emptyMessage="No other terminals available"
-      noMatchMessage={`No terminals match "${query}"`}
       totalResults={totalResults}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">

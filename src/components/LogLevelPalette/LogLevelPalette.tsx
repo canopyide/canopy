@@ -149,7 +149,7 @@ export function LogLevelPalette({ isOpen, onClose }: LogLevelPaletteProps) {
         getItemId={(item) => item.id}
         label="Set Log Level"
         ariaLabel="Set log level — choose a module"
-        searchPlaceholder="Search modules..."
+        searchPlaceholder="Search modules"
         searchAriaLabel="Search log modules"
         emptyMessage="No modules registered"
         renderItem={(item, _index, isSelected) => (
@@ -188,7 +188,7 @@ export function LogLevelPalette({ isOpen, onClose }: LogLevelPaletteProps) {
       getItemId={(item) => item.id}
       label={`Level for ${pendingLogger ?? ""}`}
       ariaLabel="Set log level — choose a level"
-      searchPlaceholder="Search levels..."
+      searchPlaceholder="Search levels"
       emptyMessage="No levels available"
       renderItem={(item) => (
         <div className="flex-1 min-w-0">
