@@ -222,6 +222,7 @@ describe("useOverflowBadgeSeverity", () => {
   });
 
   it("returns info when agent-tray is overflowed and a launchable agent is unseen", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     mockAvailability = { claude: "ready" } as unknown as CliAvailability;
     mockSeenAgentIds = ["codex"];
     const { result } = renderHook(() => useOverflowBadgeSeverity(["agent-tray"], 0));
@@ -229,6 +230,7 @@ describe("useOverflowBadgeSeverity", () => {
   });
 
   it("returns null for agent-tray when every launchable agent has been seen", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     mockAvailability = { claude: "ready" } as unknown as CliAvailability;
     mockSeenAgentIds = ["claude"];
     const { result } = renderHook(() => useOverflowBadgeSeverity(["agent-tray"], 0));
@@ -237,6 +239,7 @@ describe("useOverflowBadgeSeverity", () => {
 
   it("returns null for agent-tray when onboarding has not yet loaded", () => {
     mockOnboardingLoaded = false;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     mockAvailability = { claude: "ready" } as unknown as CliAvailability;
     mockSeenAgentIds = [];
     const { result } = renderHook(() => useOverflowBadgeSeverity(["agent-tray"], 0));
@@ -244,6 +247,7 @@ describe("useOverflowBadgeSeverity", () => {
   });
 
   it("ignores unlaunchable agents when computing agent-tray discovery", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     mockAvailability = {
       claude: "missing" as AgentAvailabilityState,
     } as unknown as CliAvailability;
@@ -271,6 +275,7 @@ describe("useOverflowBadgeSeverity", () => {
 
   it("ignores unknown ids without crashing", () => {
     const { result } = renderHook(() =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       useOverflowBadgeSeverity(["plugin.acme.unknown" as never], 0)
     );
     expect(result.current).toBeNull();
