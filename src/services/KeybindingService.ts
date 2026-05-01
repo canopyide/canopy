@@ -13,6 +13,7 @@ function scopesConflict(a: KeyScope, b: KeyScope): boolean {
 class KeybindingService {
   private bindings: Map<string, KeybindingConfig[]> = new Map();
   private overrides: Map<string, string[]> = new Map();
+  private scopeStack: KeyScope[] = ["global"];
   private currentScope: KeyScope = "global";
   private pendingChord: string | null = null;
   private chordTimeout: NodeJS.Timeout | null = null;
@@ -134,8 +135,20 @@ class KeybindingService {
   }
 
   setScope(scope: KeyScope): void {
+    this.scopeStack.push(scope);
     this.currentScope = scope;
     this.clearPendingChord();
+  }
+
+  restoreScope(scope: KeyScope): void {
+    const idx = this.scopeStack.lastIndexOf(scope);
+    if (idx > 0) {
+      this.scopeStack.splice(idx, 1);
+    }
+    this.currentScope = this.scopeStack[this.scopeStack.length - 1] ?? "global";
+    if (this.currentScope !== scope) {
+      this.clearPendingChord();
+    }
   }
 
   getScope(): KeyScope {

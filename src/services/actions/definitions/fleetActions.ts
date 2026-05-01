@@ -361,9 +361,11 @@ export function registerFleetActions(actions: ActionRegistry): void {
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({
-      scope: z.enum(["current", "all"]).optional().default("current"),
-    }),
+    argsSchema: z
+      .object({
+        scope: z.enum(["current", "all"]).optional().default("current"),
+      })
+      .optional(),
     run: async (args: unknown) => {
       const { scope } = (args as { scope?: "current" | "all" }) ?? {};
       useFleetArmingStore.getState().armAll(scope ?? "current");
