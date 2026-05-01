@@ -76,6 +76,9 @@ export function buildInputBarTheme(theme: ITheme): Extension {
         padding: "0",
       },
       ".cm-slash-command-chip": {
+        // inline-block (not the default inline) so the chip-enter transform
+        // applies — non-replaced inline elements aren't transformable.
+        display: "inline-block",
         fontWeight: 600,
         color: c.chipColor,
         textDecoration: "underline dotted 1px",
@@ -87,6 +90,7 @@ export function buildInputBarTheme(theme: ITheme): Extension {
         textUnderlineOffset: "2px",
       },
       ".cm-file-chip": {
+        display: "inline-block",
         fontWeight: 600,
         color: c.chipColor,
         textDecoration: "underline dotted 1px",
@@ -195,8 +199,13 @@ export const chipEntranceTheme: Extension = EditorView.baseTheme({
     to: { opacity: "1", transform: "translateY(0)" },
   },
   ...Object.fromEntries(CHIP_CLASSES.map((cls) => [cls, { animation: CHIP_ANIMATION }])),
+  // Honor the OS-level prefers-reduced-motion and the Daintree-level
+  // "Reduce UI animations" toggle (body[data-reduce-animations]). WCAG 2.3.3.
   "@media (prefers-reduced-motion: reduce)": Object.fromEntries(
     CHIP_CLASSES.map((cls) => [cls, { animation: "none" }])
+  ),
+  ...Object.fromEntries(
+    CHIP_CLASSES.map((cls) => [`body[data-reduce-animations="true"] ${cls}`, { animation: "none" }])
   ),
 });
 

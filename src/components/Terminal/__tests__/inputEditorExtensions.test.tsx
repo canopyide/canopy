@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import type { ITheme } from "@xterm/xterm";
 import {
@@ -1377,13 +1378,32 @@ describe("buildInputBarTheme", () => {
     expect(state.doc.toString()).toBe("test");
   });
 
-  it("resolves slash chip color to chipColor (neutral), not accent", () => {
+  it("styles slash chip with chipColor (neutral), not accent", () => {
+    const css = readGeneratedCss([buildInputBarTheme(theme)]);
     const colors = resolveInputBarColors(theme);
     expect(colors.chipColor).not.toBe(colors.accent);
-    expect(colors.chipColor).toBe("#8be9fd");
-    expect(colors.accent).toBe("#ff79c6");
+    const slashRule = extractRuleBody(css, ".cm-slash-command-chip");
+    expect(slashRule).toContain(`color: ${colors.chipColor}`);
+    expect(slashRule).not.toContain(`color: ${colors.accent}`);
+  });
+
+  it("retains errorColor on the .cm-slash-command-chip-invalid rule", () => {
+    const css = readGeneratedCss([buildInputBarTheme(theme)]);
+    const colors = resolveInputBarColors(theme);
+    const invalidRule = extractRuleBody(css, ".cm-slash-command-chip-invalid");
+    expect(invalidRule).toContain(`color: ${colors.errorColor}`);
   });
 });
+
+const ALL_CHIP_SELECTORS = [
+  ".cm-file-chip",
+  ".cm-slash-command-chip",
+  ".cm-image-chip",
+  ".cm-file-drop-chip",
+  ".cm-diff-chip",
+  ".cm-terminal-chip",
+  ".cm-selection-chip",
+];
 
 describe("chipEntranceTheme", () => {
   it("is a valid Extension", () => {
@@ -1404,4 +1424,74 @@ describe("chipEntranceTheme", () => {
     });
     expect(state.doc.toString()).toBe("hello");
   });
+
+  it("defines a chip-enter @keyframes with opacity + translateY drift", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    expect(css).toMatch(/@keyframes\s+chip-enter/);
+    expect(css).toMatch(/opacity:\s*0/);
+    expect(css).toMatch(/translateY\(2px\)/);
+  });
+
+  it("applies the chip-enter animation with fill-mode 'both' to all 7 chip classes", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    for (const selector of ALL_CHIP_SELECTORS) {
+      const rule = extractRuleBody(css, selector);
+      expect(rule, `${selector} animation rule`).toMatch(/animation:\s*chip-enter/);
+      expect(rule, `${selector} fill-mode`).toContain("both");
+    }
+  });
+
+  it("disables the animation under prefers-reduced-motion", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    const reducedBlock = extractAtRuleBody(css, "@media (prefers-reduced-motion: reduce)");
+    for (const selector of ALL_CHIP_SELECTORS) {
+      const rule = extractRuleBody(reducedBlock, selector);
+      expect(rule, `${selector} reduced-motion override`).toContain("animation: none");
+    }
+  });
+
+  it("disables the animation under body[data-reduce-animations='true']", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    for (const selector of ALL_CHIP_SELECTORS) {
+      const composed = `body[data-reduce-animations="true"] ${selector}`;
+      const rule = extractRuleBody(css, composed);
+      expect(rule, `${composed} override`).toContain("animation: none");
+    }
+  });
 });
+
+function readGeneratedCss(extensions: Extension[]) {
+  const state = EditorState.create({ doc: "", extensions });
+  const modules = state.facet(EditorView.styleModule);
+  return modules.map((m) => m.getRules()).join("\n");
+}
+
+function extractRuleBody(css: string, selector: string): string {
+  // Match the selector at a brace boundary so ".cm-slash-command-chip" doesn't
+  // accidentally capture ".cm-slash-command-chip-invalid".
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = css.match(new RegExp(`(?:^|[,}\\s])${escaped}\\s*\\{([^}]*)\\}`));
+  if (!match || match[1] === undefined) {
+    throw new Error(`selector ${selector} not found in CSS`);
+  }
+  return match[1];
+}
+
+function extractAtRuleBody(css: string, atRule: string): string {
+  const idx = css.indexOf(atRule);
+  if (idx === -1) {
+    throw new Error(`at-rule ${atRule} not found in CSS`);
+  }
+  let depth = 0;
+  let start = -1;
+  for (let i = idx; i < css.length; i++) {
+    if (css[i] === "{") {
+      if (depth === 0) start = i + 1;
+      depth++;
+    } else if (css[i] === "}") {
+      depth--;
+      if (depth === 0) return css.slice(start, i);
+    }
+  }
+  throw new Error(`unterminated at-rule ${atRule}`);
+}
