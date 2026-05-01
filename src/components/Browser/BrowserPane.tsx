@@ -43,6 +43,18 @@ export interface BrowserPaneProps extends BasePanelProps {
   onAddTab?: () => void;
 }
 
+function loadWebviewUrl(webview: Electron.WebviewTag, url: string): void {
+  const result = (webview.loadURL as (url: string) => unknown)(url);
+  if (
+    result &&
+    typeof result === "object" &&
+    "catch" in result &&
+    typeof result.catch === "function"
+  ) {
+    result.catch(() => {});
+  }
+}
+
 export function BrowserPane({
   id,
   title,
@@ -190,17 +202,9 @@ export function BrowserPane({
   // Clean up console messages when pane unmounts
   useEffect(() => {
     return () => {
-      console.error("[DEBUG BrowserPane UNMOUNT] id=", id);
       removePane(id);
     };
   }, [id, removePane]);
-
-  useEffect(() => {
-    console.error("[DEBUG BrowserPane MOUNT] id=", id);
-    return () => {
-      console.error("[DEBUG BrowserPane EFFECT TEARDOWN] id=", id);
-    };
-  }, [id]);
 
   // Listen for blocked navigation events from main process (debounced 150ms for redirect chains)
   useEffect(() => {
@@ -561,7 +565,7 @@ export function BrowserPane({
         // mirror that here on the loadURL Promise so the rejection doesn't
         // bubble to the global unhandled-rejection handler. Any genuine load
         // failure will surface through did-fail-load with a non-(-3) code.
-        webview.loadURL(url).catch(() => {});
+        loadWebviewUrl(webview, url);
       }
     },
     [isWebviewReady]
@@ -623,7 +627,7 @@ export function BrowserPane({
       // for genuine failures.
       const webview = webviewRef.current;
       if (webview && isWebviewReady) {
-        webview.loadURL(previousUrl).catch(() => {});
+        loadWebviewUrl(webview, previousUrl);
       }
 
       return next;
@@ -645,7 +649,7 @@ export function BrowserPane({
       // see commitNavigation comment.
       const webview = webviewRef.current;
       if (webview && isWebviewReady) {
-        webview.loadURL(nextUrl).catch(() => {});
+        loadWebviewUrl(webview, nextUrl);
       }
 
       return next;
@@ -687,7 +691,10 @@ export function BrowserPane({
     setIsLoading(true);
     if (currentUrl) {
       // Swallow ERR_ABORTED-class rejections — see commitNavigation comment.
-      webviewRef.current?.loadURL(currentUrl).catch(() => {});
+      const webview = webviewRef.current;
+      if (webview) {
+        loadWebviewUrl(webview, currentUrl);
+      }
     } else {
       webviewRef.current?.reload();
     }

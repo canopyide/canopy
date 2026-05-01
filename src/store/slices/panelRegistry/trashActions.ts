@@ -110,7 +110,6 @@ export const createTrashActions = (
   },
 
   trashPanelGroup: (panelId) => {
-    console.error("[DEBUG trashPanelGroup ENTRY] id=", panelId);
     // Find the group this panel belongs to
     const group = get().getPanelGroup(panelId);
 

@@ -47,6 +47,20 @@ import { looksLikeOAuthUrl } from "@shared/utils/urlUtils";
 
 type SessionStorageEntry = [string, string];
 
+function loadWebviewUrl(webview: Electron.WebviewTag, url: string, onRejected?: () => void): void {
+  const result = (webview.loadURL as (url: string) => unknown)(url);
+  if (
+    result &&
+    typeof result === "object" &&
+    "catch" in result &&
+    typeof result.catch === "function"
+  ) {
+    result.catch(() => {
+      onRejected?.();
+    });
+  }
+}
+
 async function captureWebviewSessionStorage(
   webviewElement: Electron.WebviewTag | null
 ): Promise<SessionStorageEntry[]> {
@@ -441,7 +455,10 @@ export function DevPreviewPane({
     if (currentUrl) {
       // Swallow ERR_ABORTED-class rejections — did-fail-load is the source
       // of truth for genuine failures.
-      webviewRef.current?.loadURL(currentUrl).catch(() => {});
+      const webview = webviewRef.current;
+      if (webview) {
+        loadWebviewUrl(webview, currentUrl);
+      }
     } else {
       webviewRef.current?.reload();
     }
@@ -694,7 +711,7 @@ export function DevPreviewPane({
             failLoadRetryRef.current = null;
             try {
               if (urlToRetry && urlToRetry !== "about:blank") {
-                webview.loadURL(urlToRetry).catch(() => {});
+                loadWebviewUrl(webview, urlToRetry);
               }
             } catch {
               // Webview detached
@@ -872,7 +889,7 @@ export function DevPreviewPane({
         try {
           const loadedUrl = webviewElement.getURL();
           if (loadedUrl !== currentUrl) {
-            webviewElement.loadURL(currentUrl).catch(() => {
+            loadWebviewUrl(webviewElement, currentUrl, () => {
               webviewElement.src = currentUrl;
             });
           }
