@@ -690,6 +690,26 @@ describe("FleetArmingDialog", () => {
       expect(screen.getByText("Arm 3 selected")).toBeTruthy();
     });
 
+    it("shift+click range follows visual grouped order, not panel order", () => {
+      // panelIds = [a, b, c] but visual render groups by worktree:
+      // [a (wt-1), c (wt-1), b (wt-2)]. Shift-click anchor=a, target=c
+      // must select [a, c] (visually adjacent in wt-1 group), NOT
+      // [a, b, c] (which would happen if range used panel order).
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-2" }),
+        makeTerminal("c", { title: "gamma", worktreeId: "wt-1" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main"), makeWorktreeSnap("wt-2", "Other")]);
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      fireEvent.click(screen.getByText("gamma").closest("label")!, { shiftKey: true });
+      // Visual order: a → c → b. Range a→c includes only a and c.
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+      fireEvent.click(screen.getByText("Arm 2 selected"));
+      const order = useFleetArmingStore.getState().armOrder;
+      expect(new Set(order)).toEqual(new Set(["a", "c"]));
+    });
+
     it("shift+click without prior anchor behaves as plain toggle", () => {
       seedTerminals([
         makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
@@ -839,16 +859,43 @@ describe("FleetArmingDialog", () => {
       expect(screen.getByText("Arm 1 selected")).toBeTruthy();
     });
 
-    it("Ctrl+Shift+I works on non-Mac platforms", () => {
+    it("Ctrl+Shift+I from zero selection selects all visible", () => {
       seedTerminals([
         makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
         makeTerminal("b", { title: "beta", worktreeId: "wt-1" }),
       ]);
       renderDialog([makeWorktreeSnap("wt-1", "Main")]);
-      fireEvent.click(screen.getByLabelText("Select alpha"));
       const list = screen.getByTestId("fleet-arming-dialog-list");
+      // Nothing selected — invert with Ctrl modifier should select both.
       fireEvent.keyDown(list, { key: "i", ctrlKey: true, shiftKey: true });
-      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    });
+  });
+
+  describe("group header checkbox", () => {
+    it("plain click on group header checkbox toggles all in group", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-1" }),
+        makeTerminal("c", { title: "gamma", worktreeId: "wt-2" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main"), makeWorktreeSnap("wt-2", "Other")]);
+      fireEvent.click(screen.getByLabelText("Select all 2 terminals in Main"));
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    });
+
+    it("shift+click on group header checkbox still toggles the group (no silent no-op)", () => {
+      // Regression guard: the terminal-row checkbox shift-bubble fix must not
+      // break group-header checkboxes, which have no parent <label> to catch
+      // a bubbled click.
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-1" }),
+        makeTerminal("c", { title: "gamma", worktreeId: "wt-2" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main"), makeWorktreeSnap("wt-2", "Other")]);
+      fireEvent.click(screen.getByLabelText("Select all 2 terminals in Main"), { shiftKey: true });
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
     });
   });
 

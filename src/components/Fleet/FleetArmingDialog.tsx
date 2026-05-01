@@ -249,6 +249,18 @@ export function FleetArmingDialog({
     }));
   }, [visibleTerminals, worktreeNames]);
 
+  // Visual render order — diverges from `visibleIds` (panel order) when
+  // same-worktree terminals are non-contiguous in `panelIds`. Range
+  // selection must use this so shift+click never crosses worktrees in a
+  // way that contradicts what the user sees on screen.
+  const flatVisibleIds = useMemo(() => {
+    const out: string[] = [];
+    for (const g of groupedVisible) {
+      for (const t of g.terminals) out.push(t.id);
+    }
+    return out;
+  }, [groupedVisible]);
+
   // Counts derived from full eligible set, not visibleTerminals — chip
   // labels show project-wide totals so the user can see what's available
   // even after filtering.
@@ -305,12 +317,15 @@ export function FleetArmingDialog({
     (id: string, event?: React.MouseEvent) => {
       if (event) event.preventDefault();
       if (event?.shiftKey && rangeAnchorRef.current !== null) {
-        const anchorIdx = visibleIds.indexOf(rangeAnchorRef.current);
-        const clickedIdx = visibleIds.indexOf(id);
+        // Range indexes into the flat visual order (groupedVisible flattened),
+        // not panel order — otherwise shift+click can pull in terminals that
+        // are not visually between anchor and target.
+        const anchorIdx = flatVisibleIds.indexOf(rangeAnchorRef.current);
+        const clickedIdx = flatVisibleIds.indexOf(id);
         if (anchorIdx !== -1 && clickedIdx !== -1 && anchorIdx !== clickedIdx) {
           const lo = Math.min(anchorIdx, clickedIdx);
           const hi = Math.max(anchorIdx, clickedIdx);
-          const rangeIds = visibleIds.slice(lo, hi + 1);
+          const rangeIds = flatVisibleIds.slice(lo, hi + 1);
           setSelectedIds((prev) => {
             const next = new Set(prev);
             for (const rid of rangeIds) next.add(rid);
@@ -332,7 +347,7 @@ export function FleetArmingDialog({
       });
       rangeAnchorRef.current = id;
     },
-    [visibleIds]
+    [flatVisibleIds]
   );
 
   const handleGroupHeaderToggle = useCallback((group: WorktreeGroup) => {
@@ -731,6 +746,7 @@ function TerminalRow({ terminal, checked, snippet, onToggle }: TerminalRowProps)
           checked={checked}
           onCheckedChange={() => onToggle()}
           ariaLabel={`Select ${terminal.title}`}
+          enableShiftBubble
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -792,12 +808,18 @@ interface DialogCheckboxProps {
   checked: boolean | "indeterminate";
   onCheckedChange: () => void;
   ariaLabel: string;
+  // When the checkbox lives inside a <label> whose onClick handles
+  // range-aware toggling, set this to let shift-clicks bubble to the label.
+  // Group-header checkboxes (no parent label) leave this off so the original
+  // always-stopPropagation behavior is preserved.
+  enableShiftBubble?: boolean;
 }
 
 function DialogCheckbox({
   checked,
   onCheckedChange,
   ariaLabel,
+  enableShiftBubble = false,
 }: DialogCheckboxProps): ReactElement {
   return (
     <Checkbox.Root
@@ -805,7 +827,7 @@ function DialogCheckbox({
       onCheckedChange={onCheckedChange}
       aria-label={ariaLabel}
       onClick={(e) => {
-        if (e.shiftKey) {
+        if (enableShiftBubble && e.shiftKey) {
           // Suppress Radix's internal onCheckedChange (composed via
           // checkForDefaultPrevented) so the clicked id isn't double-toggled.
           // Let the click bubble to the parent <label>, whose onClick performs
