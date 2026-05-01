@@ -56,38 +56,50 @@ describe("Toast accessibility", () => {
     fixtureElements = [];
   });
 
-  it("announces non-error toast via polite channel", async () => {
+  it("announces non-error toast via role=status (polite live region)", async () => {
     render(<Toaster />);
     await act(async () => {
       addToast({ type: "success", message: "Saved" });
       vi.advanceTimersByTime(16);
     });
 
-    expect(useAnnouncerStore.getState().polite?.msg).toBe("Saved");
+    const toast = screen.getByRole("status");
+    expect(toast.textContent).toContain("Saved");
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The shared announcer must NOT also fire — role=status is the sole
+    // live-region path so screen readers only announce once (issue #6331).
+    expect(useAnnouncerStore.getState().polite).toBeNull();
     expect(useAnnouncerStore.getState().assertive).toBeNull();
   });
 
-  it("announces error toast via assertive channel", async () => {
+  it("announces error toast via role=alert (assertive live region)", async () => {
     render(<Toaster />);
     await act(async () => {
       addToast({ type: "error", message: "Failed" });
       vi.advanceTimersByTime(16);
     });
 
-    expect(useAnnouncerStore.getState().assertive?.msg).toBe("Failed");
+    const toast = screen.getByRole("alert");
+    expect(toast.textContent).toContain("Failed");
+    // No redundant announcer call — role=alert is sufficient (issue #6331).
+    expect(useAnnouncerStore.getState().assertive).toBeNull();
+    expect(useAnnouncerStore.getState().polite).toBeNull();
   });
 
-  it("includes title in announcement when present", async () => {
+  it("renders title and message inside the live region when present", async () => {
     render(<Toaster />);
     await act(async () => {
       addToast({ title: "Update", message: "Ready" });
       vi.advanceTimersByTime(16);
     });
 
-    expect(useAnnouncerStore.getState().polite?.msg).toBe("Update: Ready");
+    const toast = screen.getByRole("status");
+    expect(toast.textContent).toContain("Update");
+    expect(toast.textContent).toContain("Ready");
+    expect(useAnnouncerStore.getState().polite).toBeNull();
   });
 
-  it("uses inboxMessage fallback for ReactNode messages", async () => {
+  it("renders ReactNode message content visibly when inboxMessage is provided", async () => {
     render(<Toaster />);
     await act(async () => {
       addToast({
@@ -97,7 +109,11 @@ describe("Toast accessibility", () => {
       vi.advanceTimersByTime(16);
     });
 
-    expect(useAnnouncerStore.getState().polite?.msg).toBe("Plain text fallback");
+    const toast = screen.getByRole("status");
+    expect(toast.textContent).toContain("Rich content");
+    // The shared announcer must stay silent — the role node is the sole
+    // live-region path (issue #6331).
+    expect(useAnnouncerStore.getState().polite).toBeNull();
   });
 
   it("pauses auto-dismiss timer on keyboard focus", async () => {
@@ -244,6 +260,42 @@ describe("Toast accessibility", () => {
     expect(toast.className).toContain("motion-reduce:duration-0");
   });
 
+  it("applies Tier 2 enter duration and spring easing once visible (issue #6331)", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast();
+    });
+    // rAF (mocked as setTimeout 0) flips isVisible to true; advance after the
+    // first commit so the visible-state re-render lands in its own tick.
+    await act(async () => {
+      vi.advanceTimersByTime(16);
+    });
+
+    const toast = screen.getByRole("status");
+    expect(toast.style.transitionDuration).toBe("200ms");
+    // EASE_SPRING_CRITICAL is a multi-stop linear() spring.
+    expect(toast.style.transitionTimingFunction).toContain("linear(");
+  });
+
+  it("applies Tier 2 exit duration and accelerate-out easing on dismiss (issue #6331)", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(16);
+    });
+
+    const dismissButton = screen.getByLabelText("Dismiss notification");
+    await act(async () => {
+      fireEvent.click(dismissButton);
+    });
+
+    const toast = screen.getByRole("status");
+    expect(toast.style.transitionDuration).toBe("120ms");
+    expect(toast.style.transitionTimingFunction).toBe("cubic-bezier(0.2, 0, 0.7, 0)");
+  });
+
   it("resets auto-dismiss timer when the message changes", async () => {
     render(<Toaster />);
     let toastId: string;
@@ -383,12 +435,12 @@ describe("Toast accessibility", () => {
     // ~984ms instead of resetting to a fresh 3000ms.
     expect(screen.getByText("msg-4")).toBeTruthy();
 
-    // Cross the cap; timer fires, then 200ms fade-out removes the toast.
+    // Cross the cap; timer fires, then exit fade removes the toast.
     await act(async () => {
       vi.advanceTimersByTime(1500);
     });
     await act(async () => {
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(200);
     });
 
     expect(screen.queryByText(/msg-/)).toBeNull();
@@ -442,7 +494,7 @@ describe("Toast accessibility", () => {
       useNotificationStore.getState().dismissNotification(toastId!);
     });
 
-    // User clicks X during the 200ms fade window before removeNotification.
+    // User clicks X during the exit fade window before removeNotification.
     const dismissButton = screen.getByLabelText("Dismiss notification");
     await act(async () => {
       fireEvent.click(dismissButton);
@@ -468,10 +520,10 @@ describe("Toast accessibility", () => {
       fireEvent.click(dismissButton);
     });
 
-    // Toast still enters the fade-out path; after the 200ms cleanup runs it
+    // Toast still enters the fade-out path; after the exit cleanup runs it
     // is removed from the store entirely.
     await act(async () => {
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(200);
     });
     expect(screen.queryByText("Test message")).toBeNull();
     expect(consoleError).toHaveBeenCalled();
@@ -539,7 +591,7 @@ describe("Toast accessibility", () => {
     expect(iconWrapper?.className).toContain("text-status-error");
   });
 
-  it("re-announces via screen reader when updatedAt changes", async () => {
+  it("re-announces via the live region when message content updates", async () => {
     render(<Toaster />);
     let toastId: string;
     await act(async () => {
@@ -547,7 +599,8 @@ describe("Toast accessibility", () => {
       vi.advanceTimersByTime(16);
     });
 
-    expect(useAnnouncerStore.getState().polite?.msg).toBe("1 agent done");
+    const initial = screen.getByRole("status");
+    expect(initial.textContent).toContain("1 agent done");
 
     await act(async () => {
       useNotificationStore.getState().updateNotification(toastId!, {
@@ -555,7 +608,12 @@ describe("Toast accessibility", () => {
       });
     });
 
-    expect(useAnnouncerStore.getState().polite?.msg).toBe("2 agents done");
+    // role=status mutates in place; screen readers pick up the live-region
+    // change without a separate announcer call (issue #6331).
+    const updated = screen.getByRole("status");
+    expect(updated.textContent).toContain("2 agents done");
+    expect(updated.textContent).not.toContain("1 agent done");
+    expect(useAnnouncerStore.getState().polite).toBeNull();
   });
 });
 
@@ -680,7 +738,7 @@ describe("Toast severity-based dismissal (issue #5859)", () => {
     });
     expect(screen.getByText("Failed once")).toBeTruthy();
 
-    // Past 12s + the 200ms fade — gone.
+    // Past 12s + the exit fade — gone.
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
@@ -700,7 +758,7 @@ describe("Toast severity-based dismissal (issue #5859)", () => {
     });
     expect(screen.getByText("Saved!")).toBeTruthy();
 
-    // Past 4s + the 200ms fade — gone.
+    // Past 4s + the exit fade — gone.
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
