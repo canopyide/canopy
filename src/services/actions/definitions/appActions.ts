@@ -70,6 +70,7 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["preferences", "options", "config", "prefs"],
     nonRepeatable: true,
     run: async () => {
       callbacks.onOpenSettings();
@@ -152,7 +153,7 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    keywords: ["appearance", "colors", "scheme", "preview"],
+    keywords: ["appearance", "colors", "scheme", "browse"],
     nonRepeatable: true,
     run: async () => {
       window.dispatchEvent(new CustomEvent("daintree:open-theme-browser"));

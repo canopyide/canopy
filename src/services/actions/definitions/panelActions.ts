@@ -404,7 +404,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    keywords: ["cycle", "forward", "switch", "tab"],
+    keywords: ["cycle", "forward", "advance", "switch"],
     run: async () => {
       const state = usePortalStore.getState();
       if (state.tabs.length <= 1) return;
@@ -424,7 +424,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    keywords: ["cycle", "back", "switch", "tab"],
+    keywords: ["cycle", "back", "switch", "last"],
     run: async () => {
       const state = usePortalStore.getState();
       if (state.tabs.length <= 1) return;
@@ -444,7 +444,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    keywords: ["create", "add", "blank", "tab"],
+    keywords: ["create", "add", "blank", "open"],
     run: async () => {
       const state = usePortalStore.getState();
 
