@@ -103,6 +103,14 @@ describe("Toolbar responsive design — issue #4133", () => {
       expect(source).toContain("itemLabels");
       expect(source).toMatch(/\$\{overflowIds\.length\} more — /);
     });
+
+    it("supplies a fallback label for voice-recording so the count and named list stay aligned", () => {
+      // voice-recording is absent from OVERFLOW_MENU_META on purpose — it
+      // has no dropdown rendering — so the tooltip must look it up
+      // separately or the spoken count would exceed the list.
+      expect(source).toContain('id === "voice-recording"');
+      expect(source).toContain('"Voice recording"');
+    });
   });
 
   describe("overflow menu focus ring after pointer dismissal — issue #6119", () => {

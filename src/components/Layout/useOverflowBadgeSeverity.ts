@@ -5,10 +5,7 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
-import {
-  getDominantAgentState,
-  agentStateDotColor,
-} from "@/components/Worktree/AgentStatusIndicator";
+import { agentStateDotColor } from "@/components/Worktree/AgentStatusIndicator";
 import { getRuntimeOrBootAgentId } from "@/utils/terminalType";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import type { AgentState } from "@shared/types";
@@ -76,7 +73,11 @@ export function useOverflowBadgeSeverity(
     }
     if (overflowedAgentIds.length > 0) {
       const overflowedAgentSet = new Set<string>(overflowedAgentIds);
-      const statesPerAgent = new Map<string, (AgentState | undefined)[]>();
+      // Check each panel independently rather than folding to a dominant
+      // state — `getDominantAgentState` would let a `working` panel
+      // suppress a sibling `waiting`/`directing` panel for the same
+      // agent, which is exactly the silenced-state the overflow dot is
+      // meant to surface.
       for (const pid of panelIds) {
         const p = panelsById[pid];
         if (!p || p.location === "trash" || p.location === "background") continue;
@@ -84,13 +85,7 @@ export function useOverflowBadgeSeverity(
         if (!agentId || !overflowedAgentSet.has(agentId)) continue;
         if (activeWorktreeId && p.worktreeId !== activeWorktreeId) continue;
         if (!ACTIVE_AGENT_STATES.has(p.agentState)) continue;
-        const arr = statesPerAgent.get(agentId) ?? [];
-        arr.push(p.agentState);
-        statesPerAgent.set(agentId, arr);
-      }
-      for (const [, states] of statesPerAgent) {
-        const dominant = getDominantAgentState(states);
-        if (dominant && agentStateDotColor(dominant)) {
+        if (p.agentState && agentStateDotColor(p.agentState)) {
           warning = true;
           break;
         }

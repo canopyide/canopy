@@ -143,6 +143,19 @@ describe("useOverflowBadgeSeverity", () => {
     expect(result.current).toBe("warning");
   });
 
+  it("surfaces a waiting panel even when a sibling working panel exists for the same agent", () => {
+    // Folding via getDominantAgentState would return "working" (no dot)
+    // and silence the waiting panel — the exact scenario the overflow dot
+    // is meant to flag.
+    mockPanelsById = {
+      "p-1": makePanel({ id: "p-1", agentId: "claude", agentState: "working" }),
+      "p-2": makePanel({ id: "p-2", agentId: "claude", agentState: "waiting" }),
+    };
+    mockPanelIds = ["p-1", "p-2"];
+    const { result } = renderHook(() => useOverflowBadgeSeverity(["claude"], 0));
+    expect(result.current).toBe("warning");
+  });
+
   it("ignores overflowed agents whose panels are in passive states", () => {
     mockPanelsById = {
       "p-1": makePanel({ id: "p-1", agentId: "claude", agentState: "working" }),

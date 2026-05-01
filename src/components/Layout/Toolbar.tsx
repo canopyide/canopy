@@ -795,8 +795,15 @@ export function Toolbar({
     severity: OverflowBadgeSeverity
   ) => {
     if (overflowIds.length === 0) return null;
+    // voice-recording is intentionally absent from OVERFLOW_MENU_META — it
+    // doesn't render a dropdown menu item and has no actionable target while
+    // already active. Surface it in the tooltip/aria-label only so the
+    // count and the named list stay in sync.
     const itemLabels = overflowIds
-      .map((id) => OVERFLOW_MENU_META[id]?.label ?? pluginOverflowMeta[id]?.label)
+      .map((id) => {
+        if (id === "voice-recording") return "Voice recording";
+        return OVERFLOW_MENU_META[id]?.label ?? pluginOverflowMeta[id]?.label;
+      })
       .filter((label): label is string => Boolean(label));
     const tooltipText =
       itemLabels.length > 0
