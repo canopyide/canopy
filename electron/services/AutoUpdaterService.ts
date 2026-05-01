@@ -244,19 +244,25 @@ class AutoUpdaterService {
 
       ipcMain.handle(CHANNELS.UPDATE_SET_CHANNEL, async (_event, channel: unknown) => {
         const validated: "stable" | "nightly" = channel === "nightly" ? "nightly" : "stable";
+        const previousChannel = store.get("updateChannel");
         store.set("updateChannel", validated);
-        if (this.initialized) {
-          this.configureFeedForChannel(validated);
-        }
-        // A staged installer from the previous channel must be discarded —
-        // otherwise quit-and-install would run the wrong channel's payload.
-        // Reset all in-memory state tied to the prior feed: download flag,
-        // session dedup version, and any pending retry timer (which would
-        // otherwise re-check against the new feed with stale retryCount).
+
+        // Same-channel re-save (e.g. user opens settings and clicks Save
+        // without changing the channel) must not blow away a validly-staged
+        // installer for the active channel.
+        if (validated === previousChannel) return validated;
+
+        // Discard prior-channel state BEFORE reconfiguring the feed, so a
+        // throw inside configureFeedForChannel can't leave a stale installer
+        // that quit-and-install would later run.
         await this.clearStagedInstaller();
         this.updateDownloaded = false;
         this.lastBroadcastVersion = null;
         this.resetRetryState();
+
+        if (this.initialized) {
+          this.configureFeedForChannel(validated);
+        }
         return validated;
       });
 

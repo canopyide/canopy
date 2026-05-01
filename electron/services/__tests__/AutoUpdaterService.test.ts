@@ -118,6 +118,12 @@ describe("AutoUpdaterService", () => {
     autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined);
     autoUpdaterMock.downloadedUpdateHelper = downloadedUpdateHelperMock;
     downloadedUpdateHelperMock.clear.mockReset().mockResolvedValue(undefined);
+    // Reset implementations between tests — `vi.clearAllMocks()` only resets
+    // call history, so a `mockReturnValue("nightly")` set in an earlier test
+    // would otherwise leak into here and trip the same-channel guard.
+    storeMock.get.mockReset().mockImplementation((_key: string) => undefined);
+    storeMock.set.mockReset();
+    storeMock.delete.mockReset();
     trustedRendererMock.isTrustedRendererUrl.mockReset();
     trustedRendererMock.isTrustedRendererUrl.mockImplementation((url: string) =>
       url.startsWith("app://daintree")
@@ -1240,6 +1246,113 @@ describe("AutoUpdaterService", () => {
       quitHandler();
 
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("still invalidates state when configureFeedForChannel throws", async () => {
+      // Regression: if setFeedURL throws after the user changes channel, the
+      // staged installer for the old channel must still be discarded —
+      // otherwise quit-and-install would run the wrong channel's payload.
+      downloadedHandler({ version: "2.0.0" });
+      autoUpdaterMock.setFeedURL.mockImplementationOnce(() => {
+        throw new Error("setFeedURL boom");
+      });
+
+      // The handler is allowed to throw or resolve; what matters is that the
+      // state cleanup ran first.
+      await setChannelHandler(null, "nightly").catch(() => {});
+
+      expect(downloadedUpdateHelperMock.clear).toHaveBeenCalledTimes(1);
+
+      const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+      quitHandler();
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op when the channel is unchanged (preserves staged installer)", async () => {
+      // Default channel after init is "stable". Re-saving "stable" should not
+      // discard a validly-staged installer.
+      downloadedHandler({ version: "2.0.0" });
+      downloadedUpdateHelperMock.clear.mockClear();
+      autoUpdaterMock.setFeedURL.mockClear();
+
+      // Make the store reflect the current "stable" preference so the guard
+      // sees previousChannel === validated.
+      storeMock.get.mockImplementation((key: string) =>
+        key === "updateChannel" ? "stable" : undefined
+      );
+
+      const result = await setChannelHandler(null, "stable");
+      expect(result).toBe("stable");
+      expect(downloadedUpdateHelperMock.clear).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.setFeedURL).not.toHaveBeenCalled();
+
+      const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+      quitHandler();
+
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("error classification edge cases", () => {
+    let errorHandler: (err: unknown) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+    });
+
+    it("treats a cert error as permanent even when statusCode is 5xx", () => {
+      // The cert-code check runs before the statusCode check — an error that
+      // tunnels both must NOT be retried (cert wins).
+      errorHandler(
+        Object.assign(new Error("expired"), {
+          code: "CERT_HAS_EXPIRED",
+          statusCode: 503,
+        })
+      );
+
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("retries on HTTP 408 (request timeout)", () => {
+      errorHandler(Object.assign(new Error("timeout"), { statusCode: 408 }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on HTTP 429 (rate limited)", () => {
+      errorHandler(Object.assign(new Error("rate limited"), { statusCode: 429 }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not retry on HTTP 401 (unauthorized)", () => {
+      errorHandler(Object.assign(new Error("unauthorized"), { statusCode: 401 }));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("does not retry on HTTP 403 (forbidden)", () => {
+      errorHandler(Object.assign(new Error("forbidden"), { statusCode: 403 }));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
     });
   });
 });
