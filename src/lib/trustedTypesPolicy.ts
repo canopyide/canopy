@@ -18,13 +18,20 @@
 
 import { TRUSTED_TYPES_POLICY_NAME } from "@shared/config/csp";
 
-if (typeof window === "undefined" || !window.trustedTypes) {
+// In a Chromium 83+ renderer this resolves to `window.trustedTypes`. Reading
+// off `globalThis` instead lets jsdom-based tests (and Node-environment unit
+// tests that transitively import this module) install a stub on globalThis
+// without needing a synthetic `window`.
+const trustedTypesFactory = (globalThis as { trustedTypes?: TrustedTypePolicyFactory })
+  .trustedTypes;
+
+if (!trustedTypesFactory) {
   throw new Error(
-    "Trusted Types is not available in this context. The Daintree renderer requires Chromium 83+; jsdom-based tests must stub `window.trustedTypes` before importing this module."
+    "Trusted Types is not available in this context. The Daintree renderer requires Chromium 83+; jsdom-based tests must stub `globalThis.trustedTypes` before importing this module."
   );
 }
 
-const policy = window.trustedTypes.createPolicy(TRUSTED_TYPES_POLICY_NAME, {
+const policy = trustedTypesFactory.createPolicy(TRUSTED_TYPES_POLICY_NAME, {
   createHTML: (input: string): string => input,
 });
 
