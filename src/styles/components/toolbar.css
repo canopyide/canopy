@@ -19,10 +19,8 @@
     transform 150ms ease;
 }
 
-.toolbar-icon-button:hover,
-.toolbar-icon-button:focus-visible {
+.toolbar-icon-button:hover {
   background: var(--toolbar-control-hover-bg, var(--theme-overlay-elevated));
-  color: var(--_hover-fg);
   box-shadow: var(--_hover-shadow);
 }
 
@@ -34,14 +32,34 @@
   box-shadow: var(--_hover-shadow);
 }
 
+.toolbar-icon-button:focus-visible {
+  outline: 2px solid var(--theme-accent-primary);
+  outline-offset: 2px;
+  background: var(--toolbar-control-hover-bg, var(--theme-overlay-elevated));
+}
+
 .toolbar-agent-button:focus-visible {
   outline: 2px solid var(--theme-accent-primary);
   outline-offset: 2px;
+  background: var(
+    --toolbar-agent-hover-bg,
+    var(--toolbar-control-hover-bg, var(--theme-overlay-elevated))
+  );
+}
+
+.toolbar-icon-button[aria-pressed="true"],
+.toolbar-icon-button[aria-expanded="true"],
+.toolbar-icon-button[data-state="open"],
+.toolbar-agent-button[aria-pressed="true"],
+.toolbar-agent-button[aria-expanded="true"],
+.toolbar-agent-button[data-state="open"] {
+  background: var(--toolbar-control-armed-bg, var(--theme-overlay-emphasis));
 }
 
 .toolbar-icon-button:active,
 .toolbar-agent-button:active {
   transform: scale(0.98);
+  background: var(--toolbar-control-active-bg, var(--theme-overlay-emphasis));
 }
 
 .toolbar-divider {
