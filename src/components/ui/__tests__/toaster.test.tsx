@@ -948,7 +948,70 @@ describe("Toast overflow pill (issue #6424)", () => {
     expect(pill.className).not.toContain("text-accent-primary");
   });
 
-  it("renders even when no toasts are visible (e.g. priority:'low' direct-to-inbox)", async () => {
+  it("renders the pill end-to-end when MAX_VISIBLE_TOASTS evicts a real toast", async () => {
+    render(<Toaster />);
+    // Seed a history entry that's currently 'seenAsToast' (i.e., visible as a
+    // toast) and link a toast to it via historyEntryId. When the cap is hit
+    // and this toast is evicted, markUnseenAsToast fires and the eviction
+    // counter increments — the pill should appear without any direct
+    // setState fakery.
+    const evictableHistoryId = useNotificationHistoryStore.getState().addEntry({
+      type: "info",
+      message: "first",
+      seenAsToast: true,
+    });
+
+    await act(async () => {
+      addToast({ message: "first", historyEntryId: evictableHistoryId });
+      addToast({ message: "second" });
+      addToast({ message: "third" });
+      vi.advanceTimersByTime(16);
+    });
+    expect(screen.queryByTestId("toast-overflow-pill")).toBeNull();
+
+    // The fourth toast pushes the cap and evicts 'first' (oldest non-error).
+    await act(async () => {
+      addToast({ message: "fourth" });
+      vi.advanceTimersByTime(16);
+    });
+
+    // History counter incremented through the real eviction path.
+    expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(1);
+    const pill = screen.getByTestId("toast-overflow-pill");
+    expect(pill.textContent).toBe("+1 more");
+  });
+
+  it("does NOT increment the counter when the notification center is open during eviction", async () => {
+    render(<Toaster />);
+    // Open the notification center BEFORE evicting — the user is already
+    // looking at the inbox, so signaling the arrival twice is contradictory.
+    useUIStore.setState({ notificationCenterOpen: true });
+
+    const evictableHistoryId = useNotificationHistoryStore.getState().addEntry({
+      type: "info",
+      message: "first",
+      seenAsToast: true,
+    });
+
+    await act(async () => {
+      addToast({ message: "first", historyEntryId: evictableHistoryId });
+      addToast({ message: "second" });
+      addToast({ message: "third" });
+      addToast({ message: "fourth" });
+      vi.advanceTimersByTime(16);
+    });
+
+    // Eviction fired (the entry is now unseen) but the cue counter did not.
+    expect(useNotificationHistoryStore.getState().entries[0]!.seenAsToast).toBe(false);
+    expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(0);
+    expect(screen.queryByTestId("toast-overflow-pill")).toBeNull();
+  });
+
+  it("renders the pill even when no toasts are currently visible", async () => {
+    // Models the steady state after every visible toast has auto-dismissed
+    // but the eviction counter is still > 0 — the cue must persist until the
+    // user opens the notification center, otherwise the affordance vanishes
+    // before they can act on it.
     render(<Toaster />);
     await act(async () => {
       useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });

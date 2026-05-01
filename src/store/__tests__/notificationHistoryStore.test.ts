@@ -421,6 +421,17 @@ describe("notificationHistorySlice", () => {
       getState().clearAll();
       expect(getState().evictedToInboxCount).toBe(0);
     });
+
+    it("does NOT increment when called with { silent: true }", () => {
+      const id = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      expect(getState().evictedToInboxCount).toBe(0);
+      getState().markUnseenAsToast(id, { silent: true });
+      // The seenAsToast flip + unreadCount update still happen — only the
+      // discoverability cue is suppressed.
+      expect(getState().entries[0]!.seenAsToast).toBe(false);
+      expect(getState().unreadCount).toBe(1);
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
   });
 
   describe("dismissEntry", () => {

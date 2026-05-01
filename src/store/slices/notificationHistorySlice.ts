@@ -50,7 +50,13 @@ interface NotificationHistoryState {
    */
   evictedToInboxCount: number;
   addEntry: (entry: AddEntryInput) => string;
-  markUnseenAsToast: (id: string) => void;
+  /**
+   * Flips an entry's `seenAsToast` back to false (it's no longer visible as a
+   * toast). Pass `silent: true` to skip the discoverability-cue increment
+   * (`evictedToInboxCount`) — used when the notification center is already
+   * open and the user can see the entry land in the inbox directly.
+   */
+  markUnseenAsToast: (id: string, options?: { silent?: boolean }) => void;
   dismissEntry: (id: string) => void;
   clearAll: () => void;
   markAllRead: () => void;
@@ -83,7 +89,7 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
     });
     return newEntry.id;
   },
-  markUnseenAsToast: (id) =>
+  markUnseenAsToast: (id, options) =>
     set((state) => {
       const entry = state.entries.find((e) => e.id === id);
       if (!entry || !entry.seenAsToast) return state;
@@ -91,7 +97,9 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
       return {
         entries,
         unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
-        evictedToInboxCount: state.evictedToInboxCount + 1,
+        evictedToInboxCount: options?.silent
+          ? state.evictedToInboxCount
+          : state.evictedToInboxCount + 1,
       };
     }),
   dismissEntry: (id) =>

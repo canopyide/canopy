@@ -140,6 +140,17 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
     }
   }, [evictedToInboxCount, isDndActive]);
 
+  // Strip the animation class shortly after the blip plays so its
+  // `will-change: transform, opacity` layer-promotion hint does not linger
+  // on a long-lived toolbar element. The 320ms timer covers the 260ms
+  // animation plus a small buffer; further bumps reset the timer via the
+  // dependency array.
+  useEffect(() => {
+    if (bellBumpKey === 0) return;
+    const t = setTimeout(() => setBellBumpKey(0), 320);
+    return () => clearTimeout(t);
+  }, [bellBumpKey]);
+
   if (!notificationsEnabled) return null;
 
   const label = (() => {

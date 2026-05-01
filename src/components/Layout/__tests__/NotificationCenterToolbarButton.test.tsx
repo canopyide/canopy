@@ -12,7 +12,7 @@
  *  - aria-label / tooltip describes the muted state with a time-of-day when known
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { render, act } from "@testing-library/react";
+import { render, act, fireEvent } from "@testing-library/react";
 import { NotificationCenterToolbarButton } from "../NotificationCenterToolbarButton";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
@@ -501,6 +501,39 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
     });
 
+    it("toggling the center open resets the eviction counter; closing does not", async () => {
+      // Seed the counter as if two toasts had been evicted into the inbox.
+      useNotificationHistoryStore.setState({ evictedToInboxCount: 2 });
+      const { container } = render(<NotificationCenterToolbarButton />);
+      const button = container.querySelector("button")!;
+
+      // First click: closed → open. Reset must fire.
+      await act(async () => {
+        button.click();
+      });
+      expect(useUIStore.getState().notificationCenterOpen).toBe(true);
+      expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(0);
+
+      // Second click: open → closed. Closing must NOT silently zero a fresh
+      // counter that arrives after the user has already opened the center.
+      await act(async () => {
+        button.click();
+      });
+      expect(useUIStore.getState().notificationCenterOpen).toBe(false);
+      // Simulate a fresh eviction landing while the center is closed.
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(1);
+
+      // Third click: closed → open again. Reset must fire on every entry to
+      // the open state, not just the first.
+      await act(async () => {
+        button.click();
+      });
+      expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(0);
+    });
+
     it("animation class persists across multiple subsequent increments", async () => {
       const { getByTestId } = render(<NotificationCenterToolbarButton />);
       await act(async () => {
@@ -515,6 +548,26 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
         useNotificationHistoryStore.setState({ evictedToInboxCount: 3 });
       });
       expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+    });
+
+    it("strips the animation class shortly after the blip so will-change does not linger", async () => {
+      vi.useFakeTimers();
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+
+      // Advance past the 320ms cleanup timer (260ms blip + buffer).
+      await act(async () => {
+        vi.advanceTimersByTime(320);
+      });
+
+      // After cleanup, the wrapper falls back to the no-animation className —
+      // the will-change layer-promotion hint is no longer applied.
+      expect(getByTestId("notification-bell-icon").className).not.toContain(
+        "animate-activity-blip"
+      );
     });
   });
 });
