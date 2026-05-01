@@ -1395,6 +1395,39 @@ describe("Plugin action registry", () => {
   });
 });
 
+describe("Plugin panel kind registry broadcast", () => {
+  it("dispose() drops a microtask scheduled before disposal", async () => {
+    // Capture the listener PluginService passes into onPanelKindRegistered so
+    // we can fire it directly — this simulates a register event arriving from
+    // the shared registry during the test.
+    const registryMock = await import("../../../shared/config/panelKindRegistry.js");
+    const onRegisteredMock = vi.mocked(registryMock.onPanelKindRegistered);
+    let capturedRegisterListener: (() => void) | null = null;
+    onRegisteredMock.mockImplementation((listener: (config: unknown) => void) => {
+      capturedRegisterListener = listener as () => void;
+      return () => {};
+    });
+
+    const service = new PluginService();
+    expect(capturedRegisterListener).toBeTypeOf("function");
+
+    // Simulate a register event — schedules a microtask broadcast
+    capturedRegisterListener!();
+    // Dispose before the microtask drains
+    service.dispose();
+
+    // Allow microtasks to drain
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Disposal must have cancelled the pending broadcast
+    const panelKindBroadcasts = broadcastToRendererMock.mock.calls.filter(
+      (call) => (call[1] as { name?: unknown })?.name === "plugin:panel-kinds-changed"
+    );
+    expect(panelKindBroadcasts).toHaveLength(0);
+  });
+});
+
 describe("permissions declaration logging", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;

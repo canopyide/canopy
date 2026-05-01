@@ -81,6 +81,7 @@ export class PluginService {
    * snapshot.
    */
   private panelKindsBroadcastPending = false;
+  private disposed = false;
   private readonly disposeRegistrySubscriptions: () => void;
 
   constructor(pluginsRoot?: string, appVersion?: string) {
@@ -98,9 +99,12 @@ export class PluginService {
   /**
    * Stop forwarding shared registry events to the renderer. Intended for
    * tests that need a clean teardown — production code holds a single
-   * `pluginService` singleton for the app lifetime.
+   * `pluginService` singleton for the app lifetime. Also drops any pending
+   * batched broadcast so a microtask scheduled before disposal doesn't leak
+   * an emit into the next test.
    */
   dispose(): void {
+    this.disposed = true;
     this.disposeRegistrySubscriptions();
   }
 
@@ -719,10 +723,15 @@ export class PluginService {
    * snapshot.
    */
   private schedulePanelKindsBroadcast(): void {
+    if (this.disposed) return;
     if (this.panelKindsBroadcastPending) return;
     this.panelKindsBroadcastPending = true;
     queueMicrotask(() => {
       this.panelKindsBroadcastPending = false;
+      // Disposal between scheduling and the microtask draining must not leak
+      // a phantom broadcast — particularly important for test isolation where
+      // a service from one test could otherwise emit into the next.
+      if (this.disposed) return;
       this.broadcastPluginPanelKinds();
     });
   }

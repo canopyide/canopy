@@ -141,6 +141,37 @@ describe("usePluginPanelKinds", () => {
     clearPanelKindRegistry();
   });
 
+  it("clears the existing definition when hasPty flips from true to false", async () => {
+    let emit: ((payload: { kinds: PanelKindConfig[] }) => void) | null = null;
+    onPanelKindsChangedMock.mockImplementation(
+      (cb: (payload: { kinds: PanelKindConfig[] }) => void) => {
+        emit = cb;
+        return () => {};
+      }
+    );
+
+    const { clearPanelKindRegistry } = await import("@shared/config/panelKindRegistry");
+    const { getPanelKindDefinition } = await import("@/registry");
+    const { usePluginPanelKinds } = await import("../usePluginPanelKinds");
+
+    renderHook(() => usePluginPanelKinds());
+    await waitFor(() => expect(onPanelKindsChangedMock).toHaveBeenCalled());
+
+    const ptyKind = pluginKind({ id: "acme.flippy", hasPty: true });
+    act(() => emit!({ kinds: [ptyKind] }));
+    expect(getPanelKindDefinition(ptyKind.id)).toBeDefined();
+
+    // Plugin re-registers the same kind with hasPty false. Without the
+    // explicit unregister, the renderer would keep the stale TerminalPane
+    // definition and `getPanelKindConfig.hasPty` would diverge from the
+    // resolved component.
+    const noPtyKind = pluginKind({ id: "acme.flippy", hasPty: false });
+    act(() => emit!({ kinds: [noPtyKind] }));
+    expect(getPanelKindDefinition(noPtyKind.id)).toBeUndefined();
+
+    clearPanelKindRegistry();
+  });
+
   it("ignores a stale mount-time pull when a push has already arrived", async () => {
     let emit: ((payload: { kinds: PanelKindConfig[] }) => void) | null = null;
     onPanelKindsChangedMock.mockImplementation(

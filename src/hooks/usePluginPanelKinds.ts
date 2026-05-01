@@ -82,6 +82,12 @@ export function usePluginPanelKinds(): void {
           registerPanelKind(config);
           if (config.hasPty) {
             registerPanelKindDefinition(config.id, TerminalPane);
+          } else {
+            // A plugin can re-register an existing kind with hasPty flipped
+            // from true to false; clear any prior TerminalPane definition so
+            // the renderer falls back to the missing-kind placeholder for
+            // non-PTY kinds we have no generic component for.
+            unregisterPanelKindDefinition(config.id);
           }
         }
 
