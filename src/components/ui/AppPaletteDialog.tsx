@@ -323,7 +323,13 @@ interface AppPaletteEmptyProps {
   query: string;
   emptyMessage?: string;
   noMatchMessage?: string;
-  /** Productive rows shown below the no-match title (filtered-empty state) */
+  /**
+   * Productive rows shown below the no-match title (filtered-empty state).
+   *
+   * Note: interactive elements here are not reachable via the default
+   * Tab/Enter palette key handlers. Use mouse-only affordances or have
+   * the consuming palette extend its `onKeyDown` to focus the slot.
+   */
   filteredEmptyContent?: React.ReactNode;
   children?: React.ReactNode;
 }

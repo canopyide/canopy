@@ -40,7 +40,13 @@ export interface SearchablePaletteProps<T> {
   noMatchMessage?: string;
   /** Content shown below the empty message (no-data state only, hidden during search) */
   emptyContent?: React.ReactNode;
-  /** Productive rows shown below the no-match title (filtered-empty state, query non-empty) */
+  /**
+   * Productive rows shown below the no-match title (filtered-empty state, query non-empty).
+   *
+   * Note: interactive elements here are not reachable via the default
+   * Tab/Enter palette key handlers. Use mouse-only affordances or pass an
+   * `onKeyDown` override that routes focus into the slot.
+   */
   filteredEmptyContent?: React.ReactNode;
 
   /** Additional keyboard handler called before default handling */

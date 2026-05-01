@@ -222,7 +222,7 @@ export function PanelPalette({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Select a panel type..."
+          placeholder="Select a panel type"
           role="combobox"
           aria-expanded={isOpen}
           aria-haspopup="listbox"
@@ -239,7 +239,9 @@ export function PanelPalette({
       <AppPaletteDialog.Body>
         <div id="panel-list" role="listbox" aria-label="Panel types">
           {results.length === 0 ? (
-            <div className="px-3 py-8 text-center text-daintree-text/50 text-sm">{`No panel types match "${query}"`}</div>
+            <div className="px-3 py-8 text-center text-daintree-text/50 text-sm">
+              No results found
+            </div>
           ) : isSearching ? (
             results.map((kind, index) => renderOption(kind, index))
           ) : (

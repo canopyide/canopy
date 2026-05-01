@@ -387,7 +387,7 @@ function ProjectListContent({
           <div className="p-2">
             <div className="px-3 py-8 text-center text-daintree-text/50 text-sm">
               {query.trim() ? (
-                <div>{`No projects match "${query}"`}</div>
+                <div>No results found</div>
               ) : mode === "modal" ? (
                 "No active projects"
               ) : (
@@ -608,7 +608,7 @@ function ProjectPaletteInner({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Search projects..."
+          placeholder="Search projects"
           role="combobox"
           aria-expanded={true}
           aria-haspopup="listbox"
