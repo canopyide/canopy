@@ -86,7 +86,6 @@ function getCandidatePaths(): string[] {
       (p) =>
         !p.includes("gpu-disabled.flag") &&
         !p.includes("gpu-angle-fallback.flag") &&
-        !p.includes("canopy-app-dev") &&
         !p.includes("daintree-dev")
     );
 }

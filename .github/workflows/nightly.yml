@@ -22,11 +22,6 @@ permissions:
 
 env:
   NODE_VERSION: "22"
-  # Nightly is Daintree-only. Legacy Canopy ships via tagged releases in
-  # release.yml, not nightly. Nightly publish URL + filename are resolved by
-  # electron-builder.config.cjs from the stamped `-nightly.*` version — no
-  # CLI overrides here.
-  BUILD_VARIANT: "daintree"
 
 jobs:
   matrix-setup:

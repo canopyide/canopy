@@ -107,7 +107,7 @@ export async function getPresetRowByName(
   // Return the detail-view panel (the first bordered panel below the selector).
   return window
     .locator(
-      `${SEL.preset.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-canopy-border, ${SEL.preset.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-daintree-border`
+      `${SEL.preset.section} .rounded-\\[var\\(--radius-md\\)\\].border.border-daintree-border`
     )
     .first();
 }

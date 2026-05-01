@@ -20,7 +20,6 @@ import { enforceIpcSenderValidation, setupPermissionLockdown } from "./setup/sec
 import {
   registerAppProtocol,
   registerDaintreeFileProtocol,
-  registerCanopyFileProtocol,
   setupWebviewCSP,
 } from "./setup/protocols.js";
 import { registerAppLifecycleHandlers } from "./lifecycle/appLifecycle.js";
@@ -100,16 +99,6 @@ protocol.registerSchemesAsPrivileged([
   },
   {
     scheme: "daintree-file",
-    privileges: {
-      secure: true,
-      supportFetchAPI: true,
-    },
-  },
-  // canopy-file remains privileged during the 0.7/0.8 migration window so
-  // both the legacy Canopy build and the new Daintree build can resolve
-  // pre-rebrand links and persisted references.
-  {
-    scheme: "canopy-file",
     privileges: {
       secure: true,
       supportFetchAPI: true,
@@ -366,7 +355,6 @@ if (!gotTheLock) {
       setupPermissionLockdown();
       registerAppProtocol(distPath);
       registerDaintreeFileProtocol();
-      registerCanopyFileProtocol();
       setupWebviewCSP();
       await createWindow(undefined, lastActiveProjectId ?? undefined);
       getCrashLoopGuard().startStabilityTimer();

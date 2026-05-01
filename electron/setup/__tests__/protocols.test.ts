@@ -101,7 +101,6 @@ vi.mock("../../ipc/channels.js", () => ({
 }));
 
 import {
-  registerCanopyFileProtocol,
   registerDaintreeFileProtocol,
   registerProtocolsForSession,
   setupWebviewCSP,
@@ -754,7 +753,7 @@ describe("protocol registration", () => {
     vi.clearAllMocks();
   });
 
-  it("registers both file protocol aliases on per-project sessions", async () => {
+  it("registers app and daintree-file protocols on per-project sessions", async () => {
     const handle = vi.fn();
     const mockSession = { protocol: { handle } } as unknown as Electron.Session;
 
@@ -762,24 +761,21 @@ describe("protocol registration", () => {
 
     expect(handle).toHaveBeenCalledWith("app", expect.any(Function));
     expect(handle).toHaveBeenCalledWith("daintree-file", expect.any(Function));
-    expect(handle).toHaveBeenCalledWith("canopy-file", expect.any(Function));
   });
 
-  it("registers the default-session file protocol aliases", async () => {
+  it("registers the default-session daintree-file protocol", async () => {
     const { protocol } = await import("electron");
 
     registerDaintreeFileProtocol();
-    registerCanopyFileProtocol();
 
     expect(protocol.handle).toHaveBeenCalledWith("daintree-file", expect.any(Function));
-    expect(protocol.handle).toHaveBeenCalledWith("canopy-file", expect.any(Function));
   });
 });
 
 describe("createDaintreeFileProtocolHandler — symlink containment", () => {
   type ProtocolHandler = (request: GlobalRequest) => Promise<Response>;
 
-  async function captureHandler(scheme: "daintree-file" | "canopy-file"): Promise<ProtocolHandler> {
+  async function captureHandler(scheme: "daintree-file"): Promise<ProtocolHandler> {
     const handle = vi.fn();
     const mockSession = { protocol: { handle } } as unknown as Electron.Session;
     registerProtocolsForSession(mockSession, "/tmp/dist");
@@ -925,23 +921,6 @@ describe("createDaintreeFileProtocolHandler — symlink containment", () => {
     const fetchUrl = vi.mocked(electron.net.fetch).mock.calls[0][0] as string;
     // The fetch URL should be the resolved real path, not the symlink path.
     expect(fetchUrl).toBe(pathToFileURL("/project/real/file.txt").toString());
-  });
-
-  it("applies the same containment to canopy-file:// alias", async () => {
-    const fs = await import("fs/promises");
-    const realpath = vi.mocked(fs.realpath);
-    realpath.mockImplementation((p) => {
-      if (p === "/project") return Promise.resolve("/project");
-      if (p === "/project/escape") return Promise.resolve("/etc/passwd");
-      return Promise.resolve(p as string);
-    });
-
-    const handler = await captureHandler("canopy-file");
-    const response = await handler(makeRequest("/project/escape", "/project"));
-
-    expect(response.status).toBe(404);
-    const electron = await import("electron");
-    expect(electron.net.fetch).not.toHaveBeenCalled();
   });
 
   it("returns 400 (not 404) for missing parameters — input validation precedes realpath", async () => {

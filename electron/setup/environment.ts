@@ -45,10 +45,7 @@ if (app.isPackaged) {
 // each test run gets its own isolated data directory.
 const hasExplicitUserDataDir = process.argv.some((a) => a.startsWith("--user-data-dir"));
 if (!app.isPackaged && !hasExplicitUserDataDir) {
-  // Keep dev data separate per variant so `BUILD_VARIANT=canopy npm run dev`
-  // doesn't collide with the default Daintree dev instance.
-  const devDirName = process.env.BUILD_VARIANT === "canopy" ? "canopy-app-dev" : "daintree-dev";
-  app.setPath("userData", path.join(app.getPath("appData"), devDirName));
+  app.setPath("userData", path.join(app.getPath("appData"), "daintree-dev"));
 }
 
 // Handle --reset-data: wipe userData before Chromium acquires file locks

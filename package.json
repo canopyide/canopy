@@ -25,7 +25,6 @@
     "watch:main": "node scripts/build-main.mjs --watch",
     "build": "tsc && vite build && npm run build:main",
     "package": "npm run build && electron-builder",
-    "package:canopy": "cross-env BUILD_VARIANT=canopy npm run build && cross-env BUILD_VARIANT=canopy electron-builder",
     "package:mac": "npm run build && electron-builder --mac",
     "package:win": "npm run build && electron-builder --win",
     "package:linux": "npm run build && electron-builder --linux",

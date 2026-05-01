@@ -20,10 +20,9 @@ interface MarkRecord {
 }
 
 const PRODUCT_NAME = "Daintree";
+const VARIANT = "daintree";
 
 export function getPackagedExecutablePath(projectRoot: string): string {
-  const variant = process.env.BUILD_VARIANT ?? "daintree";
-  const productName = variant === "canopy" ? "Canopy" : PRODUCT_NAME;
   const releaseDir = path.resolve(projectRoot, "release");
 
   switch (process.platform) {
@@ -31,28 +30,28 @@ export function getPackagedExecutablePath(projectRoot: string): string {
       const arch = process.arch === "arm64" ? "arm64" : "x64";
       return path.join(
         releaseDir,
-        `${variant}-${arch}`,
-        `${productName}.app`,
+        `${VARIANT}-${arch}`,
+        `${PRODUCT_NAME}.app`,
         "Contents",
         "MacOS",
-        productName
+        PRODUCT_NAME
       );
     }
     case "win32": {
       const arch = "x64";
-      return path.join(releaseDir, `${variant}-${arch}`, `${productName}.exe`);
+      return path.join(releaseDir, `${VARIANT}-${arch}`, `${PRODUCT_NAME}.exe`);
     }
     case "linux":
     default: {
       const arch = process.arch === "arm64" ? "arm64" : "x64";
       const unpackedDir = path.join(
         releaseDir,
-        `${variant}-${arch}`,
+        `${VARIANT}-${arch}`,
         "linux-unpacked",
-        productName.toLowerCase()
+        PRODUCT_NAME.toLowerCase()
       );
       if (fs.existsSync(unpackedDir)) return unpackedDir;
-      return path.join(releaseDir, `${variant}-${arch}`, `${productName}-${arch}.AppImage`);
+      return path.join(releaseDir, `${VARIANT}-${arch}`, `${PRODUCT_NAME}-${arch}.AppImage`);
     }
   }
 }
@@ -65,13 +64,10 @@ export function findPackagedExecutable(projectRoot: string): string | null {
   const releaseDir = path.resolve(projectRoot, "release");
   if (!fs.existsSync(releaseDir)) return null;
 
-  const variant = process.env.BUILD_VARIANT ?? "daintree";
-  const productName = variant === "canopy" ? "Canopy" : PRODUCT_NAME;
-
   try {
     const entries = fs.readdirSync(releaseDir);
     for (const entry of entries) {
-      if (!entry.startsWith(variant)) continue;
+      if (!entry.startsWith(VARIANT)) continue;
       const entryPath = path.join(releaseDir, entry);
       const stat = fs.statSync(entryPath);
       if (!stat.isDirectory()) continue;
@@ -79,17 +75,17 @@ export function findPackagedExecutable(projectRoot: string): string | null {
       if (process.platform === "darwin") {
         const appPath = path.join(
           entryPath,
-          `${productName}.app`,
+          `${PRODUCT_NAME}.app`,
           "Contents",
           "MacOS",
-          productName
+          PRODUCT_NAME
         );
         if (fs.existsSync(appPath)) return appPath;
       } else if (process.platform === "win32") {
-        const exePath = path.join(entryPath, `${productName}.exe`);
+        const exePath = path.join(entryPath, `${PRODUCT_NAME}.exe`);
         if (fs.existsSync(exePath)) return exePath;
       } else {
-        const unpacked = path.join(entryPath, "linux-unpacked", productName.toLowerCase());
+        const unpacked = path.join(entryPath, "linux-unpacked", PRODUCT_NAME.toLowerCase());
         if (fs.existsSync(unpacked)) return unpacked;
       }
     }
