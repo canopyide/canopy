@@ -134,7 +134,7 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
       label="Prompt History"
       keyHint="⌘R"
       ariaLabel="Prompt history search"
-      searchPlaceholder="Search prompt history..."
+      searchPlaceholder="Search prompt history"
       listId="prompt-history-list"
       itemIdPrefix="prompt-history-option"
       emptyMessage="No history yet"

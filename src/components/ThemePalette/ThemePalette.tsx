@@ -197,12 +197,11 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
       label="Theme switcher"
       keyHint="⌘K, T"
       ariaLabel="Theme palette"
-      searchPlaceholder="Search themes..."
+      searchPlaceholder="Search themes"
       searchAriaLabel="Search themes"
       listId="theme-palette-list"
       itemIdPrefix="theme-option"
       emptyMessage="No themes available"
-      noMatchMessage={`No themes match "${query}"`}
       totalResults={totalResults}
     />
   );

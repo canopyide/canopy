@@ -43,7 +43,33 @@ describe("AppPaletteDialog.Empty", () => {
       </AppPaletteDialog.Empty>
     );
     expect(screen.queryByTestId("cta")).toBeNull();
-    expect(screen.getByText(/No items match "foo"/)).toBeTruthy();
+    expect(screen.getByText("No results found")).toBeTruthy();
+  });
+
+  it("renders filteredEmptyContent below the no-match title when query has text", () => {
+    render(
+      <AppPaletteDialog.Empty
+        query="foo"
+        emptyMessage="No items available"
+        filteredEmptyContent={<button data-testid="productive-row">Create "foo"</button>}
+      >
+        <span data-testid="cta">Create a terminal</span>
+      </AppPaletteDialog.Empty>
+    );
+    expect(screen.getByTestId("productive-row")).toBeTruthy();
+    expect(screen.queryByTestId("cta")).toBeNull();
+    expect(screen.getByText("No results found")).toBeTruthy();
+  });
+
+  it("does NOT render filteredEmptyContent when query is empty (zero-data state)", () => {
+    render(
+      <AppPaletteDialog.Empty
+        query=""
+        emptyMessage="No items available"
+        filteredEmptyContent={<button data-testid="productive-row">Create something</button>}
+      />
+    );
+    expect(screen.queryByTestId("productive-row")).toBeNull();
   });
 
   it("renders without children when none provided", () => {
@@ -85,8 +111,14 @@ describe("AppPaletteDialog.Empty", () => {
     expect(status.getAttribute("aria-live")).toBe("polite");
   });
 
-  it("trims whitespace from query when rendering the default no-match copy", () => {
-    render(<AppPaletteDialog.Empty query="  foo  " emptyMessage="No items available" />);
-    expect(screen.getByText('No items match "foo"')).toBeTruthy();
+  it("treats whitespace-only query as the no-data state, not no-match", () => {
+    render(
+      <AppPaletteDialog.Empty query="   " emptyMessage="No items available">
+        <span data-testid="cta">Create a terminal</span>
+      </AppPaletteDialog.Empty>
+    );
+    expect(screen.getByText("No items available")).toBeTruthy();
+    expect(screen.queryByText("No results found")).toBeNull();
+    expect(screen.getByTestId("cta")).toBeTruthy();
   });
 });

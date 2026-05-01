@@ -64,12 +64,11 @@ export function ActionPalette({
       label="Actions"
       keyHint="⇧⇧"
       ariaLabel="Action palette"
-      searchPlaceholder="Search actions..."
+      searchPlaceholder="Search actions"
       searchAriaLabel="Search actions"
       listId="action-palette-list"
       itemIdPrefix="action-option"
       emptyMessage="No actions available"
-      noMatchMessage={`No actions match "${query}"`}
       totalResults={totalResults}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">

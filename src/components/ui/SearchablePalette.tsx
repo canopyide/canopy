@@ -40,6 +40,8 @@ export interface SearchablePaletteProps<T> {
   noMatchMessage?: string;
   /** Content shown below the empty message (no-data state only, hidden during search) */
   emptyContent?: React.ReactNode;
+  /** Productive rows shown below the no-match title (filtered-empty state, query non-empty) */
+  filteredEmptyContent?: React.ReactNode;
 
   /** Additional keyboard handler called before default handling */
   onKeyDown?: (e: React.KeyboardEvent) => void;
@@ -74,13 +76,14 @@ export function SearchablePalette<T>({
   label,
   keyHint,
   ariaLabel,
-  searchPlaceholder = "Search...",
+  searchPlaceholder = "Search",
   searchAriaLabel,
   listId = "searchable-palette-list",
   itemIdPrefix = "palette-option",
   emptyMessage = "No items available",
   noMatchMessage,
   emptyContent,
+  filteredEmptyContent,
   onKeyDown,
   footer,
   bodyClassName,
@@ -170,7 +173,7 @@ export function SearchablePalette<T>({
           role="combobox"
           aria-expanded={isOpen}
           aria-haspopup="listbox"
-          aria-label={searchAriaLabel ?? searchPlaceholder.replace("...", "")}
+          aria-label={searchAriaLabel ?? searchPlaceholder}
           aria-controls={listId}
           aria-activedescendant={activeDescendant}
         />
@@ -186,7 +189,8 @@ export function SearchablePalette<T>({
               <AppPaletteDialog.Empty
                 query={query}
                 emptyMessage={emptyMessage}
-                noMatchMessage={noMatchMessage ?? `No items match "${query}"`}
+                noMatchMessage={noMatchMessage}
+                filteredEmptyContent={filteredEmptyContent}
               >
                 {emptyContent}
               </AppPaletteDialog.Empty>
