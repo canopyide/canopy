@@ -68,8 +68,12 @@ vi.mock("@/components/Terminal/XtermAdapter", () => ({
 }));
 
 vi.mock("@/components/Terminal/MissingCliGate", () => ({
-  MissingCliGate: ({ agentId }: { agentId: string }) => (
-    <div data-testid="missing-cli-gate" data-agent={agentId} />
+  MissingCliGate: ({ agentId, onRunAnyway }: { agentId: string; onRunAnyway: () => void }) => (
+    <div data-testid="missing-cli-gate" data-agent={agentId}>
+      <button type="button" data-testid="run-anyway" onClick={onRunAnyway}>
+        Run anyway
+      </button>
+    </div>
   ),
 }));
 
@@ -405,5 +409,124 @@ describe("HelpPanel — render gates", () => {
 
     expect(getByTestId("xterm-adapter")).toBeTruthy();
     expect(queryByTestId("missing-cli-gate")).toBeNull();
+  });
+});
+
+describe("HelpPanel — handleRunAnyway", () => {
+  it("commits the re-spawned terminal to helpPanelStore (regression: no orphan)", async () => {
+    helpPanelState.terminalId = "gate-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "gate-1": {
+        id: "gate-1",
+        kind: "terminal",
+        spawnStatus: "missing-cli",
+        cwd: "/help",
+        title: "Claude",
+        command: "claude",
+        location: "dock",
+      },
+    };
+    cliAvailabilityState.details = {
+      claude: { state: "missing", resolvedPath: null, via: null },
+    };
+    panelStoreState.addPanel = vi.fn().mockResolvedValue("restarted-term");
+
+    const { getByTestId } = render(<HelpPanel />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("run-anyway"));
+    });
+
+    expect(panelStoreState.removePanel).toHaveBeenCalledWith("gate-1");
+    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "terminal", launchAgentId: "claude", cwd: "/help" })
+    );
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("restarted-term", "claude");
+    expect(mockMarkTerminal).toHaveBeenCalledWith("restarted-term");
+  });
+
+  it("notifies on addPanel rejection", async () => {
+    helpPanelState.terminalId = "gate-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "gate-1": {
+        id: "gate-1",
+        kind: "terminal",
+        spawnStatus: "missing-cli",
+        cwd: "/help",
+        title: "Claude",
+        command: "claude",
+        location: "dock",
+      },
+    };
+    cliAvailabilityState.details = {
+      claude: { state: "missing", resolvedPath: null, via: null },
+    };
+    panelStoreState.addPanel = vi.fn().mockRejectedValue(new Error("spawn failed"));
+
+    const { getByTestId } = render(<HelpPanel />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("run-anyway"));
+    });
+
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", title: "Assistant launch failed" })
+    );
+  });
+});
+
+describe("HelpPanel — hasAutoLaunched stale reset (regression)", () => {
+  it("resets hasAutoLaunched after stale-agent abort so next preferred agent can auto-launch", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+
+    let resolveFirst: (v: unknown) => void = () => {};
+    let resolveSecond: (v: unknown) => void = () => {};
+    mockDispatch
+      .mockReturnValueOnce(
+        new Promise((r) => {
+          resolveFirst = r;
+        })
+      )
+      .mockReturnValueOnce(
+        new Promise((r) => {
+          resolveSecond = r;
+        })
+      );
+
+    const { rerender } = render(<HelpPanel />);
+
+    // User switches preferred agent while first launch is in flight (stale path)
+    helpPanelState.preferredAgentId = "gemini";
+
+    await act(async () => {
+      resolveFirst({ ok: true, result: { terminalId: "stale-claude" } });
+    });
+
+    // Stale guard cleaned up the orphaned terminal and reset hasAutoLaunched.
+    expect(panelStoreState.removePanel).toHaveBeenCalledWith("stale-claude");
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+
+    // Trigger the effect again with the new preferredAgentId.
+    await act(async () => {
+      rerender(<HelpPanel />);
+    });
+
+    // The follow-up auto-launch must fire — this is the regression bug.
+    expect(mockDispatch).toHaveBeenCalledTimes(2);
+    expect(mockDispatch).toHaveBeenLastCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "gemini" }),
+      { source: "user" }
+    );
+
+    await act(async () => {
+      resolveSecond({ ok: true, result: { terminalId: "term-gemini" } });
+    });
+
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-gemini", "gemini");
   });
 });

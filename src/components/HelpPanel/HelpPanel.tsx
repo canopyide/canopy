@@ -122,12 +122,14 @@ export function HelpPanel() {
         // Stale-launch guard: if the user navigated back to the picker or
         // switched preferred agent while the IPC was in flight, discard
         // this result and clean up the spawned panel rather than reviving
-        // a stale terminal.
+        // a stale terminal. Reset hasAutoLaunched so the next preferred
+        // agent (if any) can auto-launch on the next effect tick.
         const currentPreferred = useHelpPanelStore.getState().preferredAgentId;
         if (currentPreferred !== launchAgentId) {
           if (result.ok && result.result?.terminalId) {
             usePanelStore.getState().removePanel(result.result.terminalId);
           }
+          hasAutoLaunched.current = false;
           return;
         }
 
@@ -277,26 +279,52 @@ export function HelpPanel() {
 
   const handleRunAnyway = useCallback(() => {
     if (!terminalId || !agentId) return;
+    if (isLaunchingRef.current) return;
     const panel = usePanelStore.getState().panelsById[terminalId];
     if (!panel) return;
     const presetEnv = panel.extensionState?.presetEnv as Record<string, string> | undefined;
+    const launchAgentId = agentId;
 
-    // Re-spawn through the manual select path with force.
+    isLaunchingRef.current = true;
     removePanel(terminalId);
     clearTerminal();
-    void usePanelStore.getState().addPanel({
-      kind: "terminal",
-      launchAgentId: agentId,
-      command: panel.command,
-      title: panel.title,
-      cwd: panel.cwd ?? "",
-      worktreeId: panel.worktreeId,
-      location: panel.location as "grid" | "dock" | undefined,
-      agentLaunchFlags: panel.agentLaunchFlags,
-      agentModelId: panel.agentModelId,
-      agentPresetId: panel.agentPresetId,
-      env: presetEnv,
-    });
+
+    safeFireAndForget(
+      (async () => {
+        try {
+          const newId = await usePanelStore.getState().addPanel({
+            kind: "terminal",
+            launchAgentId,
+            command: panel.command,
+            title: panel.title,
+            cwd: panel.cwd ?? "",
+            worktreeId: panel.worktreeId,
+            location: panel.location as "grid" | "dock" | undefined,
+            agentLaunchFlags: panel.agentLaunchFlags,
+            agentModelId: panel.agentModelId,
+            agentPresetId: panel.agentPresetId,
+            env: presetEnv,
+          });
+
+          if (!newId) {
+            logError("Help run-anyway returned no terminal id", { agentId: launchAgentId });
+            notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
+            return;
+          }
+
+          useHelpPanelStore.getState().setTerminal(newId, launchAgentId);
+          window.electron.help.markTerminal(newId).catch((err) => {
+            logError("Failed to mark help terminal", err);
+          });
+        } catch (error) {
+          logError("Help run-anyway failed", error);
+          notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
+        } finally {
+          isLaunchingRef.current = false;
+        }
+      })(),
+      { context: "Help: run-anyway re-launch" }
+    );
   }, [terminalId, agentId, removePanel, clearTerminal]);
 
   const getRefreshTier = useMemo(() => {
