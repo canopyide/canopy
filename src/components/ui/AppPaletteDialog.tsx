@@ -78,6 +78,16 @@ export function AppPaletteDialog({
     }
   }, [isOpen]);
 
+  // If the host of an open palette unmounts before the exit animation
+  // finishes, useAnimatedPresence's cleanup deliberately does NOT call
+  // onAnimateOut — so this is the only place restoreFocus runs in that
+  // path. Mirrors the cleanup AppDialog already has.
+  useEffect(() => {
+    return () => {
+      restoreFocus();
+    };
+  }, [restoreFocus]);
+
   // Backstop Escape on document bubble. The bubble-phase escape
   // stack dispatcher (`useGlobalEscapeDispatcher`) bails when
   // `defaultPrevented` is true, which Radix DismissableLayers

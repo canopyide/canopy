@@ -135,6 +135,30 @@ describe("AppPaletteDialog focus restore", () => {
     document.body.removeChild(trigger);
   });
 
+  it("restores focus when the palette host unmounts mid-flight", async () => {
+    const root = document.createElement("div");
+    root.id = "root";
+    const fallbackButton = document.createElement("button");
+    fallbackButton.textContent = "Fallback";
+    root.appendChild(fallbackButton);
+    document.body.appendChild(root);
+
+    const trigger = document.createElement("button");
+    trigger.textContent = "Trigger";
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = renderPalette({ isOpen: true });
+    await act(() => vi.runAllTimersAsync());
+
+    document.body.removeChild(trigger);
+    unmount();
+
+    expect(document.activeElement).toBe(fallbackButton);
+    expect(document.activeElement).not.toBe(document.body);
+    document.body.removeChild(root);
+  });
+
   it("restores to the original trigger when it is still mounted", async () => {
     const trigger = document.createElement("button");
     trigger.textContent = "Trigger";

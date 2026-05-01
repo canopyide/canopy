@@ -194,6 +194,39 @@ describe("AppDialog focus trapping", () => {
     document.body.removeChild(outerButton);
   });
 
+  it("falls back via cleanup effect when the dialog host unmounts while open", async () => {
+    const root = document.createElement("div");
+    root.id = "root";
+    const fallbackButton = document.createElement("button");
+    fallbackButton.textContent = "Fallback";
+    root.appendChild(fallbackButton);
+    document.body.appendChild(root);
+
+    const trigger = document.createElement("button");
+    trigger.textContent = "Trigger";
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(
+      <>
+        <Dispatcher />
+        <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+          <AppDialog.Body>
+            <button type="button">Inner</button>
+          </AppDialog.Body>
+        </AppDialog>
+      </>
+    );
+    await act(() => vi.runAllTimersAsync());
+
+    document.body.removeChild(trigger);
+    unmount();
+
+    expect(document.activeElement).toBe(fallbackButton);
+    expect(document.activeElement).not.toBe(document.body);
+    document.body.removeChild(root);
+  });
+
   it("falls back to first tabbable in #root when trigger was unmounted before close", async () => {
     const root = document.createElement("div");
     root.id = "root";
