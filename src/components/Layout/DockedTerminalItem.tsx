@@ -29,6 +29,8 @@ import { getDockDisplayAgentState, useDockBlockedState } from "./useDockBlockedS
 import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopoverGuard";
 import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { createTooltipWithShortcut } from "@/lib/platform";
 
 interface DockedTerminalItemProps {
   terminal: TerminalInstance;
@@ -266,6 +268,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const isWaiting = agentState === "waiting";
   const isActive = isWorking || isWaiting;
   const commandText = terminal.activityHeadline || terminal.lastCommand;
+  const dockShortcut = useKeybindingDisplay("terminal.focusDock");
   const blockedState = useDockBlockedState(agentState);
   const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);
   // Use shortened title without command summary for dock items
@@ -283,90 +286,97 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <TerminalContextMenu terminalId={terminal.id} forceLocation="dock">
-        <PopoverTrigger asChild>
-          <button
-            className={cn(
-              "flex items-center gap-1.5 px-3 h-[var(--dock-item-height)] rounded-[var(--radius-md)] text-xs border transition duration-150 max-w-[280px]",
-              "bg-[var(--dock-item-bg)] border-[var(--dock-item-border)] text-daintree-text/70",
-              "hover:text-daintree-text hover:bg-[var(--dock-item-bg-hover)]",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
-              "cursor-grab active:cursor-grabbing",
-              isOpen &&
-                "bg-[var(--dock-item-bg-active)] text-daintree-text border-[var(--dock-item-border-active)] ring-1 ring-inset ring-daintree-accent/30",
-              !isOpen &&
-                showDockAgentHighlights &&
-                blockedState === "waiting" &&
-                "bg-[var(--dock-item-bg-waiting)] border-[var(--dock-item-border-waiting)]",
-              isDeprioritized && "opacity-50"
-            )}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (e.detail >= 2) return;
-              if (isOpen) {
-                closeDockTerminal();
-              } else {
-                openDockTerminal(terminal.id);
-              }
-            }}
-            onDoubleClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const moved = moveTerminalToGrid(terminal.id);
-              if (moved) closeDockTerminal();
-            }}
-            aria-label={`${terminal.title} - Click to preview, double-click to move to grid, drag to reorder`}
-          >
-            <div className="flex items-center justify-center shrink-0">
-              <TerminalIcon kind={terminal.kind} chrome={chrome} className="w-3.5 h-3.5" />
-            </div>
-            <span className="truncate min-w-[48px] max-w-[140px] font-sans font-medium">
-              {displayTitle}
-            </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-1.5 px-3 h-[var(--dock-item-height)] rounded-[var(--radius-md)] text-xs border transition duration-150 max-w-[280px]",
+                  "bg-[var(--dock-item-bg)] border-[var(--dock-item-border)] text-daintree-text/70",
+                  "hover:text-daintree-text hover:bg-[var(--dock-item-bg-hover)]",
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                  "cursor-grab active:cursor-grabbing",
+                  isOpen &&
+                    "bg-[var(--dock-item-bg-active)] text-daintree-text border-[var(--dock-item-border-active)] ring-1 ring-inset ring-daintree-accent/30",
+                  !isOpen &&
+                    showDockAgentHighlights &&
+                    blockedState === "waiting" &&
+                    "bg-[var(--dock-item-bg-waiting)] border-[var(--dock-item-border-waiting)]",
+                  isDeprioritized && "opacity-50"
+                )}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (e.detail >= 2) return;
+                  if (isOpen) {
+                    closeDockTerminal();
+                  } else {
+                    openDockTerminal(terminal.id);
+                  }
+                }}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const moved = moveTerminalToGrid(terminal.id);
+                  if (moved) closeDockTerminal();
+                }}
+                aria-label={`${terminal.title} - Click to preview, double-click to move to grid, drag to reorder`}
+              >
+                <div className="flex items-center justify-center shrink-0">
+                  <TerminalIcon kind={terminal.kind} chrome={chrome} className="w-3.5 h-3.5" />
+                </div>
+                <span className="truncate min-w-[48px] max-w-[140px] font-sans font-medium">
+                  {displayTitle}
+                </span>
 
-            {isActive && commandText && (
-              <>
-                <div className="h-3 w-px bg-border-subtle shrink-0" aria-hidden="true" />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="truncate flex-1 min-w-0 text-[11px] text-daintree-text/50 font-mono">
-                      {commandText}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">{commandText}</TooltipContent>
-                </Tooltip>
-              </>
-            )}
+                {isActive && commandText && (
+                  <>
+                    <div className="h-3 w-px bg-border-subtle shrink-0" aria-hidden="true" />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="truncate flex-1 min-w-0 text-[11px] text-daintree-text/50 font-mono">
+                          {commandText}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">{commandText}</TooltipContent>
+                    </Tooltip>
+                  </>
+                )}
 
-            {/* State icon (compact spacing from title) */}
-            {showStateIcon && StateIcon && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className={cn(
-                      "flex items-center shrink-0",
-                      getEffectiveStateColor(agentState, terminal.waitingReason)
-                    )}
-                  >
-                    <StateIcon
-                      className={cn(
-                        "w-3.5 h-3.5",
-                        agentState === "working" && "animate-spin-slow",
-                        "motion-reduce:animate-none"
-                      )}
-                      aria-hidden="true"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{`Agent ${agentState}`}</TooltipContent>
-              </Tooltip>
-            )}
-          </button>
-        </PopoverTrigger>
+                {/* State icon (compact spacing from title) */}
+                {showStateIcon && StateIcon && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={cn(
+                          "flex items-center shrink-0",
+                          getEffectiveStateColor(agentState, terminal.waitingReason)
+                        )}
+                      >
+                        <StateIcon
+                          className={cn(
+                            "w-3.5 h-3.5",
+                            agentState === "working" && "animate-spin-slow",
+                            "motion-reduce:animate-none"
+                          )}
+                          aria-hidden="true"
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">{`Agent ${agentState}`}</TooltipContent>
+                  </Tooltip>
+                )}
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {createTooltipWithShortcut("Preview terminal", dockShortcut)}
+          </TooltipContent>
+        </Tooltip>
       </TerminalContextMenu>
 
       <PopoverContent
-        className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-daintree-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-panel-popover)] rounded-[var(--radius-lg)] overflow-hidden"
+        className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-daintree-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-panel-popover)] rounded-[var(--radius-lg)] overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-200 data-[state=closed]:duration-[120ms] data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
         side="top"
         align="start"
         sideOffset={10}
