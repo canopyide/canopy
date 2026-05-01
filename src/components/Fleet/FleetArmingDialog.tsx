@@ -406,8 +406,17 @@ export function FleetArmingDialog({
   const confirmLabel =
     confirmedIds.length === 0 ? "Arm selected" : `Arm ${confirmedIds.length} selected`;
 
+  const driftCount = selectedIds.size - confirmedIds.length;
+
   const footerHint = useMemo(() => {
-    if (visibleIds.length === 0) return null;
+    const driftNotice =
+      driftCount > 0 ? (
+        <span className="text-daintree-text/45 tabular-nums">{driftCount} became ineligible</span>
+      ) : null;
+
+    if (visibleIds.length === 0) {
+      return driftNotice;
+    }
     return (
       <>
         <span className="inline-flex items-center gap-1">
@@ -424,9 +433,15 @@ export function FleetArmingDialog({
           <Kbd>{isMac() ? "⌘⇧I" : "Ctrl+Shift+I"}</Kbd>
           <span>Invert</span>
         </span>
+        {driftNotice && (
+          <>
+            <span className="text-daintree-text/30">·</span>
+            {driftNotice}
+          </>
+        )}
       </>
     );
-  }, [visibleIds.length]);
+  }, [visibleIds.length, driftCount]);
 
   return (
     <AppDialog

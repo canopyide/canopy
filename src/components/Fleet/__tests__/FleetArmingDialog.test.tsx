@@ -322,6 +322,32 @@ describe("FleetArmingDialog", () => {
     expect(useFleetArmingStore.getState().armOrder).toEqual(["a"]);
   });
 
+  it("shows drift count when a selected terminal becomes ineligible while the dialog is open", () => {
+    seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+    renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+    fireEvent.click(screen.getByLabelText("Select alpha"));
+    fireEvent.click(screen.getByLabelText("Select beta"));
+    expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    // Drop beta from the panel store — simulates terminal closing while dialog is open.
+    act(() => {
+      const state = usePanelStore.getState();
+      const next = { ...state.panelsById };
+      delete next.b;
+      usePanelStore.setState({ panelsById: next, panelIds: ["a"] });
+    });
+    expect(screen.getByText("1 became ineligible")).toBeTruthy();
+    expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+  });
+
+  it("hides drift notice when no eligibility change has occurred", () => {
+    seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+    renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+    fireEvent.click(screen.getByLabelText("Select alpha"));
+    fireEvent.click(screen.getByLabelText("Select beta"));
+    expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    expect(screen.queryByText("became ineligible")).toBeNull();
+  });
+
   it("confirm replaces (not extends) the existing armed set", () => {
     seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
     useFleetArmingStore.getState().armIds(["old"]);
