@@ -759,6 +759,7 @@ describe("protocol registration", () => {
 
     registerProtocolsForSession(mockSession, "/tmp/dist");
 
+    expect(handle).toHaveBeenCalledTimes(2);
     expect(handle).toHaveBeenCalledWith("app", expect.any(Function));
     expect(handle).toHaveBeenCalledWith("daintree-file", expect.any(Function));
   });

@@ -274,11 +274,13 @@ describe("webviewCsp", () => {
 
       it("allows daintree-file: in connect-src for Web Audio fetches", () => {
         expect(directives["connect-src"]).toContain("daintree-file:");
+        expect(directives["connect-src"]).not.toContain("canopy-file:");
       });
 
       it("allows daintree-file: + GitHub avatar host + data:/blob: in img-src", () => {
         expect(directives["img-src"]).toContain("'self'");
         expect(directives["img-src"]).toContain("daintree-file:");
+        expect(directives["img-src"]).not.toContain("canopy-file:");
         expect(directives["img-src"]).toContain("https://avatars.githubusercontent.com");
         expect(directives["img-src"]).toContain("data:");
         expect(directives["img-src"]).toContain("blob:");
