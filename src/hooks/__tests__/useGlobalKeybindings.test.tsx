@@ -6,7 +6,7 @@ import { _resetForTests, registerEscape } from "@/lib/escapeStack";
 const mocks = vi.hoisted(() => ({
   keybindingService: {
     resolveKeybinding: vi.fn(),
-    getPendingChord: vi.fn(() => null),
+    getPendingChord: vi.fn<() => string | null>(() => null),
     clearPendingChord: vi.fn(),
     popPendingChord: vi.fn(),
     getEffectiveCombo: vi.fn(() => undefined),
