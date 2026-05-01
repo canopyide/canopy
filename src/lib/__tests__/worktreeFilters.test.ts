@@ -1391,6 +1391,23 @@ describe("computeChipCounts", () => {
     expect(counts.activity.last7d).toBe(0);
   });
 
+  it("treats lastActivityTimestamp === 0 the same as missing", () => {
+    const worktrees = [createMockWorktree({ id: "1", lastActivityTimestamp: 0 })];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.activity.last15m).toBe(0);
+    expect(counts.activity.last7d).toBe(0);
+  });
+
+  it("excludes worktrees at the exact window boundary (strict less-than)", () => {
+    const now = Date.now();
+    const worktrees = [
+      createMockWorktree({ id: "1", lastActivityTimestamp: now - 15 * 60 * 1000 }),
+    ];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.activity.last15m).toBe(0);
+    expect(counts.activity.last1h).toBe(1);
+  });
+
   it("does not crash when derivedMetaMap is missing entries", () => {
     const worktrees = [createMockWorktree({ id: "1", branch: "feature/a" })];
     const counts = computeChipCounts(worktrees, new Map(), null);
