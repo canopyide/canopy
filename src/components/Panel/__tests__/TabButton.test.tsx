@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act } from "react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { TabButton } from "../TabButton";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
 
@@ -26,12 +27,33 @@ vi.mock("framer-motion", () => {
       );
     }
   );
+  const MotionInput = React.forwardRef<
+    HTMLInputElement,
+    React.InputHTMLAttributes<HTMLInputElement>
+  >((props, ref) => {
+    const {
+      initial: _initial,
+      animate: _animate,
+      exit: _exit,
+      transition: _transition,
+      layoutId: _layoutId,
+      layout: _layout,
+      ...rest
+    } = props as Record<string, unknown>;
+    return (
+      <input
+        ref={ref}
+        data-testid="motion-input"
+        {...(rest as React.InputHTMLAttributes<HTMLInputElement>)}
+      />
+    );
+  });
   return {
     LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     domAnimation: {},
     domMax: {},
-    m: { div: MotionDiv },
-    motion: { div: MotionDiv },
+    m: { div: MotionDiv, input: MotionInput },
+    motion: { div: MotionDiv, input: MotionInput },
   };
 });
 
@@ -185,6 +207,102 @@ describe("TabButton", () => {
       const after = container.innerHTML;
 
       expect(before).not.toBe(after);
+    });
+  });
+
+  describe("close button visibility", () => {
+    it("reveals on parent tab focus via group-focus-visible/tab variant", () => {
+      render(<TabButton {...defaultProps} />);
+      const closeButton = screen.getByLabelText("Close Test Agent");
+      // jsdom can't compute pseudo-classes; pin the class string so the
+      // parent-focus reveal symmetry survives refactors.
+      expect(closeButton.className).toContain("group-focus-visible/tab:opacity-100");
+      expect(closeButton.className).toContain("group-hover/tab:opacity-100");
+      expect(closeButton.className).toContain("focus-visible:opacity-100");
+    });
+  });
+
+  describe("rename validation feedback", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const enterEditMode = (titleNode: HTMLElement) => {
+      fireEvent.doubleClick(titleNode);
+    };
+
+    it("flashes red border and stays in edit mode when Enter is pressed on an empty value", () => {
+      vi.useFakeTimers();
+      const onRename = vi.fn();
+      render(<TabButton {...defaultProps} onRename={onRename} />);
+
+      enterEditMode(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+
+      fireEvent.change(input, { target: { value: "   " } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(screen.getByTestId("motion-input")).toBe(input);
+      expect(input.className).toContain("border-status-error");
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(onRename).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+
+      expect(screen.getByTestId("motion-input")).toBe(input);
+      expect(input.className).not.toContain("border-status-error");
+      expect(input.getAttribute("aria-invalid")).toBeNull();
+    });
+
+    it("flashes red border and stays in edit mode when Enter is pressed on an unchanged value", () => {
+      vi.useFakeTimers();
+      const onRename = vi.fn();
+      render(<TabButton {...defaultProps} onRename={onRename} />);
+
+      enterEditMode(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+
+      // editValue starts as "Test Agent" — unchanged on first Enter.
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(screen.getByTestId("motion-input")).toBe(input);
+      expect(input.className).toContain("border-status-error");
+      expect(onRename).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+
+      expect(input.className).not.toContain("border-status-error");
+    });
+
+    it("commits and exits edit mode when Enter is pressed on a valid changed value", () => {
+      const onRename = vi.fn();
+      render(<TabButton {...defaultProps} onRename={onRename} />);
+
+      enterEditMode(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+
+      fireEvent.change(input, { target: { value: "Renamed" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(onRename).toHaveBeenCalledWith("Renamed");
+      expect(screen.queryByTestId("motion-input")).toBeNull();
+    });
+  });
+
+  describe("rename input fade-in", () => {
+    it("renders the input via m.input (motion wrapper) when entering edit mode", () => {
+      render(<TabButton {...defaultProps} onRename={vi.fn()} />);
+      expect(screen.queryByTestId("motion-input")).toBeNull();
+
+      fireEvent.doubleClick(screen.getByText("Test Agent"));
+
+      const input = screen.getByTestId("motion-input");
+      expect(input).not.toBeNull();
+      expect(input.tagName).toBe("INPUT");
     });
   });
 });
