@@ -437,6 +437,7 @@
     1.001
   );
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.2, 0, 0.7, 0);
 }
 
 pre code.hljs {
@@ -1393,6 +1394,16 @@ body,
 
   .animate-label-swap-out {
     opacity: 0;
+  }
+
+  /* Grid notification bar — keep the opacity fade (state cue) but drop the
+   * height interpolation so the bar appears/disappears without spatial motion.
+   * WCAG 2.3.3: opacity is not motion; height collapse is.
+   */
+  .grid-notification-wrapper {
+    transition-property: opacity;
+    transition-duration: var(--duration-200);
+    transition-timing-function: ease-out;
   }
 
   *:focus-visible {
