@@ -52,9 +52,7 @@ describe("ContentFadeIn", () => {
     });
 
     it("merges custom className", () => {
-      const { container } = render(
-        <ContentFadeIn className="my-custom flex-1">x</ContentFadeIn>
-      );
+      const { container } = render(<ContentFadeIn className="my-custom flex-1">x</ContentFadeIn>);
       const root = container.firstElementChild;
       expect(root?.className).toContain("my-custom");
       expect(root?.className).toContain("flex-1");
