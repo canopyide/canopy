@@ -191,9 +191,7 @@ export function SearchablePalette<T>({
   const noopHoverIndex = useCallback(() => {}, []);
   const hoverIndexHandler = onHoverIndex ?? noopHoverIndex;
 
-  const footerContent = getFooter
-    ? getFooter(results[selectedIndex] ?? null)
-    : footer;
+  const footerContent = getFooter ? getFooter(results[selectedIndex] ?? null) : footer;
 
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel={ariaLabel}>

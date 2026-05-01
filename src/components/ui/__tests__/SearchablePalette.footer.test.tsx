@@ -47,12 +47,7 @@ interface RenderArgs {
   getFooter?: (selectedItem: Item | null) => React.ReactNode;
 }
 
-function renderPalette({
-  selectedIndex = 0,
-  results = items,
-  footer,
-  getFooter,
-}: RenderArgs = {}) {
+function renderPalette({ selectedIndex = 0, results = items, footer, getFooter }: RenderArgs = {}) {
   return render(
     <SearchablePalette<Item>
       isOpen
@@ -80,9 +75,8 @@ function renderPalette({
 
 describe("SearchablePalette footer", () => {
   it("calls getFooter with the selected item", () => {
-    const getFooter = vi.fn(
-      (item: Item | null) =>
-        item ? <span data-testid="footer">{item.label}</span> : null
+    const getFooter = vi.fn((item: Item | null) =>
+      item ? <span data-testid="footer">{item.label}</span> : null
     );
 
     const { getByTestId } = renderPalette({ selectedIndex: 1, getFooter });
@@ -92,9 +86,12 @@ describe("SearchablePalette footer", () => {
   });
 
   it("calls getFooter with null when results are empty", () => {
-    const getFooter = vi.fn(
-      (item: Item | null) =>
-        item ? <span data-testid="footer">{item.label}</span> : <span data-testid="footer">empty</span>
+    const getFooter = vi.fn((item: Item | null) =>
+      item ? (
+        <span data-testid="footer">{item.label}</span>
+      ) : (
+        <span data-testid="footer">empty</span>
+      )
     );
 
     const { getByTestId } = renderPalette({ results: [], selectedIndex: -1, getFooter });
