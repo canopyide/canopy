@@ -10,6 +10,9 @@ vi.mock("@/lib/utils", () => ({
 
 import { Skeleton, SkeletonBone, SkeletonText } from "../Skeleton";
 
+const BONE_TEST_ID = "bone";
+const TEXT_TEST_ID = "text";
+
 describe("Skeleton", () => {
   describe("ARIA contract", () => {
     it('uses role="status" on the wrapper', () => {
@@ -43,13 +46,12 @@ describe("Skeleton", () => {
     });
 
     it("hides each bone from assistive tech via aria-hidden", () => {
-      const { container } = render(
+      render(
         <Skeleton>
-          <SkeletonBone data-testid="bone" />
+          <SkeletonBone data-testid={BONE_TEST_ID} />
         </Skeleton>
       );
-      const bone = container.querySelector('[data-testid="bone"]');
-      expect(bone?.getAttribute("aria-hidden")).toBe("true");
+      expect(screen.getByTestId(BONE_TEST_ID).getAttribute("aria-hidden")).toBe("true");
     });
 
     it("is queryable by accessible name", () => {
@@ -60,14 +62,13 @@ describe("Skeleton", () => {
 
   describe("inert mode", () => {
     it("renders only an aria-hidden wrapper without status semantics", () => {
-      const { container } = render(
-        <Skeleton inert>
+      render(
+        <Skeleton inert data-testid="root">
           <SkeletonBone />
         </Skeleton>
       );
       expect(screen.queryByRole("status")).toBeNull();
-      const root = container.firstElementChild;
-      expect(root?.getAttribute("aria-hidden")).toBe("true");
+      expect(screen.getByTestId("root").getAttribute("aria-hidden")).toBe("true");
     });
 
     it("does not render the sr-only label when inert", () => {
@@ -86,73 +87,67 @@ describe("Skeleton", () => {
 
 describe("SkeletonBone", () => {
   it("is aria-hidden and carries the muted background", () => {
-    const { container } = render(<SkeletonBone />);
-    const bone = container.firstElementChild as HTMLElement;
+    render(<SkeletonBone data-testid={BONE_TEST_ID} />);
+    const bone = screen.getByTestId(BONE_TEST_ID);
     expect(bone.getAttribute("aria-hidden")).toBe("true");
     expect(bone.className).toContain("bg-muted");
   });
 
   it("uses animate-pulse-delayed by default", () => {
-    const { container } = render(<SkeletonBone />);
-    expect((container.firstElementChild as HTMLElement).className).toContain(
-      "animate-pulse-delayed"
-    );
+    render(<SkeletonBone data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).className).toContain("animate-pulse-delayed");
   });
 
   it("switches to animate-pulse-immediate when immediate is set", () => {
-    const { container } = render(<SkeletonBone immediate />);
-    const cls = (container.firstElementChild as HTMLElement).className;
+    render(<SkeletonBone immediate data-testid={BONE_TEST_ID} />);
+    const cls = screen.getByTestId(BONE_TEST_ID).className;
     expect(cls).toContain("animate-pulse-immediate");
     expect(cls).not.toContain("animate-pulse-delayed");
   });
 
   it("does not include shimmer class by default", () => {
-    const { container } = render(<SkeletonBone />);
-    expect((container.firstElementChild as HTMLElement).className).not.toContain(
-      "animate-skeleton-shimmer"
-    );
+    render(<SkeletonBone data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).className).not.toContain("animate-skeleton-shimmer");
   });
 
   it("adds animate-skeleton-shimmer when shimmer is set", () => {
-    const { container } = render(<SkeletonBone shimmer />);
-    expect((container.firstElementChild as HTMLElement).className).toContain(
-      "animate-skeleton-shimmer"
-    );
+    render(<SkeletonBone shimmer data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).className).toContain("animate-skeleton-shimmer");
   });
 
   it("applies a fixed pixel height when heightPx is provided", () => {
-    const { container } = render(<SkeletonBone heightPx={68} />);
-    expect((container.firstElementChild as HTMLElement).style.height).toBe("68px");
+    render(<SkeletonBone heightPx={68} data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).style.height).toBe("68px");
   });
 
   it("heightPx wins over an explicit style.height", () => {
-    const { container } = render(<SkeletonBone heightPx={68} style={{ height: "40px" }} />);
-    expect((container.firstElementChild as HTMLElement).style.height).toBe("68px");
+    render(<SkeletonBone heightPx={68} style={{ height: "40px" }} data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).style.height).toBe("68px");
   });
 
   it("ignores NaN heightPx", () => {
-    const { container } = render(<SkeletonBone heightPx={Number.NaN} />);
-    expect((container.firstElementChild as HTMLElement).style.height).toBe("");
+    render(<SkeletonBone heightPx={Number.NaN} data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).style.height).toBe("");
   });
 
   it("ignores negative heightPx", () => {
-    const { container } = render(<SkeletonBone heightPx={-20} />);
-    expect((container.firstElementChild as HTMLElement).style.height).toBe("");
+    render(<SkeletonBone heightPx={-20} data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).style.height).toBe("");
   });
 
   it("ignores Infinity heightPx", () => {
-    const { container } = render(<SkeletonBone heightPx={Number.POSITIVE_INFINITY} />);
-    expect((container.firstElementChild as HTMLElement).style.height).toBe("");
+    render(<SkeletonBone heightPx={Number.POSITIVE_INFINITY} data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).style.height).toBe("");
   });
 
   it("forces aria-hidden true even if a caller passes aria-hidden={false}", () => {
-    const { container } = render(<SkeletonBone aria-hidden={false} />);
-    expect((container.firstElementChild as HTMLElement).getAttribute("aria-hidden")).toBe("true");
+    render(<SkeletonBone aria-hidden={false} data-testid={BONE_TEST_ID} />);
+    expect(screen.getByTestId(BONE_TEST_ID).getAttribute("aria-hidden")).toBe("true");
   });
 
   it("merges custom className", () => {
-    const { container } = render(<SkeletonBone className="w-12 h-4" />);
-    const cls = (container.firstElementChild as HTMLElement).className;
+    render(<SkeletonBone className="w-12 h-4" data-testid={BONE_TEST_ID} />);
+    const cls = screen.getByTestId(BONE_TEST_ID).className;
     expect(cls).toContain("w-12");
     expect(cls).toContain("h-4");
   });
@@ -160,40 +155,40 @@ describe("SkeletonBone", () => {
 
 describe("SkeletonText", () => {
   it("renders 3 lines by default", () => {
-    const { container } = render(<SkeletonText />);
-    expect(container.firstElementChild?.children.length).toBe(3);
+    render(<SkeletonText data-testid={TEXT_TEST_ID} />);
+    expect(screen.getByTestId(TEXT_TEST_ID).children.length).toBe(3);
   });
 
   it("renders the requested line count", () => {
-    const { container } = render(<SkeletonText lines={5} />);
-    expect(container.firstElementChild?.children.length).toBe(5);
+    render(<SkeletonText lines={5} data-testid={TEXT_TEST_ID} />);
+    expect(screen.getByTestId(TEXT_TEST_ID).children.length).toBe(5);
   });
 
   it("clamps negative line counts to 0", () => {
-    const { container } = render(<SkeletonText lines={-2} />);
-    expect(container.firstElementChild?.children.length).toBe(0);
+    render(<SkeletonText lines={-2} data-testid={TEXT_TEST_ID} />);
+    expect(screen.getByTestId(TEXT_TEST_ID).children.length).toBe(0);
   });
 
   it("clamps non-finite line counts to 0", () => {
-    const { container } = render(<SkeletonText lines={Number.NaN} />);
-    expect(container.firstElementChild?.children.length).toBe(0);
+    render(<SkeletonText lines={Number.NaN} data-testid={TEXT_TEST_ID} />);
+    expect(screen.getByTestId(TEXT_TEST_ID).children.length).toBe(0);
   });
 
   it("floors fractional line counts", () => {
-    const { container } = render(<SkeletonText lines={3.9} />);
-    expect(container.firstElementChild?.children.length).toBe(3);
+    render(<SkeletonText lines={3.9} data-testid={TEXT_TEST_ID} />);
+    expect(screen.getByTestId(TEXT_TEST_ID).children.length).toBe(3);
   });
 
   it("clamps absurdly large line counts to a sane ceiling", () => {
-    const { container } = render(<SkeletonText lines={1_000_000} />);
-    const rendered = container.firstElementChild?.children.length ?? 0;
+    render(<SkeletonText lines={1_000_000} data-testid={TEXT_TEST_ID} />);
+    const rendered = screen.getByTestId(TEXT_TEST_ID).children.length;
     expect(rendered).toBeLessThanOrEqual(100);
     expect(rendered).toBeGreaterThan(0);
   });
 
   it("cycles widths through [w-full, w-3/4, w-1/2]", () => {
-    const { container } = render(<SkeletonText lines={4} />);
-    const lines = Array.from(container.firstElementChild?.children ?? []);
+    render(<SkeletonText lines={4} data-testid={TEXT_TEST_ID} />);
+    const lines = Array.from(screen.getByTestId(TEXT_TEST_ID).children);
     expect(lines[0]?.className).toContain("w-full");
     expect(lines[1]?.className).toContain("w-3/4");
     expect(lines[2]?.className).toContain("w-1/2");
@@ -201,39 +196,45 @@ describe("SkeletonText", () => {
   });
 
   it("is aria-hidden on the container", () => {
-    const { container } = render(<SkeletonText lines={1} />);
-    expect(container.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+    render(<SkeletonText lines={1} data-testid={TEXT_TEST_ID} />);
+    expect(screen.getByTestId(TEXT_TEST_ID).getAttribute("aria-hidden")).toBe("true");
   });
 
   it("uses animate-pulse-delayed by default on each line", () => {
-    const { container } = render(<SkeletonText lines={2} />);
-    Array.from(container.firstElementChild?.children ?? []).forEach((line) => {
-      expect((line as HTMLElement).className).toContain("animate-pulse-delayed");
-    });
+    render(<SkeletonText lines={2} data-testid={TEXT_TEST_ID} />);
+    for (const line of Array.from(screen.getByTestId(TEXT_TEST_ID).children)) {
+      expect(line.className).toContain("animate-pulse-delayed");
+    }
   });
 
   it("switches to animate-pulse-immediate when immediate is set", () => {
-    const { container } = render(<SkeletonText lines={2} immediate />);
-    Array.from(container.firstElementChild?.children ?? []).forEach((line) => {
-      expect((line as HTMLElement).className).toContain("animate-pulse-immediate");
-    });
+    render(<SkeletonText lines={2} immediate data-testid={TEXT_TEST_ID} />);
+    for (const line of Array.from(screen.getByTestId(TEXT_TEST_ID).children)) {
+      expect(line.className).toContain("animate-pulse-immediate");
+    }
   });
 
   it("layers shimmer on each line when shimmer is set", () => {
-    const { container } = render(<SkeletonText lines={2} shimmer />);
-    Array.from(container.firstElementChild?.children ?? []).forEach((line) => {
-      expect((line as HTMLElement).className).toContain("animate-skeleton-shimmer");
-    });
+    render(<SkeletonText lines={2} shimmer data-testid={TEXT_TEST_ID} />);
+    for (const line of Array.from(screen.getByTestId(TEXT_TEST_ID).children)) {
+      expect(line.className).toContain("animate-skeleton-shimmer");
+    }
   });
 
   it("respects custom line height and gap classes", () => {
-    const { container } = render(
-      <SkeletonText lines={2} lineHeightClassName="h-6" gapClassName="space-y-4" />
+    render(
+      <SkeletonText
+        lines={2}
+        lineHeightClassName="h-6"
+        gapClassName="space-y-4"
+        data-testid={TEXT_TEST_ID}
+      />
     );
-    expect(container.firstElementChild?.className).toContain("space-y-4");
-    Array.from(container.firstElementChild?.children ?? []).forEach((line) => {
-      expect((line as HTMLElement).className).toContain("h-6");
-    });
+    const root = screen.getByTestId(TEXT_TEST_ID);
+    expect(root.className).toContain("space-y-4");
+    for (const line of Array.from(root.children)) {
+      expect(line.className).toContain("h-6");
+    }
   });
 
   it("does not use transition-all", () => {
