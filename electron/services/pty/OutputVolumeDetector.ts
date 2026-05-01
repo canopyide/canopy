@@ -37,10 +37,12 @@ export class OutputVolumeDetector {
       this.bytesInWindow += dataLength;
     }
 
-    if (
-      (this.framesInWindow >= this.minFrames && this.bytesInWindow >= this.minBytes) ||
-      this.bytesInWindow >= this.minBytes
-    ) {
+    // Require BOTH frames AND bytes — minFrames is the noise gate that prevents
+    // a single unfiltered control sequence (e.g. an OSC variant we missed, or an
+    // escape split across PTY chunks) from triggering escalation. With
+    // minBytes lowered to 1 (#6365), this gate is the primary defense against
+    // false-positive idle→busy escalation from protocol noise.
+    if (this.framesInWindow >= this.minFrames && this.bytesInWindow >= this.minBytes) {
       this.resetWindow();
       return true;
     }

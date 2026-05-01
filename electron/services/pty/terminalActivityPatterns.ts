@@ -185,7 +185,7 @@ export function buildActivityMonitorOptions(
     enabled: true,
     windowMs: 1000,
     minFrames: 2,
-    minBytes: 32,
+    minBytes: 1,
   };
 
   const getVisibleLines = effectiveAgentId ? deps.getVisibleLines : undefined;

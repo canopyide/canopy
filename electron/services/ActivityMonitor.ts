@@ -10,6 +10,7 @@ import { OutputVolumeDetector } from "./pty/OutputVolumeDetector.js";
 import { HighOutputDetector } from "./pty/HighOutputDetector.js";
 import { WorkingSignalDebouncer } from "./pty/WorkingSignalDebouncer.js";
 import { LineRewriteDetector, isStatusLineRewrite } from "./pty/LineRewriteDetector.js";
+import { stripIdleTerminalSequences } from "./pty/IdleSequenceFilter.js";
 import {
   detectPrompt,
   detectPromptLexeme,
@@ -345,12 +346,26 @@ export class ActivityMonitor {
       return;
     }
 
-    if (isCosmeticRedraw) {
-      return;
+    // Filter idle-only protocol sequences (DECSET toggles, OSC metadata, CPR
+    // responses, DSR queries, bracketed-paste markers) before byte-volume gates
+    // see them — these carry no work-progress information and would otherwise
+    // spuriously escalate idle→busy at low minBytes thresholds. Computed up
+    // front because the debounce-reset path also gates on it: pure protocol
+    // noise must not keep a busy monitor alive forever.
+    const filteredLength = Buffer.byteLength(stripIdleTerminalSequences(data), "utf8");
+
+    // Spinner frames and other cosmetic redraws ARE evidence the agent is alive —
+    // long-running model thinking can emit only spinner ticks for tens of seconds.
+    // Reset the debounce timer before short-circuiting on cosmetic redraws so
+    // already-busy agents don't flip to idle mid-thought (issue #6365). Pure
+    // idle-protocol noise (filteredLength === 0 and not a spinner frame) is
+    // NOT liveness evidence and is excluded from this guard.
+    if (this.state === "busy" && (isCosmeticRedraw || filteredLength > 0)) {
+      this.resetDebounceTimer();
     }
 
-    if (this.state === "busy") {
-      this.resetDebounceTimer();
+    if (isCosmeticRedraw) {
+      return;
     }
 
     // Update pattern buffer and check for working patterns (non-polling terminals only)
@@ -369,14 +384,16 @@ export class ActivityMonitor {
       }
     }
 
-    const dataLength = Buffer.byteLength(data, "utf8");
-
     if (this.isResizeSuppressed(now)) {
       return;
     }
 
+    if (filteredLength === 0) {
+      return;
+    }
+
     // Track high output activity
-    this.highOutputDetector.update(dataLength, now);
+    this.highOutputDetector.update(filteredLength, now);
 
     // High output recovery
     if (this.state === "idle" && this.highOutputDetector.shouldTriggerRecovery(now)) {
@@ -389,7 +406,7 @@ export class ActivityMonitor {
       return;
     }
 
-    if (this.outputVolumeDetector.update(dataLength, now)) {
+    if (this.outputVolumeDetector.update(filteredLength, now)) {
       this.becomeBusyFromOutput(now);
     }
   }
