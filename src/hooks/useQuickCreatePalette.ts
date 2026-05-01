@@ -167,7 +167,9 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
 
             const worktreeMsg = `${branch}${assignMsg}`;
             const tiers = [worktreeMsg, "Branching out", "It's a tree farm"];
-            comboCountRef.current += 1;
+            if (typeof document !== "undefined" && document.hasFocus()) {
+              comboCountRef.current += 1;
+            }
             const tierIndex = Math.min(comboCountRef.current - 1, tiers.length - 1);
             const tieredMessage = tiers[tierIndex];
 
