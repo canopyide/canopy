@@ -10,9 +10,10 @@ import {
   type ReactElement,
 } from "react";
 import * as Checkbox from "@radix-ui/react-checkbox";
-import { CheckIcon, MinusIcon, Search, Zap } from "lucide-react";
+import { CheckIcon, CircleHelp, MinusIcon, Search, Zap } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { AppDialog } from "@/components/ui/AppDialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEscapeStack } from "@/hooks";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { usePanelStore } from "@/store/panelStore";
@@ -520,21 +521,7 @@ export function FleetArmingDialog({
           <Kbd>Space</Kbd>
           <span>Toggle</span>
         </span>
-        <span className="text-daintree-text/30">·</span>
-        <span className="inline-flex items-center gap-1">
-          <Kbd>{isMac() ? "⌘A" : "Ctrl+A"}</Kbd>
-          <span>Select all</span>
-        </span>
-        <span className="text-daintree-text/30">·</span>
-        <span className="inline-flex items-center gap-1">
-          <Kbd>Shift</Kbd>+<Kbd>Click</Kbd>
-          <span>Range</span>
-        </span>
-        <span className="text-daintree-text/30">·</span>
-        <span className="inline-flex items-center gap-1">
-          <Kbd>{isMac() ? "⌘⇧I" : "Ctrl+Shift+I"}</Kbd>
-          <span>Invert</span>
-        </span>
+        <ShortcutsPopover />
         {driftNotice && (
           <>
             <span className="text-daintree-text/30">·</span>
@@ -729,6 +716,46 @@ export function FleetArmingDialog({
         }}
       />
     </AppDialog>
+  );
+}
+
+function ShortcutsPopover(): ReactElement {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="More keyboard shortcuts"
+          className={cn(
+            "p-0.5 rounded transition-colors text-daintree-text/40 hover:text-daintree-text/70 cursor-pointer",
+            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
+          )}
+        >
+          <CircleHelp className="w-3.5 h-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        className="w-auto p-3"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <div className="flex flex-col gap-1.5 text-[12px] text-daintree-text/60">
+          <span className="inline-flex items-center gap-1">
+            <Kbd>{isMac() ? "⌘A" : "Ctrl+A"}</Kbd>
+            <span>Select all</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Kbd>Shift</Kbd>+<Kbd>Click</Kbd>
+            <span>Range</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Kbd>{isMac() ? "⌘⇧I" : "Ctrl+Shift+I"}</Kbd>
+            <span>Invert</span>
+          </span>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
