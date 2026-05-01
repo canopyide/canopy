@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -102,6 +103,11 @@ export function FleetArmingDialog({
   // number and is dropped if the counter has since advanced.
   const searchRequestRef = useRef(0);
   const rangeAnchorRef = useRef<string | null>(null);
+  // Roving-tabindex target — the id of the row that owns `tabIndex={0}`.
+  // Driven by arrow keys, Space, and click; reset by the clamping effect
+  // below when the visible list changes.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const rowRefs = useRef<Map<string, HTMLLabelElement>>(new Map());
 
   // Reset all dialog-local state on each open/close transition. Single
   // useEffect keyed on [isOpen] per lesson #4958.
@@ -261,6 +267,31 @@ export function FleetArmingDialog({
     return out;
   }, [groupedVisible]);
 
+  // Stable callback-ref factory bound per row id. Keeps memoized children
+  // stable across renders — calling `setRowRef(id)` returns the same
+  // callback identity for the same id (memoized inside TerminalRow).
+  const setRowRef = useCallback(
+    (id: string) => (el: HTMLLabelElement | null) => {
+      if (el) rowRefs.current.set(id, el);
+      else rowRefs.current.delete(id);
+    },
+    []
+  );
+
+  // Keep `focusedId` valid as the visible list changes (search/filter/open).
+  // Clamps to the first visible id when the focused row is filtered out, or
+  // resets to null when the list is empty. Also drives initial focus on open.
+  useEffect(() => {
+    if (flatVisibleIds.length === 0) {
+      setFocusedId(null);
+      return;
+    }
+    setFocusedId((prev) => {
+      if (prev !== null && flatVisibleIds.includes(prev)) return prev;
+      return flatVisibleIds[0]!;
+    });
+  }, [flatVisibleIds]);
+
   // Counts derived from full eligible set, not visibleTerminals — chip
   // labels show project-wide totals so the user can see what's available
   // even after filtering.
@@ -332,6 +363,7 @@ export function FleetArmingDialog({
             return next;
           });
           rangeAnchorRef.current = id;
+          setFocusedId(id);
           return;
         }
       }
@@ -346,6 +378,7 @@ export function FleetArmingDialog({
         return next;
       });
       rangeAnchorRef.current = id;
+      setFocusedId(id);
     },
     [flatVisibleIds]
   );
@@ -371,6 +404,64 @@ export function FleetArmingDialog({
 
   const handleListKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      // Arrow navigation — handled before mod-required Cmd+A / Cmd+Shift+I
+      // since plain Arrow / Shift+Arrow / Ctrl+Arrow have no Meta requirement.
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        // Don't override macOS Cmd+Up/Down (page-jump); let the system handle.
+        if (e.metaKey) return;
+        if (flatVisibleIds.length === 0) return;
+        e.preventDefault();
+        const currentIdx = focusedId !== null ? flatVisibleIds.indexOf(focusedId) : -1;
+        const baseIdx = currentIdx === -1 ? 0 : currentIdx;
+        const nextIdx =
+          e.key === "ArrowDown"
+            ? Math.min(baseIdx + 1, flatVisibleIds.length - 1)
+            : Math.max(baseIdx - 1, 0);
+        const nextId = flatVisibleIds[nextIdx];
+        if (!nextId) return;
+        const moved = nextId !== focusedId;
+        if (moved) {
+          setFocusedId(nextId);
+          rowRefs.current.get(nextId)?.focus();
+        }
+        // Shift extends the range from the anchor to `nextIdx`. Plain Arrow
+        // and Ctrl+Arrow are focus-only — no selection change, no anchor
+        // update. If the anchor is null or filtered out, fall back to focus
+        // only (do not silently corrupt the user's intended range).
+        if (e.shiftKey && moved && rangeAnchorRef.current !== null) {
+          const anchorIdx = flatVisibleIds.indexOf(rangeAnchorRef.current);
+          if (anchorIdx !== -1) {
+            const lo = Math.min(anchorIdx, nextIdx);
+            const hi = Math.max(anchorIdx, nextIdx);
+            setSelectedIds((prev) => {
+              const next = new Set(prev);
+              for (let i = lo; i <= hi; i++) {
+                const id = flatVisibleIds[i];
+                if (id) next.add(id);
+              }
+              return next;
+            });
+          }
+        }
+        return;
+      }
+
+      // Space toggles the focused row and resets the anchor to it (matches
+      // VS Code QuickPick canSelectMany; subsequent Shift+Arrow extends from
+      // the just-toggled row).
+      if (e.key === " ") {
+        if (focusedId === null) return;
+        e.preventDefault();
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(focusedId)) next.delete(focusedId);
+          else next.add(focusedId);
+          return next;
+        });
+        rangeAnchorRef.current = focusedId;
+        return;
+      }
+
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       const key = e.key.toLowerCase();
@@ -394,7 +485,7 @@ export function FleetArmingDialog({
         });
       }
     },
-    [visibleIds]
+    [flatVisibleIds, focusedId, visibleIds]
   );
 
   const handleConfirm = useCallback(() => {
@@ -419,6 +510,17 @@ export function FleetArmingDialog({
     }
     return (
       <>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>↑</Kbd>
+          <Kbd>↓</Kbd>
+          <span>Move</span>
+        </span>
+        <span className="text-daintree-text/30">·</span>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>Space</Kbd>
+          <span>Toggle</span>
+        </span>
+        <span className="text-daintree-text/30">·</span>
         <span className="inline-flex items-center gap-1">
           <Kbd>{isMac() ? "⌘A" : "Ctrl+A"}</Kbd>
           <span>Select all</span>
@@ -580,6 +682,9 @@ export function FleetArmingDialog({
           ref={listContainerRef}
           onKeyDown={handleListKeyDown}
           tabIndex={-1}
+          role="listbox"
+          aria-multiselectable="true"
+          aria-label="Terminals"
           className="flex-1 min-h-0 overflow-y-auto px-2 py-2 outline-hidden"
           data-testid="fleet-arming-dialog-list"
         >
@@ -599,10 +704,12 @@ export function FleetArmingDialog({
                 key={group.worktreeId}
                 group={group}
                 selectedIds={selectedIds}
+                focusedId={focusedId}
                 hideHeader={isSingleWorktree}
                 snippetMap={snippetMap}
                 onToggleId={handleToggleId}
                 onToggleGroup={handleGroupHeaderToggle}
+                registerRow={setRowRef}
               />
             ))
           )}
@@ -675,19 +782,23 @@ function EmptyState({ title, hint }: EmptyStateProps): ReactElement {
 interface WorktreeGroupSectionProps {
   group: WorktreeGroup;
   selectedIds: ReadonlySet<string>;
+  focusedId: string | null;
   hideHeader: boolean;
   snippetMap: ReadonlyMap<string, SemanticSearchMatch>;
   onToggleId: (id: string, event?: React.MouseEvent) => void;
   onToggleGroup: (group: WorktreeGroup) => void;
+  registerRow: (id: string) => (el: HTMLLabelElement | null) => void;
 }
 
 function WorktreeGroupSection({
   group,
   selectedIds,
+  focusedId,
   hideHeader,
   snippetMap,
   onToggleId,
   onToggleGroup,
+  registerRow,
 }: WorktreeGroupSectionProps): ReactElement {
   const groupIds = useMemo(() => group.terminals.map((t) => t.id), [group.terminals]);
   const groupState = useMemo(
@@ -724,14 +835,20 @@ function WorktreeGroupSection({
           </button>
         </header>
       )}
-      <ul className="flex flex-col">
+      {/* role="presentation" suppresses the implicit <ul> list role so the
+          listbox container's role="option" children aren't nested inside a
+          redundant list landmark (screen readers would otherwise announce a
+          list-within-listbox). */}
+      <ul className="flex flex-col" role="presentation">
         {group.terminals.map((t) => (
           <TerminalRow
             key={t.id}
             terminal={t}
             checked={selectedIds.has(t.id)}
             snippet={snippetMap.get(t.id)}
-            onToggle={(e) => onToggleId(t.id, e)}
+            isFocused={focusedId === t.id}
+            onToggleId={onToggleId}
+            registerRow={registerRow}
           />
         ))}
       </ul>
@@ -743,25 +860,48 @@ interface TerminalRowProps {
   terminal: DialogTerminal;
   checked: boolean;
   snippet?: SemanticSearchMatch;
-  onToggle: (event?: React.MouseEvent) => void;
+  isFocused: boolean;
+  onToggleId: (id: string, event?: React.MouseEvent) => void;
+  registerRow: (id: string) => (el: HTMLLabelElement | null) => void;
 }
 
-function TerminalRow({ terminal, checked, snippet, onToggle }: TerminalRowProps): ReactElement {
+const TerminalRow = memo(function TerminalRow({
+  terminal,
+  checked,
+  snippet,
+  isFocused,
+  onToggleId,
+  registerRow,
+}: TerminalRowProps): ReactElement {
   const stateBadge = renderStateBadge(terminal.agentState);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => onToggleId(terminal.id, e),
+    [onToggleId, terminal.id]
+  );
+  const handleCheckedChange = useCallback(() => onToggleId(terminal.id), [onToggleId, terminal.id]);
+  // Memoize the bound ref-callback so React doesn't unmount/remount the ref
+  // entry on every render (would cause Map churn for N rows).
+  const rowRefCallback = useMemo(() => registerRow(terminal.id), [registerRow, terminal.id]);
   return (
     <li className="flex items-stretch">
       <label
+        ref={rowRefCallback}
+        tabIndex={isFocused ? 0 : -1}
+        role="option"
+        aria-selected={checked}
         className={cn(
-          "flex flex-1 items-start gap-2 pl-5 pr-2 py-1.5 rounded text-[13px] text-daintree-text cursor-pointer",
-          "hover:bg-tint/[0.06]"
+          "flex flex-1 items-start gap-2 pl-5 pr-2 py-1.5 rounded text-[13px] text-daintree-text cursor-pointer outline-hidden",
+          "hover:bg-tint/[0.06]",
+          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]"
         )}
-        onClick={onToggle}
+        onClick={handleClick}
       >
         <DialogCheckbox
           checked={checked}
-          onCheckedChange={() => onToggle()}
+          onCheckedChange={handleCheckedChange}
           ariaLabel={`Select ${terminal.title}`}
           enableShiftBubble
+          tabIndex={-1}
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -773,7 +913,7 @@ function TerminalRow({ terminal, checked, snippet, onToggle }: TerminalRowProps)
       </label>
     </li>
   );
-}
+});
 
 function SnippetLine({ snippet }: { snippet: SemanticSearchMatch }): ReactElement {
   // Truncate from the left so the matched range stays in the visible window
@@ -828,6 +968,11 @@ interface DialogCheckboxProps {
   // Group-header checkboxes (no parent label) leave this off so the original
   // always-stopPropagation behavior is preserved.
   enableShiftBubble?: boolean;
+  // Row checkboxes pass -1 so the roving tabindex on the parent <label>
+  // (role="option") owns keyboard focus exclusively. Without this Radix
+  // defaults to tabIndex={0}, which would let Tab land on every checkbox
+  // and bypass the listbox roving system.
+  tabIndex?: number;
 }
 
 function DialogCheckbox({
@@ -835,12 +980,14 @@ function DialogCheckbox({
   onCheckedChange,
   ariaLabel,
   enableShiftBubble = false,
+  tabIndex,
 }: DialogCheckboxProps): ReactElement {
   return (
     <Checkbox.Root
       checked={checked}
       onCheckedChange={onCheckedChange}
       aria-label={ariaLabel}
+      tabIndex={tabIndex}
       onClick={(e) => {
         if (enableShiftBubble && e.shiftKey) {
           // Suppress Radix's internal onCheckedChange (composed via

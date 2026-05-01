@@ -977,6 +977,265 @@ describe("FleetArmingDialog", () => {
     });
   });
 
+  describe("keyboard navigation", () => {
+    function getRowLabel(title: string): HTMLLabelElement {
+      const el = screen.getByText(title).closest("label");
+      if (!el) throw new Error(`No label found for ${title}`);
+      return el as HTMLLabelElement;
+    }
+
+    it("first visible row label has tabIndex=0 on open; others -1", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha" }),
+        makeTerminal("b", { title: "beta" }),
+        makeTerminal("c", { title: "gamma" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      expect(getRowLabel("alpha").getAttribute("tabindex")).toBe("0");
+      expect(getRowLabel("beta").getAttribute("tabindex")).toBe("-1");
+      expect(getRowLabel("gamma").getAttribute("tabindex")).toBe("-1");
+    });
+
+    it("row checkboxes carry tabIndex=-1 so Tab cannot bypass roving system", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      expect(screen.getByLabelText("Select alpha").getAttribute("tabindex")).toBe("-1");
+      expect(screen.getByLabelText("Select beta").getAttribute("tabindex")).toBe("-1");
+    });
+
+    it("list container exposes role=listbox aria-multiselectable=true", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      expect(list.getAttribute("role")).toBe("listbox");
+      expect(list.getAttribute("aria-multiselectable")).toBe("true");
+    });
+
+    it("rows expose role=option and reflect aria-selected from checked state", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      expect(getRowLabel("alpha").getAttribute("role")).toBe("option");
+      expect(getRowLabel("alpha").getAttribute("aria-selected")).toBe("false");
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      expect(getRowLabel("alpha").getAttribute("aria-selected")).toBe("true");
+      expect(getRowLabel("beta").getAttribute("aria-selected")).toBe("false");
+    });
+
+    it("ArrowDown moves focus to next row without changing selection", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha" }),
+        makeTerminal("b", { title: "beta" }),
+        makeTerminal("c", { title: "gamma" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      expect(getRowLabel("alpha").getAttribute("tabindex")).toBe("-1");
+      expect(getRowLabel("beta").getAttribute("tabindex")).toBe("0");
+      // Selection unchanged.
+      expect(screen.getByText("Arm selected")).toBeTruthy();
+    });
+
+    it("ArrowUp moves focus to previous row without changing selection", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      fireEvent.keyDown(list, { key: "ArrowUp" });
+      expect(getRowLabel("alpha").getAttribute("tabindex")).toBe("0");
+      expect(getRowLabel("beta").getAttribute("tabindex")).toBe("-1");
+    });
+
+    it("ArrowDown clamps at last row", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      fireEvent.keyDown(list, { key: "ArrowDown" }); // already at end
+      expect(getRowLabel("beta").getAttribute("tabindex")).toBe("0");
+    });
+
+    it("ArrowUp clamps at first row", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowUp" });
+      expect(getRowLabel("alpha").getAttribute("tabindex")).toBe("0");
+    });
+
+    it("Space toggles the focused row", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: " " });
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+      // Toggle off.
+      fireEvent.keyDown(list, { key: " " });
+      expect(screen.getByText("Arm selected")).toBeTruthy();
+    });
+
+    it("Space updates the range anchor — subsequent Shift+ArrowDown extends from it", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha" }),
+        makeTerminal("b", { title: "beta" }),
+        makeTerminal("c", { title: "gamma" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      // Space on alpha → anchor = alpha, alpha selected.
+      fireEvent.keyDown(list, { key: " " });
+      // Shift+ArrowDown twice → focus = gamma; range alpha..gamma.
+      fireEvent.keyDown(list, { key: "ArrowDown", shiftKey: true });
+      fireEvent.keyDown(list, { key: "ArrowDown", shiftKey: true });
+      expect(screen.getByText("Arm 3 selected")).toBeTruthy();
+    });
+
+    it("Shift+ArrowDown extends selection from anchor downward", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha" }),
+        makeTerminal("b", { title: "beta" }),
+        makeTerminal("c", { title: "gamma" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      // Plain click sets anchor = a.
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowDown", shiftKey: true });
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+      fireEvent.keyDown(list, { key: "ArrowDown", shiftKey: true });
+      expect(screen.getByText("Arm 3 selected")).toBeTruthy();
+    });
+
+    it("Shift+ArrowUp extends selection from anchor upward", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha" }),
+        makeTerminal("b", { title: "beta" }),
+        makeTerminal("c", { title: "gamma" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      // Set anchor = c by plain-clicking gamma.
+      fireEvent.click(screen.getByLabelText("Select gamma"));
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowUp", shiftKey: true });
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+      fireEvent.keyDown(list, { key: "ArrowUp", shiftKey: true });
+      expect(screen.getByText("Arm 3 selected")).toBeTruthy();
+    });
+
+    it("Shift+Arrow at boundary does not change selection", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      // alpha is focused (just clicked) and is at index 0; ArrowUp stays.
+      fireEvent.keyDown(list, { key: "ArrowUp", shiftKey: true });
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+    });
+
+    it("Shift+Arrow falls back to focus-only when anchor is filtered out", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", agentState: "waiting" }),
+        makeTerminal("b", { title: "beta", agentState: "working" }),
+        makeTerminal("c", { title: "gamma", agentState: "working" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      // Click alpha → anchor = alpha, alpha selected.
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      // Filter to working — alpha is now hidden, anchor filtered out.
+      fireEvent.click(screen.getByTestId("fleet-arming-dialog-chip-working"));
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      // Shift+ArrowDown — should move focus only, not extend (anchor invalid).
+      fireEvent.keyDown(list, { key: "ArrowDown", shiftKey: true });
+      // Selection unchanged: only alpha (still selected though hidden).
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+    });
+
+    it("Ctrl+ArrowDown moves focus without changing selection", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowDown", ctrlKey: true });
+      expect(getRowLabel("beta").getAttribute("tabindex")).toBe("0");
+      expect(screen.getByText("Arm selected")).toBeTruthy();
+    });
+
+    it("Cmd+ArrowDown does not consume the event (system shortcut passthrough)", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      // metaKey is the Cmd key on macOS; we should NOT preventDefault so the
+      // OS can still do its page-jump.
+      const event = fireEvent.keyDown(list, { key: "ArrowDown", metaKey: true });
+      expect(event).toBe(true); // event was not preventDefaulted (returns true)
+      // Focus did not move.
+      expect(getRowLabel("alpha").getAttribute("tabindex")).toBe("0");
+    });
+
+    it("focused row clamps to first visible when search filter removes it", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha" }),
+        makeTerminal("b", { title: "beta" }),
+        makeTerminal("c", { title: "gamma" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      // Move focus to beta (index 1).
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      expect(getRowLabel("beta").getAttribute("tabindex")).toBe("0");
+      // Filter out beta via search.
+      fireEvent.change(screen.getByTestId("fleet-arming-dialog-search"), {
+        target: { value: "gamma" },
+      });
+      // Only gamma is now visible; it should own focus.
+      expect(getRowLabel("gamma").getAttribute("tabindex")).toBe("0");
+    });
+
+    it("mouse click updates focusedId so subsequent ArrowDown continues from clicked row", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha" }),
+        makeTerminal("b", { title: "beta" }),
+        makeTerminal("c", { title: "gamma" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      // Click gamma (index 2).
+      fireEvent.click(screen.getByLabelText("Select gamma"));
+      expect(getRowLabel("gamma").getAttribute("tabindex")).toBe("0");
+      // ArrowDown from gamma should clamp at gamma (already last).
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      expect(getRowLabel("gamma").getAttribute("tabindex")).toBe("0");
+      // ArrowUp moves to beta.
+      fireEvent.keyDown(list, { key: "ArrowUp" });
+      expect(getRowLabel("beta").getAttribute("tabindex")).toBe("0");
+    });
+
+    it("Space on empty list (no eligible terminals) is a no-op", () => {
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      // No focused id — Space should not crash and selection stays empty.
+      fireEvent.keyDown(list, { key: " " });
+      expect(screen.queryByText(/Arm \d/)).toBeNull();
+    });
+
+    it("keyboard navigation does not break Cmd+A select-all", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      fireEvent.keyDown(list, { key: "a", metaKey: true });
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    });
+
+    it("keyboard navigation does not break Cmd+Shift+I invert", () => {
+      seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: " " }); // Select alpha
+      fireEvent.keyDown(list, { key: "i", metaKey: true, shiftKey: true });
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+    });
+  });
+
   describe("quick-select rows", () => {
     it("'Select waiting' button selects only visible waiting terminals", () => {
       seedTerminals([
