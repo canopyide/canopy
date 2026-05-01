@@ -1407,7 +1407,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           aria-hidden={!showLegend}
           className={cn(
             "overflow-hidden transition-[max-height,opacity] duration-150 ease-out",
-            showLegend ? "max-h-4 opacity-100" : "max-h-0 opacity-0"
+            showLegend ? "max-h-6 opacity-100" : "max-h-0 opacity-0"
           )}
         >
           <p className="pt-1 text-[11px] text-daintree-text/40 select-none">
