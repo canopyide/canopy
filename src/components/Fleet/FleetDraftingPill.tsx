@@ -96,7 +96,7 @@ const FleetResolutionRow = memo(function FleetResolutionRow({
       <div className="flex items-center gap-1.5 text-[11px] font-medium text-daintree-text/70">
         <span className="truncate">{title}</span>
         {excluded && exclusionReason && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] text-category-red-text shrink-0">
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-category-rose-text shrink-0">
             <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />
             {exclusionReason}
           </span>
@@ -138,7 +138,7 @@ const FleetResolutionRow = memo(function FleetResolutionRow({
               {unresolvedVars.map((v) => (
                 <span
                   key={v}
-                  className="inline-flex items-center rounded-full px-1.5 py-px text-[9px] bg-category-red-subtle text-category-red-text"
+                  className="inline-flex items-center rounded-full px-1.5 py-px text-[9px] bg-category-rose-subtle text-category-rose-text"
                 >
                   {`{{${v}}}`} unresolved
                 </span>
