@@ -48,6 +48,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 
 import { FleetSmartArmBar } from "../FleetSmartArmBar";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import { useUIStore } from "@/store";
 import type { ClusterGroup, ClusterType } from "@/hooks/useAgentClusters";
 
 function makeCluster(overrides: Partial<ClusterGroup> = {}): ClusterGroup {
@@ -71,6 +72,7 @@ function resetStore() {
     armOrderById: {},
     lastArmedId: null,
   });
+  useUIStore.setState({ overlayClaims: new Set<string>() });
 }
 
 describe("FleetSmartArmBar", () => {
@@ -178,6 +180,52 @@ describe("FleetSmartArmBar", () => {
     render(<FleetSmartArmBar />);
     const button = document.body.querySelector('[data-testid="fleet-smart-arm-bar"]');
     expect(button?.className).toContain("pointer-events-auto");
+    cleanup();
+  });
+
+  it("suppresses the pill when ThemeBrowser overlay is open (matches FleetArmingRibbon's inert gate)", () => {
+    useAgentClustersMock.mockReturnValue(makeCluster({ type: "prompt", memberIds: ["a", "b"] }));
+    useUIStore.setState({ overlayClaims: new Set<string>(["theme-browser"]) });
+    render(<FleetSmartArmBar />);
+    expect(document.body.querySelector('[data-testid="fleet-smart-arm-bar"]')).toBeNull();
+    // Root wrapper still mounts so portal stays stable; only the pill is gated.
+    expect(document.body.querySelector('[data-testid="fleet-smart-arm-bar-root"]')).not.toBeNull();
+    cleanup();
+  });
+
+  it("re-renders the count text on rerender so AnimatedLabel can crossfade", () => {
+    // The component reads `cluster.count` on every render; verifies that a
+    // count change updates the visible label (regression for the previous
+    // animateKey={cluster.type} behavior that suppressed crossfades on count
+    // changes by keeping the AnimatedLabel key stable).
+    useAgentClustersMock.mockReturnValue(makeCluster({ type: "prompt", memberIds: ["a", "b"] }));
+    const { rerender } = render(<FleetSmartArmBar />);
+    expect(
+      document.body.querySelector('[data-testid="fleet-smart-arm-bar"]')?.getAttribute("aria-label")
+    ).toBe("Arm 2 waiting");
+    useAgentClustersMock.mockReturnValue(
+      makeCluster({ type: "prompt", memberIds: ["a", "b", "c"] })
+    );
+    rerender(<FleetSmartArmBar />);
+    expect(
+      document.body.querySelector('[data-testid="fleet-smart-arm-bar"]')?.getAttribute("aria-label")
+    ).toBe("Arm 3 waiting");
+    cleanup();
+  });
+
+  it("clicks an updated cluster's memberIds (not stale ones) after rerender", () => {
+    const armIdsSpy = vi.spyOn(useFleetArmingStore.getState(), "armIds");
+    useAgentClustersMock.mockReturnValue(makeCluster({ type: "prompt", memberIds: ["a", "b"] }));
+    const { rerender } = render(<FleetSmartArmBar />);
+
+    useAgentClustersMock.mockReturnValue(
+      makeCluster({ type: "prompt", memberIds: ["a", "b", "c"] })
+    );
+    rerender(<FleetSmartArmBar />);
+
+    const button = document.body.querySelector('[data-testid="fleet-smart-arm-bar"]');
+    fireEvent.click(button!);
+    expect(armIdsSpy).toHaveBeenCalledWith(["a", "b", "c"]);
     cleanup();
   });
 });

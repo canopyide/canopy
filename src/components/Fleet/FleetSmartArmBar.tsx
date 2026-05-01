@@ -4,6 +4,7 @@ import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAgentClusters, type ClusterType } from "@/hooks/useAgentClusters";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import { useUIStore } from "@/store";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -49,6 +50,12 @@ function tooltipLabel(type: ClusterType, count: number): string {
 export function FleetSmartArmBar(): ReactElement | null {
   const cluster = useAgentClusters();
   const reduceMotion = useReducedMotion();
+  // Suppress while a blocking overlay (e.g. ThemeBrowser) is open. The Toolbar
+  // and FleetArmingRibbon get this for free via an `inert` ancestor in
+  // AppLayout, but body-portaled surfaces sit outside that subtree and have to
+  // gate themselves explicitly.
+  const themeBrowserOpen = useUIStore((s) => s.overlayClaims.has("theme-browser"));
+  const showCluster = cluster && !themeBrowserOpen ? cluster : null;
 
   const motionProps = reduceMotion
     ? {
@@ -69,8 +76,8 @@ export function FleetSmartArmBar(): ReactElement | null {
       };
 
   const handleArm = (): void => {
-    if (!cluster) return;
-    useFleetArmingStore.getState().armIds(cluster.memberIds);
+    if (!showCluster) return;
+    useFleetArmingStore.getState().armIds(showCluster.memberIds);
   };
 
   return createPortal(
@@ -79,7 +86,7 @@ export function FleetSmartArmBar(): ReactElement | null {
       data-testid="fleet-smart-arm-bar-root"
     >
       <AnimatePresence initial={false}>
-        {cluster && (
+        {showCluster && (
           <m.div key="fleet-smart-arm-bar" {...motionProps}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -87,9 +94,9 @@ export function FleetSmartArmBar(): ReactElement | null {
                   type="button"
                   onClick={handleArm}
                   data-testid="fleet-smart-arm-bar"
-                  data-cluster-type={cluster.type}
-                  data-cluster-count={cluster.count}
-                  aria-label={buttonLabel(cluster.type, cluster.count)}
+                  data-cluster-type={showCluster.type}
+                  data-cluster-count={showCluster.count}
+                  aria-label={buttonLabel(showCluster.type, showCluster.count)}
                   className={cn(
                     "pointer-events-auto inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] text-daintree-text",
                     "bg-overlay-subtle shadow-[var(--theme-shadow-floating)] ring-1 ring-border-default",
@@ -97,14 +104,13 @@ export function FleetSmartArmBar(): ReactElement | null {
                   )}
                 >
                   <AnimatedLabel
-                    label={buttonLabel(cluster.type, cluster.count)}
-                    animateKey={cluster.type}
+                    label={buttonLabel(showCluster.type, showCluster.count)}
                     textClassName="font-medium tabular-nums"
                   />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={6}>
-                {tooltipLabel(cluster.type, cluster.count)}
+                {tooltipLabel(showCluster.type, showCluster.count)}
               </TooltipContent>
             </Tooltip>
           </m.div>
