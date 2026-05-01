@@ -1149,9 +1149,12 @@ export function BulkCreateWorktreeDialog({
   }, [isExecuting, onClose]);
 
   const handleDone = useCallback(() => {
+    // Capture before onComplete()/onClose() — both are wired to closeBulkCreateDialog
+    // upstream, which zeroes out the stored callback as part of its reset.
+    const storedOnComplete = useWorktreeSelectionStore.getState().bulkCreateDialog.onComplete;
     onComplete();
     onClose();
-    useWorktreeSelectionStore.getState().bulkCreateDialog.onComplete?.();
+    storedOnComplete?.();
   }, [onComplete, onClose]);
 
   const handleRecipeSelect = useCallback(

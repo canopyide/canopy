@@ -1280,8 +1280,23 @@ describe("BulkCreateWorktreeDialog", () => {
   it("invokes stored bulkCreateDialog.onComplete when Done is clicked", async () => {
     const storedOnComplete = vi.fn();
     mockBulkCreateDialog.onComplete = storedOnComplete;
+    // Simulate the real closeBulkCreateDialog behavior: prop onComplete/onClose
+    // zero out the stored callback. This catches the ordering bug where the
+    // stored callback would be read after being cleared.
+    const propOnComplete = vi.fn(() => {
+      mockBulkCreateDialog.onComplete = undefined;
+    });
+    const propOnClose = vi.fn(() => {
+      mockBulkCreateDialog.onComplete = undefined;
+    });
 
-    render(<BulkCreateWorktreeDialog {...defaultProps} />);
+    render(
+      <BulkCreateWorktreeDialog
+        {...defaultProps}
+        onComplete={propOnComplete}
+        onClose={propOnClose}
+      />
+    );
 
     await act(async () => {
       screen.getByTestId("bulk-create-confirm-button").click();
@@ -1614,6 +1629,30 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
     expect(createCalls[0]![0].fromRemote).toBe(true);
     expect(createCalls[0]![0].baseBranch).toBe("origin/feature/pr-10");
     expect(createCalls[0]![0].newBranch).toBe("feature/pr-10");
+  });
+
+  it("invokes stored bulkCreateDialog.onComplete when Done is clicked in PR mode", async () => {
+    mockListBranches.mockResolvedValue([
+      { name: "origin/feature/pr-10", current: false, remote: true },
+      { name: "origin/feature/pr-20", current: false, remote: true },
+      { name: "origin/feature/pr-30", current: false, remote: true },
+    ]);
+    const storedOnComplete = vi.fn();
+    mockBulkCreateDialog.onComplete = storedOnComplete;
+
+    render(<BulkCreateWorktreeDialog {...prProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-done-button").click();
+    });
+
+    expect(storedOnComplete).toHaveBeenCalledTimes(1);
   });
 
   it("includes fork PRs in plan", () => {
