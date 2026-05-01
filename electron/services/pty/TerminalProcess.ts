@@ -1,4 +1,5 @@
-import { spawnSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "node:util";
 import type * as pty from "node-pty";
 import type { Terminal as HeadlessTerminalType } from "@xterm/headless";
 import headless from "@xterm/headless";
@@ -72,6 +73,15 @@ import {
 import { stripAnsiCodes } from "../../../shared/utils/artifactParser.js";
 import type { SpawnContext } from "./terminalSpawn.js";
 
+const execFileAsync = promisify(execFile);
+
+// Soft-stale: trigger an async background refresh once the cached snapshot is
+// older than this. Hard-max: callers receive null past this age and fall back
+// to the legacy prompt path.
+const FOREGROUND_SNAPSHOT_SOFT_STALE_MS = 500;
+const FOREGROUND_SNAPSHOT_MAX_AGE_MS = 1500;
+const FOREGROUND_SNAPSHOT_PROBE_TIMEOUT_MS = 750;
+
 const IDENTITY_DEBUG_ENABLED =
   process.env.NODE_ENV === "development" || Boolean(process.env.DAINTREE_DEBUG);
 
@@ -139,6 +149,11 @@ export class TerminalProcess {
   private readonly processTreeKiller: ProcessTreeKiller;
   private _ptyState: PtyState = { kind: "alive" };
   private _exitEventEmitted = false;
+
+  private _foregroundSnapshot: { shellPgid: number; foregroundPgid: number } | null = null;
+  private _foregroundSnapshotUpdatedAt = 0;
+  private _foregroundSnapshotRefreshing = false;
+  private _foregroundSnapshotCheckId = 0;
 
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
@@ -1270,6 +1285,13 @@ export class TerminalProcess {
     return this.deps.processTreeCache.getDescendantPids(ptyPid).length;
   }
 
+  /**
+   * Sync read against a per-terminal stale-while-revalidate cache. The actual
+   * `ps` probe runs asynchronously so the IdentityWatcher poll tick never
+   * blocks the pty-host event loop. Soft-stale schedules a background refresh;
+   * past the hard-max age we return null so callers fall back to the legacy
+   * prompt path (matches the pre-existing non-POSIX behavior).
+   */
   private readForegroundProcessGroupSnapshot(): {
     shellPgid: number;
     foregroundPgid: number;
@@ -1283,23 +1305,56 @@ export class TerminalProcess {
       return null;
     }
 
+    const now = Date.now();
+    const age =
+      this._foregroundSnapshotUpdatedAt === 0
+        ? Number.POSITIVE_INFINITY
+        : now - this._foregroundSnapshotUpdatedAt;
+
+    if (
+      !this._foregroundSnapshotRefreshing &&
+      (this._foregroundSnapshotUpdatedAt === 0 || age > FOREGROUND_SNAPSHOT_SOFT_STALE_MS)
+    ) {
+      void this._refreshForegroundProcessGroupSnapshot(ptyPid);
+    }
+
+    if (age > FOREGROUND_SNAPSHOT_MAX_AGE_MS) {
+      return null;
+    }
+    return this._foregroundSnapshot;
+  }
+
+  private async _refreshForegroundProcessGroupSnapshot(ptyPid: number): Promise<void> {
+    this._foregroundSnapshotRefreshing = true;
+    const checkId = ++this._foregroundSnapshotCheckId;
+    let nextSnapshot: { shellPgid: number; foregroundPgid: number } | null = null;
     try {
-      const result = spawnSync("ps", ["-o", "pgid=,tpgid=", "-p", String(ptyPid)], {
+      const { stdout } = await execFileAsync("ps", ["-o", "pgid=,tpgid=", "-p", String(ptyPid)], {
         encoding: "utf8",
-        timeout: 750,
+        shell: false,
+        signal: AbortSignal.timeout(FOREGROUND_SNAPSHOT_PROBE_TIMEOUT_MS),
       });
-      if (result.status !== 0 || result.error) {
-        return null;
-      }
-      const [pgidText, tpgidText] = result.stdout.trim().split(/\s+/);
+      const [pgidText, tpgidText] = stdout.trim().split(/\s+/);
       const shellPgid = Number.parseInt(pgidText ?? "", 10);
       const foregroundPgid = Number.parseInt(tpgidText ?? "", 10);
-      if (!Number.isFinite(shellPgid) || !Number.isFinite(foregroundPgid)) {
-        return null;
+      if (Number.isFinite(shellPgid) && Number.isFinite(foregroundPgid)) {
+        nextSnapshot = { shellPgid, foregroundPgid };
       }
-      return { shellPgid, foregroundPgid };
     } catch {
-      return null;
+      // ps -p races (process exited) and aborts both surface here. Persisting
+      // null with a fresh timestamp prevents tight-retry and lets the caller
+      // fall back to the legacy prompt path until the next refresh window.
+      nextSnapshot = null;
+    } finally {
+      // Disposed-instance guard: never write back to a torn-down terminal.
+      // Stale-write guard via monotonic checkId is belt-and-suspenders given
+      // the in-flight boolean, but cheap and matches the repo's checkId
+      // pattern (see CliAvailabilityService).
+      if (this._ptyState.kind !== "disposed" && checkId === this._foregroundSnapshotCheckId) {
+        this._foregroundSnapshot = nextSnapshot;
+        this._foregroundSnapshotUpdatedAt = Date.now();
+      }
+      this._foregroundSnapshotRefreshing = false;
     }
   }
 

@@ -1,10 +1,14 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
 import { resilientAtomicWriteFileSync } from "../utils/fs.js";
 
+const execFileAsync = promisify(execFile);
+
 const TRASHED_PIDS_FILENAME = "trashed-pids.json";
+const PROCESS_START_TIME_TIMEOUT_MS = 3000;
 
 interface TrashedPidEntry {
   terminalId: string;
@@ -13,10 +17,10 @@ interface TrashedPidEntry {
   trashedAt: number;
 }
 
-function getProcessStartTime(pid: number): string | null {
+async function getProcessStartTime(pid: number): Promise<string | null> {
   try {
     if (process.platform === "win32") {
-      const out = execFileSync(
+      const { stdout } = await execFileAsync(
         "powershell.exe",
         [
           "-NoProfile",
@@ -31,27 +35,27 @@ function getProcessStartTime(pid: number): string | null {
         {
           windowsHide: true,
           encoding: "utf8",
-          timeout: 3000,
+          shell: false,
+          signal: AbortSignal.timeout(PROCESS_START_TIME_TIMEOUT_MS),
         }
-      )
-        .replace(/^\uFEFF/, "")
-        .trim();
+      );
+      const out = stdout.replace(/^\uFEFF/, "").trim();
       return out || null;
     }
-    const out = execFileSync("ps", ["-p", String(pid), "-o", "lstart="], {
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 3000,
-    })
-      .toString("utf8")
-      .trim();
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="], {
+      encoding: "utf8",
+      shell: false,
+      signal: AbortSignal.timeout(PROCESS_START_TIME_TIMEOUT_MS),
+    });
+    const out = stdout.trim();
     return out || null;
   } catch {
     return null;
   }
 }
 
-function verifyProcessStartTime(pid: number, expectedStartTime: string): boolean {
-  const currentStartTime = getProcessStartTime(pid);
+async function verifyProcessStartTime(pid: number, expectedStartTime: string): Promise<boolean> {
+  const currentStartTime = await getProcessStartTime(pid);
   if (!currentStartTime) return false;
   return currentStartTime === expectedStartTime;
 }
@@ -64,10 +68,10 @@ export class TrashedPidTracker {
     this.filePath = path.join(userData, TRASHED_PIDS_FILENAME);
   }
 
-  persistTrashed(terminalId: string, pid: number | undefined): void {
+  async persistTrashed(terminalId: string, pid: number | undefined): Promise<void> {
     if (pid === undefined || !Number.isFinite(pid) || pid <= 0) return;
 
-    const startTime = getProcessStartTime(pid);
+    const startTime = await getProcessStartTime(pid);
     if (!startTime) return;
 
     const entries = this.readEntries();
@@ -99,7 +103,7 @@ export class TrashedPidTracker {
     this.deleteFile();
   }
 
-  cleanupOrphans(): void {
+  async cleanupOrphans(): Promise<void> {
     if (!this.fileExists()) return;
 
     const entries = this.readEntries();
@@ -110,55 +114,58 @@ export class TrashedPidTracker {
 
     console.log(`[TrashedPidTracker] Found ${entries.length} trashed PID(s) from previous session`);
 
-    for (const entry of entries) {
-      if (!Number.isFinite(entry.pid) || entry.pid <= 0) continue;
-      if (entry.pid === process.pid) continue;
+    await Promise.all(
+      entries.map(async (entry) => {
+        if (!Number.isFinite(entry.pid) || entry.pid <= 0) return;
+        if (entry.pid === process.pid) return;
 
-      if (!verifyProcessStartTime(entry.pid, entry.startTime)) {
-        console.log(
-          `[TrashedPidTracker] PID ${entry.pid} (terminal ${entry.terminalId}) no longer exists or was recycled, skipping`
-        );
-        continue;
-      }
-
-      let killed = false;
-      if (process.platform === "win32") {
-        const result = spawnSync("taskkill", ["/T", "/F", "/PID", String(entry.pid)], {
-          windowsHide: true,
-          stdio: "ignore",
-          timeout: 3000,
-        });
-        if (result.status === 0 || result.status === 128) {
-          killed = true;
+        const matches = await verifyProcessStartTime(entry.pid, entry.startTime);
+        if (!matches) {
+          console.log(
+            `[TrashedPidTracker] PID ${entry.pid} (terminal ${entry.terminalId}) no longer exists or was recycled, skipping`
+          );
+          return;
         }
-      } else {
-        try {
-          process.kill(-entry.pid, "SIGKILL");
-          killed = true;
-        } catch {
-          // fall back to direct kill
-        }
-      }
 
-      if (!killed) {
-        try {
-          process.kill(entry.pid, "SIGKILL");
-          killed = true;
-        } catch {
-          // process may already be gone
+        let killed = false;
+        if (process.platform === "win32") {
+          const result = spawnSync("taskkill", ["/T", "/F", "/PID", String(entry.pid)], {
+            windowsHide: true,
+            stdio: "ignore",
+            timeout: 3000,
+          });
+          if (result.status === 0 || result.status === 128) {
+            killed = true;
+          }
+        } else {
+          try {
+            process.kill(-entry.pid, "SIGKILL");
+            killed = true;
+          } catch {
+            // fall back to direct kill
+          }
         }
-      }
 
-      if (killed) {
-        console.log(
-          `[TrashedPidTracker] Killed orphaned PTY pid=${entry.pid} (terminal ${entry.terminalId})`
-        );
-      } else {
-        console.warn(
-          `[TrashedPidTracker] Failed to kill orphaned PTY pid=${entry.pid} (terminal ${entry.terminalId})`
-        );
-      }
-    }
+        if (!killed) {
+          try {
+            process.kill(entry.pid, "SIGKILL");
+            killed = true;
+          } catch {
+            // process may already be gone
+          }
+        }
+
+        if (killed) {
+          console.log(
+            `[TrashedPidTracker] Killed orphaned PTY pid=${entry.pid} (terminal ${entry.terminalId})`
+          );
+        } else {
+          console.warn(
+            `[TrashedPidTracker] Failed to kill orphaned PTY pid=${entry.pid} (terminal ${entry.terminalId})`
+          );
+        }
+      })
+    );
 
     this.deleteFile();
   }
@@ -217,5 +224,7 @@ export function getTrashedPidTracker(): TrashedPidTracker {
 
 export function initializeTrashedPidCleanup(): void {
   const tracker = getTrashedPidTracker();
-  tracker.cleanupOrphans();
+  tracker.cleanupOrphans().catch((err) => {
+    console.warn("[TrashedPidTracker] cleanupOrphans failed:", err);
+  });
 }
