@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { KbdChord } from "@/components/ui/Kbd";
 import { useOverlayState, useEscapeStack } from "@/hooks";
 import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
 import { usePaletteStore } from "@/store/paletteStore";
@@ -184,6 +185,8 @@ export function AppPaletteDialog({
 interface AppPaletteHeaderProps {
   label: string;
   keyHint?: string;
+  /** Canonical shortcut string rendered via KbdChord (e.g. "Cmd+N"). Takes precedence over keyHint. */
+  shortcut?: string;
   children: React.ReactNode;
   className?: string;
   /**
@@ -197,6 +200,7 @@ interface AppPaletteHeaderProps {
 AppPaletteDialog.Header = function AppPaletteHeader({
   label,
   keyHint,
+  shortcut,
   children,
   className,
   isLoading = false,
@@ -210,7 +214,11 @@ AppPaletteDialog.Header = function AppPaletteHeader({
     >
       <div className="flex justify-between items-center mb-1.5 text-[11px] text-daintree-text/50">
         <span>{label}</span>
-        {keyHint && <span className="font-mono">{keyHint}</span>}
+        {shortcut ? (
+          <KbdChord shortcut={shortcut} />
+        ) : keyHint ? (
+          <span className="font-mono">{keyHint}</span>
+        ) : null}
       </div>
       {children}
       <div

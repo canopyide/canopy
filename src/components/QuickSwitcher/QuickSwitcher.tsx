@@ -2,7 +2,7 @@ import { useCallback, useId } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { QuickSwitcherItem } from "./QuickSwitcherItem";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import type {
   QuickSwitcherItem as QuickSwitcherItemData,
   UseQuickSwitcherReturn,
@@ -81,6 +81,7 @@ export function QuickSwitcher({
   );
 
   const newTerminalShortcut = useKeybindingDisplay("terminal.new");
+  const quickSwitcherShortcut = useEffectiveCombo("nav.quickSwitcher");
 
   return (
     <SearchablePalette<QuickSwitcherItemData>
@@ -107,7 +108,7 @@ export function QuickSwitcher({
       )}
       getFooter={getFooter}
       label="Quick switch"
-      keyHint="⌘P"
+      shortcut={quickSwitcherShortcut}
       ariaLabel="Quick switcher"
       isLoading={isLoading}
       searchPlaceholder="Find panels, agents, or worktrees"

@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { AppPaletteDialog, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { PaletteOverflowNotice } from "@/components/ui/PaletteOverflowNotice";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 import type { LaunchOption } from "./launchOptions";
 
 interface NewTerminalPaletteProps {
@@ -33,6 +34,7 @@ export function NewTerminalPalette({
 }: NewTerminalPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const newTerminalShortcut = useEffectiveCombo("terminal.new");
 
   useEffect(() => {
     if (isOpen) {
@@ -81,7 +83,7 @@ export function NewTerminalPalette({
 
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel="New terminal palette">
-      <AppPaletteDialog.Header label="New Terminal" keyHint="⌘N">
+      <AppPaletteDialog.Header label="New Terminal" shortcut={newTerminalShortcut}>
         <AppPaletteDialog.Input
           inputRef={inputRef}
           value={query}
