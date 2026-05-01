@@ -1,6 +1,6 @@
 import { isMac } from "@/lib/platform";
 
-export type KeyScope = "global" | "terminal" | "modal" | "worktreeList" | "portal";
+export type KeyScope = "global" | "terminal" | "modal" | "worktreeList" | "portal" | "worktreeGrid";
 
 export interface KeybindingConfig {
   actionId: string;

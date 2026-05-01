@@ -348,11 +348,27 @@ export function registerFleetActions(actions: ActionRegistry): void {
       const focusedId = usePanelStore.getState().focusedId;
       if (!focusedId) return;
       const terminal = usePanelStore.getState().panelsById[focusedId];
-      // Match the mouse-path eligibility gate so chord and click behave
-      // identically: trashed/backgrounded/no-PTY panes can't enter the
-      // fleet from either entry point.
       if (!isFleetArmEligible(terminal)) return;
       useFleetArmingStore.getState().toggleId(focusedId);
+    },
+  }));
+
+  actions.set("fleet.armAll", () => ({
+    id: "fleet.armAll",
+    title: "Fleet: Arm All Eligible",
+    description: "Arm all fleet-eligible terminals in the current worktree",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z
+      .object({
+        scope: z.enum(["current", "all"]).optional().default("current"),
+      })
+      .optional(),
+    run: async (args: unknown) => {
+      const { scope } = (args as { scope?: "current" | "all" }) ?? {};
+      useFleetArmingStore.getState().armAll(scope ?? "current");
     },
   }));
 

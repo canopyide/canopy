@@ -297,6 +297,8 @@ export type BuiltInActionId =
   | "fleet.restart"
   | "fleet.kill"
   | "fleet.trash"
+  | "fleet.armAll"
+  | "fleet.armFocused"
   | "fleet.scope.enter"
   | "fleet.scope.exit"
   | "fleet.armMatchingFilter"

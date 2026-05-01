@@ -78,15 +78,20 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
         return;
       }
 
-      // For editable contexts without modifiers, let native behavior happen
-      // Exception: allow chord completion even without modifiers, and F6 for region cycling
+      // For editable contexts without modifiers, let native behavior happen.
+      // Exception: chord completion, F6 for region cycling, and bare keys that are
+      // scope-gated (e.g. X in worktreeGrid scope for fleet arming). Scope-gated
+      // bindings are checked below in resolveKeybinding → canExecute.
       const hasModifier = e.metaKey || e.ctrlKey;
 
       if (isEditable && !hasModifier && !pendingChord && e.key !== "F6") {
         return;
       }
 
-      // Let xterm handle its own keys except for global shortcuts with modifiers, chord completion, or F6
+      // Let xterm handle its own keys except for global shortcuts with modifiers,
+      // chord completion, or F6. Bare keys (like X for fleet arming) are blocked
+      // inside terminals so they don't steal typing — scoped bindings only match
+      // when focus is outside .xterm.
       if (isInTerminal && !hasModifier && !pendingChord && e.key !== "F6") {
         return;
       }

@@ -418,6 +418,22 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Fleet",
   },
   {
+    actionId: "fleet.armFocused",
+    combo: "X",
+    scope: "worktreeGrid",
+    priority: 5,
+    description: "Toggle arm focused pane (no modifier, grid only)",
+    category: "Fleet",
+  },
+  {
+    actionId: "fleet.armAll",
+    combo: "Cmd+Alt+A",
+    scope: "global",
+    priority: 0,
+    description: "Arm all eligible terminals in current worktree",
+    category: "Fleet",
+  },
+  {
     actionId: "fleet.accept",
     combo: "Cmd+Y",
     scope: "global",
