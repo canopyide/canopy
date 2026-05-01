@@ -410,7 +410,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
     id: "fleet.recallNamedFleet",
     title: "Fleet: Recall named fleet",
     description:
-      "Arm panes from a saved fleet. Snapshot fleets drop missing IDs silently; predicate fleets re-evaluate against current panes.",
+      "Apply panes from a saved fleet. Snapshots drop missing IDs; predicates re-evaluate against current panes.",
     category: "terminal",
     kind: "command",
     danger: "safe",
