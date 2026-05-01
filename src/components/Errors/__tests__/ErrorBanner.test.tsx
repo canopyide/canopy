@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorBanner } from "../ErrorBanner";
 import type { ErrorRecord } from "@/store/errorStore";
+import { useDiagnosticsStore } from "@/store/diagnosticsStore";
 
 vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
@@ -75,5 +76,136 @@ describe("ErrorBanner", () => {
     expect(screen.getByText("Try pulling first")).toBeTruthy();
     const svgs = container.querySelectorAll("svg");
     expect(svgs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  describe("compact dismiss-only fallback", () => {
+    afterEach(() => {
+      useDiagnosticsStore.getState().reset();
+    });
+
+    it("renders 'View errors' alongside dismiss when compact has no retry", () => {
+      render(<ErrorBanner error={makeError()} onDismiss={onDismiss} compact />);
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Dismiss error" })).toBeTruthy();
+    });
+
+    it("opens the diagnostics dock to the problems tab when 'View errors' clicked", () => {
+      render(<ErrorBanner error={makeError()} onDismiss={onDismiss} compact />);
+      expect(useDiagnosticsStore.getState().isOpen).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: "View errors" }));
+      const state = useDiagnosticsStore.getState();
+      expect(state.isOpen).toBe(true);
+      expect(state.activeTab).toBe("problems");
+    });
+
+    it("does not render 'View errors' when retry is available", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+  });
+
+  describe("retry button styling", () => {
+    it("does not use success-green classes on the compact retry button", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      const retry = screen.getByRole("button", { name: "Retry" });
+      expect(retry.className).not.toMatch(/status-success/);
+      expect(retry.className).toMatch(/status-error/);
+    });
+
+    it("does not use success-green classes on the full retry button", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      const retry = screen.getByRole("button", { name: "Retry" });
+      expect(retry.className).not.toMatch(/status-success/);
+      expect(retry.className).toMatch(/status-error/);
+    });
+  });
+
+  describe("correlation ID copy", () => {
+    let writeText: ReturnType<typeof vi.fn>;
+    const fullId = "abcd1234-5678-90ef-1234-567890abcdef";
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("renders the full correlation ID, not just the first segment", () => {
+      render(<ErrorBanner error={makeError({ correlationId: fullId })} onDismiss={onDismiss} />);
+      expect(screen.getByText(`Ref: ${fullId}`)).toBeTruthy();
+    });
+
+    it("copies the full ID to clipboard and shows 'Copied' for ~2s", async () => {
+      render(<ErrorBanner error={makeError({ correlationId: fullId })} onDismiss={onDismiss} />);
+      const button = screen.getByRole("button", { name: `Copy correlation ID ${fullId}` });
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      expect(writeText).toHaveBeenCalledWith(fullId);
+      expect(screen.getByText("Ref: Copied")).toBeTruthy();
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(screen.queryByText("Ref: Copied")).toBeNull();
+      expect(screen.getByText(`Ref: ${fullId}`)).toBeTruthy();
+    });
+
+    it("stays silent when clipboard rejects", async () => {
+      writeText.mockRejectedValueOnce(new Error("denied"));
+      render(<ErrorBanner error={makeError({ correlationId: fullId })} onDismiss={onDismiss} />);
+      const button = screen.getByRole("button", { name: `Copy correlation ID ${fullId}` });
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      // Allow promise rejection microtask to settle.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.queryByText("Ref: Copied")).toBeNull();
+      expect(screen.getByText(`Ref: ${fullId}`)).toBeTruthy();
+    });
+
+    it("clears the copied timeout when unmounted", async () => {
+      const { unmount } = render(
+        <ErrorBanner error={makeError({ correlationId: fullId })} onDismiss={onDismiss} />
+      );
+      const button = screen.getByRole("button", { name: `Copy correlation ID ${fullId}` });
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      unmount();
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+      // No assertion error on unmounted state-updates — implicit pass.
+    });
   });
 });

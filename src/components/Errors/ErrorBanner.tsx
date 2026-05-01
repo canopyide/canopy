@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ErrorRecord, RetryAction } from "@/store/errorStore";
+import { useDiagnosticsStore } from "@/store/diagnosticsStore";
 
 export interface ErrorBannerProps {
   error: ErrorRecord;
@@ -49,8 +50,24 @@ export function ErrorBanner({
   compact = false,
 }: ErrorBannerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isRetrying = !!error.retryProgress;
+
+  useEffect(() => {
+    setCopiedId(false);
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = null;
+    }
+  }, [error.correlationId]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   const handleRetry = useCallback(async () => {
     if (!error.retryAction || !onRetry) return;
@@ -68,6 +85,27 @@ export function ErrorBanner({
   const toggleExpanded = useCallback(() => {
     setIsExpanded((prev) => !prev);
   }, []);
+
+  const handleViewErrors = useCallback(() => {
+    useDiagnosticsStore.getState().openDock("problems");
+  }, []);
+
+  const handleCopyCorrelationId = useCallback(() => {
+    if (!error.correlationId) return;
+    void navigator.clipboard.writeText(error.correlationId).then(
+      () => {
+        if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+        setCopiedId(true);
+        copyTimeoutRef.current = setTimeout(() => {
+          setCopiedId(false);
+          copyTimeoutRef.current = null;
+        }, 2000);
+      },
+      () => {
+        // Clipboard rejected — stay silent.
+      }
+    );
+  }, [error.correlationId]);
 
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
   const TypeIcon = ERROR_TYPE_ICONS[error.type] ?? XCircle;
@@ -101,13 +139,13 @@ export function ErrorBanner({
           </>
         )}
         {!isRetrying && canRetry && (
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={handleRetry}
-            className="border-status-success/50 text-status-success hover:text-status-success/80"
-          >
+          <Button variant="ghost-danger" size="xs" onClick={handleRetry}>
             Retry
+          </Button>
+        )}
+        {!isRetrying && !canRetry && (
+          <Button variant="ghost-danger" size="xs" onClick={handleViewErrors}>
+            View errors
           </Button>
         )}
         <Button
@@ -145,9 +183,16 @@ export function ErrorBanner({
             </p>
           )}
           {error.correlationId && (
-            <span className="font-mono text-[10px] text-status-error/40">
-              Ref: {error.correlationId.split("-")[0]}
-            </span>
+            <button
+              type="button"
+              onClick={handleCopyCorrelationId}
+              aria-label={
+                copiedId ? "Correlation ID copied" : `Copy correlation ID ${error.correlationId}`
+              }
+              className="font-mono text-[10px] text-status-error/40 hover:text-status-error/70 cursor-copy transition-colors text-left break-all"
+            >
+              Ref: {copiedId ? "Copied" : error.correlationId}
+            </button>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -171,12 +216,7 @@ export function ErrorBanner({
             </>
           )}
           {!isRetrying && canRetry && (
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={handleRetry}
-              className="border-status-success/50 text-status-success hover:text-status-success/80 hover:bg-status-success/10"
-            >
+            <Button variant="ghost-danger" size="xs" onClick={handleRetry}>
               Retry
             </Button>
           )}
