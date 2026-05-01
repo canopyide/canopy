@@ -263,6 +263,25 @@ describe("TerminalInstanceService maybeReflowTerminal", () => {
     expect(managed.lastReflowAt).toBeGreaterThan(0);
   });
 
+  it("does not throttle the post-ESU reflow after a BSU skip", () => {
+    const managed = makeManaged();
+    const modes = (managed.terminal as unknown as { modes: { synchronizedOutputMode: boolean } })
+      .modes;
+    // BSU opens — guard fires, no jitter, no stamp
+    modes.synchronizedOutputMode = true;
+    service.maybeReflowTerminal(managed);
+    expect(paddingHistory(managed).length).toBe(0);
+    expect(managed.lastReflowAt).toBe(0);
+
+    // ESU closes — the next reflow must fire immediately, not be eaten by
+    // the 250ms throttle. This is the invariant that justifies the
+    // no-stamp branch in the guard.
+    modes.synchronizedOutputMode = false;
+    service.maybeReflowTerminal(managed);
+    expect(paddingHistory(managed)).toContain("0.01px");
+    expect(managed.lastReflowAt).toBeGreaterThan(0);
+  });
+
   it("resetRenderer calls forceXtermReflow and clears the throttle", () => {
     const managed = makeManaged({ lastReflowAt: 99999 });
     Object.defineProperty(managed.hostElement, "clientWidth", { value: 200, configurable: true });
@@ -411,6 +430,20 @@ describe("TerminalInstanceService reflowHeartbeatTimer visibility gate", () => {
     vi.advanceTimersByTime(3000);
     expect(paddingHistory(managed)).toContain("0.01px");
     expect(managed.lastReflowAt).toBeGreaterThan(0);
+  });
+
+  it("heartbeat does not reflow or stamp throttle while sync block is open", () => {
+    const managed = makeManaged();
+    (managed.terminal as unknown as { modes: { synchronizedOutputMode: boolean } }).modes = {
+      synchronizedOutputMode: true,
+    };
+    service.instances.set("t1", managed);
+
+    vi.advanceTimersByTime(3000);
+    // Heartbeat tick fired but the sync-mode guard skipped without
+    // stamping — so the next post-ESU heartbeat will reflow immediately.
+    expect(paddingHistory(managed).length).toBe(0);
+    expect(managed.lastReflowAt).toBe(0);
   });
 
   it("resumes reflows when visibility transitions hidden → visible", () => {
