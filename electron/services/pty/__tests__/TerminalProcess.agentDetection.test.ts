@@ -111,6 +111,23 @@ function createMutableDescendantCache(): {
 type TerminalProcessOptions = ConstructorParameters<typeof TerminalProcess>[1];
 type TerminalProcessDeps = ConstructorParameters<typeof TerminalProcess>[3];
 
+// In tests we override the foreground-pgid probe so it returns null
+// synchronously, restoring the legacy "no foreground gate" default. The
+// production code uses an async stale-while-revalidate cache that returns a
+// "child active" sentinel before the first probe resolves; that sentinel
+// would incorrectly hold the demotion gate closed in tests where no real ps
+// probe runs. Tests that exercise the foreground gate explicitly install
+// their own override after construction (see "does not demote ... while a
+// foreground child owns the PTY").
+function installNullForegroundSnapshot(terminal: TerminalProcess): TerminalProcess {
+  (
+    terminal as unknown as {
+      readForegroundProcessGroupSnapshot: () => null;
+    }
+  ).readForegroundProcessGroupSnapshot = () => null;
+  return terminal;
+}
+
 function createAgentTerminal(deps?: Partial<TerminalProcessDeps>): TerminalProcess {
   const options: TerminalProcessOptions = {
     cwd: process.cwd(),
@@ -124,23 +141,25 @@ function createAgentTerminal(deps?: Partial<TerminalProcessDeps>): TerminalProce
     args: ["-l"],
     env: {},
   };
-  return new TerminalProcess(
-    "t-agent",
-    options,
-    { emitData: () => {}, onExit: () => {} },
-    {
-      agentStateService: {
-        handleActivityState: () => {},
-        updateAgentState: () => {},
-        emitAgentKilled: () => {},
-        emitAgentCompleted: () => {},
-      } as unknown as TerminalProcessDeps["agentStateService"],
-      ptyPool: null,
-      processTreeCache: createMockProcessTreeCache(),
-      ...deps,
-    } as TerminalProcessDeps,
-    ctx,
-    createMockPty()
+  return installNullForegroundSnapshot(
+    new TerminalProcess(
+      "t-agent",
+      options,
+      { emitData: () => {}, onExit: () => {} },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+        ptyPool: null,
+        processTreeCache: createMockProcessTreeCache(),
+        ...deps,
+      } as TerminalProcessDeps,
+      ctx,
+      createMockPty()
+    )
   );
 }
 
@@ -156,23 +175,25 @@ function createPlainTerminal(id = "t-plain", deps?: Partial<TerminalProcessDeps>
     args: ["-l"],
     env: {},
   };
-  return new TerminalProcess(
-    id,
-    options,
-    { emitData: () => {}, onExit: () => {} },
-    {
-      agentStateService: {
-        handleActivityState: () => {},
-        updateAgentState: () => {},
-        emitAgentKilled: () => {},
-        emitAgentCompleted: () => {},
-      } as unknown as TerminalProcessDeps["agentStateService"],
-      ptyPool: null,
-      processTreeCache: createMockProcessTreeCache(),
-      ...deps,
-    } as TerminalProcessDeps,
-    ctx,
-    createMockPty()
+  return installNullForegroundSnapshot(
+    new TerminalProcess(
+      id,
+      options,
+      { emitData: () => {}, onExit: () => {} },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+        ptyPool: null,
+        processTreeCache: createMockProcessTreeCache(),
+        ...deps,
+      } as TerminalProcessDeps,
+      ctx,
+      createMockPty()
+    )
   );
 }
 
@@ -193,23 +214,25 @@ function createPlainTerminalWithCommand(
     args: ["-lc", command],
     env: {},
   };
-  return new TerminalProcess(
-    id,
-    options,
-    { emitData: () => {}, onExit: () => {} },
-    {
-      agentStateService: {
-        handleActivityState: () => {},
-        updateAgentState: () => {},
-        emitAgentKilled: () => {},
-        emitAgentCompleted: () => {},
-      } as unknown as TerminalProcessDeps["agentStateService"],
-      ptyPool: null,
-      processTreeCache: createMockProcessTreeCache(),
-      ...deps,
-    } as TerminalProcessDeps,
-    ctx,
-    createMockPty()
+  return installNullForegroundSnapshot(
+    new TerminalProcess(
+      id,
+      options,
+      { emitData: () => {}, onExit: () => {} },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+        ptyPool: null,
+        processTreeCache: createMockProcessTreeCache(),
+        ...deps,
+      } as TerminalProcessDeps,
+      ctx,
+      createMockPty()
+    )
   );
 }
 

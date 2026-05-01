@@ -1258,7 +1258,11 @@ export class PtyClient extends EventEmitter {
   }
 
   trash(id: string): void {
-    getTrashedPidTracker().persistTrashed(id, this.terminalPids.get(id));
+    void getTrashedPidTracker()
+      .persistTrashed(id, this.terminalPids.get(id))
+      .catch((err) => {
+        console.warn("[PtyClient] persistTrashed failed:", err);
+      });
     this.send({ type: "trash", id });
   }
 
