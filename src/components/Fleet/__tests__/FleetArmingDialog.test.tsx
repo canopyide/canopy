@@ -322,6 +322,84 @@ describe("FleetArmingDialog", () => {
     expect(useFleetArmingStore.getState().armOrder).toEqual(["a"]);
   });
 
+  it("shows drift count when a selected terminal becomes ineligible while the dialog is open", () => {
+    seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+    renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+    fireEvent.click(screen.getByLabelText("Select alpha"));
+    fireEvent.click(screen.getByLabelText("Select beta"));
+    expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    // Drop beta from the panel store — simulates terminal closing while dialog is open.
+    act(() => {
+      const state = usePanelStore.getState();
+      const next = { ...state.panelsById };
+      delete next.b;
+      usePanelStore.setState({ panelsById: next, panelIds: ["a"] });
+    });
+    expect(screen.getByText("1 became ineligible")).toBeTruthy();
+    expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+  });
+
+  it("hides drift notice when no eligibility change has occurred", () => {
+    seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+    renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+    fireEvent.click(screen.getByLabelText("Select alpha"));
+    fireEvent.click(screen.getByLabelText("Select beta"));
+    expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    expect(screen.queryByText(/became ineligible/)).toBeNull();
+  });
+
+  it("shows drift when selected terminal's runtimeStatus changes to exited", () => {
+    seedTerminals([
+      makeTerminal("a", { title: "alpha" }),
+      makeTerminal("b", { title: "beta", runtimeStatus: "running" }),
+    ]);
+    renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+    fireEvent.click(screen.getByLabelText("Select alpha"));
+    fireEvent.click(screen.getByLabelText("Select beta"));
+    expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    act(() => {
+      const state = usePanelStore.getState();
+      usePanelStore.setState({
+        panelsById: {
+          ...state.panelsById,
+          b: { ...(state.panelsById.b as TerminalInstance), runtimeStatus: "error" },
+        },
+      });
+    });
+    expect(screen.getByText("1 became ineligible")).toBeTruthy();
+    expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+  });
+
+  it("shows drift and disables confirm when all selected terminals become ineligible", () => {
+    seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+    const onClose = vi.fn();
+    renderDialog([makeWorktreeSnap("wt-1", "Main")], true, onClose);
+    fireEvent.click(screen.getByLabelText("Select alpha"));
+    fireEvent.click(screen.getByLabelText("Select beta"));
+    act(() => {
+      usePanelStore.setState({ panelsById: {}, panelIds: [] });
+    });
+    expect(screen.getByText("2 became ineligible")).toBeTruthy();
+    const confirmBtn = screen.getByText("Arm selected").closest("button") as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(true);
+    fireEvent.click(confirmBtn);
+    expect(useFleetArmingStore.getState().armOrder).toEqual([]);
+  });
+
+  it("does not count search-filtered terminals as drift", () => {
+    seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
+    renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+    fireEvent.click(screen.getByLabelText("Select alpha"));
+    fireEvent.click(screen.getByLabelText("Select beta"));
+    expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    // Filter to alpha only — beta is still eligible, just hidden.
+    fireEvent.change(screen.getByTestId("fleet-arming-dialog-search"), {
+      target: { value: "alpha" },
+    });
+    expect(screen.queryByText(/became ineligible/)).toBeNull();
+    expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+  });
+
   it("confirm replaces (not extends) the existing armed set", () => {
     seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
     useFleetArmingStore.getState().armIds(["old"]);
