@@ -29,6 +29,7 @@ import {
   getAccordionDragId,
 } from "@/components/DragDrop/SortableWorktreeTerminal";
 import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
+import { useKeybindingScope } from "@/hooks/useKeybinding";
 
 interface StateIconProps {
   state: AgentState;
@@ -113,7 +114,7 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
               onClick(term);
             }}
             aria-selected={isArmed}
-            className="flex items-center gap-2 min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px] rounded"
+            className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px] rounded"
           >
             <div className="shrink-0 opacity-60 group-hover/termrow:opacity-100 transition-opacity">
               <TerminalIcon kind={term.kind} chrome={chrome} className="w-3 h-3" />
@@ -204,6 +205,8 @@ export interface WorktreeTerminalSectionProps {
   onTerminalSelect: (terminal: TerminalInstance) => void;
 }
 
+const FLEET_HINT_DISMISSED_KEY = "daintree:fleet-selection-hint-dismissed";
+
 export function WorktreeTerminalSection({
   worktreeId,
   isExpanded,
@@ -212,10 +215,17 @@ export function WorktreeTerminalSection({
   onToggle,
   onTerminalSelect,
 }: WorktreeTerminalSectionProps) {
+  useKeybindingScope("worktreeGrid", isExpanded);
+
   const showMetaFooter = counts.total > 0;
 
   const terminalsId = `worktree-${worktreeId}-terminals`;
   const terminalsPanelId = `worktree-${worktreeId}-terminals-panel`;
+
+  const [hintDismissed, setHintDismissed] = useState(
+    () => localStorage.getItem(FLEET_HINT_DISMISSED_KEY) === "1"
+  );
+  const armedIdsSize = useFleetArmingStore((s) => s.armedIds.size);
 
   const topTerminalState = ((): { state: AgentState; count: number } | null => {
     for (const state of STATE_PRIORITY) {
@@ -346,6 +356,8 @@ export function WorktreeTerminalSection({
           .filter((id) => hits.includes(id) && eligible.has(id));
         if (orderedHits.length > 0) {
           useFleetArmingStore.getState().armIds(orderedHits);
+          localStorage.setItem(FLEET_HINT_DISMISSED_KEY, "1");
+          setHintDismissed(true);
         }
       }
     },
@@ -417,6 +429,22 @@ export function WorktreeTerminalSection({
             items={orderedWorktreeTerminals.map((t) => getAccordionDragId(t.id))}
             strategy={verticalListSortingStrategy}
           >
+            {eligibleTerminals.length >= 2 && armedIdsSize === 0 && !hintDismissed && (
+              <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-text-muted bg-surface-inset border-b border-border-default">
+                <span>Drag to select multiple, ⇧-click to add</span>
+                <button
+                  type="button"
+                  className="ml-2 rounded-sm text-text-muted hover:text-text-secondary transition-colors"
+                  aria-label="Dismiss hint"
+                  onClick={() => {
+                    localStorage.setItem(FLEET_HINT_DISMISSED_KEY, "1");
+                    setHintDismissed(true);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div
               id={terminalsPanelId}
               ref={scrollRef}
@@ -427,7 +455,7 @@ export function WorktreeTerminalSection({
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerCancel}
-              className="relative max-h-[300px] overflow-y-auto bg-surface-inset"
+              className="relative max-h-[300px] overflow-y-auto bg-surface-inset cursor-crosshair"
             >
               {orderedWorktreeTerminals.map((term, index) => (
                 <SortableWorktreeTerminal

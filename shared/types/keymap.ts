@@ -129,6 +129,7 @@ export type BuiltInKeyAction =
   | "fleet.kill"
   | "fleet.trash"
   | "fleet.armFocused"
+  | "fleet.armAll"
 
   // Agent spawning
   | "agent.palette"
@@ -310,6 +311,7 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "fleet.kill",
   "fleet.trash",
   "fleet.armFocused",
+  "fleet.armAll",
   "agent.palette",
   ...BUILT_IN_AGENT_KEY_ACTIONS,
   "agent.terminal",
