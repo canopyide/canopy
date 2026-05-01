@@ -40,6 +40,11 @@ export const UI_EXIT_DURATION = 120;
 export const UI_PALETTE_ENTER_DURATION = DURATION_150;
 export const UI_PALETTE_EXIT_DURATION = DURATION_100;
 
+// Tooltip hover/skip delays consumed by the Radix `TooltipProvider` at the app
+// root. These are wait times before a tooltip opens, not animation durations.
+export const UI_TOOLTIP_DELAY_DURATION = 500;
+export const UI_TOOLTIP_SKIP_DELAY_DURATION = DURATION_150;
+
 export const UI_ENTER_EASING = EASE_SPRING_CRITICAL;
 export const UI_EXIT_EASING = "cubic-bezier(0.2, 0, 0.7, 0)";
 

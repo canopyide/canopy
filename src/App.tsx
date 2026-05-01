@@ -102,6 +102,7 @@ import { SendToAgentPalette } from "./components/Terminal/SendToAgentPalette";
 import { useSendToAgentPalette } from "./hooks/useSendToAgentPalette";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { UI_TOOLTIP_DELAY_DURATION, UI_TOOLTIP_SKIP_DELAY_DURATION } from "./lib/animationUtils";
 import { PanelLimitConfirmDialog } from "./components/Terminal/PanelLimitConfirmDialog";
 import { ThemePalette } from "./components/ThemePalette";
 import { LogLevelPalette } from "./components/LogLevelPalette";
@@ -499,7 +500,10 @@ function App() {
     <LazyMotion features={domAnimation}>
       <MotionConfig reducedMotion={reduceAnimations ? "always" : "user"}>
         <ErrorBoundary variant="fullscreen" componentName="App">
-          <TooltipProvider delayDuration={500} skipDelayDuration={150}>
+          <TooltipProvider
+            delayDuration={UI_TOOLTIP_DELAY_DURATION}
+            skipDelayDuration={UI_TOOLTIP_SKIP_DELAY_DURATION}
+          >
             <E2EFaultInjector />
             {isSafeMode && <SafeModeBanner />}
             <GitHubTokenBanner />

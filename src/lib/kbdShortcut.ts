@@ -1,0 +1,120 @@
+/**
+ * Pure chord-parsing utility for keyboard shortcuts. Returns display tokens
+ * grouped by chord step so React components can render per-key pills without
+ * touching `navigator` directly.
+ *
+ * Steps (two-step chords) are separated by whitespace: `"Cmd+K T"` →
+ * `[["⌘","K"],["T"]]`. Keys within a step are separated by `+`.
+ *
+ * `isMac` is injected as a parameter so the parser can be tested without
+ * mutating the cached `navigator.platform` lookup in `src/lib/platform.ts`.
+ */
+
+const MAC_GLYPHS: Record<string, string> = {
+  cmd: "⌘",
+  command: "⌘",
+  meta: "⌘",
+  ctrl: "⌃",
+  control: "⌃",
+  alt: "⌥",
+  option: "⌥",
+  shift: "⇧",
+  return: "⏎",
+  enter: "⏎",
+  escape: "⎋",
+  esc: "⎋",
+  tab: "⇥",
+  backspace: "⌫",
+  delete: "⌦",
+  del: "⌦",
+};
+
+const WIN_LABELS: Record<string, string> = {
+  cmd: "Ctrl",
+  command: "Ctrl",
+  meta: "Ctrl",
+  ctrl: "Ctrl",
+  control: "Ctrl",
+  alt: "Alt",
+  option: "Alt",
+  shift: "Shift",
+  return: "Enter",
+  enter: "Enter",
+  escape: "Esc",
+  esc: "Esc",
+  tab: "Tab",
+  backspace: "Backspace",
+  delete: "Delete",
+  del: "Delete",
+};
+
+// Arrow keys render as glyphs on every platform — they're unambiguous and
+// take less horizontal space than the spelled-out names.
+const ARROW_GLYPHS: Record<string, string> = {
+  up: "↑",
+  arrowup: "↑",
+  down: "↓",
+  arrowdown: "↓",
+  left: "←",
+  arrowleft: "←",
+  right: "→",
+  arrowright: "→",
+};
+
+export const MODIFIER_GLYPH_MAP = MAC_GLYPHS;
+export const MODIFIER_TEXT_MAP = WIN_LABELS;
+
+function capitalize(token: string): string {
+  if (!token) return token;
+  return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+}
+
+function mapToken(rawToken: string, isMac: boolean): string {
+  const lower = rawToken.toLowerCase();
+  const arrow = ARROW_GLYPHS[lower];
+  if (arrow) return arrow;
+  const table = isMac ? MAC_GLYPHS : WIN_LABELS;
+  const mapped = table[lower];
+  if (mapped) return mapped;
+  return capitalize(rawToken);
+}
+
+function splitStepKeys(step: string): string[] {
+  // `Ctrl++` means Control + literal `+` key. Splitting on `+` naively
+  // produces empty strings; preserve the trailing `+` as a literal token.
+  const trimmed = step.trim();
+  if (!trimmed) return [];
+
+  const trailingPlus = /\+$/.test(trimmed) && trimmed.length > 1;
+  const body = trailingPlus ? trimmed.slice(0, -1) : trimmed;
+  const parts = body
+    .split("+")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  if (trailingPlus) parts.push("+");
+  return parts;
+}
+
+/**
+ * Parse a shortcut string into display tokens grouped by chord step.
+ *
+ * @example
+ * parseChord("Cmd+Shift+P", true)   // [["⌘","⇧","P"]]
+ * parseChord("Cmd+K T", true)        // [["⌘","K"],["T"]]
+ * parseChord("Ctrl++", false)        // [["Ctrl","+"]]
+ * parseChord("", true)               // []
+ */
+export function parseChord(shortcut: string, isMac: boolean): string[][] {
+  if (!shortcut || !shortcut.trim()) return [];
+
+  // Collapse whitespace around `+` first so " Cmd + Shift + P " stays a single
+  // chord step. Remaining whitespace is the chord-step separator.
+  const normalized = shortcut.trim().replace(/\s*\+\s*/g, "+");
+  const steps = normalized
+    .split(/\s+/)
+    .map((step) => splitStepKeys(step))
+    .filter((tokens) => tokens.length > 0);
+
+  return steps.map((tokens) => tokens.map((token) => mapToken(token, isMac)));
+}
