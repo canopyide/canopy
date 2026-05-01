@@ -52,6 +52,7 @@ type ReflowTestService = {
   maybeReflowTerminal: (managed: ManagedTerminal) => void;
   resetRenderer: (id: string) => void;
   resizeController: { fit: (id: string) => unknown };
+  getSynchronizedOutputMode: (id: string) => boolean | null;
 };
 
 function makeManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal {
@@ -81,7 +82,10 @@ function makeManaged(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal 
     paddingTopHistory;
 
   const managed = {
-    terminal: { element: termEl } as unknown as ManagedTerminal["terminal"],
+    terminal: {
+      element: termEl,
+      modes: { synchronizedOutputMode: false },
+    } as unknown as ManagedTerminal["terminal"],
     type: "terminal",
     kind: "terminal",
     hostElement,
@@ -235,6 +239,30 @@ describe("TerminalInstanceService maybeReflowTerminal", () => {
     expect(paddingHistory(managed).length).toBe(0);
   });
 
+  it("skips — and does not stamp throttle — when synchronized output mode is active", () => {
+    const managed = makeManaged();
+    (managed.terminal as unknown as { modes: { synchronizedOutputMode: boolean } }).modes = {
+      synchronizedOutputMode: true,
+    };
+
+    service.maybeReflowTerminal(managed);
+    // BSU is open — refreshing now would interleave with xterm's buffered
+    // range. Throttle must not stamp so we reflow on the next tick after ESU.
+    expect(managed.lastReflowAt).toBe(0);
+    expect(paddingHistory(managed).length).toBe(0);
+  });
+
+  it("reflows when synchronized output mode is false", () => {
+    const managed = makeManaged();
+    (managed.terminal as unknown as { modes: { synchronizedOutputMode: boolean } }).modes = {
+      synchronizedOutputMode: false,
+    };
+
+    service.maybeReflowTerminal(managed);
+    expect(paddingHistory(managed)).toContain("0.01px");
+    expect(managed.lastReflowAt).toBeGreaterThan(0);
+  });
+
   it("resetRenderer calls forceXtermReflow and clears the throttle", () => {
     const managed = makeManaged({ lastReflowAt: 99999 });
     Object.defineProperty(managed.hostElement, "clientWidth", { value: 200, configurable: true });
@@ -283,6 +311,53 @@ describe("TerminalInstanceService maybeReflowTerminal", () => {
     // The escape hatch — forceXtermReflow — must still run even if fit throws.
     expect(paddingHistory(managed)).toContain("0.01px");
     expect(managed.lastReflowAt).toBe(0);
+  });
+});
+
+describe("TerminalInstanceService getSynchronizedOutputMode", () => {
+  let service: ReflowTestService;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ terminalInstanceService: service } =
+      (await import("../TerminalInstanceService")) as unknown as {
+        terminalInstanceService: ReflowTestService;
+      });
+    service.instances.clear();
+  });
+
+  afterEach(() => {
+    service.instances.clear();
+    document.body.innerHTML = "";
+  });
+
+  it("returns true when xterm reports an open synchronized output block", () => {
+    const managed = makeManaged();
+    (managed.terminal as unknown as { modes: { synchronizedOutputMode: boolean } }).modes = {
+      synchronizedOutputMode: true,
+    };
+    service.instances.set("t1", managed);
+
+    expect(service.getSynchronizedOutputMode("t1")).toBe(true);
+  });
+
+  it("returns false when xterm reports no synchronized output block", () => {
+    const managed = makeManaged();
+    service.instances.set("t1", managed);
+
+    expect(service.getSynchronizedOutputMode("t1")).toBe(false);
+  });
+
+  it("returns null for an unknown terminal id", () => {
+    expect(service.getSynchronizedOutputMode("missing")).toBeNull();
+  });
+
+  it("returns null when xterm did not surface modes (defensive)", () => {
+    const managed = makeManaged();
+    (managed.terminal as unknown as { modes?: unknown }).modes = undefined;
+    service.instances.set("t1", managed);
+
+    expect(service.getSynchronizedOutputMode("t1")).toBeNull();
   });
 });
 
