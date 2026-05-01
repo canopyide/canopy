@@ -291,6 +291,72 @@ describe("TabButton", () => {
       expect(onRename).toHaveBeenCalledWith("Renamed");
       expect(screen.queryByTestId("motion-input")).toBeNull();
     });
+
+    it("ignores Enter while an IME composition is in progress", () => {
+      const onRename = vi.fn();
+      render(<TabButton {...defaultProps} onRename={onRename} />);
+
+      enterEditMode(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+
+      fireEvent.change(input, { target: { value: "Renamed" } });
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+
+      expect(onRename).not.toHaveBeenCalled();
+      expect(screen.getByTestId("motion-input")).toBe(input);
+      expect(input.className).not.toContain("border-status-error");
+    });
+
+    it("invalid Enter then valid Enter commits exactly once and clears error state", () => {
+      vi.useFakeTimers();
+      const onRename = vi.fn();
+      render(<TabButton {...defaultProps} onRename={onRename} />);
+
+      enterEditMode(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(input.className).toContain("border-status-error");
+
+      fireEvent.change(input, { target: { value: "Renamed" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(onRename).toHaveBeenCalledTimes(1);
+      expect(onRename).toHaveBeenCalledWith("Renamed");
+      expect(screen.queryByTestId("motion-input")).toBeNull();
+
+      // Pending error timer should be safely no-op after unmount.
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+    });
+  });
+
+  describe("context-menu rename path", () => {
+    it("commits a rename triggered via daintree:rename-terminal even after a prior Escape", () => {
+      const onRename = vi.fn();
+      render(<TabButton {...defaultProps} onRename={onRename} />);
+
+      // First rename via double-click, then Escape — sets the commit-or-cancel guard.
+      fireEvent.doubleClick(screen.getByText("Test Agent"));
+      const firstInput = screen.getByTestId("motion-input") as HTMLInputElement;
+      fireEvent.keyDown(firstInput, { key: "Escape" });
+      expect(screen.queryByTestId("motion-input")).toBeNull();
+
+      // Now trigger rename via context-menu event. Without resetting the guard
+      // in the event handler, a follow-up blur would silently drop the change.
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("daintree:rename-terminal", { detail: { id: "test-panel-1" } })
+        );
+      });
+
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "FromContextMenu" } });
+      fireEvent.blur(input);
+
+      expect(onRename).toHaveBeenCalledWith("FromContextMenu");
+    });
   });
 
   describe("rename input fade-in", () => {

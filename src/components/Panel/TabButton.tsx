@@ -112,6 +112,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       if ((detail as { id: string }).id === id) {
         setEditValue(title);
         setIsEditing(true);
+        didCommitOrCancelRef.current = false;
       }
     };
 
@@ -170,6 +171,8 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       e.stopPropagation();
       if (e.key === "Enter") {
+        // Don't intercept Enter while an IME composition is being committed.
+        if (e.nativeEvent.isComposing) return;
         e.preventDefault();
         const trimmed = editValue.trim();
         if (!trimmed || trimmed === title) {
