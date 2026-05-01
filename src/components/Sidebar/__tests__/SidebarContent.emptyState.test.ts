@@ -117,3 +117,39 @@ describe("SidebarContent quick-state empty state — issue #6333", () => {
     });
   });
 });
+
+describe("SidebarContent zero-worktrees shortcut nudge — issue #6437", () => {
+  let source: string;
+
+  beforeAll(async () => {
+    source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+  });
+
+  it("imports the Kbd component for the shortcut hint", () => {
+    expect(source).toMatch(/import \{ Kbd \} from "@\/components\/ui\/Kbd"/);
+  });
+
+  it("subscribes to useKeybindingDisplay for worktree.createDialog.open", () => {
+    expect(source).toContain('useKeybindingDisplay("worktree.createDialog.open")');
+  });
+
+  it("renders the Press <Kbd>...</Kbd> nudge guarded by createWorktreeShortcut in the zero-worktrees branch", () => {
+    // The nudge must live inside the zero-worktrees early-return branch and be
+    // wrapped in a truthy guard so unbound shortcuts (createWorktreeShortcut === "")
+    // suppress the line entirely instead of rendering "Press  to create a worktree".
+    const branchStart = source.indexOf("if (worktrees.length === 0) {");
+    const branchEnd = source.indexOf("const rootPath = currentProject", branchStart);
+    expect(branchStart).toBeGreaterThan(0);
+    expect(branchEnd).toBeGreaterThan(branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toMatch(
+      /\{createWorktreeShortcut && \([\s\S]*?<Kbd>\{createWorktreeShortcut\}<\/Kbd>[\s\S]*?to create a worktree[\s\S]*?\)\}/
+    );
+  });
+
+  it("does not replace the File → Open Directory menu-path pill with Kbd (semantically a menu path, not a shortcut)", () => {
+    // The menu-path pill stays as a raw <kbd> with the existing styling — Kbd
+    // is reserved for keyboard shortcuts.
+    expect(source).toMatch(/<kbd[^>]*>\s*File → Open Directory\s*<\/kbd>/);
+  });
+});

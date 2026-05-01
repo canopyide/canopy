@@ -21,6 +21,7 @@ import {
 } from "@/hooks";
 import { createTooltipWithShortcut } from "@/lib/platform";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Kbd } from "@/components/ui/Kbd";
 import {
   WorktreeCard,
   type WorktreeCardProps,
@@ -883,6 +884,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               File → Open Directory
             </kbd>
           </p>
+
+          {createWorktreeShortcut && (
+            <p className="text-xs text-daintree-text/60 mb-4 max-w-xs">
+              Press <Kbd>{createWorktreeShortcut}</Kbd> to create a worktree
+            </p>
+          )}
 
           <div className="text-xs text-daintree-text/60 text-left w-full max-w-xs">
             <div className="font-medium mb-1">Quick Start:</div>
