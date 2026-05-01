@@ -242,9 +242,9 @@ export function isTelemetryEnabled(): boolean {
 
 /**
  * Returns a UUID for correlating main-process errors with renderer error
- * envelopes. Only emits in packaged builds with Sentry initialized — in dev or
- * when telemetry is not configured, returns `undefined` so no orphan UUID ends
- * up on the wire.
+ * envelopes. Only emits in packaged builds where Sentry has been initialized
+ * — in dev or when the Sentry module was never loaded, returns `undefined`
+ * so no orphan UUID ends up on the wire.
  */
 export function getCurrentCorrelationId(): string | undefined {
   if (!app.isPackaged || sentryModule === null) return undefined;

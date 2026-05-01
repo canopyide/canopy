@@ -56,9 +56,9 @@ export function enforceIpcSenderValidation(): void {
         return wrapSuccess(result);
       } catch (error) {
         if (app.isPackaged) {
-          console.error(`[IPC] Error on channel ${channel}:`, error);
-          const serialized = serializeError(error);
           const correlationId = getCurrentCorrelationId();
+          console.error(`[IPC] Error on channel ${channel} [${correlationId}]:`, error);
+          const serialized = serializeError(error);
           if (correlationId !== undefined) {
             serialized.correlationId = correlationId;
           }
@@ -98,9 +98,9 @@ export function enforceIpcSenderValidation(): void {
           return wrapSuccess(result);
         } catch (error) {
           if (app.isPackaged) {
-            console.error(`[IPC] Error on channel ${channel}:`, error);
-            const serialized = serializeError(error);
             const correlationId = getCurrentCorrelationId();
+            console.error(`[IPC] Error on channel ${channel} [${correlationId}]:`, error);
+            const serialized = serializeError(error);
             if (correlationId !== undefined) {
               serialized.correlationId = correlationId;
             }
