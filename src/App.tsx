@@ -137,7 +137,9 @@ import { useAgentSettingsStore } from "./store/agentSettingsStore";
 import { isAgentLaunchable } from "../shared/utils/agentAvailability";
 import { isAgentPinned } from "../shared/utils/agentPinned";
 import { useShallow } from "zustand/react/shallow";
-import { LazyMotion, MotionConfig, domAnimation } from "framer-motion";
+import { LazyMotion, MotionConfig } from "framer-motion";
+
+const loadMotionFeatures = () => import("./lib/motionFeatures").then((mod) => mod.default);
 import { useMacroFocusStore } from "./store/macroFocusStore";
 import { useSafeModeStore } from "./store/safeModeStore";
 import type { BuiltInPanelKind } from "./types";
@@ -496,7 +498,7 @@ function App() {
   }
 
   return (
-    <LazyMotion features={domAnimation}>
+    <LazyMotion strict features={loadMotionFeatures}>
       <MotionConfig reducedMotion={reduceAnimations ? "always" : "user"}>
         <ErrorBoundary variant="fullscreen" componentName="App">
           <TooltipProvider delayDuration={500} skipDelayDuration={150}>
