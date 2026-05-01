@@ -314,4 +314,23 @@ describe("DockedTabGroup close guard (#6330)", () => {
     expect(trashPanelMock).not.toHaveBeenCalled();
     expect(queryByTestId("confirm-dialog")).toBeNull();
   });
+
+  it("reopens the dock popover for the kept tab on cancel", () => {
+    const panels = [
+      makePanel({ id: "t-1", agentState: "working" as AgentState }),
+      makePanel({ id: "t-2", agentState: "idle" as AgentState }),
+    ];
+
+    const { getByTestId } = render(
+      <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+    );
+
+    fireEvent.click(getByTestId("close-t-1"));
+    expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
+
+    openDockTerminalMock.mockClear();
+    fireEvent.click(getByTestId("dialog-cancel"));
+
+    expect(openDockTerminalMock).toHaveBeenCalledWith("t-1");
+  });
 });

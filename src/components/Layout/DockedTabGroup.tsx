@@ -275,8 +275,13 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   }, [pendingCloseTabId, doCloseTab]);
 
   const handleCancelClose = useCallback(() => {
+    const tabId = pendingCloseTabId;
     setPendingCloseTabId(null);
-  }, []);
+    // The popover was closed before the dialog opened so the Radix
+    // outside-click guard wouldn't collapse it behind the modal. Restore it
+    // on cancel so the user lands back where they started.
+    if (tabId) openDockTerminal(tabId);
+  }, [pendingCloseTabId, openDockTerminal]);
 
   // Sensors for tab drag-and-drop (require small distance to differentiate from clicks)
   const tabSensors = useSensors(
