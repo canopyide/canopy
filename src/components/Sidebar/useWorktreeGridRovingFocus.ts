@@ -225,7 +225,8 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
       if (rows.length === 0) return;
 
       const mode = modeRef.current;
-      const target = e.target as HTMLElement;
+      if (!(e.target instanceof HTMLElement)) return;
+      const target = e.target;
       const isOnRow = rows.some((row) => row === target);
 
       if (mode === "list") {
