@@ -65,6 +65,10 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
   const [rateLimitResetAt, setRateLimitResetAt] = useState<number | null>(null);
   const [rateLimitKind, setRateLimitKind] = useState<GitHubRateLimitKind | null>(null);
   const rateLimitResetAtRef = useRef<number | null>(null);
+  // Mirrors the `lastUpdated` state for synchronous reads from event-handler
+  // closures (push subscribers). Used to skip stale stat pushes whose
+  // `fetchedAt` is older than what we've already applied.
+  const lastUpdatedRef = useRef<number | null>(null);
 
   // Preserve last known non-zero counts to prevent empty state flash during refresh
   const lastKnownCountsRef = useRef<{
@@ -85,125 +89,142 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
   const activeFetchIdRef = useRef(0);
   const invalidatedFetchIdRef = useRef<number | null>(null);
 
-  const fetchStats = useCallback(async (force = false) => {
-    if (inFlightRef.current) {
-      queuedFetchRef.current.pending = true;
-      queuedFetchRef.current.force = queuedFetchRef.current.force || force;
-      invalidatedFetchIdRef.current = activeFetchIdRef.current;
-      return;
-    }
+  // Apply a `RepositoryStats` result to local state — shared by the network
+  // fetch path (`fetchStats`) and the broadcast push path
+  // (`onRepoStatsAndPageUpdated`). Both paths must run identical preservation
+  // logic so a list-fetch-triggered update can't flash a `0` count when stale.
+  const applyStatsResult = useCallback(
+    (repoStats: RepositoryStats, opts: { projectPath: string }) => {
+      if (!mountedRef.current) return;
 
-    try {
-      inFlightRef.current = true;
-      activeFetchIdRef.current += 1;
-      const fetchId = activeFetchIdRef.current;
+      // Track current project so a stale callback from a previous project
+      // can be detected by `fetchStats`'s cross-project guard.
+      lastKnownCountsRef.current.projectPath = opts.projectPath;
 
-      const project = await projectClient.getCurrent();
-      if (!project) {
-        if (mountedRef.current) {
-          setStats(null);
-          setError(null);
-          setIsStale(false);
-          setLastUpdated(null);
-          lastErrorRef.current = null;
+      // Only preserve counts when data is stale or errored (not on successful fresh fetch)
+      const shouldPreserve = repoStats.stale === true || repoStats.ghError !== undefined;
+
+      if (!shouldPreserve) {
+        // Fresh successful data - update preserved counts and accept genuine 0s
+        if (repoStats.issueCount !== null && repoStats.issueCount > 0) {
+          lastKnownCountsRef.current.issueCount = repoStats.issueCount;
+        } else if (repoStats.issueCount === 0) {
+          // Clear preserved count on confirmed 0 from successful fetch
+          lastKnownCountsRef.current.issueCount = null;
         }
+
+        if (repoStats.prCount !== null && repoStats.prCount > 0) {
+          lastKnownCountsRef.current.prCount = repoStats.prCount;
+        } else if (repoStats.prCount === 0) {
+          // Clear preserved count on confirmed 0 from successful fetch
+          lastKnownCountsRef.current.prCount = null;
+        }
+      }
+
+      // Apply preservation: use preserved counts only when data is stale/errored
+      const preservedStats: RepositoryStats = {
+        ...repoStats,
+        issueCount:
+          shouldPreserve &&
+          repoStats.issueCount === 0 &&
+          lastKnownCountsRef.current.issueCount !== null
+            ? lastKnownCountsRef.current.issueCount
+            : repoStats.issueCount,
+        prCount:
+          shouldPreserve && repoStats.prCount === 0 && lastKnownCountsRef.current.prCount !== null
+            ? lastKnownCountsRef.current.prCount
+            : repoStats.prCount,
+      };
+
+      setStats(preservedStats);
+      setIsStale(repoStats.stale ?? false);
+      const nextLastUpdated = repoStats.lastUpdated ?? null;
+      lastUpdatedRef.current = nextLastUpdated;
+      setLastUpdated(nextLastUpdated);
+
+      const nextResetAt = repoStats.rateLimitResetAt ?? null;
+      const nextKind = repoStats.rateLimitKind ?? null;
+      rateLimitResetAtRef.current = nextResetAt;
+      setRateLimitResetAt(nextResetAt);
+      setRateLimitKind(nextKind);
+
+      if (repoStats.ghError) {
+        setError(repoStats.ghError);
+        lastErrorRef.current = repoStats.ghError;
+      } else {
+        setError(null);
+        lastErrorRef.current = null;
+      }
+    },
+    []
+  );
+
+  const fetchStats = useCallback(
+    async (force = false) => {
+      if (inFlightRef.current) {
+        queuedFetchRef.current.pending = true;
+        queuedFetchRef.current.force = queuedFetchRef.current.force || force;
+        invalidatedFetchIdRef.current = activeFetchIdRef.current;
         return;
       }
 
-      setLoading(true);
+      try {
+        inFlightRef.current = true;
+        activeFetchIdRef.current += 1;
+        const fetchId = activeFetchIdRef.current;
 
-      const repoStats = await githubClient.getRepoStats(project.path, force);
-
-      if (mountedRef.current) {
-        if (invalidatedFetchIdRef.current === fetchId) {
+        const project = await projectClient.getCurrent();
+        if (!project) {
+          if (mountedRef.current) {
+            setStats(null);
+            setError(null);
+            setIsStale(false);
+            lastUpdatedRef.current = null;
+            setLastUpdated(null);
+            lastErrorRef.current = null;
+          }
           return;
         }
 
-        // Ignore results from previous project (race condition protection)
-        if (
-          lastKnownCountsRef.current.projectPath !== null &&
-          lastKnownCountsRef.current.projectPath !== project.path
-        ) {
-          return;
-        }
+        setLoading(true);
 
-        // Track current project to detect stale fetches
-        lastKnownCountsRef.current.projectPath = project.path;
+        const repoStats = await githubClient.getRepoStats(project.path, force);
 
-        // Only preserve counts when data is stale or errored (not on successful fresh fetch)
-        const shouldPreserve = repoStats.stale === true || repoStats.ghError !== undefined;
-
-        if (shouldPreserve) {
-          // Preserve last known counts during transient failures/stale data
-          // Don't update preserved counts - keep the last good values
-        } else {
-          // Fresh successful data - update preserved counts and accept genuine 0s
-          if (repoStats.issueCount !== null && repoStats.issueCount > 0) {
-            lastKnownCountsRef.current.issueCount = repoStats.issueCount;
-          } else if (repoStats.issueCount === 0) {
-            // Clear preserved count on confirmed 0 from successful fetch
-            lastKnownCountsRef.current.issueCount = null;
+        if (mountedRef.current) {
+          if (invalidatedFetchIdRef.current === fetchId) {
+            return;
           }
 
-          if (repoStats.prCount !== null && repoStats.prCount > 0) {
-            lastKnownCountsRef.current.prCount = repoStats.prCount;
-          } else if (repoStats.prCount === 0) {
-            // Clear preserved count on confirmed 0 from successful fetch
-            lastKnownCountsRef.current.prCount = null;
+          // Ignore results from previous project (race condition protection)
+          if (
+            lastKnownCountsRef.current.projectPath !== null &&
+            lastKnownCountsRef.current.projectPath !== project.path
+          ) {
+            return;
           }
+
+          applyStatsResult(repoStats, { projectPath: project.path });
         }
-
-        // Apply preservation: use preserved counts only when data is stale/errored
-        const preservedStats: RepositoryStats = {
-          ...repoStats,
-          issueCount:
-            shouldPreserve &&
-            repoStats.issueCount === 0 &&
-            lastKnownCountsRef.current.issueCount !== null
-              ? lastKnownCountsRef.current.issueCount
-              : repoStats.issueCount,
-          prCount:
-            shouldPreserve && repoStats.prCount === 0 && lastKnownCountsRef.current.prCount !== null
-              ? lastKnownCountsRef.current.prCount
-              : repoStats.prCount,
-        };
-
-        setStats(preservedStats);
-        setIsStale(repoStats.stale ?? false);
-        setLastUpdated(repoStats.lastUpdated ?? null);
-
-        const nextResetAt = repoStats.rateLimitResetAt ?? null;
-        const nextKind = repoStats.rateLimitKind ?? null;
-        rateLimitResetAtRef.current = nextResetAt;
-        setRateLimitResetAt(nextResetAt);
-        setRateLimitKind(nextKind);
-
-        if (repoStats.ghError) {
-          setError(repoStats.ghError);
-          lastErrorRef.current = repoStats.ghError;
-        } else {
-          setError(null);
-          lastErrorRef.current = null;
+      } catch (err) {
+        if (mountedRef.current) {
+          const errorMessage = formatErrorMessage(err, "Failed to fetch repository stats");
+          setError(errorMessage);
+          lastErrorRef.current = errorMessage;
+        }
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+        inFlightRef.current = false;
+        if (mountedRef.current && queuedFetchRef.current.pending) {
+          const queuedForce = queuedFetchRef.current.force;
+          queuedFetchRef.current = { pending: false, force: false };
+          void fetchStats(queuedForce);
         }
       }
-    } catch (err) {
-      if (mountedRef.current) {
-        const errorMessage = formatErrorMessage(err, "Failed to fetch repository stats");
-        setError(errorMessage);
-        lastErrorRef.current = errorMessage;
-      }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-      inFlightRef.current = false;
-      if (mountedRef.current && queuedFetchRef.current.pending) {
-        const queuedForce = queuedFetchRef.current.force;
-        queuedFetchRef.current = { pending: false, force: false };
-        void fetchStats(queuedForce);
-      }
-    }
-  }, []);
+    },
+    [applyStatsResult]
+  );
 
   const scheduleNextPoll = useCallback(() => {
     if (pollTimerRef.current) {
@@ -313,6 +334,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
 
       setStats(null);
       setIsStale(false);
+      lastUpdatedRef.current = null;
       setLastUpdated(null);
       rateLimitResetAtRef.current = null;
       setRateLimitResetAt(null);
@@ -381,7 +403,9 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
   // process. Whenever a poll completes successfully, main broadcasts the
   // counts AND the first 20 open issues + open PRs (sorted by created-desc).
   // Seed the renderer's `githubResourceCache` for the matching default-filter
-  // cache key so the next dropdown click reads from hot cache instantly.
+  // cache key so the next dropdown click reads from hot cache instantly, and
+  // apply the pushed stats to the toolbar count immediately so the badge
+  // converges with the dropdown without waiting for the next 30s poll.
   useEffect(() => {
     const cleanup = githubClient.onRepoStatsAndPageUpdated((payload) => {
       if (!mountedRef.current) return;
@@ -398,20 +422,48 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
           // consumers using "isDraft" in item or item.number.
           if (!isValidPagePayload(payload.issues) || !isValidPagePayload(payload.prs)) return;
 
+          // Stats freshness guard: compare the broadcast's `stats.lastUpdated`
+          // (the actual GitHub API fetch time) to whatever we last applied.
+          // Same units on both sides since the helper writes
+          // `lastUpdatedRef.current = repoStats.lastUpdated`. Using `fetchedAt`
+          // here would be over-permissive — `fetchedAt` is set later in the
+          // broadcast call chain than `stats.lastUpdated` and would let an
+          // older fetch's payload through if a long commit-count lookup
+          // delayed the broadcast.
+          const pushedLastUpdated = payload.stats.lastUpdated ?? null;
+          const skipStats =
+            pushedLastUpdated !== null &&
+            lastUpdatedRef.current !== null &&
+            pushedLastUpdated <= lastUpdatedRef.current;
+
+          // Cache freshness guard: the renderer cache may have been written by
+          // a more-recent SWR revalidation in `GitHubResourceList` whose
+          // timestamp is independent of `lastUpdatedRef`. Don't downgrade a
+          // fresher entry — same pattern as the disk-hydration block above.
           const issuesKey = buildCacheKey(payload.projectPath, "issue", "open", "created");
           const prsKey = buildCacheKey(payload.projectPath, "pr", "open", "created");
-          setCache(issuesKey, {
-            items: payload.issues.items,
-            endCursor: payload.issues.endCursor,
-            hasNextPage: payload.issues.hasNextPage,
-            timestamp: payload.fetchedAt,
-          });
-          setCache(prsKey, {
-            items: payload.prs.items,
-            endCursor: payload.prs.endCursor,
-            hasNextPage: payload.prs.hasNextPage,
-            timestamp: payload.fetchedAt,
-          });
+          const existingIssues = getCache(issuesKey);
+          const existingPRs = getCache(prsKey);
+          if (!existingIssues || existingIssues.timestamp < payload.fetchedAt) {
+            setCache(issuesKey, {
+              items: payload.issues.items,
+              endCursor: payload.issues.endCursor,
+              hasNextPage: payload.issues.hasNextPage,
+              timestamp: payload.fetchedAt,
+            });
+          }
+          if (!existingPRs || existingPRs.timestamp < payload.fetchedAt) {
+            setCache(prsKey, {
+              items: payload.prs.items,
+              endCursor: payload.prs.endCursor,
+              hasNextPage: payload.prs.hasNextPage,
+              timestamp: payload.fetchedAt,
+            });
+          }
+
+          if (!skipStats) {
+            applyStatsResult(payload.stats, { projectPath: payload.projectPath });
+          }
         })
         .catch(() => {
           // Project lookup races during teardown / project switch are
@@ -420,7 +472,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
         });
     });
     return cleanup;
-  }, []);
+  }, [applyStatsResult]);
 
   useEffect(() => {
     const cleanup = githubClient.onRateLimitChanged((payload) => {
