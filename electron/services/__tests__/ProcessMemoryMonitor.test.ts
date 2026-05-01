@@ -826,6 +826,31 @@ describe("ProcessMemoryMonitor", () => {
       expect(getEluHighStreaks().has(42)).toBe(false);
     });
 
+    // Documents current behavior: a view that goes "active" → "cached" →
+    // "active" without an intervening below-threshold sample retains its
+    // streak. The fan-out filter skips cached views, so no samples arrive
+    // during the cached phase. If the streak was at N-1 before caching and
+    // the next active sample is high, the warning fires immediately. This is
+    // bounded — view eviction always calls forgetEluSample — but the logged
+    // `windowMs` may overstate the contiguous observation period. Acceptable
+    // for telemetry-only signal; if upgraded to a proactive trigger, the
+    // streak should become gap-aware.
+    it("(known limitation) streak survives caching gaps", () => {
+      const blocking = Math.ceil(RENDERER_ELU_HIGH_RATIO * 1000) + 1;
+      // Build streak to N-1 while view is active.
+      for (let i = 0; i < RENDERER_ELU_HIGH_SAMPLE_COUNT - 1; i++) {
+        recordEluSample(42, { blockingDurationMs: blocking, sampleWindowMs: 1000 });
+      }
+      // No samples arrive while the view is cached (fan-out skips it).
+      // Then the view is reactivated and the next sample is also high.
+      recordEluSample(42, { blockingDurationMs: blocking, sampleWindowMs: 1000 });
+
+      const highCalls = vi
+        .mocked(logWarn)
+        .mock.calls.filter((c) => c[0] === "renderer-elu-sustained-high");
+      expect(highCalls).toHaveLength(1);
+    });
+
     it("startAppMetricsMonitor invokes actions.sampleRendererElu once per poll", () => {
       const sampleRendererElu = vi.fn();
       const actions: MemoryPressureActions = {

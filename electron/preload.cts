@@ -2587,20 +2587,18 @@ _eventBusOn("window:sample-blink-memory", ({ requestId }) => {
 // JS thread saturation. blockingDuration is 0 for entries < 50ms by spec —
 // that's the intended noise floor for "long task" detection.
 //
-// Startup window is suppressed because LoAF buffered:true may replay early
-// entries from page boot, and ProcessMemoryMonitor's main-side warmup does
-// not gate per-renderer startup.
-const RENDERER_ELU_STARTUP_SUPPRESSION_MS = 5_000;
+// No startup suppression: ProcessMemoryMonitor's poll cadence is 30s, so any
+// LoAF replay from `buffered: true` is diluted across a full window before
+// the first sample. The 0.85 ratio + 6-sample streak threshold on the main
+// side absorbs the residual cold-start noise.
 type LoAFEntry = PerformanceEntry & { blockingDuration?: number };
 let eluAccumulatedBlockingMs = 0;
-let eluWindowStartMs = 0;
-const eluObserverStartMs =
+let eluWindowStartMs =
   typeof performance !== "undefined" && typeof performance.now === "function"
     ? performance.now()
     : 0;
 try {
   if (typeof PerformanceObserver === "function") {
-    eluWindowStartMs = eluObserverStartMs;
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as LoAFEntry[]) {
         const blocking = entry.blockingDuration;
@@ -2626,14 +2624,12 @@ _eventBusOn("window:sample-renderer-elu", ({ requestId }) => {
         : Date.now();
     const sampleWindowMs = Math.max(0, Math.round(now - eluWindowStartMs));
     const blockingDurationMs = Math.max(0, Math.round(eluAccumulatedBlockingMs));
-    const suppressed = now - eluObserverStartMs < RENDERER_ELU_STARTUP_SUPPRESSION_MS;
     eluAccumulatedBlockingMs = 0;
     eluWindowStartMs = now;
     void ipcRenderer.invoke(CHANNELS.SYSTEM_REPORT_RENDERER_ELU, {
       requestId,
       blockingDurationMs,
       sampleWindowMs,
-      suppressed,
     });
   } catch {
     /* observability is best-effort */

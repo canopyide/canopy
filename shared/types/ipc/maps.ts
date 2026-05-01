@@ -588,17 +588,15 @@ export interface IpcInvokeMap {
   };
   // Renderer reports event-loop utilization (LoAF blockingDuration accumulated
   // since the prior sample) to ProcessMemoryMonitor. The webContents id is
-  // taken from event.sender on the handler side. `suppressed` is set when the
-  // sample falls inside the preload's startup-suppression window — main skips
-  // recording. `blockingDurationMs` is sub-window blocking time (>=50ms LoAF
-  // events only); main derives the ratio against `sampleWindowMs`.
+  // taken from event.sender on the handler side. `blockingDurationMs` is
+  // sub-window blocking time (>=50ms LoAF events only); main derives the
+  // ratio against `sampleWindowMs`.
   "system:report-renderer-elu": {
     args: [
       payload: {
         requestId: string;
         blockingDurationMs: number;
         sampleWindowMs: number;
-        suppressed?: boolean;
       },
     ];
     result: void;

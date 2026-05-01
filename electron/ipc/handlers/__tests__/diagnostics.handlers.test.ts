@@ -39,6 +39,9 @@ vi.mock("electron", () => ({
   ipcMain: ipcMainMock,
   app: appMock,
   dialog: dialogMock,
+  BrowserWindow: {
+    fromWebContents: vi.fn(() => null),
+  },
 }));
 
 vi.mock("node:v8", () => ({
@@ -203,30 +206,26 @@ describe("registerDiagnosticsHandlers", () => {
       });
     });
 
-    it("ignores suppressed samples (preload startup window)", () => {
-      registerDiagnosticsHandlers(deps);
-      const handler = getHandlerFn("system:report-renderer-elu");
-      handler(makeEvent(42), {
-        requestId: "elu-1",
-        blockingDurationMs: 0,
-        sampleWindowMs: 1000,
-        suppressed: true,
-      });
-      expect(recordEluSampleMock).not.toHaveBeenCalled();
-    });
-
-    it("rejects malformed payloads (NaN, missing fields, non-positive window)", () => {
+    it("rejects malformed payloads (NaN, non-positive window, negative blocking, null/missing)", () => {
       registerDiagnosticsHandlers(deps);
       const handler = getHandlerFn("system:report-renderer-elu");
 
+      // NaN blocking duration
       handler(makeEvent(42), {
         requestId: "x",
         blockingDurationMs: Number.NaN,
         sampleWindowMs: 1000,
       });
+      // Zero window
       handler(makeEvent(42), { requestId: "x", blockingDurationMs: 0, sampleWindowMs: 0 });
+      // Negative blocking
       handler(makeEvent(42), { requestId: "x", blockingDurationMs: -1, sampleWindowMs: 1000 });
+      // Null payload
       handler(makeEvent(42), null);
+      // Missing blockingDurationMs (undefined coerces to NaN through Number.isFinite)
+      handler(makeEvent(42), { requestId: "x", sampleWindowMs: 1000 });
+      // Missing sampleWindowMs
+      handler(makeEvent(42), { requestId: "x", blockingDurationMs: 500 });
 
       expect(recordEluSampleMock).not.toHaveBeenCalled();
     });

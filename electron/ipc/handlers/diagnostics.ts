@@ -183,12 +183,9 @@ export function registerDiagnosticsHandlers(deps: HandlerDependencies): () => vo
   );
 
   // Renderer ELU report. webContents id is taken from event.sender.id.
-  // Suppressed samples (fired during the preload's startup-suppression window)
-  // are dropped here so the streak counter can't latch on cold-start noise.
   handlers.push(
     typedHandleWithContext(CHANNELS.SYSTEM_REPORT_RENDERER_ELU, (ctx, payload) => {
       if (!payload) return;
-      if (payload.suppressed === true) return;
       if (
         !Number.isFinite(payload.blockingDurationMs) ||
         !Number.isFinite(payload.sampleWindowMs) ||
