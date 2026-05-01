@@ -262,6 +262,18 @@ export function FleetArmingDialog({
     return { all: eligibleTerminals.length, waiting, working };
   }, [eligibleTerminals]);
 
+  // Quick-select operates on the currently visible set so it respects the
+  // active chip and search filter (WYSIWYG). Hidden terminals are never
+  // pulled into the selection.
+  const visibleWaitingIds = useMemo(
+    () => visibleTerminals.filter(isWaiting).map((t) => t.id),
+    [visibleTerminals]
+  );
+  const visibleWorkingIds = useMemo(
+    () => visibleTerminals.filter(isWorking).map((t) => t.id),
+    [visibleTerminals]
+  );
+
   // Confirm payload: filter ids that may have become ineligible while the
   // dialog was open. No pruning effect — kept inline per plan decision.
   const confirmedIds = useMemo(() => {
@@ -344,9 +356,27 @@ export function FleetArmingDialog({
 
   const handleListKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === "a" && !e.shiftKey) {
         e.preventDefault();
         setSelectedIds(new Set(visibleIds));
+        return;
+      }
+      if (key === "i" && e.shiftKey) {
+        // Scope to the list container only — stopPropagation prevents the
+        // global Cmd+Shift+I "inject context" binding from firing while the
+        // dialog has list focus.
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedIds((prev) => {
+          const next = new Set<string>();
+          for (const id of visibleIds) {
+            if (!prev.has(id)) next.add(id);
+          }
+          return next;
+        });
       }
     },
     [visibleIds]
@@ -363,19 +393,25 @@ export function FleetArmingDialog({
 
   const footerHint = useMemo(() => {
     if (visibleIds.length === 0) return null;
-    if (selectedIds.size === 0) {
-      return (
-        <>
-          <Kbd>{isMac() ? "⌘A" : "Ctrl+A"}</Kbd> Select all
-        </>
-      );
-    }
     return (
       <>
-        <Kbd>Shift</Kbd>+<Kbd>Click</Kbd> Select range
+        <span className="inline-flex items-center gap-1">
+          <Kbd>{isMac() ? "⌘A" : "Ctrl+A"}</Kbd>
+          <span>Select all</span>
+        </span>
+        <span className="text-daintree-text/30">·</span>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>Shift</Kbd>+<Kbd>Click</Kbd>
+          <span>Range</span>
+        </span>
+        <span className="text-daintree-text/30">·</span>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>{isMac() ? "⌘⇧I" : "Ctrl+Shift+I"}</Kbd>
+          <span>Invert</span>
+        </span>
       </>
     );
-  }, [visibleIds.length, selectedIds.size]);
+  }, [visibleIds.length]);
 
   return (
     <AppDialog
@@ -450,31 +486,63 @@ export function FleetArmingDialog({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-1.5" role="tablist" aria-label="Filter by state">
-            <ChipButton
-              active={activeChip === "all"}
-              count={eligibleCounts.all}
-              onClick={() => setActiveChip("all")}
-              testId="fleet-arming-dialog-chip-all"
-            >
-              All
-            </ChipButton>
-            <ChipButton
-              active={activeChip === "waiting"}
-              count={eligibleCounts.waiting}
-              onClick={() => setActiveChip("waiting")}
-              testId="fleet-arming-dialog-chip-waiting"
-            >
-              Waiting
-            </ChipButton>
-            <ChipButton
-              active={activeChip === "working"}
-              count={eligibleCounts.working}
-              onClick={() => setActiveChip("working")}
-              testId="fleet-arming-dialog-chip-working"
-            >
-              Working
-            </ChipButton>
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5" role="tablist" aria-label="Filter by state">
+              <ChipButton
+                active={activeChip === "all"}
+                count={eligibleCounts.all}
+                onClick={() => setActiveChip("all")}
+                testId="fleet-arming-dialog-chip-all"
+              >
+                All
+              </ChipButton>
+              <ChipButton
+                active={activeChip === "waiting"}
+                count={eligibleCounts.waiting}
+                onClick={() => setActiveChip("waiting")}
+                testId="fleet-arming-dialog-chip-waiting"
+              >
+                Waiting
+              </ChipButton>
+              <ChipButton
+                active={activeChip === "working"}
+                count={eligibleCounts.working}
+                onClick={() => setActiveChip("working")}
+                testId="fleet-arming-dialog-chip-working"
+              >
+                Working
+              </ChipButton>
+            </div>
+            {(visibleWaitingIds.length > 0 || visibleWorkingIds.length > 0) && (
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                {visibleWaitingIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set(visibleWaitingIds))}
+                    data-testid="fleet-arming-dialog-quick-select-waiting"
+                    className={cn(
+                      "text-[11px] text-daintree-text/55 hover:text-daintree-text transition-colors",
+                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 rounded-sm"
+                    )}
+                  >
+                    Select waiting ({visibleWaitingIds.length})
+                  </button>
+                )}
+                {visibleWorkingIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set(visibleWorkingIds))}
+                    data-testid="fleet-arming-dialog-quick-select-working"
+                    className={cn(
+                      "text-[11px] text-daintree-text/55 hover:text-daintree-text transition-colors",
+                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 rounded-sm"
+                    )}
+                  >
+                    Select working ({visibleWorkingIds.length})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -736,7 +804,20 @@ function DialogCheckbox({
       checked={checked}
       onCheckedChange={onCheckedChange}
       aria-label={ariaLabel}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        if (e.shiftKey) {
+          // Suppress Radix's internal onCheckedChange (composed via
+          // checkForDefaultPrevented) so the clicked id isn't double-toggled.
+          // Let the click bubble to the parent <label>, whose onClick performs
+          // the range-aware toggle with the shift modifier preserved.
+          e.preventDefault();
+        } else {
+          // Stop propagation so the label's onClick doesn't fire a duplicate
+          // plain toggle — Radix's onCheckedChange handles state for non-shift
+          // clicks.
+          e.stopPropagation();
+        }
+      }}
       className={cn(
         "relative flex shrink-0 w-4 h-4 rounded border transition-colors duration-150",
         "bg-daintree-bg border-border-strong",

@@ -766,23 +766,163 @@ describe("FleetArmingDialog", () => {
   });
 
   describe("footer hint", () => {
-    it("shows Cmd+A hint when nothing is selected", () => {
+    it("shows all three hints simultaneously when terminals are visible and none are selected", () => {
       seedTerminals([makeTerminal("a", { title: "alpha" })]);
       renderDialog([makeWorktreeSnap("wt-1", "Main")]);
       expect(screen.getByText("Select all")).toBeTruthy();
+      expect(screen.getByText("Range")).toBeTruthy();
+      expect(screen.getByText("Invert")).toBeTruthy();
     });
 
-    it("shows shift+click hint when at least one terminal is selected", () => {
+    it("shows all three hints simultaneously when at least one terminal is selected", () => {
       seedTerminals([makeTerminal("a", { title: "alpha" }), makeTerminal("b", { title: "beta" })]);
       renderDialog([makeWorktreeSnap("wt-1", "Main")]);
       fireEvent.click(screen.getByLabelText("Select alpha"));
-      expect(screen.getByText(/Select range/)).toBeTruthy();
+      expect(screen.getByText("Select all")).toBeTruthy();
+      expect(screen.getByText("Range")).toBeTruthy();
+      expect(screen.getByText("Invert")).toBeTruthy();
     });
 
     it("shows no hint when no terminals are visible", () => {
       renderDialog([makeWorktreeSnap("wt-1", "Main")]);
       expect(screen.queryByText("Select all")).toBeNull();
-      expect(screen.queryByText("Select range")).toBeNull();
+      expect(screen.queryByText("Range")).toBeNull();
+      expect(screen.queryByText("Invert")).toBeNull();
+    });
+  });
+
+  describe("shift-click via checkbox", () => {
+    it("shift+click on a checkbox (not just the label) selects range", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-1" }),
+        makeTerminal("c", { title: "gamma", worktreeId: "wt-1" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      // Plain click on alpha's checkbox to set anchor.
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+      // Shift+click on gamma's checkbox directly — must propagate to label.
+      fireEvent.click(screen.getByLabelText("Select gamma"), { shiftKey: true });
+      expect(screen.getByText("Arm 3 selected")).toBeTruthy();
+    });
+  });
+
+  describe("invert selection (Cmd/Ctrl+Shift+I)", () => {
+    it("inverts the visible selection on the list container", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-1" }),
+        makeTerminal("c", { title: "gamma", worktreeId: "wt-1" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "i", metaKey: true, shiftKey: true });
+      // alpha was selected, now deselected; beta and gamma now selected.
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    });
+
+    it("invert respects the active chip filter — operates on visible only", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1", agentState: "waiting" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-1", agentState: "working" }),
+        makeTerminal("c", { title: "gamma", worktreeId: "wt-1", agentState: "waiting" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByTestId("fleet-arming-dialog-chip-waiting"));
+      // alpha and gamma visible; click alpha.
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "i", metaKey: true, shiftKey: true });
+      // Only gamma should now be selected (alpha deselected, beta hidden so untouched).
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+    });
+
+    it("Ctrl+Shift+I works on non-Mac platforms", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-1" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      const list = screen.getByTestId("fleet-arming-dialog-list");
+      fireEvent.keyDown(list, { key: "i", ctrlKey: true, shiftKey: true });
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+    });
+  });
+
+  describe("quick-select rows", () => {
+    it("'Select waiting' button selects only visible waiting terminals", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", agentState: "waiting" }),
+        makeTerminal("b", { title: "beta", agentState: "waiting" }),
+        makeTerminal("c", { title: "gamma", agentState: "working" }),
+        makeTerminal("d", { title: "delta", agentState: "idle" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByTestId("fleet-arming-dialog-quick-select-waiting"));
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    });
+
+    it("'Select working' button selects only visible working terminals", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", agentState: "waiting" }),
+        makeTerminal("b", { title: "beta", agentState: "working" }),
+        makeTerminal("c", { title: "gamma", agentState: "working" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByTestId("fleet-arming-dialog-quick-select-working"));
+      expect(screen.getByText("Arm 2 selected")).toBeTruthy();
+    });
+
+    it("quick-select buttons replace (not extend) the existing selection", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", agentState: "waiting" }),
+        makeTerminal("b", { title: "beta", agentState: "working" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByLabelText("Select alpha"));
+      fireEvent.click(screen.getByTestId("fleet-arming-dialog-quick-select-working"));
+      // alpha replaced by beta — total count should be 1, not 2.
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+    });
+
+    it("quick-select buttons are absent when no waiting/working terminals visible", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", agentState: "idle" }),
+        makeTerminal("b", { title: "beta", agentState: "idle" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      expect(screen.queryByTestId("fleet-arming-dialog-quick-select-waiting")).toBeNull();
+      expect(screen.queryByTestId("fleet-arming-dialog-quick-select-working")).toBeNull();
+    });
+
+    it("quick-select count reflects visible filter, not full eligible set", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", worktreeId: "wt-1", agentState: "waiting" }),
+        makeTerminal("b", { title: "beta", worktreeId: "wt-2", agentState: "waiting" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main"), makeWorktreeSnap("wt-2", "Other")]);
+      // Filter to alpha only via search.
+      fireEvent.change(screen.getByTestId("fleet-arming-dialog-search"), {
+        target: { value: "alpha" },
+      });
+      // Button should show count = 1, not 2.
+      expect(screen.getByText("Select waiting (1)")).toBeTruthy();
+      fireEvent.click(screen.getByTestId("fleet-arming-dialog-quick-select-waiting"));
+      expect(screen.getByText("Arm 1 selected")).toBeTruthy();
+    });
+
+    it("quick-select 'waiting' button hidden when only working visible", () => {
+      seedTerminals([
+        makeTerminal("a", { title: "alpha", agentState: "waiting" }),
+        makeTerminal("b", { title: "beta", agentState: "working" }),
+      ]);
+      renderDialog([makeWorktreeSnap("wt-1", "Main")]);
+      fireEvent.click(screen.getByTestId("fleet-arming-dialog-chip-working"));
+      expect(screen.queryByTestId("fleet-arming-dialog-quick-select-waiting")).toBeNull();
+      expect(screen.getByTestId("fleet-arming-dialog-quick-select-working")).toBeTruthy();
     });
   });
 });
