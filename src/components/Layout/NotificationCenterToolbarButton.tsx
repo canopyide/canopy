@@ -12,6 +12,11 @@ import { isScheduledQuietNow } from "@shared/utils/quietHours";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors";
 
+// Strip the bell `animate-activity-blip` class shortly after it plays so the
+// CSS `will-change: transform, opacity` layer-promotion hint does not linger
+// on a long-lived toolbar element. Covers the 260ms animation plus a buffer.
+const BELL_BLIP_CLEANUP_MS = 320;
+
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
   minute: "2-digit",
@@ -31,6 +36,7 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
   );
   const notificationCenterButtonRef = useRef<HTMLButtonElement>(null);
   const notificationUnreadCount = useNotificationHistoryStore((s) => s.unreadCount);
+  const evictedToInboxCount = useNotificationHistoryStore((s) => s.evictedToInboxCount);
   const {
     enabled: notificationsEnabled,
     quietUntil,
@@ -124,6 +130,30 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
     if (!notificationsEnabled && notificationCenterOpen) closeNotificationCenter();
   }, [notificationsEnabled, notificationCenterOpen, closeNotificationCenter]);
 
+  // Bump the bell key whenever a new notification lands in the inbox while
+  // DND is inactive. Remounting the wrapped <Icon /> (Pattern A from
+  // WorktreeDetailsSection) restarts the CSS `animate-activity-blip`
+  // animation cleanly without an imperative classList reflow. A ref-tracked
+  // baseline avoids firing on the first render or on resets to zero.
+  const prevEvictedRef = useRef(evictedToInboxCount);
+  const [bellBumpKey, setBellBumpKey] = useState(0);
+  useEffect(() => {
+    const prev = prevEvictedRef.current;
+    prevEvictedRef.current = evictedToInboxCount;
+    if (evictedToInboxCount > prev && !isDndActive) {
+      setBellBumpKey((k) => k + 1);
+    }
+  }, [evictedToInboxCount, isDndActive]);
+
+  // Reset bumpKey shortly after each blip so the animation class drops off
+  // and `will-change` is no longer applied. Further bumps cancel the pending
+  // timer via the dependency array.
+  useEffect(() => {
+    if (bellBumpKey === 0) return;
+    const t = setTimeout(() => setBellBumpKey(0), BELL_BLIP_CLEANUP_MS);
+    return () => clearTimeout(t);
+  }, [bellBumpKey]);
+
   if (!notificationsEnabled) return null;
 
   const label = (() => {
@@ -154,7 +184,13 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
             aria-expanded={notificationCenterOpen}
             aria-haspopup="dialog"
           >
-            <Icon />
+            <span
+              key={bellBumpKey}
+              data-testid="notification-bell-icon"
+              className={bellBumpKey > 0 ? "inline-flex animate-activity-blip" : "inline-flex"}
+            >
+              <Icon />
+            </span>
             {notificationUnreadCount > 0 && (
               <span
                 data-testid="notification-unread-dot"

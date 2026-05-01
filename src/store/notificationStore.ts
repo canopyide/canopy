@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { ReactNode } from "react";
 import type { ActionId } from "@shared/types/actions";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
+import { useUIStore } from "@/store/uiStore";
 
 const uuidv4 = () => crypto.randomUUID();
 
@@ -184,7 +185,14 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
             n.id === evictCandidate.id ? { ...n, dismissed: true } : n
           );
           if (evictCandidate.historyEntryId) {
-            useNotificationHistoryStore.getState().markUnseenAsToast(evictCandidate.historyEntryId);
+            // Suppress the discoverability cue (overflow pill + bell blip)
+            // when the notification center is already open — the user can
+            // see the entry land in the inbox directly, so signaling its
+            // arrival twice would create a UX contradiction.
+            const silent = useUIStore.getState().notificationCenterOpen;
+            useNotificationHistoryStore
+              .getState()
+              .markUnseenAsToast(evictCandidate.historyEntryId, { silent });
           }
         }
       }
