@@ -600,6 +600,7 @@ function App() {
               totalResults={worktreePalette.totalResults}
               activeWorktreeId={worktreePalette.activeWorktreeId}
               selectedIndex={worktreePalette.selectedIndex}
+              isStale={worktreePalette.isStale}
               onQueryChange={worktreePalette.setQuery}
               onSelectPrevious={worktreePalette.selectPrevious}
               onSelectNext={worktreePalette.selectNext}
@@ -760,6 +761,7 @@ function App() {
                 totalResults={actionPalette.totalResults}
                 selectedIndex={actionPalette.selectedIndex}
                 isShowingRecentlyUsed={actionPalette.isShowingRecentlyUsed}
+                isStale={actionPalette.isStale}
                 close={actionPalette.close}
                 setQuery={actionPalette.setQuery}
                 setSelectedIndex={actionPalette.setSelectedIndex}
