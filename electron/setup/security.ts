@@ -10,6 +10,7 @@ import {
 import { FAULT_MODE_ENABLED, applyInvokeFault, initFaultRegistry } from "../ipc/faultRegistry.js";
 import { markIpcSecurityReady } from "../ipc/ipcGuard.js";
 import { scrubSecrets } from "../utils/secretScrubber.js";
+import { getCurrentCorrelationId } from "../services/TelemetryService.js";
 
 function sanitizePaths(msg: string): string {
   return msg
@@ -57,6 +58,10 @@ export function enforceIpcSenderValidation(): void {
         if (app.isPackaged) {
           console.error(`[IPC] Error on channel ${channel}:`, error);
           const serialized = serializeError(error);
+          const correlationId = getCurrentCorrelationId();
+          if (correlationId !== undefined) {
+            serialized.correlationId = correlationId;
+          }
           serialized.message = sanitizeErrorForRenderer(serialized.message);
           if (typeof serialized.userMessage === "string") {
             serialized.userMessage = sanitizeErrorForRenderer(serialized.userMessage);
@@ -95,6 +100,10 @@ export function enforceIpcSenderValidation(): void {
           if (app.isPackaged) {
             console.error(`[IPC] Error on channel ${channel}:`, error);
             const serialized = serializeError(error);
+            const correlationId = getCurrentCorrelationId();
+            if (correlationId !== undefined) {
+              serialized.correlationId = correlationId;
+            }
             serialized.message = sanitizeErrorForRenderer(serialized.message);
             serialized.stack = undefined;
             serialized.path = undefined;
