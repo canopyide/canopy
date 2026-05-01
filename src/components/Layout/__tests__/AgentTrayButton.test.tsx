@@ -1072,8 +1072,18 @@ describe("AgentTrayButton", () => {
     }
 
     it("Default keyboard launch clears the scoped override and dispatches presetId: null", () => {
+      // Seed an agent-level presetId so the updateAgent assertion proves the
+      // fix actually clears it — without a stale agent-level value to fall
+      // through to, the original #6358 bug couldn't manifest.
       mockActiveWorktreeId = "wt-A";
       const availability = arrangeAgentWithPresets();
+      mockSettings = settingsWith({
+        claude: {
+          pinned: false,
+          presetId: "user-alpha",
+          worktreePresets: { "wt-A": "user-alpha" },
+        },
+      });
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 

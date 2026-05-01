@@ -552,9 +552,12 @@ describe("AgentButton preset UX", () => {
     });
 
     it("dropdown Agent default clears the worktree override without launching", () => {
+      // Seed an agent-level presetId so the updateAgent assertion proves the
+      // fix actually clears it — without a stale agent-level value to fall
+      // through to, the original #6358 bug couldn't manifest.
       mockActiveWorktreeId = "wt-A";
       mockSettings = settingsWith({
-        claude: { worktreePresets: { "wt-A": "user-alpha" } },
+        claude: { presetId: "user-alpha", worktreePresets: { "wt-A": "user-alpha" } },
       });
       mockMergedPresetsFn = () => [
         { id: "user-alpha", name: "Alpha" },
@@ -769,7 +772,7 @@ describe("AgentButton preset UX", () => {
       // the bug from #6358 returns.
       mockActiveWorktreeId = "wt-A";
       mockSettings = settingsWith({
-        claude: { worktreePresets: { "wt-A": "user-blue" } },
+        claude: { presetId: "user-blue", worktreePresets: { "wt-A": "user-blue" } },
       });
       mockMergedPresetsFn = () => [{ id: "user-blue", name: "Blue" }];
 
