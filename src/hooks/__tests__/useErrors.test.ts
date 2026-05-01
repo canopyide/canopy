@@ -616,4 +616,95 @@ describe("useErrors — retry action on toast", () => {
     await expect(payload.action.onClick()).resolves.toBeUndefined();
     unmount();
   });
+
+  it("dedup merges retryAction so the toast button works after rapid repeats", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { useErrorStore } = await import("@/store");
+    const { unmount } = renderHook(() => useErrors());
+
+    // First error: no retryAction, gets deduped when second arrives within 500ms
+    const first = makeError({
+      type: "git",
+      message: "fetch failed",
+      source: "GitService",
+      isTransient: false,
+    });
+    act(() => capturedOnError(first));
+
+    // Second error: same type/message/source, now with retryAction
+    const second = makeError({
+      type: "git",
+      message: "fetch failed",
+      source: "GitService",
+      isTransient: false,
+      retryAction: "git",
+      retryArgs: { branch: "main" },
+    });
+    act(() => capturedOnError(second));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    expect(payload.action.label).toBe("Retry");
+
+    // The toast button must actually call retry, not bail silently
+    await payload.action.onClick();
+    expect(retryMock).toHaveBeenCalledWith(expect.stringMatching(/^error-/), "git", {
+      branch: "main",
+    });
+    unmount();
+  });
+
+  it("dedup merges retryArgs from the incoming error", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { useErrorStore } = await import("@/store");
+    const { unmount } = renderHook(() => useErrors());
+
+    const first = makeError({
+      type: "git",
+      message: "fetch failed",
+      source: "GitService",
+      isTransient: false,
+      retryAction: "git",
+      retryArgs: { branch: "old" },
+    });
+    act(() => capturedOnError(first));
+
+    const second = makeError({
+      type: "git",
+      message: "fetch failed",
+      source: "GitService",
+      isTransient: false,
+      retryAction: "git",
+      retryArgs: { branch: "new" },
+    });
+    act(() => capturedOnError(second));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    await payload.action.onClick();
+    expect(retryMock).toHaveBeenCalledWith(expect.stringMatching(/^error-/), "git", {
+      branch: "new",
+    });
+    unmount();
+  });
+
+  it("rejected retry leaves the error in the store", async () => {
+    retryMock.mockRejectedValue(new Error("retry failed"));
+    const { useErrors } = await import("../useErrors");
+    const { useErrorStore } = await import("@/store");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "network",
+      isTransient: false,
+      retryAction: "git",
+    });
+    act(() => capturedOnError(error));
+
+    const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
+    await payload.action.onClick();
+
+    const remaining = useErrorStore.getState().errors;
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].retryProgress).toBeUndefined();
+    unmount();
+  });
 });

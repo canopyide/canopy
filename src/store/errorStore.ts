@@ -86,7 +86,18 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
 
     if (recentDuplicate) {
       set((s) => ({
-        errors: s.errors.map((e) => (e.id === recentDuplicate.id ? { ...e, timestamp: now } : e)),
+        errors: s.errors.map((e) =>
+          e.id === recentDuplicate.id
+            ? {
+                ...e,
+                timestamp: now,
+                retryAction: error.retryAction ?? e.retryAction,
+                retryArgs: error.retryArgs ?? e.retryArgs,
+                recoveryHint: error.recoveryHint ?? e.recoveryHint,
+                correlationId: error.correlationId ?? e.correlationId,
+              }
+            : e
+        ),
         lastErrorTime: now,
       }));
       return recentDuplicate.id;
