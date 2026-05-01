@@ -619,7 +619,6 @@ describe("useErrors — retry action on toast", () => {
 
   it("dedup merges retryAction so the toast button works after rapid repeats", async () => {
     const { useErrors } = await import("../useErrors");
-    const { useErrorStore } = await import("@/store");
     const { unmount } = renderHook(() => useErrors());
 
     // First error: no retryAction, gets deduped when second arrives within 500ms
@@ -655,7 +654,6 @@ describe("useErrors — retry action on toast", () => {
 
   it("dedup merges retryArgs from the incoming error", async () => {
     const { useErrors } = await import("../useErrors");
-    const { useErrorStore } = await import("@/store");
     const { unmount } = renderHook(() => useErrors());
 
     const first = makeError({
@@ -704,7 +702,7 @@ describe("useErrors — retry action on toast", () => {
 
     const remaining = useErrorStore.getState().errors;
     expect(remaining).toHaveLength(1);
-    expect(remaining[0].retryProgress).toBeUndefined();
+    expect(remaining[0]!.retryProgress).toBeUndefined();
     unmount();
   });
 });
