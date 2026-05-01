@@ -11,8 +11,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logError } from "@/utils/logger";
+import {
+  UI_ENTER_DURATION,
+  UI_EXIT_DURATION,
+  UI_ENTER_EASING,
+  UI_EXIT_EASING,
+  getUiTransitionDuration,
+} from "@/lib/animationUtils";
 import { useNotificationStore, type Notification } from "@/store/notificationStore";
-import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { useShallow } from "zustand/react/shallow";
 import {
   DropdownMenu,
@@ -74,15 +80,7 @@ function Toast({ notification }: { notification: Notification }) {
         "[Toaster] non-string message without inboxMessage — aria-live announcement will be empty"
       );
     }
-    const text =
-      typeof notification.message === "string"
-        ? notification.message
-        : (notification.inboxMessage ?? "");
-    if (!text) return;
-    const fullText = notification.title ? `${notification.title}: ${text}` : text;
-    const priority = notification.type === "error" ? "assertive" : "polite";
-    useAnnouncerStore.getState().announce(fullText, priority);
-  }, [notification.id, notification.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notification.id, notification.updatedAt, notification.message, notification.inboxMessage]);
 
   useEffect(() => {
     const handle = requestAnimationFrame(() => setIsVisible(true));
@@ -97,7 +95,7 @@ function Toast({ notification }: { notification: Notification }) {
 
   const handleDismiss = useCallback(() => {
     // If the notification is already dismissed, this click came in during the
-    // 200ms fade after an eviction (or a double-click race). Skip the
+    // exit fade after an eviction (or a double-click race). Skip the
     // user-dismiss callback so eviction/reentrancy don't fire onDismiss.
     if (notification.dismissed) return;
     restoreFocus();
@@ -110,14 +108,14 @@ function Toast({ notification }: { notification: Notification }) {
     }
     dismissNotification(notification.id);
     setIsVisible(false);
-    setTimeout(() => removeNotification(notification.id), 200);
+    setTimeout(() => removeNotification(notification.id), getUiTransitionDuration("exit"));
   }, [notification, dismissNotification, removeNotification, restoreFocus]);
 
   useEffect(() => {
     if (notification.dismissed && isVisible) {
       restoreFocus();
       setIsVisible(false);
-      setTimeout(() => removeNotification(notification.id), 200);
+      setTimeout(() => removeNotification(notification.id), getUiTransitionDuration("exit"));
     }
   }, [notification.dismissed, notification.id, isVisible, removeNotification, restoreFocus]);
 
@@ -157,11 +155,15 @@ function Toast({ notification }: { notification: Notification }) {
         "text-sm text-daintree-text",
         "shadow-[var(--theme-shadow-floating)]",
         "ring-1 ring-inset ring-tint/[0.05]",
-        "transition-[transform,opacity] duration-200 ease-out",
+        "transition-[transform,opacity]",
         "motion-reduce:transition-none motion-reduce:duration-0",
         isVisible ? "translate-x-0 opacity-100" : "translate-x-8 opacity-0",
         accentClass
       )}
+      style={{
+        transitionDuration: `${isVisible ? UI_ENTER_DURATION : UI_EXIT_DURATION}ms`,
+        transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
+      }}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onFocus={() => setIsPaused(true)}
@@ -198,9 +200,21 @@ function Toast({ notification }: { notification: Notification }) {
             </span>
           </div>
         ) : null}
-        <div className="text-xs text-daintree-text/70 leading-snug break-words">
-          {notification.message}
-        </div>
+        {typeof notification.message !== "string" && notification.inboxMessage ? (
+          <>
+            <span className="sr-only">{notification.inboxMessage}</span>
+            <div
+              aria-hidden="true"
+              className="text-xs text-daintree-text/70 leading-snug break-words"
+            >
+              {notification.message}
+            </div>
+          </>
+        ) : (
+          <div className="text-xs text-daintree-text/70 leading-snug break-words">
+            {notification.message}
+          </div>
+        )}
         {(() => {
           const actions = [
             ...(notification.actions ?? []),
