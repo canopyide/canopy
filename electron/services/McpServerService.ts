@@ -590,7 +590,7 @@ export class McpServerService {
     if (entry.danger === "restricted") {
       return false;
     }
-    if (this.getConfig().fullToolSurface ?? false) {
+    if (this.getConfig().fullToolSurface === true) {
       return true;
     }
     return MCP_TOOL_ALLOWLIST.has(entry.id);

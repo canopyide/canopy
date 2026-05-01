@@ -639,6 +639,33 @@ describe("McpServerService", () => {
     expect(ids).not.toContain("internal.dangerous");
   });
 
+  it("treats non-true fullToolSurface values as curated (fail-closed)", async () => {
+    (storeState.mcpServer as { fullToolSurface: unknown }).fullToolSurface = "false";
+    const { window } = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "actions.list" as ActionId,
+          title: "List Actions",
+          description: "Read the action registry",
+          kind: "query",
+        }),
+        createManifestEntry({
+          id: "panel.gridLayout.setStrategy" as ActionId,
+          title: "Set grid layout",
+          description: "UI plumbing",
+        }),
+      ],
+    });
+
+    await service.start(window);
+    const { client, transport } = await connectClient(service.currentPort!);
+    transports.push(transport);
+
+    const ids = (await client.listTools()).tools.map((tool) => tool.name);
+    expect(ids).toContain("actions.list");
+    expect(ids).not.toContain("panel.gridLayout.setStrategy");
+  });
+
   it("dispatches non-allowlisted actions even in curated mode", async () => {
     const dispatchMock = vi.fn(
       (payload: DispatchRequest): ActionDispatchResult => ({
