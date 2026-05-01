@@ -469,7 +469,7 @@ describe("WorkspaceService.createWorktree", () => {
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+      (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
     expect(worktreeAddCall).toBeDefined();
     // No -b — reuse path, like the explicit useExistingBranch caller.
@@ -523,7 +523,7 @@ describe("WorkspaceService.createWorktree", () => {
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+      (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
     expect(worktreeAddCall).toBeDefined();
     expect(worktreeAddCall![0]).toEqual([
@@ -580,7 +580,7 @@ describe("WorkspaceService.createWorktree", () => {
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+      (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
     expect(worktreeAddCall![0]).toEqual([
       "worktree",
@@ -618,7 +618,7 @@ describe("WorkspaceService.createWorktree", () => {
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+      (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
     expect(worktreeAddCall![0]).toEqual([
       "worktree",
@@ -661,7 +661,7 @@ describe("WorkspaceService.createWorktree", () => {
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+      (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
     expect(worktreeAddCall![0]).toEqual([
       "worktree",
@@ -708,7 +708,7 @@ describe("WorkspaceService.createWorktree", () => {
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+      (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
     expect(worktreeAddCall![0][3]).toBe("feature/foo-11");
   });
@@ -747,7 +747,7 @@ describe("WorkspaceService.createWorktree", () => {
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+      (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
     expect(worktreeAddCall![0][3]).toBe("bugfix/[6463]-3");
   });
@@ -780,7 +780,7 @@ describe("WorkspaceService.createWorktree", () => {
     ]);
     // Never queried the worktree list — short-circuit when branch is free.
     const listCall = mockSimpleGit.raw.mock.calls.find(
-      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "list"
+      (call) => call[0][0] === "worktree" && call[0][1] === "list"
     );
     expect(listCall).toBeUndefined();
   });
