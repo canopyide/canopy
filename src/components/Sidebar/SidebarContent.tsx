@@ -967,7 +967,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <div className="invisible group-hover/header:visible group-focus-within/header:visible flex items-center gap-1">
+          <div className="opacity-0 pointer-events-none transition-opacity duration-150 group-hover/header:opacity-100 group-hover/header:pointer-events-auto group-focus-within/header:opacity-100 group-focus-within/header:pointer-events-auto flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
