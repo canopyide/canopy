@@ -31,6 +31,16 @@ import {
   createSlashChipField,
 } from "../inputEditorExtensions";
 import type { SlashCommand } from "@shared/types";
+
+function makeSlashCommand(label: string, description = ""): SlashCommand {
+  return {
+    id: label.replace(/^\//, ""),
+    label,
+    description,
+    scope: "built-in",
+    agentId: "claude",
+  };
+}
 import { resolveInputBarColors } from "@/utils/terminalTheme";
 
 describe("computeAutoSize", () => {
@@ -1696,10 +1706,7 @@ describe("two-press Backspace on /slash chips", () => {
 
   it("first Backspace stages a valid /slash chip", () => {
     const map = new Map<string, SlashCommand>([
-      [
-        "/build",
-        { id: "build", label: "/build", description: "Build the project" } as SlashCommand,
-      ],
+      ["/build", makeSlashCommand("/build", "Build the project")],
     ]);
     const view = makeView("/build ", map);
     const chipEnd = "/build".length;
@@ -1713,9 +1720,7 @@ describe("two-press Backspace on /slash chips", () => {
   });
 
   it("second Backspace deletes a /slash chip", () => {
-    const map = new Map<string, SlashCommand>([
-      ["/build", { id: "build", label: "/build" } as SlashCommand],
-    ]);
+    const map = new Map<string, SlashCommand>([["/build", makeSlashCommand("/build")]]);
     const view = makeView("/build ", map);
     const chipEnd = "/build".length;
     view.dispatch({ selection: { anchor: chipEnd } });
@@ -1745,9 +1750,7 @@ describe("two-press Backspace on /slash chips", () => {
 
 describe("slashChipField valid/invalid distinction", () => {
   it("preserves isValid metadata for known commands", () => {
-    const map = new Map<string, SlashCommand>([
-      ["/build", { id: "build", label: "/build" } as SlashCommand],
-    ]);
+    const map = new Map<string, SlashCommand>([["/build", makeSlashCommand("/build")]]);
     const field = createSlashChipField({ commandMap: map });
     const state = EditorState.create({
       doc: "/build /unknowncmd",
