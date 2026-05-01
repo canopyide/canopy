@@ -17,6 +17,7 @@ export function getErrorPriority(
 function buildCopyDetailsAction(error: ErrorRecord): NotificationAction {
   return {
     label: "Copy details",
+    successLabel: "Copied",
     variant: "secondary",
     onClick: () => {
       const payload = JSON.stringify(
@@ -79,6 +80,7 @@ function routeError(error: ErrorRecord): void {
   if (error.retryAction) {
     retryNotificationAction = {
       label: "Retry",
+      successLabel: "Retried",
       variant: "primary",
       onClick: async () => {
         const state = useErrorStore.getState();
