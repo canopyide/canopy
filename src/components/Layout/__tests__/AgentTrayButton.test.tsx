@@ -7,6 +7,7 @@ import type { ActionFrecencyEntry } from "@shared/types/actions";
 const dispatchMock = vi.fn();
 const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
 const updateWorktreePresetMock = vi.fn().mockResolvedValue(undefined);
+const updateAgentMock = vi.fn().mockResolvedValue(undefined);
 const setFocusedMock = vi.fn();
 const refreshAvailabilityMock = vi.fn().mockResolvedValue(undefined);
 let openChangeSpy: ((open: boolean) => void) | null = null;
@@ -53,12 +54,19 @@ type MockAgentStoreState = {
 };
 
 vi.mock("@/store/agentSettingsStore", () => ({
-  useAgentSettingsStore: (selector: (s: MockAgentStoreState) => unknown) =>
-    selector({
-      settings: mockSettings,
-      setAgentPinned: setAgentPinnedMock,
-      updateWorktreePreset: updateWorktreePresetMock,
-    }),
+  useAgentSettingsStore: Object.assign(
+    (selector: (s: MockAgentStoreState) => unknown) =>
+      selector({
+        settings: mockSettings,
+        setAgentPinned: setAgentPinnedMock,
+        updateWorktreePreset: updateWorktreePresetMock,
+      }),
+    {
+      getState: () => ({
+        updateAgent: updateAgentMock,
+      }),
+    }
+  ),
 }));
 
 vi.mock("@/store/actionMruStore", () => ({
@@ -291,7 +299,12 @@ vi.mock("lucide-react", () => ({
 
 import { AgentTrayButton } from "../AgentTrayButton";
 
-function settingsWith(overrides: Record<string, { pinned?: boolean }>): AgentSettings {
+function settingsWith(
+  overrides: Record<
+    string,
+    { pinned?: boolean; presetId?: string; worktreePresets?: Record<string, string> }
+  >
+): AgentSettings {
   return { agents: overrides } as unknown as AgentSettings;
 }
 
@@ -310,6 +323,7 @@ describe("AgentTrayButton", () => {
     dispatchMock.mockClear();
     setAgentPinnedMock.mockClear();
     updateWorktreePresetMock.mockClear();
+    updateAgentMock.mockClear();
     setFocusedMock.mockClear();
     refreshAvailabilityMock.mockClear();
     openChangeSpy = null;
@@ -1063,13 +1077,24 @@ describe("AgentTrayButton", () => {
     }
 
     it("Default keyboard launch clears the scoped override and dispatches presetId: null", () => {
+      // Seed an agent-level presetId so the updateAgent assertion proves the
+      // fix actually clears it — without a stale agent-level value to fall
+      // through to, the original #6358 bug couldn't manifest.
       mockActiveWorktreeId = "wt-A";
       const availability = arrangeAgentWithPresets();
+      mockSettings = settingsWith({
+        claude: {
+          pinned: false,
+          presetId: "user-alpha",
+          worktreePresets: { "wt-A": "user-alpha" },
+        },
+      });
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
       fireEvent.keyDown(submenuTrigger, { key: "Enter" });
 
+      expect(updateAgentMock).toHaveBeenCalledWith("claude", { presetId: undefined });
       expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", undefined);
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",

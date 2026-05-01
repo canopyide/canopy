@@ -505,6 +505,9 @@ export function AgentButton({
                 <DropdownMenuRadioItem
                   value=""
                   onSelect={() => {
+                    void useAgentSettingsStore.getState().updateAgent(type, {
+                      presetId: undefined,
+                    });
                     persistWorktreePick(undefined);
                   }}
                 >
@@ -638,6 +641,9 @@ export function AgentButton({
                 <ContextMenuRadioItem
                   value=""
                   onSelect={() => {
+                    void useAgentSettingsStore.getState().updateAgent(type, {
+                      presetId: undefined,
+                    });
                     persistWorktreePick(undefined);
                     void actionService.dispatch(
                       "agent.launch",
