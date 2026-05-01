@@ -927,20 +927,27 @@ export class WorkspaceService {
 
         if (localBranches.includes(newBranch)) {
           let checkedOut = new Set<string>();
+          let listFailed = false;
           try {
             const output = await git.raw(["worktree", "list", "--porcelain"]);
             checkedOut = parseCheckedOutBranches(output);
           } catch {
-            // An empty set forces the suffix path, which is safer than
-            // reusing a possibly-live branch.
+            // We can't tell if the branch is live elsewhere; fall through to
+            // the suffix path rather than risk reusing a checked-out branch.
+            listFailed = true;
           }
 
-          if (!checkedOut.has(newBranch)) {
+          // For fromRemote (PR mode) we never reuse a stale local branch:
+          // the local ref is at the previous tip, and dropping --track would
+          // strip @{u} that ahead/behind badges depend on. Suffix instead so
+          // a fresh tracking branch is created.
+          const canReuse = !listFailed && !fromRemote && !checkedOut.has(newBranch);
+
+          if (canReuse) {
             useExistingBranch = true;
-            // The -b path tracks baseBranch / origin remotes; reuse drops
-            // that. Stale branches typically retain their original tracking
-            // config from the prior worktree, so this is the right tradeoff
-            // vs. surfacing a hard failure to the user.
+            // The -b path tracks baseBranch; reuse drops that. Stale local
+            // branches typically retain their original config, so this is
+            // the right tradeoff vs. failing the user-visible create.
             fromRemote = false;
           } else {
             newBranch = nextAvailableBranchName(newBranch, new Set(localBranches));

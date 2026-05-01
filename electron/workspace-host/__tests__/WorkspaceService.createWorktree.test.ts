@@ -582,7 +582,174 @@ describe("WorkspaceService.createWorktree", () => {
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
       ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
     );
-    expect(worktreeAddCall![0]).toContain("feature/foo-4");
+    expect(worktreeAddCall![0]).toEqual([
+      "worktree",
+      "add",
+      "-b",
+      "feature/foo-4",
+      "--no-track",
+      "/test/worktree-foo-new",
+      "main",
+    ]);
+  });
+
+  it("falls through to the suffix path when the worktree-list probe fails", async () => {
+    // #6463 critical edge case: the porcelain probe must NOT mask "branch is
+    // live elsewhere" as "stale and reusable". When git rejects the probe
+    // (e.g., .git lock contention under bulk creation), the safer move is to
+    // suffix the branch and create fresh, not reuse a possibly-live ref.
+    mockSimpleGit.branchLocal.mockResolvedValueOnce({
+      all: ["main", "feature/foo"],
+      current: "main",
+      branches: {},
+      detached: false,
+    });
+    mockSimpleGit.raw.mockImplementationOnce((args: string[]) => {
+      if (args[0] === "worktree" && args[1] === "list") {
+        return Promise.reject(new Error("fatal: unable to read .git/index"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await service.createWorktree("req-list-failed", "/test/root", {
+      baseBranch: "main",
+      newBranch: "feature/foo",
+      path: "/test/worktree-foo-fail",
+    });
+
+    const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
+      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+    );
+    expect(worktreeAddCall![0]).toEqual([
+      "worktree",
+      "add",
+      "-b",
+      "feature/foo-2",
+      "--no-track",
+      "/test/worktree-foo-fail",
+      "main",
+    ]);
+  });
+
+  it("suffixes (not reuses) when fromRemote=true and the local branch already exists", async () => {
+    // PR-mode creates need --track to give @{u} for ahead/behind badges
+    // (WorktreeMonitor.ts:1092). Reusing a stale local branch would drop the
+    // tracking ref AND pin the worktree to whatever commit the stale branch
+    // was at, instead of origin's current tip. Always suffix in PR mode.
+    mockSimpleGit.branchLocal.mockResolvedValueOnce({
+      all: ["main", "pr-9999-feature"],
+      current: "main",
+      branches: {},
+      detached: false,
+    });
+    mockSimpleGit.raw.mockImplementationOnce((args: string[]) => {
+      if (args[0] === "worktree" && args[1] === "list") {
+        // pr-9999-feature is NOT checked out — would normally trigger reuse,
+        // but fromRemote suppresses that.
+        return Promise.resolve(
+          ["worktree /test/root", "HEAD abc", "branch refs/heads/main", ""].join("\n")
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await service.createWorktree("req-fromremote-stale", "/test/root", {
+      baseBranch: "origin/pr-9999-feature",
+      newBranch: "pr-9999-feature",
+      path: "/test/worktree-pr",
+      fromRemote: true,
+    });
+
+    const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
+      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+    );
+    expect(worktreeAddCall![0]).toEqual([
+      "worktree",
+      "add",
+      "-b",
+      "pr-9999-feature-2",
+      "--track",
+      "/test/worktree-pr",
+      "origin/pr-9999-feature",
+    ]);
+  });
+
+  it("picks the next free suffix past non-contiguous existing names", async () => {
+    // nextAvailableBranchName scans for the maximum existing -N suffix; gaps
+    // (e.g., -2 deleted but -10 kept) must not regress to a colliding name.
+    mockSimpleGit.branchLocal.mockResolvedValueOnce({
+      all: ["main", "feature/foo", "feature/foo-10"],
+      current: "main",
+      branches: {},
+      detached: false,
+    });
+    mockSimpleGit.raw.mockImplementationOnce((args: string[]) => {
+      if (args[0] === "worktree" && args[1] === "list") {
+        return Promise.resolve(
+          [
+            "worktree /test/root",
+            "HEAD abc",
+            "branch refs/heads/main",
+            "",
+            "worktree /test/foo-live",
+            "HEAD def",
+            "branch refs/heads/feature/foo",
+            "",
+          ].join("\n")
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await service.createWorktree("req-suffix-gap", "/test/root", {
+      baseBranch: "main",
+      newBranch: "feature/foo",
+      path: "/test/worktree-foo-gap",
+    });
+
+    const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
+      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+    );
+    expect(worktreeAddCall![0][3]).toBe("feature/foo-11");
+  });
+
+  it("escapes regex metacharacters in branch names when computing suffixes", async () => {
+    // Branch names like `bugfix/[6463]` contain regex metacharacters; without
+    // escaping, the suffix scan would miss `bugfix/[6463]-2` and reissue it.
+    mockSimpleGit.branchLocal.mockResolvedValueOnce({
+      all: ["main", "bugfix/[6463]", "bugfix/[6463]-2"],
+      current: "main",
+      branches: {},
+      detached: false,
+    });
+    mockSimpleGit.raw.mockImplementationOnce((args: string[]) => {
+      if (args[0] === "worktree" && args[1] === "list") {
+        return Promise.resolve(
+          [
+            "worktree /test/root",
+            "HEAD abc",
+            "branch refs/heads/main",
+            "",
+            "worktree /test/live",
+            "HEAD def",
+            "branch refs/heads/bugfix/[6463]",
+            "",
+          ].join("\n")
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await service.createWorktree("req-regex-escape", "/test/root", {
+      baseBranch: "main",
+      newBranch: "bugfix/[6463]",
+      path: "/test/worktree-regex",
+    });
+
+    const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
+      ([args]: [string[]]) => args[0] === "worktree" && args[1] === "add"
+    );
+    expect(worktreeAddCall![0][3]).toBe("bugfix/[6463]-3");
   });
 
   it("proceeds with the original -b path when the branch does not exist locally", async () => {
