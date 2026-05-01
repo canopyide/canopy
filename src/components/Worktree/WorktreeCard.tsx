@@ -992,6 +992,10 @@ export const WorktreeCard = React.memo(function WorktreeCard({
             working: workingAgentCount,
           }}
           onLaunchAgent={onLaunchAgent}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
+          canMoveUp={canMoveUp}
+          canMoveDown={canMoveDown}
           onCopyContextFull={handleCopyContextFull}
           onCopyContextModified={handleCopyContextModified}
           onCopyPath={() => void navigator.clipboard.writeText(worktree.path)}

@@ -480,7 +480,8 @@ export function DndProvider({ children }: DndProviderProps) {
           (overId.startsWith("worktree-drop-") ? overId.slice("worktree-drop-".length) : null);
         if (!activeWorktreeId || !overWorktreeId || activeWorktreeId === overWorktreeId) return;
 
-        const dragOrder = activeRawData.dragStartOrder as string[];
+        const dragOrder = activeRawData.dragStartOrder;
+        if (!Array.isArray(dragOrder)) return;
         const oldIndex = dragOrder.indexOf(activeWorktreeId);
         const newIndex = dragOrder.indexOf(overWorktreeId);
         if (oldIndex === -1 || newIndex === -1) return;
