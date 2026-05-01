@@ -139,27 +139,31 @@ describe("useGlobalKeybindings — Cmd+W escape stack guard", () => {
 });
 
 describe("useGlobalKeybindings — Backspace pops pending chord", () => {
-  function pressBackspace(eventInit: KeyboardEventInit = {}) {
-    act(() => {
-      document.body.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Backspace",
-          bubbles: true,
-          cancelable: true,
-          ...eventInit,
-        })
-      );
+  function dispatchBackspace(
+    eventInit: KeyboardEventInit = {},
+    target: EventTarget = document.body
+  ) {
+    const event = new KeyboardEvent("keydown", {
+      key: "Backspace",
+      bubbles: true,
+      cancelable: true,
+      ...eventInit,
     });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
   }
 
   it("pops the pending chord and consumes the event when Backspace is pressed during a chord", () => {
     mocks.keybindingService.getPendingChord.mockReturnValue("Cmd+K");
 
     render(<Host />);
-    pressBackspace();
+    const event = dispatchBackspace();
 
     expect(mocks.keybindingService.popPendingChord).toHaveBeenCalledTimes(1);
     expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("does not pop or consume Backspace when no chord is pending", () => {
@@ -171,12 +175,37 @@ describe("useGlobalKeybindings — Backspace pops pending chord", () => {
     });
 
     render(<Host />);
-    pressBackspace();
+    const event = dispatchBackspace();
 
     expect(mocks.keybindingService.popPendingChord).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 
-  it("does not pop the chord while an IME composition is in flight", () => {
+  it("leaves Backspace alone in a terminal when no chord is pending", () => {
+    mocks.keybindingService.getPendingChord.mockReturnValue(null);
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: undefined,
+      chordPrefix: false,
+      shouldConsume: false,
+    });
+
+    const xterm = document.createElement("div");
+    xterm.className = "xterm";
+    document.body.appendChild(xterm);
+
+    try {
+      render(<Host />);
+      const event = dispatchBackspace({}, xterm);
+
+      expect(mocks.keybindingService.popPendingChord).not.toHaveBeenCalled();
+      expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+      expect(event.defaultPrevented).toBe(false);
+    } finally {
+      xterm.remove();
+    }
+  });
+
+  it("does not pop or clear the chord while an IME composition is in flight", () => {
     mocks.keybindingService.getPendingChord.mockReturnValue("Cmd+K");
 
     render(<Host />);
@@ -193,5 +222,8 @@ describe("useGlobalKeybindings — Backspace pops pending chord", () => {
     });
 
     expect(mocks.keybindingService.popPendingChord).not.toHaveBeenCalled();
+    expect(mocks.keybindingService.clearPendingChord).not.toHaveBeenCalled();
+    expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 });
