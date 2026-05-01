@@ -362,7 +362,7 @@ describe("FleetArmingDialog", () => {
       usePanelStore.setState({
         panelsById: {
           ...state.panelsById,
-          b: { ...state.panelsById.b, runtimeStatus: "error" },
+          b: { ...(state.panelsById.b as TerminalInstance), runtimeStatus: "error" },
         },
       });
     });
