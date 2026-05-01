@@ -480,6 +480,12 @@ export function AgentTrayButton({
   const handleLaunch = useCallback(
     (agentId: BuiltInAgentId, presetId?: string | null) => {
       setOpen(false);
+      // `null` = explicit default — clear both the worktree-scoped override
+      // and the agent-level presetId so resolveEffectivePresetId returns
+      // undefined and the radio group visually selects "Default".
+      if (presetId === null) {
+        void useAgentSettingsStore.getState().updateAgent(agentId, { presetId: undefined });
+      }
       // Persist the pick to the worktree-scoped slot so a subsequent main-
       // button press on this worktree relaunches the same preset while other
       // worktrees keep their own. `null` clears the scoped override (and
