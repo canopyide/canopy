@@ -20,6 +20,9 @@ import type { WorkspaceClient } from "./WorkspaceClient.js";
 import {
   registerPanelKind,
   unregisterPluginPanelKinds,
+  onPanelKindRegistered,
+  onPanelKindUnregistered,
+  getPluginPanelKinds,
 } from "../../shared/config/panelKindRegistry.js";
 import {
   registerToolbarButton,
@@ -71,10 +74,38 @@ export class PluginService {
   private initialized = false;
   private pluginsRoot: string;
   private appVersion: string;
+  /**
+   * Coalesces multiple registry events fired in the same tick (e.g., when a
+   * plugin contributes several panel kinds, or when `unregisterPluginPanelKinds`
+   * removes N kinds in one call) into a single broadcast carrying the current
+   * snapshot.
+   */
+  private panelKindsBroadcastPending = false;
+  private disposed = false;
+  private readonly disposeRegistrySubscriptions: () => void;
 
   constructor(pluginsRoot?: string, appVersion?: string) {
     this.pluginsRoot = pluginsRoot ?? path.join(os.homedir(), ".daintree", "plugins");
     this.appVersion = appVersion ?? app.getVersion();
+
+    const offRegister = onPanelKindRegistered(() => this.schedulePanelKindsBroadcast());
+    const offUnregister = onPanelKindUnregistered(() => this.schedulePanelKindsBroadcast());
+    this.disposeRegistrySubscriptions = () => {
+      offRegister();
+      offUnregister();
+    };
+  }
+
+  /**
+   * Stop forwarding shared registry events to the renderer. Intended for
+   * tests that need a clean teardown — production code holds a single
+   * `pluginService` singleton for the app lifetime. Also drops any pending
+   * batched broadcast so a microtask scheduled before disposal doesn't leak
+   * an emit into the next test.
+   */
+  dispose(): void {
+    this.disposed = true;
+    this.disposeRegistrySubscriptions();
   }
 
   /**
@@ -681,6 +712,34 @@ export class PluginService {
     broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
       name: "plugin:actions-changed",
       payload: { actions: this.listPluginActions() },
+    });
+  }
+
+  /**
+   * Coalesce multiple registry mutations in the same microtask into a single
+   * broadcast. `unregisterPluginPanelKinds` fires the unregister listener once
+   * per removed kind; without this batching a plugin contributing N panels
+   * would trigger N broadcasts on unload, each carrying the same shrinking
+   * snapshot.
+   */
+  private schedulePanelKindsBroadcast(): void {
+    if (this.disposed) return;
+    if (this.panelKindsBroadcastPending) return;
+    this.panelKindsBroadcastPending = true;
+    queueMicrotask(() => {
+      this.panelKindsBroadcastPending = false;
+      // Disposal between scheduling and the microtask draining must not leak
+      // a phantom broadcast — particularly important for test isolation where
+      // a service from one test could otherwise emit into the next.
+      if (this.disposed) return;
+      this.broadcastPluginPanelKinds();
+    });
+  }
+
+  private broadcastPluginPanelKinds(): void {
+    broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
+      name: "plugin:panel-kinds-changed",
+      payload: { kinds: getPluginPanelKinds() },
     });
   }
 }
