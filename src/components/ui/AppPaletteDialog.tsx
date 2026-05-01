@@ -59,7 +59,8 @@ export function AppPaletteDialog({
 
   useEffect(() => {
     if (isOpen) {
-      previousFocusRef.current = document.activeElement as HTMLElement;
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) previousFocusRef.current = el;
       requestAnimationFrame(() => {
         const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
           'input, button, [tabindex]:not([tabindex="-1"])'

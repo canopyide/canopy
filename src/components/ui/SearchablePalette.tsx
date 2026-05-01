@@ -127,8 +127,10 @@ export function SearchablePalette<T>({
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0 && results.length > 0) {
-      const selectedItem = listRef.current.children[selectedIndex] as HTMLElement;
-      selectedItem?.scrollIntoView({ block: "nearest" });
+      const selectedItem = listRef.current.children[selectedIndex];
+      if (selectedItem instanceof HTMLElement) {
+        selectedItem.scrollIntoView({ block: "nearest" });
+      }
     }
   }, [selectedIndex, results]);
 
