@@ -3,19 +3,26 @@ import { X, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
+import { MissingCliGate } from "@/components/Terminal/MissingCliGate";
 import { HelpAgentPicker } from "./HelpAgentPicker";
 import {
   useHelpPanelStore,
   HELP_PANEL_MIN_WIDTH,
   HELP_PANEL_MAX_WIDTH,
 } from "@/store/helpPanelStore";
-import { usePanelStore, getTerminalRefreshTier, useAgentSettingsStore } from "@/store";
+import {
+  usePanelStore,
+  getTerminalRefreshTier,
+  useAgentSettingsStore,
+  useCliAvailabilityStore,
+} from "@/store";
 import { getAgentConfig } from "@/config/agents";
 import { getAgentSettingsEntry } from "@shared/types";
 import { ASSISTANT_FAST_MODELS } from "@shared/config/agentRegistry";
 import { actionService } from "@/services/ActionService";
 import { TerminalRefreshTier } from "@/types";
 import { logError } from "@/utils/logger";
+import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 
 const RESIZE_STEP = 10;
@@ -31,6 +38,16 @@ function resolveAssistantModel(agentId: string): string | undefined {
   const fast = ASSISTANT_FAST_MODELS[agentId];
   if (fast && cfg?.models?.some((m) => m.id === fast)) return fast;
   return undefined;
+}
+
+function notifyLaunchFailed(agentId: string, reason: string): void {
+  const cfg = getAgentConfig(agentId);
+  const name = cfg?.name ?? agentId;
+  notify({
+    type: "error",
+    title: "Assistant launch failed",
+    message: `Couldn't start ${name}. ${reason}`,
+  });
 }
 
 export function HelpPanel() {
@@ -52,6 +69,7 @@ export function HelpPanel() {
 
   const terminal = usePanelStore((s) => (terminalId ? s.panelsById[terminalId] : undefined));
   const removePanel = usePanelStore((s) => s.removePanel);
+  const cliDetail = useCliAvailabilityStore((s) => (agentId ? s.details[agentId] : undefined));
 
   const agentConfig = agentId ? getAgentConfig(agentId) : undefined;
 
@@ -76,18 +94,23 @@ export function HelpPanel() {
   const hasAutoLaunched = useRef(false);
   useEffect(() => {
     if (!isOpen || terminalId || !preferredAgentId || hasAutoLaunched.current) return;
+    const launchAgentId = preferredAgentId;
     hasAutoLaunched.current = true;
 
     safeFireAndForget(
       (async () => {
         const folderPath = await window.electron.help.getFolderPath();
-        if (!folderPath) return;
+        if (!folderPath) {
+          hasAutoLaunched.current = false;
+          notifyLaunchFailed(launchAgentId, "Help folder is not available.");
+          return;
+        }
 
-        const model = resolveAssistantModel(preferredAgentId);
+        const model = resolveAssistantModel(launchAgentId);
         const result = await actionService.dispatch<{ terminalId: string | null }>(
           "agent.launch",
           {
-            agentId: preferredAgentId,
+            agentId: launchAgentId,
             location: "dock",
             cwd: folderPath,
             prompt: HELP_PROMPT,
@@ -95,13 +118,30 @@ export function HelpPanel() {
           },
           { source: "user" }
         );
-        if (result.ok && result.result?.terminalId) {
-          if (document.hidden) return;
-          useHelpPanelStore.getState().setTerminal(result.result.terminalId, preferredAgentId);
-          window.electron.help.markTerminal(result.result.terminalId).catch((err) => {
-            logError("Failed to mark help terminal", err);
-          });
+
+        // Stale-launch guard: if the user navigated back to the picker or
+        // switched preferred agent while the IPC was in flight, discard
+        // this result and clean up the spawned panel rather than reviving
+        // a stale terminal.
+        const currentPreferred = useHelpPanelStore.getState().preferredAgentId;
+        if (currentPreferred !== launchAgentId) {
+          if (result.ok && result.result?.terminalId) {
+            usePanelStore.getState().removePanel(result.result.terminalId);
+          }
+          return;
         }
+
+        if (!result.ok || !result.result?.terminalId) {
+          hasAutoLaunched.current = false;
+          logError("Help auto-launch failed", { agentId: launchAgentId, result });
+          notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
+          return;
+        }
+
+        useHelpPanelStore.getState().setTerminal(result.result.terminalId, launchAgentId);
+        window.electron.help.markTerminal(result.result.terminalId).catch((err) => {
+          logError("Failed to mark help terminal", err);
+        });
       })(),
       { context: "Auto-launching preferred help agent" }
     );
@@ -169,44 +209,61 @@ export function HelpPanel() {
     [width, setWidth]
   );
 
+  const isLaunchingRef = useRef(false);
   const handleSelectAgent = useCallback(
     async (selectedAgentId: string) => {
-      // Remove existing terminal if switching agents
-      if (terminalId) {
-        removePanel(terminalId);
-        clearTerminal();
-      }
+      if (isLaunchingRef.current) return;
+      isLaunchingRef.current = true;
 
-      const folderPath = await window.electron.help.getFolderPath();
-      if (!folderPath) return;
+      try {
+        // Remove existing terminal if switching agents
+        const existingId = useHelpPanelStore.getState().terminalId;
+        if (existingId) {
+          removePanel(existingId);
+          clearTerminal();
+        }
 
-      const model = resolveAssistantModel(selectedAgentId);
-      const result = await actionService.dispatch<{ terminalId: string | null }>(
-        "agent.launch",
-        {
-          agentId: selectedAgentId,
-          location: "dock",
-          cwd: folderPath,
-          prompt: HELP_PROMPT,
-          ...(model && { model }),
-        },
-        { source: "user" }
-      );
+        const folderPath = await window.electron.help.getFolderPath();
+        if (!folderPath) {
+          notifyLaunchFailed(selectedAgentId, "Help folder is not available.");
+          return;
+        }
 
-      if (result.ok && result.result?.terminalId) {
+        const model = resolveAssistantModel(selectedAgentId);
+        const result = await actionService.dispatch<{ terminalId: string | null }>(
+          "agent.launch",
+          {
+            agentId: selectedAgentId,
+            location: "dock",
+            cwd: folderPath,
+            prompt: HELP_PROMPT,
+            ...(model && { model }),
+          },
+          { source: "user" }
+        );
+
+        if (!result.ok || !result.result?.terminalId) {
+          logError("Help launch failed", { agentId: selectedAgentId, result });
+          notifyLaunchFailed(selectedAgentId, "The agent didn't start. Try again.");
+          return;
+        }
+
         useHelpPanelStore.getState().setTerminal(result.result.terminalId, selectedAgentId);
         window.electron.help.markTerminal(result.result.terminalId).catch((err) => {
           logError("Failed to mark help terminal", err);
         });
+      } finally {
+        isLaunchingRef.current = false;
       }
     },
-    [terminalId, removePanel, clearTerminal]
+    [removePanel, clearTerminal]
   );
 
   const handleBack = useCallback(() => {
     if (terminalId) {
       removePanel(terminalId);
     }
+    hasAutoLaunched.current = false;
     clearPreferredAgent();
   }, [terminalId, removePanel, clearPreferredAgent]);
 
@@ -218,6 +275,30 @@ export function HelpPanel() {
     setOpen(false);
   }, [terminalId, removePanel, clearTerminal, setOpen]);
 
+  const handleRunAnyway = useCallback(() => {
+    if (!terminalId || !agentId) return;
+    const panel = usePanelStore.getState().panelsById[terminalId];
+    if (!panel) return;
+    const presetEnv = panel.extensionState?.presetEnv as Record<string, string> | undefined;
+
+    // Re-spawn through the manual select path with force.
+    removePanel(terminalId);
+    clearTerminal();
+    void usePanelStore.getState().addPanel({
+      kind: "terminal",
+      launchAgentId: agentId,
+      command: panel.command,
+      title: panel.title,
+      cwd: panel.cwd ?? "",
+      worktreeId: panel.worktreeId,
+      location: panel.location as "grid" | "dock" | undefined,
+      agentLaunchFlags: panel.agentLaunchFlags,
+      agentModelId: panel.agentModelId,
+      agentPresetId: panel.agentPresetId,
+      env: presetEnv,
+    });
+  }, [terminalId, agentId, removePanel, clearTerminal]);
+
   const getRefreshTier = useMemo(() => {
     return () => {
       if (!isOpen) return TerminalRefreshTier.BACKGROUND;
@@ -226,6 +307,7 @@ export function HelpPanel() {
   }, [isOpen, terminal]);
 
   const showTerminal = terminalId && terminal;
+  const isMissingCli = showTerminal && terminal?.spawnStatus === "missing-cli";
 
   return (
     <div
@@ -282,23 +364,31 @@ export function HelpPanel() {
       {/* Content */}
       <div ref={contentRef} className="flex-1 flex flex-col min-h-0 relative">
         {showTerminal ? (
-          <div className="absolute inset-0">
-            <Suspense fallback={null}>
-              <XtermAdapter
-                terminalId={terminalId}
-                launchAgentId={agentId ?? undefined}
-                getRefreshTier={getRefreshTier}
-                cwd={terminal.cwd}
-              />
-            </Suspense>
-          </div>
+          isMissingCli && agentId ? (
+            <MissingCliGate
+              agentId={agentId}
+              detail={cliDetail ?? { state: "missing", resolvedPath: null, via: null }}
+              onRunAnyway={handleRunAnyway}
+            />
+          ) : (
+            <div className="absolute inset-0">
+              <Suspense fallback={null}>
+                <XtermAdapter
+                  terminalId={terminalId}
+                  launchAgentId={agentId ?? undefined}
+                  getRefreshTier={getRefreshTier}
+                  cwd={terminal.cwd}
+                />
+              </Suspense>
+            </div>
+          )
         ) : (
           <HelpAgentPicker onSelectAgent={handleSelectAgent} />
         )}
       </div>
 
       {/* Bottom info bar */}
-      {showTerminal && agentConfig && (
+      {showTerminal && agentConfig && !isMissingCli && (
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-daintree-border shrink-0 text-[11px] text-daintree-text/40">
           <span className="flex items-center gap-1">
             Using
