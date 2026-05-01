@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, within } from "@testing-library/react";
 import type { Project } from "@shared/types";
 
 vi.mock("react-dom", async () => {
@@ -121,15 +121,24 @@ function setStore(patch: Partial<ProjectStoreState>) {
 }
 
 describe("ProjectSwitcher loading affordance", () => {
+  beforeEach(() => {
+    setStore({
+      projects: [],
+      currentProject: null,
+      isLoading: false,
+    });
+  });
+
   it("loaded-project trigger shows spinner when isLoading is true", () => {
     setStore({
       projects: [makeProject()],
       currentProject: makeProject(),
       isLoading: true,
     });
-    const { container } = render(<ProjectSwitcher />);
-    expect(container.querySelector(".animate-spin")).not.toBeNull();
-    expect(container.querySelector(".lucide-chevrons-up-down")).toBeNull();
+    const { getByRole } = render(<ProjectSwitcher />);
+    const trigger = getByRole("button");
+    expect(trigger.querySelector(".animate-spin")).not.toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).toBeNull();
   });
 
   it("loaded-project trigger shows chevron when isLoading is false", () => {
@@ -138,9 +147,10 @@ describe("ProjectSwitcher loading affordance", () => {
       currentProject: makeProject(),
       isLoading: false,
     });
-    const { container } = render(<ProjectSwitcher />);
-    expect(container.querySelector(".animate-spin")).toBeNull();
-    expect(container.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
+    const { getByRole } = render(<ProjectSwitcher />);
+    const trigger = getByRole("button");
+    expect(trigger.querySelector(".animate-spin")).toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
   });
 
   it("'Select Project…' trigger shows spinner when isLoading is true", () => {
@@ -149,10 +159,11 @@ describe("ProjectSwitcher loading affordance", () => {
       currentProject: null,
       isLoading: true,
     });
-    const { container, getByText } = render(<ProjectSwitcher />);
-    expect(getByText("Select Project...")).toBeTruthy();
-    expect(container.querySelector(".animate-spin")).not.toBeNull();
-    expect(container.querySelector(".lucide-chevrons-up-down")).toBeNull();
+    const { getByRole } = render(<ProjectSwitcher />);
+    const trigger = getByRole("button", { name: /Select Project/ });
+    expect(within(trigger).getByText("Select Project...")).toBeTruthy();
+    expect(trigger.querySelector(".animate-spin")).not.toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).toBeNull();
   });
 
   it("'Select Project…' trigger shows chevron when isLoading is false", () => {
@@ -161,20 +172,47 @@ describe("ProjectSwitcher loading affordance", () => {
       currentProject: null,
       isLoading: false,
     });
-    const { container, getByText } = render(<ProjectSwitcher />);
-    expect(getByText("Select Project...")).toBeTruthy();
-    expect(container.querySelector(".animate-spin")).toBeNull();
-    expect(container.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
+    const { getByRole } = render(<ProjectSwitcher />);
+    const trigger = getByRole("button", { name: /Select Project/ });
+    expect(within(trigger).getByText("Select Project...")).toBeTruthy();
+    expect(trigger.querySelector(".animate-spin")).toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
   });
 
-  it("'Open Project…' (no projects at all) does not get a spinner", () => {
+  it("'Open Project…' (no projects at all) keeps Plus icon and does not get a spinner", () => {
     setStore({
       projects: [],
       currentProject: null,
       isLoading: true,
     });
-    const { container, getByText } = render(<ProjectSwitcher />);
-    expect(getByText("Open Project...")).toBeTruthy();
-    expect(container.querySelector(".animate-spin")).toBeNull();
+    const { getByRole } = render(<ProjectSwitcher />);
+    const trigger = getByRole("button", { name: /Open Project/ });
+    expect(within(trigger).getByText("Open Project...")).toBeTruthy();
+    expect(trigger.querySelector(".lucide-plus")).not.toBeNull();
+    expect(trigger.querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("swap is reactive when isLoading toggles", () => {
+    setStore({
+      projects: [makeProject()],
+      currentProject: makeProject(),
+      isLoading: false,
+    });
+    const { rerender, getByRole } = render(<ProjectSwitcher />);
+    let trigger = getByRole("button");
+    expect(trigger.querySelector(".animate-spin")).toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
+
+    setStore({ isLoading: true });
+    rerender(<ProjectSwitcher />);
+    trigger = getByRole("button");
+    expect(trigger.querySelector(".animate-spin")).not.toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).toBeNull();
+
+    setStore({ isLoading: false });
+    rerender(<ProjectSwitcher />);
+    trigger = getByRole("button");
+    expect(trigger.querySelector(".animate-spin")).toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
   });
 });
