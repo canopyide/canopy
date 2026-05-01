@@ -43,10 +43,14 @@ export function detectLinuxGpus(): LinuxGpuInfo | null {
     return null;
   }
 
-  let nodes = listDrmNodes(/^renderD\d+$/);
-  if (nodes.length === 0) {
-    nodes = listDrmNodes(/^card\d+$/);
-  }
+  // Union render and card nodes: some NVIDIA driver configurations expose a
+  // `card1` for the dGPU without a corresponding `renderD129`, which would
+  // make a render-only scan miss the second vendor and falsely report
+  // single-GPU. Reading both kinds and deduping by vendor ID is safe — we
+  // only care about the set of distinct vendors.
+  const renderNodes = listDrmNodes(/^renderD\d+$/);
+  const cardNodes = listDrmNodes(/^card\d+$/);
+  const nodes = [...renderNodes, ...cardNodes];
   if (nodes.length === 0) return null;
 
   const vendors = new Set<string>();

@@ -51,6 +51,24 @@ if (!app.isPackaged && !hasExplicitUserDataDir) {
   app.setPath("userData", path.join(app.getPath("appData"), devDirName));
 }
 
+// Handle --reset-data: wipe userData before Chromium acquires file locks
+// AND before reading any flag files below — otherwise a reset-while-disabled
+// launch would carry the stale GPU flag forward by one cycle.
+const shouldResetData =
+  process.argv.includes("--reset-data") || process.env.DAINTREE_RESET_DATA === "1";
+if (shouldResetData) {
+  const userDataPath = app.getPath("userData");
+  if (fs.existsSync(userDataPath)) {
+    for (const entry of fs.readdirSync(userDataPath)) {
+      try {
+        fs.rmSync(path.join(userDataPath, entry), { recursive: true, force: true });
+      } catch {
+        // Skip locked files
+      }
+    }
+  }
+}
+
 // GPU crash fallback: disable hardware acceleration before app.whenReady()
 // This flag is written by GpuCrashMonitorService after repeated GPU crashes.
 const gpuFlagPath = path.join(app.getPath("userData"), "gpu-disabled.flag");
@@ -67,22 +85,6 @@ if (gpuHardwareAccelerationDisabled) {
 // already been nuked.
 const gpuAngleFallbackFlagPath = path.join(app.getPath("userData"), "gpu-angle-fallback.flag");
 export const gpuAngleFallbackActive = fs.existsSync(gpuAngleFallbackFlagPath);
-
-// Handle --reset-data: wipe userData before Chromium acquires file locks
-const shouldResetData =
-  process.argv.includes("--reset-data") || process.env.DAINTREE_RESET_DATA === "1";
-if (shouldResetData) {
-  const userDataPath = app.getPath("userData");
-  if (fs.existsSync(userDataPath)) {
-    for (const entry of fs.readdirSync(userDataPath)) {
-      try {
-        fs.rmSync(path.join(userDataPath, entry), { recursive: true, force: true });
-      } catch {
-        // Skip locked files
-      }
-    }
-  }
-}
 
 // Chromium feature flags: memory reclamation + platform-specific features
 const enabledFeatures = ["PartitionAllocMemoryReclaimer"];

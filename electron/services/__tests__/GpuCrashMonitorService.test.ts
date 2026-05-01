@@ -275,6 +275,49 @@ describe("GpuCrashMonitorService", () => {
       expect(isGpuDisabledByFlag(tmpDir)).toBe(false);
     });
 
+    it("does NOT relaunch when ANGLE flag write fails (prevents per-session loop)", async () => {
+      const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+        throw new Error("EROFS: read-only filesystem");
+      });
+      try {
+        await loadAndInit();
+        emitGpuCrash();
+        await new Promise((r) => setImmediate(r));
+        expect(appMock.relaunch).not.toHaveBeenCalled();
+        expect(appMock.exit).not.toHaveBeenCalled();
+        expect(isGpuAngleFallbackByFlag(tmpDir)).toBe(false);
+        expect(console.error).toHaveBeenCalledWith(
+          expect.stringContaining("Failed to write ANGLE fallback flag"),
+          expect.any(Error)
+        );
+      } finally {
+        writeSpy.mockRestore();
+      }
+    });
+
+    it("does NOT relaunch when nuclear disable flag write fails", async () => {
+      writeGpuAngleFallbackFlag(tmpDir);
+      const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+        throw new Error("EROFS: read-only filesystem");
+      });
+      try {
+        await loadAndInit();
+        emitGpuCrash();
+        emitGpuCrash();
+        emitGpuCrash();
+        await new Promise((r) => setImmediate(r));
+        expect(appMock.relaunch).not.toHaveBeenCalled();
+        expect(appMock.exit).not.toHaveBeenCalled();
+        expect(isGpuDisabledByFlag(tmpDir)).toBe(false);
+        expect(console.error).toHaveBeenCalledWith(
+          expect.stringContaining("Failed to persist disable flag"),
+          expect.any(Error)
+        );
+      } finally {
+        writeSpy.mockRestore();
+      }
+    });
+
     it("waits for closeTelemetry to resolve before app.exit(0) on first-crash relaunch", async () => {
       let resolveClose!: () => void;
       const deferred = new Promise<void>((r) => {

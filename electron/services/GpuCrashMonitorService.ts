@@ -75,13 +75,17 @@ class GpuCrashMonitorService {
       // hardware where Vulkan itself crashes — in that case the strikes
       // accumulate normally toward the nuclear path below.
       if (this.crashCount === 1 && !alreadyHasAngleFallback) {
-        this.relaunching = true;
-        console.error("[GPU] First GPU crash — writing ANGLE fallback flag and relaunching");
         try {
           writeGpuAngleFallbackFlag(userDataPath);
         } catch (err) {
-          console.error("[GPU] Failed to write ANGLE fallback flag:", err);
+          // If the flag write fails (read-only fs, permissions), do NOT
+          // relaunch — that would loop every session. Let strikes accumulate
+          // toward the nuclear path on subsequent crashes.
+          console.error("[GPU] Failed to write ANGLE fallback flag — skipping soft relaunch:", err);
+          return;
         }
+        this.relaunching = true;
+        console.error("[GPU] First GPU crash — wrote ANGLE fallback flag, relaunching");
         app.relaunch();
         await closeTelemetry();
         app.exit(0);
@@ -89,17 +93,20 @@ class GpuCrashMonitorService {
       }
 
       if (this.crashCount >= GPU_CRASH_THRESHOLD) {
-        this.relaunching = true;
-        console.error(
-          `[GPU] ${GPU_CRASH_THRESHOLD} GPU crashes detected — writing disable flag and relaunching`
-        );
         try {
           writeGpuDisabledFlag(userDataPath);
           clearGpuAngleFallbackFlag(userDataPath);
           store.set("gpu", { hardwareAccelerationDisabled: true });
         } catch (err) {
-          console.error("[GPU] Failed to write disable flag:", err);
+          // Same rationale as the soft path: never relaunch without
+          // persisting state, or the next session loops back to here.
+          console.error("[GPU] Failed to persist disable flag — skipping nuclear relaunch:", err);
+          return;
         }
+        this.relaunching = true;
+        console.error(
+          `[GPU] ${GPU_CRASH_THRESHOLD} GPU crashes detected — wrote disable flag, relaunching`
+        );
         app.relaunch();
         await closeTelemetry();
         app.exit(0);
