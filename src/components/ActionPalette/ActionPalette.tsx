@@ -15,6 +15,7 @@ type ActionPaletteProps = Pick<
   | "selectedIndex"
   | "close"
   | "setQuery"
+  | "setSelectedIndex"
   | "selectPrevious"
   | "selectNext"
   | "executeAction"
@@ -29,6 +30,7 @@ export function ActionPalette({
   selectedIndex,
   close,
   setQuery,
+  setSelectedIndex,
   selectPrevious,
   selectNext,
   executeAction,
@@ -52,13 +54,15 @@ export function ActionPalette({
       onSelectNext={selectNext}
       onConfirm={confirmSelection}
       onClose={close}
+      onHoverIndex={setSelectedIndex}
       getItemId={(item) => item.id}
-      renderItem={(item, _index, isSelected) => (
+      renderItem={(item, index, isSelected, onHoverIndex) => (
         <ActionPaletteItem
           key={item.id}
           item={item}
           isSelected={isSelected}
           onSelect={handleSelect}
+          onHover={() => onHoverIndex(index)}
         />
       )}
       label="Actions"
