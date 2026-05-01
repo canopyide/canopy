@@ -138,7 +138,7 @@ describe("SidebarContent zero-worktrees shortcut nudge — issue #6437", () => {
     // wrapped in a truthy guard so unbound shortcuts (createWorktreeShortcut === "")
     // suppress the line entirely instead of rendering "Press  to create a worktree".
     const branchStart = source.indexOf("if (worktrees.length === 0) {");
-    const branchEnd = source.indexOf("const rootPath = currentProject", branchStart);
+    const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
     expect(branchStart).toBeGreaterThan(0);
     expect(branchEnd).toBeGreaterThan(branchStart);
     const branch = source.slice(branchStart, branchEnd);
@@ -151,5 +151,33 @@ describe("SidebarContent zero-worktrees shortcut nudge — issue #6437", () => {
     // The menu-path pill stays as a raw <kbd> with the existing styling — Kbd
     // is reserved for keyboard shortcuts.
     expect(source).toMatch(/<kbd[^>]*>\s*File → Open Directory\s*<\/kbd>/);
+  });
+
+  it("mounts NewWorktreeDialog from the zero-worktrees branch so the shortcut nudge actually opens it", () => {
+    // Regression guard: the empty-state nudge dispatches
+    // worktree.createDialog.open. Before this PR there was no entry path from
+    // the zero-worktrees branch to the dialog; the dialog mount lived only in
+    // the main return, which is bypassed by the early return. Hoisting
+    // `newWorktreeDialogElement` before the early returns and including it in
+    // the zero-worktrees branch is what makes the shortcut work.
+    expect(source).toContain("const newWorktreeDialogElement");
+    const branchStart = source.indexOf("if (worktrees.length === 0) {");
+    const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
+    expect(branchStart).toBeGreaterThan(0);
+    expect(branchEnd).toBeGreaterThan(branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toContain("{newWorktreeDialogElement}");
+  });
+
+  it("hoists the dialog mount before all early returns so it is reachable from every branch", () => {
+    // The dialog declaration must appear before the first early-return guard
+    // (`isLoading && worktrees.length === 0`); otherwise dispatching
+    // worktree.createDialog.open from outside the populated sidebar (loading,
+    // error, or empty state) would be a no-op.
+    const dialogIdx = source.indexOf("const newWorktreeDialogElement");
+    const firstEarlyReturnIdx = source.indexOf("if (isLoading && worktrees.length === 0)");
+    expect(dialogIdx).toBeGreaterThan(0);
+    expect(firstEarlyReturnIdx).toBeGreaterThan(0);
+    expect(dialogIdx).toBeLessThan(firstEarlyReturnIdx);
   });
 });

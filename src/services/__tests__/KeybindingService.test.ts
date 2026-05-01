@@ -525,5 +525,13 @@ describe("KeybindingService", () => {
       expect(display.toUpperCase()).toContain("K");
       expect(display.toUpperCase()).toContain("N");
     });
+
+    it("registers worktree.createDialog.open in the BuiltInKeyAction value set", async () => {
+      // Registry completeness: every action with a default binding should
+      // appear in KEY_ACTION_VALUES so introspection (settings UI, conflict
+      // detection, etc.) sees it.
+      const { KEY_ACTION_VALUES } = await import("@shared/types/keymap");
+      expect(KEY_ACTION_VALUES.has("worktree.createDialog.open")).toBe(true);
+    });
   });
 });
