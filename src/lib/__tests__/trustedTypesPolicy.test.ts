@@ -32,15 +32,23 @@ afterEach(() => {
 });
 
 describe("trustedTypesPolicy", () => {
-  it("registers the daintree-svg named policy at module load", async () => {
+  it("registers the daintree-svg named policy and the default policy at module load", async () => {
     const { createPolicySpy } = installMockTrustedTypes();
 
     await import("../trustedTypesPolicy");
 
-    expect(createPolicySpy).toHaveBeenCalledTimes(1);
+    expect(createPolicySpy).toHaveBeenCalledTimes(2);
     expect(createPolicySpy).toHaveBeenCalledWith(
       TRUSTED_TYPES_POLICY_NAME,
       expect.objectContaining({ createHTML: expect.any(Function) })
+    );
+    expect(createPolicySpy).toHaveBeenCalledWith(
+      "default",
+      expect.objectContaining({
+        createHTML: expect.any(Function),
+        createScript: expect.any(Function),
+        createScriptURL: expect.any(Function),
+      })
     );
   });
 

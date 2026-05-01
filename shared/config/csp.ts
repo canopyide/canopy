@@ -46,7 +46,7 @@ export function getDaintreeAppProdCSP(): string {
     "base-uri 'self'",
     "form-action 'none'",
     "require-trusted-types-for 'script'",
-    `trusted-types ${TRUSTED_TYPES_POLICY_NAME} 'allow-duplicates'`,
+    `trusted-types ${TRUSTED_TYPES_POLICY_NAME} default 'allow-duplicates'`,
   ].join("; ");
 }
 
@@ -80,7 +80,7 @@ export function getDaintreeAppDevCSP(): string {
     "base-uri 'self'",
     "form-action 'none'",
     "require-trusted-types-for 'script'",
-    `trusted-types ${TRUSTED_TYPES_POLICY_NAME} 'allow-duplicates'`,
+    `trusted-types ${TRUSTED_TYPES_POLICY_NAME} default 'allow-duplicates'`,
   ].join("; ");
 }
 

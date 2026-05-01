@@ -1,3 +1,10 @@
+// Register Trusted Types policies before anything else can write to a TT-gated
+// DOM sink. React DOM relies on the `default` policy this module installs to
+// set `innerHTML` on framework-injected `<style>` elements (e.g. Radix Popper
+// in `SelectViewport`); without it the very first render of any Select inside
+// a Portal throws.
+import "./lib/trustedTypesPolicy";
+
 import { initBuiltInPanelKinds } from "./panels/registry";
 initBuiltInPanelKinds();
 
