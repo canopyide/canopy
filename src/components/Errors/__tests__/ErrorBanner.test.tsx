@@ -101,7 +101,7 @@ describe("ErrorBanner", () => {
     it("does not render 'View errors' when retry is available", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          error={makeError({ isTransient: true, retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
           compact
@@ -114,7 +114,7 @@ describe("ErrorBanner", () => {
     it("renders 'View errors' when isTransient is true but onRetry is missing", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          error={makeError({ isTransient: true, retryAction: "git" })}
           onDismiss={onDismiss}
           compact
         />
@@ -148,7 +148,7 @@ describe("ErrorBanner", () => {
     it("does not use success-green classes on the compact retry button", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          error={makeError({ isTransient: true, retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
           compact
@@ -162,7 +162,7 @@ describe("ErrorBanner", () => {
     it("does not use success-green classes on the full retry button", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git.pull" })}
+          error={makeError({ isTransient: true, retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
         />
