@@ -2,12 +2,35 @@ import { EditorView, Decoration, WidgetType, hoverTooltip } from "@codemirror/vi
 import { StateField } from "@codemirror/state";
 import { getAllAtFileTokens, type AtFileToken } from "../hybridInputParsing";
 import { chipPendingDeleteField, isChipSelected } from "./chipBackspace";
+import { fileDropChipField } from "./fileDropChip";
+import { imageChipField } from "./imageChip";
 
 interface FileChipState {
   tokens: AtFileToken[];
 }
 
 const RESERVED_TOKEN_PATHS = new Set(["diff", "diff:staged", "diff:head", "terminal", "selection"]);
+
+interface RangeOwner {
+  from: number;
+  to: number;
+}
+
+function isOwnedByExplicitChip(view: EditorView, start: number, end: number): boolean {
+  const dropEntries: RangeOwner[] | undefined = view.state.field(fileDropChipField, false);
+  if (dropEntries) {
+    for (const e of dropEntries) {
+      if (e.from < end && e.to > start) return true;
+    }
+  }
+  const imageEntries: RangeOwner[] | undefined = view.state.field(imageChipField, false);
+  if (imageEntries) {
+    for (const e of imageEntries) {
+      if (e.from < end && e.to > start) return true;
+    }
+  }
+  return false;
+}
 
 class FileChipWidget extends WidgetType {
   constructor(
@@ -53,18 +76,24 @@ const fileChipStateField = StateField.define<FileChipState>({
       const fieldValue = view.state.field(f, false);
       if (!fieldValue || fieldValue.tokens.length === 0) return Decoration.none;
       const pending = view.state.field(chipPendingDeleteField, false) ?? null;
-      const ranges = fieldValue.tokens.map((token) => {
-        const selected = isChipSelected(pending, token.start, token.end);
-        return Decoration.replace({
-          widget: new FileChipWidget(token.path, selected),
-        }).range(token.start, token.end);
-      });
+      const ranges = fieldValue.tokens
+        .filter((t) => !isOwnedByExplicitChip(view, t.start, t.end))
+        .map((token) => {
+          const selected = isChipSelected(pending, token.start, token.end);
+          return Decoration.replace({
+            widget: new FileChipWidget(token.path, selected),
+          }).range(token.start, token.end);
+        });
+      if (ranges.length === 0) return Decoration.none;
       return Decoration.set(ranges, true);
     }),
     EditorView.atomicRanges.of((view) => {
       const fieldValue = view.state.field(f, false);
       if (!fieldValue || fieldValue.tokens.length === 0) return Decoration.none;
-      const ranges = fieldValue.tokens.map((t) => Decoration.mark({}).range(t.start, t.end));
+      const ranges = fieldValue.tokens
+        .filter((t) => !isOwnedByExplicitChip(view, t.start, t.end))
+        .map((t) => Decoration.mark({}).range(t.start, t.end));
+      if (ranges.length === 0) return Decoration.none;
       return Decoration.set(ranges, true);
     }),
   ],

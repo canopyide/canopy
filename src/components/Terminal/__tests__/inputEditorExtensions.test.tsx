@@ -1762,6 +1762,148 @@ describe("slashChipField valid/invalid distinction", () => {
   });
 });
 
+describe("@file chip yields to fileDropChip when ranges overlap", () => {
+  it("does not render @file widget over a fileDropChip range", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "@/Users/test/file.ts ",
+        extensions: [chipPendingDeleteField, createFileChipField(), fileDropChipField],
+      }),
+    });
+
+    view.dispatch({
+      effects: addFileDropChip.of({
+        from: 0,
+        to: 20,
+        filePath: "/Users/test/file.ts",
+        fileName: "file.ts",
+      }),
+    });
+
+    // The rich file-drop chip should be present and own the range; the simple file chip
+    // must not also render a competing widget.
+    const dropChip = view.dom.querySelector(".cm-file-drop-chip");
+    const fileChip = view.dom.querySelector(".cm-file-chip");
+    expect(dropChip).not.toBeNull();
+    expect(fileChip).toBeNull();
+    view.destroy();
+  });
+});
+
+describe("middle-of-text chip deletion", () => {
+  it("preserves surrounding text after two-press delete", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "run @src/App.tsx now",
+        extensions: [chipPendingDeleteField, createFileChipField(), createChipBackspaceKeymap()],
+      }),
+    });
+
+    const chipEnd = "run @src/App.tsx".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("run  now");
+    view.destroy();
+  });
+});
+
+describe("two-press Backspace edge cases", () => {
+  function makeView(doc: string) {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        extensions: [chipPendingDeleteField, createFileChipField(), createChipBackspaceKeymap()],
+      }),
+    });
+  }
+
+  it("partial selection that does not exactly cover a chip returns false", () => {
+    const view = makeView("@src/App.tsx ");
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: 0, head: chipEnd - 1 } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("@src/App.tsx ");
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("alreadyStaged path: cursor returns to chip edge then second Backspace deletes", () => {
+    const view = makeView("@src/App.tsx ");
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    // First press: stages + selects the chip.
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.field(chipPendingDeleteField)).not.toBeNull();
+    expect(view.state.selection.main.empty).toBe(false);
+
+    // Collapse the selection back to the chip's right edge — staging must be preserved
+    // because the cursor is still at the chip boundary.
+    view.dispatch({ selection: { anchor: chipEnd } });
+    expect(view.state.field(chipPendingDeleteField)).toEqual({ from: 0, to: chipEnd });
+    expect(view.state.selection.main.empty).toBe(true);
+
+    // Second press: alreadyStaged branch deletes via the empty-selection path.
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe(" ");
+    view.destroy();
+  });
+});
+
+describe("two-press Backspace on diffChip and terminalChip", () => {
+  function makeView(doc: string, field: import("@codemirror/state").Extension) {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        extensions: [chipPendingDeleteField, field, createChipBackspaceKeymap()],
+      }),
+    });
+  }
+
+  it("diffChip: two-press Backspace deletes @diff token", () => {
+    const view = makeView("see @diff please", diffChipField);
+    const chipEnd = "see @diff".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe("see @diff please");
+    expect(view.state.field(chipPendingDeleteField)).not.toBeNull();
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe("see  please");
+    view.destroy();
+  });
+
+  it("terminalChip: two-press Backspace deletes @terminal token", () => {
+    const view = makeView("see @terminal please", terminalChipField);
+    const chipEnd = "see @terminal".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("see  please");
+    view.destroy();
+  });
+});
+
 describe("@file chip widget rendering", () => {
   it("doc text is preserved when chip is rendered as widget", () => {
     const parent = document.createElement("div");
