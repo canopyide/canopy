@@ -1835,5 +1835,125 @@ describe("WorktreeMonitor", () => {
 
       monitor.stop();
     });
+
+    it("flips isFetchInFlight true while a fetch is pending and false after", async () => {
+      let resolveFetch: (() => void) | undefined;
+      const onScheduleFetch = vi.fn().mockImplementation(() => {
+        return new Promise<void>((res) => {
+          resolveFetch = res;
+        });
+      });
+
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onScheduleFetch, onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      onUpdate.mockClear();
+
+      // Fire the initial-delay timer.
+      await vi.advanceTimersByTimeAsync(6_000);
+      // Drain microtasks so the runFetch's start-emit lands.
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+
+      // While in-flight, the snapshot should report isFetchInFlight=true.
+      const startSnapshot = monitor.getSnapshot();
+      expect(startSnapshot.isFetchInFlight).toBe(true);
+
+      // Resolve the fetch and confirm it flips back to false.
+      resolveFetch?.();
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      const endSnapshot = monitor.getSnapshot();
+      expect(endSnapshot.isFetchInFlight).toBeFalsy();
+
+      monitor.stop();
+    });
+
+    it("setFetchState mirrors lastFetchedAt and fetchAuthFailed into the snapshot", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false);
+      const afterFirst = monitor.getSnapshot();
+      expect(afterFirst.lastFetchedAt).toBe(1700000000000);
+      expect(afterFirst.fetchAuthFailed).toBeFalsy();
+      expect(onUpdate).toHaveBeenCalled();
+
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000060000, true);
+      const afterAuthFail = monitor.getSnapshot();
+      expect(afterAuthFail.lastFetchedAt).toBe(1700000060000);
+      expect(afterAuthFail.fetchAuthFailed).toBe(true);
+      expect(onUpdate).toHaveBeenCalled();
+
+      // Idempotent — repeating the same values should not re-emit.
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000060000, true);
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      monitor.stop();
+    });
+
+    it("setIsGitHubRemote mirrors into the snapshot and is idempotent", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Default is false (undefined-on-the-wire) until set.
+      expect(monitor.getSnapshot().isGitHubRemote).toBeFalsy();
+
+      onUpdate.mockClear();
+      monitor.setIsGitHubRemote(true);
+      expect(monitor.getSnapshot().isGitHubRemote).toBe(true);
+      expect(onUpdate).toHaveBeenCalled();
+
+      onUpdate.mockClear();
+      monitor.setIsGitHubRemote(true);
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      monitor.stop();
+    });
+
+    it("setIsGitHubRemote / setFetchState do not emit after stop()", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+      monitor.stop();
+
+      onUpdate.mockClear();
+      // Late-resolving probe / coordinator fan-out must not re-add a ghost
+      // card to the renderer after the monitor has been torn down.
+      monitor.setIsGitHubRemote(true);
+      monitor.setFetchState(1700000000000, false, false);
+      monitor.setFetchState(1700000000000, true, false);
+
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it("setFetchState surfaces fetchNetworkFailed in the snapshot", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false, true);
+      const snap = monitor.getSnapshot();
+      expect(snap.fetchNetworkFailed).toBe(true);
+      expect(snap.fetchAuthFailed).toBeFalsy();
+      expect(onUpdate).toHaveBeenCalled();
+
+      // Idempotent on no-change.
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false, true);
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      monitor.stop();
+    });
   });
 });

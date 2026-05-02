@@ -112,6 +112,25 @@ export interface WorktreeSnapshot {
   /** Number of commits behind the upstream tracking branch */
   behindCount?: number;
 
+  /**
+   * Epoch ms of the last successful background `git fetch` for this worktree's
+   * repo. Mirrored from `RepoFetchCoordinator` so siblings sharing a commondir
+   * see the same timestamp. `null` until the first success lands.
+   */
+  lastFetchedAt?: number | null;
+
+  /** True when this worktree's repo is in an auth-failed fetch state. */
+  fetchAuthFailed?: boolean;
+
+  /** True when the most recent fetch failed for a transient (non-auth) reason. */
+  fetchNetworkFailed?: boolean;
+
+  /** True while a background `git fetch` is in-flight for this worktree's repo. */
+  isFetchInFlight?: boolean;
+
+  /** True when origin's fetch URL points at github.com (HTTPS or SSH form). */
+  isGitHubRemote?: boolean;
+
   /** Resource status from the last manual status check */
   resourceStatus?: WorktreeResourceStatus;
 

@@ -148,6 +148,40 @@ export interface Worktree {
   /** Number of commits behind the upstream tracking branch */
   behindCount?: number;
 
+  /**
+   * Epoch ms of the last successful background `git fetch` for this worktree's
+   * repo. Mirrors `RepoFetchCoordinator`'s per-commondir `lastSuccessfulFetch`
+   * so all sibling worktrees sharing a `.git/objects` see the same timestamp.
+   * `null` until the first successful fetch lands.
+   */
+  lastFetchedAt?: number | null;
+
+  /**
+   * True when this worktree's repo is currently in an auth-failed fetch state
+   * (mirrored from `RepoFetchCoordinator.failure.kind === "auth"`). The card
+   * surfaces a "Sign in to refresh" affordance when this is true and the
+   * remote is GitHub; for other hosts the affordance stays silent.
+   */
+  fetchAuthFailed?: boolean;
+
+  /**
+   * True when the most recent fetch failed for a transient reason (network
+   * unavailable / generic transient / repo-not-found-first). Surfaces as a
+   * "Couldn't reach origin" tooltip line so users can distinguish a stale
+   * count from one that's intentionally suppressed.
+   */
+  fetchNetworkFailed?: boolean;
+
+  /** True while a background `git fetch` is in-flight for this worktree's repo. */
+  isFetchInFlight?: boolean;
+
+  /**
+   * True when origin's fetch URL points at github.com (HTTPS or SSH form).
+   * Resolved once at monitor start; gates the "Sign in to refresh" affordance
+   * so we don't surface a GitHub-token CTA for non-GitHub remotes.
+   */
+  isGitHubRemote?: boolean;
+
   /** Resource status from the last manual status check */
   resourceStatus?: WorktreeResourceStatus;
 

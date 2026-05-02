@@ -47,6 +47,29 @@ export interface FetchResult {
   reason?: GitOperationReason;
   /** Why we skipped — for logging / diagnostics. */
   skipReason?: "no-common-dir" | "in-failure-window" | "auth-suspended" | "stale-generation";
+  /**
+   * Coordinator's per-commondir `lastSuccessfulFetch` after this call settled.
+   * Set on success (the timestamp just written) and on skipped/failed
+   * outcomes (the prior timestamp, if any). Lets `WorkspaceService` propagate
+   * the freshest known value to monitors without reaching into coordinator
+   * internals.
+   */
+  lastFetchedAt?: number | null;
+  /**
+   * True when this call ended in (or remained in) an auth-class failure for
+   * this commondir. Includes the `auth-suspended` skip case so the renderer
+   * keeps showing the "Sign in to refresh" affordance instead of flashing
+   * stale counts when a sibling's force-fetch is rate-cached.
+   */
+  authFailed?: boolean;
+  /**
+   * True when this call ended in (or remained in) a transient (network /
+   * repo-not-found-first / generic transient) failure. Drives the
+   * "Couldn't reach origin" tooltip line on the worktree card. False on
+   * success, on auth-class failures (those use `authFailed`), and on the
+   * `no-common-dir` skip path where we have no state to report.
+   */
+  networkFailed?: boolean;
 }
 
 /**
@@ -102,6 +125,9 @@ export class RepoFetchCoordinator {
           status: "skipped",
           skipReason: "auth-suspended",
           reason: failure.reason,
+          lastFetchedAt: state.lastSuccessfulFetch,
+          authFailed: true,
+          networkFailed: false,
         };
       }
       if (Date.now() < failure.retryAt) {
@@ -109,6 +135,11 @@ export class RepoFetchCoordinator {
           status: "skipped",
           skipReason: "in-failure-window",
           reason: failure.reason,
+          lastFetchedAt: state.lastSuccessfulFetch,
+          authFailed: false,
+          // Skipping inside the retry window means a transient failure is
+          // still cached — keep the "Couldn't reach origin" tooltip up.
+          networkFailed: true,
         };
       }
     }
@@ -217,7 +248,12 @@ export class RepoFetchCoordinator {
       state.failure = null;
       state.lastSuccessfulFetch = Date.now();
       succeeded = true;
-      return { status: "success" };
+      return {
+        status: "success",
+        lastFetchedAt: state.lastSuccessfulFetch,
+        authFailed: false,
+        networkFailed: false,
+      };
     } catch (error) {
       const reason = classifyGitError(error);
       const state = this.states.get(commonDir);
@@ -225,7 +261,16 @@ export class RepoFetchCoordinator {
         return { status: "skipped", skipReason: "stale-generation" };
       }
       state.failure = this.classifyForCache(reason, state.lastSuccessfulFetch, error);
-      return { status: "failed", reason };
+      const isAuth = state.failure.kind === "auth";
+      return {
+        status: "failed",
+        reason,
+        lastFetchedAt: state.lastSuccessfulFetch,
+        authFailed: isAuth,
+        // Auth-class failures use `authFailed`; everything else surfaces as
+        // a transient "Couldn't reach origin" tooltip line.
+        networkFailed: !isAuth,
+      };
     } finally {
       clearTimeout(timeout);
       // Notify outside the try/catch so a throwing observer can't poison the

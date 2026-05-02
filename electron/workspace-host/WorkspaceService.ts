@@ -22,7 +22,12 @@ import type {
 } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache } from "../utils/git.js";
 import { detectWslPath, listFirstWslDistro } from "../utils/wsl.js";
-import { getGitDir, clearGitDirCache, clearGitCommonDirCache } from "../utils/gitUtils.js";
+import {
+  getGitDir,
+  getGitCommonDir,
+  clearGitDirCache,
+  clearGitCommonDirCache,
+} from "../utils/gitUtils.js";
 import { extractIssueNumberSync, extractIssueNumber } from "../services/issueExtractor.js";
 import { GitHubAuth } from "../services/github/GitHubAuth.js";
 import { pullRequestService } from "../services/PullRequestService.js";
@@ -101,6 +106,20 @@ export function probeGitLfsAvailable(): Promise<boolean> {
 
 function escapeBranchRegex(name: string): string {
   return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Detect github.com remotes in either HTTPS or SSH form. Inlined here rather
+ * than imported from `../services/github/...` to keep the workspace-host's
+ * dependency direction one-way (workspace-host → utils, never → main services).
+ */
+function isGitHubRemoteUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  // Hostname is case-insensitive per RFC 3986 — normalize before matching so
+  // `https://GitHub.com/...` and `git@GITHUB.COM:...` are correctly detected.
+  return /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/i.test(
+    url.trim()
+  );
 }
 
 function parseCheckedOutBranches(porcelainOutput: string): Set<string> {
@@ -568,10 +587,24 @@ export class WorkspaceService {
         onScheduleFetch: async (worktreeId, _isCurrent, force) => {
           const target = this.monitors.get(worktreeId);
           if (!target || !target.isRunning) return;
-          await this.fetchCoordinator.fetchForWorktree({
+          const result = await this.fetchCoordinator.fetchForWorktree({
             worktreeId,
             worktreePath: target.path,
             force,
+          });
+          // Skipped for "no-common-dir" (e.g. path was just removed) means we
+          // have no commondir to fan out on — bail.
+          if (
+            result.lastFetchedAt === undefined &&
+            result.authFailed === undefined &&
+            result.networkFailed === undefined
+          ) {
+            return;
+          }
+          this.applyFetchResultToSiblings(target, {
+            lastFetchedAt: result.lastFetchedAt ?? null,
+            authFailed: result.authFailed ?? false,
+            networkFailed: result.networkFailed ?? false,
           });
         },
       },
@@ -603,6 +636,11 @@ export class WorkspaceService {
         this.emitUpdate(monitor);
       }
     })();
+
+    // Resolve origin → github.com? once at monitor start. Setter re-emits the
+    // snapshot only if the value differs from the initial `false`, so this is
+    // a no-op for the (small) set of non-GitHub repos.
+    void this.probeGitHubRemoteAsync(monitor);
   }
 
   private async initResourceConfigAsync(
@@ -713,6 +751,55 @@ export class WorkspaceService {
       worktree: snapshot,
     });
     events.emit("sys:worktree:update", snapshot as any);
+  }
+
+  /**
+   * Fan a coordinator-level fetch result out to every monitor sharing the same
+   * `git common-dir`. Linked worktrees back the same `.git/objects`, so a
+   * single `git fetch origin` updates upstream refs for all of them — and the
+   * coordinator's per-commondir `lastSuccessfulFetch` and auth-failure state
+   * apply uniformly. Without this fan-out, only the worktree that triggered
+   * the fetch would surface "Last fetched X ago"; sibling cards would still
+   * show stale (or absent) timestamps.
+   *
+   * `getGitCommonDir` is synchronous and cached, so the O(n) scan is cheap
+   * after the first call per worktree.
+   */
+  private applyFetchResultToSiblings(
+    triggering: WorktreeMonitor,
+    result: { lastFetchedAt: number | null; authFailed: boolean; networkFailed: boolean }
+  ): void {
+    const triggeringCommonDir = getGitCommonDir(triggering.path, { logErrors: false });
+    if (!triggeringCommonDir) {
+      // Without a commondir we can't identify siblings. Apply to the
+      // triggering monitor only — its own card still benefits.
+      triggering.setFetchState(result.lastFetchedAt, result.authFailed, result.networkFailed);
+      return;
+    }
+    for (const monitor of this.monitors.values()) {
+      if (!monitor.isRunning) continue;
+      const monitorCommonDir = getGitCommonDir(monitor.path, { logErrors: false });
+      if (monitorCommonDir === triggeringCommonDir) {
+        monitor.setFetchState(result.lastFetchedAt, result.authFailed, result.networkFailed);
+      }
+    }
+  }
+
+  /**
+   * Probe origin's fetch URL once and tell the monitor whether it points at
+   * github.com. Runs off the critical path — failures are silent (the
+   * affordance simply stays hidden, which matches the non-GitHub behavior).
+   */
+  private async probeGitHubRemoteAsync(monitor: WorktreeMonitor): Promise<void> {
+    try {
+      const git = createHardenedGit(monitor.path);
+      const remotes = await git.getRemotes(true);
+      const origin = remotes.find((r) => r.name === "origin") ?? remotes[0];
+      const fetchUrl = origin?.refs?.fetch;
+      monitor.setIsGitHubRemote(isGitHubRemoteUrl(fetchUrl));
+    } catch {
+      // Remote probe is best-effort; keep the affordance hidden on failure.
+    }
   }
 
   private handleInotifyLimitReached(): void {

@@ -1041,3 +1041,113 @@ describe("WorktreeHeader token-missing badge behavior", () => {
     expect(actionService.dispatch).not.toHaveBeenCalled();
   });
 });
+
+describe("WorktreeHeader upstream sync indicator", () => {
+  beforeEach(() => {
+    mockMissingToken = false;
+    vi.clearAllMocks();
+  });
+
+  it("shows ahead/behind counts and renders the indicator", () => {
+    renderHeader({
+      worktree: { ...baseWorktree, aheadCount: 3, behindCount: 1 },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator).toBeDefined();
+    expect(indicator.textContent).toContain("↑3");
+    expect(indicator.textContent).toContain("↓1");
+  });
+
+  it("applies animate-pulse-immediate while a fetch is in-flight", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 2,
+        behindCount: 0,
+        isFetchInFlight: true,
+      },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator.className).toContain("animate-pulse-immediate");
+    expect(indicator.getAttribute("data-fetch-in-flight")).toBe("true");
+  });
+
+  it("does not pulse when no fetch is in-flight", () => {
+    renderHeader({
+      worktree: { ...baseWorktree, aheadCount: 2, behindCount: 0 },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator.className).not.toContain("animate-pulse-immediate");
+  });
+
+  it("renders 'Sign in to refresh' affordance only when auth-failed AND github remote", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchAuthFailed: true,
+        isGitHubRemote: true,
+      },
+    });
+    const cta = screen.getByTestId("upstream-sync-auth-cta");
+    expect(cta).toBeDefined();
+    expect(cta.textContent).toBe("Sign in to refresh");
+    // The count indicator is replaced by the CTA — both shouldn't render.
+    expect(screen.queryByTestId("upstream-sync-indicator")).toBeNull();
+  });
+
+  it("hides 'Sign in to refresh' affordance for non-GitHub auth failures", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchAuthFailed: true,
+        isGitHubRemote: false,
+      },
+    });
+    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
+    // Falls through to the regular count display.
+    expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
+  });
+
+  it("hides the indicator entirely when there are no counts and no auth-fail CTA", () => {
+    renderHeader({
+      worktree: { ...baseWorktree, aheadCount: 0, behindCount: 0 },
+    });
+    expect(screen.queryByTestId("upstream-sync-indicator")).toBeNull();
+    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
+  });
+
+  it("dispatches openTab → github settings on Sign in CTA click", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchAuthFailed: true,
+        isGitHubRemote: true,
+      },
+    });
+    const cta = screen.getByTestId("upstream-sync-auth-cta");
+    fireEvent.click(cta);
+    expect(actionService.dispatch).toHaveBeenCalledWith(
+      "app.settings.openTab",
+      { tab: "github", sectionId: "github-token" },
+      { source: "user" }
+    );
+  });
+
+  it("renders the count display (no auth CTA) when only fetchNetworkFailed is set", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchNetworkFailed: true,
+      },
+    });
+    // The badge still renders the count display (transient failure doesn't
+    // replace the indicator with a CTA — only auth+github does).
+    expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
+    // No auth CTA for transient failures.
+    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
+  });
+});
