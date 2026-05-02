@@ -762,7 +762,12 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
           {/* Content */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto min-h-0"
+            data-testid="review-hub-scroll-container"
+            className={cn(
+              "flex-1 overflow-y-auto min-h-0",
+              isBackgroundRefreshing && "surface-stale"
+            )}
+            aria-busy={isBackgroundRefreshing || undefined}
             onScroll={handleScrollContainer}
           >
             {diffMode === "base-branch" ? (
