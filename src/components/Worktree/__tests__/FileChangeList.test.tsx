@@ -107,4 +107,63 @@ describe("FileChangeList — row-recency cue (#6544)", () => {
     expect(newClassRows.length).toBe(1);
     expect(newClassRows[0].textContent).toContain("c.ts");
   });
+
+  it("clears the cue from previously-new rows on the next update", () => {
+    const initial = [file("a.ts"), file("b.ts")];
+    const { container, rerender } = render(<FileChangeList changes={initial} rootPath={ROOT} />);
+
+    // Round 1: c.ts arrives
+    act(() => {
+      rerender(<FileChangeList changes={[...initial, file("c.ts")]} rootPath={ROOT} />);
+    });
+    expect(newRows(container).sort()).toEqual(["c.ts"]);
+
+    // Round 2: d.ts arrives — c.ts must no longer be marked new
+    act(() => {
+      rerender(
+        <FileChangeList changes={[...initial, file("c.ts"), file("d.ts")]} rootPath={ROOT} />
+      );
+    });
+    expect(newRows(container).sort()).toEqual(["d.ts"]);
+  });
+
+  it("marks new rows correctly under groupByFolder", () => {
+    const initial = [file("src/a.ts"), file("src/b.ts")];
+    const { container, rerender } = render(
+      <FileChangeList changes={initial} rootPath={ROOT} groupByFolder />
+    );
+    expect(newRows(container)).toEqual([]);
+
+    act(() => {
+      rerender(
+        <FileChangeList
+          changes={[...initial, file("src/c.ts"), file("test/d.ts")]}
+          rootPath={ROOT}
+          groupByFolder
+        />
+      );
+    });
+
+    expect(newRows(container).sort()).toEqual(["c.ts", "d.ts"]);
+  });
+
+  it("does not cue a file that is merely promoted into the visible window by sort changes", () => {
+    // c.ts starts hidden behind maxVisible=2 (lower churn). Then a churn bump
+    // promotes it into view. Identity already known — must NOT flash.
+    const a = { ...file("a.ts"), insertions: 10 };
+    const b = { ...file("b.ts"), insertions: 5 };
+    const c = { ...file("c.ts"), insertions: 1 };
+    const { container, rerender } = render(
+      <FileChangeList changes={[a, b, c]} rootPath={ROOT} maxVisible={2} />
+    );
+    expect(newRows(container)).toEqual([]);
+
+    // Bump c's churn so it sorts to the top (now visible). a and b drop down.
+    const cBumped = { ...c, insertions: 100 };
+    act(() => {
+      rerender(<FileChangeList changes={[a, b, cBumped]} rootPath={ROOT} maxVisible={2} />);
+    });
+
+    expect(newRows(container)).toEqual([]);
+  });
 });
