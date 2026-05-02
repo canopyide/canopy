@@ -200,6 +200,17 @@ export interface StoreSchema {
     skipPermissions: boolean;
     auditRetention: 7 | 30 | 0;
   };
+  /**
+   * Help-assistant settings consumed by the help-session provisioning service.
+   * Fields are optional to remain forward-compatible with the dedicated
+   * settings UI landing in #6517 / #6522 — the service falls back to safe
+   * defaults when keys are absent.
+   */
+  helpAssistant?: {
+    localMcpEnabled?: boolean;
+    docsServerEnabled?: boolean;
+    skipPermissions?: boolean;
+  };
   pendingErrors: ErrorRecord[];
   gpu: {
     hardwareAccelerationDisabled: boolean;
@@ -344,6 +355,11 @@ const storeOptions = {
       daintreeControl: true,
       skipPermissions: false,
       auditRetention: 7 as const,
+    },
+    helpAssistant: {
+      localMcpEnabled: true,
+      docsServerEnabled: true,
+      skipPermissions: false,
     },
     pendingErrors: [],
     gpu: {

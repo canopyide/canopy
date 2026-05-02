@@ -8,22 +8,28 @@ const {
   mockLogError,
   mockGetFolderPath,
   mockMarkTerminal,
+  mockProvisionSession,
+  mockRevokeSession,
   helpPanelState,
   panelStoreState,
   cliAvailabilityState,
   agentSettingsState,
+  projectStoreState,
 } = vi.hoisted(() => ({
   mockDispatch: vi.fn(),
   mockNotify: vi.fn().mockReturnValue(""),
   mockLogError: vi.fn(),
   mockGetFolderPath: vi.fn(),
   mockMarkTerminal: vi.fn().mockResolvedValue(undefined),
+  mockProvisionSession: vi.fn().mockResolvedValue(null),
+  mockRevokeSession: vi.fn().mockResolvedValue(undefined),
   helpPanelState: {
     isOpen: true,
     width: 380,
     terminalId: null as string | null,
     agentId: null as string | null,
     preferredAgentId: null as string | null,
+    sessionId: null as string | null,
     setWidth: vi.fn(),
     setOpen: vi.fn(),
     clearTerminal: vi.fn(),
@@ -46,6 +52,9 @@ const {
   },
   agentSettingsState: {
     settings: { agents: {} as Record<string, unknown> },
+  },
+  projectStoreState: {
+    currentProject: null as { id: string; path: string } | null,
   },
 }));
 
@@ -151,10 +160,15 @@ vi.mock("@/store", () => {
     selector ? selector(agentSettingsState) : agentSettingsState;
   agentSettingsStore.getState = () => agentSettingsState;
 
+  const projectStore = (selector?: (state: typeof projectStoreState) => unknown) =>
+    selector ? selector(projectStoreState) : projectStoreState;
+  projectStore.getState = () => projectStoreState;
+
   return {
     usePanelStore: panelStore,
     useCliAvailabilityStore: cliStore,
     useAgentSettingsStore: agentSettingsStore,
+    useProjectStore: projectStore,
     getTerminalRefreshTier: () => 0,
   };
 });
@@ -180,6 +194,7 @@ function resetState() {
   helpPanelState.terminalId = null;
   helpPanelState.agentId = null;
   helpPanelState.preferredAgentId = null;
+  helpPanelState.sessionId = null;
   helpPanelState.setTerminal = vi.fn();
   helpPanelState.setOpen = vi.fn();
   helpPanelState.setWidth = vi.fn();
@@ -201,6 +216,12 @@ function resetState() {
   cliAvailabilityState.details = {};
 
   agentSettingsState.settings = { agents: {} };
+
+  projectStoreState.currentProject = null;
+  mockProvisionSession.mockReset();
+  mockProvisionSession.mockResolvedValue(null);
+  mockRevokeSession.mockReset();
+  mockRevokeSession.mockResolvedValue(undefined);
 }
 
 beforeEach(() => {
@@ -213,6 +234,8 @@ beforeEach(() => {
         help: {
           getFolderPath: mockGetFolderPath,
           markTerminal: mockMarkTerminal,
+          provisionSession: mockProvisionSession,
+          revokeSession: mockRevokeSession,
         },
       },
     },
@@ -236,7 +259,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
       fireEvent.click(getByTestId("pick-claude"));
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", null);
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
@@ -316,7 +339,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
       resolveDispatch({ ok: true, result: { terminalId: "term-1" } });
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", null);
   });
 });
 
@@ -331,7 +354,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
       render(<HelpPanel />);
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("auto-term-1", "claude");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("auto-term-1", "claude", null);
   });
 
   it("does not commit terminal and cleans up if user navigated away (preferredAgentId cleared) during in-flight launch", async () => {
@@ -442,7 +465,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     expect(panelStoreState.addPanel).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "terminal", launchAgentId: "claude", cwd: "/help" })
     );
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("restarted-term", "claude");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("restarted-term", "claude", null);
     expect(mockMarkTerminal).toHaveBeenCalledWith("restarted-term");
   });
 
@@ -527,6 +550,6 @@ describe("HelpPanel — hasAutoLaunched stale reset (regression)", () => {
       resolveSecond({ ok: true, result: { terminalId: "term-gemini" } });
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-gemini", "gemini");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-gemini", "gemini", null);
   });
 });
