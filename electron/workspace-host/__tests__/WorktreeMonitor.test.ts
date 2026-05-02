@@ -1726,4 +1726,73 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
   });
+
+  describe("background fetch scheduling", () => {
+    const CLEAN_CHANGES = {
+      worktreeId: "/test/worktree",
+      rootPath: "/test",
+      changes: [],
+      changedFileCount: 0,
+      lastUpdated: Date.now(),
+    };
+
+    beforeEach(() => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+      mockGitRaw.mockResolvedValue("0\t0\n");
+    });
+
+    it("invokes onScheduleFetch after the initial-delay window once running", async () => {
+      const onScheduleFetch = vi.fn().mockResolvedValue(undefined);
+      const callbacks = makeCallbacks({ onScheduleFetch });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      expect(onScheduleFetch).not.toHaveBeenCalled();
+
+      // Advance past the initial-delay max (5s) so the timer fires.
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(onScheduleFetch).toHaveBeenCalledTimes(1);
+      expect(onScheduleFetch).toHaveBeenCalledWith(TEST_WORKTREE.id, false, false);
+
+      monitor.stop();
+    });
+
+    it("clears the fetch timer in stop()", async () => {
+      const onScheduleFetch = vi.fn().mockResolvedValue(undefined);
+      const callbacks = makeCallbacks({ onScheduleFetch });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      monitor.stop();
+
+      // Advance well past the longest possible fetch interval.
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+      expect(onScheduleFetch).not.toHaveBeenCalled();
+    });
+
+    it("triggerFetchNow() calls the callback with force=true", async () => {
+      const onScheduleFetch = vi.fn().mockResolvedValue(undefined);
+      const callbacks = makeCallbacks({ onScheduleFetch });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      onScheduleFetch.mockClear();
+
+      await monitor.triggerFetchNow();
+      expect(onScheduleFetch).toHaveBeenCalledWith(TEST_WORKTREE.id, false, true);
+
+      monitor.stop();
+    });
+
+    it("does not schedule fetches when onScheduleFetch is not provided", async () => {
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      // No callback registered — there should be no errors and no scheduling.
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      monitor.stop();
+    });
+  });
 });

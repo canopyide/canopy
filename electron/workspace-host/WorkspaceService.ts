@@ -32,6 +32,7 @@ import { WorktreeLifecycleService } from "./WorktreeLifecycleService.js";
 import { WorktreeMonitor } from "./WorktreeMonitor.js";
 import { WorktreeListService } from "./WorktreeListService.js";
 import { PRIntegrationService } from "./PRIntegrationService.js";
+import { RepoFetchCoordinator } from "./RepoFetchCoordinator.js";
 import { waitForPathExists } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
@@ -176,6 +177,7 @@ export class WorkspaceService {
   private lifecycleService = new WorktreeLifecycleService();
   private listService = new WorktreeListService();
   private prService: PRIntegrationService;
+  private fetchCoordinator: RepoFetchCoordinator;
   private _shutdownController = new AbortController();
   private resourceActionQueues = new Map<string, PQueue>();
   private resourceActionAbortControllers = new Map<string, AbortController>();
@@ -192,6 +194,17 @@ export class WorkspaceService {
   private wslDefaultDistroPromise: Promise<string | null> | null = null;
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {
+    this.fetchCoordinator = new RepoFetchCoordinator({
+      onFetchSuccess: (worktreeId) => {
+        const monitor = this.monitors.get(worktreeId);
+        if (!monitor || !monitor.isRunning) return;
+        // A successful fetch updated remote refs, so the next `rev-list` for
+        // ahead/behind will return fresh counts. Trigger a status refresh
+        // immediately rather than waiting for the next poll tick — but
+        // fire-and-forget; fetch success must never block.
+        monitor.triggerRefreshIfUpdating();
+      },
+    });
     this.prService = new PRIntegrationService(pullRequestService, events, {
       onPRDetected: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
@@ -552,6 +565,15 @@ export class WorkspaceService {
         },
         onInotifyLimitReached: () => this.handleInotifyLimitReached(),
         onEmfileLimitReached: () => this.handleEmfileLimitReached(),
+        onScheduleFetch: async (worktreeId, _isCurrent, force) => {
+          const target = this.monitors.get(worktreeId);
+          if (!target || !target.isRunning) return;
+          await this.fetchCoordinator.fetchForWorktree({
+            worktreeId,
+            worktreePath: target.path,
+            force,
+          });
+        },
       },
       this.mainBranch,
       this.pollQueue
@@ -840,6 +862,10 @@ export class WorkspaceService {
    */
   async refreshOnWake(requestId: string): Promise<void> {
     try {
+      // Drop network/transient fetch failures so the post-wake fetch attempt
+      // is allowed to run even if the network was down before sleep. Auth
+      // suspensions stay sticky — they require explicit re-auth.
+      this.fetchCoordinator.clearNetworkFailures();
       for (const monitor of this.monitors.values()) {
         monitor.resetPollingStrategy();
       }
@@ -856,6 +882,15 @@ export class WorkspaceService {
         })
       );
       await Promise.all(promises);
+      // Kick off background fetches across all worktrees so ahead/behind
+      // counts catch up against the network state we just reconnected to.
+      // Fire-and-forget — the fetch coordinator serializes per-repo and
+      // failures don't block the wake refresh result.
+      for (const monitor of this.monitors.values()) {
+        if (monitor.isRunning) {
+          void monitor.triggerFetchNow();
+        }
+      }
       await pullRequestService.refresh();
       this.sendEvent({ type: "refresh-result", requestId, success: true });
     } catch (error) {
@@ -1821,6 +1856,17 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   updateGitHubToken(token: string | null): void {
     GitHubAuth.setMemoryToken(token);
     if (token) {
+      // A new token may resolve previously-failing auth — drop suspensions so
+      // the next scheduled fetch retries. Network/transient entries stay so we
+      // don't immediately re-storm an offline remote.
+      this.fetchCoordinator.clearAuthFailures();
+      // Trigger an opportunistic fetch on every worktree so the user sees
+      // refreshed counts shortly after sign-in / token rotation.
+      for (const monitor of this.monitors.values()) {
+        if (monitor.isRunning) {
+          void monitor.triggerFetchNow();
+        }
+      }
       pullRequestService.refresh();
     } else {
       pullRequestService.reset();
@@ -1862,6 +1908,10 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       monitor.stop();
     }
     this.monitors.clear();
+    // Drop in-flight fetch chains and per-repo failure state — the next
+    // project's monitors get a clean coordinator and stale completions are
+    // discarded by the generation guard.
+    this.fetchCoordinator.destroy();
 
     this.activeWorktreeId = null;
     this.mainBranch = "main";

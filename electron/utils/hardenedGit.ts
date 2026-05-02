@@ -195,3 +195,65 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
       "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
   });
 }
+
+/**
+ * Background-fetch config additions on top of the authenticated profile:
+ *   - `core.packedRefsTimeout=5000`: when a foreground git operation holds
+ *     `.git/packed-refs.lock`, wait up to 5s instead of failing immediately.
+ *   - `http.lowSpeedLimit=1000` + `http.lowSpeedTime=30`: abort fetches that
+ *     stall under 1 KB/s for 30s, so a half-open TCP connection doesn't sit
+ *     against the 60s AbortSignal timeout.
+ *   - `gc.auto=0`: belt-and-braces — `--no-auto-gc` is also passed at the
+ *     fetch call site, but pinning the config too prevents any sub-invocation
+ *     (e.g., a fetch hook) from racing a gc against foreground git CLI.
+ */
+const BACKGROUND_FETCH_CONFIG = [
+  "core.packedRefsTimeout=5000",
+  "http.lowSpeedLimit=1000",
+  "http.lowSpeedTime=30",
+  "gc.auto=0",
+] as const;
+
+export interface BackgroundFetchGitOptions {
+  signal: AbortSignal;
+  progress?: (data: SimpleGitProgressEvent) => void;
+  extraConfig?: string[];
+  /** Override platform detection — test-only. */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * SimpleGit instance for background `git fetch` invocations. Wraps
+ * `createAuthenticatedGit` so the system credential helper still works for
+ * HTTPS remotes, but layers on:
+ *   - lock-friendly config (see `BACKGROUND_FETCH_CONFIG`)
+ *   - `GIT_ASKPASS=true` on POSIX so credential helpers that ignore
+ *     `GIT_TERMINAL_PROMPT=0` fail fast instead of hanging on a TTY prompt
+ *     (Windows omits this — `true` is not on PATH there, and
+ *     `GIT_TERMINAL_PROMPT=0` blocks Windows credential dialogs)
+ *
+ * The signal is required: every background fetch must carry an
+ * AbortController so a stalled connection can be cancelled.
+ */
+export function createBackgroundFetchGit(cwd: string, opts: BackgroundFetchGitOptions): SimpleGit {
+  const { signal, progress, extraConfig, platform = process.platform } = opts;
+  const git = createAuthenticatedGit(cwd, {
+    signal,
+    progress,
+    extraConfig: [...BACKGROUND_FETCH_CONFIG, ...(extraConfig ?? [])],
+  });
+  if (platform !== "win32") {
+    return git.env({
+      ...process.env,
+      ...getGitLocaleEnv(platform),
+      LC_ALL: "",
+      LC_MESSAGES: "C",
+      LANGUAGE: "",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_SSH_COMMAND:
+        "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
+      GIT_ASKPASS: "true",
+    });
+  }
+  return git;
+}
