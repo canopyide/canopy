@@ -305,6 +305,14 @@ export { UserAgentConfigSchema, UserAgentRegistrySchema } from "./userAgentRegis
 // Per-service connectivity helpers
 export { CONNECTIVITY_SERVICE_KEYS } from "./ipc/connectivity.js";
 
+// MCP server audit log
+export type { McpAuditRecord, McpAuditResult } from "./ipc/mcpServer.js";
+export {
+  MCP_AUDIT_MIN_RECORDS,
+  MCP_AUDIT_MAX_RECORDS,
+  MCP_AUDIT_DEFAULT_MAX_RECORDS,
+} from "./ipc/mcpServer.js";
+
 // Event types - event context for correlation
 export type { EventContext } from "./events.js";
 

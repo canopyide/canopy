@@ -66,6 +66,9 @@ const storeState = vi.hoisted(() => ({
     port: 0,
     apiKey: "",
     fullToolSurface: false,
+    auditEnabled: true,
+    auditMaxRecords: 500,
+    auditLog: [] as Array<Record<string, unknown>>,
   },
 }));
 
@@ -291,6 +294,9 @@ describe("McpServerService", () => {
       port: 0,
       apiKey: "",
       fullToolSurface: false,
+      auditEnabled: true,
+      auditMaxRecords: 500,
+      auditLog: [],
     };
     storeMocks.get.mockClear();
     storeMocks.set.mockClear();
@@ -1003,6 +1009,272 @@ describe("McpServerService", () => {
     expect(dispatchMock).toHaveBeenCalledWith(
       expect.objectContaining({ actionId: "panel.gridLayout.setStrategy" })
     );
+  });
+
+  describe("audit log", () => {
+    type AuditRecord = {
+      id: string;
+      timestamp: number;
+      toolId: string;
+      sessionId: string;
+      tier: string;
+      argsSummary: string;
+      result: "success" | "error" | "confirmation-pending";
+      errorCode?: string;
+      durationMs: number;
+    };
+
+    function getAuditRecords(svc: McpServerService): AuditRecord[] {
+      return (svc as unknown as { getAuditRecords: () => AuditRecord[] }).getAuditRecords();
+    }
+
+    it("records a successful dispatch with redacted args and a non-empty session id", async () => {
+      const dispatchMock = vi.fn(
+        (): ActionDispatchResult => ({
+          ok: true,
+          result: { ok: true },
+        })
+      );
+      const { window } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+          }),
+        ],
+        dispatchAction: dispatchMock,
+      });
+
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const longArg = "x".repeat(120);
+      await client.callTool({
+        name: "actions.list",
+        arguments: { query: longArg, limit: 10, force: false },
+      });
+
+      const records = getAuditRecords(service);
+      expect(records).toHaveLength(1);
+      const [record] = records;
+      expect(record.toolId).toBe("actions.list");
+      expect(record.result).toBe("success");
+      expect(record.tier).toBe("unknown");
+      expect(record.sessionId.length).toBeGreaterThan(0);
+      expect(record.argsSummary).toContain("<string: 120 chars>");
+      expect(record.argsSummary).toContain('"limit":10');
+      expect(record.argsSummary).toContain('"force":false');
+      expect(record.argsSummary).not.toContain("xxxxxxxxxx");
+      expect(record.durationMs).toBeGreaterThanOrEqual(0);
+      expect(record.errorCode).toBeUndefined();
+    });
+
+    it("records error and confirmation-pending dispatches separately", async () => {
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "worktree.delete" && !payload.confirmed) {
+          return {
+            ok: false,
+            error: { code: "CONFIRMATION_REQUIRED", message: "Need confirm" },
+          };
+        }
+        return {
+          ok: false,
+          error: { code: "BOOM", message: "exploded" },
+        };
+      });
+      const { window } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "worktree.delete" as ActionId,
+            title: "Delete Worktree",
+            description: "Delete a worktree",
+            danger: "confirm",
+          }),
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+          }),
+        ],
+        dispatchAction: dispatchMock,
+      });
+
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await client.callTool({ name: "worktree.delete", arguments: { worktreeId: "wt" } });
+      await client.callTool({ name: "actions.list", arguments: {} });
+
+      const records = getAuditRecords(service);
+      expect(records).toHaveLength(2);
+      const byTool = Object.fromEntries(records.map((r) => [r.toolId, r]));
+      expect(byTool["worktree.delete"].result).toBe("confirmation-pending");
+      expect(byTool["worktree.delete"].errorCode).toBe("CONFIRMATION_REQUIRED");
+      expect(byTool["actions.list"].result).toBe("error");
+      expect(byTool["actions.list"].errorCode).toBe("BOOM");
+    });
+
+    it("records dispatch throws even when no result envelope is returned", async () => {
+      const { window, webContents } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+          }),
+        ],
+      });
+
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      // After start, simulate the renderer bridge dropping mid-call so dispatch
+      // throws synchronously inside the handler.
+      webContents.isDestroyed.mockReturnValue(true);
+
+      const result = (await client.callTool({
+        name: "actions.list",
+        arguments: {},
+      })) as TextToolResult;
+      expect(result.isError).toBe(true);
+
+      const records = getAuditRecords(service);
+      expect(records).toHaveLength(1);
+      expect(records[0].toolId).toBe("actions.list");
+      expect(records[0].result).toBe("error");
+      expect(records[0].errorCode).toBe("DISPATCH_THREW");
+    });
+
+    it("trims the ring buffer to the configured cap on append", async () => {
+      const { window } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+          }),
+        ],
+      });
+
+      storeState.mcpServer.auditMaxRecords = 50; // clamped floor
+      await service.start(window);
+      (
+        service as unknown as {
+          setAuditMaxRecords: (n: number) => unknown;
+        }
+      ).setAuditMaxRecords(50);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      for (let i = 0; i < 55; i++) {
+        await client.callTool({ name: "actions.list", arguments: { i } });
+      }
+
+      const records = getAuditRecords(service);
+      expect(records).toHaveLength(50);
+      // newest first → first record should reference highest i (54)
+      expect(records[0].argsSummary).toContain('"i":54');
+    });
+
+    it("clearAuditLog empties the buffer and persists immediately", async () => {
+      const { window } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+          }),
+        ],
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+      await client.callTool({ name: "actions.list", arguments: {} });
+
+      expect(getAuditRecords(service)).toHaveLength(1);
+
+      storeMocks.set.mockClear();
+      (service as unknown as { clearAuditLog: () => void }).clearAuditLog();
+
+      expect(getAuditRecords(service)).toHaveLength(0);
+      // clearAuditLog must persist synchronously, not wait for the debounce.
+      expect(storeMocks.set).toHaveBeenCalled();
+      const lastCall = storeMocks.set.mock.calls[storeMocks.set.mock.calls.length - 1];
+      expect(lastCall[0]).toBe("mcpServer");
+      expect((lastCall[1] as { auditLog: unknown[] }).auditLog).toEqual([]);
+    });
+
+    it("does not record dispatches when capture is disabled", async () => {
+      const { window } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+          }),
+        ],
+      });
+      storeState.mcpServer.auditEnabled = false;
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await client.callTool({ name: "actions.list", arguments: {} });
+
+      expect(getAuditRecords(service)).toHaveLength(0);
+    });
+
+    it("hydrates the buffer from persisted audit records on start", async () => {
+      const seeded: AuditRecord[] = [
+        {
+          id: "seed-1",
+          timestamp: 1,
+          toolId: "actions.list",
+          sessionId: "old",
+          tier: "unknown",
+          argsSummary: "{}",
+          result: "success",
+          durationMs: 5,
+        },
+      ];
+      storeState.mcpServer.auditLog = seeded;
+
+      const { window } = createMockWindow();
+      await service.start(window);
+
+      const records = getAuditRecords(service);
+      expect(records).toHaveLength(1);
+      expect(records[0].id).toBe("seed-1");
+    });
+
+    it("preserves audit log when other config writes happen", async () => {
+      const { window } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+          }),
+        ],
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await client.callTool({ name: "actions.list", arguments: {} });
+      expect(getAuditRecords(service)).toHaveLength(1);
+
+      // Mutate auth — historically this clobbered auditLog because the config
+      // setter wrote back the spread of getConfig() without the in-memory log.
+      await service.setApiKey("daintree_abcd");
+
+      expect(storeState.mcpServer.auditLog).toHaveLength(1);
+      expect(getAuditRecords(service)).toHaveLength(1);
+    });
   });
 
   it("returns safe text output for circular tool results", async () => {

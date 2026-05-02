@@ -498,6 +498,11 @@ export const CHANNELS = {
   MCP_SERVER_SET_API_KEY: "mcp-server:set-api-key",
   MCP_SERVER_GENERATE_API_KEY: "mcp-server:generate-api-key",
   MCP_SERVER_GET_CONFIG_SNIPPET: "mcp-server:get-config-snippet",
+  MCP_SERVER_GET_AUDIT_RECORDS: "mcp-server:get-audit-records",
+  MCP_SERVER_CLEAR_AUDIT_LOG: "mcp-server:clear-audit-log",
+  MCP_SERVER_SET_AUDIT_ENABLED: "mcp-server:set-audit-enabled",
+  MCP_SERVER_SET_AUDIT_MAX_RECORDS: "mcp-server:set-audit-max-records",
+  MCP_SERVER_GET_AUDIT_CONFIG: "mcp-server:get-audit-config",
 
   // Voice Input channels
   VOICE_INPUT_GET_SETTINGS: "voice-input:get-settings",

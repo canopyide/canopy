@@ -12,6 +12,13 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { ActionManifestEntry, ActionDispatchResult } from "../../shared/types/actions.js";
+import {
+  type McpAuditRecord,
+  type McpAuditResult,
+  MCP_AUDIT_DEFAULT_MAX_RECORDS,
+  MCP_AUDIT_MAX_RECORDS,
+  MCP_AUDIT_MIN_RECORDS,
+} from "../../shared/types/ipc/mcpServer.js";
 import { store } from "../store.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
@@ -23,6 +30,11 @@ const MCP_SERVER_KEY = "daintree";
 const DEFAULT_PORT = 45454;
 const MAX_PORT_RETRIES = 10;
 const MCP_SSE_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+const AUDIT_FLUSH_DEBOUNCE_MS = 2000;
+const AUDIT_ARGS_INLINE_STRING_LIMIT = 50;
+const AUDIT_ARGS_SUMMARY_LIMIT = 300;
+const CONFIRMATION_REQUIRED_CODE = "CONFIRMATION_REQUIRED";
 
 const OPEN_WORLD_CATEGORIES: ReadonlySet<string> = new Set([
   "browser",
@@ -120,6 +132,12 @@ interface PendingRequest<T> {
 interface McpSseSession {
   transport: SSEServerTransport;
   idleTimer: ReturnType<typeof setTimeout>;
+  /**
+   * Source-tier classification for the SSE peer. Will be populated by the
+   * tier-policy work in #6517; until then every record is tagged
+   * `"unknown"`.
+   */
+  tier?: string;
 }
 
 function safeSerializeToolResult(value: unknown): string {
@@ -180,6 +198,9 @@ export class McpServerService {
   private pendingDispatches = new Map<string, PendingRequest<ActionDispatchResult>>();
   private cleanupListeners: Array<() => void> = [];
   private statusListeners = new Set<(running: boolean) => void>();
+  private auditRecords: McpAuditRecord[] = [];
+  private auditFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private auditHydrated = false;
 
   get isRunning(): boolean {
     return this.httpServer !== null && this.port !== null;
@@ -216,12 +237,27 @@ export class McpServerService {
     return store.get("mcpServer");
   }
 
+  /**
+   * Persist a config patch without dropping the in-memory audit log. Every
+   * config-mutation method must route through here so `setEnabled`,
+   * `setPort`, etc. don't clobber `auditLog` on disk by writing back a
+   * spread of the live config minus the in-memory ring buffer.
+   */
+  private persistConfig(patch: Partial<ReturnType<typeof this.getConfig>>): void {
+    const current = this.getConfig();
+    store.set("mcpServer", {
+      ...current,
+      ...patch,
+      auditLog: this.auditHydrated ? this.auditRecords : current.auditLog,
+    });
+  }
+
   isEnabled(): boolean {
     return this.getConfig().enabled;
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
-    store.set("mcpServer", { ...this.getConfig(), enabled });
+    this.persistConfig({ enabled });
     if (enabled && this.registry && !this.isRunning) {
       await this.start(this.registry);
     } else if (!enabled && this.isRunning) {
@@ -230,16 +266,16 @@ export class McpServerService {
   }
 
   async setPort(port: number | null): Promise<void> {
-    const config = this.getConfig();
-    store.set("mcpServer", { ...config, port });
-    if (config.enabled && this.isRunning) {
+    const wasEnabled = this.getConfig().enabled;
+    this.persistConfig({ port });
+    if (wasEnabled && this.isRunning) {
       await this.stop();
       if (this.registry) await this.start(this.registry);
     }
   }
 
   async setApiKey(apiKey: string): Promise<void> {
-    store.set("mcpServer", { ...this.getConfig(), apiKey });
+    this.persistConfig({ apiKey });
     if (this.isRunning) {
       await this.writeDiscoveryFile();
     }
@@ -247,11 +283,202 @@ export class McpServerService {
 
   async generateApiKey(): Promise<string> {
     const key = `daintree_${randomUUID().replace(/-/g, "")}`;
-    store.set("mcpServer", { ...this.getConfig(), apiKey: key });
+    this.persistConfig({ apiKey: key });
     if (this.isRunning) {
       await this.writeDiscoveryFile();
     }
     return key;
+  }
+
+  /**
+   * Hydrate the in-memory ring buffer from the persisted store. Idempotent —
+   * subsequent calls are no-ops so tests and callers can invoke it freely.
+   * Trims to the current `auditMaxRecords` cap on load so a shrunk cap takes
+   * effect immediately.
+   */
+  private hydrateAuditLog(): void {
+    if (this.auditHydrated) return;
+    const config = this.getConfig();
+    const persisted = Array.isArray(config.auditLog) ? config.auditLog : [];
+    const cap = this.normalizeAuditMaxRecords(config.auditMaxRecords);
+    this.auditRecords =
+      persisted.length > cap ? persisted.slice(persisted.length - cap) : [...persisted];
+    this.auditHydrated = true;
+  }
+
+  private normalizeAuditMaxRecords(value: unknown): number {
+    const n = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : NaN;
+    if (!Number.isFinite(n)) return MCP_AUDIT_DEFAULT_MAX_RECORDS;
+    if (n < MCP_AUDIT_MIN_RECORDS) return MCP_AUDIT_MIN_RECORDS;
+    if (n > MCP_AUDIT_MAX_RECORDS) return MCP_AUDIT_MAX_RECORDS;
+    return n;
+  }
+
+  /**
+   * Redact a tool-call argument blob into a short summary string. Walks one
+   * level deep on top-level objects; long strings collapse to
+   * `<string: N chars>`, nested objects/arrays collapse to `<object>`.
+   * Final output is truncated to keep audit records compact and to avoid
+   * leaking pasted file contents or terminal output through the UI.
+   */
+  private redactArgsSummary(args: unknown): string {
+    const summarize = (value: unknown): unknown => {
+      if (value === null) return null;
+      if (typeof value === "string") {
+        return value.length > AUDIT_ARGS_INLINE_STRING_LIMIT
+          ? `<string: ${value.length} chars>`
+          : value;
+      }
+      if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+        return typeof value === "bigint" ? `${value.toString()}n` : value;
+      }
+      if (typeof value === "undefined") return undefined;
+      return "<object>";
+    };
+
+    let summary: unknown;
+    if (args === undefined || args === null) {
+      summary = args ?? null;
+    } else if (typeof args !== "object" || Array.isArray(args)) {
+      summary = summarize(args);
+    } else {
+      const out: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
+        if (key === "_meta") continue;
+        const reduced = summarize(value);
+        if (reduced !== undefined) {
+          out[key] = reduced;
+        }
+      }
+      summary = out;
+    }
+
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(summary) ?? "";
+    } catch {
+      serialized = "<unserializable>";
+    }
+    if (serialized.length > AUDIT_ARGS_SUMMARY_LIMIT) {
+      return `${serialized.slice(0, AUDIT_ARGS_SUMMARY_LIMIT - 1)}…`;
+    }
+    return serialized;
+  }
+
+  private classifyDispatchResult(
+    outcome: { kind: "result"; value: ActionDispatchResult } | { kind: "throw"; error: unknown }
+  ): { result: McpAuditResult; errorCode?: string } {
+    if (outcome.kind === "throw") {
+      return { result: "error", errorCode: "DISPATCH_THREW" };
+    }
+    const value = outcome.value;
+    if (value.ok) return { result: "success" };
+    if (value.error.code === CONFIRMATION_REQUIRED_CODE) {
+      return { result: "confirmation-pending", errorCode: value.error.code };
+    }
+    return { result: "error", errorCode: value.error.code };
+  }
+
+  private appendAuditRecord(input: {
+    toolId: string;
+    sessionId: string;
+    tier: string | undefined;
+    args: unknown;
+    durationMs: number;
+    outcome: { kind: "result"; value: ActionDispatchResult } | { kind: "throw"; error: unknown };
+  }): void {
+    if (!this.getConfig().auditEnabled) return;
+    this.hydrateAuditLog();
+
+    const classification = this.classifyDispatchResult(input.outcome);
+    const record: McpAuditRecord = {
+      id: randomUUID(),
+      timestamp: Date.now(),
+      toolId: input.toolId,
+      sessionId: input.sessionId,
+      tier: input.tier ?? "unknown",
+      argsSummary: this.redactArgsSummary(input.args),
+      result: classification.result,
+      durationMs: Math.max(0, Math.round(input.durationMs)),
+    };
+    if (classification.errorCode !== undefined) {
+      record.errorCode = classification.errorCode;
+    }
+
+    this.auditRecords.push(record);
+    const cap = this.normalizeAuditMaxRecords(this.getConfig().auditMaxRecords);
+    if (this.auditRecords.length > cap) {
+      this.auditRecords.splice(0, this.auditRecords.length - cap);
+    }
+    this.scheduleAuditFlush();
+  }
+
+  private scheduleAuditFlush(): void {
+    if (this.auditFlushTimer) return;
+    this.auditFlushTimer = setTimeout(() => {
+      this.auditFlushTimer = null;
+      this.flushAuditLog();
+    }, AUDIT_FLUSH_DEBOUNCE_MS);
+    this.auditFlushTimer.unref?.();
+  }
+
+  private flushAuditLog(): void {
+    if (!this.auditHydrated) return;
+    try {
+      this.persistConfig({});
+    } catch (err) {
+      console.error("[MCP] Failed to flush audit log:", err);
+    }
+  }
+
+  /** Cancel any pending debounce and persist the buffer immediately. */
+  private flushAuditLogNow(): void {
+    if (this.auditFlushTimer) {
+      clearTimeout(this.auditFlushTimer);
+      this.auditFlushTimer = null;
+    }
+    this.flushAuditLog();
+  }
+
+  /** Read the persisted ring buffer (newest first). */
+  getAuditRecords(): McpAuditRecord[] {
+    this.hydrateAuditLog();
+    return [...this.auditRecords].reverse();
+  }
+
+  /** Read the persisted audit-log configuration as the renderer sees it. */
+  getAuditConfig(): { enabled: boolean; maxRecords: number } {
+    const config = this.getConfig();
+    return {
+      enabled: config.auditEnabled !== false,
+      maxRecords: this.normalizeAuditMaxRecords(config.auditMaxRecords),
+    };
+  }
+
+  /** Empty the buffer and persist the change synchronously. */
+  clearAuditLog(): void {
+    this.hydrateAuditLog();
+    this.auditRecords = [];
+    this.flushAuditLogNow();
+  }
+
+  /** Toggle capture without dropping existing records. */
+  setAuditEnabled(enabled: boolean): { enabled: boolean; maxRecords: number } {
+    this.hydrateAuditLog();
+    this.persistConfig({ auditEnabled: enabled });
+    return this.getAuditConfig();
+  }
+
+  /** Update the ring-buffer cap; trims and flushes immediately if it shrunk. */
+  setAuditMaxRecords(max: number): { enabled: boolean; maxRecords: number } {
+    this.hydrateAuditLog();
+    const normalized = this.normalizeAuditMaxRecords(max);
+    if (this.auditRecords.length > normalized) {
+      this.auditRecords.splice(0, this.auditRecords.length - normalized);
+    }
+    this.persistConfig({ auditMaxRecords: normalized });
+    this.flushAuditLogNow();
+    return this.getAuditConfig();
   }
 
   async start(registry: WindowRegistry): Promise<void> {
@@ -272,6 +499,7 @@ export class McpServerService {
         await this.generateApiKey();
       }
 
+      this.hydrateAuditLog();
       this.setupIpcListeners();
 
       const server = http.createServer((req, res) => {
@@ -308,6 +536,8 @@ export class McpServerService {
   }
 
   async stop(): Promise<void> {
+    this.flushAuditLogNow();
+
     for (const session of this.sessions.values()) {
       clearTimeout(session.idleTimer);
       try {
@@ -519,7 +749,7 @@ export class McpServerService {
     });
   }
 
-  private createSessionServer(): Server {
+  private createSessionServer(sessionId: string): Server {
     const server = new Server(
       { name: "Daintree", version: "1.0.0" },
       { capabilities: { tools: {} } }
@@ -542,45 +772,66 @@ export class McpServerService {
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const actionId = request.params.name;
       const { args, confirmed } = this.parseToolArguments(request.params.arguments);
+      const startedAt = Date.now();
+      const tier = this.sessions.get(sessionId)?.tier;
+      let outcome:
+        | { kind: "result"; value: ActionDispatchResult }
+        | { kind: "throw"; error: unknown };
 
-      let result: ActionDispatchResult;
       try {
-        result = await this.dispatchAction(actionId, args, confirmed);
-      } catch (err) {
+        try {
+          const value = await this.dispatchAction(actionId, args, confirmed);
+          outcome = { kind: "result", value };
+        } catch (err) {
+          outcome = { kind: "throw", error: err };
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: ${formatErrorMessage(err, "Action dispatch failed")}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (outcome.value.ok) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  outcome.value.result !== undefined && outcome.value.result !== null
+                    ? safeSerializeToolResult(outcome.value.result)
+                    : "OK",
+              },
+            ],
+          };
+        }
+
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error: ${formatErrorMessage(err, "Action dispatch failed")}`,
+              text: `Error [${outcome.value.error.code}]: ${outcome.value.error.message}`,
             },
           ],
           isError: true,
         };
+      } finally {
+        try {
+          this.appendAuditRecord({
+            toolId: actionId,
+            sessionId,
+            tier,
+            args,
+            durationMs: Date.now() - startedAt,
+            outcome: outcome!,
+          });
+        } catch (err) {
+          console.error("[MCP] Failed to append audit record:", err);
+        }
       }
-
-      if (result.ok) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text:
-                result.result !== undefined && result.result !== null
-                  ? safeSerializeToolResult(result.result)
-                  : "OK",
-            },
-          ],
-        };
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error [${result.error.code}]: ${result.error.message}`,
-          },
-        ],
-        isError: true,
-      };
     });
 
     return server;
@@ -761,8 +1012,8 @@ export class McpServerService {
         allowedHosts,
         allowedOrigins,
       });
-      const server = this.createSessionServer();
       const sessionId = transport.sessionId;
+      const server = this.createSessionServer(sessionId);
 
       const idleTimer = this.createIdleTimer(sessionId);
       this.sessions.set(sessionId, { transport, idleTimer });

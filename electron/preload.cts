@@ -2333,6 +2333,13 @@ const api: ElectronAPI = {
     setApiKey: (apiKey: string) => _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_API_KEY, apiKey),
     generateApiKey: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GENERATE_API_KEY),
     getConfigSnippet: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_CONFIG_SNIPPET),
+    getAuditRecords: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_AUDIT_RECORDS),
+    getAuditConfig: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_AUDIT_CONFIG),
+    clearAuditLog: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_CLEAR_AUDIT_LOG),
+    setAuditEnabled: (enabled: boolean) =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_AUDIT_ENABLED, enabled),
+    setAuditMaxRecords: (max: number) =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS, max),
   },
 
   mcpBridge: {

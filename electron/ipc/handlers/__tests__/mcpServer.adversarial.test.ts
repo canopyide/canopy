@@ -17,6 +17,11 @@ const serviceMock = vi.hoisted(() => ({
   setApiKey: vi.fn().mockResolvedValue(undefined),
   generateApiKey: vi.fn().mockResolvedValue("k-new"),
   getConfigSnippet: vi.fn(() => "snippet"),
+  getAuditRecords: vi.fn(() => []),
+  getAuditConfig: vi.fn(() => ({ enabled: true, maxRecords: 500 })),
+  clearAuditLog: vi.fn(),
+  setAuditEnabled: vi.fn(() => ({ enabled: true, maxRecords: 500 })),
+  setAuditMaxRecords: vi.fn(() => ({ enabled: true, maxRecords: 500 })),
 }));
 
 vi.mock("electron", () => ({ ipcMain: ipcMainMock }));
@@ -131,8 +136,66 @@ describe("mcpServer IPC adversarial", () => {
     expect(result).toBe("new-secret-123");
   });
 
-  it("cleanup removes all six registered handlers", () => {
-    expect(ipcHandlers.size).toBe(6);
+  it("setAuditEnabled rejects non-boolean values", async () => {
+    await expect(
+      getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_ENABLED)(fakeEvent(), "true")
+    ).rejects.toThrow(/boolean/);
+    await expect(getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_ENABLED)(fakeEvent(), 1)).rejects.toThrow(
+      /boolean/
+    );
+    expect(serviceMock.setAuditEnabled).not.toHaveBeenCalled();
+  });
+
+  it("setAuditMaxRecords rejects non-integer or out-of-range values", async () => {
+    await expect(
+      getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS)(fakeEvent(), 49)
+    ).rejects.toThrow(/between/);
+    await expect(
+      getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS)(fakeEvent(), 10001)
+    ).rejects.toThrow(/between/);
+    await expect(
+      getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS)(fakeEvent(), 1.5)
+    ).rejects.toThrow(/integer/);
+    await expect(
+      getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS)(fakeEvent(), Number.NaN)
+    ).rejects.toThrow();
+    await expect(
+      getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS)(fakeEvent(), "500")
+    ).rejects.toThrow(/integer/);
+    expect(serviceMock.setAuditMaxRecords).not.toHaveBeenCalled();
+  });
+
+  it("setAuditMaxRecords accepts boundary values", async () => {
+    await getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS)(fakeEvent(), 50);
+    await getHandler(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS)(fakeEvent(), 10000);
+    expect(serviceMock.setAuditMaxRecords).toHaveBeenCalledTimes(2);
+  });
+
+  it("getAuditRecords passes through service result", async () => {
+    serviceMock.getAuditRecords.mockReturnValueOnce([
+      {
+        id: "x",
+        timestamp: 1,
+        toolId: "t",
+        sessionId: "s",
+        tier: "unknown",
+        argsSummary: "{}",
+        result: "success",
+        durationMs: 0,
+      },
+    ] as never);
+    const result = await getHandler(CHANNELS.MCP_SERVER_GET_AUDIT_RECORDS)(fakeEvent());
+    expect(Array.isArray(result)).toBe(true);
+    expect((result as unknown[]).length).toBe(1);
+  });
+
+  it("clearAuditLog calls service clear", async () => {
+    await getHandler(CHANNELS.MCP_SERVER_CLEAR_AUDIT_LOG)(fakeEvent());
+    expect(serviceMock.clearAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("cleanup removes all eleven registered handlers", () => {
+    expect(ipcHandlers.size).toBe(11);
     cleanup();
     expect(ipcHandlers.size).toBe(0);
   });
