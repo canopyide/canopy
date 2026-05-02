@@ -560,4 +560,53 @@ describe("PtyManager adversarial", () => {
     expect(shared.created[1]!.info.cols).toBe(80);
     expect(shared.created[1]!.info.rows).toBe(24);
   });
+
+  it("SPAWN_FAILURE_PRESERVES_PENDING_RESIZE_FOR_RETRY", () => {
+    const manager = new PtyManager();
+
+    manager.resize("t1", 200, 60);
+
+    // Force the first spawn attempt to throw before registry.add fires.
+    shared.acquirePtyProcess.mockImplementationOnce(() => {
+      throw new Error("simulated pty.spawn failure");
+    });
+
+    expect(() => manager.spawn("t1", spawnOptions({ projectId: "project-a" }))).toThrow(
+      "simulated pty.spawn"
+    );
+    expect(shared.created).toHaveLength(0);
+
+    // Retry should still pick up the buffered dims because the failed spawn
+    // never reached registry.add and so never consumed the pending entry.
+    manager.spawn("t1", spawnOptions({ projectId: "project-a", cols: 80, rows: 24 }));
+    expect(shared.created[0]!.info.cols).toBe(200);
+    expect(shared.created[0]!.info.rows).toBe(60);
+  });
+
+  it("GRACEFUL_KILL_CLEARS_PENDING_RESIZE", async () => {
+    const manager = new PtyManager();
+
+    manager.resize("t1", 200, 60);
+    // No spawn yet — gracefulKill should clear the pending entry.
+    await manager.gracefulKill("t1");
+
+    manager.spawn("t1", spawnOptions({ projectId: "project-a", cols: 80, rows: 24 }));
+    expect(shared.created[0]!.info.cols).toBe(80);
+    expect(shared.created[0]!.info.rows).toBe(24);
+  });
+
+  it("RESIZE_REJECTS_INVALID_DIMS", () => {
+    const manager = new PtyManager();
+
+    manager.resize("t1", 0, 24);
+    manager.resize("t1", 80, NaN);
+    manager.resize("t1", -10, 24);
+
+    manager.spawn("t1", spawnOptions({ projectId: "project-a", cols: 80, rows: 24 }));
+
+    // None of the invalid resizes should have been buffered.
+    expect(shared.created[0]!.info.cols).toBe(80);
+    expect(shared.created[0]!.info.rows).toBe(24);
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("invalid dims"));
+  });
 });

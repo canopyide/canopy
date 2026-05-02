@@ -207,7 +207,9 @@ export class PtyManager extends EventEmitter {
     const pendingResize = this.pendingResizes.get(id);
     if (pendingResize) {
       options = { ...options, cols: pendingResize.cols, rows: pendingResize.rows };
-      this.pendingResizes.delete(id);
+      // Defer the delete until spawn definitively succeeds (just before
+      // registry.add) so a thrown acquirePtyProcess / TerminalProcess
+      // constructor preserves the buffered dims for a caller retry.
     }
 
     if (this.registry.has(id)) {
@@ -275,6 +277,7 @@ export class PtyManager extends EventEmitter {
       throw error;
     }
 
+    this.pendingResizes.delete(id);
     this.registry.add(id, terminalProcess);
   }
 
@@ -328,6 +331,10 @@ export class PtyManager extends EventEmitter {
    * Resize terminal.
    */
   resize(id: string, cols: number, rows: number): void {
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) {
+      logWarn(`Terminal ${id} resize rejected: invalid dims ${cols}x${rows}`);
+      return;
+    }
     const terminal = this.registry.get(id);
     if (terminal) {
       terminal.resize(cols, rows);
@@ -684,6 +691,7 @@ export class PtyManager extends EventEmitter {
    * Falls back to immediate kill for non-agent terminals.
    */
   async gracefulKill(id: string, options?: { preserveSession?: boolean }): Promise<string | null> {
+    this.pendingResizes.delete(id);
     this.registry.clearTrashTimeout(id);
 
     const terminal = this.registry.get(id);
