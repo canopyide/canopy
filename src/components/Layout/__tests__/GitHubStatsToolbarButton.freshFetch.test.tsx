@@ -166,3 +166,156 @@ describe("GitHubStatsToolbarButton digit pulse", () => {
     expect(slice).toMatch(/prevLastUpdatedRef\.current\s*=\s*null/);
   });
 });
+
+/**
+ * "+N since opened" badge wiring (issue #6530).
+ *
+ * Each of the three toolbar counts (issues, PRs, commits) carries a small
+ * de-emphasized adornment showing the gross delta since the user last opened
+ * that specific dropdown. The anchor is captured synchronously at click intent
+ * (not poll completion) and stored per project + per category in a persisted
+ * Zustand store. Imperative open methods must also anchor on the open
+ * transition. Badge styling must use `text-muted-foreground` (no accent).
+ */
+describe("GitHubStatsToolbarButton +N badge wiring", () => {
+  let source: string;
+
+  beforeEach(async () => {
+    source = await fs.readFile(TOOLBAR_PATH, "utf-8");
+  });
+
+  it("imports the seen-anchors store and pure deriveBadgeLabel helper", () => {
+    expect(source).toMatch(/from\s+"@\/store\/githubSeenAnchorsStore"/);
+    expect(source).toContain("useGitHubSeenAnchorsStore");
+    expect(source).toContain("deriveBadgeLabel");
+  });
+
+  it("derives a delta label for each of the three categories", () => {
+    expect(source).toMatch(/issuesDeltaLabel\s*=\s*deriveBadgeLabel\(\s*issuesAnchor/);
+    expect(source).toMatch(/prsDeltaLabel\s*=\s*deriveBadgeLabel\(\s*prsAnchor/);
+    expect(source).toMatch(/commitsDeltaLabel\s*=\s*deriveBadgeLabel\(\s*commitsAnchor/);
+  });
+
+  it("calls recordOpen synchronously inside each willOpen branch", () => {
+    // Issue, PR, and commit click handlers each anchor before any async
+    // refresh fires. recordOpen is called unconditionally on the open
+    // transition; a null count clears any stale anchor for that category.
+    const issuesCalls = source.match(
+      /recordOpen\(\s*currentProject\.path,\s*"issues"\s*,\s*issueCount\s*\)/g
+    );
+    const prsCalls = source.match(
+      /recordOpen\(\s*currentProject\.path,\s*"prs"\s*,\s*prCount\s*\)/g
+    );
+    const commitsCalls = source.match(
+      /recordOpen\(\s*currentProject\.path,\s*"commits"\s*,\s*commitCount\s*\)/g
+    );
+    // Two call sites per category — once in onClick, once in useImperativeHandle.
+    expect(issuesCalls?.length).toBe(2);
+    expect(prsCalls?.length).toBe(2);
+    expect(commitsCalls?.length).toBe(2);
+  });
+
+  it("does not gate recordOpen on a non-null count (null clears the anchor)", () => {
+    // Earlier drafts gated `recordOpen` on `issueCount != null` etc., which
+    // left a stale anchor when the user opened before the first stats fetch
+    // completed. The store now treats `null` as a clear-anchor signal, so the
+    // call sites must NOT include the count-not-null guard.
+    expect(source).not.toMatch(/willOpen\s*&&\s*issueCount\s*!=\s*null/);
+    expect(source).not.toMatch(/willOpen\s*&&\s*prCount\s*!=\s*null/);
+    expect(source).not.toMatch(/willOpen\s*&&\s*commitCount\s*!=\s*null/);
+  });
+
+  it("guards imperative anchor recording on the closed→open transition only", () => {
+    // Anchor on the call itself, not the import — `useImperativeHandle,` also
+    // appears in the React import block at the top of the file.
+    const handleStart = source.indexOf("useImperativeHandle(");
+    expect(handleStart).toBeGreaterThan(0);
+    const slice = source.slice(handleStart, handleStart + 2200);
+    // openIssues / openPrs / openCommits each guard on the *Ref.current being
+    // false (i.e., currently closed) before recording an anchor — toggling to
+    // close must not re-record.
+    expect(slice).toMatch(/!issuesOpenRef\.current/);
+    expect(slice).toMatch(/!prsOpenRef\.current/);
+    expect(slice).toMatch(/!commitsOpenRef\.current/);
+  });
+
+  it("renders a muted +N badge for each category (no accent color)", () => {
+    // Three rendered badges, each conditional on the matching delta label.
+    const issuesBadge = source.match(/issuesDeltaLabel\s*\?\s*\(\s*<span/);
+    const prsBadge = source.match(/prsDeltaLabel\s*\?\s*\(\s*<span/);
+    const commitsBadge = source.match(/commitsDeltaLabel\s*\?\s*\(\s*<span/);
+    expect(issuesBadge).not.toBeNull();
+    expect(prsBadge).not.toBeNull();
+    expect(commitsBadge).not.toBeNull();
+
+    // Each badge span uses text-muted-foreground (codebase de-emphasis idiom),
+    // not text-accent-primary or any accent token. Window is generous because
+    // each block spans ~300 chars including aria attribute and inner content.
+    const badgeBlocks = source.match(/DeltaLabel\s*\?\s*\([\s\S]{0,500}?<\/span>/g);
+    expect(badgeBlocks).not.toBeNull();
+    expect(badgeBlocks?.length).toBe(3);
+    for (const block of badgeBlocks ?? []) {
+      expect(block).toContain("text-muted-foreground");
+      expect(block).not.toContain("text-accent");
+      expect(block).not.toContain("accent-primary");
+      // Child <span> aria-label inside a button with explicit aria-label is
+      // ignored by ARIA — the delta is announced via the button's aria-label
+      // instead. Badge spans must use aria-hidden so screen readers don't
+      // double-announce the visual digits.
+      expect(block).toContain('aria-hidden="true"');
+      expect(block).not.toContain("aria-label");
+    }
+  });
+
+  it("folds the delta label into each button's aria-label for screen readers", () => {
+    // The visual badge has aria-hidden, so the delta must reach screen
+    // readers via the button's accessible name. Each of the three button
+    // aria-label expressions must reference its matching delta label.
+    expect(source).toMatch(
+      /issuesDeltaLabel\s*\?\s*` \(\$\{issuesDeltaLabel\} since last opened\)`/
+    );
+    expect(source).toMatch(/prsDeltaLabel\s*\?\s*` \(\$\{prsDeltaLabel\} since last opened\)`/);
+    expect(source).toMatch(
+      /commitsDeltaLabel\s*\?\s*` \(\$\{commitsDeltaLabel\} since last opened\)`/
+    );
+  });
+
+  it("places each badge between the count digit and the FreshnessGlyph", () => {
+    // For each category, source order in the button must be:
+    //   <span ... tabular-nums>{count}</span>
+    //   {deltaLabel ? <span ...muted...> : null}
+    //   <FreshnessGlyph ...>
+    // The badge-render anchor is `<category>DeltaLabel ? (` — distinct from
+    // the aria-label form `<category>DeltaLabel ? \`...\`` which also
+    // appears earlier in the button props.
+
+    const issuesSpan = source.indexOf("key={issueAnimKey}");
+    const issuesBadge = source.indexOf("issuesDeltaLabel ? (", issuesSpan);
+    const issuesGlyph = source.indexOf("<FreshnessGlyph", issuesSpan);
+    expect(issuesSpan).toBeGreaterThan(0);
+    expect(issuesBadge).toBeGreaterThan(issuesSpan);
+    expect(issuesGlyph).toBeGreaterThan(issuesBadge);
+
+    const prsSpan = source.indexOf("key={prAnimKey}");
+    const prsBadge = source.indexOf("prsDeltaLabel ? (", prsSpan);
+    const prsGlyph = source.indexOf("<FreshnessGlyph", prsSpan);
+    expect(prsSpan).toBeGreaterThan(0);
+    expect(prsBadge).toBeGreaterThan(prsSpan);
+    expect(prsGlyph).toBeGreaterThan(prsBadge);
+
+    const commitsSpan = source.indexOf("key={commitAnimKey}");
+    const commitsBadge = source.indexOf("commitsDeltaLabel ? (", commitsSpan);
+    const commitsGlyph = source.indexOf("<FreshnessGlyph", commitsSpan);
+    expect(commitsSpan).toBeGreaterThan(0);
+    expect(commitsBadge).toBeGreaterThan(commitsSpan);
+    expect(commitsGlyph).toBeGreaterThan(commitsBadge);
+  });
+
+  it("registers the seen-anchors store under a unique storage key", async () => {
+    const storePath = path.resolve(__dirname, "../../../store/githubSeenAnchorsStore.ts");
+    const storeSource = await fs.readFile(storePath, "utf-8");
+    expect(storeSource).toContain('name: "daintree-github-seen-anchors"');
+    expect(storeSource).toContain("registerPersistedStore");
+    expect(storeSource).toMatch(/SEEN_SUPPRESSION_TTL_MS\s*=\s*72\s*\*\s*60\s*\*\s*60\s*\*\s*1000/);
+  });
+});
