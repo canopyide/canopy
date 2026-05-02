@@ -14,7 +14,12 @@ import type { AgentSettings } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
 import type { KeyAction } from "../keymap.js";
-import type { KeybindingImportResult, MicPermissionStatus, VoiceInputSettings } from "./api.js";
+import type {
+  HelpAssistantSettings,
+  KeybindingImportResult,
+  MicPermissionStatus,
+  VoiceInputSettings,
+} from "./api.js";
 
 import type {
   WorktreeSetActivePayload,
@@ -1720,6 +1725,16 @@ export interface IpcInvokeMap {
   };
   "voice-input:set-settings": {
     args: [patch: Partial<VoiceInputSettings>];
+    result: void;
+  };
+
+  // Help assistant
+  "help-assistant:get-settings": {
+    args: [];
+    result: HelpAssistantSettings;
+  };
+  "help-assistant:set-settings": {
+    args: [patch: Partial<HelpAssistantSettings>];
     result: void;
   };
   "voice-input:start": {

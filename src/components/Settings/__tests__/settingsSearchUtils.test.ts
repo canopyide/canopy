@@ -346,6 +346,7 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       notifications: "Notifications",
       integrations: "Integrations",
       voice: "Voice Input",
+      assistant: "Daintree Assistant",
 
       mcp: "MCP Server",
       environment: "Environment Variables",
@@ -382,6 +383,7 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       notifications: "Notifications",
       integrations: "Integrations",
       voice: "Voice Input",
+      assistant: "Daintree Assistant",
 
       mcp: "MCP Server",
       environment: "Environment Variables",
