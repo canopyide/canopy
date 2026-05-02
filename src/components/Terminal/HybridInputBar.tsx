@@ -431,7 +431,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               ? "file"
               : null;
     const isAutocompleteOpen = activeMode !== null && !disabled;
-    const showLegend = isEditorFocused && value.trim() === "" && !isAutocompleteOpen && !disabled;
 
     const { files: autocompleteFiles, isLoading: isAutocompleteLoading } = useFileAutocomplete({
       cwd,
@@ -1322,16 +1321,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         className="relative group cursor-text px-3.5 pb-2.5 pt-2.5"
         style={{ backgroundColor: inputBarColors.background, ...shellVars }}
       >
-        {(showLegend || isFleetPrimary) && (
+        {isFleetPrimary && (
           <div className="pointer-events-none absolute bottom-full right-3.5 mb-1 flex items-center gap-2">
-            {showLegend && (
-              <p
-                aria-hidden={!showLegend}
-                className="text-[11px] text-daintree-text/40 select-none"
-              >
-                @ files · @diff · @terminal · / commands
-              </p>
-            )}
             {isFleetPrimary && (
               <div className="pointer-events-auto">
                 <FleetDraftingPill />
