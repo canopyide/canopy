@@ -37,6 +37,14 @@ export interface AddPanelOptionsBase {
   restore?: boolean;
   /** Bypass panel limit checks (used during hydration/state restoration) */
   bypassLimits?: boolean;
+  /**
+   * When `location === "dock"`, atomically set the new panel as the open dock
+   * panel in the same `set()` that commits `panelsById`/`panelIds`. Eliminates
+   * the create-then-activate race where the watchdog effect can see
+   * `activeDockTerminalId` set across a microtask boundary from the panel
+   * commit. Ignored during hydration batches.
+   */
+  activateDockOnCreate?: boolean;
   // --- PTY-related fields (optional on all types, only used by PTY panel kinds) ---
   shell?: string;
   command?: string;

@@ -281,6 +281,21 @@ export const createCorePanelActions = (
           const newById = { ...state.panelsById, [id]: terminal };
           const newIds = [...state.panelIds, id];
           saveNormalized(newById, newIds);
+          // Fold dock activation into this commit so the watchdog effect in
+          // `DockPanelOffscreenContainer` cannot observe `activeDockTerminalId`
+          // set across a microtask boundary from the panel landing in
+          // `dockTerminals`. See #6590.
+          if (options.activateDockOnCreate && location === "dock") {
+            const prevFocusedId = (state as { focusedId?: string | null }).focusedId ?? null;
+            const focusActuallyChanged = id !== prevFocusedId;
+            return {
+              panelsById: newById,
+              panelIds: newIds,
+              activeDockTerminalId: id,
+              focusedId: id,
+              ...(focusActuallyChanged && { previousFocusedId: prevFocusedId }),
+            };
+          }
           return { panelsById: newById, panelIds: newIds };
         });
       }
@@ -488,6 +503,21 @@ export const createCorePanelActions = (
         const newById = { ...state.panelsById, [id]: terminal };
         const newIds = [...state.panelIds, id];
         saveNormalized(newById, newIds);
+        // Fold dock activation into this commit so the watchdog effect in
+        // `DockPanelOffscreenContainer` cannot observe `activeDockTerminalId`
+        // set across a microtask boundary from the panel landing in
+        // `dockTerminals`. See #6590.
+        if (options.activateDockOnCreate && location === "dock") {
+          const prevFocusedId = (state as { focusedId?: string | null }).focusedId ?? null;
+          const focusActuallyChanged = id !== prevFocusedId;
+          return {
+            panelsById: newById,
+            panelIds: newIds,
+            activeDockTerminalId: id,
+            focusedId: id,
+            ...(focusActuallyChanged && { previousFocusedId: prevFocusedId }),
+          };
+        }
         return { panelsById: newById, panelIds: newIds };
       });
     }
@@ -572,6 +602,20 @@ export const createCorePanelActions = (
     }
 
     terminalInstanceService.setInputLocked(id, !!options.isInputLocked);
+
+    // Wake the renderer instance and clear attention indicators when a panel is
+    // created as the active dock panel — the state activation was already
+    // committed atomically in the set() above (see #6590); this only handles
+    // the renderer-side side effects that `openDockTerminal` would normally
+    // perform.
+    if (options.activateDockOnCreate && location === "dock") {
+      terminalInstanceService.wake(id);
+      if (agentState === "waiting") {
+        window.electron?.notification?.acknowledgeWaiting(id);
+      } else if (agentState === "working") {
+        window.electron?.notification?.acknowledgeWorkingPulse(id);
+      }
+    }
 
     if (isReconnect) {
       // Reconnect path does not spawn; the panel is already "ready".

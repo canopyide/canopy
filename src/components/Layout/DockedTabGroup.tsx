@@ -378,25 +378,17 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
     try {
       const options = await buildPanelDuplicateOptions(activePanel, "dock");
-      const newPanelId = await addPanel(options);
+      // `activateDockOnCreate` folds dock activation into the panel commit so
+      // the watchdog effect cannot collapse the just-created tab. See #6590.
+      const newPanelId = await addPanel({ ...options, activateDockOnCreate: true });
       if (!newPanelId) return;
 
       addPanelToGroup(group.id, newPanelId);
       setActiveTab(group.id, newPanelId);
-      setFocused(newPanelId);
-      openDockTerminal(newPanelId);
     } catch (error) {
       logError("Failed to add tab", error);
     }
-  }, [
-    activePanel,
-    group.id,
-    addPanel,
-    addPanelToGroup,
-    setActiveTab,
-    setFocused,
-    openDockTerminal,
-  ]);
+  }, [activePanel, group.id, addPanel, addPanelToGroup, setActiveTab]);
 
   const groupBlockedState = getGroupBlockedAgentState(panels);
   const blockedState = useDockBlockedState(groupBlockedState);

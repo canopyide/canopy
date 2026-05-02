@@ -74,7 +74,6 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
   const addPanelToGroup = usePanelStore((s) => s.addPanelToGroup);
   const deleteTabGroup = usePanelStore((s) => s.deleteTabGroup);
   const setActiveTab = usePanelStore((s) => s.setActiveTab);
-  const openDockTerminal = usePanelStore((s) => s.openDockTerminal);
 
   const handlePopoverClose = useCallback(() => {
     closeDockTerminal();
@@ -102,7 +101,9 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
         }
 
         const options = await buildPanelDuplicateOptions(panel, "dock");
-        const newPanelId = await addPanel(options);
+        // `activateDockOnCreate` folds dock activation into the panel commit so
+        // the watchdog effect cannot collapse the just-created tab. See #6590.
+        const newPanelId = await addPanel({ ...options, activateDockOnCreate: true });
         if (!newPanelId) {
           if (createdNewGroup && groupId!) deleteTabGroup(groupId);
           return;
@@ -110,7 +111,6 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
 
         addPanelToGroup(groupId, newPanelId);
         setActiveTab(groupId, newPanelId);
-        openDockTerminal(newPanelId);
       } catch (error) {
         logError("Failed to add tab", error);
         if (createdNewGroup && groupId!) {
@@ -118,15 +118,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
         }
       }
     },
-    [
-      getPanelGroup,
-      createTabGroup,
-      addPanelToGroup,
-      deleteTabGroup,
-      addPanel,
-      setActiveTab,
-      openDockTerminal,
-    ]
+    [getPanelGroup, createTabGroup, addPanelToGroup, deleteTabGroup, addPanel, setActiveTab]
   );
 
   // Create offscreen slots eagerly after container mounts
