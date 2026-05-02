@@ -65,7 +65,6 @@ const storeState = vi.hoisted(() => ({
   mcpServer: {
     enabled: true,
     port: 0,
-    apiKey: "",
     fullToolSurface: false,
     auditEnabled: true,
     auditMaxRecords: 500,
@@ -286,11 +285,39 @@ function createMockWindow(options?: {
   };
 }
 
+function getServiceApiKey(): string {
+  const key = currentService?.getStatus().apiKey ?? "";
+  return key;
+}
+
+async function seedDiscoveryFile(apiKey: string): Promise<void> {
+  const discoveryDir = path.join(testHomeDir, ".daintree");
+  const discoveryFile = path.join(discoveryDir, "mcp.json");
+  await fs.mkdir(discoveryDir, { recursive: true });
+  await fs.writeFile(
+    discoveryFile,
+    JSON.stringify(
+      {
+        mcpServers: {
+          daintree: {
+            type: "http",
+            url: "http://127.0.0.1:0/mcp",
+            headers: { Authorization: `Bearer ${apiKey}` },
+          },
+        },
+      },
+      null,
+      2
+    ),
+    "utf-8"
+  );
+}
+
 async function connectClient(
   port: number,
   headers?: Record<string, string>
 ): Promise<{ client: Client; transport: SSEClientTransport }> {
-  const apiKey = storeState.mcpServer.apiKey;
+  const apiKey = getServiceApiKey();
   const mergedHeaders: Record<string, string> = {
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     ...(headers ?? {}),
@@ -309,7 +336,7 @@ async function connectHttpClient(
   port: number,
   headers?: Record<string, string>
 ): Promise<{ client: Client; transport: StreamableHTTPClientTransport }> {
-  const apiKey = storeState.mcpServer.apiKey;
+  const apiKey = getServiceApiKey();
   const mergedHeaders: Record<string, string> = {
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     ...(headers ?? {}),
@@ -322,6 +349,8 @@ async function connectHttpClient(
   await client.connect(transport);
   return { client, transport };
 }
+
+let currentService: McpServerService | null = null;
 
 async function requestMcp(
   port: number,
@@ -406,7 +435,6 @@ describe("McpServerService", () => {
     storeState.mcpServer = {
       enabled: true,
       port: 0,
-      apiKey: "",
       fullToolSurface: false,
       auditEnabled: true,
       auditMaxRecords: 500,
@@ -424,6 +452,7 @@ describe("McpServerService", () => {
     await fs.mkdir(testHomeDir, { recursive: true });
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     service = new McpServerService();
+    currentService = service;
   });
 
   afterEach(async () => {
@@ -436,6 +465,7 @@ describe("McpServerService", () => {
     if (service.isRunning) {
       await service.stop();
     }
+    currentService = null;
     consoleLogSpy.mockRestore();
   });
 
@@ -642,7 +672,7 @@ describe("McpServerService", () => {
     expect(webContents.send).toHaveBeenCalledTimes(2);
   });
 
-  it("refreshes the discovery file when authentication changes while running", async () => {
+  it("refreshes the discovery file on rotateApiKey while running", async () => {
     const { window } = createMockWindow();
     const discoveryFile = path.join(testHomeDir, ".daintree", "mcp.json");
 
@@ -654,7 +684,7 @@ describe("McpServerService", () => {
         { type?: string; url?: string; headers?: { Authorization: string } }
       >;
     };
-    const initialKey = storeState.mcpServer.apiKey;
+    const initialKey = service.getStatus().apiKey;
     expect(initialKey).toMatch(/^daintree_[a-f0-9]+$/);
     expect(initial.mcpServers.daintree.type).toBe("http");
     expect(initial.mcpServers.daintree.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
@@ -662,35 +692,57 @@ describe("McpServerService", () => {
       Authorization: `Bearer ${initialKey}`,
     });
 
-    const rotatedKey = await service.generateApiKey();
+    const rotatedKey = await service.rotateApiKey();
     expect(rotatedKey).not.toBe(initialKey);
+    expect(service.getStatus().apiKey).toBe(rotatedKey);
     const rotated = JSON.parse(await fs.readFile(discoveryFile, "utf8")) as {
       mcpServers: Record<string, { headers?: { Authorization: string } }>;
     };
     expect(rotated.mcpServers.daintree.headers).toEqual({
       Authorization: `Bearer ${rotatedKey}`,
     });
-
-    await service.setApiKey("");
-    const cleared = JSON.parse(await fs.readFile(discoveryFile, "utf8")) as {
-      mcpServers: Record<string, { headers?: { Authorization: string } }>;
-    };
-    expect(cleared.mcpServers.daintree.headers).toBeUndefined();
   });
 
-  it("auto-generates a bearer token on first start and persists it across restarts", async () => {
+  it("does not persist the api key in electron-store", async () => {
     const { window } = createMockWindow();
 
-    expect(storeState.mcpServer.apiKey).toBe("");
+    await service.start(window);
+    expect(service.getStatus().apiKey).toMatch(/^daintree_[a-f0-9]+$/);
+
+    expect(storeState.mcpServer).not.toHaveProperty("apiKey");
+    for (const call of storeMocks.set.mock.calls) {
+      const [key, value] = call as [string, Record<string, unknown>];
+      if (key !== "mcpServer") continue;
+      expect(value).not.toHaveProperty("apiKey");
+    }
+  });
+
+  it("auto-generates a bearer token on first start and keeps it across stop/start", async () => {
+    const { window } = createMockWindow();
+
+    expect(service.getStatus().apiKey).toBe("");
 
     await service.start(window);
-    const generatedKey = storeState.mcpServer.apiKey;
+    const generatedKey = service.getStatus().apiKey;
     expect(generatedKey).toMatch(/^daintree_[a-f0-9]+$/);
 
     await service.stop();
 
     await service.start(window);
-    expect(storeState.mcpServer.apiKey).toBe(generatedKey);
+    expect(service.getStatus().apiKey).toBe(generatedKey);
+  });
+
+  it("recovers the api key from the discovery file when a fresh service instance starts", async () => {
+    const seededKey = "daintree_seeded12345";
+    await seedDiscoveryFile(seededKey);
+
+    const fresh = new McpServerService();
+    currentService = fresh;
+    const { window } = createMockWindow();
+    await fresh.start(window);
+
+    expect(fresh.getStatus().apiKey).toBe(seededKey);
+    await fresh.stop();
   });
 
   it("rejects requests with a non-loopback Origin header", async () => {
@@ -698,7 +750,7 @@ describe("McpServerService", () => {
     await service.start(window);
 
     const evil = await requestSse(service.currentPort!, {
-      Authorization: `Bearer ${storeState.mcpServer.apiKey}`,
+      Authorization: `Bearer ${service.getStatus().apiKey}`,
       Origin: "https://evil.example",
     });
     expect(evil.status).toBe(403);
@@ -710,7 +762,7 @@ describe("McpServerService", () => {
     await service.start(window);
 
     const port = service.currentPort!;
-    const auth = `Bearer ${storeState.mcpServer.apiKey}`;
+    const auth = `Bearer ${service.getStatus().apiKey}`;
 
     // Helper that aborts the SSE GET as soon as the response status is known.
     const peekStatus = async (extraHeaders: Record<string, string>): Promise<number> =>
@@ -742,7 +794,6 @@ describe("McpServerService", () => {
   });
 
   it("uses constant-time comparison that does not short-circuit on length mismatch", async () => {
-    storeState.mcpServer.apiKey = "secret";
     const { window } = createMockWindow();
     await service.start(window);
 
@@ -815,8 +866,8 @@ describe("McpServerService", () => {
     const { window } = createMockWindow();
     await service.start(window);
 
-    const oldKey = storeState.mcpServer.apiKey;
-    const newKey = await service.generateApiKey();
+    const oldKey = service.getStatus().apiKey;
+    const newKey = await service.rotateApiKey();
     expect(newKey).not.toBe(oldKey);
 
     const oldRequest = await requestSse(service.currentPort!, {
@@ -855,7 +906,7 @@ describe("McpServerService", () => {
     await service.start(window);
 
     const port = service.currentPort!;
-    const auth = `Bearer ${storeState.mcpServer.apiKey}`;
+    const auth = `Bearer ${service.getStatus().apiKey}`;
 
     const status = await new Promise<number>((resolve, reject) => {
       const req = http.request(
@@ -965,7 +1016,7 @@ describe("McpServerService", () => {
   });
 
   it("rejects unauthorized requests and invalid host headers", async () => {
-    storeState.mcpServer.apiKey = "secret";
+    await seedDiscoveryFile("secret");
     const { window } = createMockWindow();
 
     await service.start(window);
@@ -1997,9 +2048,9 @@ describe("McpServerService", () => {
       await client.callTool({ name: "actions.list", arguments: {} });
       expect(getAuditRecords(service)).toHaveLength(1);
 
-      // Mutate auth — historically this clobbered auditLog because the config
+      // Mutate config — historically this clobbered auditLog because the
       // setter wrote back the spread of getConfig() without the in-memory log.
-      await service.setApiKey("daintree_abcd");
+      service.setAuditMaxRecords(750);
 
       expect(storeState.mcpServer.auditLog).toHaveLength(1);
       expect(getAuditRecords(service)).toHaveLength(1);
@@ -2213,7 +2264,7 @@ describe("McpServerService", () => {
     const result = await requestMcp(port, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${storeState.mcpServer.apiKey}`,
+        Authorization: `Bearer ${service.getStatus().apiKey}`,
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
         "mcp-session-id": "definitely-not-a-real-session",
@@ -2246,7 +2297,7 @@ describe("McpServerService", () => {
             port,
             path: "/mcp",
             method: "PUT",
-            headers: { Authorization: `Bearer ${storeState.mcpServer.apiKey}` },
+            headers: { Authorization: `Bearer ${service.getStatus().apiKey}` },
           },
           (res) => {
             const allow = res.headers["allow"];
@@ -2267,7 +2318,7 @@ describe("McpServerService", () => {
   });
 
   it("rejects /mcp requests that fail auth, host, or origin checks", async () => {
-    storeState.mcpServer.apiKey = "secret";
+    await seedDiscoveryFile("secret");
     const { window } = createMockWindow();
     await service.start(window);
 
@@ -2385,7 +2436,7 @@ describe("McpServerService", () => {
     expect(snippet.mcpServers.daintree.type).toBe("http");
     expect(snippet.mcpServers.daintree.url).toBe(`http://127.0.0.1:${service.currentPort}/mcp`);
     expect(snippet.mcpServers.daintree.headers).toEqual({
-      Authorization: `Bearer ${storeState.mcpServer.apiKey}`,
+      Authorization: `Bearer ${service.getStatus().apiKey}`,
     });
   });
 });
