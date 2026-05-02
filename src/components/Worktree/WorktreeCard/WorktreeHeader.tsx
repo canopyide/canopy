@@ -99,6 +99,7 @@ interface UpstreamSyncBadgeProps {
   isFetchInFlight: boolean;
   lastFetchedAt: number | null | undefined;
   fetchAuthFailed: boolean;
+  fetchNetworkFailed: boolean;
   isGitHubRemote: boolean;
   /**
    * The two render contexts use different gap sizes to align with surrounding
@@ -115,6 +116,7 @@ function UpstreamSyncBadge({
   isFetchInFlight,
   lastFetchedAt,
   fetchAuthFailed,
+  fetchNetworkFailed,
   isGitHubRemote,
   containerGapClass,
 }: UpstreamSyncBadgeProps) {
@@ -192,6 +194,11 @@ function UpstreamSyncBadge({
           )}
           <span> upstream</span>
         </div>
+        {fetchNetworkFailed && (
+          <div className="text-status-warning/80" data-testid="upstream-sync-network-warning">
+            Couldn't reach origin
+          </div>
+        )}
         {lastFetchedAt != null && (
           <div className="text-text-muted">Last fetched {formatLastFetched(lastFetchedAt)}</div>
         )}
@@ -913,6 +920,7 @@ export function WorktreeHeader({
               isFetchInFlight={Boolean(worktree.isFetchInFlight)}
               lastFetchedAt={worktree.lastFetchedAt}
               fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
+              fetchNetworkFailed={Boolean(worktree.fetchNetworkFailed)}
               isGitHubRemote={Boolean(worktree.isGitHubRemote)}
               containerGapClass="gap-1"
             />
@@ -1015,6 +1023,7 @@ export function WorktreeHeader({
                 isFetchInFlight={Boolean(worktree.isFetchInFlight)}
                 lastFetchedAt={worktree.lastFetchedAt}
                 fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
+                fetchNetworkFailed={Boolean(worktree.fetchNetworkFailed)}
                 isGitHubRemote={Boolean(worktree.isGitHubRemote)}
                 containerGapClass="gap-1.5"
               />

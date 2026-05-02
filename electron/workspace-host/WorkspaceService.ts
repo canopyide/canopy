@@ -115,7 +115,9 @@ function escapeBranchRegex(name: string): string {
  */
 function isGitHubRemoteUrl(url: string | undefined): boolean {
   if (!url) return false;
-  return /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/.test(
+  // Hostname is case-insensitive per RFC 3986 — normalize before matching so
+  // `https://GitHub.com/...` and `git@GITHUB.COM:...` are correctly detected.
+  return /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/i.test(
     url.trim()
   );
 }
@@ -592,12 +594,17 @@ export class WorkspaceService {
           });
           // Skipped for "no-common-dir" (e.g. path was just removed) means we
           // have no commondir to fan out on — bail.
-          if (result.lastFetchedAt === undefined && result.authFailed === undefined) {
+          if (
+            result.lastFetchedAt === undefined &&
+            result.authFailed === undefined &&
+            result.networkFailed === undefined
+          ) {
             return;
           }
           this.applyFetchResultToSiblings(target, {
             lastFetchedAt: result.lastFetchedAt ?? null,
             authFailed: result.authFailed ?? false,
+            networkFailed: result.networkFailed ?? false,
           });
         },
       },
@@ -760,20 +767,20 @@ export class WorkspaceService {
    */
   private applyFetchResultToSiblings(
     triggering: WorktreeMonitor,
-    result: { lastFetchedAt: number | null; authFailed: boolean }
+    result: { lastFetchedAt: number | null; authFailed: boolean; networkFailed: boolean }
   ): void {
     const triggeringCommonDir = getGitCommonDir(triggering.path, { logErrors: false });
     if (!triggeringCommonDir) {
       // Without a commondir we can't identify siblings. Apply to the
       // triggering monitor only — its own card still benefits.
-      triggering.setFetchState(result.lastFetchedAt, result.authFailed);
+      triggering.setFetchState(result.lastFetchedAt, result.authFailed, result.networkFailed);
       return;
     }
     for (const monitor of this.monitors.values()) {
       if (!monitor.isRunning) continue;
       const monitorCommonDir = getGitCommonDir(monitor.path, { logErrors: false });
       if (monitorCommonDir === triggeringCommonDir) {
-        monitor.setFetchState(result.lastFetchedAt, result.authFailed);
+        monitor.setFetchState(result.lastFetchedAt, result.authFailed, result.networkFailed);
       }
     }
   }

@@ -187,6 +187,7 @@ export class WorktreeMonitor {
   // origin URL is probed.
   private _lastFetchedAt: number | null = null;
   private _fetchAuthFailed: boolean = false;
+  private _fetchNetworkFailed: boolean = false;
   private _isGitHubRemote: boolean = false;
   /**
    * When `triggerFetchNow()` is called while a non-force fetch is in-flight,
@@ -298,7 +299,16 @@ export class WorktreeMonitor {
    * either field actually changes so the renderer's tooltip/auth affordance
    * stay in sync without waiting for the next status poll.
    */
-  setFetchState(lastFetchedAt: number | null, authFailed: boolean): void {
+  setFetchState(
+    lastFetchedAt: number | null,
+    authFailed: boolean,
+    networkFailed: boolean = false
+  ): void {
+    // Guard against ghost emits after stop(): the coordinator's fan-out call
+    // may resolve after the monitor has been torn down (project switch,
+    // worktree removal). Without this check, an emit would re-add a removed
+    // worktree to the renderer's store via worktree-update.
+    if (!this._isRunning) return;
     let changed = false;
     if (this._lastFetchedAt !== lastFetchedAt) {
       this._lastFetchedAt = lastFetchedAt;
@@ -306,6 +316,10 @@ export class WorktreeMonitor {
     }
     if (this._fetchAuthFailed !== authFailed) {
       this._fetchAuthFailed = authFailed;
+      changed = true;
+    }
+    if (this._fetchNetworkFailed !== networkFailed) {
+      this._fetchNetworkFailed = networkFailed;
       changed = true;
     }
     if (changed && this._hasInitialStatus) {
@@ -317,8 +331,15 @@ export class WorktreeMonitor {
    * Set once at monitor start when `WorkspaceService` resolves the origin URL.
    * Gates the "Sign in to refresh" affordance — non-GitHub remotes silently
    * hide the affordance even when an auth failure is recorded.
+   *
+   * Guarded against post-stop emits: `probeGitHubRemoteAsync` is a fire-and-
+   * forget async call that may resolve after the monitor is torn down (e.g.
+   * worktree removal, project switch). Without this check the late resolution
+   * would emit a `worktree-update` after `worktree-removed`, re-adding a
+   * ghost card to the renderer.
    */
   setIsGitHubRemote(value: boolean): void {
+    if (!this._isRunning) return;
     if (this._isGitHubRemote === value) return;
     this._isGitHubRemote = value;
     if (this._hasInitialStatus) {
@@ -791,6 +812,7 @@ export class WorktreeMonitor {
       behindCount: this.behindCount,
       lastFetchedAt: this._lastFetchedAt ?? undefined,
       fetchAuthFailed: this._fetchAuthFailed || undefined,
+      fetchNetworkFailed: this._fetchNetworkFailed || undefined,
       // Read in-flight state authoritatively at snapshot time (lesson #1700)
       // so a snapshot emitted between fetch-start and fetch-end always
       // serializes the correct value, never a stale cached copy.

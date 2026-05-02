@@ -122,6 +122,9 @@ export interface WorktreeSnapshot {
   /** True when this worktree's repo is in an auth-failed fetch state. */
   fetchAuthFailed?: boolean;
 
+  /** True when the most recent fetch failed for a transient (non-auth) reason. */
+  fetchNetworkFailed?: boolean;
+
   /** True while a background `git fetch` is in-flight for this worktree's repo. */
   isFetchInFlight?: boolean;
 

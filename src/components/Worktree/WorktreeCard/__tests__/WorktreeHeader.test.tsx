@@ -1135,4 +1135,19 @@ describe("WorktreeHeader upstream sync indicator", () => {
       { source: "user" }
     );
   });
+
+  it("renders the count display (no auth CTA) when only fetchNetworkFailed is set", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchNetworkFailed: true,
+      },
+    });
+    // The badge still renders the count display (transient failure doesn't
+    // replace the indicator with a CTA — only auth+github does).
+    expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
+    // No auth CTA for transient failures.
+    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
+  });
 });

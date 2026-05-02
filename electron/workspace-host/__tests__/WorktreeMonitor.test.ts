@@ -1917,5 +1917,43 @@ describe("WorktreeMonitor", () => {
 
       monitor.stop();
     });
+
+    it("setIsGitHubRemote / setFetchState do not emit after stop()", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+      monitor.stop();
+
+      onUpdate.mockClear();
+      // Late-resolving probe / coordinator fan-out must not re-add a ghost
+      // card to the renderer after the monitor has been torn down.
+      monitor.setIsGitHubRemote(true);
+      monitor.setFetchState(1700000000000, false, false);
+      monitor.setFetchState(1700000000000, true, false);
+
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it("setFetchState surfaces fetchNetworkFailed in the snapshot", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false, true);
+      const snap = monitor.getSnapshot();
+      expect(snap.fetchNetworkFailed).toBe(true);
+      expect(snap.fetchAuthFailed).toBeFalsy();
+      expect(onUpdate).toHaveBeenCalled();
+
+      // Idempotent on no-change.
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false, true);
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      monitor.stop();
+    });
   });
 });

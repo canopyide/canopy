@@ -164,6 +164,14 @@ export interface Worktree {
    */
   fetchAuthFailed?: boolean;
 
+  /**
+   * True when the most recent fetch failed for a transient reason (network
+   * unavailable / generic transient / repo-not-found-first). Surfaces as a
+   * "Couldn't reach origin" tooltip line so users can distinguish a stale
+   * count from one that's intentionally suppressed.
+   */
+  fetchNetworkFailed?: boolean;
+
   /** True while a background `git fetch` is in-flight for this worktree's repo. */
   isFetchInFlight?: boolean;
 
