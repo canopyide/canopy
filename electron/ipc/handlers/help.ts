@@ -43,11 +43,15 @@ async function handleProvisionSession(
   token: string;
   tier: HelpAssistantTier;
 } | null> {
+  if (!ctx.senderWindow) {
+    console.warn("[help] provisionSession invoked without a senderWindow — skipping");
+    return null;
+  }
   const { helpSessionService } = await getHelpSessionService();
   return helpSessionService.provisionSession({
     projectId: input.projectId,
     projectPath: input.projectPath,
-    windowId: ctx.senderWindow?.id ?? -1,
+    windowId: ctx.senderWindow.id,
     projectViewWebContentsId: ctx.webContentsId,
   });
 }

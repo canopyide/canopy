@@ -102,6 +102,31 @@ export function HelpPanel() {
 
   const agentConfig = agentId ? getAgentConfig(agentId) : undefined;
 
+  // Tracks a session minted before `setTerminal` commits its sessionId to the
+  // store. If the user closes/navigates while `agent.launch` is in flight,
+  // cleanup paths revoke this ref so the token isn't leaked until 7-day GC.
+  const pendingSessionIdRef = useRef<string | null>(null);
+
+  const revokePendingSession = useCallback(() => {
+    const pending = pendingSessionIdRef.current;
+    if (pending) {
+      pendingSessionIdRef.current = null;
+      revokeHelpSession(pending);
+    }
+  }, []);
+
+  // Revoke the bound help session if the underlying PTY panel disappears from
+  // the panel store. addPanel puts the placeholder in panelsById before
+  // setTerminal records the id here, so a missing entry means the process
+  // exited and removePanel was called from elsewhere.
+  useEffect(() => {
+    if (terminalId && !terminal) {
+      const { sessionId } = useHelpPanelStore.getState();
+      revokeHelpSession(sessionId);
+      clearTerminal();
+    }
+  }, [terminalId, terminal, clearTerminal]);
+
   // Clean up help terminal when the view becomes hidden (project switch, window close).
   // In Electron 41, beforeunload does not fire on WebContentsView detach, but
   // visibilitychange does — this covers both project switches and window unload.
@@ -114,10 +139,11 @@ export function HelpPanel() {
         revokeHelpSession(state.sessionId);
         useHelpPanelStore.getState().clearTerminal();
       }
+      revokePendingSession();
     };
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
-  }, []);
+  }, [revokePendingSession]);
 
   // Auto-launch preferred agent when panel opens without an active terminal.
   // Always starts a new conversation (never resumes).
@@ -137,6 +163,7 @@ export function HelpPanel() {
         }
 
         const session = await provisionHelpSession();
+        if (session) pendingSessionIdRef.current = session.sessionId;
         const cwd = session?.sessionPath ?? folderPath;
         const env = session ? { DAINTREE_MCP_TOKEN: session.token } : undefined;
 
@@ -165,6 +192,7 @@ export function HelpPanel() {
             usePanelStore.getState().removePanel(result.result.terminalId);
           }
           revokeHelpSession(session?.sessionId ?? null);
+          pendingSessionIdRef.current = null;
           hasAutoLaunched.current = false;
           return;
         }
@@ -172,6 +200,7 @@ export function HelpPanel() {
         if (!result.ok || !result.result?.terminalId) {
           hasAutoLaunched.current = false;
           revokeHelpSession(session?.sessionId ?? null);
+          pendingSessionIdRef.current = null;
           logError("Help auto-launch failed", { agentId: launchAgentId, result });
           notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
           return;
@@ -180,6 +209,7 @@ export function HelpPanel() {
         useHelpPanelStore
           .getState()
           .setTerminal(result.result.terminalId, launchAgentId, session?.sessionId ?? null);
+        pendingSessionIdRef.current = null;
         window.electron.help.markTerminal(result.result.terminalId).catch((err) => {
           logError("Failed to mark help terminal", err);
         });
@@ -272,6 +302,7 @@ export function HelpPanel() {
         }
 
         const session = await provisionHelpSession();
+        if (session) pendingSessionIdRef.current = session.sessionId;
         const cwd = session?.sessionPath ?? folderPath;
         const env = session ? { DAINTREE_MCP_TOKEN: session.token } : undefined;
 
@@ -291,6 +322,7 @@ export function HelpPanel() {
 
         if (!result.ok || !result.result?.terminalId) {
           revokeHelpSession(session?.sessionId ?? null);
+          pendingSessionIdRef.current = null;
           logError("Help launch failed", { agentId: selectedAgentId, result });
           notifyLaunchFailed(selectedAgentId, "The agent didn't start. Try again.");
           return;
@@ -299,6 +331,7 @@ export function HelpPanel() {
         useHelpPanelStore
           .getState()
           .setTerminal(result.result.terminalId, selectedAgentId, session?.sessionId ?? null);
+        pendingSessionIdRef.current = null;
         window.electron.help.markTerminal(result.result.terminalId).catch((err) => {
           logError("Failed to mark help terminal", err);
         });
@@ -315,9 +348,10 @@ export function HelpPanel() {
       removePanel(terminalId);
     }
     revokeHelpSession(sessionId);
+    revokePendingSession();
     hasAutoLaunched.current = false;
     clearPreferredAgent();
-  }, [terminalId, removePanel, clearPreferredAgent]);
+  }, [terminalId, removePanel, clearPreferredAgent, revokePendingSession]);
 
   const handleClose = useCallback(() => {
     const { sessionId } = useHelpPanelStore.getState();
@@ -326,8 +360,9 @@ export function HelpPanel() {
       clearTerminal();
     }
     revokeHelpSession(sessionId);
+    revokePendingSession();
     setOpen(false);
-  }, [terminalId, removePanel, clearTerminal, setOpen]);
+  }, [terminalId, removePanel, clearTerminal, setOpen, revokePendingSession]);
 
   const handleRunAnyway = useCallback(() => {
     if (!terminalId || !agentId) return;

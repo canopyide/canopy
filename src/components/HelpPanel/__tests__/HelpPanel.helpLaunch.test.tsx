@@ -501,6 +501,100 @@ describe("HelpPanel — handleRunAnyway", () => {
   });
 });
 
+describe("HelpPanel — session provisioning", () => {
+  it("threads sessionPath as cwd and DAINTREE_MCP_TOKEN env into agent.launch", async () => {
+    projectStoreState.currentProject = { id: "proj-1", path: "/repo" };
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-1",
+      sessionPath: "/sessions/sess-1",
+      token: "tok-abc",
+      tier: "action",
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-1" } });
+
+    const { getByTestId } = render(<HelpPanel />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("pick-claude"));
+    });
+
+    expect(mockProvisionSession).toHaveBeenCalledWith({
+      projectId: "proj-1",
+      projectPath: "/repo",
+    });
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({
+        cwd: "/sessions/sess-1",
+        env: { DAINTREE_MCP_TOKEN: "tok-abc" },
+      }),
+      { source: "user" }
+    );
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", "sess-1");
+  });
+
+  it("revokes the in-flight session when handleClose fires before setTerminal commits", async () => {
+    projectStoreState.currentProject = { id: "proj-1", path: "/repo" };
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "pending-1",
+      sessionPath: "/sessions/pending-1",
+      token: "tok-pending",
+      tier: "action",
+    });
+
+    let resolveDispatch: (v: unknown) => void = () => {};
+    mockDispatch.mockReturnValue(
+      new Promise((r) => {
+        resolveDispatch = r;
+      })
+    );
+
+    const { getByTestId, container } = render(<HelpPanel />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("pick-claude"));
+    });
+
+    // Wait a microtask for provisionSession promise to flush
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Close the panel while agent.launch is still in-flight
+    const closeBtn = container.querySelector('button[aria-label="Close help panel"]');
+    if (closeBtn) {
+      await act(async () => {
+        fireEvent.click(closeBtn);
+      });
+    }
+
+    // Now resolve the launch
+    await act(async () => {
+      resolveDispatch({ ok: true, result: { terminalId: "term-late" } });
+    });
+
+    // The pending session should have been revoked by handleClose's
+    // revokePendingSession call.
+    expect(mockRevokeSession).toHaveBeenCalledWith("pending-1");
+  });
+
+  it("revokes the bound session when the panel disappears from panelsById", async () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    helpPanelState.sessionId = "sess-bound";
+    panelStoreState.panelsById = {};
+
+    await act(async () => {
+      render(<HelpPanel />);
+    });
+
+    expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+  });
+});
+
 describe("HelpPanel — hasAutoLaunched stale reset (regression)", () => {
   it("resets hasAutoLaunched after stale-agent abort so next preferred agent can auto-launch", async () => {
     helpPanelState.preferredAgentId = "claude";
