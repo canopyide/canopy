@@ -186,6 +186,10 @@ function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {
     a.planFilePath === b.planFilePath &&
     a.aheadCount === b.aheadCount &&
     a.behindCount === b.behindCount &&
+    a.lastFetchedAt === b.lastFetchedAt &&
+    a.fetchAuthFailed === b.fetchAuthFailed &&
+    a.isFetchInFlight === b.isFetchInFlight &&
+    a.isGitHubRemote === b.isGitHubRemote &&
     a.worktreeMode === b.worktreeMode &&
     a.worktreeEnvironmentLabel === b.worktreeEnvironmentLabel &&
     a.hasResourceConfig === b.hasResourceConfig &&

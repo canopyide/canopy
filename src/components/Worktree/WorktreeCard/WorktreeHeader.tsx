@@ -79,6 +79,127 @@ const DROPDOWN_COMPONENTS: WorktreeMenuComponents = {
   SubContent: DropdownMenuSubContent,
 };
 
+const RELATIVE_TIME_FORMATTER = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+function formatLastFetched(epochMs: number, now: number = Date.now()): string {
+  const deltaSeconds = Math.round((epochMs - now) / 1000);
+  const absSeconds = Math.abs(deltaSeconds);
+  if (absSeconds < 60) return RELATIVE_TIME_FORMATTER.format(deltaSeconds, "second");
+  const deltaMinutes = Math.round(deltaSeconds / 60);
+  if (Math.abs(deltaMinutes) < 60) return RELATIVE_TIME_FORMATTER.format(deltaMinutes, "minute");
+  const deltaHours = Math.round(deltaMinutes / 60);
+  if (Math.abs(deltaHours) < 24) return RELATIVE_TIME_FORMATTER.format(deltaHours, "hour");
+  const deltaDays = Math.round(deltaHours / 24);
+  return RELATIVE_TIME_FORMATTER.format(deltaDays, "day");
+}
+
+interface UpstreamSyncBadgeProps {
+  aheadCount: number | undefined;
+  behindCount: number | undefined;
+  isFetchInFlight: boolean;
+  lastFetchedAt: number | null | undefined;
+  fetchAuthFailed: boolean;
+  isGitHubRemote: boolean;
+  /**
+   * The two render contexts use different gap sizes to align with surrounding
+   * content (`gap-1` in the main-worktree row, `gap-1.5` in the secondary row).
+   * Keep the existing spacing rather than unify it — the visual rhythm is
+   * tuned per layout.
+   */
+  containerGapClass: string;
+}
+
+function UpstreamSyncBadge({
+  aheadCount,
+  behindCount,
+  isFetchInFlight,
+  lastFetchedAt,
+  fetchAuthFailed,
+  isGitHubRemote,
+  containerGapClass,
+}: UpstreamSyncBadgeProps) {
+  const hasAhead = aheadCount !== undefined && aheadCount > 0;
+  const hasBehind = behindCount !== undefined && behindCount > 0;
+
+  const handleSignInClick = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    void actionService.dispatch(
+      "app.settings.openTab",
+      { tab: "github", sectionId: "github-token" },
+      { source: "user" }
+    );
+  }, []);
+
+  // Auth-failed + GitHub remote: replace the count display with a sign-in CTA.
+  // Non-GitHub remotes silently fall through to the regular count display so
+  // we don't surface a useless GitHub-token CTA for GitLab/Bitbucket/etc.
+  if (fetchAuthFailed && isGitHubRemote) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={handleSignInClick}
+            className="flex items-center text-[10px] text-status-warning/80 hover:text-status-warning transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent rounded-sm cursor-pointer"
+            data-testid="upstream-sync-auth-cta"
+          >
+            Sign in to refresh
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="text-xs">
+          <div>Couldn't reach origin — GitHub credentials failed</div>
+          {lastFetchedAt != null && (
+            <div className="text-text-muted">Last fetched {formatLastFetched(lastFetchedAt)}</div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // No counts to show and no fetch state worth surfacing → render nothing.
+  // (The caller already gates on hasUpstreamDelta, so this is the no-counts
+  // path during fetch-only events that didn't move ahead/behind.)
+  if (!hasAhead && !hasBehind) return null;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "flex items-center text-[10px] font-mono tabular-nums",
+            containerGapClass,
+            isFetchInFlight && "animate-pulse-immediate"
+          )}
+          data-testid="upstream-sync-indicator"
+          data-fetch-in-flight={isFetchInFlight ? "true" : undefined}
+        >
+          {hasAhead && <span className="text-status-success">↑{aheadCount}</span>}
+          {hasBehind && <span className="text-status-warning">↓{behindCount}</span>}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="text-xs">
+        <div>
+          {hasAhead && (
+            <span>
+              {aheadCount} commit{aheadCount !== 1 ? "s" : ""} ahead
+            </span>
+          )}
+          {hasAhead && hasBehind && <span>, </span>}
+          {hasBehind && (
+            <span>
+              {behindCount} commit{behindCount !== 1 ? "s" : ""} behind
+            </span>
+          )}
+          <span> upstream</span>
+        </div>
+        {lastFetchedAt != null && (
+          <div className="text-text-muted">Last fetched {formatLastFetched(lastFetchedAt)}</div>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 interface IssueBadgeProps {
   issueNumber: number;
   issueTitle?: string;
@@ -427,6 +548,10 @@ export function WorktreeHeader({
   const hasUpstreamDelta =
     (worktree.aheadCount !== undefined && worktree.aheadCount > 0) ||
     (worktree.behindCount !== undefined && worktree.behindCount > 0);
+  // Auth-failed + GitHub remote surfaces a "Sign in to refresh" CTA in place
+  // of (or alongside) the count badge — show the row even if no upstream
+  // delta is present so the user can still recover the auth state.
+  const hasAuthFailedSignIn = Boolean(worktree.fetchAuthFailed && worktree.isGitHubRemote);
   const isMainStandardLayout = !!(isMainOnStandardBranch && !hasIssueTitle);
 
   const { visibleStates, sessionAriaLabel } = useMemo(() => {
@@ -781,39 +906,16 @@ export function WorktreeHeader({
             isMuted={isMuted}
             isMainWorktree={false}
           />
-          {hasUpstreamDelta && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  className="flex items-center gap-1 text-[10px] font-mono tabular-nums"
-                  data-testid="upstream-sync-indicator"
-                >
-                  {worktree.aheadCount !== undefined && worktree.aheadCount > 0 && (
-                    <span className="text-status-success">↑{worktree.aheadCount}</span>
-                  )}
-                  {worktree.behindCount !== undefined && worktree.behindCount > 0 && (
-                    <span className="text-status-warning">↓{worktree.behindCount}</span>
-                  )}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs">
-                {worktree.aheadCount !== undefined && worktree.aheadCount > 0 && (
-                  <span>
-                    {worktree.aheadCount} commit{worktree.aheadCount !== 1 ? "s" : ""} ahead
-                  </span>
-                )}
-                {worktree.aheadCount !== undefined &&
-                  worktree.aheadCount > 0 &&
-                  worktree.behindCount !== undefined &&
-                  worktree.behindCount > 0 && <span>, </span>}
-                {worktree.behindCount !== undefined && worktree.behindCount > 0 && (
-                  <span>
-                    {worktree.behindCount} commit{worktree.behindCount !== 1 ? "s" : ""} behind
-                  </span>
-                )}
-                <span> upstream</span>
-              </TooltipContent>
-            </Tooltip>
+          {(hasUpstreamDelta || hasAuthFailedSignIn) && (
+            <UpstreamSyncBadge
+              aheadCount={worktree.aheadCount}
+              behindCount={worktree.behindCount}
+              isFetchInFlight={Boolean(worktree.isFetchInFlight)}
+              lastFetchedAt={worktree.lastFetchedAt}
+              fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
+              isGitHubRemote={Boolean(worktree.isGitHubRemote)}
+              containerGapClass="gap-1"
+            />
           )}
           {aggregateCounts && aggregateCounts.worktrees > 0 && (
             <>
@@ -883,6 +985,7 @@ export function WorktreeHeader({
           (worktree.issueNumber && !hasIssueTitle) ||
           (worktree.prNumber && worktree.prState !== "closed") ||
           hasUpstreamDelta ||
+          hasAuthFailedSignIn ||
           hasPlanFile) && (
           <div className="flex flex-col gap-0.5 mt-1.5">
             {worktree.issueNumber && !hasIssueTitle && (
@@ -905,39 +1008,16 @@ export function WorktreeHeader({
                 underlineOnHover={underlineOnHover}
               />
             )}
-            {hasUpstreamDelta && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums"
-                    data-testid="upstream-sync-indicator"
-                  >
-                    {worktree.aheadCount !== undefined && worktree.aheadCount > 0 && (
-                      <span className="text-status-success">↑{worktree.aheadCount}</span>
-                    )}
-                    {worktree.behindCount !== undefined && worktree.behindCount > 0 && (
-                      <span className="text-status-warning">↓{worktree.behindCount}</span>
-                    )}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="text-xs">
-                  {worktree.aheadCount !== undefined && worktree.aheadCount > 0 && (
-                    <span>
-                      {worktree.aheadCount} commit{worktree.aheadCount !== 1 ? "s" : ""} ahead
-                    </span>
-                  )}
-                  {worktree.aheadCount !== undefined &&
-                    worktree.aheadCount > 0 &&
-                    worktree.behindCount !== undefined &&
-                    worktree.behindCount > 0 && <span>, </span>}
-                  {worktree.behindCount !== undefined && worktree.behindCount > 0 && (
-                    <span>
-                      {worktree.behindCount} commit{worktree.behindCount !== 1 ? "s" : ""} behind
-                    </span>
-                  )}
-                  <span> upstream</span>
-                </TooltipContent>
-              </Tooltip>
+            {(hasUpstreamDelta || hasAuthFailedSignIn) && (
+              <UpstreamSyncBadge
+                aheadCount={worktree.aheadCount}
+                behindCount={worktree.behindCount}
+                isFetchInFlight={Boolean(worktree.isFetchInFlight)}
+                lastFetchedAt={worktree.lastFetchedAt}
+                fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
+                isGitHubRemote={Boolean(worktree.isGitHubRemote)}
+                containerGapClass="gap-1.5"
+              />
             )}
             {hasIssueTitle && (
               <BranchLabel

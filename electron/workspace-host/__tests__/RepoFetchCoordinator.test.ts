@@ -50,6 +50,54 @@ describe("RepoFetchCoordinator", () => {
     expect(result.status).toBe("success");
     expect(onFetchSuccess).toHaveBeenCalledWith("wt1");
     expect(coord.getLastSuccessfulFetch("/repo/.git")).not.toBeNull();
+    expect(result.lastFetchedAt).toBe(coord.getLastSuccessfulFetch("/repo/.git"));
+    expect(result.authFailed).toBe(false);
+  });
+
+  it("propagates authFailed=true via FetchResult on auth-class failures and skips", async () => {
+    mockGetGitCommonDir.mockReturnValue("/repo/.git");
+    mockCreateBackgroundFetchGit.mockReturnValue(
+      makeMockGit(() => Promise.reject(new Error("Authentication failed for 'https://x'")))
+    );
+
+    const coord = new RepoFetchCoordinator();
+    const failed = await coord.fetchForWorktree({
+      worktreeId: "wt1",
+      worktreePath: "/repo",
+    });
+    expect(failed.status).toBe("failed");
+    expect(failed.authFailed).toBe(true);
+    expect(failed.lastFetchedAt).toBeNull();
+
+    // Subsequent skip from auth suspension also carries authFailed=true so the
+    // renderer keeps the "Sign in to refresh" affordance visible.
+    const skipped = await coord.fetchForWorktree({
+      worktreeId: "wt1",
+      worktreePath: "/repo",
+    });
+    expect(skipped.status).toBe("skipped");
+    expect(skipped.skipReason).toBe("auth-suspended");
+    expect(skipped.authFailed).toBe(true);
+  });
+
+  it("preserves the prior lastFetchedAt across a transient failure", async () => {
+    mockGetGitCommonDir.mockReturnValue("/repo/.git");
+    // First call: success.
+    mockCreateBackgroundFetchGit.mockReturnValueOnce(makeMockGit(() => Promise.resolve()));
+    const coord = new RepoFetchCoordinator();
+    const ok = await coord.fetchForWorktree({ worktreeId: "wt1", worktreePath: "/repo" });
+    expect(ok.status).toBe("success");
+    const firstTs = ok.lastFetchedAt;
+    expect(firstTs).not.toBeNull();
+
+    // Second call: transient fetch error.
+    mockCreateBackgroundFetchGit.mockReturnValueOnce(
+      makeMockGit(() => Promise.reject(new Error("the remote end hung up unexpectedly")))
+    );
+    const failed = await coord.fetchForWorktree({ worktreeId: "wt1", worktreePath: "/repo" });
+    expect(failed.status).toBe("failed");
+    expect(failed.authFailed).toBe(false);
+    expect(failed.lastFetchedAt).toBe(firstTs);
   });
 
   it("skips when commondir cannot be resolved", async () => {

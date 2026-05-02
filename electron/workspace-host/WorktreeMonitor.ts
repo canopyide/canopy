@@ -177,6 +177,17 @@ export class WorktreeMonitor {
   // `_isCurrent`; rescheduling happens in the `isCurrent` setter.
   private fetchTimer: NodeJS.Timeout | null = null;
   private _pendingFetchPromise: Promise<void> | null = null;
+
+  // Fetch freshness state — surfaced to the renderer via the snapshot so the
+  // worktree card can show "Last fetched X ago", an in-flight pulse, and a
+  // GitHub auth-failure affordance. `_lastFetchedAt` and `_fetchAuthFailed`
+  // are pushed in via `setFetchState` from `WorkspaceService` (which receives
+  // them on every coordinator round-trip and fans them out to siblings sharing
+  // the commondir). `_isGitHubRemote` is set once at monitor start when the
+  // origin URL is probed.
+  private _lastFetchedAt: number | null = null;
+  private _fetchAuthFailed: boolean = false;
+  private _isGitHubRemote: boolean = false;
   /**
    * When `triggerFetchNow()` is called while a non-force fetch is in-flight,
    * we can't drop the force request — wake / auth-rotation hooks rely on it
@@ -276,6 +287,41 @@ export class WorktreeMonitor {
       changed = true;
     }
     if (changed && this._hasInitialStatus) {
+      this.emitUpdate();
+    }
+  }
+
+  /**
+   * Push the latest fetch outcome from `WorkspaceService` (sourced from the
+   * coordinator's per-commondir state). `null` for `lastFetchedAt` means no
+   * successful fetch has landed yet for this repo. Re-emits a snapshot when
+   * either field actually changes so the renderer's tooltip/auth affordance
+   * stay in sync without waiting for the next status poll.
+   */
+  setFetchState(lastFetchedAt: number | null, authFailed: boolean): void {
+    let changed = false;
+    if (this._lastFetchedAt !== lastFetchedAt) {
+      this._lastFetchedAt = lastFetchedAt;
+      changed = true;
+    }
+    if (this._fetchAuthFailed !== authFailed) {
+      this._fetchAuthFailed = authFailed;
+      changed = true;
+    }
+    if (changed && this._hasInitialStatus) {
+      this.emitUpdate();
+    }
+  }
+
+  /**
+   * Set once at monitor start when `WorkspaceService` resolves the origin URL.
+   * Gates the "Sign in to refresh" affordance — non-GitHub remotes silently
+   * hide the affordance even when an auth failure is recorded.
+   */
+  setIsGitHubRemote(value: boolean): void {
+    if (this._isGitHubRemote === value) return;
+    this._isGitHubRemote = value;
+    if (this._hasInitialStatus) {
       this.emitUpdate();
     }
   }
@@ -743,6 +789,13 @@ export class WorktreeMonitor {
       planFilePath: this.planFilePath,
       aheadCount: this.aheadCount,
       behindCount: this.behindCount,
+      lastFetchedAt: this._lastFetchedAt ?? undefined,
+      fetchAuthFailed: this._fetchAuthFailed || undefined,
+      // Read in-flight state authoritatively at snapshot time (lesson #1700)
+      // so a snapshot emitted between fetch-start and fetch-end always
+      // serializes the correct value, never a stale cached copy.
+      isFetchInFlight: this._pendingFetchPromise !== null || undefined,
+      isGitHubRemote: this._isGitHubRemote || undefined,
       isWslPath: this._isWslPath || undefined,
       wslDistro: this._wslDistro,
       wslGitEligible: this._wslGitEligible || undefined,
@@ -1081,6 +1134,13 @@ export class WorktreeMonitor {
         this._pendingFetchPromise = null;
         const queuedForce = this._pendingForceFetch;
         this._pendingForceFetch = false;
+        // Emit so `isFetchInFlight` flips back to false on the renderer.
+        // `WorkspaceService` will follow up with the freshly-resolved
+        // `lastFetchedAt`/`fetchAuthFailed` via `setFetchState`, which emits
+        // again only if those values changed.
+        if (this._hasInitialStatus) {
+          this.emitUpdate();
+        }
         if (this._isRunning) {
           if (queuedForce) {
             void this.runFetch(true);
@@ -1090,6 +1150,11 @@ export class WorktreeMonitor {
         }
       });
     this._pendingFetchPromise = run;
+    // Surface the in-flight transition immediately so the card pulses while
+    // git is talking to the remote, without waiting for a status poll.
+    if (this._hasInitialStatus) {
+      this.emitUpdate();
+    }
     await run;
   }
 

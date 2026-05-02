@@ -47,6 +47,21 @@ export interface FetchResult {
   reason?: GitOperationReason;
   /** Why we skipped — for logging / diagnostics. */
   skipReason?: "no-common-dir" | "in-failure-window" | "auth-suspended" | "stale-generation";
+  /**
+   * Coordinator's per-commondir `lastSuccessfulFetch` after this call settled.
+   * Set on success (the timestamp just written) and on skipped/failed
+   * outcomes (the prior timestamp, if any). Lets `WorkspaceService` propagate
+   * the freshest known value to monitors without reaching into coordinator
+   * internals.
+   */
+  lastFetchedAt?: number | null;
+  /**
+   * True when this call ended in (or remained in) an auth-class failure for
+   * this commondir. Includes the `auth-suspended` skip case so the renderer
+   * keeps showing the "Sign in to refresh" affordance instead of flashing
+   * stale counts when a sibling's force-fetch is rate-cached.
+   */
+  authFailed?: boolean;
 }
 
 /**
@@ -102,6 +117,8 @@ export class RepoFetchCoordinator {
           status: "skipped",
           skipReason: "auth-suspended",
           reason: failure.reason,
+          lastFetchedAt: state.lastSuccessfulFetch,
+          authFailed: true,
         };
       }
       if (Date.now() < failure.retryAt) {
@@ -109,6 +126,8 @@ export class RepoFetchCoordinator {
           status: "skipped",
           skipReason: "in-failure-window",
           reason: failure.reason,
+          lastFetchedAt: state.lastSuccessfulFetch,
+          authFailed: false,
         };
       }
     }
@@ -217,7 +236,11 @@ export class RepoFetchCoordinator {
       state.failure = null;
       state.lastSuccessfulFetch = Date.now();
       succeeded = true;
-      return { status: "success" };
+      return {
+        status: "success",
+        lastFetchedAt: state.lastSuccessfulFetch,
+        authFailed: false,
+      };
     } catch (error) {
       const reason = classifyGitError(error);
       const state = this.states.get(commonDir);
@@ -225,7 +248,12 @@ export class RepoFetchCoordinator {
         return { status: "skipped", skipReason: "stale-generation" };
       }
       state.failure = this.classifyForCache(reason, state.lastSuccessfulFetch, error);
-      return { status: "failed", reason };
+      return {
+        status: "failed",
+        reason,
+        lastFetchedAt: state.lastSuccessfulFetch,
+        authFailed: state.failure.kind === "auth",
+      };
     } finally {
       clearTimeout(timeout);
       // Notify outside the try/catch so a throwing observer can't poison the
