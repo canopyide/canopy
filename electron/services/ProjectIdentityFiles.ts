@@ -94,7 +94,7 @@ export class ProjectIdentityFiles {
       if (ensureDir) {
         await fs.mkdir(daintreeDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2) + "\n", "utf-8");
     };
 
     try {
@@ -172,7 +172,7 @@ export class ProjectIdentityFiles {
       if (ensureDir) {
         await fs.mkdir(daintreeDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2) + "\n", "utf-8");
     };
 
     try {
@@ -231,7 +231,7 @@ export class ProjectIdentityFiles {
       if (ensureDir) {
         await fs.mkdir(recipesDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2) + "\n", "utf-8");
     };
 
     try {
