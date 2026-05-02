@@ -1269,6 +1269,16 @@ export interface ElectronAPI {
     generateApiKey(): Promise<string>;
     /** Get the JSON config snippet to paste into an MCP client config */
     getConfigSnippet(): Promise<string>;
+    /** Read the audit-log ring buffer (newest first). */
+    getAuditRecords(): Promise<import("./mcpServer.js").McpAuditRecord[]>;
+    /** Get the persisted audit-log configuration. */
+    getAuditConfig(): Promise<{ enabled: boolean; maxRecords: number }>;
+    /** Clear all audit records from the ring buffer and persistence. */
+    clearAuditLog(): Promise<void>;
+    /** Toggle audit-log capture without losing existing records. */
+    setAuditEnabled(enabled: boolean): Promise<{ enabled: boolean; maxRecords: number }>;
+    /** Update the ring-buffer cap (clamped to MCP_AUDIT_MIN/MAX). */
+    setAuditMaxRecords(max: number): Promise<{ enabled: boolean; maxRecords: number }>;
   };
   helpAssistant: {
     getSettings(): Promise<HelpAssistantSettings>;

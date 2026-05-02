@@ -69,5 +69,47 @@ export function registerMcpServerHandlers(): () => void {
     })
   );
 
+  handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_GET_AUDIT_RECORDS, async () => {
+      const svc = await getMcpServerService();
+      return svc.getAuditRecords();
+    })
+  );
+
+  handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_GET_AUDIT_CONFIG, async () => {
+      const svc = await getMcpServerService();
+      return svc.getAuditConfig();
+    })
+  );
+
+  handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_CLEAR_AUDIT_LOG, async () => {
+      const svc = await getMcpServerService();
+      svc.clearAuditLog();
+    })
+  );
+
+  handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_SET_AUDIT_ENABLED, async (enabled: boolean) => {
+      if (typeof enabled !== "boolean") throw new Error("enabled must be a boolean");
+      const svc = await getMcpServerService();
+      return svc.setAuditEnabled(enabled);
+    })
+  );
+
+  handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS, async (max: number) => {
+      if (typeof max !== "number" || !Number.isFinite(max) || !Number.isInteger(max)) {
+        throw new Error("max must be a finite integer");
+      }
+      if (max < 50 || max > 10000) {
+        throw new Error("max must be between 50 and 10000");
+      }
+      const svc = await getMcpServerService();
+      return svc.setAuditMaxRecords(max);
+    })
+  );
+
   return () => handlers.forEach((cleanup) => cleanup());
 }

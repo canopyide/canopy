@@ -1833,6 +1833,26 @@ export interface IpcInvokeMap {
     args: [];
     result: string;
   };
+  "mcp-server:get-audit-records": {
+    args: [];
+    result: import("./mcpServer.js").McpAuditRecord[];
+  };
+  "mcp-server:get-audit-config": {
+    args: [];
+    result: { enabled: boolean; maxRecords: number };
+  };
+  "mcp-server:clear-audit-log": {
+    args: [];
+    result: void;
+  };
+  "mcp-server:set-audit-enabled": {
+    args: [enabled: boolean];
+    result: { enabled: boolean; maxRecords: number };
+  };
+  "mcp-server:set-audit-max-records": {
+    args: [max: number];
+    result: { enabled: boolean; maxRecords: number };
+  };
 
   // Webview console capture
   "webview:start-console-capture": {
