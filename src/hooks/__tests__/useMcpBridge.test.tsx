@@ -306,7 +306,7 @@ describe("useMcpBridge", () => {
     expect(cleanupDispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not send a response after unmount even if the user later answers the modal", async () => {
+  it("drops in-flight confirmations from the store on unmount and never sends a late response", async () => {
     mocks.get.mockReturnValue(confirmManifestEntry());
 
     const { unmount } = renderHook(() => useMcpBridge());
@@ -318,7 +318,15 @@ describe("useMcpBridge", () => {
     });
 
     await Promise.resolve();
+    expect(useMcpConfirmStore.getState().current?.requestId).toBe("req-late");
+
     unmount();
+    expect(useMcpConfirmStore.getState().current).toBeNull();
+    expect(useMcpConfirmStore.getState().queue).toHaveLength(0);
+
+    // resolveCurrent is now a no-op (nothing visible) and the resolver was
+    // dropped, so no response is ever sent — main's 30s dispatch timer
+    // handles the orphaned pending entry.
     useMcpConfirmStore.getState().resolveCurrent("approved");
     await Promise.resolve();
     await Promise.resolve();

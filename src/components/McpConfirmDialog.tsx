@@ -23,9 +23,15 @@ export function McpConfirmDialog() {
 
   useEffect(() => {
     if (current === null) return;
+    // Subtract time the request already spent queued behind a prior modal so
+    // every dispatch races against the same wall-clock budget; otherwise a
+    // queued item could outlive main's 30s deadline and degrade to a generic
+    // timeout error instead of `CONFIRMATION_TIMEOUT`.
+    const elapsed = Date.now() - current.enqueuedAt;
+    const remaining = Math.max(500, CONFIRMATION_TIMEOUT_MS - elapsed);
     const timer = setTimeout(() => {
       resolveCurrent("timeout");
-    }, CONFIRMATION_TIMEOUT_MS);
+    }, remaining);
     return () => clearTimeout(timer);
   }, [current, resolveCurrent]);
 

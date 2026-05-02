@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetMcpConfirmStoreForTesting,
   requestMcpConfirmation,
@@ -86,6 +86,21 @@ describe("mcpConfirmStore", () => {
     await Promise.resolve();
     expect(firstResolved).toBe(false);
     expect(secondResolved).toBe(false);
+  });
+
+  it("rejects a duplicate requestId rather than orphaning the original promise", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const first = requestMcpConfirmation(pendingFixture({ requestId: "dup" }));
+    const second = requestMcpConfirmation(pendingFixture({ requestId: "dup" }));
+
+    expect(await second).toBe("rejected");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("duplicate requestId"));
+    expect(useMcpConfirmStore.getState().queue).toHaveLength(0);
+
+    useMcpConfirmStore.getState().resolveCurrent("approved");
+    expect(await first).toBe("approved");
+
+    warn.mockRestore();
   });
 
   it("reset clears state and the resolver map without resolving outstanding promises", async () => {

@@ -99,6 +99,15 @@ export function requestMcpConfirmation(
   item: Omit<PendingMcpConfirm, "enqueuedAt">
 ): Promise<McpConfirmationDecision> {
   return new Promise((resolve) => {
+    if (resolvers.has(item.requestId)) {
+      // Replacing a live resolver would orphan the original promise. UUID
+      // collisions are vanishingly unlikely in practice, so log and refuse
+      // rather than silently drop work; this also lets tests catch misuse.
+      // eslint-disable-next-line no-console
+      console.warn(`[McpConfirmStore] duplicate requestId rejected: ${item.requestId}`);
+      resolve("rejected");
+      return;
+    }
     resolvers.set(item.requestId, resolve);
     useMcpConfirmStore.getState().enqueue({ ...item, enqueuedAt: Date.now() });
   });

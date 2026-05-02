@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
-import { requestMcpConfirmation } from "@/store/mcpConfirmStore";
+import { requestMcpConfirmation, useMcpConfirmStore } from "@/store/mcpConfirmStore";
 import type { ActionDispatchResult, ActionId } from "@shared/types/actions";
 import type { McpConfirmationDecision } from "@shared/types/ipc/mcpServer";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -38,6 +38,7 @@ export function useMcpBridge(): void {
     if (!window.electron?.mcpBridge) return;
 
     let disposed = false;
+    const inFlightConfirms = new Set<string>();
 
     const cleanupManifest = window.electron.mcpBridge.onGetManifestRequest((requestId) => {
       try {
@@ -58,13 +59,19 @@ export function useMcpBridge(): void {
           if (effectiveConfirmed !== true) {
             const definition = actionService.get(actionId as ActionId);
             if (definition?.danger === "confirm") {
-              const decision = await requestMcpConfirmation({
-                requestId,
-                actionId,
-                actionTitle: definition.title,
-                actionDescription: definition.description,
-                argsSummary: summarizeMcpArgs(args),
-              });
+              inFlightConfirms.add(requestId);
+              let decision: McpConfirmationDecision;
+              try {
+                decision = await requestMcpConfirmation({
+                  requestId,
+                  actionId,
+                  actionTitle: definition.title,
+                  actionDescription: definition.description,
+                  argsSummary: summarizeMcpArgs(args),
+                });
+              } finally {
+                inFlightConfirms.delete(requestId);
+              }
               if (disposed) return;
               if (decision === "rejected") {
                 window.electron.mcpBridge.sendDispatchActionResponse({
@@ -116,6 +123,15 @@ export function useMcpBridge(): void {
 
     return () => {
       disposed = true;
+      // Drop any modals queued by this bridge so the singleton store doesn't
+      // surface dialogs that no listener is left to respond to. Main's 30s
+      // dispatch timer still rejects with a generic error — acceptable since
+      // unmount only happens at app teardown or HMR.
+      const dropFromStore = useMcpConfirmStore.getState().drop;
+      for (const requestId of inFlightConfirms) {
+        dropFromStore(requestId);
+      }
+      inFlightConfirms.clear();
       cleanupManifest();
       cleanupDispatch();
     };
