@@ -5,14 +5,14 @@ import fs from "node:fs/promises";
 
 const { mockUserDataDir, mockHelpFolderPath, mockMcpServerService, mockStoreGet } = vi.hoisted(
   () => ({
-    mockUserDataDir: vi.fn<[], string>(),
-    mockHelpFolderPath: vi.fn<[], string | null>(),
+    mockUserDataDir: vi.fn<() => string>(),
+    mockHelpFolderPath: vi.fn<() => string | null>(),
     mockMcpServerService: {
       isRunning: false,
       currentPort: 45454 as number | null,
       start: vi.fn().mockResolvedValue(undefined),
     },
-    mockStoreGet: vi.fn<[string], unknown>(),
+    mockStoreGet: vi.fn<(key: string) => unknown>(),
   })
 );
 
