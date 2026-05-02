@@ -134,29 +134,26 @@ export function FileChangeList({
   );
   const remainingCount = Math.max(0, sortedChanges.length - maxVisible);
 
-  const initialKeys = useMemo(
-    () => new Set(sortedChanges.map(rowKey)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-  const prevKeysRef = useRef<Set<string>>(initialKeys);
-
   // Track which row keys arrived since the previous render. Empty on mount because
   // prevKeysRef is seeded with the initial keys — the first paint must NOT flash
   // every existing row. The decay IS the recency signal (semantic exception, ~2s).
-  const newRowKeys = useMemo(() => {
+  const prevKeysRef = useRef<Set<string> | null>(null);
+  const [newRowKeys, setNewRowKeys] = useState<Set<string>>(() => new Set());
+
+  useLayoutEffect(() => {
     const currentKeys = sortedChanges.map(rowKey);
+    if (prevKeysRef.current === null) {
+      prevKeysRef.current = new Set(currentKeys);
+      return;
+    }
     const added = new Set<string>();
     for (const key of currentKeys) {
       if (!prevKeysRef.current.has(key)) {
         added.add(key);
       }
     }
-    return added;
-  }, [sortedChanges]);
-
-  useLayoutEffect(() => {
-    prevKeysRef.current = new Set(sortedChanges.map(rowKey));
+    prevKeysRef.current = new Set(currentKeys);
+    setNewRowKeys((prev) => (added.size === 0 && prev.size === 0 ? prev : added));
   }, [sortedChanges]);
   const remainingFiles = useMemo(
     () => sortedChanges.slice(maxVisible, maxVisible + 2),

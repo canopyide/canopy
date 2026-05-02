@@ -309,8 +309,10 @@ export const GitHubStatsToolbarButton = memo(
     // when no consumers remain. The memo re-captures `Date.now()` on every
     // tick so the freshness suffix advances even between background polls.
     const tick = useGlobalMinuteTicker();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const now = useMemo(() => Date.now(), [tick]);
+    const now = useMemo(() => {
+      void tick;
+      return Date.now();
+    }, [tick]);
 
     const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
     const activeWorktree = useWorktreeStore((state) =>
