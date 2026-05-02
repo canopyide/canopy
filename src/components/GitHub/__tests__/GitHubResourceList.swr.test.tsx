@@ -1246,6 +1246,75 @@ describe("GitHubResourceList Activity reveal vs filter change — PR #6288", () 
     expect(screen.getByTestId("item-70")).toBeTruthy();
   });
 
+  it("does not flash unsearched cached rows when a search query becomes active", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(81), makeIssue(82), makeIssue(83)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    // Mount-time revalidate resolves quickly; the searched fetch hangs so the
+    // transitional UI (post-debounce) is observable.
+    mockListIssues
+      .mockResolvedValueOnce(makeResponse([makeIssue(81), makeIssue(82), makeIssue(83)]))
+      .mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.getByTestId("item-81")).toBeTruthy();
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueSearchQuery("foo");
+    });
+
+    // After the 300ms debounce fires, the effect re-runs. The cacheKey
+    // doesn't include the search, so naively reading the warm slot would
+    // re-show the unfiltered list. Verify the cold path runs instead.
+    await waitFor(() => {
+      expect(screen.queryByTestId("item-81")).toBeNull();
+    });
+    expect(screen.getByTestId("skeleton")).toBeTruthy();
+  });
+
+  it("clears stranded loading state when switching from a cold pending filter to a warm empty slot", async () => {
+    const closedKey = buildCacheKey("/test/proj", "issue", "closed", "created");
+    setCache(closedKey, {
+      items: [],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    // Initial open-filter fetch hangs so loading sticks at true; the closed
+    // revalidate resolves to the cached empty page.
+    mockListIssues.mockImplementation(
+      ({ state }: { state: "open" | "closed" | "merged" | "all" }) => {
+        if (state === "closed") return Promise.resolve(makeResponse([]));
+        return new Promise(() => {});
+      }
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.getByTestId("skeleton")).toBeTruthy();
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueFilter("closed");
+    });
+
+    // Warm closed cache is empty — the skeleton must clear (loading reset),
+    // exposing the empty state instead.
+    await waitFor(() => {
+      expect(screen.queryByTestId("skeleton")).toBeNull();
+    });
+    expect(screen.getByText("No issues in this view")).toBeTruthy();
+  });
+
   it("clears rows and shows the skeleton when the filter changes while keepMounted", async () => {
     const openKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(openKey, {

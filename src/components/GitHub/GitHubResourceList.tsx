@@ -507,8 +507,17 @@ export function GitHubResourceList({
     // existing clear-and-skeleton behavior so genuine first views still
     // signal "loading".
     if (!isFirstMount) {
-      const targetCached = getCache(cacheKey);
+      // Search isn't part of `cacheKey`, so the warm slot only describes
+      // the unsearched view. Falling through to the cold path while a
+      // search is active flashes unfiltered cached rows before the
+      // searched fetch lands; gate hydration to non-search transitions.
+      const targetCached = !debouncedSearch ? getCache(cacheKey) : undefined;
       if (targetCached) {
+        // A previous cold fetch may have set `loading=true` and then been
+        // aborted by this effect's cleanup, which skips its `setLoading(false)`
+        // because the abort signal fired. Clear it explicitly so an empty
+        // warm slot doesn't render the skeleton via `loading && !data.length`.
+        setLoading(false);
         setData(targetCached.items);
         setCursor(targetCached.endCursor);
         setHasMore(targetCached.hasNextPage);
