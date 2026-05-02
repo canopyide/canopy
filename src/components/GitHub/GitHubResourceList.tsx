@@ -501,10 +501,28 @@ export function GitHubResourceList({
     }
 
     // Filter/sort changed while mounted (or projectPath changed via the
-    // keepMounted body): clear and refetch with skeleton. First-mount cache
-    // miss skips the explicit clear (data is already [] from the useState
-    // initializer) so no spurious setState/render churn.
+    // keepMounted body). If the target slot is warm in cache, hydrate
+    // synchronously and run the silent SWR revalidate path — no skeleton
+    // flash on Open → Closed → Open round-trips. Cold target slot keeps the
+    // existing clear-and-skeleton behavior so genuine first views still
+    // signal "loading".
     if (!isFirstMount) {
+      const targetCached = getCache(cacheKey);
+      if (targetCached) {
+        setData(targetCached.items);
+        setCursor(targetCached.endCursor);
+        setHasMore(targetCached.hasNextPage);
+        setLastUpdatedAt(targetCached.timestamp);
+        setExactNumberNotFound(null);
+        setError(null);
+        fetchData(null, false, abortController.signal, {
+          revalidating: true,
+          generation: gen,
+          cacheKey,
+        });
+        lastLoadedEffectKeyRef.current = effectKey;
+        return () => abortController.abort();
+      }
       setCursor(null);
       setHasMore(false);
       setExactNumberNotFound(null);
