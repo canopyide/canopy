@@ -76,6 +76,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const setFocused = usePanelStore((s) => s.setFocused);
   const trashPanel = usePanelStore((s) => s.trashPanel);
   const updateTitle = usePanelStore((s) => s.updateTitle);
+  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
   const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
   const reorderPanelsInGroup = usePanelStore((s) => s.reorderPanelsInGroup);
@@ -265,14 +266,18 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const handleTabClose = useCallback(
     (tabId: string) => {
       const panel = panels.find((p) => p.id === tabId);
-      if (panel?.agentState && CLOSE_CONFIRM_AGENT_STATES.has(panel.agentState)) {
+      if (
+        !skipWorkingCloseConfirm &&
+        panel?.agentState &&
+        CLOSE_CONFIRM_AGENT_STATES.has(panel.agentState)
+      ) {
         closeDockTerminal();
         setPendingCloseTabId(tabId);
         return;
       }
       doCloseTab(tabId);
     },
-    [panels, closeDockTerminal, doCloseTab]
+    [panels, closeDockTerminal, doCloseTab, skipWorkingCloseConfirm]
   );
 
   const handleConfirmClose = useCallback(() => {

@@ -1,27 +1,26 @@
 // @vitest-environment jsdom
 /**
- * GridPanel — header-X close guard for working-agent groups (#6330, #6513).
+ * DockedPanel — header-X close guard for working-agent terminals (#6514).
  *
- * The per-tab guard in GridTabGroup only intercepts the per-tab X buttons.
- * The panel-header X button calls handleClose(false) → trashPanelGroup,
- * which silently kills the entire group — including single-tab groups whose
- * only close affordance IS that header button. This test pins the parallel
- * guard at the GridPanel layer. The guard fires only for "working" tabs;
- * "waiting"/"directing" close immediately (#6513).
+ * Mirrors the GridPanel guard for the dock popover. Single-tab dock groups
+ * have no per-tab X button — the panel-header X is the only close affordance.
+ * Multi-tab dock groups have per-tab guards in DockedTabGroup, but the header
+ * X here also needs to honor the working-agent confirmation. The popover
+ * collapses when the body-portalled dialog mounts (Radix), so close it before
+ * showing the dialog and reopen on cancel.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import type { AgentState } from "@shared/types/agent";
 import type { TerminalInstance } from "@/store";
-import type { TabInfo } from "@/components/Panel/TabButton";
 
 const trashPanelGroupMock = vi.fn();
 const removePanelMock = vi.fn();
 const setFocusedMock = vi.fn();
 const updateTitleMock = vi.fn();
-const toggleMaximizeMock = vi.fn();
-const moveTerminalToDockMock = vi.fn();
-const getPanelGroupMock = vi.fn(() => null);
+const moveTerminalToGridMock = vi.fn();
+const closeDockTerminalMock = vi.fn();
+const openDockTerminalMock = vi.fn();
 
 vi.mock("@/store", () => ({
   usePanelStore: (selector: (s: Record<string, unknown>) => unknown) =>
@@ -30,9 +29,10 @@ vi.mock("@/store", () => ({
       removePanel: removePanelMock,
       setFocused: setFocusedMock,
       updateTitle: updateTitleMock,
-      toggleMaximize: toggleMaximizeMock,
-      getPanelGroup: getPanelGroupMock,
-      moveTerminalToDock: moveTerminalToDockMock,
+      moveTerminalToGrid: moveTerminalToGridMock,
+      closeDockTerminal: closeDockTerminalMock,
+      openDockTerminal: openDockTerminalMock,
+      focusedId: null,
     }),
 }));
 
@@ -61,12 +61,6 @@ vi.mock("@/components/Panel", () => ({
   triggerPanelTransition: vi.fn(),
 }));
 
-vi.mock("@/utils/terminalChrome", () => ({
-  terminalChromeDescriptorsEqual: () => false,
-}));
-
-// Render a stub panel kind that exposes the resolved onClose so the test can
-// drive the same code path the real PanelHeader X button uses.
 vi.mock("@/utils/panelProps", () => ({
   buildPanelProps: ({ overrides }: { overrides: { onClose: (force?: boolean) => void } }) => {
     return overrides;
@@ -117,49 +111,36 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
     ) : null,
 }));
 
-import { GridPanel } from "../GridPanel";
+import { DockedPanel } from "../DockedPanel";
 
 function makeTerminal(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
     id: "t-1",
     title: "Terminal",
-    location: "grid",
+    location: "dock",
     kind: "terminal",
     ...overrides,
   } as TerminalInstance;
 }
 
-function makeTab(id: string, agentState?: AgentState): TabInfo {
-  return {
-    id,
-    title: id,
-    chrome: { color: "#abc", isAgent: false } as TabInfo["chrome"],
-    kind: "terminal",
-    agentState,
-    isActive: false,
-  } as TabInfo;
-}
-
-describe("GridPanel header-close guard (#6330)", () => {
+describe("DockedPanel header-close guard (#6514)", () => {
   beforeEach(() => {
     trashPanelGroupMock.mockClear();
     removePanelMock.mockClear();
+    closeDockTerminalMock.mockClear();
+    openDockTerminalMock.mockClear();
     mockSkipWorkingCloseConfirm = false;
   });
 
-  it("closes immediately when single-tab group has an idle terminal", () => {
+  it("closes immediately when terminal is idle", () => {
     const { getByTestId, queryByTestId } = render(
-      <GridPanel
-        terminal={makeTerminal({ agentState: "idle" })}
-        isFocused={false}
-        tabs={[makeTab("t-1", "idle")]}
-      />
+      <DockedPanel terminal={makeTerminal({ agentState: "idle" as AgentState })} />
     );
 
     fireEvent.click(getByTestId("header-close"));
 
     expect(queryByTestId("confirm-dialog")).toBeNull();
-    // trashPanelGroup is scheduled via setTimeout(0); flush it.
+    expect(closeDockTerminalMock).not.toHaveBeenCalled();
     return new Promise<void>((resolve) =>
       setTimeout(() => {
         expect(trashPanelGroupMock).toHaveBeenCalledWith("t-1");
@@ -168,82 +149,22 @@ describe("GridPanel header-close guard (#6330)", () => {
     );
   });
 
-  it("shows the confirm dialog when single-tab group has a working terminal", () => {
+  it("shows the confirm dialog and collapses the popover for a working agent", () => {
     const { getByTestId } = render(
-      <GridPanel
-        terminal={makeTerminal({ agentState: "working" })}
-        isFocused={false}
-        tabs={[makeTab("t-1", "working")]}
-      />
+      <DockedPanel terminal={makeTerminal({ agentState: "working" as AgentState })} />
     );
 
     fireEvent.click(getByTestId("header-close"));
 
     expect(getByTestId("confirm-dialog")).toBeTruthy();
     expect(getByTestId("dialog-title").textContent).toBe("Stop this agent?");
+    expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
     expect(trashPanelGroupMock).not.toHaveBeenCalled();
   });
 
-  it.each(["waiting", "directing"] as const)(
-    "closes immediately when single-tab group has a %s terminal (#6513)",
-    (state) => {
-      const { getByTestId, queryByTestId } = render(
-        <GridPanel
-          terminal={makeTerminal({ agentState: state as AgentState })}
-          isFocused={false}
-          tabs={[makeTab("t-1", state as AgentState)]}
-        />
-      );
-
-      fireEvent.click(getByTestId("header-close"));
-
-      expect(queryByTestId("confirm-dialog")).toBeNull();
-      return new Promise<void>((resolve) =>
-        setTimeout(() => {
-          expect(trashPanelGroupMock).toHaveBeenCalledWith("t-1");
-          resolve();
-        }, 0)
-      );
-    }
-  );
-
-  it("shows dialog when ANY tab in a multi-tab group has an active agent", () => {
+  it("trashes when the user confirms", () => {
     const { getByTestId } = render(
-      <GridPanel
-        terminal={makeTerminal({ id: "t-1", agentState: "idle" })}
-        isFocused={false}
-        tabs={[makeTab("t-1", "idle"), makeTab("t-2", "working")]}
-      />
-    );
-
-    fireEvent.click(getByTestId("header-close"));
-
-    expect(getByTestId("confirm-dialog")).toBeTruthy();
-    expect(trashPanelGroupMock).not.toHaveBeenCalled();
-  });
-
-  it("does NOT show the dialog when force=true (Alt+Click bypass)", () => {
-    const { getByTestId, queryByTestId } = render(
-      <GridPanel
-        terminal={makeTerminal({ agentState: "working" })}
-        isFocused={false}
-        tabs={[makeTab("t-1", "working")]}
-      />
-    );
-
-    fireEvent.click(getByTestId("header-force-close"));
-
-    expect(queryByTestId("confirm-dialog")).toBeNull();
-    expect(removePanelMock).toHaveBeenCalledWith("t-1");
-  });
-
-  it("trashes the group when the user confirms", () => {
-    const { getByTestId } = render(
-      <GridPanel
-        terminal={makeTerminal({ agentState: "working" })}
-        isFocused={false}
-        tabs={[makeTab("t-1", "working")]}
-      />
+      <DockedPanel terminal={makeTerminal({ agentState: "working" as AgentState })} />
     );
 
     fireEvent.click(getByTestId("header-close"));
@@ -257,13 +178,9 @@ describe("GridPanel header-close guard (#6330)", () => {
     );
   });
 
-  it("does not trash when the user cancels", () => {
+  it("reopens the dock popover and does not trash on cancel", () => {
     const { getByTestId, queryByTestId } = render(
-      <GridPanel
-        terminal={makeTerminal({ agentState: "working" })}
-        isFocused={false}
-        tabs={[makeTab("t-1", "working")]}
-      />
+      <DockedPanel terminal={makeTerminal({ agentState: "working" as AgentState })} />
     );
 
     fireEvent.click(getByTestId("header-close"));
@@ -271,21 +188,30 @@ describe("GridPanel header-close guard (#6330)", () => {
 
     expect(queryByTestId("confirm-dialog")).toBeNull();
     expect(trashPanelGroupMock).not.toHaveBeenCalled();
+    expect(openDockTerminalMock).toHaveBeenCalledWith("t-1");
   });
 
-  it("closes immediately when skipWorkingCloseConfirm is on, even with a working tab (#6514)", () => {
+  it("force=true (Alt+Click) bypasses the dialog and removes the panel", () => {
+    const { getByTestId, queryByTestId } = render(
+      <DockedPanel terminal={makeTerminal({ agentState: "working" as AgentState })} />
+    );
+
+    fireEvent.click(getByTestId("header-force-close"));
+
+    expect(queryByTestId("confirm-dialog")).toBeNull();
+    expect(removePanelMock).toHaveBeenCalledWith("t-1");
+  });
+
+  it("closes a working agent immediately when skipWorkingCloseConfirm is on", () => {
     mockSkipWorkingCloseConfirm = true;
     const { getByTestId, queryByTestId } = render(
-      <GridPanel
-        terminal={makeTerminal({ agentState: "working" })}
-        isFocused={false}
-        tabs={[makeTab("t-1", "working")]}
-      />
+      <DockedPanel terminal={makeTerminal({ agentState: "working" as AgentState })} />
     );
 
     fireEvent.click(getByTestId("header-close"));
 
     expect(queryByTestId("confirm-dialog")).toBeNull();
+    expect(closeDockTerminalMock).not.toHaveBeenCalled();
     return new Promise<void>((resolve) =>
       setTimeout(() => {
         expect(trashPanelGroupMock).toHaveBeenCalledWith("t-1");

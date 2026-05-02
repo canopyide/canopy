@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useEffect, useEffectEvent, useRef, useState } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
+import { usePreferencesStore } from "@/store/preferencesStore";
 import { logError } from "@/utils/logger";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
@@ -123,6 +124,7 @@ export const GridTabGroup = React.memo(function GridTabGroup({
   const addPanelToGroup = usePanelStore((state) => state.addPanelToGroup);
   const reorderPanelsInGroup = usePanelStore((state) => state.reorderPanelsInGroup);
   const updateTitle = usePanelStore((state) => state.updateTitle);
+  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
 
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
 
@@ -300,13 +302,17 @@ export const GridTabGroup = React.memo(function GridTabGroup({
   const handleTabClose = useCallback(
     (tabId: string) => {
       const panel = panels.find((p) => p.id === tabId);
-      if (panel?.agentState && CLOSE_CONFIRM_AGENT_STATES.has(panel.agentState)) {
+      if (
+        !skipWorkingCloseConfirm &&
+        panel?.agentState &&
+        CLOSE_CONFIRM_AGENT_STATES.has(panel.agentState)
+      ) {
         setPendingCloseTabId(tabId);
         return;
       }
       doCloseTab(tabId);
     },
-    [panels, doCloseTab]
+    [panels, doCloseTab, skipWorkingCloseConfirm]
   );
 
   const handleConfirmClose = useCallback(() => {

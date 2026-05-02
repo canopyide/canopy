@@ -52,6 +52,13 @@ vi.mock("@/store", () => ({
     }),
 }));
 
+let mockSkipWorkingCloseConfirm = false;
+
+vi.mock("@/store/preferencesStore", () => ({
+  usePreferencesStore: (selector: (s: { skipWorkingCloseConfirm: boolean }) => unknown) =>
+    selector({ skipWorkingCloseConfirm: mockSkipWorkingCloseConfirm }),
+}));
+
 vi.mock("@/store/agentSettingsStore", () => ({
   useAgentSettingsStore: (selector: (s: { settings: null }) => unknown) =>
     selector({ settings: null }),
@@ -177,6 +184,7 @@ describe("GridTabGroup close guard (#6330)", () => {
     setMaximizedIdMock.mockClear();
     mockTabGroups = new Map();
     mockTabGroups.set("g-1", makeGroup(["t-1", "t-2"]));
+    mockSkipWorkingCloseConfirm = false;
   });
 
   it("closes immediately when the tab's agent is idle", () => {
@@ -277,6 +285,23 @@ describe("GridTabGroup close guard (#6330)", () => {
 
   it("treats a panel with no agentState as idle (closes immediately)", () => {
     const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+
+    const { getByTestId, queryByTestId } = render(
+      <GridTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} focusedId="t-1" />
+    );
+
+    fireEvent.click(getByTestId("close-t-2"));
+
+    expect(trashPanelMock).toHaveBeenCalledWith("t-2");
+    expect(queryByTestId("confirm-dialog")).toBeNull();
+  });
+
+  it("closes a working agent tab immediately when skipWorkingCloseConfirm is on (#6514)", () => {
+    mockSkipWorkingCloseConfirm = true;
+    const panels = [
+      makePanel({ id: "t-1", agentState: "idle" as AgentState }),
+      makePanel({ id: "t-2", agentState: "working" as AgentState }),
+    ];
 
     const { getByTestId, queryByTestId } = render(
       <GridTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} focusedId="t-1" />

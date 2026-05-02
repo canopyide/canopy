@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
+import { usePreferencesStore } from "@/store/preferencesStore";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   getPanelKindDefinition,
@@ -146,6 +147,7 @@ export const GridPanel = React.memo(function GridPanel({
   const toggleMaximize = usePanelStore((state) => state.toggleMaximize);
   const getPanelGroup = usePanelStore((state) => state.getPanelGroup);
   const moveTerminalToDock = usePanelStore((state) => state.moveTerminalToDock);
+  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
 
   const lifecycle = usePanelLifecycle();
   const { handleFocus, handleClose, handleTitleChange } = usePanelHandlers({
@@ -166,6 +168,10 @@ export const GridPanel = React.memo(function GridPanel({
         handleClose(true);
         return;
       }
+      if (skipWorkingCloseConfirm) {
+        handleClose(false);
+        return;
+      }
       const candidates = tabs?.length ? tabs.map((t) => t.agentState) : [terminal.agentState];
       const hasActiveAgent = candidates.some(
         (state) => state !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(state)
@@ -176,7 +182,7 @@ export const GridPanel = React.memo(function GridPanel({
       }
       handleClose(false);
     },
-    [handleClose, tabs, terminal.agentState]
+    [handleClose, tabs, terminal.agentState, skipWorkingCloseConfirm]
   );
   const handleConfirmGroupClose = useCallback(() => {
     setPendingGroupClose(false);
