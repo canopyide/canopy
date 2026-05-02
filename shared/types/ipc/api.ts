@@ -180,6 +180,20 @@ export interface NotificationSettings {
   quietHoursWeekdays: number[];
 }
 
+/**
+ * MCP server status returned to the renderer. `encryptionBackend` reflects how
+ * the bearer token is protected at rest: `keychain` (real OS secret store),
+ * `basic_text` (Linux fallback — encrypted with a hardcoded password), or
+ * `unavailable` (no encryption).
+ */
+export interface McpServerStatus {
+  enabled: boolean;
+  port: number | null;
+  configuredPort: number | null;
+  apiKey: string;
+  encryptionBackend: "keychain" | "basic_text" | "unavailable";
+}
+
 // ElectronAPI Type (exposed via preload)
 
 /** Complete Electron API exposed to renderer */
@@ -1238,33 +1252,13 @@ export interface ElectronAPI {
   };
   mcpServer: {
     /** Get current MCP server status and configuration */
-    getStatus(): Promise<{
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    }>;
+    getStatus(): Promise<McpServerStatus>;
     /** Enable or disable the MCP server */
-    setEnabled(enabled: boolean): Promise<{
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    }>;
+    setEnabled(enabled: boolean): Promise<McpServerStatus>;
     /** Set a fixed port (null = auto-assign ephemeral port) */
-    setPort(port: number | null): Promise<{
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    }>;
+    setPort(port: number | null): Promise<McpServerStatus>;
     /** Set the API key for bearer token authentication (empty string = no auth) */
-    setApiKey(apiKey: string): Promise<{
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    }>;
+    setApiKey(apiKey: string): Promise<McpServerStatus>;
     /** Generate a random API key and persist it */
     generateApiKey(): Promise<string>;
     /** Get the JSON config snippet to paste into an MCP client config */

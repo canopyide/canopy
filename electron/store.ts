@@ -187,7 +187,19 @@ export interface StoreSchema {
   mcpServer: {
     enabled: boolean;
     port: number | null;
-    apiKey: string;
+    /**
+     * @deprecated Legacy plaintext field. Migration 021 reads this once on
+     * upgrade, encrypts the value into `apiKeyEncrypted`, and deletes the
+     * field. New installs never write it. Kept on the schema only so the
+     * migration can still see the field on disk before removing it.
+     */
+    apiKey?: string;
+    /**
+     * Base64-encoded ciphertext from `safeStorage.encryptString`. Set by
+     * `McpServerService.setApiKey` / migration 021. Decrypted on demand via
+     * `McpServerService.getApiKey`.
+     */
+    apiKeyEncrypted?: string;
     fullToolSurface: boolean;
   };
   pendingErrors: ErrorRecord[];
@@ -325,7 +337,6 @@ const storeOptions = {
     mcpServer: {
       enabled: false,
       port: 45454,
-      apiKey: "",
       fullToolSurface: false,
     },
     pendingErrors: [],

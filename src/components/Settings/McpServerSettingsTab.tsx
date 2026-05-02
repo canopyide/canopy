@@ -9,13 +9,7 @@ import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
 import { logError } from "@/utils/logger";
-
-interface McpServerStatus {
-  enabled: boolean;
-  port: number | null;
-  configuredPort: number | null;
-  apiKey: string;
-}
+import type { McpServerStatus } from "@shared/types/ipc/api.js";
 
 export function McpServerSettingsTab() {
   const [status, setStatus] = useState<McpServerStatus>({
@@ -23,6 +17,7 @@ export function McpServerSettingsTab() {
     port: null,
     configuredPort: null,
     apiKey: "",
+    encryptionBackend: "keychain",
   });
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -308,6 +303,24 @@ export function McpServerSettingsTab() {
             title="Authentication"
             description="Optionally require a bearer token for MCP connections. Recommended if other users share this machine. Not needed for typical local-only use."
           >
+            {status.encryptionBackend === "basic_text" && (
+              <div className="flex items-start gap-2 p-3 rounded-[var(--radius-md)] bg-status-warning/10 border border-status-warning/20">
+                <AlertCircle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+                <p className="text-xs text-status-warning leading-relaxed">
+                  API key isn't protected by your system keychain — no secret store (GNOME Keyring,
+                  KWallet) is available. The key is encrypted with a fallback password built into
+                  Electron and offers limited protection.
+                </p>
+              </div>
+            )}
+            {status.encryptionBackend === "unavailable" && (
+              <div className="flex items-start gap-2 p-3 rounded-[var(--radius-md)] bg-status-warning/10 border border-status-warning/20">
+                <AlertCircle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+                <p className="text-xs text-status-warning leading-relaxed">
+                  Encryption isn't available on this system. Your API key is stored unprotected.
+                </p>
+              </div>
+            )}
             {status.apiKey ? (
               <div className="contents">
                 <div className="flex items-center gap-1.5 text-xs text-status-success">

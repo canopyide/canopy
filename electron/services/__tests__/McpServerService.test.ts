@@ -60,14 +60,22 @@ const electronMocks = vi.hoisted(() => {
   };
 });
 
-const storeState = vi.hoisted(() => ({
-  mcpServer: {
+interface McpServerStoreState {
+  enabled: boolean;
+  port: number;
+  apiKeyEncrypted?: string;
+  fullToolSurface: boolean;
+}
+
+const storeState = vi.hoisted(() => {
+  const initial: McpServerStoreState = {
     enabled: true,
     port: 0,
-    apiKey: "",
+    apiKeyEncrypted: undefined,
     fullToolSurface: false,
-  },
-}));
+  };
+  return { mcpServer: initial };
+});
 
 const storeMocks = vi.hoisted(() => ({
   get: vi.fn((key: string) => {
@@ -76,13 +84,31 @@ const storeMocks = vi.hoisted(() => ({
     }
     return storeState.mcpServer;
   }),
-  set: vi.fn((key: string, value: typeof storeState.mcpServer) => {
+  set: vi.fn((key: string, value: McpServerStoreState) => {
     if (key !== "mcpServer") {
       throw new Error(`Unexpected store key: ${key}`);
     }
     storeState.mcpServer = value;
   }),
 }));
+
+const safeStorageMock = vi.hoisted(() => ({
+  isEncryptionAvailable: vi.fn(() => true),
+  getSelectedStorageBackend: vi.fn(() => "gnome_libsecret"),
+  encryptString: vi.fn((s: string) => Buffer.from(s, "utf8")),
+  decryptString: vi.fn((b: Buffer) => b.toString("utf8")),
+}));
+
+function getStoredApiKey(): string {
+  const encoded = storeState.mcpServer.apiKeyEncrypted;
+  if (!encoded) return "";
+  return safeStorageMock.decryptString(Buffer.from(encoded, "base64"));
+}
+
+function setStoredApiKey(plaintext: string): void {
+  storeState.mcpServer.apiKeyEncrypted =
+    plaintext === "" ? undefined : safeStorageMock.encryptString(plaintext).toString("base64");
+}
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
@@ -99,6 +125,7 @@ vi.mock("node:os", async (importOriginal) => {
 vi.mock("electron", () => ({
   ipcMain: electronMocks.ipcMain,
   BrowserWindow: class BrowserWindow {},
+  safeStorage: safeStorageMock,
 }));
 
 vi.mock("../../store.js", () => ({
@@ -231,7 +258,7 @@ async function connectClient(
   port: number,
   headers?: Record<string, string>
 ): Promise<{ client: Client; transport: SSEClientTransport }> {
-  const apiKey = storeState.mcpServer.apiKey;
+  const apiKey = getStoredApiKey();
   const mergedHeaders: Record<string, string> = {
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     ...(headers ?? {}),
@@ -289,11 +316,19 @@ describe("McpServerService", () => {
     storeState.mcpServer = {
       enabled: true,
       port: 0,
-      apiKey: "",
+      apiKeyEncrypted: undefined,
       fullToolSurface: false,
     };
     storeMocks.get.mockClear();
     storeMocks.set.mockClear();
+    safeStorageMock.isEncryptionAvailable.mockClear();
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
+    safeStorageMock.getSelectedStorageBackend.mockClear();
+    safeStorageMock.getSelectedStorageBackend.mockReturnValue("gnome_libsecret");
+    safeStorageMock.encryptString.mockClear();
+    safeStorageMock.encryptString.mockImplementation((s: string) => Buffer.from(s, "utf8"));
+    safeStorageMock.decryptString.mockClear();
+    safeStorageMock.decryptString.mockImplementation((b: Buffer) => b.toString("utf8"));
     electronMocks.ipcMain.removeAllListeners();
     electronMocks.ipcMain.handle.mockClear();
     electronMocks.ipcMain.removeHandler.mockClear();
@@ -526,7 +561,7 @@ describe("McpServerService", () => {
     const initial = JSON.parse(await fs.readFile(discoveryFile, "utf8")) as {
       mcpServers: Record<string, { headers?: { Authorization: string } }>;
     };
-    const initialKey = storeState.mcpServer.apiKey;
+    const initialKey = getStoredApiKey();
     expect(initialKey).toMatch(/^daintree_[a-f0-9]+$/);
     expect(initial.mcpServers.daintree.headers).toEqual({
       Authorization: `Bearer ${initialKey}`,
@@ -551,16 +586,16 @@ describe("McpServerService", () => {
   it("auto-generates a bearer token on first start and persists it across restarts", async () => {
     const { window } = createMockWindow();
 
-    expect(storeState.mcpServer.apiKey).toBe("");
+    expect(getStoredApiKey()).toBe("");
 
     await service.start(window);
-    const generatedKey = storeState.mcpServer.apiKey;
+    const generatedKey = getStoredApiKey();
     expect(generatedKey).toMatch(/^daintree_[a-f0-9]+$/);
 
     await service.stop();
 
     await service.start(window);
-    expect(storeState.mcpServer.apiKey).toBe(generatedKey);
+    expect(getStoredApiKey()).toBe(generatedKey);
   });
 
   it("rejects requests with a non-loopback Origin header", async () => {
@@ -568,7 +603,7 @@ describe("McpServerService", () => {
     await service.start(window);
 
     const evil = await requestSse(service.currentPort!, {
-      Authorization: `Bearer ${storeState.mcpServer.apiKey}`,
+      Authorization: `Bearer ${getStoredApiKey()}`,
       Origin: "https://evil.example",
     });
     expect(evil.status).toBe(403);
@@ -580,7 +615,7 @@ describe("McpServerService", () => {
     await service.start(window);
 
     const port = service.currentPort!;
-    const auth = `Bearer ${storeState.mcpServer.apiKey}`;
+    const auth = `Bearer ${getStoredApiKey()}`;
 
     // Helper that aborts the SSE GET as soon as the response status is known.
     const peekStatus = async (extraHeaders: Record<string, string>): Promise<number> =>
@@ -612,7 +647,7 @@ describe("McpServerService", () => {
   });
 
   it("uses constant-time comparison that does not short-circuit on length mismatch", async () => {
-    storeState.mcpServer.apiKey = "secret";
+    setStoredApiKey("secret");
     const { window } = createMockWindow();
     await service.start(window);
 
@@ -685,7 +720,7 @@ describe("McpServerService", () => {
     const { window } = createMockWindow();
     await service.start(window);
 
-    const oldKey = storeState.mcpServer.apiKey;
+    const oldKey = getStoredApiKey();
     const newKey = await service.generateApiKey();
     expect(newKey).not.toBe(oldKey);
 
@@ -725,7 +760,7 @@ describe("McpServerService", () => {
     await service.start(window);
 
     const port = service.currentPort!;
-    const auth = `Bearer ${storeState.mcpServer.apiKey}`;
+    const auth = `Bearer ${getStoredApiKey()}`;
 
     const status = await new Promise<number>((resolve, reject) => {
       const req = http.request(
@@ -835,7 +870,7 @@ describe("McpServerService", () => {
   });
 
   it("rejects unauthorized requests and invalid host headers", async () => {
-    storeState.mcpServer.apiKey = "secret";
+    setStoredApiKey("secret");
     const { window } = createMockWindow();
 
     await service.start(window);
@@ -1036,5 +1071,62 @@ describe("McpServerService", () => {
 
     expect(result.isError).not.toBe(true);
     expect(result.content[0].text).toContain('"self": "[Circular]"');
+  });
+
+  it("decrypts the persisted bearer for status queries and Authorization checks", async () => {
+    setStoredApiKey("plaintext-bearer");
+
+    const status = service.getStatus();
+    expect(status.apiKey).toBe("plaintext-bearer");
+    expect(safeStorageMock.decryptString).toHaveBeenCalled();
+  });
+
+  it("reports encryptionBackend=keychain on macOS/Windows", async () => {
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
+    safeStorageMock.getSelectedStorageBackend.mockReturnValue("");
+    expect(service.getStatus().encryptionBackend).toBe("keychain");
+  });
+
+  it("reports encryptionBackend=basic_text on Linux fallback", async () => {
+    if (process.platform !== "linux") {
+      // The platform branch only triggers on Linux; skip outside that environment.
+      return;
+    }
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
+    safeStorageMock.getSelectedStorageBackend.mockReturnValue("basic_text");
+    expect(service.getStatus().encryptionBackend).toBe("basic_text");
+  });
+
+  it("reports encryptionBackend=unavailable when safeStorage is disabled", async () => {
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(false);
+    expect(service.getStatus().encryptionBackend).toBe("unavailable");
+  });
+
+  it("clears corrupted ciphertext and returns empty key on decrypt failure", async () => {
+    storeState.mcpServer.apiKeyEncrypted = "not-real-base64-ciphertext";
+    safeStorageMock.decryptString.mockImplementationOnce(() => {
+      throw new Error("decryption failed");
+    });
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const status = service.getStatus();
+      expect(status.apiKey).toBe("");
+      expect(storeState.mcpServer.apiKeyEncrypted).toBeUndefined();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to decrypt"),
+        expect.any(Error)
+      );
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
+  it("setApiKey('') drops apiKeyEncrypted from the store", async () => {
+    setStoredApiKey("existing");
+    expect(storeState.mcpServer.apiKeyEncrypted).toBeDefined();
+
+    await service.setApiKey("");
+    expect(storeState.mcpServer.apiKeyEncrypted).toBeUndefined();
   });
 });

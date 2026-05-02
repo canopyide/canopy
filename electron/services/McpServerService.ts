@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { ipcMain, safeStorage } from "electron";
 import type { WindowRegistry } from "../window/WindowRegistry.js";
 import http from "node:http";
 import net from "node:net";
@@ -220,6 +220,53 @@ export class McpServerService {
     return this.getConfig().enabled;
   }
 
+  /**
+   * Returns the OS-level encryption posture for the bearer token. `keychain`
+   * means a real OS secret store is in use (macOS Keychain, Windows DPAPI, or a
+   * Linux libsecret/KWallet daemon). `basic_text` means Linux fell back to a
+   * hardcoded-password backend — encrypted at rest in name only. `unavailable`
+   * means `safeStorage.isEncryptionAvailable()` returned false (extremely rare
+   * post-`app.ready` on supported platforms).
+   */
+  getEncryptionBackend(): "keychain" | "basic_text" | "unavailable" {
+    if (!safeStorage.isEncryptionAvailable()) return "unavailable";
+    if (process.platform === "linux") {
+      const backend = safeStorage.getSelectedStorageBackend();
+      if (backend === "basic_text") return "basic_text";
+    }
+    return "keychain";
+  }
+
+  /**
+   * Decrypt the persisted bearer token. Returns "" when no key is stored. On
+   * decryption failure (OS keychain reset, app bundle id change, cross-machine
+   * config copy), the corrupted ciphertext is cleared and "" is returned so
+   * the auto-keygen path in `start()` can recover on next run.
+   */
+  private getApiKey(): string {
+    const config = this.getConfig();
+    const encrypted = config.apiKeyEncrypted;
+    if (!encrypted) return "";
+    try {
+      return safeStorage.decryptString(Buffer.from(encrypted, "base64"));
+    } catch (err) {
+      console.warn("[MCP] Failed to decrypt API key, clearing corrupted ciphertext:", err);
+      const { apiKeyEncrypted: _drop, ...rest } = config;
+      store.set("mcpServer", rest);
+      return "";
+    }
+  }
+
+  /**
+   * Encrypt a bearer token for persistence. Returns `undefined` for an empty
+   * key so callers can drop the field from the store. Throws if `safeStorage`
+   * is unavailable (caller decides whether to surface or swallow).
+   */
+  private encryptApiKey(apiKey: string): string | undefined {
+    if (!apiKey) return undefined;
+    return safeStorage.encryptString(apiKey).toString("base64");
+  }
+
   async setEnabled(enabled: boolean): Promise<void> {
     store.set("mcpServer", { ...this.getConfig(), enabled });
     if (enabled && this.registry && !this.isRunning) {
@@ -239,7 +286,13 @@ export class McpServerService {
   }
 
   async setApiKey(apiKey: string): Promise<void> {
-    store.set("mcpServer", { ...this.getConfig(), apiKey });
+    const config = this.getConfig();
+    const { apiKeyEncrypted: _previous, ...rest } = config;
+    const encrypted = this.encryptApiKey(apiKey);
+    store.set(
+      "mcpServer",
+      encrypted === undefined ? rest : { ...rest, apiKeyEncrypted: encrypted }
+    );
     if (this.isRunning) {
       await this.writeDiscoveryFile();
     }
@@ -247,10 +300,7 @@ export class McpServerService {
 
   async generateApiKey(): Promise<string> {
     const key = `daintree_${randomUUID().replace(/-/g, "")}`;
-    store.set("mcpServer", { ...this.getConfig(), apiKey: key });
-    if (this.isRunning) {
-      await this.writeDiscoveryFile();
-    }
+    await this.setApiKey(key);
     return key;
   }
 
@@ -268,7 +318,7 @@ export class McpServerService {
 
     this.starting = true;
     try {
-      if (!this.getConfig().apiKey) {
+      if (!this.getApiKey()) {
         await this.generateApiKey();
       }
 
@@ -356,22 +406,24 @@ export class McpServerService {
     port: number | null;
     configuredPort: number | null;
     apiKey: string;
+    encryptionBackend: "keychain" | "basic_text" | "unavailable";
   } {
     const config = this.getConfig();
     return {
       enabled: config.enabled,
       port: this.port,
       configuredPort: config.port,
-      apiKey: config.apiKey,
+      apiKey: this.getApiKey(),
+      encryptionBackend: this.getEncryptionBackend(),
     };
   }
 
   getConfigSnippet(): string {
-    const config = this.getConfig();
+    const apiKey = this.getApiKey();
     const url = this.port ? `http://127.0.0.1:${this.port}/sse` : "http://127.0.0.1:<port>/sse";
     const entry: Record<string, unknown> = { type: "sse", url };
-    if (config.apiKey) {
-      entry.headers = { Authorization: `Bearer ${config.apiKey}` };
+    if (apiKey) {
+      entry.headers = { Authorization: `Bearer ${apiKey}` };
     }
     return JSON.stringify({ mcpServers: { [MCP_SERVER_KEY]: entry } }, null, 2);
   }
@@ -592,7 +644,7 @@ export class McpServerService {
   }
 
   private isAuthorized(req: http.IncomingMessage): boolean {
-    const apiKey = this.getConfig().apiKey;
+    const apiKey = this.getApiKey();
     if (!apiKey) return true;
     const auth = req.headers.authorization ?? "";
     const expected = `Bearer ${apiKey}`;
@@ -835,7 +887,7 @@ export class McpServerService {
         type: "sse",
         url: `http://127.0.0.1:${this.port}/sse`,
       };
-      const apiKey = this.getConfig().apiKey;
+      const apiKey = this.getApiKey();
       if (apiKey) {
         entry.headers = { Authorization: `Bearer ${apiKey}` };
       }
