@@ -1543,7 +1543,7 @@ describe("McpServerService", () => {
       }
     });
 
-    it("rejects callTool for actions outside the session tier with MethodNotFound", async () => {
+    it("rejects callTool for actions outside the session tier with TIER_NOT_PERMITTED", async () => {
       paneTokenTiers.set("token-wb", "workbench");
       const dispatchMock = vi.fn(
         (): ActionDispatchResult => ({ ok: true, result: "should-not-run" })
@@ -1559,9 +1559,12 @@ describe("McpServerService", () => {
       });
       transports.push(transport);
 
-      await expect(
-        client.callTool({ name: "git.commit", arguments: { message: "x" } })
-      ).rejects.toMatchObject({ code: -32601 });
+      const denied = (await client.callTool({
+        name: "git.commit",
+        arguments: { message: "x" },
+      })) as TextToolResult;
+      expect(denied.isError).toBe(true);
+      expect(denied.content[0]?.text).toContain("TIER_NOT_PERMITTED");
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
@@ -1586,9 +1589,12 @@ describe("McpServerService", () => {
       expect(ids).not.toContain("worktree.create");
       expect(ids).not.toContain("git.commit");
 
-      await expect(
-        client.callTool({ name: "worktree.create", arguments: {} })
-      ).rejects.toMatchObject({ code: -32601 });
+      const denied = (await client.callTool({
+        name: "worktree.create",
+        arguments: {},
+      })) as TextToolResult;
+      expect(denied.isError).toBe(true);
+      expect(denied.content[0]?.text).toContain("TIER_NOT_PERMITTED");
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
