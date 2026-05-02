@@ -1241,9 +1241,7 @@ describe("McpServerService", () => {
       transports.push(transport);
 
       // Query allowed
-      const allowed = getTextResult(
-        await client.callTool({ name: "actions.list", arguments: {} })
-      );
+      const allowed = getTextResult(await client.callTool({ name: "actions.list", arguments: {} }));
       expect(allowed.isError).not.toBe(true);
       expect(dispatchMock).toHaveBeenCalledWith(
         expect.objectContaining({ actionId: "actions.list" })
@@ -1322,9 +1320,7 @@ describe("McpServerService", () => {
     });
 
     it("audit records carry the resolved tier and unauthorized denials are classified", async () => {
-      const dispatchMock = vi.fn(
-        (): ActionDispatchResult => ({ ok: true, result: { ok: true } })
-      );
+      const dispatchMock = vi.fn((): ActionDispatchResult => ({ ok: true, result: { ok: true } }));
       const { window } = createMockWindow({
         getManifest: manifestForAllAllowlistedTools,
         dispatchAction: dispatchMock,
@@ -1379,9 +1375,7 @@ describe("McpServerService", () => {
     });
 
     it("Streamable HTTP transport stamps the resolved tier on the session", async () => {
-      const dispatchMock = vi.fn(
-        (): ActionDispatchResult => ({ ok: true, result: { ok: true } })
-      );
+      const dispatchMock = vi.fn((): ActionDispatchResult => ({ ok: true, result: { ok: true } }));
       const { window } = createMockWindow({
         getManifest: manifestForAllAllowlistedTools,
         dispatchAction: dispatchMock,
@@ -1401,9 +1395,7 @@ describe("McpServerService", () => {
     });
 
     it("Streamable HTTP transport with a pane token stamps workbench tier and gates dispatch", async () => {
-      const dispatchMock = vi.fn(
-        (): ActionDispatchResult => ({ ok: true, result: { ok: true } })
-      );
+      const dispatchMock = vi.fn((): ActionDispatchResult => ({ ok: true, result: { ok: true } }));
       const { window } = createMockWindow({
         getManifest: manifestForAllAllowlistedTools,
         dispatchAction: dispatchMock,
@@ -1422,9 +1414,7 @@ describe("McpServerService", () => {
       httpTransports.push(transport);
 
       // Query allowed
-      const allowed = getTextResult(
-        await client.callTool({ name: "actions.list", arguments: {} })
-      );
+      const allowed = getTextResult(await client.callTool({ name: "actions.list", arguments: {} }));
       expect(allowed.isError).not.toBe(true);
 
       // Destructive denied at dispatch time
