@@ -955,6 +955,86 @@ describe("useRepositoryStats", () => {
         expect(result.current.freshnessLevel).toBe("errored");
       });
     });
+
+    it("returns 'errored' when IPC returned ghError with stale=false and no lastUpdated", async () => {
+      // Reproduces the IPC handler path where the renderer-side stats payload
+      // carries `ghError` (no token / first launch / network blip) but the
+      // service has nothing to flag stale because there's no disk fallback.
+      // Without the `error && lastUpdated == null` guard in the memo, this
+      // would silently resolve to "fresh" and hide the failure entirely.
+      getCurrentMock.mockResolvedValue({ id: "p", path: "/repo" });
+      onSwitchMock.mockReturnValue(() => {});
+      getRepoStatsMock.mockResolvedValue({
+        commitCount: 0,
+        issueCount: null,
+        prCount: null,
+        loading: false,
+        stale: false,
+        ghError: "Network timeout",
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.error).toBe("Network timeout");
+        expect(result.current.lastUpdated).toBeNull();
+        expect(result.current.freshnessLevel).toBe("errored");
+      });
+    });
+
+    it("clears errored freshness on project switch before the new project's first poll resolves", async () => {
+      // Without the error reset in the onSwitch handler, the freshness memo
+      // would still see the previous project's `error` and report "errored"
+      // for the new project's empty pill until its first fetch returned.
+      let currentProject = { id: "a", path: "/repo/a" };
+      getCurrentMock.mockImplementation(async () => currentProject);
+      let switchHandler: (() => void) | undefined;
+      onSwitchMock.mockImplementation((cb: () => void) => {
+        switchHandler = cb;
+        return () => {};
+      });
+
+      // Project A returns a ghError on its single fetch — establishes errored.
+      getRepoStatsMock.mockResolvedValueOnce({
+        commitCount: 0,
+        issueCount: null,
+        prCount: null,
+        loading: false,
+        stale: false,
+        ghError: "Network timeout on project A",
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.freshnessLevel).toBe("errored");
+        expect(result.current.error).toBe("Network timeout on project A");
+      });
+
+      // Project B's fetch is held pending so we observe the post-switch
+      // pre-fetch state — error must already be cleared.
+      currentProject = { id: "b", path: "/repo/b" };
+      const slowB = createDeferred<RepositoryStats>();
+      getRepoStatsMock.mockImplementationOnce(() => slowB.promise);
+
+      act(() => {
+        switchHandler?.();
+      });
+
+      await waitFor(() => {
+        expect(result.current.error).toBeNull();
+        expect(result.current.stats).toBeNull();
+        expect(result.current.freshnessLevel).toBe("fresh");
+      });
+    });
+
+    it("respects FRESH_THRESHOLD_MS / AGING_THRESHOLD_MS as documented boundaries", async () => {
+      const { FRESH_THRESHOLD_MS: FRESH, AGING_THRESHOLD_MS: AGING } =
+        await import("../useRepositoryStats");
+      expect(FRESH).toBe(90_000);
+      expect(AGING).toBe(300_000);
+      expect(AGING).toBeGreaterThan(FRESH);
+    });
   });
 
   describe("rate limits", () => {

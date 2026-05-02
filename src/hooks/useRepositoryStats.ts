@@ -373,6 +373,11 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
       rateLimitResetAtRef.current = null;
       setRateLimitResetAt(null);
       setRateLimitKind(null);
+      // Reset error state too — without this the previous project's failure
+      // (e.g. ghError = "no token") would carry into the new project's
+      // freshness tier as `errored` until its first poll completes.
+      setError(null);
+      lastErrorRef.current = null;
 
       fetchStats().then(() => {
         if (mountedRef.current) {
@@ -586,9 +591,14 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     if (isStale) {
       return ghError ? "errored" : "stale-disk";
     }
-    // Renderer-thrown error with no stats applied (network blip during fetch
-    // catch path) — surfaces as errored so the icon swaps in.
-    if (error && stats === null) {
+    // Errored without a successful baseline: covers two paths the `isStale`
+    // branch above misses — the IPC handler returning `ghError` with `stale=
+    // false` (no-token / first-launch failure) and `fetchStats`'s catch block
+    // setting `error` after a throw before any `lastUpdated` was applied.
+    // Once a fresh poll lands (`lastUpdated` set) a transient subsequent
+    // error stays in age-driven freshness so the user keeps seeing valid
+    // recent data instead of a sudden alarm.
+    if (error && lastUpdated == null) {
       return "errored";
     }
     if (lastUpdated == null) {
@@ -602,8 +612,13 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     void tick;
     const age = Date.now() - lastUpdated;
     if (age < FRESH_THRESHOLD_MS) return "fresh";
+    if (age < AGING_THRESHOLD_MS) return "aging";
+    // Past the aging ceiling the in-session counts haven't been refreshed but
+    // no backend has flagged stale either — keep `aging` rather than minting
+    // a fifth tier. The threshold is exported as documentation of the
+    // "expected" freshness ceiling and is consumed by tests.
     return "aging";
-  }, [isStale, ghError, error, stats, lastUpdated, tick]);
+  }, [isStale, ghError, error, lastUpdated, tick]);
 
   return {
     stats,
