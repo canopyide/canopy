@@ -442,6 +442,7 @@ export async function getWorktreeChangesWithStats(
       const totalDeletions = changes.reduce((sum, change) => sum + (change.deletions ?? 0), 0);
       const latestFileMtime = mtimes.length > 0 ? Math.max(...mtimes) : 0;
 
+      const tracking = status.tracking && status.tracking.length > 0 ? status.tracking : null;
       const result: WorktreeChanges = {
         worktreeId: realpathSync(cwd),
         rootPath: gitRoot,
@@ -455,6 +456,9 @@ export async function getWorktreeChangesWithStats(
         lastUpdated: Date.now(),
         lastCommitMessage,
         lastCommitTimestampMs,
+        ahead: tracking ? status.ahead : undefined,
+        behind: tracking ? status.behind : undefined,
+        tracking,
       };
 
       GIT_WORKTREE_CHANGES_CACHE.set(cwd, result, cacheTTL);

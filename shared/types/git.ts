@@ -51,6 +51,12 @@ export interface WorktreeChanges {
   lastCommitMessage?: string;
   /** Last commit time (ms since epoch, committer date) */
   lastCommitTimestampMs?: number;
+  /** Commits ahead of upstream from `git status --porcelain -b` (undefined when no upstream). */
+  ahead?: number;
+  /** Commits behind upstream from `git status --porcelain -b` (undefined when no upstream). */
+  behind?: number;
+  /** Upstream branch name (e.g. "origin/main"); `null` when no upstream is configured. */
+  tracking?: string | null;
 }
 
 export interface StagingFileEntry {

@@ -307,17 +307,23 @@ describe("WorktreeMonitor", () => {
   });
 
   describe("ahead/behind upstream tracking", () => {
-    const CLEAN_CHANGES = {
+    const cleanChangesWith = (overrides: {
+      ahead?: number;
+      behind?: number;
+      tracking?: string | null;
+    }) => ({
       worktreeId: "/test/worktree",
       rootPath: "/test",
       changes: [],
       changedFileCount: 0,
       lastUpdated: Date.now(),
-    };
+      ...overrides,
+    });
 
     it("includes aheadCount and behindCount in snapshot when upstream is configured", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockResolvedValue("3\t1\n");
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "origin/main", ahead: 3, behind: 1 })
+      );
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
@@ -331,10 +337,7 @@ describe("WorktreeMonitor", () => {
     });
 
     it("leaves counts undefined when no upstream is configured", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
+      mockGetWorktreeChangesWithStats.mockResolvedValue(cleanChangesWith({ tracking: null }));
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
@@ -347,30 +350,25 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("leaves counts undefined on detached HEAD (no branch)", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockResolvedValue("0\t0\n");
-
-      const detachedWorktree: Worktree = {
-        ...TEST_WORKTREE,
-        branch: undefined,
-      };
+    it("never spawns rev-list — counts come from the existing git status call", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "origin/main", ahead: 2, behind: 0 })
+      );
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(detachedWorktree, TEST_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
       await monitor.start();
+      await monitor.updateGitStatus(false);
 
-      const snapshot = monitor.getSnapshot();
-      expect(snapshot.aheadCount).toBeUndefined();
-      expect(snapshot.behindCount).toBeUndefined();
       expect(mockGitRaw).not.toHaveBeenCalledWith(expect.arrayContaining(["rev-list"]));
 
       monitor.stop();
     });
 
     it("reports zero counts when branch is in sync with upstream", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockResolvedValue("0\t0\n");
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "origin/main", ahead: 0, behind: 0 })
+      );
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
@@ -383,213 +381,29 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("caches 'no upstream' verdict and skips repeat git spawns", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
+    it("clears stale counts when upstream is removed between polls", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValueOnce(
+        cleanChangesWith({ tracking: "origin/main", ahead: 2, behind: 1 })
       );
+      mockGetWorktreeChangesWithStats.mockResolvedValueOnce(cleanChangesWith({ tracking: null }));
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
       await monitor.start();
-
-      expect(mockGitRaw).toHaveBeenCalledTimes(1);
-      expect(mockGitRaw).toHaveBeenCalledWith(expect.arrayContaining(["rev-list"]));
-
-      const snapshot1 = monitor.getSnapshot();
-      expect(snapshot1.aheadCount).toBeUndefined();
-      expect(snapshot1.behindCount).toBeUndefined();
-
-      // Second poll without forceRefresh — should hit the cache, no new git spawn
-      await monitor.updateGitStatus(false);
-
-      expect(mockGitRaw).toHaveBeenCalledTimes(1);
-
-      const snapshot2 = monitor.getSnapshot();
-      expect(snapshot2.aheadCount).toBeUndefined();
-      expect(snapshot2.behindCount).toBeUndefined();
-
-      monitor.stop();
-    });
-
-    it("retries rev-list after 'no upstream' cache TTL expires", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      const callsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterStart).toBe(1);
-
-      // Pause polling so scheduled polls don't interfere with time advance
-      monitor.pausePolling();
-
-      // Advance just under TTL — cache still valid
-      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsWithinTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsWithinTTL).toBe(1);
-
-      // Advance past TTL — cache expired
-      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsAfterTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterTTL).toBe(2);
-
-      monitor.stop();
-    });
-
-    it("uses shorter TTL for 'upstream branch not found'", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: upstream branch 'origin/test-branch' not found")
-      );
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      const callsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterStart).toBe(1);
-
-      monitor.pausePolling();
-
-      // Within short TTL — cached
-      await vi.advanceTimersByTimeAsync(60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsWithinShortTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsWithinShortTTL).toBe(1);
-
-      // Past 2-min TTL — retries
-      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsAfterTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterTTL).toBe(2);
-
-      monitor.stop();
-    });
-
-    it("invalidates failure cache when upstream becomes available", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-
-      // First call: no upstream
-      mockGitRaw.mockRejectedValueOnce(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
-      // Second call (after TTL): upstream is now configured
-      mockGitRaw.mockResolvedValueOnce("2\t1\n");
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      const revListCallsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCallsAfterStart).toBe(1);
-      expect(monitor.getSnapshot().aheadCount).toBeUndefined();
-
-      // Pause polling so scheduled polls don't fire during time advance
-      monitor.pausePolling();
-      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
-
-      // Cache expired — refresh should call git and succeed
-      await monitor.refresh();
-
-      const revListCallsAfterRefresh = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCallsAfterRefresh).toBe(2);
       expect(monitor.getSnapshot().aheadCount).toBe(2);
       expect(monitor.getSnapshot().behindCount).toBe(1);
 
-      // Success should have invalidated cache — next call also hits git
-      mockGitRaw.mockResolvedValueOnce("3\t2\n");
       await monitor.refresh();
 
-      const revListCallsFinal = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCallsFinal).toBe(3);
-      expect(monitor.getSnapshot().aheadCount).toBe(3);
+      expect(monitor.getSnapshot().aheadCount).toBeUndefined();
+      expect(monitor.getSnapshot().behindCount).toBeUndefined();
 
       monitor.stop();
     });
 
-    it("does not cache unclassified git failures", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(new Error("fatal: ambiguous argument 'HEAD'"));
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      expect(mockGitRaw).toHaveBeenCalledTimes(1);
-
-      await monitor.refresh();
-      // Unclassified errors should retry every poll
-      expect(mockGitRaw).toHaveBeenCalledTimes(2);
-
-      monitor.stop();
-    });
-
-    it("force-refresh bypasses the negative cache", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      // Cache should be populated — first call from start
-      const callsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterStart).toBe(1);
-
-      monitor.pausePolling();
-
-      // Non-force call within TTL — cache hit
-      await monitor.updateGitStatus(false);
-      const callsAfterNonForce = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterNonForce).toBe(1);
-
-      // Force-refresh bypasses cache
-      await monitor.refresh();
-      const callsAfterForce = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterForce).toBe(2);
-
-      monitor.stop();
-    });
-
-    it("classifies ambiguous argument @{u} as no-upstream", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error(
-          "fatal: ambiguous argument '@{u}': unknown revision or path not in the working tree."
-        )
+    it("treats empty-string tracking as no upstream", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "", ahead: 0, behind: 0 })
       );
 
       const callbacks = makeCallbacks();
@@ -599,14 +413,6 @@ describe("WorktreeMonitor", () => {
       const snapshot = monitor.getSnapshot();
       expect(snapshot.aheadCount).toBeUndefined();
       expect(snapshot.behindCount).toBeUndefined();
-
-      // Should be cached, so second call doesn't spawn git
-      monitor.pausePolling();
-      await monitor.updateGitStatus(false);
-      const revListCalls = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCalls).toBe(1);
 
       monitor.stop();
     });

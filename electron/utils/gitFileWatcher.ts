@@ -88,6 +88,10 @@ export class GitFileWatcher {
       this.watchFile(headPath);
       this.watchFile(pathJoin(commonDir, "packed-refs"));
       this.watchFile(pathJoin(commonDir, "logs", "HEAD"));
+      // Watch .git/config so `git push -u` / `git branch --set-upstream-to`
+      // triggers a poll deterministically — without this the new tracking
+      // info from `git status` only surfaces on the next timed poll.
+      this.watchFile(pathJoin(commonDir, "config"));
 
       // For linked worktrees, the per-worktree reflog lives under gitDir, not commonDir.
       // Watch it so branch changes in linked worktrees trigger the onChange callback.
