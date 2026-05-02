@@ -32,6 +32,7 @@ import {
   MainWorktreeSummaryRows,
   type AggregateCounts,
 } from "./WorktreeCard/MainWorktreeSummaryRows";
+import { useInputReceiptKey } from "./WorktreeCard/hooks/useInputReceiptKey";
 import { useWorktreeActions } from "./WorktreeCard/hooks/useWorktreeActions";
 import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -214,6 +215,21 @@ export function WorktreeCard({
       }
     }
   }, [dominantAgentState]);
+
+  // Input-time receipt — fires the moment a row terminal is pinged (well
+  // before the polled `dominantAgentState` border-flash). Acknowledges the
+  // input itself, not its outcome, so any agent-state staleness is irrelevant.
+  // `pingSeq` is the authoritative trigger so back-to-back taps of the same
+  // terminal both produce a receipt (Zustand `Object.is` would suppress the
+  // re-render if we keyed off `pingedId` alone).
+  const pingedId = usePanelStore((state) => state.pingedId);
+  const pingSeq = usePanelStore((state) => state.pingSeq);
+  const worktreeTerminalIds = useMemo(
+    () => worktreeTerminals.map((t) => t.id),
+    [worktreeTerminals]
+  );
+  const receiptKey = useInputReceiptKey(pingedId, pingSeq, worktreeTerminalIds);
+
   const setFocused = usePanelStore((state) => state.setFocused);
   const pingTerminal = usePanelStore((state) => state.pingTerminal);
   const openDockTerminal = usePanelStore((state) => state.openDockTerminal);
@@ -587,6 +603,18 @@ export function WorktreeCard({
                 isActive && "mix-blend-screen dark:mix-blend-plus-lighter"
               )}
               aria-hidden="true"
+            />
+          )}
+          {receiptKey > 0 && (
+            <div
+              key={receiptKey}
+              className={cn(
+                "absolute inset-0 z-20 pointer-events-none animate-input-receipt-flash",
+                variant === "grid" && "rounded-lg"
+              )}
+              style={{ background: "color-mix(in oklch, currentColor 10%, transparent)" }}
+              aria-hidden="true"
+              data-testid="worktree-card-input-receipt"
             />
           )}
           {chipState !== null && (

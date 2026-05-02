@@ -1337,6 +1337,29 @@ body,
   will-change: opacity;
 }
 
+/* Card input-time receipt — opacity-only sibling overlay that fires the moment
+ * a row-level input lands (before any polled state change). 150ms ease-out
+ * matches the Tier 1 state-change tier so it reads as a precursor to the
+ * border-flash rather than a competing animation. The 10% peak is the MD3
+ * pressed state-layer level; using `currentColor` keeps it theme-neutral.
+ */
+@keyframes input-receipt-flash {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-input-receipt-flash {
+  animation: input-receipt-flash var(--duration-150) ease-out 1 both;
+  will-change: opacity;
+}
+
 /* Fleet broadcast bar refocus pulse — when the OS window regains focus and
  * fleet is armed, breathe the bar's amber stripe so the user can re-orient
  * to the active mode without searching for it. ~800ms total, opacity-only.
@@ -1514,6 +1537,16 @@ body,
     will-change: auto;
   }
 
+  /* Card input-time receipt — strip the keyframe and keep the overlay
+   * invisible. Unlike `border-flash`, this overlay has no static-state
+   * meaning, so `opacity: 0` (not `opacity: 1`) is the correct rest state.
+   */
+  .animate-input-receipt-flash {
+    animation: none;
+    opacity: 0;
+    will-change: auto;
+  }
+
   /* Label swap under reduced motion — animation removed entirely. The swap
    * still happens (the new value renders), it just snaps into place rather
    * than crossfading. WCAG 2.3.3: remove motion, don't just speed it up.
@@ -1635,6 +1668,12 @@ body[data-reduce-animations="true"] .fleet-exit-pulse-overlay {
 }
 
 body[data-reduce-animations="true"] .file-change-row-new::before {
+  animation: none;
+  opacity: 0;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] .animate-input-receipt-flash {
   animation: none;
   opacity: 0;
   will-change: auto;
