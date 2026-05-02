@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { HelpAssistantSettings } from "../../../../shared/types/ipc/api.js";
 
 const ipcMainMock = vi.hoisted(() => {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -16,7 +17,7 @@ const ipcMainMock = vi.hoisted(() => {
 vi.mock("electron", () => ({ ipcMain: ipcMainMock }));
 
 const storeMock = vi.hoisted(() => ({
-  get: vi.fn(() => undefined),
+  get: vi.fn<() => Partial<HelpAssistantSettings> | undefined>(() => undefined),
   set: vi.fn(),
 }));
 
@@ -135,5 +136,38 @@ describe("registerHelpAssistantHandlers", () => {
     await handler(null, { docSearch: "yes", daintreeControl: 1, skipPermissions: 0 });
 
     expect(storeMock.set).not.toHaveBeenCalled();
+  });
+
+  it("does not persist unknown fields the renderer wasn't supposed to send", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    // Cast through unknown to bypass the typed Partial<HelpAssistantSettings> shape
+    // — this exercises the runtime guard against unexpected keys.
+    await handler(null, {
+      docSearch: false,
+      unknownTool: true,
+    } as unknown as Partial<HelpAssistantSettings>);
+
+    expect(storeMock.set).toHaveBeenCalledExactlyOnceWith("helpAssistant.docSearch", false);
+  });
+
+  it("falls back to defaults when stored data is corrupted", async () => {
+    storeMock.get.mockReturnValue({
+      docSearch: "not-a-boolean" as unknown as boolean,
+      daintreeControl: 42 as unknown as boolean,
+      skipPermissions: null as unknown as boolean,
+      auditRetention: 365 as unknown as 7,
+    });
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
+
+    const result = await handler(null);
+    expect(result).toEqual({
+      docSearch: true,
+      daintreeControl: true,
+      skipPermissions: false,
+      auditRetention: 7,
+    });
   });
 });

@@ -64,19 +64,12 @@ export function DaintreeAssistantSettingsTab() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([
-      window.electron.helpAssistant.getSettings(),
-      window.electron.mcpServer.getStatus(),
-    ])
-      .then(([s, status]) => {
+
+    const settingsLoad = window.electron.helpAssistant
+      .getSettings()
+      .then((s) => {
         if (cancelled) return;
         setSettings(s);
-        setMcpStatus({
-          enabled: status.enabled,
-          port: status.port,
-          apiKey: status.apiKey,
-        });
-        setError(null);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -88,10 +81,35 @@ export function DaintreeAssistantSettingsTab() {
           priority: "low",
         });
         logError("Failed to load Daintree Assistant settings", err);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
+
+    const mcpLoad = window.electron.mcpServer
+      .getStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setMcpStatus({
+          enabled: status.enabled,
+          port: status.port,
+          apiKey: status.apiKey,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // MCP failure should not erase a successful settings load — keep the
+        // settings render path alive and surface a separate notice.
+        setMcpStatus(null);
+        notify({
+          type: "error",
+          title: "MCP status failed",
+          message: "Couldn't load the MCP server status. The connection panel may be out of date.",
+          priority: "low",
+        });
+        logError("Failed to load MCP status for assistant tab", err);
+      });
+
+    void Promise.all([settingsLoad, mcpLoad]).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
 
     return () => {
       cancelled = true;

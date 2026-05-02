@@ -259,6 +259,56 @@ describe("DaintreeAssistantSettingsTab", () => {
     });
   });
 
+  it("keeps settings visible when MCP status load fails", async () => {
+    installApi(
+      {
+        getSettings: vi.fn().mockResolvedValue({
+          docSearch: false,
+          daintreeControl: true,
+          skipPermissions: false,
+          auditRetention: 7,
+        }),
+      },
+      { getStatus: vi.fn().mockRejectedValue(new Error("ipc down")) }
+    );
+
+    const { container } = render(<DaintreeAssistantSettingsTab />);
+    await waitForContent(container, "Search documentation");
+
+    const docSearchToggle = screen.getByLabelText(
+      "Allow the assistant to search Daintree documentation"
+    );
+    expect(docSearchToggle.getAttribute("data-state")).toBe("unchecked");
+    expect(container.textContent).toContain("Couldn't load MCP status");
+  });
+
+  it("surfaces a setSettings IPC failure as an inline error banner", async () => {
+    installApi({
+      setSettings: vi.fn().mockRejectedValue(new Error("disk full")),
+    });
+
+    const { container } = render(<DaintreeAssistantSettingsTab />);
+    await waitForContent(container, "Search documentation");
+
+    fireEvent.click(screen.getByLabelText("Allow the assistant to search Daintree documentation"));
+
+    await waitForContent(container, "disk full");
+  });
+
+  it("does not flash 'Copied' when clipboard.writeText rejects", async () => {
+    writeText.mockRejectedValueOnce(new Error("permission denied"));
+
+    const { container } = render(<DaintreeAssistantSettingsTab />);
+    await waitForContent(container, "Copy MCP config");
+
+    fireEvent.click(screen.getByRole("button", { name: /copy mcp config/i }));
+
+    await waitFor(() => {
+      expect(window.electron.mcpServer.getConfigSnippet).toHaveBeenCalled();
+    });
+    expect(container.textContent).not.toContain("Copied");
+  });
+
   it("audit retention select offers off / 7 / 30 day options and persists changes", async () => {
     const { container } = render(<DaintreeAssistantSettingsTab />);
     await waitForContent(container, "Audit log retention");

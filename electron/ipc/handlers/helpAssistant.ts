@@ -13,18 +13,33 @@ const HELP_ASSISTANT_DEFAULTS: HelpAssistantSettings = {
   auditRetention: 7,
 };
 
-const VALID_AUDIT_RETENTIONS: ReadonlySet<HelpAssistantAuditRetention> = new Set([0, 7, 30]);
+const HELP_ASSISTANT_KEYS = [
+  "docSearch",
+  "daintreeControl",
+  "skipPermissions",
+  "auditRetention",
+] as const satisfies ReadonlyArray<keyof HelpAssistantSettings>;
+
+const KNOWN_KEYS: ReadonlySet<string> = new Set(HELP_ASSISTANT_KEYS);
 
 function isValidAuditRetention(value: unknown): value is HelpAssistantAuditRetention {
-  return (
-    (value === 0 || value === 7 || value === 30) &&
-    VALID_AUDIT_RETENTIONS.has(value as HelpAssistantAuditRetention)
-  );
+  return value === 0 || value === 7 || value === 30;
+}
+
+function sanitizeStored(stored: unknown): Partial<HelpAssistantSettings> {
+  if (!stored || typeof stored !== "object") return {};
+  const out: Partial<HelpAssistantSettings> = {};
+  const record = stored as Record<string, unknown>;
+  if (typeof record.docSearch === "boolean") out.docSearch = record.docSearch;
+  if (typeof record.daintreeControl === "boolean") out.daintreeControl = record.daintreeControl;
+  if (typeof record.skipPermissions === "boolean") out.skipPermissions = record.skipPermissions;
+  if (isValidAuditRetention(record.auditRetention)) out.auditRetention = record.auditRetention;
+  return out;
 }
 
 export function getHelpAssistantSettings(): HelpAssistantSettings {
-  const stored = store.get("helpAssistant") as Partial<HelpAssistantSettings> | undefined;
-  return { ...HELP_ASSISTANT_DEFAULTS, ...stored };
+  const stored = store.get("helpAssistant");
+  return { ...HELP_ASSISTANT_DEFAULTS, ...sanitizeStored(stored) };
 }
 
 export function registerHelpAssistantHandlers(): () => void {
@@ -36,6 +51,7 @@ export function registerHelpAssistantHandlers(): () => void {
     if (!patch || typeof patch !== "object") return;
     for (const [field, value] of Object.entries(patch)) {
       if (value === undefined) continue;
+      if (!KNOWN_KEYS.has(field)) continue;
       if (field === "auditRetention" && !isValidAuditRetention(value)) continue;
       if (
         (field === "docSearch" || field === "daintreeControl" || field === "skipPermissions") &&
