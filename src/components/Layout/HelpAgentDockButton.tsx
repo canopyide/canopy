@@ -22,13 +22,15 @@ export function HelpAgentDockButton() {
           size="sm"
           className={cn("px-2", isOpen && "bg-overlay-emphasis border-border-default")}
           onClick={handleClick}
-          aria-label="Help Agent"
+          aria-label="Daintree Assistant"
           aria-expanded={isOpen}
         >
           <DaintreeIcon className="w-3.5 h-3.5 text-daintree-text/50" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="top">{isOpen ? "Close help panel" : "Open help panel"}</TooltipContent>
+      <TooltipContent side="top">
+        {isOpen ? "Close Daintree Assistant" : "Open Daintree Assistant"}
+      </TooltipContent>
     </Tooltip>
   );
 }
