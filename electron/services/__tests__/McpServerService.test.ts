@@ -1081,7 +1081,7 @@ describe("McpServerService", () => {
         }
         return {
           ok: false,
-          error: { code: "BOOM", message: "exploded" },
+          error: { code: "EXECUTION_ERROR", message: "exploded" },
         };
       });
       const { window } = createMockWindow({
@@ -1114,7 +1114,7 @@ describe("McpServerService", () => {
       expect(byTool["worktree.delete"].result).toBe("confirmation-pending");
       expect(byTool["worktree.delete"].errorCode).toBe("CONFIRMATION_REQUIRED");
       expect(byTool["actions.list"].result).toBe("error");
-      expect(byTool["actions.list"].errorCode).toBe("BOOM");
+      expect(byTool["actions.list"].errorCode).toBe("EXECUTION_ERROR");
     });
 
     it("records dispatch throws even when no result envelope is returned", async () => {
@@ -1317,10 +1317,12 @@ describe("McpServerService", () => {
         const calls = storeMocks.set.mock.calls.filter((call) => call[0] === "mcpServer");
         expect(calls.length).toBeGreaterThanOrEqual(1);
         const last = calls[calls.length - 1];
-        expect((last[1] as { auditLog: Array<{ toolId: string }> }).auditLog).toHaveLength(1);
-        expect((last[1] as { auditLog: Array<{ toolId: string }> }).auditLog[0].toolId).toBe(
-          "actions.list"
-        );
+        expect(
+          (last[1] as unknown as { auditLog: Array<{ toolId: string }> }).auditLog
+        ).toHaveLength(1);
+        expect(
+          (last[1] as unknown as { auditLog: Array<{ toolId: string }> }).auditLog[0].toolId
+        ).toBe("actions.list");
       } finally {
         vi.useRealTimers();
       }
