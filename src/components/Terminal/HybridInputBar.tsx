@@ -686,26 +686,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     const collapseEditor = () => setIsExpanded(false);
 
-    // React Compiler memoizes the imperative handle; all deps are refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const focusEditor = () => {
       const view = editorViewRef.current;
       if (!view) return;
       view.focus();
       requestAnimationFrame(() => view.focus());
-    };
-
-    const focusEditorWithCursorAtEnd = () => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      requestAnimationFrame(() => {
-        if (editorViewRef.current !== view) return;
-        view.dispatch({
-          selection: EditorSelection.cursor(view.state.doc.length),
-          scrollIntoView: true,
-        });
-        view.focus();
-      });
     };
 
     const handleHistoryNavigation = (direction: "up" | "down"): boolean => {
@@ -885,7 +870,21 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     useImperativeHandle(
       ref,
-      () => ({ focus: focusEditor, focusWithCursorAtEnd: focusEditorWithCursorAtEnd }),
+      () => ({
+        focus: focusEditor,
+        focusWithCursorAtEnd: () => {
+          const view = editorViewRef.current;
+          if (!view) return;
+          requestAnimationFrame(() => {
+            if (editorViewRef.current !== view) return;
+            view.dispatch({
+              selection: EditorSelection.cursor(view.state.doc.length),
+              scrollIntoView: true,
+            });
+            view.focus();
+          });
+        },
+      }),
       [focusEditor]
     );
 
