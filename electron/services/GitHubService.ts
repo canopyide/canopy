@@ -1055,6 +1055,9 @@ async function probeBranchPRListChange(
         return "unknown";
       }
       if (!Array.isArray(body)) {
+        // Pathological 200 with a non-array body — drop the cached validator
+        // so the next cycle does not revalidate against an unparseable shape.
+        branchListETagCache.delete(cacheKey);
         return "unknown";
       }
       return body.length === 0 ? "unchanged" : "changed";
@@ -1138,32 +1141,49 @@ export async function batchCheckLinkedPRs(
     }
   }
 
-  // Discovery-path optimization: for each unresolved candidate (no
-  // knownPRNumber) with a branchName, run a conditional REST probe against
-  // the filtered pulls list. A 304 or empty 200 means "still no PR for this
-  // branch" — that candidate is dropped from the GraphQL batch entirely.
-  // 200-with-results and probe errors keep the candidate so GraphQL provides
-  // full enrichment (issue title, draft state, merge state, etc.).
+  // Discovery-path optimization: for each branch-only candidate (no
+  // knownPRNumber AND no issueNumber, branchName is the sole discovery
+  // signal), run a conditional REST probe against the filtered pulls list.
+  // A 304 or empty 200 means "still no PR for this branch" — that candidate
+  // is dropped from the GraphQL batch entirely. 200-with-results and probe
+  // errors keep the candidate so GraphQL provides full enrichment.
+  //
+  // Candidates with an issueNumber must always pass through to GraphQL: the
+  // PR may be linked via the issue's timeline (CrossReferencedEvent /
+  // ConnectedEvent) on a different head ref than the local branchName, in
+  // which case the branch-list filter would falsely report "no PR."
   let candidatesForGraphQL = candidates;
   if (token !== undefined && !allRevalidation) {
-    const probeable: Array<{ index: number; branchName: string }> = [];
+    const probeableIndicesByBranch = new Map<string, number[]>();
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i];
       const branch = c.branchName?.trim();
-      if (typeof c.knownPRNumber !== "number" && branch) {
-        probeable.push({ index: i, branchName: branch });
+      if (
+        typeof c.knownPRNumber !== "number" &&
+        typeof c.issueNumber !== "number" &&
+        branch
+      ) {
+        const existing = probeableIndicesByBranch.get(branch);
+        if (existing) {
+          existing.push(i);
+        } else {
+          probeableIndicesByBranch.set(branch, [i]);
+        }
       }
     }
-    if (probeable.length > 0) {
+    if (probeableIndicesByBranch.size > 0) {
+      const uniqueBranches = Array.from(probeableIndicesByBranch.keys());
       const probeResults = await Promise.all(
-        probeable.map((p) =>
-          probeBranchPRListChange(context.owner, context.repo, p.branchName, token)
+        uniqueBranches.map((branch) =>
+          probeBranchPRListChange(context.owner, context.repo, branch, token)
         )
       );
       const skip = new Set<number>();
-      for (let i = 0; i < probeable.length; i++) {
+      for (let i = 0; i < uniqueBranches.length; i++) {
         if (probeResults[i] === "unchanged") {
-          skip.add(probeable[i].index);
+          for (const idx of probeableIndicesByBranch.get(uniqueBranches[i])!) {
+            skip.add(idx);
+          }
         }
       }
       if (skip.size === candidates.length) {

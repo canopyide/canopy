@@ -679,6 +679,71 @@ describe("GitHubService adversarial", () => {
     ]);
   });
 
+  it("BATCHCHECK_DISCOVERY_BRANCH_EMPTY_DOES_NOT_SKIP_ISSUE_LOOKUP", async () => {
+    // Candidate with both issueNumber and branchName: a PR may be linked via
+    // the issue timeline on a different head ref. The branch-list probe must
+    // NOT skip GraphQL for this candidate even on an empty 200, otherwise
+    // cross-referenced PRs would never be discovered.
+    const fetchMock = vi.mocked(global.fetch);
+    shared.graphqlClient.mockResolvedValueOnce({
+      wt_0_branch: { pullRequests: { nodes: [] } },
+    });
+
+    const result = await github.batchCheckLinkedPRs("/repo", [
+      { worktreeId: "wt-1", issueNumber: 6541, branchName: "feature/x" },
+    ]);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(shared.graphqlClient).toHaveBeenCalledTimes(1);
+    expect(result.results.size).toBe(1);
+  });
+
+  it("BATCHCHECK_DISCOVERY_BRANCH_NONARRAY_200_CLEARS_ETAG", async () => {
+    // Pathological response: 200 + ETag + non-array body (e.g., an error
+    // object). The probe must not retain the ETag, so the next cycle issues
+    // an unconditional GET rather than revalidating against an unparseable
+    // shape.
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ etag: 'W/"poison"' }),
+      json: () => Promise.resolve({ message: "not an array" }),
+    } as unknown as Response);
+    shared.graphqlClient.mockResolvedValueOnce({
+      wt_0_branch: { pullRequests: { nodes: [] } },
+    });
+    await github.batchCheckLinkedPRs("/repo", [
+      { worktreeId: "wt-1", branchName: "feature/x" },
+    ]);
+
+    let capturedHeaders: Record<string, string> | undefined;
+    vi.mocked(global.fetch).mockImplementationOnce(async (_url, init) => {
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+      return createBranchListResponse(200, { etag: 'W/"fresh"', body: [] });
+    });
+    await github.batchCheckLinkedPRs("/repo", [
+      { worktreeId: "wt-1", branchName: "feature/x" },
+    ]);
+
+    expect(capturedHeaders?.["If-None-Match"]).toBeUndefined();
+  });
+
+  it("BATCHCHECK_DISCOVERY_DUPLICATE_BRANCHES_PROBED_ONCE", async () => {
+    // Two candidates with identical branchName must dedupe to a single REST
+    // probe — avoids wasteful concurrent requests for the same resource.
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      createBranchListResponse(200, { etag: 'W/"shared"', body: [] })
+    );
+
+    await github.batchCheckLinkedPRs("/repo", [
+      { worktreeId: "wt-1", branchName: "feature/shared" },
+      { worktreeId: "wt-2", branchName: "feature/shared" },
+    ]);
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("BATCHCHECK_DISCOVERY_BRANCH_ETAG_CLEARED_ON_TOKEN_ROTATION", async () => {
     // Cycle 1: seed branch-list ETag.
     vi.mocked(global.fetch).mockResolvedValueOnce(
