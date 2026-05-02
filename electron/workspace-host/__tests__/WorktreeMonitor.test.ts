@@ -792,6 +792,50 @@ describe("WorktreeMonitor", () => {
 
       monitor.stop();
     });
+
+    it("ensureWatcherState during recursive backoff preserves retry budget", async () => {
+      // Regression guard: ensureWatcherState() / focus rotation must not
+      // reset the recursive-retry counter while a retry is already pending.
+      // Otherwise an external workspace refresh during ENOSPC backoff grants
+      // the failing recursive arm a fresh 5-attempt budget on the same
+      // constrained kernel, hammering inotify.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Recursive failed, git-only fallback installed, retry timer pending.
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      // External refresh — must not reset the retry budget.
+      monitor.ensureWatcherState();
+
+      // Burn through the budget. With a preserved counter, only the
+      // remaining retries fire; reset would extend the loop.
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(30_000);
+      }
+
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      // One more interval — budget exhausted, no further retry.
+      const startsBeforeIdle = watcherStartCallCount;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(watcherStartCallCount).toBe(startsBeforeIdle);
+
+      monitor.stop();
+    });
   });
 
   describe("poll queue concurrency", () => {

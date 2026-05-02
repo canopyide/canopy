@@ -835,23 +835,35 @@ export class WorktreeMonitor {
     }
   }
 
-  private stopWatcher(): void {
+  /**
+   * Tear down the watcher. The recursive-retry budget (timer + counter) is
+   * separate from the watcher instance and survives benign rotations like
+   * focus changes, branch checkouts, and mode upgrades; only a true shutdown
+   * (`stop()`) or a feature disable (`gitWatchEnabled` flipped off via
+   * `ensureWatcherState`) should reset it.
+   */
+  private stopWatcher(resetRetryBudget: boolean = true): void {
     this.gitWatcher.clear();
     this.gitWatcherMode = "none";
     if (this.gitWatchDebounceTimer) {
       clearTimeout(this.gitWatchDebounceTimer);
       this.gitWatchDebounceTimer = null;
     }
-    if (this.watcherRetryTimer) {
-      clearTimeout(this.watcherRetryTimer);
-      this.watcherRetryTimer = null;
+    if (resetRetryBudget) {
+      if (this.watcherRetryTimer) {
+        clearTimeout(this.watcherRetryTimer);
+        this.watcherRetryTimer = null;
+      }
+      this.watcherRetryCount = 0;
     }
-    this.watcherRetryCount = 0;
     this.gitWatchRefreshPending = false;
   }
 
   private updateWatcher(): void {
-    this.stopWatcher();
+    // Rotation, not shutdown — keep the recursive retry budget intact so a
+    // user-triggered refresh or a branch checkout doesn't grant the failing
+    // recursive arm a fresh 5-attempt budget on the same constrained kernel.
+    this.stopWatcher(false);
     if (this._isRunning && this.gitWatchEnabled) {
       this.startWatcher();
     }
