@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import type { WindowRegistry } from "../window/WindowRegistry.js";
+import { getProjectViewManager } from "../window/windowRef.js";
 import http from "node:http";
 import net from "node:net";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
@@ -128,6 +129,8 @@ interface PendingRequest<T> {
   resolve: (value: T) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  webContentsId: number;
+  destroyedCleanup?: () => void;
 }
 
 interface McpSseSession {
@@ -559,11 +562,13 @@ export class McpServerService {
 
     for (const [id, pending] of this.pendingManifests) {
       clearTimeout(pending.timer);
+      pending.destroyedCleanup?.();
       pending.reject(new Error("MCP server stopped"));
       this.pendingManifests.delete(id);
     }
     for (const [id, pending] of this.pendingDispatches) {
       clearTimeout(pending.timer);
+      pending.destroyedCleanup?.();
       pending.reject(new Error("MCP server stopped"));
       this.pendingDispatches.delete(id);
     }
@@ -655,29 +660,43 @@ export class McpServerService {
 
   private setupIpcListeners(): void {
     const manifestHandler = (
-      _event: Electron.IpcMainEvent,
+      event: Electron.IpcMainEvent,
       payload: { requestId: string; manifest: unknown }
     ) => {
+      if (!payload || typeof payload.requestId !== "string") return;
       const pending = this.pendingManifests.get(payload.requestId);
-      if (pending) {
-        clearTimeout(pending.timer);
-        this.pendingManifests.delete(payload.requestId);
-        pending.resolve(
-          Array.isArray(payload.manifest) ? (payload.manifest as ActionManifestEntry[]) : []
+      if (!pending) return;
+      if (event.sender.id !== pending.webContentsId) {
+        console.warn(
+          `[MCP] Ignoring manifest response from unexpected sender ${event.sender.id} (expected ${pending.webContentsId}, requestId=${payload.requestId})`
         );
+        return;
       }
+      clearTimeout(pending.timer);
+      pending.destroyedCleanup?.();
+      this.pendingManifests.delete(payload.requestId);
+      pending.resolve(
+        Array.isArray(payload.manifest) ? (payload.manifest as ActionManifestEntry[]) : []
+      );
     };
 
     const dispatchHandler = (
-      _event: Electron.IpcMainEvent,
+      event: Electron.IpcMainEvent,
       payload: { requestId: string; result: ActionDispatchResult }
     ) => {
+      if (!payload || typeof payload.requestId !== "string") return;
       const pending = this.pendingDispatches.get(payload.requestId);
-      if (pending) {
-        clearTimeout(pending.timer);
-        this.pendingDispatches.delete(payload.requestId);
-        pending.resolve(payload.result);
+      if (!pending) return;
+      if (event.sender.id !== pending.webContentsId) {
+        console.warn(
+          `[MCP] Ignoring dispatch response from unexpected sender ${event.sender.id} (expected ${pending.webContentsId}, requestId=${payload.requestId})`
+        );
+        return;
       }
+      clearTimeout(pending.timer);
+      pending.destroyedCleanup?.();
+      this.pendingDispatches.delete(payload.requestId);
+      pending.resolve(payload.result);
     };
 
     ipcMain.on("mcp:get-manifest-response", manifestHandler);
@@ -693,23 +712,50 @@ export class McpServerService {
     return new Promise((resolve, reject) => {
       let webContents: Electron.WebContents;
       try {
-        webContents = this.getLiveWebContents();
+        webContents = this.getActiveProjectWebContents();
       } catch (err) {
         reject(this.normalizeError(err, "MCP renderer bridge unavailable"));
         return;
       }
 
       const requestId = randomUUID();
+      const webContentsId = webContents.id;
       const timer = setTimeout(() => {
+        const pending = this.pendingManifests.get(requestId);
+        pending?.destroyedCleanup?.();
         this.pendingManifests.delete(requestId);
         reject(new Error("Manifest request timed out"));
       }, 5000);
 
-      this.pendingManifests.set(requestId, { resolve, reject, timer });
+      const onDestroyed = () => {
+        const pending = this.pendingManifests.get(requestId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        this.pendingManifests.delete(requestId);
+        pending.reject(new Error("MCP renderer bridge destroyed"));
+      };
+      webContents.once("destroyed", onDestroyed);
+      const destroyedCleanup = () => {
+        try {
+          webContents.removeListener("destroyed", onDestroyed);
+        } catch {
+          // best-effort cleanup; webContents may already be gone
+        }
+      };
+
+      this.pendingManifests.set(requestId, {
+        resolve,
+        reject,
+        timer,
+        webContentsId,
+        destroyedCleanup,
+      });
+
       try {
         webContents.send("mcp:get-manifest-request", { requestId });
       } catch (err) {
         clearTimeout(timer);
+        destroyedCleanup();
         this.pendingManifests.delete(requestId);
         reject(this.normalizeError(err, "Failed to request action manifest"));
       }
@@ -724,19 +770,44 @@ export class McpServerService {
     return new Promise((resolve, reject) => {
       let webContents: Electron.WebContents;
       try {
-        webContents = this.getLiveWebContents();
+        webContents = this.getActiveProjectWebContents();
       } catch (err) {
         reject(this.normalizeError(err, "MCP renderer bridge unavailable"));
         return;
       }
 
       const requestId = randomUUID();
+      const webContentsId = webContents.id;
       const timer = setTimeout(() => {
+        const pending = this.pendingDispatches.get(requestId);
+        pending?.destroyedCleanup?.();
         this.pendingDispatches.delete(requestId);
         reject(new Error(`Action dispatch timed out: ${actionId}`));
       }, 30000);
 
-      this.pendingDispatches.set(requestId, { resolve, reject, timer });
+      const onDestroyed = () => {
+        const pending = this.pendingDispatches.get(requestId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        this.pendingDispatches.delete(requestId);
+        pending.reject(new Error("MCP renderer bridge destroyed"));
+      };
+      webContents.once("destroyed", onDestroyed);
+      const destroyedCleanup = () => {
+        try {
+          webContents.removeListener("destroyed", onDestroyed);
+        } catch {
+          // best-effort cleanup; webContents may already be gone
+        }
+      };
+
+      this.pendingDispatches.set(requestId, {
+        resolve,
+        reject,
+        timer,
+        webContentsId,
+        destroyedCleanup,
+      });
 
       try {
         webContents.send("mcp:dispatch-action-request", {
@@ -747,6 +818,7 @@ export class McpServerService {
         });
       } catch (err) {
         clearTimeout(timer);
+        destroyedCleanup();
         this.pendingDispatches.delete(requestId);
         reject(this.normalizeError(err, `Failed to dispatch action: ${actionId}`));
       }
@@ -974,23 +1046,21 @@ export class McpServerService {
     };
   }
 
-  private getLiveWebContents(): Electron.WebContents {
+  private getActiveProjectWebContents(): Electron.WebContents {
     if (this.registry) {
-      const primary = this.registry.getPrimary();
-      if (primary && !primary.browserWindow.isDestroyed()) {
-        const { webContents } = primary.browserWindow;
+      for (const ctx of this.registry.all()) {
+        if (ctx.browserWindow.isDestroyed()) continue;
+        const view = ctx.services.projectViewManager?.getActiveView();
+        const webContents = view?.webContents;
         if (webContents && !webContents.isDestroyed()) {
           return webContents;
         }
       }
-      for (const ctx of this.registry.all()) {
-        if (!ctx.browserWindow.isDestroyed()) {
-          const { webContents } = ctx.browserWindow;
-          if (webContents && !webContents.isDestroyed()) {
-            return webContents;
-          }
-        }
-      }
+    }
+
+    const fallback = getProjectViewManager()?.getActiveView()?.webContents;
+    if (fallback && !fallback.isDestroyed()) {
+      return fallback;
     }
 
     throw new Error("MCP renderer bridge unavailable");

@@ -155,9 +155,13 @@ function createManifestEntry(entry: {
   };
 }
 
+let nextWebContentsId = 100;
+
 function createMockWindow(options?: {
   getManifest?: () => ActionManifestEntry[];
   dispatchAction?: (payload: DispatchRequest) => ActionDispatchResult;
+  senderIdOverride?: number;
+  hostShellWebContentsId?: number;
 }) {
   const getManifest = options?.getManifest ?? (() => []);
   const dispatchAction =
@@ -167,7 +171,20 @@ function createMockWindow(options?: {
       result: "ok",
     }));
 
-  const webContents = {
+  const projectViewWcId = nextWebContentsId++;
+  const hostShellWcId = options?.hostShellWebContentsId ?? nextWebContentsId++;
+  const senderId = options?.senderIdOverride ?? projectViewWcId;
+  const destroyedListeners = new Set<() => void>();
+
+  const webContents: {
+    id: number;
+    isDestroyed: ReturnType<typeof vi.fn>;
+    send: ReturnType<typeof vi.fn>;
+    once: ReturnType<typeof vi.fn>;
+    removeListener: ReturnType<typeof vi.fn>;
+    triggerDestroyed: () => void;
+  } = {
+    id: projectViewWcId,
     isDestroyed: vi.fn(() => false),
     send: vi.fn(
       (channel: string, payload: { requestId: string; actionId?: string; args?: unknown }) => {
@@ -175,7 +192,7 @@ function createMockWindow(options?: {
           queueMicrotask(() => {
             electronMocks.ipcMain.emit(
               "mcp:get-manifest-response",
-              {},
+              { sender: { id: senderId } },
               {
                 requestId: payload.requestId,
                 manifest: getManifest(),
@@ -189,7 +206,7 @@ function createMockWindow(options?: {
           queueMicrotask(() => {
             electronMocks.ipcMain.emit(
               "mcp:dispatch-action-response",
-              {},
+              { sender: { id: senderId } },
               {
                 requestId: payload.requestId,
                 result: dispatchAction(payload as DispatchRequest),
@@ -199,20 +216,47 @@ function createMockWindow(options?: {
         }
       }
     ),
+    once: vi.fn((event: string, listener: () => void) => {
+      if (event === "destroyed") {
+        destroyedListeners.add(listener);
+      }
+    }),
+    removeListener: vi.fn((event: string, listener: () => void) => {
+      if (event === "destroyed") {
+        destroyedListeners.delete(listener);
+      }
+    }),
+    triggerDestroyed: () => {
+      const listeners = Array.from(destroyedListeners);
+      destroyedListeners.clear();
+      for (const listener of listeners) listener();
+    },
+  };
+
+  const hostShellWebContents = {
+    id: hostShellWcId,
+    isDestroyed: vi.fn(() => false),
+    send: vi.fn(),
+    once: vi.fn(),
+    removeListener: vi.fn(),
   };
 
   const browserWindow = {
     isDestroyed: vi.fn(() => false),
-    webContents,
+    webContents: hostShellWebContents,
+  };
+
+  const projectViewManager = {
+    getActiveView: vi.fn((): { webContents: typeof webContents } | null => ({ webContents })),
   };
 
   const windowContext = {
     windowId: 1,
-    webContentsId: 1,
+    webContentsId: hostShellWcId,
     browserWindow,
     projectPath: null,
     abortController: new AbortController(),
-    services: {},
+    services: { projectViewManager },
     cleanup: [],
   };
 
@@ -227,6 +271,8 @@ function createMockWindow(options?: {
   return {
     window: registry as never,
     webContents,
+    hostShellWebContents,
+    projectViewManager,
   };
 }
 
@@ -1420,5 +1466,108 @@ describe("McpServerService", () => {
 
     expect(result.isError).not.toBe(true);
     expect(result.content[0].text).toContain('"self": "[Circular]"');
+  });
+
+  it("routes IPC bounce to the active project view, not the host shell", async () => {
+    const { window, webContents, hostShellWebContents } = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "actions.list" as ActionId,
+          title: "List Actions",
+          description: "Read the action registry",
+          kind: "query",
+        }),
+      ],
+    });
+
+    await service.start(window);
+    const requestManifest = (
+      service as never as { requestManifest: () => Promise<ActionManifestEntry[]> }
+    ).requestManifest.bind(service);
+
+    await requestManifest();
+
+    expect(webContents.send).toHaveBeenCalledWith(
+      "mcp:get-manifest-request",
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
+    expect(hostShellWebContents.send).not.toHaveBeenCalled();
+  });
+
+  it("rejects IPC responses from a sender that did not originate the request", async () => {
+    const { window, webContents } = createMockWindow({
+      senderIdOverride: 99999, // simulate a response coming from the wrong webContents
+    });
+
+    await service.start(window);
+    const requestManifest = (
+      service as never as { requestManifest: () => Promise<ActionManifestEntry[]> }
+    ).requestManifest.bind(service);
+
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    try {
+      const promise = requestManifest();
+      // Attach the rejection assertion synchronously so the eventual reject
+      // is not flagged as an unhandled rejection when the timer fires below.
+      const assertion = expect(promise).rejects.toThrow("Manifest request timed out");
+      // Flush the queueMicrotask in send() so the wrong-sender response lands.
+      await Promise.resolve();
+      // Advance past the 5s manifest timeout.
+      await vi.advanceTimersByTimeAsync(5_001);
+      await assertion;
+      expect(webContents.send).toHaveBeenCalledTimes(1);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("unexpected sender 99999")
+      );
+    } finally {
+      vi.useRealTimers();
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
+  it("fails closed when no project view is active", async () => {
+    const { window, webContents, projectViewManager } = createMockWindow();
+    projectViewManager.getActiveView.mockReturnValue(null);
+
+    await service.start(window);
+    const requestManifest = (
+      service as never as { requestManifest: () => Promise<unknown> }
+    ).requestManifest.bind(service);
+    const dispatchAction = (
+      service as never as {
+        dispatchAction: (actionId: string, args: unknown, confirmed?: boolean) => Promise<unknown>;
+      }
+    ).dispatchAction.bind(service);
+
+    await expect(requestManifest()).rejects.toThrow("MCP renderer bridge unavailable");
+    await expect(dispatchAction("actions.list", {}, false)).rejects.toThrow(
+      "MCP renderer bridge unavailable"
+    );
+    expect(webContents.send).not.toHaveBeenCalled();
+  });
+
+  it("rejects pending requests when the target webContents is destroyed mid-flight", async () => {
+    const { window, webContents } = createMockWindow({
+      // Manifest mock won't fire — we simulate a destroy before the response arrives.
+      getManifest: () => {
+        throw new Error("should not be called");
+      },
+    });
+    // Override send to a no-op so the destroyed event has time to land.
+    webContents.send.mockImplementation(() => {});
+
+    await service.start(window);
+    const requestManifest = (
+      service as never as { requestManifest: () => Promise<unknown> }
+    ).requestManifest.bind(service);
+
+    const promise = requestManifest();
+
+    // Trigger the once("destroyed") listener that the service registered.
+    webContents.triggerDestroyed();
+
+    await expect(promise).rejects.toThrow("MCP renderer bridge destroyed");
   });
 });
