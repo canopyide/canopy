@@ -143,13 +143,7 @@ const makeWorktreeState = (path = WORKTREE_PATH): WorktreeState =>
   }) as unknown as WorktreeState;
 
 function findScrollContainer(): HTMLElement {
-  const row = screen.getByText("index.ts");
-  let el: HTMLElement | null = row;
-  while (el) {
-    if (el.classList.contains("overflow-y-auto")) return el;
-    el = el.parentElement;
-  }
-  throw new Error("scroll container not found");
+  return screen.getByTestId("review-hub-scroll-container");
 }
 
 describe("ReviewHub stale visual", () => {
@@ -252,6 +246,38 @@ describe("ReviewHub stale visual", () => {
       resolveRefresh(makeStatus());
       await Promise.resolve();
     });
+  });
+
+  it("clears surface-stale and aria-busy when the background refresh rejects", async () => {
+    render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+    await waitFor(() => screen.getByText("index.ts"));
+
+    let rejectRefresh!: (reason: unknown) => void;
+    getStagingStatusMock.mockReturnValue(
+      new Promise<StagingStatus>((_, reject) => {
+        rejectRefresh = reject;
+      })
+    );
+
+    await act(async () => {
+      capturedUpdateCallback!(makeWorktreeState());
+      await Promise.resolve();
+    });
+
+    expect(findScrollContainer().classList.contains("surface-stale")).toBe(true);
+
+    await act(async () => {
+      rejectRefresh(new Error("git fail"));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const scroll = findScrollContainer();
+      expect(scroll.classList.contains("surface-stale")).toBe(false);
+      expect(scroll.getAttribute("aria-busy")).toBeNull();
+    });
+
+    screen.getByText("index.ts");
   });
 
   it("clears surface-stale and aria-busy after the background refresh resolves", async () => {

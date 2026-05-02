@@ -762,6 +762,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
           {/* Content */}
           <div
             ref={scrollContainerRef}
+            data-testid="review-hub-scroll-container"
             className={cn(
               "flex-1 overflow-y-auto min-h-0",
               isBackgroundRefreshing && "surface-stale"
