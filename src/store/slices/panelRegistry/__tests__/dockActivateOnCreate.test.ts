@@ -19,7 +19,8 @@ const acknowledgeWaitingMock = vi.fn();
 const acknowledgeWorkingPulseMock = vi.fn();
 
 // Set up window.electron globally before any module imports
-(globalThis as any).window = {
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+(globalThis as typeof globalThis & { window?: typeof window }).window = {
   electron: {
     globalEnv: {
       get: vi.fn().mockResolvedValue({}),
@@ -42,7 +43,7 @@ const acknowledgeWorkingPulseMock = vi.fn();
       setSessionMuteUntil: vi.fn(),
     },
   },
-} as unknown as typeof globalThis.window;
+} as unknown as typeof window;
 
 vi.mock("@/clients", () => ({
   terminalClient: {
