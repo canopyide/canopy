@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, type ReactElement } from "react";
+import { memo, useCallback, useMemo, type ReactElement } from "react";
 import * as Checkbox from "@radix-ui/react-checkbox";
 import { CheckIcon, MinusIcon, Search } from "lucide-react";
 import { Kbd } from "@/components/ui/Kbd";
@@ -70,14 +70,9 @@ export function FleetPickerContent({
   // dialog used.
   useEscapeStack(query !== "", clearSearch);
 
-  const rowRefs = useRef<Map<string, HTMLLabelElement>>(new Map());
-  const setRowRef = useCallback(
-    (id: string) => (el: HTMLLabelElement | null) => {
-      if (el) rowRefs.current.set(id, el);
-      else rowRefs.current.delete(id);
-    },
-    []
-  );
+  // Row refs live in the hook so its keydown handler can move DOM focus on
+  // ArrowUp/Down (matches the listbox roving-tabindex pattern).
+  const setRowRef = picker.registerRow;
 
   const handleGroupHeaderToggle = useCallback(
     (group: PickerWorktreeGroup) => {

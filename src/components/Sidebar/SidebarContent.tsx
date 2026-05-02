@@ -344,7 +344,6 @@ interface SidebarContentProps {
 
 function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const overviewShortcut = useKeybindingDisplay("worktree.overview");
-  const armFocusedShortcut = useKeybindingDisplay("fleet.armFocused");
   const refreshShortcut = useKeybindingDisplay("worktree.refresh");
   const createWorktreeShortcut = useKeybindingDisplay("worktree.createDialog.open");
   const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus();
@@ -1075,7 +1074,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {createTooltipContent("Select terminals to arm", armFocusedShortcut)}
+                {createTooltipContent("Select terminals to arm")}
               </TooltipContent>
             </Tooltip>
             <Tooltip>

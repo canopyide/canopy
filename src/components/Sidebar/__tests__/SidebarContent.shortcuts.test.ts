@@ -16,8 +16,13 @@ describe("SidebarContent shortcut tooltips — issue #5843", () => {
       expect(source).toContain('useKeybindingDisplay("worktree.overview")');
     });
 
-    it("uses dynamic hook for fleet.armFocused", () => {
-      expect(source).toContain('useKeybindingDisplay("fleet.armFocused")');
+    it("does NOT consume fleet.armFocused for the Zap button (binding mismatch)", () => {
+      // The Zap button used to read `useKeybindingDisplay("fleet.armFocused")`
+      // and pass it to the tooltip. That shortcut binds the *toggle armed
+      // pane* action (Cmd+J), not "open the picker". After Phase 3 the Zap
+      // button opens FleetPickerPalette and the tooltip advertises no
+      // shortcut. Enforce that the stale hook call doesn't creep back.
+      expect(source).not.toContain('useKeybindingDisplay("fleet.armFocused")');
     });
 
     it("uses dynamic hook for worktree.refresh", () => {
@@ -45,10 +50,13 @@ describe("SidebarContent shortcut tooltips — issue #5843", () => {
       expect(source).toContain('createTooltipContent("Open worktrees overview", overviewShortcut)');
     });
 
-    it("uses createTooltipContent for Select terminals to arm tooltip", () => {
-      expect(source).toContain(
-        'createTooltipContent("Select terminals to arm", armFocusedShortcut)'
-      );
+    it("uses createTooltipContent for Select terminals to arm tooltip (no shortcut binding)", () => {
+      // The Zap button opens the FleetPickerPalette, which has no keybinding —
+      // so the tooltip must NOT advertise a shortcut. Earlier this rendered
+      // `armFocusedShortcut` (Cmd+J), which is the *toggle armed pane* binding,
+      // not "open the picker", and so misled users.
+      expect(source).toContain('createTooltipContent("Select terminals to arm")');
+      expect(source).not.toMatch(/createTooltipContent\("Select terminals to arm",/);
     });
 
     it("uses createTooltipContent for Refresh sidebar tooltip", () => {

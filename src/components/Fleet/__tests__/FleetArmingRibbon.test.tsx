@@ -889,6 +889,21 @@ describe("FleetArmingRibbon", () => {
       expect(screen.getByTestId("fleet-armed-list-add-panes").textContent).toContain("Add panes");
     });
 
+    it("hides `+ Add panes…` row when popover is in picker mode", async () => {
+      // Regression: the row belongs to the list view only. When the user
+      // swaps into picker mode, the row must not be rendered alongside
+      // the picker — that would duplicate affordance and confuse focus.
+      seed([makeAgent("t1"), makeAgent("t2"), makeAgent("t3")]);
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      render(<FleetArmingRibbon />);
+      fireEvent.click(screen.getByTestId("fleet-armed-count-chip"));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("fleet-armed-list-add-panes"));
+      });
+      expect(screen.queryByTestId("fleet-armed-list-add-panes")).toBeNull();
+      expect(screen.getByTestId("fleet-picker-add-root")).toBeTruthy();
+    });
+
     it("clicking `+ Add panes…` swaps popover to picker mode", async () => {
       seed([makeAgent("t1"), makeAgent("t2"), makeAgent("t3")]);
       useFleetArmingStore.getState().armIds(["t1", "t2"]);

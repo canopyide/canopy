@@ -242,4 +242,34 @@ describe("FleetPickerPalette", () => {
     await act(async () => {});
     expect(useFleetPickerSessionStore.getState().activeOwner).toBeNull();
   });
+
+  it("excludes ineligible terminals (e.g. trash, hasPty=false) from preselection", async () => {
+    // Cold-start preselects active-worktree eligibles. A trashed or
+    // pty-less terminal in the active worktree must NOT count even though
+    // it shares the worktreeId — otherwise the user would unwittingly
+    // arm an ineligible row that gets dropped at commit time.
+    seedTerminals([
+      makeTerminal("t1", { worktreeId: "wt-1" }),
+      makeTerminal("t2", { worktreeId: "wt-1", location: "trash" }),
+      makeTerminal("t3", { worktreeId: "wt-1", hasPty: false }),
+    ]);
+    renderPalette([makeWorktreeSnap("wt-1", "main")]);
+    await act(async () => {});
+    const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+    expect(confirm.textContent).toContain("Arm 1 selected");
+  });
+
+  it("renders empty state when there are no eligible terminals at all", async () => {
+    seedTerminals([
+      makeTerminal("t-trash", { location: "trash" }),
+      makeTerminal("t-nopty", { hasPty: false }),
+    ]);
+    renderPalette([makeWorktreeSnap("wt-1", "main")]);
+    await act(async () => {});
+    expect(screen.getByTestId("fleet-picker-cold-start-empty").textContent).toContain(
+      "No terminals available"
+    );
+    const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+  });
 });

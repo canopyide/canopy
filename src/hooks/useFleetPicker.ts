@@ -116,6 +116,14 @@ export interface UseFleetPickerResult {
   handleListKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => void;
   handleConfirm: () => void;
   clearSearch: () => void;
+  /**
+   * Stable callback-ref factory. Consumers attach `registerRow(id)` to each
+   * row's `ref` so the hook's keyboard handler can move DOM focus to match
+   * `focusedId` on ArrowUp/Down — required for the listbox roving-tabindex
+   * pattern to actually move the visible focus ring (otherwise focus is
+   * stuck on the previously-focused row while the highlight migrates).
+   */
+  registerRow: (id: string) => (el: HTMLLabelElement | null) => void;
 }
 
 /**
@@ -165,6 +173,7 @@ export function useFleetPicker(options: UseFleetPickerOptions): UseFleetPickerRe
   const deferredQuery = useDeferredValue(query);
   const rangeAnchorRef = useRef<string | null>(null);
   const currentRequestRef = useRef(0);
+  const rowRefs = useRef<Map<string, HTMLLabelElement>>(new Map());
 
   // Acquire/release the single-active-picker session as the consumer opens
   // and closes. We do this in a layout-effect-ish window via a normal effect
@@ -227,7 +236,14 @@ export function useFleetPicker(options: UseFleetPickerOptions): UseFleetPickerRe
   // and stores the issued id in `currentRequestRef`; responses whose issued
   // id no longer matches are dropped.
   useEffect(() => {
-    if (!isOpen || !acquired) return;
+    if (!isOpen || !acquired) {
+      // Invalidate any in-flight request when the picker closes. A fired-but-
+      // unresolved IPC promise would otherwise call `setSnippetMap` after
+      // close, leaking state into the (potentially still-mounted) component.
+      // Bumping the counter guarantees the late `.then()` sees a stale id.
+      currentRequestRef.current = ++nextSearchRequestId;
+      return;
+    }
     const trimmed = deferredQuery.trim();
     if (trimmed === "") {
       setSnippetMap(new Map());
@@ -430,7 +446,16 @@ export function useFleetPicker(options: UseFleetPickerOptions): UseFleetPickerRe
         const nextId = flatVisibleIds[nextIdx];
         if (!nextId) return;
         const moved = nextId !== focusedId;
-        if (moved) setFocusedId(nextId);
+        if (moved) {
+          setFocusedId(nextId);
+          // Move DOM focus to match logical focus — without this, the
+          // visible focus ring stays on the previously-focused row while
+          // `tabIndex={isFocused ? 0 : -1}` shifts the keyboard target.
+          // This is the matching half of the dialog's roving-tabindex
+          // pattern (lifted into the hook so the consumer doesn't need
+          // to wire focus management itself).
+          rowRefs.current.get(nextId)?.focus();
+        }
         if (e.shiftKey && moved && rangeAnchorRef.current !== null) {
           const anchorIdx = flatVisibleIds.indexOf(rangeAnchorRef.current);
           if (anchorIdx !== -1) {
@@ -493,6 +518,17 @@ export function useFleetPicker(options: UseFleetPickerOptions): UseFleetPickerRe
     onCommit(confirmedIds);
   }, [confirmedIds, onCommit]);
 
+  // Stable callback-ref factory — `registerRow(id)` returns the same callback
+  // identity for the same id, so memoized rows don't churn the ref Map on
+  // every render.
+  const registerRow = useCallback(
+    (id: string) => (el: HTMLLabelElement | null) => {
+      if (el) rowRefs.current.set(id, el);
+      else rowRefs.current.delete(id);
+    },
+    []
+  );
+
   return {
     acquired,
     query,
@@ -517,5 +553,6 @@ export function useFleetPicker(options: UseFleetPickerOptions): UseFleetPickerRe
     handleListKeyDown,
     handleConfirm,
     clearSearch,
+    registerRow,
   };
 }

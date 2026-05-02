@@ -211,6 +211,18 @@ describe("fleetArmingStore", () => {
       expect(s.armedIds.has("t3")).toBe(true);
       expect(s.lastArmedId).toBe("t3");
     });
+
+    it("preserves caller order when caller passes ids in non-panel order", () => {
+      // Locks the contract: addToFleet preserves the order the caller
+      // provides, NOT the panelIds order. This matters because the picker
+      // commits its `confirmedIds` (built from a Set seeded by user toggle
+      // order), so users see new entries appear in the order they checked
+      // them — not the order panels happen to live in the sidebar.
+      useFleetArmingStore.getState().addToFleet(["t4", "t1", "t3"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t4", "t1", "t3"]);
+      expect(s.lastArmedId).toBe("t3");
+    });
   });
 
   describe("armByState", () => {
