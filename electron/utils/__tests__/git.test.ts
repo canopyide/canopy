@@ -477,6 +477,167 @@ describe("getWorktreeChangesWithStats concurrent worktree isolation", () => {
   });
 });
 
+describe("getWorktreeChangesWithStats per-file diff cache", () => {
+  const emptyStatus = {
+    modified: [],
+    created: [],
+    deleted: [],
+    renamed: [],
+    staged: [],
+    conflicted: [],
+    not_added: [],
+  };
+
+  function setupRevparse(cwd: string, headOid: string) {
+    mockGit.revparse.mockImplementation((args: string[]) => {
+      if (Array.isArray(args) && args[0] === "HEAD") {
+        return Promise.resolve(`${headOid}\n`) as ReturnType<typeof mockGit.revparse>;
+      }
+      return Promise.resolve(`${cwd}\n`) as ReturnType<typeof mockGit.revparse>;
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (fs.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    mockGit.raw.mockResolvedValue("");
+  });
+
+  it("scopes the numstat diff to cache-miss paths via pathspec", async () => {
+    const cwd = "/per-file-cache-scope/" + Math.random();
+    setupRevparse(cwd, "head-oid-scope");
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      modified: ["src/a.ts"],
+    });
+    mockGit.diff.mockResolvedValue("4\t2\tsrc/a.ts");
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 1000, size: 50 });
+
+    await getWorktreeChangesWithStats(cwd, true);
+
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+    expect(mockGit.diff).toHaveBeenCalledWith([
+      "--no-ext-diff",
+      "--numstat",
+      "HEAD",
+      "--",
+      "src/a.ts",
+    ]);
+  });
+
+  it("skips git.diff when every tracked file hits the per-file cache", async () => {
+    const cwd = "/per-file-cache-allhit/" + Math.random();
+    setupRevparse(cwd, "head-oid-allhit");
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      modified: ["src/cached.ts"],
+    });
+    mockGit.diff.mockResolvedValue("9\t1\tsrc/cached.ts");
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 2000, size: 75 });
+
+    // First call populates the cache.
+    await getWorktreeChangesWithStats(cwd, true);
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+
+    // Second call with identical (HEAD, path, mtime, size) should hit cache.
+    mockGit.diff.mockClear();
+    const result = await getWorktreeChangesWithStats(cwd, true);
+
+    expect(mockGit.diff).not.toHaveBeenCalled();
+    expect(result.totalInsertions).toBe(9);
+    expect(result.totalDeletions).toBe(1);
+  });
+
+  it("only diffs cache-miss files when one of two changed", async () => {
+    const cwd = "/per-file-cache-mix/" + Math.random();
+    setupRevparse(cwd, "head-oid-mix");
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      modified: ["src/stable.ts", "src/dirty.ts"],
+    });
+    mockGit.diff.mockResolvedValue("3\t1\tsrc/stable.ts\n7\t2\tsrc/dirty.ts");
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 1500, size: 120 });
+
+    // Prime cache for both files.
+    await getWorktreeChangesWithStats(cwd, true);
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+
+    // dirty.ts gets a new mtime; stable.ts unchanged.
+    (fs.stat as ReturnType<typeof vi.fn>).mockImplementation(async (p: string) => {
+      if (p.endsWith("dirty.ts")) return { mtimeMs: 9999, size: 130 };
+      return { mtimeMs: 1500, size: 120 };
+    });
+    mockGit.diff.mockReset();
+    mockGit.diff.mockResolvedValue("8\t3\tsrc/dirty.ts");
+
+    const result = await getWorktreeChangesWithStats(cwd, true);
+
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+    expect(mockGit.diff).toHaveBeenCalledWith([
+      "--no-ext-diff",
+      "--numstat",
+      "HEAD",
+      "--",
+      "src/dirty.ts",
+    ]);
+    // stable.ts comes from cache (3/1); dirty.ts from fresh diff (8/3).
+    expect(result.totalInsertions).toBe(3 + 8);
+    expect(result.totalDeletions).toBe(1 + 3);
+  });
+
+  it("invalidates cache when HEAD OID changes", async () => {
+    const cwd = "/per-file-cache-headchange/" + Math.random();
+    setupRevparse(cwd, "head-oid-old");
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      modified: ["src/file.ts"],
+    });
+    mockGit.diff.mockResolvedValue("2\t0\tsrc/file.ts");
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 4000, size: 200 });
+
+    await getWorktreeChangesWithStats(cwd, true);
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+
+    // Same path/mtime/size but a fresh HEAD OID — must miss the cache.
+    setupRevparse(cwd, "head-oid-new");
+    mockGit.diff.mockReset();
+    mockGit.diff.mockResolvedValue("2\t0\tsrc/file.ts");
+
+    await getWorktreeChangesWithStats(cwd, true);
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+    expect(mockGit.diff).toHaveBeenCalledWith([
+      "--no-ext-diff",
+      "--numstat",
+      "HEAD",
+      "--",
+      "src/file.ts",
+    ]);
+  });
+
+  it("does not cache stats when the diff command fails", async () => {
+    const cwd = "/per-file-cache-difffail/" + Math.random();
+    setupRevparse(cwd, "head-oid-fail");
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      modified: ["src/flaky.ts"],
+    });
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 5000, size: 300 });
+    mockGit.diff.mockRejectedValueOnce(new Error("transient git failure"));
+
+    await getWorktreeChangesWithStats(cwd, true);
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+
+    // Next call must rerun the diff because the prior failure was not cached.
+    mockGit.diff.mockReset();
+    mockGit.diff.mockResolvedValue("6\t4\tsrc/flaky.ts");
+    const result = await getWorktreeChangesWithStats(cwd, true);
+
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+    expect(result.totalInsertions).toBe(6);
+    expect(result.totalDeletions).toBe(4);
+  });
+});
+
 describe("listCommits", () => {
   beforeEach(() => {
     vi.clearAllMocks();
