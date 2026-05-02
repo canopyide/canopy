@@ -13,6 +13,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
+
+const acknowledgeWaitingMock = vi.fn();
+const acknowledgeWorkingPulseMock = vi.fn();
 
 vi.mock("@/clients", () => ({
   terminalClient: {
@@ -64,17 +68,30 @@ vi.mock("../persistence", async () => {
 });
 
 beforeEach(() => {
-  (globalThis as { window?: unknown }).window = {
-    electron: {
-      globalEnv: {
-        get: vi.fn().mockResolvedValue({}),
-      },
-      notification: {
-        acknowledgeWaiting: vi.fn(),
-        acknowledgeWorkingPulse: vi.fn(),
-      },
+  acknowledgeWaitingMock.mockReset();
+  acknowledgeWorkingPulseMock.mockReset();
+  window.electron = {
+    globalEnv: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
     },
-  };
+    notification: {
+      updateBadge: vi.fn(),
+      getSettings: vi.fn().mockResolvedValue({}),
+      setSettings: vi.fn().mockResolvedValue(undefined),
+      playSound: vi.fn().mockResolvedValue(undefined),
+      playUiEvent: vi.fn().mockResolvedValue(undefined),
+      showNative: vi.fn(),
+      showWatchNotification: vi.fn(),
+      onShowToast: vi.fn(() => () => {}),
+      onWatchNavigate: vi.fn(() => () => {}),
+      syncWatchedPanels: vi.fn(),
+      acknowledgeData: vi.fn(),
+      acknowledgeWaiting: acknowledgeWaitingMock,
+      acknowledgeWorkingPulse: acknowledgeWorkingPulseMock,
+      setSessionMuteUntil: vi.fn(),
+    },
+  } as unknown as typeof window.electron;
 });
 
 const { usePanelStore } = await import("../../../panelStore");
@@ -257,19 +274,8 @@ describe("atomic dock activation on create (#6590)", () => {
   });
 
   it("calls wake() and acknowledgeWorkingPulse for an active dock agent", async () => {
-    const { terminalInstanceService } =
-      (await import("@/services/TerminalInstanceService")) as unknown as {
-        terminalInstanceService: { wake: ReturnType<typeof vi.fn> };
-      };
-    const acknowledgeWorkingPulse = (
-      globalThis as unknown as {
-        window: {
-          electron: { notification: { acknowledgeWorkingPulse: ReturnType<typeof vi.fn> } };
-        };
-      }
-    ).window.electron.notification.acknowledgeWorkingPulse;
-    terminalInstanceService.wake.mockReset();
-    acknowledgeWorkingPulse.mockReset();
+    const wake = vi.mocked(terminalInstanceService.wake);
+    wake.mockReset();
 
     const { addPanel } = usePanelStore.getState();
     const id = await addPanel({
@@ -285,22 +291,13 @@ describe("atomic dock activation on create (#6590)", () => {
       agentState: "working",
     });
     expect(id).toBe("wake-1");
-    expect(terminalInstanceService.wake).toHaveBeenCalledWith("wake-1");
-    expect(acknowledgeWorkingPulse).toHaveBeenCalledWith("wake-1");
+    expect(wake).toHaveBeenCalledWith("wake-1");
+    expect(acknowledgeWorkingPulseMock).toHaveBeenCalledWith("wake-1");
   });
 
   it("calls wake() and acknowledgeWaiting for a waiting active dock agent", async () => {
-    const { terminalInstanceService } =
-      (await import("@/services/TerminalInstanceService")) as unknown as {
-        terminalInstanceService: { wake: ReturnType<typeof vi.fn> };
-      };
-    const acknowledgeWaiting = (
-      globalThis as unknown as {
-        window: { electron: { notification: { acknowledgeWaiting: ReturnType<typeof vi.fn> } } };
-      }
-    ).window.electron.notification.acknowledgeWaiting;
-    terminalInstanceService.wake.mockReset();
-    acknowledgeWaiting.mockReset();
+    const wake = vi.mocked(terminalInstanceService.wake);
+    wake.mockReset();
 
     const { addPanel } = usePanelStore.getState();
     const id = await addPanel({
@@ -315,16 +312,13 @@ describe("atomic dock activation on create (#6590)", () => {
       agentState: "waiting",
     });
     expect(id).toBe("waiting-1");
-    expect(terminalInstanceService.wake).toHaveBeenCalledWith("waiting-1");
-    expect(acknowledgeWaiting).toHaveBeenCalledWith("waiting-1");
+    expect(wake).toHaveBeenCalledWith("waiting-1");
+    expect(acknowledgeWaitingMock).toHaveBeenCalledWith("waiting-1");
   });
 
   it("does not call wake() when activateDockOnCreate is omitted", async () => {
-    const { terminalInstanceService } =
-      (await import("@/services/TerminalInstanceService")) as unknown as {
-        terminalInstanceService: { wake: ReturnType<typeof vi.fn> };
-      };
-    terminalInstanceService.wake.mockReset();
+    const wake = vi.mocked(terminalInstanceService.wake);
+    wake.mockReset();
 
     const { addPanel } = usePanelStore.getState();
     await addPanel({
@@ -337,7 +331,7 @@ describe("atomic dock activation on create (#6590)", () => {
       bypassLimits: true,
       agentState: "working",
     });
-    expect(terminalInstanceService.wake).not.toHaveBeenCalled();
+    expect(wake).not.toHaveBeenCalled();
   });
 
   it("activates a non-PTY (browser) panel in the dock atomically", async () => {

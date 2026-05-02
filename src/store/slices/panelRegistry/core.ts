@@ -286,14 +286,15 @@ export const createCorePanelActions = (
           // set across a microtask boundary from the panel landing in
           // `dockTerminals`. See #6590.
           if (options.activateDockOnCreate && location === "dock") {
-            const prevFocusedId = (state as { focusedId?: string | null }).focusedId ?? null;
-            const focusActuallyChanged = id !== prevFocusedId;
+            // `previousFocusedId` is preserved by the panelStore.ts wrapper
+            // after registry.addPanel returns; here we only fold the dock
+            // activation into the same set() that commits the panel so the
+            // watchdog can't observe an intermediate state.
             return {
               panelsById: newById,
               panelIds: newIds,
               activeDockTerminalId: id,
               focusedId: id,
-              ...(focusActuallyChanged && { previousFocusedId: prevFocusedId }),
             };
           }
           return { panelsById: newById, panelIds: newIds };
@@ -508,14 +509,15 @@ export const createCorePanelActions = (
         // set across a microtask boundary from the panel landing in
         // `dockTerminals`. See #6590.
         if (options.activateDockOnCreate && location === "dock") {
-          const prevFocusedId = (state as { focusedId?: string | null }).focusedId ?? null;
-          const focusActuallyChanged = id !== prevFocusedId;
+          // `previousFocusedId` is preserved by the panelStore.ts wrapper
+          // after registry.addPanel returns; here we only fold the dock
+          // activation into the same set() that commits the panel so the
+          // watchdog can't observe an intermediate state.
           return {
             panelsById: newById,
             panelIds: newIds,
             activeDockTerminalId: id,
             focusedId: id,
-            ...(focusActuallyChanged && { previousFocusedId: prevFocusedId }),
           };
         }
         return { panelsById: newById, panelIds: newIds };
