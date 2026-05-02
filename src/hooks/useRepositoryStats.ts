@@ -366,28 +366,50 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
         if (!cached || cancelled || !mountedRef.current) return;
         if (cached.projectPath !== project.path) return;
 
+        // Seed toolbar counts from bootstrap stats so the pill renders cached
+        // counts immediately instead of an em-dash. The network poll will
+        // replace these with fresh data on its next tick.
+        if (cached.stats && lastUpdatedRef.current === null) {
+          const bootstrapStats: RepositoryStats = {
+            commitCount: 0,
+            issueCount: cached.stats.issueCount,
+            prCount: cached.stats.prCount,
+            loading: false,
+            stale: true,
+            lastUpdated: cached.stats.lastUpdated,
+          };
+          applyStatsResult(bootstrapStats, { projectPath: project.path });
+        }
+
         const issuesKey = buildCacheKey(project.path, "issue", "open", "created");
         const prsKey = buildCacheKey(project.path, "pr", "open", "created");
         // Don't downgrade a fresher entry — the broadcast push from the first
         // poll can land before this hydration resolves, and disk data is up
         // to 10 minutes old.
-        const existingIssues = getCache(issuesKey);
-        if (!existingIssues || existingIssues.timestamp < cached.lastUpdated) {
-          setCache(issuesKey, {
-            items: cached.issues.items,
-            endCursor: cached.issues.endCursor,
-            hasNextPage: cached.issues.hasNextPage,
-            timestamp: cached.lastUpdated,
-          });
+        // Only seed items when the payload has actual items — a stats-only
+        // payload (first-page cache expired but stats within bootstrap TTL)
+        // has empty arrays that must not overwrite the renderer items cache.
+        if (cached.issues.items.length > 0) {
+          const existingIssues = getCache(issuesKey);
+          if (!existingIssues || existingIssues.timestamp < cached.lastUpdated) {
+            setCache(issuesKey, {
+              items: cached.issues.items,
+              endCursor: cached.issues.endCursor,
+              hasNextPage: cached.issues.hasNextPage,
+              timestamp: cached.lastUpdated,
+            });
+          }
         }
-        const existingPRs = getCache(prsKey);
-        if (!existingPRs || existingPRs.timestamp < cached.lastUpdated) {
-          setCache(prsKey, {
-            items: cached.prs.items,
-            endCursor: cached.prs.endCursor,
-            hasNextPage: cached.prs.hasNextPage,
-            timestamp: cached.lastUpdated,
-          });
+        if (cached.prs.items.length > 0) {
+          const existingPRs = getCache(prsKey);
+          if (!existingPRs || existingPRs.timestamp < cached.lastUpdated) {
+            setCache(prsKey, {
+              items: cached.prs.items,
+              endCursor: cached.prs.endCursor,
+              hasNextPage: cached.prs.hasNextPage,
+              timestamp: cached.lastUpdated,
+            });
+          }
         }
       } catch {
         // Disk hydration is best-effort; the network poll fallback covers
@@ -397,7 +419,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyStatsResult]);
 
   // Subscribe to the combined repo-stats-and-first-page push from the main
   // process. Whenever a poll completes successfully, main broadcasts the

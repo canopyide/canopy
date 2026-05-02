@@ -637,6 +637,113 @@ describe("useRepositoryStats", () => {
       const issuesKey = buildCacheKey(project.path, "issue", "open", "created");
       expect(getCache(issuesKey)).toBeUndefined();
     });
+
+    it("seeds toolbar stats from cached bootstrap counts on cold start", async () => {
+      const project = { id: "p", path: "/repo/bootstrap-stats" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+      // Network poll never resolves — only the hydration effect writes stats.
+      getRepoStatsMock.mockImplementation(() => new Promise(() => {}));
+
+      const lastUpdated = Date.now() - 5_000;
+      getFirstPageCacheMock.mockResolvedValueOnce({
+        projectPath: project.path,
+        lastUpdated,
+        issues: { items: [], endCursor: null, hasNextPage: false },
+        prs: { items: [], endCursor: null, hasNextPage: false },
+        stats: { issueCount: 12, prCount: 7, lastUpdated },
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.stats?.issueCount).toBe(12);
+        expect(result.current.stats?.prCount).toBe(7);
+        expect(result.current.isStale).toBe(true);
+        expect(result.current.stats?.stale).toBe(true);
+        expect(result.current.lastUpdated).toBe(lastUpdated);
+      });
+    });
+
+    it("does not overwrite fresher network stats with bootstrap cache", async () => {
+      const project = { id: "p", path: "/repo/race" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+
+      const networkLastUpdated = Date.now();
+      // Network poll resolves BEFORE the disk hydration effect — simulates
+      // ultra-fast network beating the async IPC cache read.
+      getRepoStatsMock.mockResolvedValue({
+        commitCount: 42,
+        issueCount: 99,
+        prCount: 88,
+        loading: false,
+        stale: false,
+        lastUpdated: networkLastUpdated,
+      });
+
+      const cachedLastUpdated = networkLastUpdated - 60_000;
+      getFirstPageCacheMock.mockResolvedValueOnce({
+        projectPath: project.path,
+        lastUpdated: cachedLastUpdated,
+        issues: { items: [], endCursor: null, hasNextPage: false },
+        prs: { items: [], endCursor: null, hasNextPage: false },
+        stats: { issueCount: 1, prCount: 2, lastUpdated: cachedLastUpdated },
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(result.current.stats?.issueCount).toBe(99);
+      });
+
+      // Flush so the hydration effect settles.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Network data must not be overwritten by older cache data.
+      expect(result.current.stats?.issueCount).toBe(99);
+      expect(result.current.stats?.prCount).toBe(88);
+      expect(result.current.stats?.commitCount).toBe(42);
+      expect(result.current.isStale).toBe(false);
+      expect(result.current.lastUpdated).toBe(networkLastUpdated);
+    });
+
+    it("does not seed items cache from a stats-only payload", async () => {
+      const project = { id: "p", path: "/repo/stats-only" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+      getRepoStatsMock.mockImplementation(() => new Promise(() => {}));
+
+      const lastUpdated = Date.now() - 5_000;
+      // Stats-only: empty items arrays + valid stats (simulates first-page
+      // cache expired but stats still within 60-min bootstrap TTL).
+      getFirstPageCacheMock.mockResolvedValueOnce({
+        projectPath: project.path,
+        lastUpdated,
+        issues: { items: [], endCursor: null, hasNextPage: false },
+        prs: { items: [], endCursor: null, hasNextPage: false },
+        stats: { issueCount: 5, prCount: 3, lastUpdated },
+      });
+
+      renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(getFirstPageCacheMock).toHaveBeenCalled();
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const issuesKey = buildCacheKey(project.path, "issue", "open", "created");
+      const prsKey = buildCacheKey(project.path, "pr", "open", "created");
+      // Items cache must NOT be seeded from empty arrays.
+      expect(getCache(issuesKey)).toBeUndefined();
+      expect(getCache(prsKey)).toBeUndefined();
+    });
   });
 
   describe("rate limits", () => {
