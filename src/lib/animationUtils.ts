@@ -46,7 +46,8 @@ export const UI_PALETTE_EXIT_DURATION = DURATION_100;
 // root. These are wait times before a tooltip opens, not animation durations.
 /** UX anti-flicker gate: sub-400ms work should show nothing (Doherty threshold).
  *  Used by palette loading bar and stale-result dimming to prevent flashes on
- *  fast renders. Not an animation token — a perceptual floor. */
+ *  fast renders. Not an animation token — a perceptual floor.
+ *  Keep in sync with .palette-results-stale transition-delay in src/index.css. */
 export const UI_DOHERTY_THRESHOLD = 400;
 
 export const UI_TOOLTIP_DELAY_DURATION = 500;

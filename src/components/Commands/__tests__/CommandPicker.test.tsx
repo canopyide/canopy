@@ -8,6 +8,7 @@ let capturedProps: {
   onConfirm: () => void;
   onQueryChange: (q: string) => void;
   query: string;
+  renderItem?: (item: unknown, index: number, selected: boolean) => React.ReactNode;
 } | null = null;
 
 vi.mock("@/components/ui/SearchablePalette", () => ({
@@ -17,12 +18,14 @@ vi.mock("@/components/ui/SearchablePalette", () => ({
       onConfirm: () => void;
       onQueryChange: (q: string) => void;
       query: string;
+      renderItem?: (item: unknown, index: number, selected: boolean) => React.ReactNode;
     }) => {
       capturedProps = {
         isFiltering: props.isFiltering,
         onConfirm: props.onConfirm,
         onQueryChange: props.onQueryChange,
         query: props.query,
+        renderItem: props.renderItem,
       };
       return null;
     }
@@ -134,6 +137,41 @@ describe("CommandPicker confirm guard", () => {
       capturedProps!.onConfirm();
     });
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("does not call onSelect on row click while stale", () => {
+    const onSelect = vi.fn();
+    useDeferredValueSpy.setOverride("__STALE__");
+    renderPicker(onSelect);
+
+    act(() => {
+      capturedProps!.onQueryChange("git");
+    });
+    expect(capturedProps!.isFiltering).toBe(true);
+
+    // Simulate clicking a row — renderItem produces the button element
+    const element = capturedProps!.renderItem!(commands[0], 0, true) as React.ReactElement;
+    // Extract onClick from the rendered button
+    const button = (element as React.ReactElement<{ children: React.ReactNode }>).props
+      .children[1] as React.ReactElement<{ onClick: () => void }>;
+    act(() => {
+      button.props.onClick();
+    });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("calls onSelect on row click when not stale", () => {
+    const onSelect = vi.fn();
+    renderPicker(onSelect);
+
+    // Not stale — useDeferredValue passthrough
+    const element = capturedProps!.renderItem!(commands[0], 0, true) as React.ReactElement;
+    const button = (element as React.ReactElement<{ children: React.ReactNode }>).props
+      .children[1] as React.ReactElement<{ onClick: () => void }>;
+    act(() => {
+      button.props.onClick();
+    });
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it("calls onSelect when not stale and results are available", () => {

@@ -221,7 +221,10 @@ export function CommandPicker({
                   : "border-transparent text-daintree-text/70 hover:bg-overlay-subtle hover:text-daintree-text",
                 !cmd.enabled && "opacity-50 cursor-not-allowed"
               )}
-              onClick={() => cmd.enabled && onSelect(cmd)}
+              onClick={() => {
+                if (isStale) return;
+                if (cmd.enabled) onSelect(cmd);
+              }}
             >
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm text-daintree-text/90">/{cmd.id}</span>
