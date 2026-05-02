@@ -70,7 +70,6 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const storeTerminalIds = usePanelStore(useShallow((state) => state.panelIds));
   const getTabGroups = usePanelStore((state) => state.getTabGroups);
   const getTabGroupPanels = usePanelStore((state) => state.getTabGroupPanels);
-  const openDockTerminal = usePanelStore((state) => state.openDockTerminal);
   const currentProject = useProjectStore((s) => s.currentProject);
   const helpTerminalId = useHelpPanelStore((s) => s.terminalId);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
@@ -162,22 +161,24 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
 
   const handleAddTerminal = useCallback(
     async (agentId: string, source: ActionSource = "menu") => {
-      const result = await actionService.dispatch<{ terminalId: string | null }>(
+      // `activateDockOnCreate` folds the dock activation into the same `set()`
+      // that commits the new panel to the store. Without it, the watchdog
+      // effect in `DockPanelOffscreenContainer` can fire `closeDockTerminal()`
+      // in the render gap between the panel commit and a follow-up
+      // `openDockTerminal` call. See #6590.
+      await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
         {
           agentId,
           location: "dock",
           cwd,
           worktreeId: activeWorktreeId || undefined,
+          activateDockOnCreate: true,
         },
         { source }
       );
-
-      if (result.ok && result.result?.terminalId) {
-        openDockTerminal(result.result.terminalId);
-      }
     },
-    [activeWorktreeId, cwd, openDockTerminal]
+    [activeWorktreeId, cwd]
   );
 
   const trashedItems = Array.from(trashedTerminals.values())

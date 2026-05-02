@@ -41,6 +41,11 @@ export interface LaunchAgentOptions {
   presetId?: string | null;
   /** Bypass the availability gate and always attempt to spawn. */
   force?: boolean;
+  /**
+   * When `location === "dock"`, atomically activate the new panel as the open
+   * dock panel in the same `set()` that commits it. See #6590.
+   */
+  activateDockOnCreate?: boolean;
 }
 
 export interface UseAgentLauncherReturn {
@@ -197,6 +202,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               cwd,
               worktreeId: targetWorktreeId || undefined,
               location: launchOptions?.location,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
             });
             return terminalId;
           } catch (error) {
@@ -214,6 +220,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               cwd,
               worktreeId: targetWorktreeId || undefined,
               location: launchOptions?.location,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
             });
             return terminalId;
           } catch (error) {
@@ -374,6 +381,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               agentPresetId: preset?.id,
               agentPresetColor: preset?.color,
               env: presetEnv,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
             }
           : {
               kind: "terminal",
@@ -382,6 +390,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               worktreeId: targetWorktreeId || undefined,
               command,
               location: launchOptions?.location,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
             };
 
         // Soft launch gate: intercept when the CLI is not launchable (missing,
@@ -410,10 +419,25 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               isVisible: true,
               extensionState: presetEnv ? { presetEnv } : undefined,
             };
-            usePanelStore.setState((state) => ({
-              panelsById: { ...state.panelsById, [gateId]: gatePanel },
-              panelIds: [...state.panelIds, gateId],
-            }));
+            usePanelStore.setState((state) => {
+              const next: Partial<typeof state> = {
+                panelsById: { ...state.panelsById, [gateId]: gatePanel },
+                panelIds: [...state.panelIds, gateId],
+              };
+              // Atomic dock activation — same race fix as `addPanel`. The gate
+              // panel bypasses `addPanel`, so the activation must be folded
+              // into this `set()` directly. See #6590.
+              if (launchOptions?.activateDockOnCreate && launchOptions?.location === "dock") {
+                const prevFocusedId = state.focusedId ?? null;
+                const focusActuallyChanged = gateId !== prevFocusedId;
+                next.activeDockTerminalId = gateId;
+                next.focusedId = gateId;
+                if (focusActuallyChanged) {
+                  next.previousFocusedId = prevFocusedId;
+                }
+              }
+              return next;
+            });
             return gateId;
           }
         }

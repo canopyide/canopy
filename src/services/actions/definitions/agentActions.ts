@@ -24,9 +24,20 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       interactive: z.boolean().optional(),
       model: z.string().optional(),
       presetId: z.string().nullable().optional(),
+      activateDockOnCreate: z.boolean().optional(),
     }),
     run: async (args: unknown) => {
-      const { agentId, location, cwd, worktreeId, prompt, interactive, model, presetId } = args as {
+      const {
+        agentId,
+        location,
+        cwd,
+        worktreeId,
+        prompt,
+        interactive,
+        model,
+        presetId,
+        activateDockOnCreate,
+      } = args as {
         agentId: string;
         location?: "grid" | "dock";
         cwd?: string;
@@ -35,6 +46,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         interactive?: boolean;
         model?: string;
         presetId?: string | null;
+        activateDockOnCreate?: boolean;
       };
       const terminalId = await callbacks.onLaunchAgent(agentId, {
         location,
@@ -44,6 +56,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         interactive,
         modelId: model,
         presetId,
+        activateDockOnCreate,
       });
       return { terminalId };
     },

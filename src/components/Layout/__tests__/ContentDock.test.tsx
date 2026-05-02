@@ -55,4 +55,25 @@ describe("ContentDock regression test", () => {
     expect(content).not.toContain("ring-daintree-accent");
     expect(content).toMatch(/isOver\s*&&\s*[^]*?ring-border-default/);
   });
+
+  // Issue #6590 — handleAddTerminal must rely on the atomic dock activation
+  // flag instead of a follow-up openDockTerminal() call, otherwise the
+  // watchdog effect collapses the freshly created panel.
+  it("handleAddTerminal passes activateDockOnCreate and does not call openDockTerminal", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).toContain("activateDockOnCreate: true");
+    expect(content).not.toContain("openDockTerminal(result.result.terminalId)");
+    expect(content).not.toMatch(/openDockTerminal\(result\.result\?\.terminalId\)/);
+  });
+
+  // Issue #6590 — DockPanelOffscreenContainer.handleAddTabForPanel must use
+  // the atomic flag too. The same race that collapses dock-launched agents
+  // also collapses the just-created tab in a single-panel-to-tab-group flow.
+  it("DockPanelOffscreenContainer add-tab flow uses atomic dock activation", () => {
+    const content = readFileSync(resolve(__dirname, "../DockPanelOffscreenContainer.tsx"), "utf-8");
+
+    expect(content).toContain("activateDockOnCreate: true");
+    expect(content).not.toContain("openDockTerminal(newPanelId)");
+  });
 });

@@ -151,6 +151,11 @@ export const usePanelStore = create<PanelGridState>()(
       setLastCrashType: (crashType: CrashType | null) => set({ lastCrashType: crashType }),
 
       addPanel: async (options: AddPanelOptions) => {
+        // Capture the pre-create focus so we can restore previousFocusedId for the
+        // dock-activation path (#6590). The registry slice atomically advances
+        // focusedId to the new id when activateDockOnCreate is set, so by the
+        // time it returns, we've lost the pre-create focus from the store.
+        const focusedBeforeCreate = get().focusedId;
         const id = await registrySlice.addPanel(options);
         if (id === null) return null;
         // Skip the per-panel focus mutation while a hydration batch is collecting panels:
@@ -159,12 +164,23 @@ export const usePanelStore = create<PanelGridState>()(
         // focus also isn't meaningful during restore — focus is resolved elsewhere once
         // the active worktree is set.
         if ((!options.location || options.location === "grid") && !isHydrationBatchActive()) {
-          const previousFocusedId = get().focusedId;
-          if (previousFocusedId !== id) {
-            set({ focusedId: id, previousFocusedId });
+          if (focusedBeforeCreate !== id) {
+            set({ focusedId: id, previousFocusedId: focusedBeforeCreate });
           } else {
             set({ focusedId: id });
           }
+        } else if (
+          options.activateDockOnCreate &&
+          options.location === "dock" &&
+          !isHydrationBatchActive() &&
+          focusedBeforeCreate !== null &&
+          focusedBeforeCreate !== id
+        ) {
+          // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
+          // Updating in a follow-up set() is fine — previousFocusedId is metadata,
+          // not load-bearing for dock visibility (which the watchdog effect cares
+          // about and which is already covered by the registry's atomic commit).
+          set({ previousFocusedId: focusedBeforeCreate });
         }
         return id;
       },
