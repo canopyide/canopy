@@ -77,6 +77,11 @@ const prTooltipCache = new Cache<string, PRTooltipData>({ defaultTTL: 300000 });
 // Cleared on token rotation via clearGitHubCaches (ETags are token-scoped).
 const prETagCache = new Map<string, string>();
 
+// ETag cache for branch-to-PR list conditional probes used by the discovery
+// path. Key: `owner/repo@branchName`. Cleared atomically with `prETagCache`
+// in `clearGitHubCaches` because ETags are token-scoped.
+const branchListETagCache = new Map<string, string>();
+
 interface PRRequiredStatusEntry {
   ciStatus: GitHubPRCIStatus | undefined;
   ciSummary: GitHubPRCISummary | undefined;
@@ -988,6 +993,82 @@ async function probePRChange(
 }
 
 /**
+ * Conditional REST probe against `/repos/{owner}/{repo}/pulls?head=...&state=all`
+ * used by the discovery path to detect "still no PR for this branch" without
+ * paying the GraphQL cost. The `head` filter requires `{owner}:{branch}` —
+ * omitting the owner prefix silently bypasses the filter and returns the
+ * whole-repo list ETag. Returns:
+ *   - "unchanged" on 304, or 200 with an empty array (refreshes ETag)
+ *   - "changed"   on 200 with one or more PRs (refreshes ETag; caller falls
+ *     through to GraphQL for full enrichment)
+ *   - "unknown"   on any other outcome (network error, non-200/304 status,
+ *     malformed body) — caller treats as a cue to fall through to GraphQL
+ */
+async function probeBranchPRListChange(
+  owner: string,
+  repo: string,
+  branchName: string,
+  token: string
+): Promise<"changed" | "unchanged" | "unknown"> {
+  const cacheKey = `${owner}/${repo}@${branchName}`;
+  const cachedETag = branchListETagCache.get(cacheKey);
+  const headFilter = `${owner}:${encodeURIComponent(branchName)}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/pulls?head=${headFilter}&state=all`;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (cachedETag) {
+    headers["If-None-Match"] = cachedETag;
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
+    });
+
+    try {
+      gitHubRateLimitService.update(response.headers, response.status);
+    } catch {
+      // Rate-limit bookkeeping must never break the probe.
+    }
+
+    if (response.status === 304) {
+      return "unchanged";
+    }
+    if (response.status === 200) {
+      const etag = response.headers.get("etag");
+      if (etag) {
+        branchListETagCache.set(cacheKey, etag);
+      } else {
+        branchListETagCache.delete(cacheKey);
+      }
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        // Malformed body — drop the ETag we just stored (it cannot be trusted
+        // to revalidate against an unparseable response) and fall through.
+        branchListETagCache.delete(cacheKey);
+        return "unknown";
+      }
+      if (!Array.isArray(body)) {
+        // Pathological 200 with a non-array body — drop the cached validator
+        // so the next cycle does not revalidate against an unparseable shape.
+        branchListETagCache.delete(cacheKey);
+        return "unknown";
+      }
+      return body.length === 0 ? "unchanged" : "changed";
+    }
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
  * When every candidate has a `knownPRNumber` (the revalidation path), probe
  * each unique PR via REST conditional requests. If the entire batch is
  * unchanged, the caller can skip the GraphQL query — the dominant per-cycle
@@ -1060,13 +1141,74 @@ export async function batchCheckLinkedPRs(
     }
   }
 
+  // Discovery-path optimization: for each branch-only candidate (no
+  // knownPRNumber AND no issueNumber, branchName is the sole discovery
+  // signal), run a conditional REST probe against the filtered pulls list.
+  // A 304 or empty 200 means "still no PR for this branch" — that candidate
+  // is dropped from the GraphQL batch entirely. 200-with-results and probe
+  // errors keep the candidate so GraphQL provides full enrichment.
+  //
+  // Candidates with an issueNumber must always pass through to GraphQL: the
+  // PR may be linked via the issue's timeline (CrossReferencedEvent /
+  // ConnectedEvent) on a different head ref than the local branchName, in
+  // which case the branch-list filter would falsely report "no PR."
+  let candidatesForGraphQL = candidates;
+  if (token !== undefined && !allRevalidation) {
+    const probeableIndicesByBranch = new Map<string, number[]>();
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      const branch = c.branchName?.trim();
+      if (typeof c.knownPRNumber !== "number" && typeof c.issueNumber !== "number" && branch) {
+        const existing = probeableIndicesByBranch.get(branch);
+        if (existing) {
+          existing.push(i);
+        } else {
+          probeableIndicesByBranch.set(branch, [i]);
+        }
+      }
+    }
+    if (probeableIndicesByBranch.size > 0) {
+      const uniqueBranches = Array.from(probeableIndicesByBranch.keys());
+      const probeResults = await Promise.all(
+        uniqueBranches.map((branch) =>
+          probeBranchPRListChange(context.owner, context.repo, branch, token)
+        )
+      );
+      const skip = new Set<number>();
+      for (let i = 0; i < uniqueBranches.length; i++) {
+        if (probeResults[i] === "unchanged") {
+          for (const idx of probeableIndicesByBranch.get(uniqueBranches[i])!) {
+            skip.add(idx);
+          }
+        }
+      }
+      if (skip.size === candidates.length) {
+        return { results: new Map() };
+      }
+      if (skip.size > 0) {
+        candidatesForGraphQL = candidates.filter((_, idx) => !skip.has(idx));
+      }
+      // A probe may itself have observed a 403/429 and updated the rate-limit
+      // service. Re-check before falling through to GraphQL so we do not burn
+      // an attempt while a known pause is already in effect.
+      const postProbeBlock = gitHubRateLimitService.shouldBlockRequest();
+      if (postProbeBlock.blocked && postProbeBlock.reason && postProbeBlock.resumeAt) {
+        return {
+          results: new Map(),
+          error: rateLimitMessage(postProbeBlock.reason, postProbeBlock.resumeAt),
+          rateLimit: { kind: postProbeBlock.reason, resumeAt: postProbeBlock.resumeAt },
+        };
+      }
+    }
+  }
+
   try {
-    const query = buildBatchPRQuery(context.owner, context.repo, candidates);
+    const query = buildBatchPRQuery(context.owner, context.repo, candidatesForGraphQL);
     const response = (await client(query, {
       request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
     })) as Record<string, unknown>;
 
-    const results = parseBatchPRResponse(response, candidates);
+    const results = parseBatchPRResponse(response, candidatesForGraphQL);
     return { results };
   } catch (error) {
     if (isRepoNotFoundError(error)) {
@@ -1077,11 +1219,15 @@ export async function batchCheckLinkedPRs(
         (freshContext.owner !== context.owner || freshContext.repo !== context.repo)
       ) {
         try {
-          const retryQuery = buildBatchPRQuery(freshContext.owner, freshContext.repo, candidates);
+          const retryQuery = buildBatchPRQuery(
+            freshContext.owner,
+            freshContext.repo,
+            candidatesForGraphQL
+          );
           const retryResponse = (await client(retryQuery, {
             request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
           })) as Record<string, unknown>;
-          return { results: parseBatchPRResponse(retryResponse, candidates) };
+          return { results: parseBatchPRResponse(retryResponse, candidatesForGraphQL) };
         } catch (retryError) {
           return { results: new Map(), error: parseGitHubError(retryError), ...rateLimitMeta() };
         }
@@ -1361,6 +1507,7 @@ export function clearGitHubCaches(): void {
   issueTooltipCache.clear();
   prTooltipCache.clear();
   prETagCache.clear();
+  branchListETagCache.clear();
   prRequiredStatusCache.clear();
   // Token rotation invalidates persisted first-page data — a different
   // identity may have access to a different repo set.
