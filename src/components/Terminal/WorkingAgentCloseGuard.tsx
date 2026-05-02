@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { usePanelStore } from "@/store/panelStore";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export function WorkingAgentCloseGuard() {
-  const [pendingTerminalId, setPendingTerminalId] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -17,26 +17,38 @@ export function WorkingAgentCloseGuard() {
             ? (detail as any).terminalId
             : null;
         if (!id) return;
-        setPendingTerminalId(id);
+        setPendingIds((prev) => {
+          if (prev.includes(id)) return prev;
+          return [...prev, id];
+        });
       },
       { signal: controller.signal }
     );
     return () => controller.abort();
   }, []);
 
+  const currentId = pendingIds[0] ?? null;
+
+  const advance = useCallback(() => {
+    setPendingIds((prev) => prev.slice(1));
+  }, []);
+
+  const handleConfirm = useCallback(() => {
+    if (currentId) {
+      usePanelStore.getState().trashPanel(currentId);
+    }
+    advance();
+  }, [currentId, advance]);
+
   return (
     <ConfirmDialog
-      isOpen={pendingTerminalId !== null}
-      onClose={() => setPendingTerminalId(null)}
+      isOpen={currentId !== null}
+      onClose={advance}
       title="Stop this agent?"
       description="The agent is currently working. Closing this tab will stop it."
       confirmLabel="Stop and close"
       variant="destructive"
-      onConfirm={() => {
-        const id = pendingTerminalId;
-        setPendingTerminalId(null);
-        if (id) usePanelStore.getState().trashPanel(id);
-      }}
+      onConfirm={handleConfirm}
     />
   );
 }

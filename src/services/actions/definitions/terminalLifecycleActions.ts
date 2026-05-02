@@ -308,22 +308,7 @@ export function registerTerminalLifecycleActions(
           (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
         );
       });
-      const skipConfirmation = usePreferencesStore.getState().skipWorkingAgentCloseConfirmation;
-      if (skipConfirmation) {
-        idsToClose.forEach((id) => state.trashPanel(id));
-      } else {
-        idsToClose.forEach((id) => {
-          if (shouldConfirmClose(id)) {
-            window.dispatchEvent(
-              new CustomEvent("daintree:confirm-close-terminal", {
-                detail: { terminalId: id },
-              })
-            );
-          } else {
-            state.trashPanel(id);
-          }
-        });
-      }
+      idsToClose.forEach((id) => state.trashPanel(id));
     },
   }));
 
