@@ -26,9 +26,17 @@ export function registerTerminalLifecycleActions(
         terminalId ??
         state.focusedId ??
         state.panelIds.find((id) => state.panelsById[id]?.location !== "trash");
-      if (targetId) {
-        state.trashPanel(targetId);
+      if (!targetId) return;
+      // Match the per-tab/header X-button guards: prompt before closing a
+      // terminal whose agent is mid-task. The host listens via CustomEvent
+      // and renders the same ConfirmDialog the buttons render inline.
+      if (state.panelsById[targetId]?.agentState === "working") {
+        window.dispatchEvent(
+          new CustomEvent("daintree:close-confirm", { detail: { terminalId: targetId } })
+        );
+        return;
       }
+      state.trashPanel(targetId);
     },
   }));
 
