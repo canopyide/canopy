@@ -91,6 +91,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
   const [countScope, animate] = useAnimate<HTMLSpanElement>();
   const prefersReducedMotion = useReducedMotion();
   const didMountRef = useRef(false);
+  const prevCountRef = useRef(changedFileCount);
   const lastBumpTimeRef = useRef(0);
 
   useEffect(() => {
@@ -98,8 +99,16 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
       didMountRef.current = true;
       return;
     }
+    if (changedFileCount === prevCountRef.current) return;
+    prevCountRef.current = changedFileCount;
+
     if (prefersReducedMotion) return;
-    if (Date.now() - lastBumpTimeRef.current < DURATION_200) return;
+    if (countScope.current == null) return;
+    if (
+      document.body.dataset.performanceMode === "true" ||
+      Date.now() - lastBumpTimeRef.current < DURATION_200
+    )
+      return;
 
     lastBumpTimeRef.current = Date.now();
     animate(

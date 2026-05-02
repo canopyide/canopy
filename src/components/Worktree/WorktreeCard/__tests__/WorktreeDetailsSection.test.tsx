@@ -56,7 +56,7 @@ const baseWorktree: WorktreeState = {
   branch: "feature/test",
   isCurrent: false,
   isMainWorktree: false,
-  worktreeChanges: { changedFileCount: 3, insertions: 5, deletions: 2 },
+  worktreeChanges: { changedFileCount: 3, insertions: 5, deletions: 2, changes: [], rootPath: "" },
   lastActivityTimestamp: null,
 };
 
@@ -87,6 +87,11 @@ describe("WorktreeDetailsSection count pill bump", () => {
   beforeEach(() => {
     mockAnimate.mockClear();
     mockReducedMotion = false;
+    delete document.body.dataset.performanceMode;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders file count without calling animate on initial mount", () => {
@@ -100,7 +105,12 @@ describe("WorktreeDetailsSection count pill bump", () => {
 
     const updated = {
       ...baseWorktree,
-      worktreeChanges: { changedFileCount: 5, insertions: 10, deletions: 3 },
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 5,
+        insertions: 10,
+        deletions: 3,
+      },
     };
 
     rerender(
@@ -118,15 +128,30 @@ describe("WorktreeDetailsSection count pill bump", () => {
 
     const first = {
       ...baseWorktree,
-      worktreeChanges: { changedFileCount: 5, insertions: 10, deletions: 3 },
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 5,
+        insertions: 10,
+        deletions: 3,
+      },
     };
     const second = {
       ...baseWorktree,
-      worktreeChanges: { changedFileCount: 7, insertions: 12, deletions: 5 },
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 7,
+        insertions: 12,
+        deletions: 5,
+      },
     };
     const third = {
       ...baseWorktree,
-      worktreeChanges: { changedFileCount: 9, insertions: 15, deletions: 8 },
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 9,
+        insertions: 15,
+        deletions: 8,
+      },
     };
 
     rerender(
@@ -149,37 +174,50 @@ describe("WorktreeDetailsSection count pill bump", () => {
     expect(screen.getByText(/9 files/)).toBeDefined();
   });
 
-  it("re-arms bump after throttle window expires", async () => {
+  it("re-arms bump after throttle window expires", () => {
     vi.useFakeTimers();
-    const { rerender } = renderSection();
+    try {
+      const { rerender } = renderSection();
 
-    const first = {
-      ...baseWorktree,
-      worktreeChanges: { changedFileCount: 5, insertions: 10, deletions: 3 },
-    };
+      const first = {
+        ...baseWorktree,
+        worktreeChanges: {
+          ...baseWorktree.worktreeChanges,
+          changedFileCount: 5,
+          insertions: 10,
+          deletions: 3,
+        },
+      };
 
-    rerender(
-      <TooltipProvider>
-        <WorktreeDetailsSection {...baseProps} worktree={first} />
-      </TooltipProvider>
-    );
-    expect(mockAnimate).toHaveBeenCalledTimes(1);
+      rerender(
+        <TooltipProvider>
+          <WorktreeDetailsSection {...baseProps} worktree={first} />
+        </TooltipProvider>
+      );
+      expect(mockAnimate).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(250);
+      vi.advanceTimersByTime(250);
 
-    const second = {
-      ...baseWorktree,
-      worktreeChanges: { changedFileCount: 7, insertions: 12, deletions: 5 },
-    };
+      const second = {
+        ...baseWorktree,
+        worktreeChanges: {
+          ...baseWorktree.worktreeChanges,
+          changedFileCount: 7,
+          insertions: 12,
+          deletions: 5,
+        },
+      };
 
-    rerender(
-      <TooltipProvider>
-        <WorktreeDetailsSection {...baseProps} worktree={second} />
-      </TooltipProvider>
-    );
+      rerender(
+        <TooltipProvider>
+          <WorktreeDetailsSection {...baseProps} worktree={second} />
+        </TooltipProvider>
+      );
 
-    expect(mockAnimate).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
+      expect(mockAnimate).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("skips animation when reduced motion is preferred", () => {
@@ -188,7 +226,12 @@ describe("WorktreeDetailsSection count pill bump", () => {
 
     const updated = {
       ...baseWorktree,
-      worktreeChanges: { changedFileCount: 5, insertions: 10, deletions: 3 },
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 5,
+        insertions: 10,
+        deletions: 3,
+      },
     };
 
     rerender(
@@ -201,13 +244,32 @@ describe("WorktreeDetailsSection count pill bump", () => {
     expect(screen.getByText(/5 files/)).toBeDefined();
   });
 
+  it("does not bump when reduced motion toggles off without a count change", () => {
+    mockReducedMotion = true;
+    const { rerender } = renderSection();
+
+    mockReducedMotion = false;
+    rerender(
+      <TooltipProvider>
+        <WorktreeDetailsSection {...baseProps} />
+      </TooltipProvider>
+    );
+
+    expect(mockAnimate).not.toHaveBeenCalled();
+  });
+
   it("keeps the count span DOM node stable across changes", () => {
     const { rerender } = renderSection();
     const firstNode = screen.getByText(/3 files/);
 
     const updated = {
       ...baseWorktree,
-      worktreeChanges: { changedFileCount: 5, insertions: 10, deletions: 3 },
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 5,
+        insertions: 10,
+        deletions: 3,
+      },
     };
 
     rerender(
@@ -231,5 +293,73 @@ describe("WorktreeDetailsSection count pill bump", () => {
     );
 
     expect(mockAnimate).not.toHaveBeenCalled();
+  });
+
+  it("does not animate when expanded (count span not rendered)", () => {
+    const { rerender } = renderSection({ isExpanded: false });
+
+    const updated = {
+      ...baseWorktree,
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 5,
+        insertions: 10,
+        deletions: 3,
+      },
+    };
+
+    rerender(
+      <TooltipProvider>
+        <WorktreeDetailsSection {...baseProps} isExpanded={true} worktree={updated} />
+      </TooltipProvider>
+    );
+
+    expect(mockAnimate).not.toHaveBeenCalled();
+  });
+
+  it("does not animate when count span not rendered, then allows bump after collapse", () => {
+    const { rerender } = renderSection({ isExpanded: true });
+
+    const collapsed = {
+      ...baseWorktree,
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 5,
+        insertions: 10,
+        deletions: 3,
+      },
+    };
+
+    rerender(
+      <TooltipProvider>
+        <WorktreeDetailsSection {...baseProps} isExpanded={false} worktree={collapsed} />
+      </TooltipProvider>
+    );
+
+    expect(mockAnimate).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips animation in performance mode", () => {
+    document.body.dataset.performanceMode = "true";
+    const { rerender } = renderSection();
+
+    const updated = {
+      ...baseWorktree,
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        changedFileCount: 5,
+        insertions: 10,
+        deletions: 3,
+      },
+    };
+
+    rerender(
+      <TooltipProvider>
+        <WorktreeDetailsSection {...baseProps} worktree={updated} />
+      </TooltipProvider>
+    );
+
+    expect(mockAnimate).not.toHaveBeenCalled();
+    expect(screen.getByText(/5 files/)).toBeDefined();
   });
 });
