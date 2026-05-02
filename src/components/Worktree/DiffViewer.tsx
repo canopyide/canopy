@@ -58,6 +58,8 @@ function ensureLanguage(language: string): Promise<void> {
       .then((mod) => {
         refractor.register(mod.default);
       })
+      // Intentional: no retry. A failed chunk load caches as a resolved
+      // no-op so the language renders as plain text and renders don't loop.
       .catch(() => {});
     langLoadPromises.set(language, pending);
   }
