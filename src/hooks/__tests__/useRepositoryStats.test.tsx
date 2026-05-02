@@ -744,6 +744,111 @@ describe("useRepositoryStats", () => {
       expect(getCache(issuesKey)).toBeUndefined();
       expect(getCache(prsKey)).toBeUndefined();
     });
+
+    it("does not apply bootstrap stats from a stale project after project switch", async () => {
+      let currentProject = { id: "p", path: "/repo/a" };
+      getCurrentMock.mockImplementation(async () => currentProject);
+
+      let switchHandler: (() => void) | undefined;
+      onSwitchMock.mockImplementation((cb: () => void) => {
+        switchHandler = cb;
+        return () => {};
+      });
+
+      // Network poll for project A stays pending.
+      getRepoStatsMock.mockImplementation(() => new Promise(() => {}));
+
+      // Defer the hydration IPC response so we can switch projects mid-flight.
+      const deferred = createDeferred<{
+        projectPath: string;
+        lastUpdated: number;
+        issues: { items: GitHubIssue[]; endCursor: null; hasNextPage: false };
+        prs: { items: GitHubPR[]; endCursor: null; hasNextPage: false };
+        stats: { issueCount: number; prCount: number; lastUpdated: number };
+      }>();
+      getFirstPageCacheMock.mockReturnValueOnce(deferred.promise);
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      await waitFor(() => {
+        expect(getFirstPageCacheMock).toHaveBeenCalled();
+      });
+
+      // Switch to project B while hydration is in-flight. The onSwitch
+      // handler resets state to null and queues a fetch for B (blocked by
+      // inFlightRef since A's fetch is still pending).
+      currentProject = { id: "p", path: "/repo/b" };
+      act(() => {
+        switchHandler?.();
+      });
+
+      // State was reset by the switch handler.
+      expect(result.current.stats).toBeNull();
+
+      await act(async () => {
+        // Resolve hydration with project A's cached data. The re-verify
+        // check inside the effect must detect the path mismatch against
+        // the current project (B) and bail.
+        deferred.resolve({
+          projectPath: "/repo/a",
+          lastUpdated: 1000,
+          issues: { items: [], endCursor: null, hasNextPage: false },
+          prs: { items: [], endCursor: null, hasNextPage: false },
+          stats: { issueCount: 999, prCount: 888, lastUpdated: 1000 },
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Must still show null — the re-verify prevented A's stale cache
+      // from being applied after the project switch.
+      expect(result.current.stats).toBeNull();
+    });
+
+    it("does not clear an existing error when bootstrap hydration resolves", async () => {
+      const project = { id: "p", path: "/repo/err-then-cache" };
+      getCurrentMock.mockResolvedValue(project);
+      onSwitchMock.mockReturnValue(() => {});
+
+      // Network fetch resolves first with an error and no lastUpdated.
+      getRepoStatsMock.mockResolvedValue({
+        commitCount: 0,
+        issueCount: null,
+        prCount: null,
+        loading: false,
+        ghError: "Network timeout",
+        // No lastUpdated field — simulates error payload from main process.
+      });
+
+      const cacheLastUpdated = Date.now() - 5_000;
+      // Hydration resolves after the error with valid cached stats.
+      getFirstPageCacheMock.mockResolvedValue({
+        projectPath: project.path,
+        lastUpdated: cacheLastUpdated,
+        issues: { items: [], endCursor: null, hasNextPage: false },
+        prs: { items: [], endCursor: null, hasNextPage: false },
+        stats: { issueCount: 5, prCount: 3, lastUpdated: cacheLastUpdated },
+      });
+
+      const { result } = renderHook(() => useRepositoryStats());
+
+      // Network fetch lands first, setting the error.
+      await waitFor(() => {
+        expect(result.current.error).toBe("Network timeout");
+      });
+
+      // Flush so hydration effect settles.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Error must persist — bootstrap MUST NOT clear it.
+      expect(result.current.error).toBe("Network timeout");
+      // Bootstrap stats (5/3) must NOT have been applied.
+      expect(result.current.stats?.issueCount).toBeNull();
+      expect(result.current.stats?.prCount).toBeNull();
+    });
   });
 
   describe("rate limits", () => {
