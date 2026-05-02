@@ -67,6 +67,9 @@ export const WorktreeChangesSchema = z.object({
   deletions: z.number().int().nonnegative().optional(),
   latestFileMtime: z.number().nonnegative().optional(),
   lastUpdated: z.number().nonnegative().optional(),
+  ahead: z.number().int().nonnegative().optional(),
+  behind: z.number().int().nonnegative().optional(),
+  tracking: z.string().nullable().optional(),
 });
 
 export const GitWorktreeEntrySchema = z.object({

@@ -117,7 +117,7 @@ describe("GitFileWatcher", () => {
     expect(dotGitCallback).toBeDefined();
 
     // Unrelated file in .git directory should not trigger
-    dotGitCallback?.("rename", "config");
+    dotGitCallback?.("rename", "description");
     await vi.advanceTimersByTimeAsync(250);
     expect(onChange).not.toHaveBeenCalled();
 
@@ -133,6 +133,31 @@ describe("GitFileWatcher", () => {
     dotGitCallback?.("rename", "packed-refs");
     await vi.advanceTimersByTimeAsync(200);
     expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("triggers onChange when .git/config changes (catches `git push -u`)", async () => {
+    const gitDir = pathJoin("/repo", ".git");
+    const onChange = vi.fn();
+    const gitWatcher = new GitFileWatcher({
+      worktreePath: "/repo",
+      branch: "main",
+      debounceMs: 150,
+      onChange,
+    });
+
+    expect(gitWatcher.start()).toBe(true);
+
+    const dotGitCall = vi.mocked(watch).mock.calls.find(([path]) => path === gitDir) as
+      | [unknown, unknown, unknown]
+      | undefined;
+    expect(dotGitCall).toBeDefined();
+    const dotGitCallback = dotGitCall?.[2] as
+      | ((eventType: string, filename: string | Buffer | null) => void)
+      | undefined;
+
+    dotGitCallback?.("rename", "config");
+    await vi.advanceTimersByTimeAsync(150);
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it("detects commits via reflog changes", async () => {
