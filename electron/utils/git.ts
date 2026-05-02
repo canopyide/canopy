@@ -27,6 +27,29 @@ interface DiffStat {
   deletions: number | null;
 }
 
+// Per-file diff stat cache: skips redundant `git diff --numstat` work for files
+// whose (HEAD OID, path, mtime, size) tuple is unchanged since last refresh.
+// HEAD OID participates in the key, so commits/resets/checkouts self-invalidate.
+const PER_FILE_DIFF_STAT_CACHE = new Cache<string, DiffStat>({
+  maxSize: 2000,
+  defaultTTL: 300_000,
+});
+
+function makeFileStatCacheKey(
+  headOid: string,
+  absolutePath: string,
+  mtimeMs: number,
+  size: number
+): string {
+  return `${headOid}:${absolutePath}:${mtimeMs}:${size}`;
+}
+
+// Test-only: clear the per-file diff stat cache between cases. Production code
+// relies on (HEAD OID, mtime, size) self-invalidation and TTL eviction.
+export function __clearPerFileDiffStatCacheForTesting(): void {
+  PER_FILE_DIFF_STAT_CACHE.clear();
+}
+
 const NUMSTAT_PATH_SPLITTERS = ["=>", "->"];
 
 function normalizeNumstatPath(rawPath: string): string {
@@ -241,36 +264,96 @@ export async function getWorktreeChangesWithStats(
     try {
       const git: SimpleGit = gitForChanges(cwd, options);
       const status: StatusResult = await git.status();
-      const gitRoot = realpathSync((await git.revparse(["--show-toplevel"])).trim());
+
+      // Parallelise revparse + log lookups; HEAD/log are non-critical and may
+      // legitimately fail (e.g. empty repo, no commits yet) — fall back gracefully.
+      const [toplevelRaw, headOid, logOutput] = await Promise.all([
+        git.revparse(["--show-toplevel"]),
+        git
+          .revparse(["HEAD"])
+          .then((s) => s.trim())
+          .catch(() => ""),
+        git.raw(["log", "-1", "--format=%ct%n%s"]).catch(() => ""),
+      ]);
+
+      const gitRoot = realpathSync(toplevelRaw.trim());
 
       let lastCommitMessage: string | undefined;
       let lastCommitTimestampMs: number | undefined;
-      try {
-        const output = await git.raw(["log", "-1", "--format=%ct%n%s"]);
-        const [tsLine, ...msgLines] = output.split("\n");
+      if (logOutput) {
+        const [tsLine, ...msgLines] = logOutput.split("\n");
         const parsed = Number.parseInt((tsLine ?? "").trim(), 10);
         lastCommitTimestampMs = Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : undefined;
         lastCommitMessage = msgLines.join("\n").trim() || undefined;
-      } catch {
-        // Silently ignore - this is a non-critical field
       }
 
+      // Deduplicate: a partially-staged file appears in both `modified` and
+      // `staged`, and double-counting wastes the 100-file budget reserved for
+      // the per-file cache fast path.
       const trackedChangedFiles = [
-        ...status.modified,
-        ...status.created,
-        ...status.deleted,
-        ...status.renamed.map((r) => r.to),
-        ...status.staged,
+        ...new Set([
+          ...status.modified,
+          ...status.created,
+          ...status.deleted,
+          ...status.renamed.map((r) => r.to),
+          ...status.staged,
+        ]),
       ];
 
+      // Early stat pass: gather (mtimeMs, size) for each tracked file so we can
+      // probe the per-file cache before shelling out to `git diff`. Stat failures
+      // (e.g. deleted files) fall through to the cache-miss path, matching prior
+      // behaviour.
+      const useScopedDiff =
+        trackedChangedFiles.length > 0 &&
+        trackedChangedFiles.length <= MAX_FILES_FOR_NUMSTAT &&
+        headOid !== "";
+
+      const cacheMissPaths: string[] = [];
+      const hitStats = new Map<string, DiffStat>();
+      const fileMetaByRel = new Map<
+        string,
+        { absolutePath: string; mtimeMs: number; size: number }
+      >();
+
+      if (useScopedDiff) {
+        const statResults = await Promise.allSettled(
+          trackedChangedFiles.map((rel) => fs.stat(resolve(gitRoot, rel)))
+        );
+        for (let i = 0; i < trackedChangedFiles.length; i++) {
+          const rel = trackedChangedFiles[i];
+          const result = statResults[i];
+          if (result.status !== "fulfilled") {
+            cacheMissPaths.push(rel);
+            continue;
+          }
+          const absolutePath = resolve(gitRoot, rel);
+          const mtimeMs = result.value.mtimeMs;
+          const size = result.value.size;
+          fileMetaByRel.set(rel, { absolutePath, mtimeMs, size });
+          const cached = PER_FILE_DIFF_STAT_CACHE.get(
+            makeFileStatCacheKey(headOid, absolutePath, mtimeMs, size)
+          );
+          if (cached) {
+            hitStats.set(absolutePath, cached);
+          } else {
+            cacheMissPaths.push(rel);
+          }
+        }
+      } else {
+        for (const rel of trackedChangedFiles) cacheMissPaths.push(rel);
+      }
+
       let diffOutput = "";
+      let diffSucceeded = false;
 
       try {
-        if (trackedChangedFiles.length === 0) {
+        if (cacheMissPaths.length === 0) {
           diffOutput = "";
-        } else if (trackedChangedFiles.length <= MAX_FILES_FOR_NUMSTAT) {
-          diffOutput = await git.diff(["--no-ext-diff", "--numstat", "HEAD"]);
-        } else {
+          diffSucceeded = true;
+        } else if (trackedChangedFiles.length > MAX_FILES_FOR_NUMSTAT) {
+          // Escape hatch: skip per-file caching and run an unscoped numstat over
+          // the first 100 files to keep argv length bounded.
           const limitedFiles = trackedChangedFiles.slice(0, MAX_FILES_FOR_NUMSTAT);
           diffOutput = await git.diff([
             "--no-ext-diff",
@@ -284,6 +367,15 @@ export async function getWorktreeChangesWithStats(
             totalFiles: trackedChangedFiles.length,
             limitedTo: MAX_FILES_FOR_NUMSTAT,
           });
+        } else {
+          diffOutput = await git.diff([
+            "--no-ext-diff",
+            "--numstat",
+            "HEAD",
+            "--",
+            ...cacheMissPaths,
+          ]);
+          diffSucceeded = true;
         }
       } catch (error) {
         logWarn("Failed to read numstat diff; continuing without line stats", {
@@ -293,6 +385,29 @@ export async function getWorktreeChangesWithStats(
       }
 
       const diffStats = parseNumstat(diffOutput, gitRoot);
+
+      // Populate per-file cache with newly-computed stats from cache-miss files
+      // (only when the diff itself succeeded — never cache failure outcomes).
+      if (useScopedDiff && diffSucceeded) {
+        for (const rel of cacheMissPaths) {
+          const meta = fileMetaByRel.get(rel);
+          if (!meta) continue;
+          const stats = diffStats.get(meta.absolutePath);
+          if (!stats) continue;
+          PER_FILE_DIFF_STAT_CACHE.set(
+            makeFileStatCacheKey(headOid, meta.absolutePath, meta.mtimeMs, meta.size),
+            stats
+          );
+        }
+      }
+
+      // Merge cache hits into diffStats so addChange picks them up uniformly.
+      for (const [absolutePath, stats] of hitStats) {
+        if (!diffStats.has(absolutePath)) {
+          diffStats.set(absolutePath, stats);
+        }
+      }
+
       const changesMap = new Map<string, FileChangeDetail>();
 
       const countFileLines = async (filePath: string): Promise<number | null> => {
@@ -301,6 +416,16 @@ export async function getWorktreeChangesWithStats(
           const MAX_FILE_SIZE = 10 * 1024 * 1024;
           if (stats.size > MAX_FILE_SIZE) {
             return null;
+          }
+
+          const cacheKey = headOid
+            ? makeFileStatCacheKey(headOid, filePath, stats.mtimeMs, stats.size)
+            : "";
+          if (cacheKey) {
+            const cached = PER_FILE_DIFF_STAT_CACHE.get(cacheKey);
+            if (cached && cached.insertions !== null) {
+              return cached.insertions;
+            }
           }
 
           const buffer = await fs.readFile(filePath);
@@ -314,19 +439,20 @@ export async function getWorktreeChangesWithStats(
 
           const content = buffer.toString("utf-8");
 
-          if (content.length === 0) {
-            return 0;
-          }
-
           let lineCount = 0;
-          for (let i = 0; i < content.length; i++) {
-            if (content[i] === "\n") {
+          if (content.length > 0) {
+            for (let i = 0; i < content.length; i++) {
+              if (content[i] === "\n") {
+                lineCount++;
+              }
+            }
+            if (content[content.length - 1] !== "\n") {
               lineCount++;
             }
           }
 
-          if (content[content.length - 1] !== "\n") {
-            lineCount++;
+          if (cacheKey) {
+            PER_FILE_DIFF_STAT_CACHE.set(cacheKey, { insertions: lineCount, deletions: 0 });
           }
 
           return lineCount;
