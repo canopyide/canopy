@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { usePanelStore, useWorktreeSelectionStore, type TerminalInstance } from "@/store";
+import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { DockedPanel } from "@/components/Terminal/DockedPanel";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { logError } from "@/utils/logger";
@@ -45,6 +46,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
 
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
   const activeDockTerminalId = usePanelStore((s) => s.activeDockTerminalId);
+  const helpTerminalId = useHelpPanelStore((s) => s.terminalId);
   const dockTerminals = usePanelStore(
     useShallow((s) => {
       const result: TerminalInstance[] = [];
@@ -54,6 +56,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
           t &&
           t.location === "dock" &&
           !s.trashedTerminals.has(t.id) &&
+          t.id !== helpTerminalId &&
           // Show terminals that match active worktree OR have no worktree (global terminals)
           (t.worktreeId == null || t.worktreeId === activeWorktreeId)
         ) {
