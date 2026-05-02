@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, render } from "@testing-library/react";
 import { TrashBinItem } from "../TrashBinItem";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
@@ -65,52 +65,191 @@ function makeAgentTerminal(overrides: Partial<TerminalInstance> = {}): TerminalI
   } as TerminalInstance;
 }
 
-const trashedInfo: TrashedTerminal = {
-  id: "t1",
-  expiresAt: Date.now() + 20000,
-  originalLocation: "grid",
-};
-
 describe("TrashBinItem", () => {
-  it("does not duplicate worktree name when the agent title falls back to agent name", () => {
-    const terminal = makeAgentTerminal({ title: "claude", lastObservedTitle: undefined });
-    const { container } = render(
-      <TrashBinItem terminal={terminal} trashedInfo={trashedInfo} worktreeName="feature-auth" />
-    );
-    const text = container.textContent ?? "";
-    const occurrences = text.split("feature-auth").length - 1;
-    // The render path appends "(feature-auth)" exactly once — never in the name itself.
-    expect(occurrences).toBe(1);
-    expect(text).not.toContain("Claude · feature-auth");
-    expect(text).toContain("Claude");
-    expect(text).toContain("(feature-auth)");
-  });
-
-  it("prefers lastObservedTitle over plain title for agent terminals", () => {
-    const terminal = makeAgentTerminal({
-      title: "claude",
-      lastObservedTitle: "Fixing auth bug",
+  describe("label rendering", () => {
+    it("does not duplicate worktree name when the agent title falls back to agent name", () => {
+      const terminal = makeAgentTerminal({ title: "claude", lastObservedTitle: undefined });
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(
+        <TrashBinItem terminal={terminal} trashedInfo={trashedInfo} worktreeName="feature-auth" />
+      );
+      const text = container.textContent ?? "";
+      const occurrences = text.split("feature-auth").length - 1;
+      expect(occurrences).toBe(1);
+      expect(text).not.toContain("Claude · feature-auth");
+      expect(text).toContain("Claude");
+      expect(text).toContain("(feature-auth)");
     });
-    const { container } = render(
-      <TrashBinItem terminal={terminal} trashedInfo={trashedInfo} worktreeName="feature-auth" />
-    );
-    expect(container.textContent).toContain("Fixing auth bug");
+
+    it("prefers lastObservedTitle over plain title for agent terminals", () => {
+      const terminal = makeAgentTerminal({
+        title: "claude",
+        lastObservedTitle: "Fixing auth bug",
+      });
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(
+        <TrashBinItem terminal={terminal} trashedInfo={trashedInfo} worktreeName="feature-auth" />
+      );
+      expect(container.textContent).toContain("Fixing auth bug");
+    });
+
+    it("falls back to agent name alone when both titles are useless", () => {
+      const terminal = makeAgentTerminal({ title: "claude", lastObservedTitle: "claude" });
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      expect(container.textContent).toContain("Claude");
+    });
+
+    it("passes through a meaningful title on non-agent terminals", () => {
+      const terminal = {
+        id: "t2",
+        kind: "terminal" as const,
+        title: "my dev shell",
+        location: "trash" as const,
+      } as TerminalInstance;
+      const trashedInfo: TrashedTerminal = {
+        id: "t2",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      expect(container.textContent).toContain("my dev shell");
+    });
   });
 
-  it("falls back to agent name alone when both titles are useless", () => {
-    const terminal = makeAgentTerminal({ title: "claude", lastObservedTitle: "claude" });
-    const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
-    expect(container.textContent).toContain("Claude");
-  });
+  describe("countdown timer", () => {
+    let visibilityListeners: Array<() => void>;
+    let visibilityState: DocumentVisibilityState;
 
-  it("passes through a meaningful title on non-agent terminals", () => {
-    const terminal = {
-      id: "t2",
-      kind: "terminal" as const,
-      title: "my dev shell",
-      location: "trash" as const,
-    } as TerminalInstance;
-    const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
-    expect(container.textContent).toContain("my dev shell");
+    beforeEach(() => {
+      vi.useFakeTimers();
+      visibilityListeners = [];
+      visibilityState = "visible";
+
+      Object.defineProperty(document, "hidden", {
+        get: () => visibilityState === "hidden",
+        configurable: true,
+      });
+      Object.defineProperty(document, "visibilityState", {
+        get: () => visibilityState,
+        configurable: true,
+      });
+
+      const origAdd = document.addEventListener.bind(document);
+      const origRemove = document.removeEventListener.bind(document);
+      vi.spyOn(document, "addEventListener").mockImplementation((type, handler, options) => {
+        if (type === "visibilitychange") {
+          visibilityListeners.push(handler as () => void);
+        }
+        return origAdd(type, handler, options);
+      });
+      vi.spyOn(document, "removeEventListener").mockImplementation((type, handler, options) => {
+        if (type === "visibilitychange") {
+          visibilityListeners = visibilityListeners.filter((l) => l !== handler);
+        }
+        return origRemove(type, handler, options);
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    function fireVisibilityChange(state: DocumentVisibilityState) {
+      visibilityState = state;
+      visibilityListeners.forEach((l) => l());
+    }
+
+    it("renders seconds remaining for a future expiry", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      expect(container.textContent).toMatch(/\d+s remaining/);
+    });
+
+    it("decrements displayed seconds when time advances while visible", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      const initialMatch = container.textContent?.match(/(\d+)s remaining/);
+      expect(initialMatch).toBeTruthy();
+      const initialSeconds = parseInt(initialMatch?.[1] ?? "0", 10);
+
+      act(() => vi.advanceTimersByTime(2000));
+      const laterMatch = container.textContent?.match(/(\d+)s remaining/);
+      expect(laterMatch).toBeTruthy();
+      const laterSeconds = parseInt(laterMatch?.[1] ?? "0", 10);
+
+      expect(laterSeconds).toBeLessThan(initialSeconds);
+    });
+
+    it("does not decrement while document is hidden", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      act(() => vi.advanceTimersByTime(1000));
+      const beforeHide = container.textContent?.match(/(\d+)s remaining/)?.[1];
+
+      act(() => fireVisibilityChange("hidden"));
+      act(() => vi.advanceTimersByTime(10000));
+      const afterHide = container.textContent?.match(/(\d+)s remaining/)?.[1];
+
+      expect(afterHide).toBe(beforeHide);
+    });
+
+    it("catches up to wall-clock time on visibility restore", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      act(() => fireVisibilityChange("hidden"));
+      act(() => vi.advanceTimersByTime(10000));
+      act(() => fireVisibilityChange("visible"));
+
+      const afterRestore = container.textContent?.match(/(\d+)s remaining/);
+      expect(afterRestore).toBeTruthy();
+      const seconds = parseInt(afterRestore?.[1] ?? "0", 10);
+      // 20s initial - 1s tick before hide - 10s hidden ≈ 9s remaining
+      expect(seconds).toBeLessThanOrEqual(10);
+    });
+
+    it("shows 0s for already-expired items", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() - 5000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      expect(container.textContent).toContain("0s remaining");
+    });
   });
 });

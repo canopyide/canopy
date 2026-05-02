@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePanelStore, type TerminalInstance } from "@/store";
@@ -9,6 +9,7 @@ import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isUselessTitle } from "@shared/utils/isUselessTitle";
 import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
+import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
 
 interface TrashBinItemProps {
   terminal: TerminalInstance;
@@ -23,23 +24,9 @@ export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinIt
 
   const isOrphan = !!terminal.worktreeId && !worktreeName;
 
-  const [timeRemaining, setTimeRemaining] = useState(() => {
-    return Math.max(0, trashedInfo.expiresAt - Date.now());
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, trashedInfo.expiresAt - Date.now());
-      setTimeRemaining(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [trashedInfo.expiresAt]);
-
+  const tick = useGlobalSecondTicker();
+  void tick;
+  const timeRemaining = Math.max(0, trashedInfo.expiresAt - Date.now());
   const seconds = Math.ceil(timeRemaining / 1000);
 
   const canRestore = !isOrphan || !!activeWorktreeId;

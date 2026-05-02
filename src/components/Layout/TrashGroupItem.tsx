@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { RotateCcw, X, Layers, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePanelStore, type TerminalInstance } from "@/store";
@@ -7,6 +7,7 @@ import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slic
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
 
 interface TrashGroupItemProps {
   groupRestoreId: string;
@@ -36,23 +37,9 @@ export function TrashGroupItem({
   const isOrphan = !!groupMetadata.worktreeId && !worktreeName;
   const canRestore = !isOrphan || !!activeWorktreeId;
 
-  const [timeRemaining, setTimeRemaining] = useState(() => {
-    return Math.max(0, earliestExpiry - Date.now());
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, earliestExpiry - Date.now());
-      setTimeRemaining(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [earliestExpiry]);
-
+  const tick = useGlobalSecondTicker();
+  void tick;
+  const timeRemaining = Math.max(0, earliestExpiry - Date.now());
   const seconds = Math.ceil(timeRemaining / 1000);
 
   const handleRestoreGroup = useCallback(() => {
