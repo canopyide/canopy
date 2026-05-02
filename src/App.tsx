@@ -56,7 +56,6 @@ import {
   useSemanticWorkerLifecycle,
   useSystemWakeHandler,
   useCloudSyncWarning,
-  useContextFilesOffer,
   useAccessibilityAnnouncements,
   useGettingStartedChecklist,
   useOrchestrationMilestones,
@@ -460,7 +459,6 @@ function App() {
   useSemanticWorkerLifecycle();
   useSystemWakeHandler();
   useCloudSyncWarning(homeDir);
-  useContextFilesOffer();
   useAccessibilityAnnouncements();
 
   useEffect(() => {

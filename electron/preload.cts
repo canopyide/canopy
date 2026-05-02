@@ -1356,9 +1356,6 @@ const api: ElectronAPI = {
     disableInRepoSettings: (projectId: string): Promise<Project> =>
       _unwrappingInvoke(CHANNELS.PROJECT_DISABLE_IN_REPO_SETTINGS, projectId),
 
-    detectContextFiles: (projectId: string): Promise<string[]> =>
-      _unwrappingInvoke(CHANNELS.PROJECT_DETECT_CONTEXT_FILES, projectId),
-
     checkMissing: (): Promise<string[]> => _unwrappingInvoke(CHANNELS.PROJECT_CHECK_MISSING),
 
     locate: (projectId: string): Promise<Project | null> =>
