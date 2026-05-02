@@ -54,9 +54,16 @@ vi.mock("@/store", () => ({
     selector({ isOpen: false, width: 0 }),
   useFocusStore: (selector: (s: { isFocusMode: boolean }) => unknown) =>
     selector({ isFocusMode: false }),
-  usePreferencesStore: (selector: (s: { showDockAgentHighlights: boolean }) => unknown) =>
-    selector({ showDockAgentHighlights: false }),
+  usePreferencesStore: (
+    selector: (s: { showDockAgentHighlights: boolean; skipWorkingCloseConfirm: boolean }) => unknown
+  ) =>
+    selector({
+      showDockAgentHighlights: false,
+      skipWorkingCloseConfirm: mockSkipWorkingCloseConfirm,
+    }),
 }));
+
+let mockSkipWorkingCloseConfirm = false;
 
 let mockHiddenTabIds: ReadonlySet<string> = new Set();
 
@@ -269,6 +276,7 @@ describe("DockedTabGroup close guard (#6330)", () => {
     mockTabGroups = new Map();
     mockTabGroups.set("g-1", makeGroup(["t-1", "t-2"]));
     mockHiddenTabIds = new Set();
+    mockSkipWorkingCloseConfirm = false;
   });
 
   it("closes immediately when the tab's agent is idle", () => {
@@ -379,6 +387,24 @@ describe("DockedTabGroup close guard (#6330)", () => {
     fireEvent.click(getByTestId("dialog-cancel"));
 
     expect(openDockTerminalMock).toHaveBeenCalledWith("t-1");
+  });
+
+  it("closes a working agent tab immediately when skipWorkingCloseConfirm is on (#6514)", () => {
+    mockSkipWorkingCloseConfirm = true;
+    const panels = [
+      makePanel({ id: "t-1", agentState: "idle" as AgentState }),
+      makePanel({ id: "t-2", agentState: "working" as AgentState }),
+    ];
+
+    const { getByTestId, queryByTestId } = render(
+      <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+    );
+
+    fireEvent.click(getByTestId("close-t-2"));
+
+    expect(trashPanelMock).toHaveBeenCalledWith("t-2");
+    expect(queryByTestId("confirm-dialog")).toBeNull();
+    expect(closeDockTerminalMock).not.toHaveBeenCalled();
   });
 });
 

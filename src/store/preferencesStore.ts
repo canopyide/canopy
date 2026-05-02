@@ -20,6 +20,8 @@ interface PreferencesState {
   setAssignWorktreeToSelf: (value: boolean) => void;
   reduceAnimations: boolean;
   setReduceAnimations: (value: boolean) => void;
+  skipWorkingCloseConfirm: boolean;
+  setSkipWorkingCloseConfirm: (value: boolean) => void;
   lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined>;
   setLastSelectedWorktreeRecipeIdByProject: (
     projectId: string,
@@ -44,6 +46,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       setAssignWorktreeToSelf: (value) => set({ assignWorktreeToSelf: value }),
       reduceAnimations: false,
       setReduceAnimations: (value) => set({ reduceAnimations: value }),
+      skipWorkingCloseConfirm: false,
+      setSkipWorkingCloseConfirm: (value) => set({ skipWorkingCloseConfirm: value }),
       lastSelectedWorktreeRecipeIdByProject: {},
       setLastSelectedWorktreeRecipeIdByProject: (projectId, id) =>
         set((state) => ({
@@ -56,7 +60,7 @@ export const usePreferencesStore = create<PreferencesState>()(
     {
       name: "daintree-preferences",
       storage: createSafeJSONStorage(),
-      version: 4,
+      version: 5,
       migrate: (persisted, version) => {
         if (version === 0 || version === undefined) {
           if (persisted && typeof persisted === "object") {
@@ -86,6 +90,12 @@ export const usePreferencesStore = create<PreferencesState>()(
             state.reduceAnimations ??= false;
           }
         }
+        if (version < 5) {
+          if (persisted && typeof persisted === "object") {
+            const state = persisted as Record<string, unknown>;
+            state.skipWorkingCloseConfirm ??= false;
+          }
+        }
         return persisted as PreferencesState;
       },
     }
@@ -96,5 +106,5 @@ registerPersistedStore({
   storeId: "preferencesStore",
   store: usePreferencesStore,
   persistedStateType:
-    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
+    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; skipWorkingCloseConfirm: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
 });

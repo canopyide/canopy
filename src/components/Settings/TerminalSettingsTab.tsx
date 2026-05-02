@@ -17,6 +17,7 @@ import {
   Cpu,
   MemoryStick,
   Layers,
+  X,
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -32,6 +33,7 @@ import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import {
   useLayoutConfigStore,
   usePerformanceModeStore,
+  usePreferencesStore,
   useScrollbackStore,
   useScreenReaderStore,
   useTerminalInputStore,
@@ -122,6 +124,11 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
 
   const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
+
+  const skipWorkingCloseConfirm = usePreferencesStore((state) => state.skipWorkingCloseConfirm);
+  const setSkipWorkingCloseConfirm = usePreferencesStore(
+    (state) => state.setSkipWorkingCloseConfirm
+  );
 
   const screenReaderMode = useScreenReaderStore((state) => state.screenReaderMode);
   const resourceMonitoringEnabled = useResourceMonitoringStore((state) => state.enabled);
@@ -603,6 +610,26 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
               disabled={!hybridInputEnabled}
             />
           </div>
+        </SettingsSection>
+      )}
+
+      {effectiveSubtab === "input" && (
+        <SettingsSection
+          icon={X}
+          title="Close Behaviour"
+          id="terminal-close-behaviour"
+          description="Control whether closing a working agent prompts for confirmation."
+        >
+          <SettingsSwitchCard
+            icon={X}
+            title="Skip close confirmation for working agents"
+            subtitle="Close working agents immediately without showing the confirmation dialog"
+            isEnabled={skipWorkingCloseConfirm}
+            onChange={() => setSkipWorkingCloseConfirm(!skipWorkingCloseConfirm)}
+            ariaLabel="Skip Working Close Confirmation Toggle"
+            isModified={skipWorkingCloseConfirm}
+            onReset={() => setSkipWorkingCloseConfirm(false)}
+          />
         </SettingsSection>
       )}
 
