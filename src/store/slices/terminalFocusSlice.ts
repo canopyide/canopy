@@ -86,6 +86,14 @@ export interface TerminalFocusSlice {
   maximizeTarget: MaximizeTarget;
   activeDockTerminalId: string | null;
   pingedId: string | null;
+  /**
+   * Monotonically increases on every `pingTerminal` call. Lets consumers
+   * distinguish back-to-back pings of the same terminal — a Zustand `set` with
+   * the same `pingedId` value is `Object.is`-equal and emits no update, so
+   * `pingedId` alone can't drive a one-shot animation when the same row is
+   * tapped twice within the 1.6s clear window.
+   */
+  pingSeq: number;
   preMaximizeLayout: PreMaximizeLayoutSnapshot | null;
   setFocused: (id: string | null, shouldPing?: boolean) => void;
   pingTerminal: (id: string) => void;
@@ -161,6 +169,7 @@ export const createTerminalFocusSlice =
       maximizeTarget: null,
       activeDockTerminalId: null,
       pingedId: null,
+      pingSeq: 0,
       preMaximizeLayout: null,
       setFocused: (id, shouldPing = false) => {
         if (id) {
@@ -197,7 +206,7 @@ export const createTerminalFocusSlice =
 
       pingTerminal: (id) => {
         if (pingTimeout) clearTimeout(pingTimeout);
-        set({ pingedId: id });
+        set((state) => ({ pingedId: id, pingSeq: state.pingSeq + 1 }));
         pingTimeout = setTimeout(() => {
           if (get().pingedId === id) {
             set({ pingedId: null });

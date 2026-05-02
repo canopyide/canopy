@@ -219,12 +219,16 @@ export function WorktreeCard({
   // Input-time receipt — fires the moment a row terminal is pinged (well
   // before the polled `dominantAgentState` border-flash). Acknowledges the
   // input itself, not its outcome, so any agent-state staleness is irrelevant.
+  // `pingSeq` is the authoritative trigger so back-to-back taps of the same
+  // terminal both produce a receipt (Zustand `Object.is` would suppress the
+  // re-render if we keyed off `pingedId` alone).
   const pingedId = usePanelStore((state) => state.pingedId);
+  const pingSeq = usePanelStore((state) => state.pingSeq);
   const worktreeTerminalIds = useMemo(
     () => worktreeTerminals.map((t) => t.id),
     [worktreeTerminals]
   );
-  const receiptKey = useInputReceiptKey(pingedId, worktreeTerminalIds);
+  const receiptKey = useInputReceiptKey(pingedId, pingSeq, worktreeTerminalIds);
 
   const setFocused = usePanelStore((state) => state.setFocused);
   const pingTerminal = usePanelStore((state) => state.pingTerminal);
