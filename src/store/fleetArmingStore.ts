@@ -42,6 +42,7 @@ interface FleetArmingState {
   disarmId: (id: string) => void;
   toggleId: (id: string) => void;
   armIds: (ids: string[]) => void;
+  addToFleet: (ids: string[]) => void;
   armByState: (state: FleetArmStatePreset, scope: FleetArmScope, extend: boolean) => void;
   armAll: (scope: FleetArmScope) => void;
   armMatchingFilter: (worktreeIds: string[]) => void;
@@ -183,6 +184,39 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
       armOrder: unique,
       armOrderById: rebuildOrderById(unique),
       lastArmedId: unique[unique.length - 1] ?? null,
+    });
+  },
+
+  // Append-only counterpart to armIds. Used by the ribbon's "+ Add panes…"
+  // flow where the picker's intent is to extend the current fleet, not replace
+  // it. Filters out ineligible and already-armed ids; no-ops (preserving
+  // lastArmedId) when nothing new survives, so the focus-restore target on
+  // Exit doesn't shift just because the user opened and closed the picker
+  // without picking anything new.
+  addToFleet: (ids) => {
+    if (ids.length === 0) return;
+    const panels = usePanelStore.getState().panelsById;
+    set((s) => {
+      const nextArmed = new Set(s.armedIds);
+      const nextOrder = [...s.armOrder];
+      const seenInBatch = new Set<string>();
+      let lastAdded: string | null = null;
+      for (const id of ids) {
+        if (seenInBatch.has(id)) continue;
+        seenInBatch.add(id);
+        if (nextArmed.has(id)) continue;
+        if (!isFleetArmEligible(panels[id])) continue;
+        nextArmed.add(id);
+        nextOrder.push(id);
+        lastAdded = id;
+      }
+      if (lastAdded === null) return {};
+      return {
+        armedIds: nextArmed,
+        armOrder: nextOrder,
+        armOrderById: rebuildOrderById(nextOrder),
+        lastArmedId: lastAdded,
+      };
     });
   },
 
