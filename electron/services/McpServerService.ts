@@ -10,6 +10,7 @@ import fs from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { ActionManifestEntry, ActionDispatchResult } from "../../shared/types/actions.js";
@@ -144,6 +145,12 @@ interface McpSseSession {
   tier?: string;
 }
 
+interface McpHttpSession {
+  transport: StreamableHTTPServerTransport;
+  server: Server;
+  idleTimer: ReturnType<typeof setTimeout>;
+}
+
 function safeSerializeToolResult(value: unknown): string {
   const seen = new WeakSet<object>();
 
@@ -198,6 +205,7 @@ export class McpServerService {
   private registry: WindowRegistry | null = null;
   private starting = false;
   private sessions = new Map<string, McpSseSession>();
+  private httpSessions = new Map<string, McpHttpSession>();
   private pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
   private pendingDispatches = new Map<string, PendingRequest<ActionDispatchResult>>();
   private cleanupListeners: Array<() => void> = [];
@@ -535,7 +543,9 @@ export class McpServerService {
       this.port = boundPort;
       this.httpServer = server;
       await this.writeDiscoveryFile();
-      console.log(`[MCP] Server started on http://127.0.0.1:${this.port}/sse`);
+      console.log(
+        `[MCP] Server started on http://127.0.0.1:${this.port}/mcp (Streamable HTTP) and /sse (legacy SSE)`
+      );
       this.emitStatusChange();
     } finally {
       this.starting = false;
@@ -554,6 +564,16 @@ export class McpServerService {
       }
     }
     this.sessions.clear();
+
+    for (const session of this.httpSessions.values()) {
+      clearTimeout(session.idleTimer);
+      try {
+        await session.transport.close();
+      } catch {
+        // ignore close errors during shutdown
+      }
+    }
+    this.httpSessions.clear();
 
     for (const cleanup of this.cleanupListeners) {
       cleanup();
@@ -607,8 +627,8 @@ export class McpServerService {
 
   getConfigSnippet(): string {
     const config = this.getConfig();
-    const url = this.port ? `http://127.0.0.1:${this.port}/sse` : "http://127.0.0.1:<port>/sse";
-    const entry: Record<string, unknown> = { type: "sse", url };
+    const url = this.port ? `http://127.0.0.1:${this.port}/mcp` : "http://127.0.0.1:<port>/mcp";
+    const entry: Record<string, unknown> = { type: "http", url };
     if (config.apiKey) {
       entry.headers = { Authorization: `Bearer ${config.apiKey}` };
     }
@@ -1124,10 +1144,105 @@ export class McpServerService {
         res.writeHead(404, { "Content-Type": "text/plain" });
         res.end("Session not found");
       }
+    } else if (url.pathname === "/mcp") {
+      if (req.method !== "GET" && req.method !== "POST" && req.method !== "DELETE") {
+        res.writeHead(405, {
+          Allow: "GET, POST, DELETE",
+          "Content-Type": "text/plain",
+        });
+        res.end("Method not allowed");
+        return;
+      }
+      await this.handleStreamableHttpRequest(req, res);
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not found");
     }
+  }
+
+  private async handleStreamableHttpRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    const headerValue = req.headers["mcp-session-id"];
+    const sessionId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+
+    if (sessionId !== undefined && sessionId !== "") {
+      const session = this.httpSessions.get(sessionId);
+      if (!session) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Session not found" },
+            id: null,
+          })
+        );
+        return;
+      }
+      this.resetHttpIdleTimer(sessionId);
+      await session.transport.handleRequest(req, res);
+      return;
+    }
+
+    const server = this.createSessionServer();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (newSessionId) => {
+        const idleTimer = this.createHttpIdleTimer(newSessionId);
+        this.httpSessions.set(newSessionId, { transport, server, idleTimer });
+      },
+    });
+
+    transport.onclose = () => {
+      const id = transport.sessionId;
+      if (id === undefined) return;
+      const session = this.httpSessions.get(id);
+      if (session) {
+        clearTimeout(session.idleTimer);
+        this.httpSessions.delete(id);
+      }
+    };
+
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+    } catch (err) {
+      console.error("[MCP] Streamable HTTP request failed:", err);
+      const id = transport.sessionId;
+      if (id !== undefined) {
+        const session = this.httpSessions.get(id);
+        if (session) {
+          clearTimeout(session.idleTimer);
+          this.httpSessions.delete(id);
+        }
+      }
+      await transport.close().catch(() => {});
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Internal server error");
+      }
+    }
+  }
+
+  private createHttpIdleTimer(sessionId: string): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => {
+      const session = this.httpSessions.get(sessionId);
+      if (!session) return;
+      this.httpSessions.delete(sessionId);
+      session.transport.close().catch(() => {
+        // ignore close errors during idle timeout cleanup
+      });
+    }, MCP_SSE_IDLE_TIMEOUT_MS);
+    timer.unref?.();
+    return timer;
+  }
+
+  private resetHttpIdleTimer(sessionId: string): void {
+    const session = this.httpSessions.get(sessionId);
+    if (!session) return;
+    clearTimeout(session.idleTimer);
+    session.idleTimer = this.createHttpIdleTimer(sessionId);
   }
 
   private createIdleTimer(sessionId: string): ReturnType<typeof setTimeout> {
@@ -1170,8 +1285,8 @@ export class McpServerService {
 
       const mcpServers = (existing["mcpServers"] as Record<string, unknown> | undefined) ?? {};
       const entry: Record<string, unknown> = {
-        type: "sse",
-        url: `http://127.0.0.1:${this.port}/sse`,
+        type: "http",
+        url: `http://127.0.0.1:${this.port}/mcp`,
       };
       const apiKey = this.getConfig().apiKey;
       if (apiKey) {

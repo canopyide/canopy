@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type {
   ActionDispatchResult,
   ActionManifestEntry,
@@ -295,6 +296,63 @@ async function connectClient(
   return { client, transport };
 }
 
+async function connectHttpClient(
+  port: number,
+  headers?: Record<string, string>
+): Promise<{ client: Client; transport: StreamableHTTPClientTransport }> {
+  const apiKey = storeState.mcpServer.apiKey;
+  const mergedHeaders: Record<string, string> = {
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    ...(headers ?? {}),
+  };
+  const hasHeaders = Object.keys(mergedHeaders).length > 0;
+  const client = new Client({ name: "mcp-test-http-client", version: "1.0.0" });
+  const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+    requestInit: hasHeaders ? { headers: mergedHeaders } : undefined,
+  });
+  await client.connect(transport);
+  return { client, transport };
+}
+
+async function requestMcp(
+  port: number,
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  } = {}
+): Promise<{ status: number; body: string }> {
+  const method = options.method ?? "POST";
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/mcp",
+        method,
+        headers: options.headers ?? {},
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          resolve({ status: res.statusCode ?? 0, body });
+        });
+      }
+    );
+
+    req.on("error", reject);
+    if (options.body !== undefined) {
+      req.end(options.body);
+    } else {
+      req.end();
+    }
+  });
+}
+
 async function requestSse(
   port: number,
   headers: Record<string, string> = {}
@@ -332,6 +390,7 @@ function getTextResult(result: unknown): TextToolResult {
 describe("McpServerService", () => {
   let service: McpServerService;
   const transports: SSEClientTransport[] = [];
+  const httpTransports: StreamableHTTPClientTransport[] = [];
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
@@ -350,6 +409,7 @@ describe("McpServerService", () => {
     electronMocks.ipcMain.handle.mockClear();
     electronMocks.ipcMain.removeHandler.mockClear();
     transports.length = 0;
+    httpTransports.length = 0;
     await fs.rm(path.join(testHomeDir, ".daintree"), { recursive: true, force: true });
     await fs.mkdir(testHomeDir, { recursive: true });
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -358,6 +418,9 @@ describe("McpServerService", () => {
 
   afterEach(async () => {
     for (const transport of transports) {
+      await transport.close().catch(() => {});
+    }
+    for (const transport of httpTransports) {
       await transport.close().catch(() => {});
     }
     if (service.isRunning) {
@@ -576,10 +639,15 @@ describe("McpServerService", () => {
     await service.start(window);
 
     const initial = JSON.parse(await fs.readFile(discoveryFile, "utf8")) as {
-      mcpServers: Record<string, { headers?: { Authorization: string } }>;
+      mcpServers: Record<
+        string,
+        { type?: string; url?: string; headers?: { Authorization: string } }
+      >;
     };
     const initialKey = storeState.mcpServer.apiKey;
     expect(initialKey).toMatch(/^daintree_[a-f0-9]+$/);
+    expect(initial.mcpServers.daintree.type).toBe("http");
+    expect(initial.mcpServers.daintree.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
     expect(initial.mcpServers.daintree.headers).toEqual({
       Authorization: `Bearer ${initialKey}`,
     });
@@ -1569,5 +1637,252 @@ describe("McpServerService", () => {
     webContents.triggerDestroyed();
 
     await expect(promise).rejects.toThrow("MCP renderer bridge destroyed");
+  });
+
+  it("serves the Streamable HTTP transport at /mcp and lists tools", async () => {
+    const { window } = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "actions.list" as ActionId,
+          title: "List Actions",
+          description: "Read the action registry",
+          kind: "query",
+        }),
+      ],
+    });
+
+    await service.start(window);
+    const { client, transport } = await connectHttpClient(service.currentPort!);
+    httpTransports.push(transport);
+
+    const result = await client.listTools();
+    const ids = result.tools.map((tool) => tool.name);
+    expect(ids).toContain("actions.list");
+
+    const httpSessions = (service as unknown as { httpSessions: Map<string, unknown> })
+      .httpSessions;
+    expect(httpSessions.size).toBe(1);
+  });
+
+  it("reuses the same Streamable HTTP session for follow-up tool calls", async () => {
+    const dispatchMock = vi.fn(
+      (payload: DispatchRequest): ActionDispatchResult => ({
+        ok: true,
+        result: { dispatched: payload.actionId },
+      })
+    );
+
+    const { window } = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "actions.list" as ActionId,
+          title: "List Actions",
+          description: "Read the action registry",
+          kind: "query",
+        }),
+      ],
+      dispatchAction: dispatchMock,
+    });
+
+    await service.start(window);
+    const { client, transport } = await connectHttpClient(service.currentPort!);
+    httpTransports.push(transport);
+
+    await client.callTool({ name: "actions.list", arguments: {} });
+
+    const httpSessions = (service as unknown as { httpSessions: Map<string, unknown> })
+      .httpSessions;
+    const sessionIdsAfterFirst = Array.from(httpSessions.keys());
+    expect(sessionIdsAfterFirst).toHaveLength(1);
+
+    await client.callTool({ name: "actions.list", arguments: {} });
+
+    const sessionIdsAfterSecond = Array.from(httpSessions.keys());
+    expect(sessionIdsAfterSecond).toEqual(sessionIdsAfterFirst);
+    expect(dispatchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns 404 on /mcp requests with an unknown mcp-session-id header", async () => {
+    const { window } = createMockWindow();
+    await service.start(window);
+
+    const port = service.currentPort!;
+    const result = await requestMcp(port, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${storeState.mcpServer.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "mcp-session-id": "definitely-not-a-real-session",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+
+    expect(result.status).toBe(404);
+    const parsed = JSON.parse(result.body) as {
+      jsonrpc: string;
+      error: { code: number; message: string };
+      id: null;
+    };
+    expect(parsed.jsonrpc).toBe("2.0");
+    expect(parsed.error.code).toBe(-32001);
+    expect(parsed.error.message).toBe("Session not found");
+    expect(parsed.id).toBeNull();
+  });
+
+  it("returns 405 with an Allow header for unsupported methods on /mcp", async () => {
+    const { window } = createMockWindow();
+    await service.start(window);
+
+    const port = service.currentPort!;
+    const result = await new Promise<{ status: number; allow: string | undefined }>(
+      (resolve, reject) => {
+        const req = http.request(
+          {
+            host: "127.0.0.1",
+            port,
+            path: "/mcp",
+            method: "PUT",
+            headers: { Authorization: `Bearer ${storeState.mcpServer.apiKey}` },
+          },
+          (res) => {
+            const allow = res.headers["allow"];
+            resolve({
+              status: res.statusCode ?? 0,
+              allow: Array.isArray(allow) ? allow[0] : allow,
+            });
+            res.resume();
+          }
+        );
+        req.on("error", reject);
+        req.end();
+      }
+    );
+
+    expect(result.status).toBe(405);
+    expect(result.allow).toBe("GET, POST, DELETE");
+  });
+
+  it("rejects /mcp requests that fail auth, host, or origin checks", async () => {
+    storeState.mcpServer.apiKey = "secret";
+    const { window } = createMockWindow();
+    await service.start(window);
+
+    const port = service.currentPort!;
+
+    const unauthorized = await requestMcp(port, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(unauthorized.status).toBe(401);
+
+    const wrongOrigin = await requestMcp(port, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer secret",
+        Origin: "https://evil.example",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(wrongOrigin.status).toBe(403);
+
+    const wrongHost = await requestMcp(port, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer secret",
+        Host: "evil.example",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(wrongHost.status).toBe(403);
+  });
+
+  it("closes idle Streamable HTTP sessions after the application-level timeout", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { window } = createMockWindow();
+      await service.start(window);
+
+      const httpSessions = (
+        service as unknown as {
+          httpSessions: Map<string, { transport: { close: () => Promise<void> } }>;
+        }
+      ).httpSessions;
+
+      const transport = {
+        sessionId: "http-test-session",
+        close: vi.fn(async () => {}),
+      };
+      const createHttpIdleTimer = (
+        service as unknown as {
+          createHttpIdleTimer: (sessionId: string) => ReturnType<typeof setTimeout>;
+        }
+      ).createHttpIdleTimer.bind(service);
+
+      const idleTimer = createHttpIdleTimer("http-test-session");
+      httpSessions.set("http-test-session", {
+        transport,
+        idleTimer,
+      } as never);
+
+      expect(httpSessions.has("http-test-session")).toBe(true);
+
+      vi.advanceTimersByTime(30 * 60 * 1000 + 1);
+
+      expect(httpSessions.has("http-test-session")).toBe(false);
+      expect(transport.close).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the SSE transport functional after Streamable HTTP is in use", async () => {
+    const { window } = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "actions.list" as ActionId,
+          title: "List Actions",
+          description: "Read the action registry",
+          kind: "query",
+        }),
+      ],
+    });
+
+    await service.start(window);
+
+    const { client: httpClient, transport: httpTransport } = await connectHttpClient(
+      service.currentPort!
+    );
+    httpTransports.push(httpTransport);
+    const httpResult = await httpClient.listTools();
+    expect(httpResult.tools.map((t) => t.name)).toContain("actions.list");
+
+    const { client: sseClient, transport: sseTransport } = await connectClient(
+      service.currentPort!
+    );
+    transports.push(sseTransport);
+    const sseResult = await sseClient.listTools();
+    expect(sseResult.tools.map((t) => t.name)).toContain("actions.list");
+  });
+
+  it("emits the Streamable HTTP config snippet with type 'http' and /mcp", async () => {
+    const { window } = createMockWindow();
+    await service.start(window);
+
+    const snippet = JSON.parse(service.getConfigSnippet()) as {
+      mcpServers: Record<
+        string,
+        { type: string; url: string; headers?: { Authorization: string } }
+      >;
+    };
+
+    expect(snippet.mcpServers.daintree.type).toBe("http");
+    expect(snippet.mcpServers.daintree.url).toBe(`http://127.0.0.1:${service.currentPort}/mcp`);
+    expect(snippet.mcpServers.daintree.headers).toEqual({
+      Authorization: `Bearer ${storeState.mcpServer.apiKey}`,
+    });
   });
 });
