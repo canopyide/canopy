@@ -5,6 +5,7 @@
 import { CHANNELS } from "../../channels.js";
 import { broadcastToRenderer } from "../../utils.js";
 import { events, type DaintreeEventMap } from "../../../services/events.js";
+import { mcpPaneConfigService } from "../../../services/McpPaneConfigService.js";
 import type {
   SpawnResult,
   BroadcastWriteResultPayload,
@@ -28,6 +29,11 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
   handlers.push(() => ptyClient.off("data", handlePtyData));
 
   const handlePtyExit = (id: string, exitCode: number) => {
+    // Best-effort: revoke any per-pane MCP token + delete the managed config
+    // file. Idempotent — no-ops if no pane config was minted for this terminal.
+    mcpPaneConfigService.revokePaneConfig(id).catch((err) => {
+      console.error("[MCP] Failed to revoke pane config on exit:", err);
+    });
     broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
       name: "terminal:exit",
       payload: [id, exitCode],
