@@ -701,6 +701,58 @@ describe("PullRequestService", () => {
     pullRequestService.destroy();
   });
 
+  it("does not leak a duplicate timer when blur arrives mid-catchup", async () => {
+    // Regression: blur during in-flight focus catch-up used to orphan the
+    // background-cadence timer set by updatePollInterval(120s) when the
+    // catch-up's .finally re-entered scheduleNextPoll without first clearing
+    // the existing pollTimer.
+    let resolveCheck: (() => void) | null = null;
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      // Hold the catch-up promise open so blur can interleave.
+      if (callCount === 2) {
+        await new Promise<void>((resolve) => {
+          resolveCheck = resolve;
+        });
+      }
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/leak" })
+    );
+
+    await pullRequestService.start();
+    expect(callCount).toBe(1);
+
+    // Focus regain — fires catch-up that hangs awaiting `resolveCheck`.
+    pullRequestService.setFocusCadence(true);
+    await Promise.resolve();
+    expect(callCount).toBe(2);
+
+    // Blur arrives mid-catchup — sets the 120s timer.
+    pullRequestService.setFocusCadence(false);
+
+    // Resolve the in-flight catch-up; .finally calls scheduleNextPoll again.
+    resolveCheck!();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Advance one full blurred cycle. With the leak, two timers would fire
+    // → callCount becomes 4. Fixed: exactly one timer fires → callCount = 3.
+    await vi.advanceTimersByTimeAsync(120 * 1000);
+    expect(callCount).toBe(3);
+
+    pullRequestService.destroy();
+  });
+
   it("polls at 30s by default after start() with no interval argument", async () => {
     let callCount = 0;
     const batchCheckLinkedPRs = vi.fn(async () => {

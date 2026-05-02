@@ -324,6 +324,15 @@ class PullRequestService {
       return;
     }
 
+    // Defensive clear: setFocusCadence and updatePollInterval can interleave
+    // such that a `pollTimer` is already armed when the catch-up's `.finally`
+    // re-enters this method. Without this clear we'd orphan the prior timer
+    // and double the polling rate until `stop()`.
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+
     if (!this.isEnabled) {
       const delay = this.nextRetryAt - Date.now();
       if (delay > 0) {
