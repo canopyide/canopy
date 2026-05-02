@@ -4,6 +4,16 @@ import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/terminal/TerminalInstanceService";
 import { fireWatchNotification } from "@/lib/watchNotification";
 import { usePanelStore } from "@/store/panelStore";
+import { usePreferencesStore } from "@/store/preferencesStore";
+import { ACTIVE_AGENT_STATES } from "@shared/types/agent";
+
+function shouldConfirmClose(terminalId: string): boolean {
+  const prefs = usePreferencesStore.getState();
+  if (prefs.skipWorkingAgentCloseConfirmation) return false;
+  const panel = usePanelStore.getState().panelsById[terminalId];
+  return panel?.agentState !== undefined && ACTIVE_AGENT_STATES.has(panel.agentState);
+}
+
 export function registerTerminalLifecycleActions(
   actions: ActionRegistry,
   callbacks: ActionCallbacks
@@ -26,9 +36,14 @@ export function registerTerminalLifecycleActions(
         terminalId ??
         state.focusedId ??
         state.panelIds.find((id) => state.panelsById[id]?.location !== "trash");
-      if (targetId) {
-        state.trashPanel(targetId);
+      if (!targetId) return;
+      if (shouldConfirmClose(targetId)) {
+        window.dispatchEvent(
+          new CustomEvent("daintree:confirm-close-terminal", { detail: { terminalId: targetId } })
+        );
+        return;
       }
+      state.trashPanel(targetId);
     },
   }));
 
@@ -45,9 +60,14 @@ export function registerTerminalLifecycleActions(
       const { terminalId } = args as { terminalId?: string };
       const state = usePanelStore.getState();
       const targetId = terminalId ?? state.focusedId;
-      if (targetId) {
-        state.trashPanel(targetId);
+      if (!targetId) return;
+      if (shouldConfirmClose(targetId)) {
+        window.dispatchEvent(
+          new CustomEvent("daintree:confirm-close-terminal", { detail: { terminalId: targetId } })
+        );
+        return;
       }
+      state.trashPanel(targetId);
     },
   }));
 
@@ -288,7 +308,22 @@ export function registerTerminalLifecycleActions(
           (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
         );
       });
-      idsToClose.forEach((id) => state.trashPanel(id));
+      const skipConfirmation = usePreferencesStore.getState().skipWorkingAgentCloseConfirmation;
+      if (skipConfirmation) {
+        idsToClose.forEach((id) => state.trashPanel(id));
+      } else {
+        idsToClose.forEach((id) => {
+          if (shouldConfirmClose(id)) {
+            window.dispatchEvent(
+              new CustomEvent("daintree:confirm-close-terminal", {
+                detail: { terminalId: id },
+              })
+            );
+          } else {
+            state.trashPanel(id);
+          }
+        });
+      }
     },
   }));
 

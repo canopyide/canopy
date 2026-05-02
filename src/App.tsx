@@ -79,6 +79,7 @@ import { WorktreePalette, WorktreeOverviewModal, QuickCreatePalette } from "./co
 import { CrossWorktreeDiff } from "./components/Worktree/CrossWorktreeDiff";
 
 import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialogHost";
+import { WorkingAgentCloseGuard } from "./components/Terminal/WorkingAgentCloseGuard";
 import { FileViewerModalHost } from "./components/FileViewer/FileViewerModalHost";
 import { NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
@@ -816,6 +817,7 @@ function App() {
             />
 
             <TerminalInfoDialogHost />
+            <WorkingAgentCloseGuard />
             <FileViewerModalHost />
 
             {gitInitDirectoryPath && (

@@ -258,6 +258,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     [activeTabId, panels, group.id, setActiveTab, setFocused, trashPanel]
   );
 
+  const skipWorkingAgentCloseConfirmation = usePreferencesStore(
+    (s) => s.skipWorkingAgentCloseConfirmation
+  );
+
   // Confirm before closing a tab whose agent is mid-task. The dock popover
   // collapses when the body-portalled ConfirmDialog appears (via Radix's
   // onInteractOutside), so close it explicitly first to keep state transitions
@@ -265,14 +269,18 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const handleTabClose = useCallback(
     (tabId: string) => {
       const panel = panels.find((p) => p.id === tabId);
-      if (panel?.agentState && ACTIVE_AGENT_STATES.has(panel.agentState)) {
+      if (
+        !skipWorkingAgentCloseConfirmation &&
+        panel?.agentState &&
+        ACTIVE_AGENT_STATES.has(panel.agentState)
+      ) {
         closeDockTerminal();
         setPendingCloseTabId(tabId);
         return;
       }
       doCloseTab(tabId);
     },
-    [panels, closeDockTerminal, doCloseTab]
+    [panels, closeDockTerminal, doCloseTab, skipWorkingAgentCloseConfirmation]
   );
 
   const handleConfirmClose = useCallback(() => {

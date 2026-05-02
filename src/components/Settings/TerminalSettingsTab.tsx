@@ -36,6 +36,7 @@ import {
   useScreenReaderStore,
   useTerminalInputStore,
   useTwoPaneSplitStore,
+  usePreferencesStore,
 } from "@/store";
 import type { ScreenReaderMode } from "@/store";
 import type { PanelLayoutStrategy } from "@/types";
@@ -101,6 +102,7 @@ const TYPICAL_TERMINAL_COUNTS: { agent: number; plain: number } = {
 const TERMINAL_SUBTABS: SettingsSubtabItem[] = [
   { id: "performance", label: "Performance" },
   { id: "input", label: "Input" },
+  { id: "behavior", label: "Behavior" },
   { id: "layout", label: "Layout" },
   { id: "scrollback", label: "Scrollback" },
   { id: "accessibility", label: "Accessibility" },
@@ -146,6 +148,13 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
   const setConfirmationLimit = usePanelLimitStore((state) => state.setConfirmationLimit);
   const setPanelHardLimit = usePanelLimitStore((state) => state.setHardLimit);
   const resetToHardwareDefaults = usePanelLimitStore((state) => state.resetToHardwareDefaults);
+
+  const skipWorkingAgentCloseConfirmation = usePreferencesStore(
+    (state) => state.skipWorkingAgentCloseConfirmation
+  );
+  const setSkipWorkingAgentCloseConfirmation = usePreferencesStore(
+    (state) => state.setSkipWorkingAgentCloseConfirmation
+  );
   const initializeFromHardware = usePanelLimitStore((state) => state.initializeFromHardware);
 
   const memoryLeakDetectionEnabled = useMemoryLeakConfigStore((s) => s.enabled);
@@ -603,6 +612,28 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
               disabled={!hybridInputEnabled}
             />
           </div>
+        </SettingsSection>
+      )}
+
+      {effectiveSubtab === "behavior" && (
+        <SettingsSection
+          icon={AlertTriangle}
+          title="Working Agent Close Confirmation"
+          id="terminal-working-agent-close-confirmation"
+          description="Configure whether closing a terminal with a working agent requires confirmation."
+        >
+          <SettingsSwitchCard
+            icon={AlertTriangle}
+            title="Skip close confirmation"
+            subtitle="Close or trash working agent terminals immediately without asking for confirmation"
+            isEnabled={skipWorkingAgentCloseConfirmation}
+            onChange={() =>
+              setSkipWorkingAgentCloseConfirmation(!skipWorkingAgentCloseConfirmation)
+            }
+            ariaLabel="Skip working agent close confirmation toggle"
+            isModified={skipWorkingAgentCloseConfirmation}
+            onReset={() => setSkipWorkingAgentCloseConfirmation(false)}
+          />
         </SettingsSection>
       )}
 

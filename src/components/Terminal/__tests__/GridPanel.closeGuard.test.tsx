@@ -33,6 +33,8 @@ vi.mock("@/store", () => ({
       getPanelGroup: getPanelGroupMock,
       moveTerminalToDock: moveTerminalToDockMock,
     }),
+  usePreferencesStore: (selector: (s: { skipWorkingAgentCloseConfirmation: boolean }) => unknown) =>
+    selector({ skipWorkingAgentCloseConfirmation: mockSkipWorkingCloseConfirmation }),
 }));
 
 vi.mock("@/lib/animationUtils", () => ({
@@ -132,10 +134,13 @@ function makeTab(id: string, agentState?: AgentState): TabInfo {
   } as TabInfo;
 }
 
+let mockSkipWorkingCloseConfirmation = false;
+
 describe("GridPanel header-close guard (#6330)", () => {
   beforeEach(() => {
     trashPanelGroupMock.mockClear();
     removePanelMock.mockClear();
+    mockSkipWorkingCloseConfirmation = false;
   });
 
   it("closes immediately when single-tab group has an idle terminal", () => {
@@ -242,5 +247,26 @@ describe("GridPanel header-close guard (#6330)", () => {
 
     expect(queryByTestId("confirm-dialog")).toBeNull();
     expect(trashPanelGroupMock).not.toHaveBeenCalled();
+  });
+
+  it("closes immediately when preference skips confirmation for a working agent", () => {
+    mockSkipWorkingCloseConfirmation = true;
+    const { getByTestId, queryByTestId } = render(
+      <GridPanel
+        terminal={makeTerminal({ agentState: "working" })}
+        isFocused={false}
+        tabs={[makeTab("t-1", "working")]}
+      />
+    );
+
+    fireEvent.click(getByTestId("header-close"));
+
+    expect(queryByTestId("confirm-dialog")).toBeNull();
+    return new Promise<void>((resolve) =>
+      setTimeout(() => {
+        expect(trashPanelGroupMock).toHaveBeenCalledWith("t-1");
+        resolve();
+      }, 0)
+    );
   });
 });

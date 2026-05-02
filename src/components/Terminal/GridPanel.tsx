@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { usePanelStore, type TerminalInstance } from "@/store";
+import { usePanelStore, usePreferencesStore, type TerminalInstance } from "@/store";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   getPanelKindDefinition,
@@ -153,6 +153,10 @@ export const GridPanel = React.memo(function GridPanel({
     lifecycle,
   });
 
+  const skipWorkingAgentCloseConfirmation = usePreferencesStore(
+    (s) => s.skipWorkingAgentCloseConfirmation
+  );
+
   // The panel-header X button calls handleClose(false) which trashes the
   // entire group via trashPanelGroup. Single-tab groups have no per-tab X,
   // so this is the only close affordance — and multi-tab groups can lose
@@ -166,6 +170,10 @@ export const GridPanel = React.memo(function GridPanel({
         handleClose(true);
         return;
       }
+      if (skipWorkingAgentCloseConfirmation) {
+        handleClose(false);
+        return;
+      }
       const candidates = tabs?.length ? tabs.map((t) => t.agentState) : [terminal.agentState];
       const hasActiveAgent = candidates.some(
         (state) => state !== undefined && ACTIVE_AGENT_STATES.has(state)
@@ -176,7 +184,7 @@ export const GridPanel = React.memo(function GridPanel({
       }
       handleClose(false);
     },
-    [handleClose, tabs, terminal.agentState]
+    [handleClose, tabs, terminal.agentState, skipWorkingAgentCloseConfirmation]
   );
   const handleConfirmGroupClose = useCallback(() => {
     setPendingGroupClose(false);
