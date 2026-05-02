@@ -66,38 +66,54 @@ vi.mock("../../utils/gitRepoOperationState.js", () => ({
 }));
 
 let mockWatcherStartResult = false;
+/** Optional per-mode override. When set, takes precedence over `mockWatcherStartResult`
+ *  for that mode, so a test can model "recursive fails, git-only succeeds". */
+let mockRecursiveStartResult: boolean | undefined;
+let mockGitOnlyStartResult: boolean | undefined;
 /** When true, the stub's `start()` synchronously invokes `onWatcherFailed`
- *  before returning — mirroring the real startup-ENOSPC catch path. */
+ *  before returning — mirroring the real startup-ENOSPC catch path. Only
+ *  fires for recursive (`watchWorktree: true`) starts, matching the real
+ *  watcher's behaviour where per-file `.git/` watchers never trigger the
+ *  failure callback. */
 let mockWatcherStartFiresFailure = false;
 let capturedOnWatcherFailed: (() => void) | undefined;
 let capturedOnInotifyLimitReached: (() => void) | undefined;
 let capturedOnEmfileLimitReached: (() => void) | undefined;
 let capturedWatcherOptions: Record<string, unknown> | undefined;
+const capturedWatcherOptionsHistory: Record<string, unknown>[] = [];
 let watcherStartCallCount = 0;
 
 vi.mock("../../utils/gitFileWatcher.js", () => {
   return {
     GitFileWatcher: class {
       private readonly onWatcherFailed?: () => void;
+      private readonly watchWorktree: boolean;
       constructor(
         opts: {
           onWatcherFailed?: () => void;
           onInotifyLimitReached?: () => void;
           onEmfileLimitReached?: () => void;
+          watchWorktree?: boolean;
         } & Record<string, unknown>
       ) {
         this.onWatcherFailed = opts.onWatcherFailed;
+        this.watchWorktree = opts.watchWorktree === true;
         capturedOnWatcherFailed = opts.onWatcherFailed;
         capturedOnInotifyLimitReached = opts.onInotifyLimitReached;
         capturedOnEmfileLimitReached = opts.onEmfileLimitReached;
         capturedWatcherOptions = opts;
+        capturedWatcherOptionsHistory.push(opts);
       }
       start() {
         watcherStartCallCount++;
-        if (mockWatcherStartFiresFailure && !mockWatcherStartResult) {
+        const result = this.watchWorktree
+          ? (mockRecursiveStartResult ?? mockWatcherStartResult)
+          : (mockGitOnlyStartResult ?? mockWatcherStartResult);
+        // Only the recursive arm reports failures via `onWatcherFailed`.
+        if (this.watchWorktree && mockWatcherStartFiresFailure && !result) {
           this.onWatcherFailed?.();
         }
-        return mockWatcherStartResult;
+        return result;
       }
       dispose() {}
     },
@@ -160,12 +176,15 @@ describe("WorktreeMonitor", () => {
     vi.clearAllMocks();
     mockCategorizeWorktree.mockReturnValue("stable");
     mockWatcherStartResult = false;
+    mockRecursiveStartResult = undefined;
+    mockGitOnlyStartResult = undefined;
     mockWatcherStartFiresFailure = false;
     watcherStartCallCount = 0;
     capturedOnWatcherFailed = undefined;
     capturedOnInotifyLimitReached = undefined;
     capturedOnEmfileLimitReached = undefined;
     capturedWatcherOptions = undefined;
+    capturedWatcherOptionsHistory.length = 0;
     mockIsRepoOperationInProgress.mockReturnValue(false);
     vi.mocked(getGitDir).mockReturnValue(null);
   });
@@ -424,6 +443,9 @@ describe("WorktreeMonitor", () => {
       gitWatchEnabled: true,
     };
 
+    // Active worktree — gets the recursive watcher under the focus-tier rules.
+    const ACTIVE_WORKTREE: Worktree = { ...TEST_WORKTREE, isCurrent: true };
+
     it("watcher start success reports hasWatcher true", async () => {
       mockWatcherStartResult = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
@@ -435,7 +457,7 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(monitor.hasWatcher).toBe(true);
@@ -453,7 +475,7 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(capturedWatcherOptions).toBeDefined();
@@ -468,8 +490,8 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("watcher start failure schedules retry", async () => {
-      mockWatcherStartResult = false;
+    it("background worktree starts with watchWorktree: false (focus-tier)", async () => {
+      mockWatcherStartResult = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
         worktreeId: "/test/worktree",
         rootPath: "/test",
@@ -482,12 +504,113 @@ describe("WorktreeMonitor", () => {
       const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
+      expect(capturedWatcherOptions).toMatchObject({ watchWorktree: false });
+      expect(monitor.hasWatcher).toBe(true);
+
+      monitor.stop();
+    });
+
+    it("isCurrent flip false→true upgrades watcher to recursive immediately", async () => {
+      mockWatcherStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      expect(capturedWatcherOptions).toMatchObject({ watchWorktree: false });
+      const startsBeforeFlip = capturedWatcherOptionsHistory.length;
+
+      monitor.isCurrent = true;
+
+      // The setter rebuilt the watcher; latest call is the recursive arm.
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip + 1);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
+
+      monitor.stop();
+    });
+
+    it("isCurrent flip true→false downgrades watcher to git-only immediately", async () => {
+      mockWatcherStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      expect(capturedWatcherOptions).toMatchObject({ watchWorktree: true });
+      const startsBeforeFlip = capturedWatcherOptionsHistory.length;
+
+      monitor.isCurrent = false;
+
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip + 1);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      monitor.stop();
+    });
+
+    it("watcher start failure schedules retry on active worktree", async () => {
+      mockWatcherStartResult = false;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
       expect(monitor.hasWatcher).toBe(false);
 
       // After retry interval, watcher should attempt again
       mockWatcherStartResult = true;
       await vi.advanceTimersByTimeAsync(30_000);
       expect(monitor.hasWatcher).toBe(true);
+
+      monitor.stop();
+    });
+
+    it("background worktree does not retry recursive arm — focus flip re-arms instead", async () => {
+      // Background worktrees skip the recursive watcher entirely. The retry
+      // loop is reserved for active worktrees so a sea of background tabs
+      // can't keep poking inotify after ENOSPC.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Background → git-only mode; no recursive attempt.
+      expect(monitor.hasWatcher).toBe(true);
+      const startsAfterBackgroundStart = watcherStartCallCount;
+
+      mockRecursiveStartResult = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      // No retry queued for background — start count is unchanged.
+      expect(watcherStartCallCount).toBe(startsAfterBackgroundStart);
 
       monitor.stop();
     });
@@ -503,7 +626,7 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       monitor.stop();
@@ -525,7 +648,7 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       // Exhaust all 5 retries
@@ -543,8 +666,11 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("runtime watcher failure triggers retry", async () => {
-      mockWatcherStartResult = true;
+    it("runtime watcher failure preserves .git/ watchers via git-only fallback", async () => {
+      // The recursive watcher fails at runtime — the per-file .git/
+      // watchers must survive as a degraded watcher rather than going dark.
+      mockRecursiveStartResult = true;
+      mockGitOnlyStartResult = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
         worktreeId: "/test/worktree",
         rootPath: "/test",
@@ -554,17 +680,25 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
+      const startsAfterInitialStart = watcherStartCallCount;
 
       // Simulate runtime watcher failure
       capturedOnWatcherFailed?.();
-      expect(monitor.hasWatcher).toBe(false);
 
-      // After retry interval, watcher should restart
+      // Watcher remains — git-only is now active. Last constructor call set
+      // watchWorktree:false.
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+      expect(watcherStartCallCount).toBe(startsAfterInitialStart + 1);
+
+      // After retry interval, the recursive watcher attempts to re-arm.
       await vi.advanceTimersByTimeAsync(30_000);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
       expect(monitor.hasWatcher).toBe(true);
 
       monitor.stop();
@@ -582,12 +716,12 @@ describe("WorktreeMonitor", () => {
 
       const onInotifyLimitReached = vi.fn();
       const callbacks = makeCallbacks({ onInotifyLimitReached });
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(capturedOnInotifyLimitReached).toBeDefined();
       capturedOnInotifyLimitReached?.();
-      expect(onInotifyLimitReached).toHaveBeenCalledWith(TEST_WORKTREE.id);
+      expect(onInotifyLimitReached).toHaveBeenCalledWith(ACTIVE_WORKTREE.id);
       expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
 
       monitor.stop();
@@ -605,31 +739,26 @@ describe("WorktreeMonitor", () => {
 
       const onEmfileLimitReached = vi.fn();
       const callbacks = makeCallbacks({ onEmfileLimitReached });
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(capturedOnEmfileLimitReached).toBeDefined();
       capturedOnEmfileLimitReached?.();
-      expect(onEmfileLimitReached).toHaveBeenCalledWith(TEST_WORKTREE.id);
+      expect(onEmfileLimitReached).toHaveBeenCalledWith(ACTIVE_WORKTREE.id);
       expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
 
       monitor.stop();
     });
 
-    it("startup ENOSPC that fires onWatcherFailed AND returns false schedules exactly one retry", async () => {
-      // Regression guard for the startup-ENOSPC retry fix. Before the fix,
-      // GitFileWatcher.start() returned undefined (coerced to true), so
-      // WorktreeMonitor assigned gitWatcher and reset watcherRetryCount = 0,
-      // neutralizing the retry scheduled from inside the synchronous
-      // onWatcherFailed callback.
-      //
-      // Now start() returns false AND onWatcherFailed fires inside it, so
-      // WorktreeMonitor's handleWatcherFailed runs scheduleWatcherRetry
-      // first, then the else branch of startWatcher() runs it again. This
-      // test proves the two calls collapse onto a single retry via the
-      // `watcherRetryTimer` guard — regressing that guard would fire the
-      // retry twice (watcherStartCallCount would reach 3, not 2).
-      mockWatcherStartResult = false;
+    it("startup ENOSPC degrades to git-only and schedules a single retry", async () => {
+      // Regression guard for the startup-ENOSPC retry fix combined with the
+      // git-only preservation behaviour. The recursive arm fires
+      // onWatcherFailed synchronously and returns false. WorktreeMonitor's
+      // handleWatcherFailed installs git-only inline, then the else branch of
+      // startWatcher must NOT install a duplicate git-only or schedule a
+      // duplicate retry.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
       mockWatcherStartFiresFailure = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
         worktreeId: "/test/worktree",
@@ -640,22 +769,70 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
-      // Initial start failed → no active watcher, exactly one start attempt.
-      expect(monitor.hasWatcher).toBe(false);
-      expect(watcherStartCallCount).toBe(1);
+      // Initial recursive start failed → exactly one git-only fallback was
+      // installed (not two), and a watcher is active.
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.length).toBe(2);
+      expect(capturedWatcherOptionsHistory[0]).toMatchObject({ watchWorktree: true });
+      expect(capturedWatcherOptionsHistory[1]).toMatchObject({ watchWorktree: false });
+      expect(watcherStartCallCount).toBe(2);
 
       // Flip to success for the retry attempt.
       mockWatcherStartFiresFailure = false;
-      mockWatcherStartResult = true;
+      mockRecursiveStartResult = true;
       await vi.advanceTimersByTimeAsync(30_000);
 
-      // Only ONE retry fires — 2 total start() calls, not 3. A regression
-      // that removed the watcherRetryTimer guard would produce 3.
-      expect(watcherStartCallCount).toBe(2);
+      // One retry, not two: recursive re-armed, git-only swapped out.
+      expect(watcherStartCallCount).toBe(3);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
       expect(monitor.hasWatcher).toBe(true);
+
+      monitor.stop();
+    });
+
+    it("ensureWatcherState during recursive backoff preserves retry budget", async () => {
+      // Regression guard: ensureWatcherState() / focus rotation must not
+      // reset the recursive-retry counter while a retry is already pending.
+      // Otherwise an external workspace refresh during ENOSPC backoff grants
+      // the failing recursive arm a fresh 5-attempt budget on the same
+      // constrained kernel, hammering inotify.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Recursive failed, git-only fallback installed, retry timer pending.
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      // External refresh — must not reset the retry budget.
+      monitor.ensureWatcherState();
+
+      // Burn through the budget. With a preserved counter, only the
+      // remaining retries fire; reset would extend the loop.
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(30_000);
+      }
+
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      // One more interval — budget exhausted, no further retry.
+      const startsBeforeIdle = watcherStartCallCount;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(watcherStartCallCount).toBe(startsBeforeIdle);
 
       monitor.stop();
     });
