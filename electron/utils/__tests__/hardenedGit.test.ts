@@ -18,6 +18,7 @@ import {
   validateCwd,
   createHardenedGit,
   createAuthenticatedGit,
+  createBackgroundFetchGit,
   createWslHardenedGit,
   getGitLocaleEnv,
   HARDENED_GIT_CONFIG,
@@ -424,6 +425,81 @@ describe("createAuthenticatedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.config).toContain("transfer.bundleURI=false");
+  });
+});
+
+describe("createBackgroundFetchGit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("layers background-fetch config on top of authenticated config", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", { signal: controller.signal });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.config).toContain("core.packedRefsTimeout=5000");
+    expect(options.config).toContain("http.lowSpeedLimit=1000");
+    expect(options.config).toContain("http.lowSpeedTime=30");
+    expect(options.config).toContain("gc.auto=0");
+    // Inherits authenticated base — no credential-blocking entries.
+    expect(options.config).not.toContain("credential.helper=");
+    expect(options.config).not.toContain("core.askpass=");
+  });
+
+  it("forwards the abort signal to simple-git", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", { signal: controller.signal });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.abort).toBe(controller.signal);
+  });
+
+  it("sets GIT_ASKPASS=true on POSIX so credential helpers fail fast", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      platform: "darwin",
+    });
+
+    // Last env() call wins — the POSIX askpass override is applied second.
+    const lastEnv = mockGitInstance.env.mock.calls[mockGitInstance.env.mock.calls.length - 1][0];
+    expect(lastEnv.GIT_ASKPASS).toBe("true");
+    expect(lastEnv.GIT_TERMINAL_PROMPT).toBe("0");
+  });
+
+  it("does not set GIT_ASKPASS on Windows (no `true` binary on PATH)", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      platform: "win32",
+    });
+
+    // The base authenticated env() call doesn't set GIT_ASKPASS, and the
+    // POSIX-only override is skipped. Only one env() call should happen.
+    expect(mockGitInstance.env.mock.calls).toHaveLength(1);
+    const env = mockGitInstance.env.mock.calls[0][0];
+    expect(env.GIT_ASKPASS).toBeUndefined();
+  });
+
+  it("appends caller-supplied extraConfig after background-fetch config", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      extraConfig: ["transfer.bundleURI=false"],
+    });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.config).toContain("transfer.bundleURI=false");
+    expect(options.config).toContain("core.packedRefsTimeout=5000");
+  });
+
+  it("inherits block timeout 0 from authenticated profile", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", { signal: controller.signal });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.timeout).toEqual({ block: 0 });
   });
 });
 

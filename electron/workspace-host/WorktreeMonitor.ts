@@ -36,6 +36,26 @@ const RESOURCE_POLL_DEFAULT_BACKGROUND_MS = 120_000;
 const HEARTBEAT_GAP_MULTIPLIER = 3;
 const HEARTBEAT_GAP_FLOOR_MS = 30_000;
 
+// Background fetch cadence — independent from the local-status poll. Focused
+// (current) worktrees fetch frequently so ahead/behind counts stay fresh while
+// the user is looking at them; everything else falls back to a low-rate
+// background tier to avoid hammering remotes for repos the user isn't viewing.
+// Jitter is applied at the call site to avoid thundering-herd alignment when
+// multiple worktrees were started together.
+const FETCH_INTERVAL_FOCUSED_MIN_MS = 30_000;
+const FETCH_INTERVAL_FOCUSED_MAX_MS = 45_000;
+const FETCH_INTERVAL_BACKGROUND_MIN_MS = 5 * 60_000;
+const FETCH_INTERVAL_BACKGROUND_MAX_MS = 10 * 60_000;
+// Initial fetch fires shortly after start so users don't wait a full cadence
+// window for fresh ahead/behind on app launch.
+const FETCH_INITIAL_DELAY_MIN_MS = 2_000;
+const FETCH_INITIAL_DELAY_MAX_MS = 5_000;
+
+function randomBetween(minMs: number, maxMs: number): number {
+  if (maxMs <= minMs) return minMs;
+  return minMs + Math.floor(Math.random() * (maxMs - minMs));
+}
+
 export interface WorktreeMonitorConfig {
   basePollingInterval: number;
   adaptiveBackoff: boolean;
@@ -54,6 +74,17 @@ export interface WorktreeMonitorCallbacks {
   onResourceStatusPoll?: (worktreeId: string) => Promise<unknown> | void;
   onInotifyLimitReached?: (worktreeId: string) => void;
   onEmfileLimitReached?: (worktreeId: string) => void;
+  /**
+   * Schedule a background `git fetch` for this worktree's repo. Routed through
+   * `WorkspaceService` so per-repo serialization and failure-cache state are
+   * shared across sibling monitors. Resolves regardless of fetch outcome.
+   * `force` bypasses the per-repo failure cache (manual user-triggered refresh).
+   */
+  onScheduleFetch?: (
+    worktreeId: string,
+    isCurrent: boolean,
+    force: boolean
+  ) => Promise<void> | void;
 }
 
 export class WorktreeMonitor {
@@ -140,6 +171,19 @@ export class WorktreeMonitor {
   // Resource status auto-polling
   private resourcePollTimer: NodeJS.Timeout | null = null;
   private resourcePollIntervalMs: number = 0; // 0 = disabled
+
+  // Background fetch timer — separate from the local-status poll so a stuck
+  // remote can't poison local-status updates. Cadence flips based on
+  // `_isCurrent`; rescheduling happens in the `isCurrent` setter.
+  private fetchTimer: NodeJS.Timeout | null = null;
+  private _pendingFetchPromise: Promise<void> | null = null;
+  /**
+   * When `triggerFetchNow()` is called while a non-force fetch is in-flight,
+   * we can't drop the force request — wake / auth-rotation hooks rely on it
+   * bypassing the failure cache. Defer it: set this flag, let the in-flight
+   * call complete, then run a forced fetch in the post-pending hook.
+   */
+  private _pendingForceFetch: boolean = false;
 
   // Poll queue concurrency
   private _pendingPollPromise: Promise<void> | null = null;
@@ -285,6 +329,14 @@ export class WorktreeMonitor {
           this.scheduleNextPoll();
         }
       }
+    }
+    // Fetch cadence flips between focused (~30-45s) and background (5-10min)
+    // based on `isCurrent`. Reschedule from the new tier the moment focus
+    // changes so the user sees fresh counts shortly after switching to a
+    // worktree that hadn't been actively fetched.
+    if (changed && this._isRunning) {
+      this.clearFetchTimer();
+      this.scheduleNextFetch(true);
     }
   }
 
@@ -560,6 +612,7 @@ export class WorktreeMonitor {
 
     if (this._isRunning && this.pollingEnabled) {
       this.scheduleNextPoll();
+      this.scheduleNextFetch(true);
     }
   }
 
@@ -589,6 +642,7 @@ export class WorktreeMonitor {
 
     if (this._isRunning && this.pollingEnabled) {
       this.scheduleNextPoll();
+      this.scheduleNextFetch(true);
     }
   }
 
@@ -598,6 +652,15 @@ export class WorktreeMonitor {
     this._pollAbortController = new AbortController();
     this.clearTimers();
     this.stopWatcher();
+  }
+
+  /**
+   * Trigger an immediate background fetch, bypassing the per-repo failure
+   * cache. Used by wake handlers and explicit user refresh paths. The
+   * coordinator still serializes against any in-flight fetch on the same repo.
+   */
+  triggerFetchNow(): Promise<void> {
+    return this.runFetch(true);
   }
 
   async refresh(): Promise<void> {
@@ -629,6 +692,7 @@ export class WorktreeMonitor {
     }
 
     this.scheduleResourcePoll();
+    this.scheduleNextFetch(true);
   }
 
   getSnapshot(): WorktreeSnapshot {
@@ -966,6 +1030,67 @@ export class WorktreeMonitor {
       this.watcherRetryTimer = null;
     }
     this.clearResourcePollTimer();
+    this.clearFetchTimer();
+  }
+
+  private clearFetchTimer(): void {
+    if (this.fetchTimer) {
+      clearTimeout(this.fetchTimer);
+      this.fetchTimer = null;
+    }
+  }
+
+  private scheduleNextFetch(initial: boolean = false): void {
+    if (!this._isRunning) return;
+    if (!this.callbacks.onScheduleFetch) return;
+    if (this.fetchTimer) return;
+
+    const delay = initial
+      ? randomBetween(FETCH_INITIAL_DELAY_MIN_MS, FETCH_INITIAL_DELAY_MAX_MS)
+      : this._isCurrent
+        ? randomBetween(FETCH_INTERVAL_FOCUSED_MIN_MS, FETCH_INTERVAL_FOCUSED_MAX_MS)
+        : randomBetween(FETCH_INTERVAL_BACKGROUND_MIN_MS, FETCH_INTERVAL_BACKGROUND_MAX_MS);
+
+    this.fetchTimer = setTimeout(() => {
+      this.fetchTimer = null;
+      if (!this._isRunning) return;
+      void this.runFetch(false);
+    }, delay);
+  }
+
+  private async runFetch(force: boolean): Promise<void> {
+    if (!this._isRunning) return;
+    if (!this.callbacks.onScheduleFetch) return;
+    if (this._pendingFetchPromise) {
+      // A fetch is already in-flight. Drop non-force duplicates, but defer a
+      // force request so wake / auth-rotation can still bypass the failure
+      // cache once the current fetch lands.
+      if (force) {
+        this._pendingForceFetch = true;
+        await this._pendingFetchPromise;
+      }
+      return;
+    }
+
+    const run = Promise.resolve(this.callbacks.onScheduleFetch(this.id, this._isCurrent, force))
+      .catch(() => {
+        // Coordinator handles classification; monitor doesn't surface fetch
+        // errors directly — they don't block local-status updates.
+      })
+      .finally(() => {
+        this._pendingFetchPromise = null;
+        const queuedForce = this._pendingForceFetch;
+        this._pendingForceFetch = false;
+        if (this._isRunning) {
+          if (queuedForce) {
+            void this.runFetch(true);
+          } else {
+            this.scheduleNextFetch(false);
+          }
+        }
+      });
+    this._pendingFetchPromise = run;
+    await run;
   }
 
   private scheduleCircuitBreakerRetry(): void {
