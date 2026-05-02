@@ -29,7 +29,7 @@ import {
   QuickStateFilterBar,
 } from "@/components/Worktree";
 import { BulkCreateWorktreeDialog } from "@/components/GitHub/BulkCreateWorktreeDialog";
-import { FleetArmingDialog } from "@/components/Fleet/FleetArmingDialog";
+import { FleetPickerPalette } from "@/components/Fleet/FleetPickerPalette";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { WorktreeCardErrorFallback } from "@/components/Worktree/WorktreeCardErrorFallback";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -379,9 +379,9 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     if (createDialog.isOpen) setHasOpenedNewWorktree(true);
   }, [createDialog.isOpen]);
 
-  const [isFleetArmingDialogOpen, setIsFleetArmingDialogOpen] = useState(false);
-  const openFleetArmingDialog = useCallback(() => setIsFleetArmingDialogOpen(true), []);
-  const closeFleetArmingDialog = useCallback(() => setIsFleetArmingDialogOpen(false), []);
+  const [isFleetPickerOpen, setIsFleetPickerOpen] = useState(false);
+  const openFleetPicker = useCallback(() => setIsFleetPickerOpen(true), []);
+  const closeFleetPicker = useCallback(() => setIsFleetPickerOpen(false), []);
   const armedSize = useFleetArmingStore((s) => s.armedIds.size);
 
   // Filter/sort state - destructured for stable memoization
@@ -1067,7 +1067,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={openFleetArmingDialog}
+                  onClick={openFleetPicker}
                   className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
                   aria-label="Select terminals to arm"
                 >
@@ -1344,10 +1344,10 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
       <ErrorBoundary
         variant="component"
-        componentName="FleetArmingDialog"
-        resetKeys={[Number(isFleetArmingDialogOpen)]}
+        componentName="FleetPickerPalette"
+        resetKeys={[Number(isFleetPickerOpen)]}
       >
-        <FleetArmingDialog isOpen={isFleetArmingDialogOpen} onClose={closeFleetArmingDialog} />
+        <FleetPickerPalette isOpen={isFleetPickerOpen} onClose={closeFleetPicker} />
       </ErrorBoundary>
     </div>
   );
