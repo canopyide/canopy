@@ -105,7 +105,7 @@ describe("mcpConfirmStore", () => {
 
   it("reset clears state and the resolver map without resolving outstanding promises", async () => {
     const first = requestMcpConfirmation(pendingFixture({ requestId: "a" }));
-    requestMcpConfirmation(pendingFixture({ requestId: "b" }));
+    void requestMcpConfirmation(pendingFixture({ requestId: "b" }));
 
     __resetMcpConfirmStoreForTesting();
     const state = useMcpConfirmStore.getState();
