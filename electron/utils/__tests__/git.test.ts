@@ -20,7 +20,7 @@ vi.mock("fs", async (importOriginal) => {
     promises: {
       ...(actual as { promises: Record<string, unknown> }).promises,
       access: vi.fn().mockResolvedValue(undefined),
-      stat: vi.fn().mockResolvedValue({ mtimeMs: 1000 }),
+      stat: vi.fn().mockResolvedValue({ mtimeMs: 1000, size: 512 }),
     },
   };
 });
@@ -35,6 +35,7 @@ import {
   getWorktreeChangesWithStats,
   listCommits,
   invalidateWorktreeCache,
+  __clearPerFileDiffStatCacheForTesting,
 } from "../git.js";
 import { createHardenedGit } from "../hardenedGit.js";
 import { promises as fs } from "fs";
@@ -158,7 +159,7 @@ describe("getWorktreeChangesWithStats --no-ext-diff", () => {
     mockGit.revparse.mockResolvedValue("/test/path\n");
     mockGit.raw.mockResolvedValue("100\t0\tsome msg");
     mockGit.diff.mockResolvedValue("1\t0\tsrc/app.ts");
-    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 1000 });
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 1000, size: 512 });
   });
 
   it("passes --no-ext-diff in numstat diff call", async () => {
@@ -499,6 +500,7 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    __clearPerFileDiffStatCacheForTesting();
     (fs.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     mockGit.raw.mockResolvedValue("");
   });
@@ -583,6 +585,35 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
     // stable.ts comes from cache (3/1); dirty.ts from fresh diff (8/3).
     expect(result.totalInsertions).toBe(3 + 8);
     expect(result.totalDeletions).toBe(1 + 3);
+  });
+
+  it("invalidates cache when only the file size changes", async () => {
+    const cwd = "/per-file-cache-sizeonly/" + Math.random();
+    setupRevparse(cwd, "head-oid-sizeonly");
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      modified: ["src/grow.ts"],
+    });
+    mockGit.diff.mockResolvedValue("3\t1\tsrc/grow.ts");
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 7000, size: 100 });
+
+    await getWorktreeChangesWithStats(cwd, true);
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+
+    // Same mtime, same path, same HEAD — but size changed. Must miss cache.
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 7000, size: 200 });
+    mockGit.diff.mockReset();
+    mockGit.diff.mockResolvedValue("5\t2\tsrc/grow.ts");
+
+    await getWorktreeChangesWithStats(cwd, true);
+    expect(mockGit.diff).toHaveBeenCalledTimes(1);
+    expect(mockGit.diff).toHaveBeenCalledWith([
+      "--no-ext-diff",
+      "--numstat",
+      "HEAD",
+      "--",
+      "src/grow.ts",
+    ]);
   });
 
   it("invalidates cache when HEAD OID changes", async () => {

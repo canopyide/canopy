@@ -44,6 +44,12 @@ function makeFileStatCacheKey(
   return `${headOid}:${absolutePath}:${mtimeMs}:${size}`;
 }
 
+// Test-only: clear the per-file diff stat cache between cases. Production code
+// relies on (HEAD OID, mtime, size) self-invalidation and TTL eviction.
+export function __clearPerFileDiffStatCacheForTesting(): void {
+  PER_FILE_DIFF_STAT_CACHE.clear();
+}
+
 const NUMSTAT_PATH_SPLITTERS = ["=>", "->"];
 
 function normalizeNumstatPath(rawPath: string): string {
@@ -281,12 +287,17 @@ export async function getWorktreeChangesWithStats(
         lastCommitMessage = msgLines.join("\n").trim() || undefined;
       }
 
+      // Deduplicate: a partially-staged file appears in both `modified` and
+      // `staged`, and double-counting wastes the 100-file budget reserved for
+      // the per-file cache fast path.
       const trackedChangedFiles = [
-        ...status.modified,
-        ...status.created,
-        ...status.deleted,
-        ...status.renamed.map((r) => r.to),
-        ...status.staged,
+        ...new Set([
+          ...status.modified,
+          ...status.created,
+          ...status.deleted,
+          ...status.renamed.map((r) => r.to),
+          ...status.staged,
+        ]),
       ];
 
       // Early stat pass: gather (mtimeMs, size) for each tracked file so we can
