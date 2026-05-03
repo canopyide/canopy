@@ -2,6 +2,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createSafeJSONStorage } from "./persistence/safeStorage";
 import { registerPersistedStore } from "./persistence/persistedStoreRegistry";
+import { getAssistantSupportedAgentIds } from "../../shared/config/agentRegistry";
+
+function isAssistantSupportedAgentId(value: unknown): value is string {
+  return typeof value === "string" && getAssistantSupportedAgentIds().includes(value);
+}
 
 export const HELP_PANEL_MIN_WIDTH = 320;
 export const HELP_PANEL_MAX_WIDTH = 800;
@@ -59,7 +64,11 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
     {
       name: "help-panel-storage",
       storage: createSafeJSONStorage(),
-      version: 0,
+      version: 1,
+      // v1 marks that the `preferredAgentId` rehydration guard (issue #6612)
+      // is in effect. The cleanup itself runs in `merge` below — it fires on
+      // every rehydration, so a v0 blob with `preferredAgentId: "gemini"`
+      // becomes `null` before any subscriber sees it.
       migrate: (persistedState) => persistedState as HelpPanelState & HelpPanelActions,
       partialize: (state) => ({
         width: state.width,
@@ -73,10 +82,9 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
             typeof persisted.width === "number"
               ? Math.min(Math.max(persisted.width, HELP_PANEL_MIN_WIDTH), HELP_PANEL_MAX_WIDTH)
               : currentState.width,
-          preferredAgentId:
-            typeof persisted.preferredAgentId === "string"
-              ? persisted.preferredAgentId
-              : currentState.preferredAgentId,
+          preferredAgentId: isAssistantSupportedAgentId(persisted.preferredAgentId)
+            ? persisted.preferredAgentId
+            : null,
         };
       },
     }
