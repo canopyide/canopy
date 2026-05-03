@@ -72,6 +72,11 @@ export interface ActivityMonitorOptions {
   };
   pollingIntervalMs?: number;
   workingRecoveryDelayMs?: number;
+  // Background polling tier overrides — applied automatically by setPollingInterval()
+  // when intervalMs > 50. When unset, fall back to the active values so behavior
+  // matches today's defaults until the call site opts in.
+  backgroundOutputWindowMs?: number;
+  backgroundWorkingRecoveryDelayMs?: number;
   pollingMaxBootMs?: number;
   maxWorkingSilenceMs?: number;
   maxWaitingSilenceMs?: number;
@@ -112,6 +117,11 @@ export class ActivityMonitor {
   private readonly outputVolumeDetector: OutputVolumeDetector;
   private readonly highOutputDetector: HighOutputDetector;
   private readonly workingSignalDebouncer: WorkingSignalDebouncer;
+  // Dedicated debouncer for the idle-state cosmetic-redraw recovery path
+  // (#6641). Cannot share workingSignalDebouncer because runPollingCycle's
+  // "no working signal" branch resets sustainedSince every poll, which would
+  // erase accumulated spinner-tick signal between sparse cosmetic frames.
+  private readonly cosmeticRecoveryDebouncer: WorkingSignalDebouncer;
   private readonly lineRewriteDetector: LineRewriteDetector;
   private readonly completionTimer: CompletionTimer;
   private readonly bootDetector: BootDetector;
@@ -148,6 +158,16 @@ export class ActivityMonitor {
 
   // Polling interval configuration
   private POLLING_INTERVAL_MS: number;
+
+  // Tier-aware recovery thresholds (#6641). Active values must match the
+  // pre-fix hardcoded behavior so the 50ms tier is unchanged. Background
+  // values widen the volume window and shorten the debouncer delay so
+  // backgrounded agents can escape "waiting" when output resumes.
+  private _tier: "active" | "background" = "active";
+  private readonly activeOutputWindowMs: number;
+  private readonly backgroundOutputWindowMs: number;
+  private readonly activeWorkingRecoveryDelayMs: number;
+  private readonly backgroundWorkingRecoveryDelayMs: number;
 
   constructor(
     private terminalId: string,
@@ -186,6 +206,19 @@ export class ActivityMonitor {
     this.workingSignalDebouncer = new WorkingSignalDebouncer(
       options?.workingRecoveryDelayMs ?? 1500
     );
+    this.cosmeticRecoveryDebouncer = new WorkingSignalDebouncer(
+      options?.workingRecoveryDelayMs ?? 1500
+    );
+
+    // Snapshot tier-aware recovery thresholds. Active values default to the
+    // detector-instantiation values so the active-tier path is identical to
+    // pre-fix behavior. Background values default to active values when the
+    // caller doesn't opt in, preserving compatibility for non-agent terminals.
+    this.activeOutputWindowMs = this.outputVolumeDetector.windowMs;
+    this.backgroundOutputWindowMs = options?.backgroundOutputWindowMs ?? this.activeOutputWindowMs;
+    this.activeWorkingRecoveryDelayMs = this.workingSignalDebouncer.delayMs;
+    this.backgroundWorkingRecoveryDelayMs =
+      options?.backgroundWorkingRecoveryDelayMs ?? this.activeWorkingRecoveryDelayMs;
 
     this.lineRewriteDetector = new LineRewriteDetector(options?.lineRewriteDetection);
 
@@ -223,10 +256,33 @@ export class ActivityMonitor {
     // Polling interval
     this.POLLING_INTERVAL_MS = options?.pollingIntervalMs ?? 50;
 
+    // Apply initial tier so a monitor constructed with a background polling
+    // interval (e.g. project starts hidden) gets the right thresholds before
+    // any output arrives.
+    this.applyTier(this.tierForInterval(this.POLLING_INTERVAL_MS));
+
     // Lightweight watchdog interval: runs the waiting watchdog check periodically
     // even when there's no output/activity. 5s keeps overhead negligible while
     // ensuring hung waiting states are caught within a reasonable window.
     this.watchdogInterval = setInterval(() => this.checkWaitingWatchdog(Date.now()), 5000);
+  }
+
+  private tierForInterval(intervalMs: number): "active" | "background" {
+    return intervalMs <= 50 ? "active" : "background";
+  }
+
+  private applyTier(tier: "active" | "background"): void {
+    if (this._tier === tier) return;
+    this._tier = tier;
+    if (tier === "background") {
+      this.outputVolumeDetector.reconfigureWindow(this.backgroundOutputWindowMs);
+      this.workingSignalDebouncer.setDelay(this.backgroundWorkingRecoveryDelayMs);
+      this.cosmeticRecoveryDebouncer.setDelay(this.backgroundWorkingRecoveryDelayMs);
+    } else {
+      this.outputVolumeDetector.reconfigureWindow(this.activeOutputWindowMs);
+      this.workingSignalDebouncer.setDelay(this.activeWorkingRecoveryDelayMs);
+      this.cosmeticRecoveryDebouncer.setDelay(this.activeWorkingRecoveryDelayMs);
+    }
   }
 
   onInput(data: string): void {
@@ -345,6 +401,23 @@ export class ActivityMonitor {
     }
 
     if (isCosmeticRedraw) {
+      // Recovery path for idle (waiting) agent terminals (#6641): if a sustained
+      // spinner reappears after the agent went quiet, transition back to busy
+      // through a dedicated debouncer. Gated on getVisibleLines so this only
+      // applies to agent terminals, and on isResizeSuppressed so window-resize
+      // redraws don't false-positive recovery.
+      if (
+        this.getVisibleLines &&
+        this.state === "idle" &&
+        !this.isResizeSuppressed(now) &&
+        !this.inputTracker.isRecentUserInput(now) &&
+        this.bootDetector.hasExitedBootState
+      ) {
+        if (this.cosmeticRecoveryDebouncer.shouldTriggerRecovery(now, true)) {
+          this.cosmeticRecoveryDebouncer.reset();
+          this.becomeBusy({ trigger: "output" }, now);
+        }
+      }
       return;
     }
 
@@ -424,6 +497,7 @@ export class ActivityMonitor {
     this.outputVolumeDetector.reset();
     this.highOutputDetector.reset();
     this.workingSignalDebouncer.reset();
+    this.cosmeticRecoveryDebouncer.reset();
     this.lineRewriteDetector.reset();
     this.patternBuf.reset();
     this.bootDetector.reset();
@@ -794,6 +868,11 @@ export class ActivityMonitor {
       clearInterval(this.pollingInterval);
       this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
     }
+
+    // Recovery thresholds need to track the polling cadence, otherwise the
+    // 1000ms volume window and 1500ms debouncer become impossible to satisfy
+    // at 500ms polling. See #6641.
+    this.applyTier(this.tierForInterval(intervalMs));
   }
 
   private recordWorkingSignal(now: number): void {
@@ -843,6 +922,10 @@ export class ActivityMonitor {
     this.recordWorkingSignal(now);
     this.resetDebounceTimer();
     this.waitingWatchdogFired = false;
+    // Clear any in-flight cosmetic-redraw accumulator so the next idle cycle
+    // starts fresh — otherwise a single spinner tick after busy→idle would
+    // immediately re-trigger recovery without sustained signal.
+    this.cosmeticRecoveryDebouncer.reset();
 
     // Reset completion state for the new work cycle
     this.completionTimer.reset();
