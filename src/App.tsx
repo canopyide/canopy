@@ -507,15 +507,17 @@ function App() {
               delayDuration={UI_TOOLTIP_DELAY_DURATION}
               skipDelayDuration={UI_TOOLTIP_SKIP_DELAY_DURATION}
             >
-              <AppLayout
-                onLaunchAgent={handleLaunchAgent}
-                onSettings={handleSettings}
-                onPreloadSettings={handlePreloadSettings}
-                agentAvailability={availability}
-                agentSettings={agentSettings}
-                isHydrated={false}
-                projectSwitcherPalette={projectSwitcherPalette}
-              />
+              <DndProvider>
+                <AppLayout
+                  onLaunchAgent={handleLaunchAgent}
+                  onSettings={handleSettings}
+                  onPreloadSettings={handlePreloadSettings}
+                  agentAvailability={availability}
+                  agentSettings={agentSettings}
+                  isHydrated={false}
+                  projectSwitcherPalette={projectSwitcherPalette}
+                />
+              </DndProvider>
             </TooltipProvider>
           </ErrorBoundary>
         </MotionConfig>
