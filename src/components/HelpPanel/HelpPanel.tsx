@@ -55,6 +55,8 @@ interface HelpSessionRef {
   sessionId: string;
   sessionPath: string;
   token: string;
+  mcpUrl: string | null;
+  windowId: number;
 }
 
 async function provisionHelpSession(): Promise<HelpSessionRef | null> {
@@ -70,6 +72,20 @@ async function provisionHelpSession(): Promise<HelpSessionRef | null> {
     logError("Failed to provision help session", err);
     return null;
   }
+}
+
+function buildHelpEnv(
+  session: HelpSessionRef | null,
+  projectId: string | null
+): Record<string, string> | undefined {
+  if (!session) return undefined;
+  const env: Record<string, string> = {
+    DAINTREE_MCP_TOKEN: session.token,
+    DAINTREE_WINDOW_ID: String(session.windowId),
+  };
+  if (session.mcpUrl) env.DAINTREE_MCP_URL = session.mcpUrl;
+  if (projectId) env.DAINTREE_PROJECT_ID = projectId;
+  return env;
 }
 
 function revokeHelpSession(sessionId: string | null): void {
@@ -165,7 +181,8 @@ export function HelpPanel() {
         const session = await provisionHelpSession();
         if (session) pendingSessionIdRef.current = session.sessionId;
         const cwd = session?.sessionPath ?? folderPath;
-        const env = session ? { DAINTREE_MCP_TOKEN: session.token } : undefined;
+        const projectId = useProjectStore.getState().currentProject?.id ?? null;
+        const env = buildHelpEnv(session, projectId);
 
         const model = resolveAssistantModel(launchAgentId);
         const result = await actionService.dispatch<{ terminalId: string | null }>(
@@ -203,6 +220,16 @@ export function HelpPanel() {
           pendingSessionIdRef.current = null;
           logError("Help auto-launch failed", { agentId: launchAgentId, result });
           notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
+          return;
+        }
+
+        // Stale-launch guard: handleClose / handleBack revoked the pending
+        // session via revokePendingSession (clearing the ref). Drop the orphan
+        // terminal rather than binding a panel to a revoked token.
+        const expectedSessionId = session?.sessionId ?? null;
+        if (expectedSessionId && pendingSessionIdRef.current !== expectedSessionId) {
+          usePanelStore.getState().removePanel(result.result.terminalId);
+          hasAutoLaunched.current = false;
           return;
         }
 
@@ -304,7 +331,8 @@ export function HelpPanel() {
         const session = await provisionHelpSession();
         if (session) pendingSessionIdRef.current = session.sessionId;
         const cwd = session?.sessionPath ?? folderPath;
-        const env = session ? { DAINTREE_MCP_TOKEN: session.token } : undefined;
+        const projectId = useProjectStore.getState().currentProject?.id ?? null;
+        const env = buildHelpEnv(session, projectId);
 
         const model = resolveAssistantModel(selectedAgentId);
         const result = await actionService.dispatch<{ terminalId: string | null }>(
@@ -325,6 +353,15 @@ export function HelpPanel() {
           pendingSessionIdRef.current = null;
           logError("Help launch failed", { agentId: selectedAgentId, result });
           notifyLaunchFailed(selectedAgentId, "The agent didn't start. Try again.");
+          return;
+        }
+
+        // Stale-launch guard: if handleClose / handleBack revoked the pending
+        // session while dispatch was in-flight, the session is dead. Drop the
+        // orphan terminal rather than binding a panel to a revoked token.
+        const expectedSessionId = session?.sessionId ?? null;
+        if (expectedSessionId && pendingSessionIdRef.current !== expectedSessionId) {
+          usePanelStore.getState().removePanel(result.result.terminalId);
           return;
         }
 
@@ -380,16 +417,14 @@ export function HelpPanel() {
 
     safeFireAndForget(
       (async () => {
+        let session: HelpSessionRef | null = null;
         try {
-          const session = await provisionHelpSession();
+          session = await provisionHelpSession();
           const cwd = session?.sessionPath ?? panel.cwd ?? "";
+          const projectId = useProjectStore.getState().currentProject?.id ?? null;
+          const helpEnv = buildHelpEnv(session, projectId);
           const env: Record<string, string> | undefined =
-            session || presetEnv
-              ? {
-                  ...(presetEnv ?? {}),
-                  ...(session ? { DAINTREE_MCP_TOKEN: session.token } : {}),
-                }
-              : undefined;
+            helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
           const newId = await usePanelStore.getState().addPanel({
             kind: "terminal",
@@ -419,6 +454,7 @@ export function HelpPanel() {
             logError("Failed to mark help terminal", err);
           });
         } catch (error) {
+          revokeHelpSession(session?.sessionId ?? null);
           logError("Help run-anyway failed", error);
           notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
         } finally {
