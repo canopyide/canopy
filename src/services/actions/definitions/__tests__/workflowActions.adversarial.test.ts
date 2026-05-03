@@ -77,6 +77,15 @@ function setupActions(callbacks: MockCallbacks) {
   };
 }
 
+async function runWorkflow(
+  id: string,
+  args?: unknown,
+  ctx?: Record<string, unknown>
+): Promise<unknown> {
+  const def = setupActions(makeCallbacks())(id);
+  return def.run(args, (ctx ?? {}) as never);
+}
+
 function setProject(project: { id?: string; path?: string } | null) {
   projectStoreMock.getState.mockReturnValue({ currentProject: project });
 }
@@ -824,14 +833,14 @@ describe("workflow.prepBranchForReview", () => {
       repoState: "CLEAN",
     });
     projectClientMock.detectRunners.mockResolvedValue([]);
-    const def = setupActions(makeCallbacks())("workflow.prepBranchForReview");
-    await def.run({} as never, { activeWorktreePath: "/repo/active" } as never);
+    await runWorkflow("workflow.prepBranchForReview", {}, { activeWorktreePath: "/repo/active" });
     expect(gitGetStagingStatusMock).toHaveBeenCalledWith("/repo/active");
   });
 
   it("throws when cwd is omitted and no active worktree in ctx", async () => {
-    const def = setupActions(makeCallbacks())("workflow.prepBranchForReview");
-    await expect(def.run({} as never, {} as never)).rejects.toThrow("No active worktree");
+    await expect(runWorkflow("workflow.prepBranchForReview", {})).rejects.toThrow(
+      "No active worktree"
+    );
   });
 });
 
