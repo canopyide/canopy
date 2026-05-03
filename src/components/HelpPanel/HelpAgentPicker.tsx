@@ -40,9 +40,9 @@ export function HelpAgentPicker({ onSelectAgent, supportedAgentIds }: HelpAgentP
   if (supportedAgentIds.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
-        <p className="text-sm text-daintree-text/50">No agents are installed.</p>
+        <p className="text-sm text-daintree-text/50">No assistant agents installed.</p>
         <p className="text-xs text-daintree-text/40">
-          Install an agent using the setup wizard to use as your Daintree assistant.
+          Install a supported agent using the setup wizard to use as your Daintree assistant.
         </p>
         <Button
           type="button"

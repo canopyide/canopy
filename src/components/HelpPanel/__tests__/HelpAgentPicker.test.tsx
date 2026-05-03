@@ -64,7 +64,7 @@ describe("HelpAgentPicker", () => {
       <HelpAgentPicker onSelectAgent={vi.fn()} supportedAgentIds={[]} />
     );
 
-    expect(screen.getByText("No agents are installed.")).toBeTruthy();
+    expect(screen.getByText("No assistant agents installed.")).toBeTruthy();
     expect(screen.getByText("Run setup wizard")).toBeTruthy();
     expect(container.textContent).not.toMatch(/Enable an agent/i);
   });

@@ -860,4 +860,32 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
 
     expect(getByTestId("help-agent-picker").dataset.supported).toBe("claude,codex");
   });
+
+  it("hides the Back button when only one supported agent is installed (no picker to return to)", () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    cliAvailabilityState.availability = { claude: "ready" };
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude"]);
+    panelStoreState.panelsById = {
+      "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
+    };
+
+    const { container } = render(<HelpPanel />);
+
+    expect(container.querySelector('button[aria-label="Back to agent picker"]')).toBeNull();
+  });
+
+  it("shows the Back button when more than one supported agent is installed", () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
+    panelStoreState.panelsById = {
+      "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
+    };
+
+    const { container } = render(<HelpPanel />);
+
+    expect(container.querySelector('button[aria-label="Back to agent picker"]')).not.toBeNull();
+  });
 });

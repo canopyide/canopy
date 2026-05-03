@@ -523,7 +523,7 @@ export function HelpPanel() {
 
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-daintree-border shrink-0">
-        {showTerminal && (
+        {showTerminal && supportedInstalledAgentIds.length > 1 && (
           <button
             type="button"
             onClick={handleBack}
