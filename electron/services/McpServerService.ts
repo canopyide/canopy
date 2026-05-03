@@ -8,7 +8,17 @@ import type { AddressInfo } from "node:net";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ReadResourceRequestSchema,
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
+  McpError,
+  ErrorCode,
+} from "@modelcontextprotocol/sdk/types.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { ActionManifestEntry, ActionDispatchResult } from "../../shared/types/actions.js";
 import {
@@ -27,6 +37,8 @@ import { store } from "../store.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../shared/utils/mcpArgsSummary.js";
 import { mcpPaneConfigService } from "./McpPaneConfigService.js";
+import { events } from "./events.js";
+import { getAgentAvailabilityStore } from "./AgentAvailabilityStore.js";
 
 const MCP_SERVER_KEY = "daintree";
 
@@ -292,6 +304,30 @@ const TIER_ALLOWLISTS: Readonly<Record<McpTier, ReadonlySet<string>>> = {
 
 const TIER_NOT_PERMITTED_CODE = "TIER_NOT_PERMITTED";
 
+type ResourceKind = "pulse" | "scrollback" | "agentState" | "issues";
+
+interface ParsedResourceUri {
+  kind: ResourceKind;
+  id: string;
+}
+
+/**
+ * Each resource read is gated by the same tier allowlist that gates its
+ * canonical backing tool. A resource that maps to `terminal.getOutput` is
+ * permitted for any session whose tier permits that action; this keeps
+ * the resource and tool surfaces aligned without a parallel allowlist.
+ */
+const RESOURCE_BACKING_ACTIONS: Readonly<Record<ResourceKind, string>> = {
+  pulse: "git.getProjectPulse",
+  scrollback: "terminal.getOutput",
+  agentState: "terminal.list",
+  issues: "github.listIssues",
+};
+
+const RESOURCE_TEXT_MAX_BYTES = 50 * 1024;
+
+const RESOURCE_SCROLLBACK_TAIL_LINES = 200;
+
 interface PendingRequest<T> {
   resolve: (value: T) => void;
   reject: (err: Error) => void;
@@ -321,6 +357,50 @@ interface McpHttpSession {
   transport: StreamableHTTPServerTransport;
   server: Server;
   idleTimer: ReturnType<typeof setTimeout>;
+}
+
+const RESOURCE_URI_PATTERN =
+  /^daintree:\/\/(worktree|terminal|agent|project)\/([^/]+)\/(pulse|scrollback|state|issues)$/;
+
+function parseResourceUri(uri: string): ParsedResourceUri | null {
+  const match = RESOURCE_URI_PATTERN.exec(uri);
+  if (!match) return null;
+  const host = match[1];
+  const id = decodeURIComponent(match[2]);
+  const verb = match[3];
+  if (host === "worktree" && verb === "pulse") return { kind: "pulse", id };
+  if (host === "terminal" && verb === "scrollback") return { kind: "scrollback", id };
+  if (host === "agent" && verb === "state") return { kind: "agentState", id };
+  if (host === "project" && id === "current" && verb === "issues") return { kind: "issues", id };
+  return null;
+}
+
+function unwrapDispatchResult(envelope: DispatchEnvelope): unknown {
+  const result = envelope.result;
+  if (result.ok) return result.result;
+  throw new Error(`Action failed [${result.error.code}]: ${result.error.message}`);
+}
+
+function serializeResourcePayload(value: unknown): string {
+  if (value === undefined || value === null) return "null";
+  if (typeof value === "string") return value;
+  return safeSerializeToolResult(value);
+}
+
+function truncateText(text: string, maxBytes: number = RESOURCE_TEXT_MAX_BYTES): string {
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
+  const sliced = Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8");
+  return `${sliced}\n\n[truncated]`;
+}
+
+function readStringField(value: unknown, keys: readonly string[]): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const v = record[key];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return undefined;
 }
 
 function safeSerializeToolResult(value: unknown): string {
@@ -386,6 +466,13 @@ export class McpServerService {
    * `transport.onclose` and idle-eviction paths.
    */
   private sessionTierMap = new Map<string, McpTier>();
+  /**
+   * Per-session resource subscriptions: outer key is sessionId, inner key
+   * is the subscribed URI. Each entry holds the unsubscribe function for
+   * the underlying event-bus listener so we can tear it down on unsubscribe,
+   * transport close, or idle eviction without leaking listeners.
+   */
+  private resourceSubscriptions = new Map<string, Map<string, () => void>>();
   private pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
   private pendingDispatches = new Map<string, PendingRequest<DispatchEnvelope>>();
   private cachedManifest: ActionManifestEntry[] | null = null;
@@ -1083,7 +1170,12 @@ export class McpServerService {
   private createSessionServer(sessionId: string): Server {
     const server = new Server(
       { name: "Daintree", version: "1.0.0" },
-      { capabilities: { tools: {} } }
+      {
+        capabilities: {
+          tools: {},
+          resources: { subscribe: true, listChanged: false },
+        },
+      }
     );
 
     server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -1201,7 +1293,271 @@ export class McpServerService {
       }
     });
 
+    server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      return { resources: await this.listConcreteResources(sessionId) };
+    });
+
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+      return { resourceTemplates: this.listResourceTemplates(sessionId) };
+    });
+
+    server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const uri = request.params.uri;
+      const parsed = parseResourceUri(uri);
+      if (!parsed) {
+        throw new McpError(ErrorCode.InvalidRequest, `Unknown resource URI: ${uri}`);
+      }
+      if (!this.isResourcePermitted(sessionId, parsed.kind)) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Resource '${uri}' is not permitted for the '${this.getSessionTier(sessionId)}' tier.`
+        );
+      }
+      const contents = await this.readResourceContents(uri, parsed);
+      return { contents: [contents] };
+    });
+
+    server.setRequestHandler(SubscribeRequestSchema, async (request) => {
+      const uri = request.params.uri;
+      const parsed = parseResourceUri(uri);
+      if (!parsed) {
+        throw new McpError(ErrorCode.InvalidRequest, `Unknown resource URI: ${uri}`);
+      }
+      if (!this.isResourcePermitted(sessionId, parsed.kind)) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Resource '${uri}' is not permitted for the '${this.getSessionTier(sessionId)}' tier.`
+        );
+      }
+      this.subscribeResource(sessionId, server, uri, parsed);
+      return {};
+    });
+
+    server.setRequestHandler(UnsubscribeRequestSchema, async (request) => {
+      this.unsubscribeResource(sessionId, request.params.uri);
+      return {};
+    });
+
     return server;
+  }
+
+  private async listConcreteResources(
+    sessionId: string
+  ): Promise<Array<{ uri: string; name: string; mimeType: string; description?: string }>> {
+    const resources: Array<{ uri: string; name: string; mimeType: string; description?: string }> =
+      [];
+    if (this.isResourcePermitted(sessionId, "issues")) {
+      resources.push({
+        uri: "daintree://project/current/issues",
+        name: "Current project — open issues",
+        mimeType: "application/json",
+        description: "Open GitHub issues for the active project.",
+      });
+    }
+    if (this.isResourcePermitted(sessionId, "pulse")) {
+      const worktrees = await this.tryDispatchList("worktree.list");
+      for (const wt of worktrees) {
+        const id = readStringField(wt, ["id", "worktreeId"]);
+        const label = readStringField(wt, ["branch", "name", "path"]) ?? id;
+        if (!id) continue;
+        resources.push({
+          uri: `daintree://worktree/${encodeURIComponent(id)}/pulse`,
+          name: `Worktree pulse — ${label ?? id}`,
+          mimeType: "application/json",
+          description: "Git status summary, recent commits, and pull-request signal.",
+        });
+      }
+    }
+    if (
+      this.isResourcePermitted(sessionId, "scrollback") ||
+      this.isResourcePermitted(sessionId, "agentState")
+    ) {
+      const terminals = await this.tryDispatchList("terminal.list");
+      for (const term of terminals) {
+        const id = readStringField(term, ["id", "terminalId"]);
+        const label = readStringField(term, ["title", "name"]) ?? id;
+        if (!id) continue;
+        if (this.isResourcePermitted(sessionId, "scrollback")) {
+          resources.push({
+            uri: `daintree://terminal/${encodeURIComponent(id)}/scrollback`,
+            name: `Terminal scrollback — ${label ?? id}`,
+            mimeType: "text/plain",
+            description: `Last ${RESOURCE_SCROLLBACK_TAIL_LINES} lines of terminal output.`,
+          });
+        }
+        if (this.isResourcePermitted(sessionId, "agentState")) {
+          resources.push({
+            uri: `daintree://agent/${encodeURIComponent(id)}/state`,
+            name: `Agent state — ${label ?? id}`,
+            mimeType: "application/json",
+            description: "Current agent state-machine value (idle, working, waiting, etc.).",
+          });
+        }
+      }
+    }
+    return resources;
+  }
+
+  private listResourceTemplates(
+    sessionId: string
+  ): Array<{ uriTemplate: string; name: string; mimeType: string; description?: string }> {
+    const templates: Array<{
+      uriTemplate: string;
+      name: string;
+      mimeType: string;
+      description?: string;
+    }> = [];
+    if (this.isResourcePermitted(sessionId, "pulse")) {
+      templates.push({
+        uriTemplate: "daintree://worktree/{id}/pulse",
+        name: "Worktree pulse",
+        mimeType: "application/json",
+        description: "Git status summary, recent commits, and pull-request signal.",
+      });
+    }
+    if (this.isResourcePermitted(sessionId, "scrollback")) {
+      templates.push({
+        uriTemplate: "daintree://terminal/{id}/scrollback",
+        name: "Terminal scrollback",
+        mimeType: "text/plain",
+        description: `Last ${RESOURCE_SCROLLBACK_TAIL_LINES} lines of terminal output.`,
+      });
+    }
+    if (this.isResourcePermitted(sessionId, "agentState")) {
+      templates.push({
+        uriTemplate: "daintree://agent/{id}/state",
+        name: "Agent state",
+        mimeType: "application/json",
+        description: "Current agent state-machine value (idle, working, waiting, etc.).",
+      });
+    }
+    return templates;
+  }
+
+  private async readResourceContents(
+    uri: string,
+    parsed: ParsedResourceUri
+  ): Promise<{ uri: string; mimeType: string; text: string }> {
+    if (parsed.kind === "pulse") {
+      const envelope = await this.dispatchAction("git.getProjectPulse", {
+        worktreeId: parsed.id,
+        rangeDays: 60,
+      });
+      const text = serializeResourcePayload(unwrapDispatchResult(envelope));
+      return { uri, mimeType: "application/json", text: truncateText(text) };
+    }
+    if (parsed.kind === "scrollback") {
+      const envelope = await this.dispatchAction("terminal.getOutput", {
+        terminalId: parsed.id,
+        maxLines: RESOURCE_SCROLLBACK_TAIL_LINES,
+        stripAnsi: true,
+      });
+      const value = unwrapDispatchResult(envelope);
+      const text = typeof value === "string" ? value : serializeResourcePayload(value);
+      return { uri, mimeType: "text/plain", text: truncateText(text) };
+    }
+    if (parsed.kind === "agentState") {
+      const state = getAgentAvailabilityStore().getState(parsed.id);
+      const text = JSON.stringify({ agentId: parsed.id, state: state ?? null });
+      return { uri, mimeType: "application/json", text };
+    }
+    if (parsed.kind === "issues") {
+      const envelope = await this.dispatchAction("github.listIssues", {});
+      const text = serializeResourcePayload(unwrapDispatchResult(envelope));
+      return { uri, mimeType: "application/json", text: truncateText(text) };
+    }
+    throw new McpError(ErrorCode.InvalidRequest, `Unknown resource URI: ${uri}`);
+  }
+
+  private async tryDispatchList(actionId: string): Promise<unknown[]> {
+    try {
+      const envelope = await this.dispatchAction(actionId, {});
+      const value = unwrapDispatchResult(envelope);
+      if (Array.isArray(value)) return value;
+      if (value && typeof value === "object") {
+        for (const key of ["items", "results", "list", "terminals", "worktrees"]) {
+          const inner = (value as Record<string, unknown>)[key];
+          if (Array.isArray(inner)) return inner;
+        }
+      }
+      return [];
+    } catch (err) {
+      console.error(`[MCP] Failed to enumerate resources via ${actionId}:`, err);
+      return [];
+    }
+  }
+
+  private isResourcePermitted(sessionId: string, kind: ResourceKind): boolean {
+    const tier = this.getSessionTier(sessionId);
+    return this.isTierPermitted(tier, RESOURCE_BACKING_ACTIONS[kind]);
+  }
+
+  private subscribeResource(
+    sessionId: string,
+    server: Server,
+    uri: string,
+    parsed: ParsedResourceUri
+  ): void {
+    if (parsed.kind !== "pulse" && parsed.kind !== "agentState") {
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Subscriptions are not supported for resource '${uri}'.`
+      );
+    }
+    let bucket = this.resourceSubscriptions.get(sessionId);
+    if (!bucket) {
+      bucket = new Map();
+      this.resourceSubscriptions.set(sessionId, bucket);
+    }
+    if (bucket.has(uri)) return;
+
+    const fire = () => {
+      if (!this.sessions.has(sessionId) && !this.httpSessions.has(sessionId)) return;
+      server.sendResourceUpdated({ uri }).catch((err) => {
+        console.error(`[MCP] sendResourceUpdated failed for ${uri}:`, err);
+      });
+    };
+
+    let unsub: () => void;
+    if (parsed.kind === "agentState") {
+      unsub = events.on("agent:state-changed", (payload) => {
+        if (payload.agentId === parsed.id) fire();
+      });
+    } else {
+      unsub = events.on("sys:worktree:update", (payload) => {
+        if (payload.worktreeId === parsed.id) fire();
+      });
+    }
+    bucket.set(uri, unsub);
+  }
+
+  private unsubscribeResource(sessionId: string, uri: string): void {
+    const bucket = this.resourceSubscriptions.get(sessionId);
+    if (!bucket) return;
+    const unsub = bucket.get(uri);
+    if (!unsub) return;
+    try {
+      unsub();
+    } catch (err) {
+      console.error(`[MCP] Failed to unsubscribe ${uri}:`, err);
+    }
+    bucket.delete(uri);
+    if (bucket.size === 0) {
+      this.resourceSubscriptions.delete(sessionId);
+    }
+  }
+
+  private cleanupResourceSubscriptions(sessionId: string): void {
+    const bucket = this.resourceSubscriptions.get(sessionId);
+    if (!bucket) return;
+    for (const unsub of bucket.values()) {
+      try {
+        unsub();
+      } catch (err) {
+        console.error("[MCP] Resource subscription teardown failed:", err);
+      }
+    }
+    this.resourceSubscriptions.delete(sessionId);
   }
 
   private isValidHost(req: http.IncomingMessage): boolean {
@@ -1515,6 +1871,7 @@ export class McpServerService {
           this.sessions.delete(sessionId);
         }
         this.sessionTierMap.delete(sessionId);
+        this.cleanupResourceSubscriptions(sessionId);
       };
 
       await server.connect(transport);
@@ -1599,6 +1956,7 @@ export class McpServerService {
         this.httpSessions.delete(id);
       }
       this.sessionTierMap.delete(id);
+      this.cleanupResourceSubscriptions(id);
     };
 
     try {
@@ -1614,8 +1972,10 @@ export class McpServerService {
           this.httpSessions.delete(id);
         }
         this.sessionTierMap.delete(id);
+        this.cleanupResourceSubscriptions(id);
       } else {
         this.sessionTierMap.delete(newSessionId);
+        this.cleanupResourceSubscriptions(newSessionId);
       }
       await transport.close().catch(() => {});
       if (!res.headersSent) {
@@ -1631,6 +1991,7 @@ export class McpServerService {
       if (!session) return;
       this.httpSessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
+      this.cleanupResourceSubscriptions(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
       });
@@ -1652,6 +2013,7 @@ export class McpServerService {
       if (!session) return;
       this.sessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
+      this.cleanupResourceSubscriptions(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
       });
