@@ -2424,7 +2424,7 @@ export class McpServerService {
     args: unknown
   ): Promise<
     | { kind: "approved" }
-    | { kind: "rejected"; value: ActionDispatchResult }
+    | { kind: "rejected"; value: Extract<ActionDispatchResult, { ok: false }> }
     | { kind: "throw"; error: unknown }
   > {
     const argsSummary = summarizeMcpArgs(args);

@@ -1106,7 +1106,8 @@ describe("McpServerService", () => {
         arguments: { worktreeId: "wt-very-specific-id" },
       });
 
-      const captured = onElicit.mock.calls[0]?.[0] as { params: { message: string } } | undefined;
+      const calls = onElicit.mock.calls as unknown as Array<[{ params: { message: string } }]>;
+      const captured = calls[0]?.[0] as { params: { message: string } } | undefined;
       expect(captured?.params.message).toContain("Delete Worktree");
       // The args summary must appear in the prompt so a user reviewing
       // the elicitation form can tell which entity is being affected.
