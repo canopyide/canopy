@@ -153,6 +153,27 @@ export function DaintreeAssistantSettingsTab() {
     void persist({ skipPermissions: !settings.skipPermissions });
   }, [persist, settings.skipPermissions]);
 
+  const handleEnableMcpServer = useCallback(async () => {
+    try {
+      setError(null);
+      const next = await window.electron.mcpServer.setEnabled(true);
+      setMcpStatus({
+        enabled: next.enabled,
+        port: next.port,
+        apiKey: next.apiKey,
+      });
+    } catch (err) {
+      setError(formatErrorMessage(err, "Couldn't enable MCP server"));
+      notify({
+        type: "error",
+        title: "MCP server failed",
+        message: "Couldn't enable the MCP server. Try again.",
+        priority: "low",
+      });
+      logError("Failed to enable MCP server from assistant tab", err);
+    }
+  }, []);
+
   const setRetention = useCallback(
     (value: string) => {
       const parsed = Number(value);
@@ -295,6 +316,31 @@ export function DaintreeAssistantSettingsTab() {
           ariaLabel="Allow the assistant to call Daintree control tools"
           disabled={loading}
         />
+        {settings.daintreeControl && mcpStatus && !mcpStatus.enabled && (
+          <div
+            className={cn(
+              "flex items-start gap-3 p-3 rounded-[var(--radius-md)]",
+              "bg-overlay-subtle border border-daintree-border"
+            )}
+          >
+            <AlertTriangle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+            <div className="flex-1 text-xs text-daintree-text/70 leading-relaxed select-text">
+              The MCP server is off, so the assistant can't call Daintree actions yet. Turn it on to
+              activate Daintree control.
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleEnableMcpServer()}
+              className={cn(
+                "shrink-0 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium transition-colors",
+                "border border-daintree-border text-daintree-text/80",
+                "hover:bg-overlay-soft hover:text-daintree-text"
+              )}
+            >
+              Turn on MCP server
+            </button>
+          </div>
+        )}
       </SettingsSection>
 
       {/* Security */}
@@ -358,8 +404,8 @@ export function DaintreeAssistantSettingsTab() {
           <p className="text-xs text-daintree-text/50">Couldn't load MCP status.</p>
         ) : !mcpStatus.enabled ? (
           <p className="text-xs text-daintree-text/60 select-text">
-            MCP server is off. Turn it on in the MCP Server tab to enable Daintree control and share
-            the connection with external clients.
+            MCP server is off. Turn it on in the MCP Server tab to share the connection with
+            external clients.
           </p>
         ) : (
           <div className="contents">
