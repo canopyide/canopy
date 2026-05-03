@@ -4,9 +4,6 @@ import { getProjectViewManager } from "../window/windowRef.js";
 import http from "node:http";
 import net from "node:net";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import os from "node:os";
-import path from "node:path";
-import fs from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
@@ -27,13 +24,10 @@ import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 export type McpAuthClass = "external" | HelpAssistantTier;
 export type HelpTokenValidator = (token: string) => HelpAssistantTier | false;
 import { store } from "../store.js";
-import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../shared/utils/mcpArgsSummary.js";
 import { mcpPaneConfigService } from "./McpPaneConfigService.js";
 
-const DISCOVERY_DIR = path.join(os.homedir(), ".daintree");
-const DISCOVERY_FILE = path.join(DISCOVERY_DIR, "mcp.json");
 const MCP_SERVER_KEY = "daintree";
 
 const DEFAULT_PORT = 45454;
@@ -383,10 +377,10 @@ export class McpServerService {
   private auditFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private auditHydrated = false;
   /**
-   * Bearer token for the global MCP server. Not persisted in electron-store —
-   * the `~/.daintree/mcp.json` discovery file (0600) is the sole on-disk
-   * source. Initialized in `start()` (read-from-file or generate-fresh) and
-   * replaced by `rotateApiKey()`. Always non-empty once the server is running.
+   * Bearer token for the global MCP server. Persisted in electron-store under
+   * `mcpServer.apiKey`. Initialized in `start()` (hydrate-from-store or
+   * generate-fresh-and-persist) and replaced by `rotateApiKey()`. Always
+   * non-empty once the server is running.
    */
   private apiKey: string | null = null;
   /**
@@ -480,12 +474,13 @@ export class McpServerService {
   }
 
   /**
-   * Mint a fresh bearer token and rewrite the discovery file. On write
+   * Mint a fresh bearer token and persist it to electron-store. On store-write
    * failure the in-memory key is rolled back so the previous bearer remains
-   * authoritative for in-flight requests. Local-loopback only — clients pick
-   * up the new key on their next request via `~/.daintree/mcp.json`; no
-   * server restart is needed. Single-flight: parallel callers share the same
-   * in-flight promise and receive the same returned key.
+   * authoritative for in-flight requests. Local-loopback only — clients use
+   * the new key on their next request; no server restart needed. External
+   * clients holding the old key in their own config break and must re-paste
+   * the new bearer from Settings. Single-flight: parallel callers share the
+   * same in-flight promise and receive the same returned key.
    */
   async rotateApiKey(): Promise<string> {
     if (this.rotateInFlight) return this.rotateInFlight;
@@ -493,13 +488,11 @@ export class McpServerService {
       const newKey = `daintree_${randomUUID().replace(/-/g, "")}`;
       const previousKey = this.apiKey;
       this.apiKey = newKey;
-      if (this.isRunning) {
-        try {
-          await this.writeDiscoveryFile();
-        } catch (err) {
-          this.apiKey = previousKey;
-          throw err;
-        }
+      try {
+        this.persistConfig({ apiKey: newKey });
+      } catch (err) {
+        this.apiKey = previousKey;
+        throw err;
       }
       return newKey;
     })();
@@ -508,29 +501,6 @@ export class McpServerService {
       return await promise;
     } finally {
       this.rotateInFlight = null;
-    }
-  }
-
-  /**
-   * Read the bearer token from the discovery file written on a previous run.
-   * Returns `null` if the file is missing, malformed, or has no Bearer entry —
-   * the caller falls back to minting a fresh key.
-   */
-  private async readApiKeyFromDiscoveryFile(): Promise<string | null> {
-    try {
-      const raw = await fs.readFile(DISCOVERY_FILE, "utf-8");
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const servers = parsed["mcpServers"] as Record<string, unknown> | undefined;
-      const entry = servers?.[MCP_SERVER_KEY] as Record<string, unknown> | undefined;
-      const headers = entry?.["headers"] as Record<string, unknown> | undefined;
-      const auth = headers?.["Authorization"];
-      if (typeof auth === "string" && auth.startsWith("Bearer ")) {
-        const token = auth.slice("Bearer ".length).trim();
-        return token.length > 0 ? token : null;
-      }
-      return null;
-    } catch {
-      return null;
     }
   }
 
@@ -731,8 +701,13 @@ export class McpServerService {
     this.starting = true;
     try {
       if (!this.apiKey) {
-        const persisted = await this.readApiKeyFromDiscoveryFile();
-        this.apiKey = persisted ?? `daintree_${randomUUID().replace(/-/g, "")}`;
+        const persisted = this.getConfig().apiKey;
+        if (persisted && persisted.length > 0) {
+          this.apiKey = persisted;
+        } else {
+          this.apiKey = `daintree_${randomUUID().replace(/-/g, "")}`;
+          this.persistConfig({ apiKey: this.apiKey });
+        }
       }
 
       this.hydrateAuditLog();
@@ -763,11 +738,6 @@ export class McpServerService {
 
       this.port = boundPort;
       this.httpServer = server;
-      try {
-        await this.writeDiscoveryFile();
-      } catch (err) {
-        console.error("[MCP] Failed to write discovery file:", err);
-      }
       console.log(
         `[MCP] Server started on http://127.0.0.1:${this.port}/mcp (Streamable HTTP) and /sse (legacy SSE)`
       );
@@ -829,7 +799,6 @@ export class McpServerService {
       this.port = null;
     }
 
-    await this.removeDiscoveryFile();
     console.log("[MCP] Server stopped");
     if (wasRunning) {
       this.emitStatusChange();
@@ -1631,82 +1600,6 @@ export class McpServerService {
     if (!session) return;
     clearTimeout(session.idleTimer);
     session.idleTimer = this.createIdleTimer(sessionId);
-  }
-
-  /**
-   * Write the discovery file. Throws on failure so callers that need rollback
-   * (e.g. `rotateApiKey`) can react. The startup path catches and logs to
-   * preserve the existing best-effort contract.
-   */
-  private async writeDiscoveryFile(): Promise<void> {
-    if (!this.port) return;
-    await fs.mkdir(DISCOVERY_DIR, { recursive: true });
-    if (process.platform !== "win32") {
-      await fs.chmod(DISCOVERY_DIR, 0o700).catch((err) => {
-        console.error("[MCP] Failed to chmod discovery directory:", err);
-      });
-    }
-
-    let existing: Record<string, unknown> = {};
-    try {
-      const raw = await fs.readFile(DISCOVERY_FILE, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        existing = parsed as Record<string, unknown>;
-      }
-    } catch {
-      // file doesn't exist or isn't valid JSON — start fresh
-    }
-
-    const rawServers = existing["mcpServers"];
-    const mcpServers: Record<string, unknown> =
-      rawServers && typeof rawServers === "object" && !Array.isArray(rawServers)
-        ? (rawServers as Record<string, unknown>)
-        : {};
-    const entry: Record<string, unknown> = {
-      type: "http",
-      url: `http://127.0.0.1:${this.port}/mcp`,
-    };
-    if (this.apiKey) {
-      entry.headers = { Authorization: `Bearer ${this.apiKey}` };
-    }
-    mcpServers[MCP_SERVER_KEY] = entry;
-
-    await resilientAtomicWriteFile(
-      DISCOVERY_FILE,
-      JSON.stringify({ ...existing, mcpServers }, null, 2) + "\n",
-      "utf-8",
-      { mode: 0o600 }
-    );
-  }
-
-  private async removeDiscoveryFile(): Promise<void> {
-    try {
-      const raw = await fs.readFile(DISCOVERY_FILE, "utf-8");
-      const existing = JSON.parse(raw) as Record<string, unknown>;
-      const mcpServers = (existing["mcpServers"] as Record<string, unknown> | undefined) ?? {};
-
-      delete mcpServers[MCP_SERVER_KEY];
-
-      if (Object.keys(mcpServers).length === 0) {
-        delete existing["mcpServers"];
-      } else {
-        existing["mcpServers"] = mcpServers;
-      }
-
-      if (Object.keys(existing).length === 0) {
-        await fs.unlink(DISCOVERY_FILE);
-      } else {
-        await resilientAtomicWriteFile(
-          DISCOVERY_FILE,
-          JSON.stringify(existing, null, 2) + "\n",
-          "utf-8",
-          { mode: 0o600 }
-        );
-      }
-    } catch {
-      // best-effort removal — don't crash on cleanup errors
-    }
   }
 }
 
