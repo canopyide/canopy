@@ -16,6 +16,8 @@ import {
   ReadResourceRequestSchema,
   SubscribeRequestSchema,
   UnsubscribeRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   McpError,
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -327,6 +329,158 @@ const RESOURCE_BACKING_ACTIONS: Readonly<Record<ResourceKind, string>> = {
 const RESOURCE_TEXT_MAX_BYTES = 50 * 1024;
 
 const RESOURCE_SCROLLBACK_TAIL_LINES = 200;
+
+/**
+ * Live state stitched into prompt bodies at `prompts/get` time. Each field
+ * is best-effort: if the renderer is unavailable or the underlying query
+ * action fails, the field is absent and the prompt template falls back to a
+ * placeholder string. This keeps prompt expansion non-blocking — a degraded
+ * prompt is preferable to a hard failure that strands the user mid-flow.
+ */
+interface PromptRenderContext {
+  worktreePath?: string;
+  worktreeBranch?: string;
+  worktreeIssueNumber?: number;
+  terminalOutput?: string;
+}
+
+interface PromptArgumentDefinition {
+  name: string;
+  description: string;
+  required: boolean;
+}
+
+interface PromptDefinition {
+  name: string;
+  description: string;
+  arguments: PromptArgumentDefinition[];
+  render(args: Record<string, string>, context: PromptRenderContext): string;
+}
+
+const PROMPT_TERMINAL_OUTPUT_MAX_CHARS = 16_000;
+
+/**
+ * Pick a backtick run that does not appear inside the supplied content so a
+ * fenced code block embedding `content` cannot be terminated early by a
+ * matching backtick run inside the content itself. Starts at 3 backticks
+ * (the markdown minimum) and grows until a non-colliding marker is found.
+ */
+function pickFenceMarker(content: string): string {
+  let length = 3;
+  // Reasonable cap — content with 12+ consecutive backticks is pathological.
+  while (length < 12) {
+    const candidate = "`".repeat(length);
+    if (!content.includes(candidate)) {
+      return candidate;
+    }
+    length += 1;
+  }
+  return "`".repeat(length);
+}
+
+/**
+ * Static set of slash commands surfaced by Claude Code as
+ * `/mcp__daintree__<name>`. Bodies are plain markdown so the assistant
+ * receives a single user-role message with the interpolated state. Keep
+ * each prompt focused on a workflow entry point — they are user-triggered
+ * macros, not behavioural guidance (which belongs in `help/CLAUDE.md`).
+ */
+const PROMPT_DEFINITIONS: readonly PromptDefinition[] = [
+  {
+    name: "start_issue",
+    description: "Start work on a GitHub issue with worktree and project context primed.",
+    arguments: [
+      {
+        name: "issue_number",
+        description: "GitHub issue number to start work on (e.g. '6610').",
+        required: true,
+      },
+    ],
+    render(args, context) {
+      const issueNumber = args.issue_number.trim();
+      const worktree = context.worktreePath ?? "(no active worktree detected)";
+      const branch = context.worktreeBranch ?? "(unknown branch)";
+      return [
+        `Help me start work on GitHub issue #${issueNumber}.`,
+        "",
+        "Active workspace:",
+        `- Worktree: ${worktree}`,
+        `- Branch: ${branch}`,
+        "",
+        `Please:`,
+        `1. Read issue #${issueNumber} (use the GitHub tools or \`gh issue view ${issueNumber}\`) and summarise the goal in one sentence.`,
+        "2. Confirm the worktree above is the right place to do the work, or suggest creating a new one.",
+        "3. Outline the first 2–3 concrete steps so I can sign off before you begin editing.",
+      ].join("\n");
+    },
+  },
+  {
+    name: "triage_failed_agent",
+    description: "Diagnose a stuck or failed agent terminal and propose next steps.",
+    arguments: [
+      {
+        name: "terminal_id",
+        description:
+          "Terminal ID of the failed agent (from `terminal.list`). Optional — omit to triage the current worktree without specific terminal output.",
+        required: false,
+      },
+    ],
+    render(args, context) {
+      const terminalId = args.terminal_id?.trim();
+      const worktree = context.worktreePath ?? "(no active worktree detected)";
+      const branch = context.worktreeBranch ?? "(unknown branch)";
+
+      const lines: string[] = [
+        "An agent appears to be stuck or failed. Help me diagnose what went wrong and decide what to do next.",
+        "",
+        "Active workspace:",
+        `- Worktree: ${worktree}`,
+        `- Branch: ${branch}`,
+      ];
+
+      if (terminalId) {
+        lines.push(`- Failed terminal: ${terminalId}`);
+        lines.push("");
+        if (context.terminalOutput !== undefined) {
+          if (context.terminalOutput.length === 0) {
+            lines.push(
+              `Terminal output for ${terminalId} was fetched but is empty — the terminal may have just started or been cleared.`
+            );
+          } else {
+            // Use a fence marker that cannot collide with any backtick run in
+            // the terminal output. Picks the smallest backtick run not present.
+            const fence = pickFenceMarker(context.terminalOutput);
+            lines.push("Recent terminal output (most recent lines):");
+            lines.push(fence);
+            lines.push(context.terminalOutput);
+            lines.push(fence);
+          }
+        } else {
+          lines.push(
+            `Terminal output for ${terminalId} could not be fetched — call \`terminal.getOutput\` directly to retrieve it.`
+          );
+        }
+      } else {
+        lines.push("");
+        lines.push(
+          "No terminal_id was provided. Use `terminal.list` to find the stuck agent's terminal, then `terminal.getOutput` to inspect its recent activity."
+        );
+      }
+
+      lines.push("");
+      lines.push("Please:");
+      lines.push("1. Read the current git status (`git.getStagingStatus`) to see what changed.");
+      lines.push(
+        "2. Identify the root cause (error message, missing prerequisite, infinite loop, etc.)."
+      );
+      lines.push(
+        "3. Recommend a concrete next step: retry, kill and restart, hand back to me, or escalate."
+      );
+
+      return lines.join("\n");
+    },
+  },
+];
 
 interface PendingRequest<T> {
   resolve: (value: T) => void;
@@ -1193,6 +1347,7 @@ export class McpServerService {
         capabilities: {
           tools: {},
           resources: { subscribe: true, listChanged: false },
+          prompts: {},
         },
       }
     );
@@ -1355,6 +1510,54 @@ export class McpServerService {
     server.setRequestHandler(UnsubscribeRequestSchema, async (request) => {
       this.unsubscribeResource(sessionId, request.params.uri);
       return {};
+    });
+
+    server.setRequestHandler(ListPromptsRequestSchema, async () => {
+      return {
+        prompts: PROMPT_DEFINITIONS.map((def) => ({
+          name: def.name,
+          description: def.description,
+          arguments: def.arguments,
+        })),
+      };
+    });
+
+    server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+      const name = request.params.name;
+      const definition = PROMPT_DEFINITIONS.find((def) => def.name === name);
+      if (!definition) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: ${name}`);
+      }
+
+      // The SDK's GetPromptRequestSchema already validates `arguments` as
+      // Record<string, string>, so any non-string value is rejected before
+      // reaching this handler.
+      const args: Record<string, string> = (request.params.arguments ?? {}) as Record<
+        string,
+        string
+      >;
+
+      for (const arg of definition.arguments) {
+        if (arg.required && !args[arg.name]?.trim()) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Missing required argument for prompt '${name}': ${arg.name}`
+          );
+        }
+      }
+
+      const context = await this.collectPromptContext(definition, args);
+      const text = definition.render(args, context);
+
+      return {
+        description: definition.description,
+        messages: [
+          {
+            role: "user" as const,
+            content: { type: "text" as const, text },
+          },
+        ],
+      };
     });
 
     return server;
@@ -1580,6 +1783,74 @@ export class McpServerService {
       }
     }
     this.resourceSubscriptions.delete(sessionId);
+  }
+
+  /**
+   * Best-effort fetch of the live state a prompt template wants to
+   * interpolate. Each query is wrapped in `safeDispatch` so a renderer that
+   * is unavailable, slow, or rejects produces a `null` rather than aborting
+   * the entire `prompts/get` call. Templates handle missing fields with
+   * placeholder copy — degraded prompts beat hard failures mid-flow.
+   */
+  private async collectPromptContext(
+    definition: PromptDefinition,
+    args: Record<string, string>
+  ): Promise<PromptRenderContext> {
+    const context: PromptRenderContext = {};
+
+    const worktree = await this.safeDispatch("worktree.getCurrent", undefined);
+    if (worktree && typeof worktree === "object") {
+      const w = worktree as Record<string, unknown>;
+      if (typeof w.path === "string") context.worktreePath = w.path;
+      if (typeof w.branch === "string") context.worktreeBranch = w.branch;
+      if (typeof w.issueNumber === "number") context.worktreeIssueNumber = w.issueNumber;
+    }
+
+    if (definition.name === "triage_failed_agent") {
+      const terminalId = args.terminal_id?.trim();
+      if (terminalId) {
+        const result = await this.safeDispatch("terminal.getOutput", {
+          terminalId,
+          maxLines: 100,
+          stripAnsi: true,
+        });
+        if (result && typeof result === "object") {
+          const r = result as Record<string, unknown>;
+          if (typeof r.content === "string") {
+            // Cap the embedded slice so a single very long line cannot blow
+            // up the prompt response; keep the tail since recency matters
+            // most when triaging a failed agent.
+            const content = r.content;
+            if (content.length > PROMPT_TERMINAL_OUTPUT_MAX_CHARS) {
+              const tail = content.slice(-PROMPT_TERMINAL_OUTPUT_MAX_CHARS);
+              context.terminalOutput = `… [truncated to last ${PROMPT_TERMINAL_OUTPUT_MAX_CHARS} chars]\n${tail}`;
+            } else {
+              context.terminalOutput = content;
+            }
+          }
+        }
+      }
+    }
+
+    return context;
+  }
+
+  /**
+   * Wraps `dispatchAction` for the prompt-rendering path. Returns the
+   * unwrapped result on success and `null` on any failure (renderer
+   * unavailable, action errored, dispatch rejected). Never throws — prompt
+   * expansion must remain non-blocking.
+   */
+  private async safeDispatch(actionId: string, args: unknown): Promise<unknown> {
+    try {
+      const envelope = await this.dispatchAction(actionId, args);
+      if (envelope.result.ok) {
+        return envelope.result.result;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   private isValidHost(req: http.IncomingMessage): boolean {
