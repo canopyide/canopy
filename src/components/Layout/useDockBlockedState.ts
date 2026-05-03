@@ -24,10 +24,22 @@ type AgentStateSource = {
 };
 
 function hasRuntimeAgentIdentity(panel: AgentStateSource): boolean {
-  // An active agentState ("working" | "waiting" | "directing") signals an
-  // in-flight agent run even when identity hasn't been committed yet — the
-  // backend only emits these states from agent-sourced events, so trust the
-  // signal during the identity-boot window.
+  const hasIdentityFields =
+    "runtimeIdentity" in panel ||
+    "detectedAgentId" in panel ||
+    "launchAgentId" in panel ||
+    "runtimeStatus" in panel ||
+    "exitCode" in panel;
+
+  // If identity fields are present, check them definitively.
+  if (hasIdentityFields) {
+    return isAgentTerminal(panel);
+  }
+
+  // No identity fields present: An active agentState ("working" | "waiting" |
+  // "directing") signals an in-flight agent run during the identity-boot
+  // window — the backend only emits these states from agent-sourced events,
+  // so trust the signal until identity fields arrive.
   if (
     panel.agentState === "working" ||
     panel.agentState === "waiting" ||
@@ -35,9 +47,7 @@ function hasRuntimeAgentIdentity(panel: AgentStateSource): boolean {
   ) {
     return true;
   }
-  if ("runtimeIdentity" in panel || "detectedAgentId" in panel) {
-    return isAgentTerminal(panel);
-  }
+
   // Backward-compatible for unit tests and pure callers that pass only state.
   return true;
 }
