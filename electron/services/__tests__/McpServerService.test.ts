@@ -577,6 +577,7 @@ describe("McpServerService", () => {
   });
 
   it("applies mcpAnnotations overrides on top of kind/danger defaults", async () => {
+    storeState.mcpServer.fullToolSurface = true;
     const { window } = createMockWindow({
       getManifest: () => [
         // Query that requires UX confirmation but is not destructive.
@@ -588,14 +589,25 @@ describe("McpServerService", () => {
           danger: "confirm",
           mcpAnnotations: { destructiveHint: false },
         }),
-        // Command that is semantically a read-only status query.
+        // Command that is semantically a read-only lookup; both readOnly and
+        // idempotent hints are forced on via override.
         createManifestEntry({
-          id: "worktree.resource.status" as ActionId,
-          title: "Check Resource Status",
-          description: "Check resource status for a worktree",
+          id: "test.readOnlyCommand" as ActionId,
+          title: "Read Only Command",
+          description: "Synthetic read-only command for override coverage",
           kind: "command",
           danger: "safe",
           mcpAnnotations: { readOnlyHint: true, idempotentHint: true },
+        }),
+        // Query whose readOnly/idempotent hints are explicitly forced off via
+        // override — guards against regressing the merge from `??` to `||`.
+        createManifestEntry({
+          id: "test.queryOverriddenFalse" as ActionId,
+          title: "Query With False Overrides",
+          description: "Synthetic query whose hints are explicitly false",
+          kind: "query",
+          danger: "safe",
+          mcpAnnotations: { readOnlyHint: false, idempotentHint: false },
         }),
       ],
     });
@@ -606,7 +618,8 @@ describe("McpServerService", () => {
 
     const result = await client.listTools();
     const generate = result.tools.find((t) => t.name === "copyTree.generate");
-    const status = result.tools.find((t) => t.name === "worktree.resource.status");
+    const readOnlyCmd = result.tools.find((t) => t.name === "test.readOnlyCommand");
+    const queryFalse = result.tools.find((t) => t.name === "test.queryOverriddenFalse");
 
     // Override flips destructiveHint off; readOnlyHint/idempotentHint still
     // come from the `kind: "query"` default.
@@ -620,13 +633,56 @@ describe("McpServerService", () => {
 
     // Override flips readOnly/idempotent on; destructiveHint still comes from
     // the `danger: "safe"` default.
-    expect(status?.annotations).toEqual({
-      title: "Check Resource Status",
+    expect(readOnlyCmd?.annotations).toEqual({
+      title: "Read Only Command",
       readOnlyHint: true,
       idempotentHint: true,
       destructiveHint: false,
       openWorldHint: false,
     });
+
+    // Explicit `false` overrides must win over the `kind: "query"` default —
+    // this would silently break if `??` were ever swapped for `||`.
+    expect(queryFalse?.annotations).toEqual({
+      title: "Query With False Overrides",
+      readOnlyHint: false,
+      idempotentHint: false,
+      destructiveHint: false,
+      openWorldHint: false,
+    });
+  });
+
+  it("ignores attempts to override openWorldHint via mcpAnnotations", async () => {
+    storeState.mcpServer.fullToolSurface = true;
+    const { window } = createMockWindow({
+      getManifest: () => [
+        // openWorldHint is category-derived; mcpAnnotations exposes only the
+        // three hint fields, so this entry's `category: "github"` must yield
+        // `openWorldHint: true` regardless of any per-action override.
+        createManifestEntry({
+          id: "github.someTool" as ActionId,
+          title: "Some GitHub Tool",
+          description: "Tool in an open-world category",
+          category: "github",
+          kind: "command",
+          danger: "safe",
+          mcpAnnotations: {
+            readOnlyHint: true,
+            idempotentHint: true,
+            destructiveHint: true,
+          },
+        }),
+      ],
+    });
+
+    await service.start(window);
+    const { client, transport } = await connectClient(service.currentPort!);
+    transports.push(transport);
+
+    const result = await client.listTools();
+    const tool = result.tools.find((t) => t.name === "github.someTool");
+
+    expect(tool?.annotations?.openWorldHint).toBe(true);
   });
 
   it("sets openWorldHint true for network-bound categories and false for local ones", async () => {
