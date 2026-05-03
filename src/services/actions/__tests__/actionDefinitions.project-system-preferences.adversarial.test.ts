@@ -597,7 +597,7 @@ describe("system action hardening", () => {
     ]);
 
     const filesSearch = actions.get("files.search")!();
-    expect(filesSearch.description).toContain("project.getCurrent");
+    expect(filesSearch.description).toContain("active worktree");
     expect(filesSearch.description).not.toContain("project_getCurrent");
   });
 

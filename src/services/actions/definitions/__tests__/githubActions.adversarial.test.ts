@@ -36,6 +36,15 @@ function setupActions() {
   };
 }
 
+async function runAction(
+  id: string,
+  args?: unknown,
+  ctx?: Record<string, unknown>
+): Promise<unknown> {
+  const def = setupActions()(id);
+  return def.run(args, (ctx ?? {}) as never);
+}
+
 function setCurrentProject(project: { path?: string } | null) {
   projectStoreMock.getState.mockReturnValue({ currentProject: project });
 }
@@ -144,5 +153,79 @@ describe("githubActions adversarial", () => {
     const result = await def.run({ cwd: "/repo", issueNumber: 42 }, {} as never);
     expect(githubClientMock.getIssueByNumber).toHaveBeenCalledWith("/repo", 42);
     expect(result).toBeNull();
+  });
+
+  it("listIssues falls back to ctx.activeWorktreePath when cwd omitted", async () => {
+    githubClientMock.listIssues.mockResolvedValue({ issues: [], nextCursor: null });
+    await runAction("github.listIssues", {}, { activeWorktreePath: "/repo" });
+    expect(githubClientMock.listIssues).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/repo" })
+    );
+  });
+
+  it("listIssues preserves all filter fields when falling back to ctx", async () => {
+    githubClientMock.listIssues.mockResolvedValue({ issues: [], nextCursor: null });
+    await runAction(
+      "github.listIssues",
+      { search: "q", state: "open", cursor: "c1" },
+      { activeWorktreePath: "/repo" }
+    );
+    expect(githubClientMock.listIssues).toHaveBeenCalledWith({
+      cwd: "/repo",
+      search: "q",
+      state: "open",
+      cursor: "c1",
+    });
+  });
+
+  it("listPullRequests preserves all filter fields when falling back to ctx", async () => {
+    githubClientMock.listPullRequests.mockResolvedValue({ pullRequests: [], nextCursor: null });
+    await runAction(
+      "github.listPullRequests",
+      { search: "q", state: "merged", cursor: "c1" },
+      { activeWorktreePath: "/repo" }
+    );
+    expect(githubClientMock.listPullRequests).toHaveBeenCalledWith({
+      cwd: "/repo",
+      search: "q",
+      state: "merged",
+      cursor: "c1",
+    });
+  });
+
+  it("listIssues throws when no cwd and no ctx.activeWorktreePath", async () => {
+    await expect(runAction("github.listIssues", {})).rejects.toThrow("No active worktree");
+  });
+
+  it("listIssues prefers explicit cwd over ctx", async () => {
+    githubClientMock.listIssues.mockResolvedValue({ issues: [], nextCursor: null });
+    await runAction("github.listIssues", { cwd: "/explicit" }, { activeWorktreePath: "/ctx" });
+    expect(githubClientMock.listIssues).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/explicit" })
+    );
+  });
+
+  it("listPullRequests falls back to ctx.activeWorktreePath when cwd omitted", async () => {
+    githubClientMock.listPullRequests.mockResolvedValue({ pullRequests: [], nextCursor: null });
+    await runAction("github.listPullRequests", {}, { activeWorktreePath: "/repo" });
+    expect(githubClientMock.listPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/repo" })
+    );
+  });
+
+  it("openIssue falls back to ctx.activeWorktreePath", async () => {
+    await runAction("github.openIssue", { issueNumber: 7 }, { activeWorktreePath: "/repo" });
+    expect(githubClientMock.openIssue).toHaveBeenCalledWith("/repo", 7);
+  });
+
+  it("getRepoStats falls back to ctx.activeWorktreePath", async () => {
+    await runAction("github.getRepoStats", {}, { activeWorktreePath: "/repo" });
+    expect(githubClientMock.getRepoStats).toHaveBeenCalledWith("/repo", undefined);
+  });
+
+  it("getIssueByNumber falls back to ctx.activeWorktreePath", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue(null);
+    await runAction("github.getIssueByNumber", { issueNumber: 5 }, { activeWorktreePath: "/repo" });
+    expect(githubClientMock.getIssueByNumber).toHaveBeenCalledWith("/repo", 5);
   });
 });
