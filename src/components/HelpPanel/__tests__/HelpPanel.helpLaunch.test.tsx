@@ -169,14 +169,35 @@ vi.mock("@/store", () => {
     selector ? selector(projectStoreState) : projectStoreState;
   projectStore.getState = () => projectStoreState;
 
+  const preferencesState = { reduceAnimations: false };
+  const preferencesStore = (selector?: (state: typeof preferencesState) => unknown) =>
+    selector ? selector(preferencesState) : preferencesState;
+  preferencesStore.getState = () => preferencesState;
+
   return {
     usePanelStore: panelStore,
     useCliAvailabilityStore: cliStore,
     useAgentSettingsStore: agentSettingsStore,
     useProjectStore: projectStore,
+    usePreferencesStore: preferencesStore,
     getTerminalRefreshTier: () => 0,
   };
 });
+
+vi.mock("@/store/macroFocusStore", () => {
+  const state = { focusedRegion: null, setRegionRef: vi.fn(), setVisibility: vi.fn() };
+  const store = (selector?: (s: typeof state) => unknown) => (selector ? selector(state) : state);
+  store.getState = () => state;
+  return { useMacroFocusStore: store };
+});
+
+vi.mock("@/lib/sidebarToggle", () => ({
+  suppressSidebarResizes: vi.fn(),
+}));
+
+vi.mock("@/hooks/useEscapeStack", () => ({
+  useEscapeStack: vi.fn(),
+}));
 
 vi.mock("@/types", () => ({
   TerminalRefreshTier: { BACKGROUND: 0, ACTIVE: 1 },
@@ -270,7 +291,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
     mockGetFolderPath.mockResolvedValue("/help");
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-1" } });
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -284,7 +305,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
     mockGetFolderPath.mockResolvedValue("/help");
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-1" } });
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -301,7 +322,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
     mockGetFolderPath.mockResolvedValue("/help");
     mockDispatch.mockResolvedValue({ ok: false });
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -317,7 +338,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
     mockGetFolderPath.mockResolvedValue("/help");
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: null } });
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -332,7 +353,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
   it("notifies and aborts when help folder is null", async () => {
     mockGetFolderPath.mockResolvedValue(null);
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -354,7 +375,7 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
       })
     );
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     // First click — kicks off async launch
     await act(async () => {
@@ -385,7 +406,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith("auto-term-1", "claude", null);
@@ -397,7 +418,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(mockDispatch).toHaveBeenCalledWith(
@@ -419,7 +440,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     );
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     // Simulate user clicking Back during the in-flight launch:
@@ -439,7 +460,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     mockDispatch.mockResolvedValue({ ok: false });
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
@@ -458,7 +479,7 @@ describe("HelpPanel — intro banner visibility", () => {
       "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
     };
 
-    const { container } = render(<HelpPanel />);
+    const { container } = render(<HelpPanel width={380} />);
 
     expect(container.querySelector('button[aria-label="Dismiss"]')).toBeTruthy();
   });
@@ -471,7 +492,7 @@ describe("HelpPanel — intro banner visibility", () => {
       "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
     };
 
-    const { container } = render(<HelpPanel />);
+    const { container } = render(<HelpPanel width={380} />);
 
     expect(container.querySelector('button[aria-label="Dismiss"]')).toBeNull();
   });
@@ -480,7 +501,7 @@ describe("HelpPanel — intro banner visibility", () => {
     helpPanelState.terminalId = null;
     helpPanelState.introDismissed = false;
 
-    const { container } = render(<HelpPanel />);
+    const { container } = render(<HelpPanel width={380} />);
 
     expect(container.querySelector('button[aria-label="Dismiss"]')).toBeNull();
   });
@@ -494,7 +515,7 @@ describe("HelpPanel — intro banner visibility", () => {
     };
     mockDispatch.mockResolvedValue({ ok: true });
 
-    const { getByText } = render(<HelpPanel />);
+    const { getByText } = render(<HelpPanel width={380} />);
 
     fireEvent.click(getByText("See what the Daintree Assistant can do"));
 
@@ -514,7 +535,7 @@ describe("HelpPanel — intro banner visibility", () => {
       "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
     };
 
-    const { container, getByTestId } = render(<HelpPanel />);
+    const { container, getByTestId } = render(<HelpPanel width={380} />);
 
     const dismissBtn = container.querySelector('button[aria-label="Dismiss"]')!;
     const xterm = getByTestId("xterm-adapter");
@@ -530,7 +551,7 @@ describe("HelpPanel — intro banner visibility", () => {
       "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
     };
 
-    const { container } = render(<HelpPanel />);
+    const { container } = render(<HelpPanel width={380} />);
     const dismissBtn = container.querySelector('button[aria-label="Dismiss"]');
     expect(dismissBtn).toBeTruthy();
     fireEvent.click(dismissBtn!);
@@ -555,7 +576,7 @@ describe("HelpPanel — render gates", () => {
       claude: { state: "missing", resolvedPath: null, via: null },
     };
 
-    const { getByTestId, queryByTestId } = render(<HelpPanel />);
+    const { getByTestId, queryByTestId } = render(<HelpPanel width={380} />);
 
     expect(getByTestId("missing-cli-gate")).toBeTruthy();
     expect(queryByTestId("xterm-adapter")).toBeNull();
@@ -568,7 +589,7 @@ describe("HelpPanel — render gates", () => {
       "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
     };
 
-    const { getByTestId, queryByTestId } = render(<HelpPanel />);
+    const { getByTestId, queryByTestId } = render(<HelpPanel width={380} />);
 
     expect(getByTestId("xterm-adapter")).toBeTruthy();
     expect(queryByTestId("missing-cli-gate")).toBeNull();
@@ -595,7 +616,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     };
     panelStoreState.addPanel = vi.fn().mockResolvedValue("restarted-term");
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("run-anyway"));
@@ -628,7 +649,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     };
     panelStoreState.addPanel = vi.fn().mockRejectedValue(new Error("spawn failed"));
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("run-anyway"));
@@ -668,7 +689,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     });
     panelStoreState.addPanel = vi.fn().mockRejectedValue(new Error("spawn failed"));
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("run-anyway"));
@@ -692,7 +713,7 @@ describe("HelpPanel — session provisioning", () => {
     });
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-1" } });
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -731,7 +752,7 @@ describe("HelpPanel — session provisioning", () => {
     });
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-2" } });
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -769,7 +790,7 @@ describe("HelpPanel — session provisioning", () => {
       })
     );
 
-    const { getByTestId, container } = render(<HelpPanel />);
+    const { getByTestId, container } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -817,7 +838,7 @@ describe("HelpPanel — session provisioning", () => {
       })
     );
 
-    const { getByTestId, container } = render(<HelpPanel />);
+    const { getByTestId, container } = render(<HelpPanel width={380} />);
 
     await act(async () => {
       fireEvent.click(getByTestId("pick-claude"));
@@ -849,7 +870,7 @@ describe("HelpPanel — session provisioning", () => {
     panelStoreState.panelsById = {};
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
@@ -876,7 +897,7 @@ describe("HelpPanel — hasAutoLaunched stale reset (regression)", () => {
         })
       );
 
-    const { rerender } = render(<HelpPanel />);
+    const { rerender } = render(<HelpPanel width={380} />);
 
     // User switches preferred agent while first launch is in flight (stale path)
     helpPanelState.preferredAgentId = "gemini";
@@ -891,7 +912,7 @@ describe("HelpPanel — hasAutoLaunched stale reset (regression)", () => {
 
     // Trigger the effect again with the new preferredAgentId.
     await act(async () => {
-      rerender(<HelpPanel />);
+      rerender(<HelpPanel width={380} />);
     });
 
     // The follow-up auto-launch must fire — this is the regression bug.
@@ -919,7 +940,7 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-skip-term" } });
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(mockDispatch).toHaveBeenCalledWith(
@@ -938,7 +959,7 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "should-not-fire" } });
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(mockDispatch).not.toHaveBeenCalled();
@@ -953,7 +974,7 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "should-not-fire" } });
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(mockDispatch).not.toHaveBeenCalled();
@@ -969,7 +990,7 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "should-not-fire" } });
 
     await act(async () => {
-      render(<HelpPanel />);
+      render(<HelpPanel width={380} />);
     });
 
     expect(mockDispatch).not.toHaveBeenCalled();
@@ -983,7 +1004,7 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
     mockGetFolderPath.mockResolvedValue("/help");
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "should-not-fire" } });
 
-    const { getByTestId } = render(<HelpPanel />);
+    const { getByTestId } = render(<HelpPanel width={380} />);
 
     expect(getByTestId("help-agent-picker").dataset.supported).toBe("claude,codex");
   });
@@ -997,7 +1018,7 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
       "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
     };
 
-    const { container } = render(<HelpPanel />);
+    const { container } = render(<HelpPanel width={380} />);
 
     expect(container.querySelector('button[aria-label="Back to agent picker"]')).toBeNull();
   });
@@ -1011,7 +1032,7 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
       "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
     };
 
-    const { container } = render(<HelpPanel />);
+    const { container } = render(<HelpPanel width={380} />);
 
     expect(container.querySelector('button[aria-label="Back to agent picker"]')).not.toBeNull();
   });
