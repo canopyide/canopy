@@ -393,7 +393,7 @@ export function AppLayout({
             </main>
           </ErrorBoundary>
           <ErrorBoundary variant="section" componentName="HelpPanel">
-            <HelpPanel />
+            <HelpPanel width={effectiveAssistantWidth} />
           </ErrorBoundary>
         </div>
         {/* Unified diagnostics dock replaces LogsPanel, EventInspectorPanel, and ProblemsPanel */}

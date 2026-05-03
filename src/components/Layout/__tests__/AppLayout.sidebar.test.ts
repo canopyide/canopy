@@ -56,8 +56,14 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
     // toggle) must not be reintroduced.
     expect(source).not.toMatch(/\{layout\.helpPanelOpen && \(\s*\n\s*<ErrorBoundary[^>]*HelpPanel/);
     expect(source).toMatch(
-      /<ErrorBoundary[^>]*componentName="HelpPanel"[^>]*>\s*\n\s*<HelpPanel\s*\/>/
+      /<ErrorBoundary[^>]*componentName="HelpPanel"[^>]*>\s*\n\s*<HelpPanel\s+width=\{effectiveAssistantWidth\}\s*\/>/
     );
+  });
+
+  it("passes effectiveAssistantWidth to HelpPanel so focus mode collapses width to 0", () => {
+    // Without the prop, HelpPanel reads its own store and ignores focus mode,
+    // leaving the panel at full width when the user enters focus mode.
+    expect(source).toContain("<HelpPanel width={effectiveAssistantWidth} />");
   });
 
   it("uses showAssistant for the macro-focus assistant visibility effect", () => {

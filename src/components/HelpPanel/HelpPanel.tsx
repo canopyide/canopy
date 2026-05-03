@@ -87,13 +87,24 @@ function revokeHelpSession(sessionId: string | null): void {
   });
 }
 
-export function HelpPanel() {
+interface HelpPanelProps {
+  /**
+   * Effective rendered width in pixels. Owned by `AppLayout` so focus mode
+   * and `helpPanelOpen` collapse the panel to 0 without unmounting the
+   * xterm PTY. Width 0 means hidden chrome (aria-hidden, no pointer
+   * events, no focusable children).
+   */
+  width: number;
+}
+
+export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
   const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
   const animateWidth = !isResizing && !reduceAnimations;
+  const isVisible = effectiveWidth > 0;
 
   const {
     isOpen,
@@ -519,14 +530,13 @@ export function HelpPanel() {
 
   const showTerminal = terminalId && terminal;
   const isMissingCli = showTerminal && terminal?.spawnStatus === "missing-cli";
-  const effectiveWidth = isOpen ? width : 0;
 
   return (
     <aside
       ref={panelRef}
       tabIndex={-1}
       aria-label="Daintree Assistant"
-      aria-hidden={!isOpen}
+      aria-hidden={!isVisible}
       data-macro-focus={isMacroFocused ? "true" : undefined}
       className={cn(
         "relative shrink-0 flex flex-col h-full overflow-hidden outline-hidden",
@@ -534,7 +544,7 @@ export function HelpPanel() {
         "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
         animateWidth &&
           "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
-        !isOpen && "pointer-events-none"
+        !isVisible && "pointer-events-none"
       )}
       style={{ width: effectiveWidth }}
     >
@@ -543,8 +553,8 @@ export function HelpPanel() {
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize help panel"
-        tabIndex={isOpen ? 0 : -1}
-        aria-hidden={!isOpen}
+        tabIndex={isVisible ? 0 : -1}
+        aria-hidden={!isVisible}
         className={cn(
           "absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10",
           "hover:bg-overlay-soft active:bg-overlay-medium transition-colors",
