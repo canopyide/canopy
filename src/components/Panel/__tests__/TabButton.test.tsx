@@ -371,4 +371,63 @@ describe("TabButton", () => {
       expect(input.tagName).toBe("INPUT");
     });
   });
+
+  // #6650 — State indicator must render whenever agentState is active, even
+  // when chrome.isAgent is false (identity hasn't committed yet).
+  describe("state indicator visibility (#6650)", () => {
+    it("renders working spinner when agentState='working' even with non-agent chrome", () => {
+      const { container } = render(
+        <TabButton {...defaultProps} chrome={deriveTerminalChrome()} agentState="working" />
+      );
+      const spinner = container.querySelector(".text-state-working");
+      expect(spinner).not.toBeNull();
+    });
+
+    // The state icon is the only element that combines "shrink-0" with
+    // "motion-reduce:animate-none" (TabButton.tsx:330-339). That class combo is
+    // a stable identifier across all six AgentState values.
+    const queryStateIcon = (container: Element) =>
+      Array.from(container.querySelectorAll("svg")).find((svg) => {
+        const cls = svg.getAttribute("class") ?? "";
+        return cls.includes("shrink-0") && cls.includes("motion-reduce:animate-none");
+      });
+
+    it("does not render state icon when agentState='exited'", () => {
+      const { container } = render(
+        <TabButton
+          {...defaultProps}
+          chrome={deriveTerminalChrome({ launchAgentId: "claude" })}
+          agentState="exited"
+        />
+      );
+      expect(queryStateIcon(container)).toBeUndefined();
+    });
+
+    it("does not render state icon when agentState='idle'", () => {
+      const { container } = render(
+        <TabButton
+          {...defaultProps}
+          chrome={deriveTerminalChrome({ launchAgentId: "claude" })}
+          agentState="idle"
+        />
+      );
+      expect(queryStateIcon(container)).toBeUndefined();
+    });
+
+    it("does not render state icon when agentState='completed'", () => {
+      const { container } = render(
+        <TabButton
+          {...defaultProps}
+          chrome={deriveTerminalChrome({ launchAgentId: "claude" })}
+          agentState="completed"
+        />
+      );
+      expect(queryStateIcon(container)).toBeUndefined();
+    });
+
+    it("does not render state icon when agentState is undefined (plain shell)", () => {
+      const { container } = render(<TabButton {...defaultProps} chrome={deriveTerminalChrome()} />);
+      expect(queryStateIcon(container)).toBeUndefined();
+    });
+  });
 });

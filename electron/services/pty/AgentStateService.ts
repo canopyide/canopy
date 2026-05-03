@@ -121,10 +121,9 @@ export class AgentStateService {
     sessionTokens?: number
   ): boolean {
     // Detection wins; fall back to the launch hint during the boot window.
+    // May be undefined for runtime-detected-only flows; consumers fall back to
+    // terminalId for routing.
     const effectiveAgentId = terminal.detectedAgentId ?? terminal.launchAgentId;
-    if (!effectiveAgentId) {
-      return false;
-    }
 
     const previousState = terminal.agentState || "idle";
     const newState = nextAgentState(previousState, event);
@@ -311,10 +310,6 @@ export class AgentStateService {
       sessionTokens?: number;
     }
   ): void {
-    if (!terminal.detectedAgentId && !terminal.launchAgentId) {
-      return;
-    }
-
     const event: AgentEvent =
       activity === "busy"
         ? metadata?.trigger === "input"

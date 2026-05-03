@@ -299,24 +299,55 @@ describe("AgentStateService", () => {
       expect(stateChanges[0]?.agentId).toBe("gemini");
     });
 
-    it("does nothing when both agentId and detectedAgentType are absent", () => {
+    // #6650 — Identity-less terminals (no detectedAgentId, no launchAgentId)
+    // must still flow through the state machine so the renderer can show an
+    // active-state indicator during the boot/identity-commit window.
+    it("emits state-changed for identity-less terminal with agentId undefined (#6650)", () => {
       const service = new AgentStateService();
       const terminal = createTerminal({
         launchAgentId: undefined,
         detectedAgentId: undefined,
         agentState: "idle",
       });
-      const stateChanges: unknown[] = [];
+      const stateChanges: Array<{ state: string; agentId?: string }> = [];
 
       events.on("agent:state-changed", (payload) => {
-        stateChanges.push(payload);
+        stateChanges.push({ state: payload.state, agentId: payload.agentId });
       });
 
       const changed = service.updateAgentState(terminal, { type: "busy" });
 
-      expect(changed).toBe(false);
-      expect(terminal.agentState).toBe("idle");
-      expect(stateChanges).toHaveLength(0);
+      expect(changed).toBe(true);
+      expect(terminal.agentState).toBe("working");
+      expect(stateChanges).toHaveLength(1);
+      expect(stateChanges[0]?.state).toBe("working");
+      expect(stateChanges[0]?.agentId).toBeUndefined();
+    });
+
+    it("handleActivityState emits state-changed for identity-less terminal (#6650)", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({
+        launchAgentId: undefined,
+        detectedAgentId: undefined,
+        agentState: "idle",
+      });
+      const stateChanges: Array<{ state: string; agentId?: string; trigger: string }> = [];
+
+      events.on("agent:state-changed", (payload) => {
+        stateChanges.push({
+          state: payload.state,
+          agentId: payload.agentId,
+          trigger: payload.trigger,
+        });
+      });
+
+      service.handleActivityState(terminal, "busy", { trigger: "output" });
+
+      expect(terminal.agentState).toBe("working");
+      expect(stateChanges).toHaveLength(1);
+      expect(stateChanges[0]?.state).toBe("working");
+      expect(stateChanges[0]?.agentId).toBeUndefined();
+      expect(stateChanges[0]?.trigger).toBe("output");
     });
 
     it("emitTerminalActivity produces agent-style headline for detectedAgentType-only terminal", () => {

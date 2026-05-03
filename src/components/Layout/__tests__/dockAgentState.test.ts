@@ -54,4 +54,55 @@ describe("dock display agent state", () => {
   it("does not deprioritize a group with working activity even before agentState catches up", () => {
     expect(isGroupDeprioritized([agent({ activityStatus: "working" })])).toBe(false);
   });
+
+  // #6650 — Identity-less terminals with active agentState must surface the
+  // dock indicator. The backend only emits "working"/"waiting"/"directing"
+  // from agent-sourced events, so we trust the state during the boot window.
+  describe("identity-less active states (#6650)", () => {
+    it("returns 'working' for a panel with no identity fields and agentState='working'", () => {
+      expect(getDockDisplayAgentState({ agentState: "working" })).toBe("working");
+    });
+
+    it("returns 'waiting' for a panel with no identity fields and agentState='waiting'", () => {
+      expect(getDockDisplayAgentState({ agentState: "waiting" })).toBe("waiting");
+    });
+
+    it("returns 'directing' for a panel with no identity fields and agentState='directing'", () => {
+      expect(getDockDisplayAgentState({ agentState: "directing" })).toBe("directing");
+    });
+
+    it("returns undefined for an identity-less panel with agentState='idle'", () => {
+      expect(
+        getDockDisplayAgentState({
+          launchAgentId: undefined,
+          detectedAgentId: undefined,
+          agentState: "idle",
+        })
+      ).toBeUndefined();
+    });
+
+    it("returns undefined for an identity-less panel with agentState='exited'", () => {
+      expect(
+        getDockDisplayAgentState({
+          launchAgentId: undefined,
+          detectedAgentId: undefined,
+          agentState: "exited",
+        })
+      ).toBeUndefined();
+    });
+
+    it("does not bleed plain-shell activity into agent state", () => {
+      expect(
+        getDockDisplayAgentState({
+          launchAgentId: undefined,
+          detectedAgentId: undefined,
+          activityStatus: "working",
+        })
+      ).toBeUndefined();
+    });
+
+    it("preserves canonical-agent path when launchAgentId is set", () => {
+      expect(getDockDisplayAgentState(agent({ agentState: "working" }))).toBe("working");
+    });
+  });
 });
