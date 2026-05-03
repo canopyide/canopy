@@ -25,7 +25,9 @@ const recipeStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const githubConfigStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const currentViewStoreMock = vi.hoisted(() => ({ getCurrentViewStore: vi.fn() }));
 const panelStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
-const selectorMock = vi.hoisted(() => ({ selectOrderedTerminals: vi.fn(() => []) }));
+const selectorMock = vi.hoisted(() => ({
+  selectOrderedTerminals: vi.fn<() => unknown[]>(() => []),
+}));
 
 const gitGetStagingStatusMock = vi.hoisted(() => vi.fn());
 
@@ -59,7 +61,7 @@ function makeCallbacks(): MockCallbacks & Pick<ActionCallbacks, "onLaunchAgent">
 
 function setupActions(callbacks: MockCallbacks) {
   const actions: ActionRegistry = new Map();
-  registerWorkflowActions(actions, callbacks);
+  registerWorkflowActions(actions, callbacks as unknown as Pick<ActionCallbacks, "onLaunchAgent">);
   return (id: string) => {
     const factory = actions.get(id);
     if (!factory) throw new Error(`missing ${id}`);
@@ -199,7 +201,7 @@ describe("workflow.startWorkOnIssue", () => {
     expect(copyTreeClientMock.injectToTerminal).not.toHaveBeenCalled();
   });
 
-  it("partial-success error embeds the partial result JSON for the caller", async () => {
+  it("partial-success error embeds message + partial result as a single JSON envelope", async () => {
     githubClientMock.getIssueByNumber.mockResolvedValue({ number: 7, title: "t", url: "u" });
     const callbacks = makeCallbacks();
     callbacks.onLaunchAgent.mockResolvedValue(null);
@@ -209,13 +211,67 @@ describe("workflow.startWorkOnIssue", () => {
       throw new Error("expected throw");
     } catch (err) {
       const message = (err as Error).message;
-      expect(message).toContain("PARTIAL_SUCCESS:");
-      const jsonStart = message.indexOf("{");
-      const payload = JSON.parse(message.slice(jsonStart));
+      expect(message).toMatch(/^PARTIAL_SUCCESS:\s+\{/);
+      const payload = JSON.parse(message.slice(message.indexOf("{")));
+      expect(typeof payload.message).toBe("string");
       expect(payload.partialResult.worktreeId).toBe("wt-new");
       expect(payload.partialResult.terminalId).toBeNull();
       expect(payload.partialResult.contextInjected).toBe(false);
     }
+  });
+
+  it("partial-success encoding stays parseable when the human message itself contains '{'", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 5, title: "t", url: "u" });
+    setRecipe("recipe-1", async () => {
+      throw new Error('config parse failed: {"key": null}');
+    });
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    try {
+      await def.run(
+        { issueNumber: 5, agentId: "claude", recipeId: "recipe-1" },
+        {} as never
+      );
+      throw new Error("expected throw");
+    } catch (err) {
+      const message = (err as Error).message;
+      const payload = JSON.parse(message.slice(message.indexOf("{")));
+      expect(payload.message).toContain('config parse failed: {"key": null}');
+      expect(payload.partialResult.recipeLaunched).toBe(false);
+      expect(payload.partialResult.worktreeId).toBe("wt-new");
+    }
+  });
+
+  it("recipe failure throws PARTIAL_SUCCESS with worktree info before agent is launched", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 1, title: "t", url: "u" });
+    setRecipe("recipe-1", async () => {
+      throw new Error("recipe boom");
+    });
+    const callbacks = makeCallbacks();
+    const def = setupActions(callbacks)("workflow.startWorkOnIssue");
+    await expect(
+      def.run({ issueNumber: 1, agentId: "claude", recipeId: "recipe-1" }, {} as never)
+    ).rejects.toThrow(/PARTIAL_SUCCESS:/);
+    expect(worktreeClientMock.create).toHaveBeenCalled();
+    expect(callbacks.onLaunchAgent).not.toHaveBeenCalled();
+  });
+
+  it("agent.launch throwing (not just returning null) becomes PARTIAL_SUCCESS", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 1, title: "t", url: "u" });
+    const callbacks = makeCallbacks();
+    callbacks.onLaunchAgent.mockRejectedValue(new Error("PTY spawn failed"));
+    const def = setupActions(callbacks)("workflow.startWorkOnIssue");
+    try {
+      await def.run({ issueNumber: 1, agentId: "claude" }, {} as never);
+      throw new Error("expected throw");
+    } catch (err) {
+      const message = (err as Error).message;
+      expect(message).toContain("PARTIAL_SUCCESS:");
+      const payload = JSON.parse(message.slice(message.indexOf("{")));
+      expect(payload.message).toContain("PTY spawn failed");
+      expect(payload.partialResult.worktreeId).toBe("wt-new");
+      expect(payload.partialResult.terminalId).toBeNull();
+    }
+    expect(copyTreeClientMock.injectToTerminal).not.toHaveBeenCalled();
   });
 
   it("context injection failure is best-effort — agent stays launched, contextInjected: false", async () => {
@@ -274,7 +330,8 @@ describe("workflow.startWorkOnIssue", () => {
     });
     const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
     await def.run({ issueNumber: 42, agentId: "claude" }, {} as never);
-    const [, branch] = worktreeClientMock.getAvailableBranch.mock.calls[0];
+    const call = worktreeClientMock.getAvailableBranch.mock.calls[0] ?? [];
+    const branch = call[1] as string;
     expect(branch).toMatch(/^feature\/issue-42-/);
     expect(branch).not.toMatch(/[^a-z0-9/-]/);
   });
@@ -393,7 +450,7 @@ describe("workflow.prepBranchForReview", () => {
 });
 
 describe("workflow.focusNextAttention", () => {
-  it("prefers waiting agents over working ones", async () => {
+  it("prefers waiting agents over working ones and dispatches with the right args", async () => {
     setPanelTerminals(
       [
         { id: "t1", agentState: "working", worktreeId: "wt-1", location: "grid" },
@@ -407,7 +464,14 @@ describe("workflow.focusNextAttention", () => {
     expect(result.state).toBe("waiting");
     expect(result.waitingCount).toBe(1);
     expect(result.workingCount).toBe(1);
-    expect(panelStoreMock.getState().focusNextWaiting).toHaveBeenCalled();
+    const state = panelStoreMock.getState();
+    expect(state.focusNextWaiting).toHaveBeenCalledTimes(1);
+    const args = state.focusNextWaiting.mock.calls[0] ?? [];
+    const isInTrashArg = args[0];
+    const validIdsArg = args[1] as Set<string>;
+    expect(isInTrashArg).toBe(state.isInTrash);
+    expect(validIdsArg).toBeInstanceOf(Set);
+    expect(validIdsArg.has("wt-1")).toBe(true);
   });
 
   it("falls back to working agents when nothing is waiting", async () => {
@@ -453,6 +517,52 @@ describe("workflow.focusNextAttention", () => {
     );
     const def = setupActions(makeCallbacks())("workflow.focusNextAttention");
     const result = (await def.run(undefined, {} as never)) as Record<string, unknown>;
+    expect(result.focused).toBe(false);
+    expect(result.state).toBe("none");
+  });
+
+  it("ignores background and ephemeral terminals (mirrors isTerminalVisible)", async () => {
+    // A waiting terminal in a background panel and an ephemeral one would
+    // be skipped by focusNextWaiting — the macro must not claim focused: true.
+    setPanelTerminals(
+      [
+        { id: "t1", agentState: "waiting", worktreeId: "wt-1", location: "background" },
+        { id: "t2", agentState: "waiting", worktreeId: "wt-1", location: "grid" },
+      ],
+      new Map([["wt-1", { worktreeId: "wt-1" }]])
+    );
+    // mark t2 as ephemeral
+    selectorMock.selectOrderedTerminals.mockReturnValue([
+      { id: "t1", agentState: "waiting", worktreeId: "wt-1", location: "background" },
+      { id: "t2", agentState: "waiting", worktreeId: "wt-1", location: "grid", ephemeral: true },
+    ]);
+    const def = setupActions(makeCallbacks())("workflow.focusNextAttention");
+    const result = (await def.run(undefined, {} as never)) as Record<string, unknown>;
+    expect(result.focused).toBe(false);
+    expect(result.state).toBe("none");
+    expect(result.waitingCount).toBe(0);
+  });
+
+  it("respects isInTrash() function in addition to location === 'trash'", async () => {
+    // Some terminals report location: "grid" but isInTrash returns true.
+    // The macro must skip those just like isTerminalVisible does.
+    selectorMock.selectOrderedTerminals.mockReturnValue([
+      { id: "t1", agentState: "waiting", worktreeId: "wt-1", location: "grid" },
+    ]);
+    const isInTrashMock = vi.fn().mockReturnValue(true);
+    panelStoreMock.getState.mockReturnValue({
+      panelsById: {},
+      panelIds: [],
+      isInTrash: isInTrashMock,
+      focusNextWaiting: vi.fn(),
+      focusNextWorking: vi.fn(),
+    });
+    currentViewStoreMock.getCurrentViewStore.mockReturnValue({
+      getState: () => ({ worktrees: new Map([["wt-1", { worktreeId: "wt-1" }]]) }),
+    });
+    const def = setupActions(makeCallbacks())("workflow.focusNextAttention");
+    const result = (await def.run(undefined, {} as never)) as Record<string, unknown>;
+    expect(isInTrashMock).toHaveBeenCalledWith("t1");
     expect(result.focused).toBe(false);
     expect(result.state).toBe("none");
   });

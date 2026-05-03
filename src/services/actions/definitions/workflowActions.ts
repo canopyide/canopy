@@ -10,10 +10,11 @@ import { selectOrderedTerminals } from "@/store/slices/panelRegistry";
 
 const PARTIAL_SUCCESS_PREFIX = "PARTIAL_SUCCESS:";
 
+// Encode the message + partial result as a single JSON envelope so callers can
+// parse unambiguously even when `message` itself contains `{`.
 function partialSuccessError(message: string, partial: Record<string, unknown>): Error {
-  return new Error(
-    `${PARTIAL_SUCCESS_PREFIX} ${message} ${JSON.stringify({ partialResult: partial })}`
-  );
+  const payload = JSON.stringify({ message, partialResult: partial });
+  return new Error(`${PARTIAL_SUCCESS_PREFIX} ${payload}`);
 }
 
 export function registerWorkflowActions(
@@ -331,13 +332,34 @@ export function registerWorkflowActions(
         }
       }
 
-      // Step 7: launch the agent in the new worktree
-      const terminalId = await callbacks.onLaunchAgent(agentId, {
-        location: "grid",
-        cwd: worktreePath,
-        worktreeId,
-        activateDockOnCreate: false,
-      });
+      // Step 7: launch the agent in the new worktree.
+      // Both null returns and thrown errors must be reported as PARTIAL_SUCCESS so the
+      // caller knows the worktree is already created and not lost.
+      let terminalId: string | null = null;
+      try {
+        terminalId = await callbacks.onLaunchAgent(agentId, {
+          location: "grid",
+          cwd: worktreePath,
+          worktreeId,
+          activateDockOnCreate: false,
+        });
+      } catch (err) {
+        throw partialSuccessError(
+          `Agent '${agentId}' failed to launch in new worktree: ${(err as Error).message}`,
+          {
+            issueNumber: issue.number,
+            issueTitle: issue.title,
+            issueUrl: issue.url,
+            worktreeId,
+            worktreePath,
+            branch: availableBranch,
+            terminalId: null,
+            recipeLaunched,
+            assignedToSelf: false,
+            contextInjected: false,
+          }
+        );
+      }
       if (!terminalId) {
         throw partialSuccessError(`Agent '${agentId}' failed to launch in new worktree`, {
           issueNumber: issue.number,
@@ -410,7 +432,7 @@ export function registerWorkflowActions(
         .string()
         .optional()
         .describe(
-          "Project ID for runner detection (defaults to the current project). Required for `detectRunners`."
+          "Project ID for runner detection. Defaults to the current project. Pass explicitly when `cwd` belongs to a different project."
         ),
     }),
     resultSchema: z.object({
@@ -512,10 +534,18 @@ export function registerWorkflowActions(
         if (wt.worktreeId) validWorktreeIds.add(wt.worktreeId);
       }
 
-      // Only count terminals that belong to a known worktree (matches the
-      // filtering applied by focusNextWaiting/focusNextWorking).
+      // Mirror isTerminalVisible() in terminalFocusSlice — counts must match
+      // what focusNextWaiting/focusNextWorking will actually consider, otherwise
+      // the macro can report `focused: true` while the focus call is a no-op.
       const inScope = terminals.filter(
-        (t) => t.worktreeId && validWorktreeIds.has(t.worktreeId) && t.location !== "trash"
+        (t) =>
+          t.worktreeId !== undefined &&
+          t.worktreeId !== null &&
+          validWorktreeIds.has(t.worktreeId) &&
+          t.location !== "trash" &&
+          t.location !== "background" &&
+          t.ephemeral !== true &&
+          !state.isInTrash(t.id)
       );
       const waitingCount = inScope.filter((t) => t.agentState === "waiting").length;
       const workingCount = inScope.filter((t) => t.agentState === "working").length;
