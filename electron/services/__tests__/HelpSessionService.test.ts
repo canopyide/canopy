@@ -110,8 +110,8 @@ describe("HelpSessionService", () => {
     expect(result.windowId).toBe(7);
   });
 
-  it("returns mcpUrl=null when localMcpEnabled is false", async () => {
-    mockStoreGet.mockReturnValue({ localMcpEnabled: false });
+  it("returns mcpUrl=null when daintreeControl is false", async () => {
+    mockStoreGet.mockReturnValue({ daintreeControl: false });
 
     const result = await service.provisionSession(provisionInput());
     if (!result) throw new Error("expected result");
@@ -135,7 +135,7 @@ describe("HelpSessionService", () => {
     expect(mcp.mcpServers["daintree-docs"]).toBeDefined();
   });
 
-  it("appends mcp__daintree__* to the bundled allowlist when localMcpEnabled", async () => {
+  it("appends mcp__daintree__* to the bundled allowlist when daintreeControl is enabled", async () => {
     const result = await service.provisionSession(provisionInput());
     if (!result) throw new Error("expected result");
 
@@ -162,8 +162,8 @@ describe("HelpSessionService", () => {
     expect(settings.defaultMode).toBe("bypassPermissions");
   });
 
-  it("omits the daintree MCP server when localMcpEnabled is false", async () => {
-    mockStoreGet.mockReturnValue({ localMcpEnabled: false });
+  it("omits the daintree MCP server when daintreeControl is false", async () => {
+    mockStoreGet.mockReturnValue({ daintreeControl: false });
 
     const result = await service.provisionSession(provisionInput());
     if (!result) throw new Error("expected result");
@@ -275,7 +275,7 @@ describe("HelpSessionService", () => {
     expect(result).toBeNull();
   });
 
-  it("starts the MCP server when localMcpEnabled is true and registry is set", async () => {
+  it("starts the MCP server when daintreeControl is true and registry is set", async () => {
     mockMcpServerService.isRunning = false;
     const fakeRegistry = {} as never;
     service.setMcpRegistry(fakeRegistry);

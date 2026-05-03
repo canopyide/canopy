@@ -206,8 +206,6 @@ export interface StoreSchema {
     daintreeControl: boolean;
     skipPermissions: boolean;
     auditRetention: 7 | 30 | 0;
-    localMcpEnabled?: boolean;
-    docsServerEnabled?: boolean;
   };
   pendingErrors: ErrorRecord[];
   gpu: {
@@ -353,8 +351,6 @@ const storeOptions = {
       daintreeControl: true,
       skipPermissions: false,
       auditRetention: 7 as const,
-      localMcpEnabled: true,
-      docsServerEnabled: true,
     },
     pendingErrors: [],
     gpu: {

@@ -14,8 +14,8 @@ const GC_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_TOKEN_BYTES = 32;
 
 const DEFAULT_TIER: HelpAssistantTier = "action";
-const DEFAULT_LOCAL_MCP_ENABLED = true;
-const DEFAULT_DOCS_SERVER_ENABLED = true;
+const DEFAULT_DAINTREE_CONTROL = true;
+const DEFAULT_DOC_SEARCH = true;
 const DEFAULT_SKIP_PERMISSIONS = false;
 
 interface ProvisionInput {
@@ -111,14 +111,14 @@ export class HelpSessionService {
     const sessionsRoot = this.getSessionsRoot();
     const sessionPath = path.join(sessionsRoot, sessionId);
 
-    if (settings.localMcpEnabled) {
+    if (settings.daintreeControl) {
       await this.ensureMcpServerRunning();
     }
 
     await fs.mkdir(sessionsRoot, { recursive: true });
     await fs.cp(helpFolder, sessionPath, { recursive: true });
 
-    const port = await this.getMcpPort(settings.localMcpEnabled);
+    const port = await this.getMcpPort(settings.daintreeControl);
     await this.writeMcpConfig(sessionPath, settings, port);
     await this.writeClaudeSettings(sessionPath, helpFolder, settings);
 
@@ -142,7 +142,7 @@ export class HelpSessionService {
     this.sessionsByToken.set(token, record);
     this.sessionsById.set(sessionId, record);
 
-    const mcpUrl = settings.localMcpEnabled && port ? `http://127.0.0.1:${port}/sse` : null;
+    const mcpUrl = settings.daintreeControl && port ? `http://127.0.0.1:${port}/sse` : null;
     return { sessionId, sessionPath, token, tier, mcpUrl, windowId: input.windowId };
   }
 
@@ -239,20 +239,17 @@ export class HelpSessionService {
   }
 
   private readSettings(): {
-    localMcpEnabled: boolean;
-    docsServerEnabled: boolean;
+    daintreeControl: boolean;
+    docSearch: boolean;
     skipPermissions: boolean;
   } {
     const stored = (store.get("helpAssistant") as Record<string, unknown> | undefined) ?? {};
     return {
-      localMcpEnabled:
-        typeof stored.localMcpEnabled === "boolean"
-          ? stored.localMcpEnabled
-          : DEFAULT_LOCAL_MCP_ENABLED,
-      docsServerEnabled:
-        typeof stored.docsServerEnabled === "boolean"
-          ? stored.docsServerEnabled
-          : DEFAULT_DOCS_SERVER_ENABLED,
+      daintreeControl:
+        typeof stored.daintreeControl === "boolean"
+          ? stored.daintreeControl
+          : DEFAULT_DAINTREE_CONTROL,
+      docSearch: typeof stored.docSearch === "boolean" ? stored.docSearch : DEFAULT_DOC_SEARCH,
       skipPermissions:
         typeof stored.skipPermissions === "boolean"
           ? stored.skipPermissions
@@ -280,8 +277,8 @@ export class HelpSessionService {
     }
   }
 
-  private async getMcpPort(localMcpEnabled: boolean): Promise<number | null> {
-    if (!localMcpEnabled) return null;
+  private async getMcpPort(daintreeControl: boolean): Promise<number | null> {
+    if (!daintreeControl) return null;
     try {
       const { mcpServerService } = await import("./McpServerService.js");
       return mcpServerService.currentPort;
@@ -292,17 +289,17 @@ export class HelpSessionService {
 
   private async writeMcpConfig(
     sessionPath: string,
-    settings: { localMcpEnabled: boolean; docsServerEnabled: boolean },
+    settings: { daintreeControl: boolean; docSearch: boolean },
     port: number | null
   ): Promise<void> {
     const mcpServers: Record<string, unknown> = {};
-    if (settings.docsServerEnabled) {
+    if (settings.docSearch) {
       mcpServers["daintree-docs"] = {
         type: "http",
         url: "https://daintree.org/api/mcp",
       };
     }
-    if (settings.localMcpEnabled && port) {
+    if (settings.daintreeControl && port) {
       mcpServers["daintree"] = {
         type: "sse",
         url: `http://127.0.0.1:${port}/sse`,
@@ -321,7 +318,7 @@ export class HelpSessionService {
   private async writeClaudeSettings(
     sessionPath: string,
     bundledHelpFolder: string,
-    settings: { localMcpEnabled: boolean; skipPermissions: boolean }
+    settings: { daintreeControl: boolean; skipPermissions: boolean }
   ): Promise<void> {
     const bundledSettingsPath = path.join(bundledHelpFolder, ".claude", "settings.json");
     const baseline = await this.readBundledSettings(bundledSettingsPath);
@@ -330,7 +327,7 @@ export class HelpSessionService {
     if (!merged.permissions) merged.permissions = {};
     if (!Array.isArray(merged.permissions.allow)) merged.permissions.allow = [];
 
-    if (settings.localMcpEnabled && !merged.permissions.allow.includes("mcp__daintree__*")) {
+    if (settings.daintreeControl && !merged.permissions.allow.includes("mcp__daintree__*")) {
       merged.permissions.allow.push("mcp__daintree__*");
     }
 
