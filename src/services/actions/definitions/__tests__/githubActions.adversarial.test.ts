@@ -155,6 +155,36 @@ describe("githubActions adversarial", () => {
     );
   });
 
+  it("listIssues preserves all filter fields when falling back to ctx", async () => {
+    githubClientMock.listIssues.mockResolvedValue({ issues: [], nextCursor: null });
+    const def = setupActions()("github.listIssues");
+    await def.run(
+      { search: "q", state: "open", cursor: "c1" } as never,
+      { activeWorktreePath: "/repo" } as never
+    );
+    expect(githubClientMock.listIssues).toHaveBeenCalledWith({
+      cwd: "/repo",
+      search: "q",
+      state: "open",
+      cursor: "c1",
+    });
+  });
+
+  it("listPullRequests preserves all filter fields when falling back to ctx", async () => {
+    githubClientMock.listPullRequests.mockResolvedValue({ pullRequests: [], nextCursor: null });
+    const def = setupActions()("github.listPullRequests");
+    await def.run(
+      { search: "q", state: "merged", cursor: "c1" } as never,
+      { activeWorktreePath: "/repo" } as never
+    );
+    expect(githubClientMock.listPullRequests).toHaveBeenCalledWith({
+      cwd: "/repo",
+      search: "q",
+      state: "merged",
+      cursor: "c1",
+    });
+  });
+
   it("listIssues throws when no cwd and no ctx.activeWorktreePath", async () => {
     const def = setupActions()("github.listIssues");
     await expect(def.run({} as never, {} as never)).rejects.toThrow("No active worktree");

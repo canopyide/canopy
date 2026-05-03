@@ -85,5 +85,11 @@ describe("projectActions adversarial", () => {
       await def.run({ projectId: "explicit" } as never, { projectId: "ctx" } as never);
       expect(projectClientMock.getStats).toHaveBeenCalledWith("explicit");
     });
+
+    it("throws and skips client call when no projectId and no ctx", async () => {
+      const def = setupActions()("project.getStats");
+      await expect(def.run(undefined as never, {} as never)).rejects.toThrow("No active project");
+      expect(projectClientMock.getStats).not.toHaveBeenCalled();
+    });
   });
 });

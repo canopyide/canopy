@@ -218,6 +218,14 @@ describe("gitActions adversarial", () => {
     );
   });
 
+  it("git.getProjectPulse preserves explicit rangeDays even when worktreeId falls back to ctx", async () => {
+    const { run, git } = setupActions();
+    await run("git.getProjectPulse", { rangeDays: 120 }, { activeWorktreeId: "wt-ctx" });
+    expect(git.getProjectPulse).toHaveBeenCalledWith(
+      expect.objectContaining({ worktreeId: "wt-ctx", rangeDays: 120 })
+    );
+  });
+
   it("git.snapshotGet falls back to ctx.activeWorktreeId", async () => {
     const { run, git } = setupActions();
     await run("git.snapshotGet", undefined, { activeWorktreeId: "wt-1" });
