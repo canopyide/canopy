@@ -1103,6 +1103,9 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       kind: "command",
       danger: "safe",
       scope: "renderer",
+      // Pure status query — `kind: "command"` is retained for UI-routing
+      // semantics, but MCP clients should see this as a read-only call.
+      mcpAnnotations: { readOnlyHint: true, idempotentHint: true },
       argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
       run: async (args, ctx: ActionContext) => {
         const worktreeId = args?.worktreeId;

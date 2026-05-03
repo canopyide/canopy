@@ -148,6 +148,7 @@ function createManifestEntry(entry: {
   enabled?: boolean;
   disabledReason?: string;
   requiresArgs?: boolean;
+  mcpAnnotations?: ActionManifestEntry["mcpAnnotations"];
 }): ActionManifestEntry {
   return {
     id: entry.id as ActionId,
@@ -162,6 +163,7 @@ function createManifestEntry(entry: {
     enabled: entry.enabled ?? true,
     disabledReason: entry.disabledReason,
     requiresArgs: entry.requiresArgs ?? false,
+    ...(entry.mcpAnnotations ? { mcpAnnotations: entry.mcpAnnotations } : {}),
   };
 }
 
@@ -570,6 +572,59 @@ describe("McpServerService", () => {
       readOnlyHint: false,
       idempotentHint: false,
       destructiveHint: true,
+      openWorldHint: false,
+    });
+  });
+
+  it("applies mcpAnnotations overrides on top of kind/danger defaults", async () => {
+    const { window } = createMockWindow({
+      getManifest: () => [
+        // Query that requires UX confirmation but is not destructive.
+        createManifestEntry({
+          id: "copyTree.generate" as ActionId,
+          title: "Generate Context",
+          description: "Generate worktree context",
+          kind: "query",
+          danger: "confirm",
+          mcpAnnotations: { destructiveHint: false },
+        }),
+        // Command that is semantically a read-only status query.
+        createManifestEntry({
+          id: "worktree.resource.status" as ActionId,
+          title: "Check Resource Status",
+          description: "Check resource status for a worktree",
+          kind: "command",
+          danger: "safe",
+          mcpAnnotations: { readOnlyHint: true, idempotentHint: true },
+        }),
+      ],
+    });
+
+    await service.start(window);
+    const { client, transport } = await connectClient(service.currentPort!);
+    transports.push(transport);
+
+    const result = await client.listTools();
+    const generate = result.tools.find((t) => t.name === "copyTree.generate");
+    const status = result.tools.find((t) => t.name === "worktree.resource.status");
+
+    // Override flips destructiveHint off; readOnlyHint/idempotentHint still
+    // come from the `kind: "query"` default.
+    expect(generate?.annotations).toEqual({
+      title: "Generate Context",
+      readOnlyHint: true,
+      idempotentHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    });
+
+    // Override flips readOnly/idempotent on; destructiveHint still comes from
+    // the `danger: "safe"` default.
+    expect(status?.annotations).toEqual({
+      title: "Check Resource Status",
+      readOnlyHint: true,
+      idempotentHint: true,
+      destructiveHint: false,
       openWorldHint: false,
     });
   });
