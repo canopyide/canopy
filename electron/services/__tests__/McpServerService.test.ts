@@ -2683,6 +2683,9 @@ describe("McpServerService", () => {
       const primitiveTool = result.tools.find((t) => t.name === "worktree.create");
       const noSchemaTool = result.tools.find((t) => t.name === "actions.list");
 
+      expect(objectTool).toBeDefined();
+      expect(primitiveTool).toBeDefined();
+      expect(noSchemaTool).toBeDefined();
       expect(objectTool?.outputSchema).toEqual(objectSchema);
       expect(primitiveTool?.outputSchema).toBeUndefined();
       expect(noSchemaTool?.outputSchema).toBeUndefined();
@@ -2782,6 +2785,36 @@ describe("McpServerService", () => {
 
       expect(result.structuredContent).toBeUndefined();
       expect(result.content[0]?.text).toContain('"foo": "bar"');
+    });
+
+    it("does not emit structuredContent when callTool runs without a prior listTools (cache cold)", async () => {
+      const { window } = createMockWindow({
+        getManifest: () => [
+          createManifestEntry({
+            id: "actions.list" as ActionId,
+            title: "List Actions",
+            description: "Read the action registry",
+            kind: "query",
+            outputSchema: objectSchema,
+          }),
+        ],
+        dispatchAction: () => ({ ok: true, result: { count: 1, label: "cold" } }),
+      });
+
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = (await client.callTool({
+        name: "actions.list",
+        arguments: {},
+      })) as {
+        content: Array<{ type: string; text: string }>;
+        structuredContent?: Record<string, unknown>;
+      };
+
+      expect(result.structuredContent).toBeUndefined();
+      expect(result.content[0]?.text).toContain('"label": "cold"');
     });
 
     it("does not emit structuredContent on failed tool calls", async () => {

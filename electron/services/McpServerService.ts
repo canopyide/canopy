@@ -808,6 +808,7 @@ export class McpServerService {
       pending.reject(new Error("MCP server stopped"));
       this.pendingDispatches.delete(id);
     }
+    this.cachedManifest = null;
 
     let wasRunning = false;
     if (this.httpServer) {
