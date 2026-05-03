@@ -48,14 +48,12 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   // Derive isOpen from store state
   const isOpen = activeDockTerminalId === terminal.id;
 
-  // Track when popover was just programmatically opened to ignore immediate close events
-  const wasJustOpenedRef = useRef(false);
-  const prevIsOpenRef = useRef(isOpen);
+  // Track when popover was just programmatically opened to ignore immediate close events.
+  // Initialized to `isOpen` so a component that mounts already-open is armed before Radix's
+  // DismissableLayer can fire a spurious mount-time onOpenChange(false).
+  const wasJustOpenedRef = useRef(isOpen);
 
   useEffect(() => {
-    prevIsOpenRef.current = isOpen;
-
-    // Detect programmatic open (isOpen changed from false to true externally)
     if (!isOpen) return;
 
     wasJustOpenedRef.current = true;
