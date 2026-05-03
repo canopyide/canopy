@@ -1532,9 +1532,13 @@ export class McpServerService {
         };
 
         // 1. Subscribe BEFORE reading current state to avoid losing a
-        //    transition that fires between read and subscribe.
+        //    transition that fires between read and subscribe. Filter on
+        //    `terminalId` because `agentId` is the agent *type* (e.g.
+        //    "claude") and is shared across every terminal running that
+        //    agent — without the per-terminal filter another Claude
+        //    terminal completing would falsely satisfy this wait.
         unsubscribe = events.on("agent:state-changed", (payload) => {
-          if (payload.agentId !== agentId) return;
+          if (payload.terminalId !== terminalId) return;
           if (payload.state === "working") return;
           settle({
             kind: "transition",

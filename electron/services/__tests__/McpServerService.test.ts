@@ -3747,6 +3747,7 @@ describe("McpServerService", () => {
       });
       events.emit("agent:state-changed", {
         agentId,
+        terminalId,
         state,
         previousState: state === "working" ? "idle" : "working",
         trigger: "output",
@@ -3862,6 +3863,7 @@ describe("McpServerService", () => {
       const transitionTs = Date.now();
       events.emit("agent:state-changed", {
         agentId,
+        terminalId,
         state: "completed",
         previousState: "working",
         trigger: "output",
@@ -3903,6 +3905,7 @@ describe("McpServerService", () => {
       // working → working is a no-op for the tool — the listener must not resolve.
       events.emit("agent:state-changed", {
         agentId,
+        terminalId,
         state: "working",
         previousState: "working",
         trigger: "output",
@@ -3973,6 +3976,52 @@ describe("McpServerService", () => {
       const payload = JSON.parse(result.content[0]!.text);
       expect(payload.timedOut).toBe(true);
       expect(payload.agentId).toBe(agentId);
+    });
+
+    it("does not resolve when another terminal sharing the same agent type transitions", async () => {
+      const { events } = await import("../events.js");
+      // Two Claude terminals — same `agentId` ("claude"), different terminalIds.
+      // A transition for terminal B must NOT satisfy a wait on terminal A.
+      const sharedAgentId = "claude";
+      const terminalA = `share-A-${Math.random().toString(36).slice(2)}`;
+      const terminalB = `share-B-${Math.random().toString(36).slice(2)}`;
+      await seedTerminalAgent(terminalA, sharedAgentId, "working");
+      // Note: emitting agent:spawned for terminalB overwrites the
+      // agentToTerminal mapping for sharedAgentId; this is a known
+      // AgentAvailabilityStore limitation and not something this tool can fix.
+      events.emit("agent:spawned", {
+        agentId: sharedAgentId,
+        terminalId: terminalB,
+        timestamp: Date.now(),
+      });
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const callPromise = client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId: terminalA, timeoutMs: 120 },
+      }) as Promise<TextToolResult>;
+
+      await new Promise((r) => setTimeout(r, 30));
+
+      // Terminal B finishes — must NOT resolve the wait on terminal A.
+      events.emit("agent:state-changed", {
+        agentId: sharedAgentId,
+        terminalId: terminalB,
+        state: "completed",
+        previousState: "working",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+
+      const result = await callPromise;
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload.timedOut).toBe(true);
+      expect(payload.terminalId).toBe(terminalA);
     });
 
     it("rejects calls with a missing or empty terminalId", async () => {
