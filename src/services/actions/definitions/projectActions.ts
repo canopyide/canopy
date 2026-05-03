@@ -138,13 +138,21 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     kind: "command",
     danger: "confirm",
     scope: "renderer",
-    argsSchema: z.object({ projectId: z.string(), updates: z.record(z.string(), z.unknown()) }),
+    argsSchema: z.object({
+      projectId: z.string(),
+      updates: z.object({
+        name: z.string().optional(),
+        emoji: z.string().optional(),
+        color: z.string().optional(),
+        pinned: z.boolean().optional(),
+      }),
+    }),
     run: async (args: unknown) => {
       const { projectId, updates } = args as {
         projectId: string;
-        updates: Record<string, unknown>;
+        updates: { name?: string; emoji?: string; color?: string; pinned?: boolean };
       };
-      await useProjectStore.getState().updateProject(projectId, updates as any);
+      await useProjectStore.getState().updateProject(projectId, updates);
     },
   }));
 
@@ -253,7 +261,16 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
         projectId: string;
         settings: Record<string, unknown>;
       };
-      await projectClient.saveSettings(projectId, settings as any);
+      // Merge over current settings rather than full-replace so dispatchers
+      // (notably MCP callers) cannot wipe unrelated fields by sending a
+      // partial object. Strip privilege-escalation keys before merging —
+      // the MCP-tier knob lives in ProjectSettings and must not be
+      // self-mutable by an agent.
+      const current = await projectClient.getSettings(projectId);
+      const sanitized: Record<string, unknown> = { ...settings };
+      delete sanitized.daintreeMcpTier;
+      delete sanitized.exposeDaintreeMcpToAgents;
+      await projectClient.saveSettings(projectId, { ...current, ...sanitized } as any);
     },
   }));
 
@@ -290,6 +307,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
           message: formatErrorMessage(error, "Failed to mute project notifications"),
           duration: 5000,
         });
+        throw error;
       }
     },
   }));

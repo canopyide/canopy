@@ -1774,6 +1774,21 @@ describe("McpServerService", () => {
         title: "Focus Next Attention",
         description: "Focus next waiting/working agent with priority",
       }),
+      createManifestEntry({
+        id: "project.update" as ActionId,
+        title: "Update Project",
+        description: "Update project metadata",
+      }),
+      createManifestEntry({
+        id: "project.saveSettings" as ActionId,
+        title: "Save Project Settings",
+        description: "Save a project's settings",
+      }),
+      createManifestEntry({
+        id: "project.muteNotifications" as ActionId,
+        title: "Mute Project Notifications",
+        description: "Suppress future agent notifications for a project",
+      }),
     ];
 
     // Spawning terminals/agents, driving them via sent commands, and trashing
@@ -1786,6 +1801,9 @@ describe("McpServerService", () => {
       "agent.terminal",
       "agent.launch",
       "workflow.startWorkOnIssue",
+      "project.update",
+      "project.saveSettings",
+      "project.muteNotifications",
     ] as const;
 
     const WORKBENCH_TIER_TOOLS = ["workflow.prepBranchForReview"] as const;
@@ -1826,6 +1844,9 @@ describe("McpServerService", () => {
       expect(ids).not.toContain("worktree.create");
       expect(ids).not.toContain("git.commit");
       expect(ids).not.toContain("workflow.startWorkOnIssue");
+      expect(ids).not.toContain("project.update");
+      expect(ids).not.toContain("project.saveSettings");
+      expect(ids).not.toContain("project.muteNotifications");
       for (const id of NEVER_EXPOSED_VIA_MCP) {
         expect(ids).not.toContain(id);
       }
