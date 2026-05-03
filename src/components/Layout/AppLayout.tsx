@@ -429,7 +429,14 @@ export function AppLayout({
       {layout.portalOpen &&
         createPortal(
           <ErrorBoundary variant="section" componentName="PortalDock">
-            <div className="fixed top-0 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border">
+            {/* inert mirrors the toolbar / main-content wrappers: when the
+                ThemeBrowser overlay is open, the Portal's React chrome (tabs,
+                toolbar, resize handle) must not be interactive. The native
+                WebContentsView is already hidden via PortalVisibilityController. */}
+            <div
+              {...(isThemeBrowserOpen ? { inert: true } : {})}
+              className="fixed top-0 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"
+            >
               <PortalDock />
             </div>
           </ErrorBoundary>,

@@ -99,9 +99,25 @@ describe("AppLayout portal viewport coverage — issue #6629", () => {
     expect(source).toContain(
       '"fixed top-0 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"'
     );
+    // The portal target must be document.body to escape the inert subtrees and
+    // the <main> width constraint. A different target would silently reintroduce
+    // the bug.
+    expect(source).toMatch(
+      /\{layout\.portalOpen &&\s*\n\s*createPortal\([\s\S]+?<PortalDock \/>[\s\S]+?document\.body\s*\)/
+    );
     // The old in-<main> absolute wrapper must not be reintroduced.
     expect(source).not.toContain(
       '"absolute right-0 top-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"'
+    );
+  });
+
+  it("disables the Portal chrome when the ThemeBrowser overlay is open", () => {
+    // Body-portaling moved the PortalDock out of the inert main-content
+    // wrapper, so the inert prop must be applied directly to the new wrapper.
+    // Without this, the Portal tabs / toolbar / resize handle remain clickable
+    // through the ThemeBrowser overlay (Portal is z-50, ThemeBrowser is z-40).
+    expect(source).toMatch(
+      /\{layout\.portalOpen &&\s*\n\s*createPortal\([\s\S]+?isThemeBrowserOpen \? \{ inert: true \} : \{\}[\s\S]+?<PortalDock \/>/
     );
   });
 });
