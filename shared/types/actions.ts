@@ -439,7 +439,8 @@ export type ActionErrorCode =
   | "CONFIRMATION_REQUIRED"
   | "EXECUTION_ERROR"
   | "USER_REJECTED"
-  | "CONFIRMATION_TIMEOUT";
+  | "CONFIRMATION_TIMEOUT"
+  | "ELICITATION_FAILED";
 
 export interface ActionError {
   code: ActionErrorCode;
