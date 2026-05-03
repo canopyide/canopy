@@ -28,6 +28,8 @@ import { TerminalRefreshTier } from "@/types";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
+import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const RESIZE_STEP = 10;
 
@@ -103,8 +105,10 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
   const [isResizing, setIsResizing] = useState(false);
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
   const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
+  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
   const animateWidth = !isResizing && !reduceAnimations;
   const isVisible = effectiveWidth > 0;
+  const [pendingAction, setPendingAction] = useState<"close" | "back" | null>(null);
 
   const {
     isOpen,
@@ -415,7 +419,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
     handleSelectAgent,
   ]);
 
-  const handleBack = useCallback(() => {
+  const doBack = useCallback(() => {
     const { sessionId } = useHelpPanelStore.getState();
     if (terminalId) {
       removePanel(terminalId);
@@ -426,7 +430,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
     clearPreferredAgent();
   }, [terminalId, removePanel, clearPreferredAgent, revokePendingSession]);
 
-  const handleClose = useCallback(() => {
+  const doClose = useCallback(() => {
     const { sessionId } = useHelpPanelStore.getState();
     if (terminalId) {
       removePanel(terminalId);
@@ -437,6 +441,42 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
     suppressSidebarResizes();
     setOpen(false);
   }, [terminalId, removePanel, clearTerminal, setOpen, revokePendingSession]);
+
+  // Confirm before discarding an in-flight assistant turn. Mirrors the
+  // CLOSE_CONFIRM_AGENT_STATES gate used by GridPanel/DockedPanel/*TabGroup
+  // and honours the same skipWorkingCloseConfirm preference, so the
+  // assistant chat behaves consistently with regular terminal close paths.
+  const shouldConfirmClose =
+    !skipWorkingCloseConfirm &&
+    terminal?.agentState !== undefined &&
+    CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState);
+
+  const handleBack = useCallback(() => {
+    if (shouldConfirmClose) {
+      setPendingAction("back");
+      return;
+    }
+    doBack();
+  }, [shouldConfirmClose, doBack]);
+
+  const handleClose = useCallback(() => {
+    if (shouldConfirmClose) {
+      setPendingAction("close");
+      return;
+    }
+    doClose();
+  }, [shouldConfirmClose, doClose]);
+
+  const handleConfirmPendingAction = useCallback(() => {
+    const action = pendingAction;
+    setPendingAction(null);
+    if (action === "close") doClose();
+    else if (action === "back") doBack();
+  }, [pendingAction, doClose, doBack]);
+
+  const handleCancelPendingAction = useCallback(() => {
+    setPendingAction(null);
+  }, []);
 
   // Esc-to-close. The xterm-helper-textarea check lets Escape reach the
   // running PTY (Codex/Claude/etc.) when the assistant terminal has focus
@@ -645,6 +685,20 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
           </a>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={pendingAction !== null}
+        title="Stop this agent?"
+        description={
+          pendingAction === "back"
+            ? "The agent is currently working. Switching agents will stop it."
+            : "The agent is currently working. Closing this tab will stop it."
+        }
+        confirmLabel={pendingAction === "back" ? "Stop and switch" : "Stop and close"}
+        onConfirm={handleConfirmPendingAction}
+        onClose={handleCancelPendingAction}
+        variant="destructive"
+      />
     </aside>
   );
 }
