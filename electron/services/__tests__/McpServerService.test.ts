@@ -2879,4 +2879,467 @@ describe("McpServerService", () => {
       expect(result.content[0]?.text).toContain("boom");
     });
   });
+
+  describe("resources", () => {
+    function manifestForResources(): ActionManifestEntry[] {
+      return [
+        createManifestEntry({
+          id: "github.listIssues" as ActionId,
+          title: "List Issues",
+          description: "List GitHub issues",
+          kind: "query",
+        }),
+        createManifestEntry({
+          id: "git.getProjectPulse" as ActionId,
+          title: "Project pulse",
+          description: "Worktree pulse",
+          kind: "query",
+        }),
+        createManifestEntry({
+          id: "terminal.getOutput" as ActionId,
+          title: "Terminal output",
+          description: "Read terminal output",
+          kind: "query",
+        }),
+        createManifestEntry({
+          id: "terminal.list" as ActionId,
+          title: "List terminals",
+          description: "List terminals",
+          kind: "query",
+        }),
+        createManifestEntry({
+          id: "worktree.list" as ActionId,
+          title: "List worktrees",
+          description: "List worktrees",
+          kind: "query",
+        }),
+      ];
+    }
+
+    it("advertises the resources capability with subscribe enabled", async () => {
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const caps = client.getServerCapabilities();
+      expect(caps?.resources).toBeDefined();
+      expect(caps?.resources?.subscribe).toBe(true);
+    });
+
+    it("listResources includes the static issues URI plus enumerated worktrees and terminals", async () => {
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "worktree.list") {
+          return {
+            ok: true,
+            result: [
+              { id: "wt-1", branch: "feature/foo" },
+              { id: "wt-2", branch: "develop" },
+            ],
+          };
+        }
+        if (payload.actionId === "terminal.list") {
+          return {
+            ok: true,
+            result: [
+              { id: "term-1", title: "agent: claude", agentId: "agent-claude-1" },
+              { id: "term-2", title: "shell", agentId: null },
+            ],
+          };
+        }
+        return { ok: true, result: null };
+      });
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.listResources();
+      const uris = result.resources.map((r) => r.uri);
+      expect(uris).toContain("daintree://project/current/issues");
+      expect(uris).toContain("daintree://worktree/wt-1/pulse");
+      expect(uris).toContain("daintree://worktree/wt-2/pulse");
+      expect(uris).toContain("daintree://terminal/term-1/scrollback");
+      expect(uris).toContain("daintree://terminal/term-2/scrollback");
+      // Agent URI uses the launch agentId, not the panel id, and excludes
+      // terminals without an agent (plain shells).
+      expect(uris).toContain("daintree://agent/agent-claude-1/state");
+      expect(uris).not.toContain("daintree://agent/term-1/state");
+      expect(uris).not.toContain("daintree://agent/term-2/state");
+    });
+
+    it("listResources still returns the static issues URI when enumeration fails", async () => {
+      const dispatchMock = vi.fn(
+        (_payload: DispatchRequest): ActionDispatchResult => ({
+          ok: false,
+          error: { code: "EXECUTION_ERROR", message: "no view" },
+        })
+      );
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.listResources();
+      const uris = result.resources.map((r) => r.uri);
+      expect(uris).toEqual(["daintree://project/current/issues"]);
+    });
+
+    it("listResourceTemplates returns the four template patterns", async () => {
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.listResourceTemplates();
+      const patterns = result.resourceTemplates.map((t) => t.uriTemplate);
+      expect(patterns).toContain("daintree://worktree/{id}/pulse");
+      expect(patterns).toContain("daintree://terminal/{id}/scrollback");
+      expect(patterns).toContain("daintree://agent/{id}/state");
+    });
+
+    it("readResource for project issues dispatches github.listIssues", async () => {
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "github.listIssues") {
+          return { ok: true, result: [{ number: 1, title: "Hello" }] };
+        }
+        return { ok: true, result: [] };
+      });
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.readResource({ uri: "daintree://project/current/issues" });
+      expect(result.contents).toHaveLength(1);
+      const content = result.contents[0] as { uri: string; mimeType: string; text: string };
+      expect(content.uri).toBe("daintree://project/current/issues");
+      expect(content.mimeType).toBe("application/json");
+      expect(JSON.parse(content.text)).toEqual([{ number: 1, title: "Hello" }]);
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ actionId: "github.listIssues" })
+      );
+    });
+
+    it("readResource for worktree pulse passes the worktreeId", async () => {
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "git.getProjectPulse") {
+          return { ok: true, result: { worktreeId: payload.args, summary: "clean" } };
+        }
+        return { ok: true, result: [] };
+      });
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await client.readResource({ uri: "daintree://worktree/wt-42/pulse" });
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionId: "git.getProjectPulse",
+          args: { worktreeId: "wt-42", rangeDays: 60 },
+        })
+      );
+    });
+
+    it("readResource for terminal scrollback returns text/plain output", async () => {
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "terminal.getOutput") {
+          return { ok: true, result: "line one\nline two\n" };
+        }
+        return { ok: true, result: [] };
+      });
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.readResource({
+        uri: "daintree://terminal/t-1/scrollback",
+      });
+      const content = result.contents[0] as { uri: string; mimeType: string; text: string };
+      expect(content.mimeType).toBe("text/plain");
+      expect(content.text).toBe("line one\nline two\n");
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionId: "terminal.getOutput",
+          args: { terminalId: "t-1", maxLines: 200, stripAnsi: true },
+        })
+      );
+    });
+
+    it("readResource for agent state reads the AgentAvailabilityStore directly", async () => {
+      const { events } = await import("../events.js");
+      const { getAgentAvailabilityStore } = await import("../AgentAvailabilityStore.js");
+      // Force singleton construction so its event listeners are wired before we emit.
+      getAgentAvailabilityStore();
+      events.emit("agent:state-changed", {
+        agentId: "agent-xyz",
+        state: "working",
+        previousState: "idle",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.readResource({ uri: "daintree://agent/agent-xyz/state" });
+      const content = result.contents[0] as { uri: string; mimeType: string; text: string };
+      expect(content.mimeType).toBe("application/json");
+      expect(JSON.parse(content.text)).toEqual({ agentId: "agent-xyz", state: "working" });
+
+      const missing = await client.readResource({ uri: "daintree://agent/agent-missing/state" });
+      const missingContent = missing.contents[0] as {
+        uri: string;
+        mimeType: string;
+        text: string;
+      };
+      expect(JSON.parse(missingContent.text)).toEqual({ agentId: "agent-missing", state: null });
+    });
+
+    it("readResource on an unknown URI rejects as InvalidRequest", async () => {
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await expect(client.readResource({ uri: "daintree://something/else" })).rejects.toThrow(
+        /Unknown resource URI/
+      );
+    });
+
+    it("readResource on a malformed percent-encoded URI rejects cleanly", async () => {
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await expect(
+        client.readResource({ uri: "daintree://terminal/%E0%A4%A/scrollback" })
+      ).rejects.toThrow(/Unknown resource URI/);
+    });
+
+    it("listResources returns terminals when worktree.list fails partially", async () => {
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "worktree.list") {
+          return { ok: false, error: { code: "EXECUTION_ERROR", message: "boom" } };
+        }
+        if (payload.actionId === "terminal.list") {
+          return {
+            ok: true,
+            result: [{ id: "term-A", title: "agent", agentId: "agent-A" }],
+          };
+        }
+        return { ok: true, result: null };
+      });
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.listResources();
+      const uris = result.resources.map((r) => r.uri);
+      expect(uris).toContain("daintree://project/current/issues");
+      expect(uris).toContain("daintree://terminal/term-A/scrollback");
+      expect(uris).toContain("daintree://agent/agent-A/state");
+      expect(uris.some((u) => u.startsWith("daintree://worktree/"))).toBe(false);
+    });
+
+    it("truncates oversized scrollback payloads with a marker", async () => {
+      const huge = "x".repeat(60 * 1024);
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "terminal.getOutput") return { ok: true, result: huge };
+        return { ok: true, result: [] };
+      });
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.readResource({ uri: "daintree://terminal/t-1/scrollback" });
+      const content = result.contents[0] as { uri: string; mimeType: string; text: string };
+      expect(content.text.endsWith("\n\n[truncated]")).toBe(true);
+      expect(content.text.length).toBeLessThan(huge.length);
+    });
+
+    it("workbench tier sees resources and is permitted to read them", async () => {
+      const dispatchMock = vi.fn(
+        (_payload: DispatchRequest): ActionDispatchResult => ({ ok: true, result: [] })
+      );
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+
+      const token = `pane-token-${Math.random().toString(36).slice(2)}`;
+      paneTokenTiers.set(token, "workbench");
+      const client = new Client({ name: "mcp-pane-client", version: "1.0.0" });
+      const headers = { Authorization: `Bearer ${token}` };
+      const transport = new SSEClientTransport(
+        new URL(`http://127.0.0.1:${service.currentPort}/sse`),
+        {
+          eventSourceInit: { headers } as never,
+          requestInit: { headers },
+        }
+      );
+      await client.connect(transport);
+      transports.push(transport);
+
+      const list = await client.listResources();
+      const uris = list.resources.map((r) => r.uri);
+      expect(uris).toContain("daintree://project/current/issues");
+    });
+
+    it("subscribes to agent state and notifies on agent:state-changed", async () => {
+      const { events } = await import("../events.js");
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const updated: string[] = [];
+      const { ResourceUpdatedNotificationSchema } =
+        await import("@modelcontextprotocol/sdk/types.js");
+      client.setNotificationHandler(ResourceUpdatedNotificationSchema, async (notification) => {
+        updated.push(notification.params.uri);
+      });
+
+      await client.subscribeResource({ uri: "daintree://agent/agent-7/state" });
+
+      events.emit("agent:state-changed", {
+        agentId: "agent-7",
+        state: "working",
+        previousState: "idle",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+      events.emit("agent:state-changed", {
+        agentId: "different-agent",
+        state: "working",
+        previousState: "idle",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(updated).toEqual(["daintree://agent/agent-7/state"]);
+    });
+
+    it("unsubscribe stops further notifications and clears the per-session entry", async () => {
+      const { events } = await import("../events.js");
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const updated: string[] = [];
+      const { ResourceUpdatedNotificationSchema } =
+        await import("@modelcontextprotocol/sdk/types.js");
+      client.setNotificationHandler(ResourceUpdatedNotificationSchema, async (notification) => {
+        updated.push(notification.params.uri);
+      });
+
+      await client.subscribeResource({ uri: "daintree://agent/agent-9/state" });
+      events.emit("agent:state-changed", {
+        agentId: "agent-9",
+        state: "working",
+        previousState: "idle",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+      await new Promise((r) => setTimeout(r, 30));
+      expect(updated.length).toBe(1);
+
+      await client.unsubscribeResource({ uri: "daintree://agent/agent-9/state" });
+      events.emit("agent:state-changed", {
+        agentId: "agent-9",
+        state: "idle",
+        previousState: "working",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+      await new Promise((r) => setTimeout(r, 30));
+      expect(updated.length).toBe(1);
+
+      const subs = (
+        service as unknown as { resourceSubscriptions: Map<string, Map<string, () => void>> }
+      ).resourceSubscriptions;
+      const allEmpty = Array.from(subs.values()).every((b) => b.size === 0);
+      expect(allEmpty).toBe(true);
+    });
+
+    it("rejects subscribe for resources that do not support it", async () => {
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await expect(
+        client.subscribeResource({ uri: "daintree://terminal/t-1/scrollback" })
+      ).rejects.toThrow(/Subscriptions are not supported/);
+    });
+
+    it("transport close clears all resource subscriptions for the session", async () => {
+      const { events } = await import("../events.js");
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await client.subscribeResource({ uri: "daintree://agent/agent-x/state" });
+      const subs = (
+        service as unknown as { resourceSubscriptions: Map<string, Map<string, () => void>> }
+      ).resourceSubscriptions;
+      expect(Array.from(subs.values()).some((b) => b.size > 0)).toBe(true);
+
+      await transport.close();
+      // give the close handler a tick
+      await new Promise((r) => setTimeout(r, 30));
+
+      const stillHas = Array.from(subs.values()).some((b) => b.size > 0);
+      expect(stillHas).toBe(false);
+
+      // Confirm the listener was removed by emitting an event and ensuring no errors:
+      expect(() =>
+        events.emit("agent:state-changed", {
+          agentId: "agent-x",
+          state: "idle",
+          previousState: "working",
+          trigger: "output",
+          confidence: 1,
+          timestamp: Date.now(),
+        })
+      ).not.toThrow();
+    });
+  });
 });
