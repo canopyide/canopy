@@ -2941,7 +2941,10 @@ describe("McpServerService", () => {
         if (payload.actionId === "terminal.list") {
           return {
             ok: true,
-            result: [{ id: "term-1", title: "agent: claude" }],
+            result: [
+              { id: "term-1", title: "agent: claude", agentId: "agent-claude-1" },
+              { id: "term-2", title: "shell", agentId: null },
+            ],
           };
         }
         return { ok: true, result: null };
@@ -2960,7 +2963,12 @@ describe("McpServerService", () => {
       expect(uris).toContain("daintree://worktree/wt-1/pulse");
       expect(uris).toContain("daintree://worktree/wt-2/pulse");
       expect(uris).toContain("daintree://terminal/term-1/scrollback");
-      expect(uris).toContain("daintree://agent/term-1/state");
+      expect(uris).toContain("daintree://terminal/term-2/scrollback");
+      // Agent URI uses the launch agentId, not the panel id, and excludes
+      // terminals without an agent (plain shells).
+      expect(uris).toContain("daintree://agent/agent-claude-1/state");
+      expect(uris).not.toContain("daintree://agent/term-1/state");
+      expect(uris).not.toContain("daintree://agent/term-2/state");
     });
 
     it("listResources still returns the static issues URI when enumeration fails", async () => {
@@ -3116,6 +3124,46 @@ describe("McpServerService", () => {
       await expect(client.readResource({ uri: "daintree://something/else" })).rejects.toThrow(
         /Unknown resource URI/
       );
+    });
+
+    it("readResource on a malformed percent-encoded URI rejects cleanly", async () => {
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      await expect(
+        client.readResource({ uri: "daintree://terminal/%E0%A4%A/scrollback" })
+      ).rejects.toThrow(/Unknown resource URI/);
+    });
+
+    it("listResources returns terminals when worktree.list fails partially", async () => {
+      const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+        if (payload.actionId === "worktree.list") {
+          return { ok: false, error: { code: "X", message: "boom" } };
+        }
+        if (payload.actionId === "terminal.list") {
+          return {
+            ok: true,
+            result: [{ id: "term-A", title: "agent", agentId: "agent-A" }],
+          };
+        }
+        return { ok: true, result: null };
+      });
+      const { window } = createMockWindow({
+        getManifest: manifestForResources,
+        dispatchAction: dispatchMock,
+      });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.listResources();
+      const uris = result.resources.map((r) => r.uri);
+      expect(uris).toContain("daintree://project/current/issues");
+      expect(uris).toContain("daintree://terminal/term-A/scrollback");
+      expect(uris).toContain("daintree://agent/agent-A/state");
+      expect(uris.some((u) => u.startsWith("daintree://worktree/"))).toBe(false);
     });
 
     it("truncates oversized scrollback payloads with a marker", async () => {

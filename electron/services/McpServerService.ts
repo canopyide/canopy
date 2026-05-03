@@ -366,7 +366,12 @@ function parseResourceUri(uri: string): ParsedResourceUri | null {
   const match = RESOURCE_URI_PATTERN.exec(uri);
   if (!match) return null;
   const host = match[1];
-  const id = decodeURIComponent(match[2]);
+  let id: string;
+  try {
+    id = decodeURIComponent(match[2]);
+  } catch {
+    return null;
+  }
   const verb = match[3];
   if (host === "worktree" && verb === "pulse") return { kind: "pulse", id };
   if (host === "terminal" && verb === "scrollback") return { kind: "scrollback", id };
@@ -889,6 +894,20 @@ export class McpServerService {
     this.httpSessions.clear();
     this.sessionTierMap.clear();
 
+    // Drain any remaining resource-subscription listeners. Normal teardown
+    // happens via transport.onclose, but a transport.close() that throws
+    // before the SDK fires onclose would leak listeners otherwise.
+    for (const bucket of this.resourceSubscriptions.values()) {
+      for (const unsub of bucket.values()) {
+        try {
+          unsub();
+        } catch {
+          // ignore; best-effort during shutdown
+        }
+      }
+    }
+    this.resourceSubscriptions.clear();
+
     for (const cleanup of this.cleanupListeners) {
       cleanup();
     }
@@ -1376,8 +1395,7 @@ export class McpServerService {
       for (const term of terminals) {
         const id = readStringField(term, ["id", "terminalId"]);
         const label = readStringField(term, ["title", "name"]) ?? id;
-        if (!id) continue;
-        if (this.isResourcePermitted(sessionId, "scrollback")) {
+        if (id && this.isResourcePermitted(sessionId, "scrollback")) {
           resources.push({
             uri: `daintree://terminal/${encodeURIComponent(id)}/scrollback`,
             name: `Terminal scrollback — ${label ?? id}`,
@@ -1385,10 +1403,14 @@ export class McpServerService {
             description: `Last ${RESOURCE_SCROLLBACK_TAIL_LINES} lines of terminal output.`,
           });
         }
-        if (this.isResourcePermitted(sessionId, "agentState")) {
+        // `terminal.list` returns the panel `id` (UUID) and the launch `agentId`
+        // separately; AgentAvailabilityStore is keyed by agentId, so a terminal
+        // without one (plain shell) has no addressable agent state.
+        const agentId = readStringField(term, ["agentId"]);
+        if (agentId && this.isResourcePermitted(sessionId, "agentState")) {
           resources.push({
-            uri: `daintree://agent/${encodeURIComponent(id)}/state`,
-            name: `Agent state — ${label ?? id}`,
+            uri: `daintree://agent/${encodeURIComponent(agentId)}/state`,
+            name: `Agent state — ${label ?? agentId}`,
             mimeType: "application/json",
             description: "Current agent state-machine value (idle, working, waiting, etc.).",
           });
