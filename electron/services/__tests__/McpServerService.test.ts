@@ -1623,6 +1623,30 @@ describe("McpServerService", () => {
         description: "Macro: inspect staging status and detected runners",
         kind: "query",
       }),
+      // Renderer-only primitives included in the manifest so the
+      // NEVER_EXPOSED_VIA_MCP absence loops below catch regressions: a
+      // re-add to any tier's allowlist would surface here as a listTools
+      // hit. Without these manifest entries the absence checks are vacuous.
+      createManifestEntry({
+        id: "terminal.bulkCommand" as ActionId,
+        title: "Broadcast to Terminals",
+        description: "Send a command to multiple terminals at once",
+      }),
+      createManifestEntry({
+        id: "agent.focusNextWaiting" as ActionId,
+        title: "Focus Next Waiting Agent",
+        description: "Focus the next agent awaiting input",
+      }),
+      createManifestEntry({
+        id: "agent.focusNextWorking" as ActionId,
+        title: "Focus Next Working Agent",
+        description: "Focus the next active agent",
+      }),
+      createManifestEntry({
+        id: "workflow.focusNextAttention" as ActionId,
+        title: "Focus Next Attention",
+        description: "Focus next waiting/working agent with priority",
+      }),
     ];
 
     // Spawning terminals/agents, driving them via sent commands, and trashing
@@ -1780,6 +1804,59 @@ describe("McpServerService", () => {
       })) as TextToolResult;
       expect(denied.isError).toBe(true);
       expect(denied.content[0]?.text).toContain("TIER_NOT_PERMITTED");
+      expect(dispatchMock).not.toHaveBeenCalled();
+    });
+
+    it("external tier (apiKey) excludes fleet-broadcast and focus-shift tools from listTools", async () => {
+      const { window } = createMockWindow({ getManifest: tierManifest });
+
+      await service.start(window);
+      // connectClient sends the global apiKey by default → external tier.
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const ids = (await client.listTools()).tools.map((tool) => tool.name);
+      for (const id of NEVER_EXPOSED_VIA_MCP) {
+        expect(ids).not.toContain(id);
+      }
+    });
+
+    it("rejects callTool for fleet-broadcast and focus-shift tools across every tier with TIER_NOT_PERMITTED", async () => {
+      paneTokenTiers.set("token-wb", "workbench");
+      paneTokenTiers.set("token-action", "action");
+      paneTokenTiers.set("token-sys", "system");
+      const dispatchMock = vi.fn(
+        (): ActionDispatchResult => ({ ok: true, result: "should-not-run" })
+      );
+      const { window } = createMockWindow({
+        getManifest: tierManifest,
+        dispatchAction: dispatchMock,
+      });
+
+      await service.start(window);
+
+      const tierTokens: Array<[string, string]> = [
+        ["workbench", "token-wb"],
+        ["action", "token-action"],
+        ["system", "token-sys"],
+        ["external", ""],
+      ];
+
+      for (const [tier, token] of tierTokens) {
+        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+        const { client, transport } = await connectClient(service.currentPort!, headers);
+        transports.push(transport);
+
+        for (const id of NEVER_EXPOSED_VIA_MCP) {
+          const denied = (await client.callTool({
+            name: id,
+            arguments: {},
+          })) as TextToolResult;
+          expect(denied.isError, `${tier} should deny ${id}`).toBe(true);
+          expect(denied.content[0]?.text).toContain("TIER_NOT_PERMITTED");
+        }
+      }
+
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
