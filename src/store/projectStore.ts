@@ -21,6 +21,7 @@ function shouldPersistTerminal(t: TerminalInstance): boolean {
     t.location !== "trash" &&
     t.location !== "background" &&
     t.kind !== "assistant" &&
+    t.ephemeral !== true &&
     !isSmokeTestTerminalId(t.id)
   );
 }

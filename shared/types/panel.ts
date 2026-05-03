@@ -313,6 +313,11 @@ export interface PtyPanelData extends BasePanelData {
   agentPresetColor?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
+  /**
+   * When true, this panel is excluded from persisted layout snapshots and is
+   * never rehydrated on app restart (e.g. Daintree assistant dock terminals).
+   */
+  ephemeral?: boolean;
   /** Timestamp when this terminal was created */
   startedAt?: number;
   /** Exit code from the last process exit */
@@ -501,6 +506,11 @@ export interface TerminalInstance {
   agentPresetColor?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
+  /**
+   * When true, this panel is excluded from persisted layout snapshots and is
+   * never rehydrated on app restart (e.g. Daintree assistant dock terminals).
+   */
+  ephemeral?: boolean;
   /** Timestamp when this terminal was created */
   startedAt?: number;
   /** Exit code from the last process exit */

@@ -38,6 +38,12 @@ export interface AddPanelOptionsBase {
   /** Bypass panel limit checks (used during hydration/state restoration) */
   bypassLimits?: boolean;
   /**
+   * When true, the panel is excluded from persisted layout snapshots and is
+   * never rehydrated on app restart. Use for ad-hoc panels whose lifetime is
+   * bound to a transient UI surface (e.g. the Daintree assistant in the dock).
+   */
+  ephemeral?: boolean;
+  /**
    * When the panel's *resolved* `location` is `"dock"`, atomically set it as
    * the open dock panel in the same `set()` that commits `panelsById`/
    * `panelIds`. Eliminates the create-then-activate race where the watchdog

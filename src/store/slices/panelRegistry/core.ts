@@ -256,6 +256,7 @@ export const createCorePanelActions = (
         runtimeStatus,
         extensionState: options.extensionState,
         pluginId,
+        ephemeral: options.ephemeral,
         ...kindFields,
       };
 
@@ -438,6 +439,7 @@ export const createCorePanelActions = (
       extensionState: options.extensionState,
       pluginId: ptyPluginId,
       spawnedBy: options.spawnedBy,
+      ephemeral: options.ephemeral,
       startedAt: Date.now(),
       spawnStatus,
     };

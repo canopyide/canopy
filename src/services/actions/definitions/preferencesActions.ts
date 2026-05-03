@@ -756,6 +756,7 @@ export function registerPreferencesActions(
           cwd,
           location: "dock",
           prompt: helpPrompt,
+          ephemeral: true,
           ...(model && { model }),
           ...(env && { env }),
         },

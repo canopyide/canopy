@@ -52,6 +52,12 @@ export interface LaunchAgentOptions {
    * agent must read at startup (e.g. `DAINTREE_MCP_TOKEN` for help sessions).
    */
   env?: Record<string, string>;
+  /**
+   * When true, the spawned panel is excluded from persisted layout snapshots
+   * and is never rehydrated on app restart. Used by the help panel so the
+   * Daintree assistant terminal doesn't reappear in the dock after quit.
+   */
+  ephemeral?: boolean;
 }
 
 export interface UseAgentLauncherReturn {
@@ -391,6 +397,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               agentPresetColor: preset?.color,
               env: presetEnv,
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              ephemeral: launchOptions?.ephemeral,
             }
           : {
               kind: "terminal",
@@ -400,6 +407,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               command,
               location: launchOptions?.location,
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              ephemeral: launchOptions?.ephemeral,
             };
 
         // Soft launch gate: intercept when the CLI is not launchable (missing,
@@ -427,6 +435,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               startedAt: Date.now(),
               isVisible: true,
               extensionState: presetEnv ? { presetEnv } : undefined,
+              ephemeral: launchOptions?.ephemeral,
             };
             usePanelStore.setState((state) => {
               const next: Partial<typeof state> = {
