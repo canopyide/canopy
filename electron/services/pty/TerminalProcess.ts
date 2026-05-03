@@ -1158,6 +1158,16 @@ export class TerminalProcess {
 
         if (resolved) return;
 
+        // Re-check liveness: if the agent demoted during the clear-delay
+        // window (e.g. user typed /quit milliseconds before shutdown), the
+        // pending write would land in a plain shell.
+        if (!this.isAgentLive) {
+          origOnData.dispose();
+          origOnExit.dispose();
+          finish(null);
+          return;
+        }
+
         try {
           if (shutdownKeySequence) {
             terminal.ptyProcess.write(shutdownKeySequence);
