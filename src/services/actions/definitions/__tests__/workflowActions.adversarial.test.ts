@@ -149,10 +149,10 @@ describe("workflow.startWorkOnIssue", () => {
     const callbacks = makeCallbacks();
     const get = setupActions(callbacks);
     const def = get("workflow.startWorkOnIssue");
-    const result = (await def.run(
-      { issueNumber: 6609, agentId: "claude" },
-      {} as never
-    )) as Record<string, unknown>;
+    const result = (await def.run({ issueNumber: 6609, agentId: "claude" }, {} as never)) as Record<
+      string,
+      unknown
+    >;
 
     expect(githubClientMock.getIssueByNumber).toHaveBeenCalledWith("/repo", 6609);
     expect(worktreeClientMock.getAvailableBranch).toHaveBeenCalled();
@@ -172,17 +172,17 @@ describe("workflow.startWorkOnIssue", () => {
   it("throws when project is missing", async () => {
     setProject(null);
     const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
-    await expect(
-      def.run({ issueNumber: 6609, agentId: "claude" }, {} as never)
-    ).rejects.toThrow(/No active project/);
+    await expect(def.run({ issueNumber: 6609, agentId: "claude" }, {} as never)).rejects.toThrow(
+      /No active project/
+    );
   });
 
   it("throws when issue is not found", async () => {
     githubClientMock.getIssueByNumber.mockResolvedValue(null);
     const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
-    await expect(
-      def.run({ issueNumber: 999, agentId: "claude" }, {} as never)
-    ).rejects.toThrow(/issue #999 not found/);
+    await expect(def.run({ issueNumber: 999, agentId: "claude" }, {} as never)).rejects.toThrow(
+      /issue #999 not found/
+    );
   });
 
   it("throws PARTIAL_SUCCESS when agent.launch returns null after worktree creation", async () => {
@@ -194,9 +194,9 @@ describe("workflow.startWorkOnIssue", () => {
     const callbacks = makeCallbacks();
     callbacks.onLaunchAgent.mockResolvedValue(null);
     const def = setupActions(callbacks)("workflow.startWorkOnIssue");
-    await expect(
-      def.run({ issueNumber: 1, agentId: "claude" }, {} as never)
-    ).rejects.toThrow(/PARTIAL_SUCCESS:/);
+    await expect(def.run({ issueNumber: 1, agentId: "claude" }, {} as never)).rejects.toThrow(
+      /PARTIAL_SUCCESS:/
+    );
     expect(worktreeClientMock.create).toHaveBeenCalled();
     expect(copyTreeClientMock.injectToTerminal).not.toHaveBeenCalled();
   });
@@ -227,10 +227,7 @@ describe("workflow.startWorkOnIssue", () => {
     });
     const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
     try {
-      await def.run(
-        { issueNumber: 5, agentId: "claude", recipeId: "recipe-1" },
-        {} as never
-      );
+      await def.run({ issueNumber: 5, agentId: "claude", recipeId: "recipe-1" }, {} as never);
       throw new Error("expected throw");
     } catch (err) {
       const message = (err as Error).message;
@@ -278,10 +275,10 @@ describe("workflow.startWorkOnIssue", () => {
     githubClientMock.getIssueByNumber.mockResolvedValue({ number: 1, title: "t", url: "u" });
     copyTreeClientMock.injectToTerminal.mockRejectedValue(new Error("nope"));
     const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
-    const result = (await def.run(
-      { issueNumber: 1, agentId: "claude" },
-      {} as never
-    )) as Record<string, unknown>;
+    const result = (await def.run({ issueNumber: 1, agentId: "claude" }, {} as never)) as Record<
+      string,
+      unknown
+    >;
     expect(result.terminalId).toBe("term-1");
     expect(result.contextInjected).toBe(false);
   });
@@ -352,9 +349,7 @@ describe("workflow.prepBranchForReview", () => {
     const def = setupActions(makeCallbacks())("workflow.prepBranchForReview");
     const result = (await def.run({ cwd: "/repo/wt" }, {} as never)) as Record<string, unknown>;
     expect(result.verdict).toBe("ready");
-    expect(result.detectedRunners).toEqual([
-      { id: "test", name: "Test", command: "npm test" },
-    ]);
+    expect(result.detectedRunners).toEqual([{ id: "test", name: "Test", command: "npm test" }]);
     expect(result.hasUncommittedChanges).toBe(false);
   });
 
@@ -396,9 +391,7 @@ describe("workflow.prepBranchForReview", () => {
       currentBranch: "feature/x",
       repoState: "REBASING",
     });
-    projectClientMock.detectRunners.mockResolvedValue([
-      { id: "x", name: "x", command: "x" },
-    ]);
+    projectClientMock.detectRunners.mockResolvedValue([{ id: "x", name: "x", command: "x" }]);
     const def = setupActions(makeCallbacks())("workflow.prepBranchForReview");
     const result = (await def.run({ cwd: "/repo/wt" }, {} as never)) as Record<string, unknown>;
     expect(result.verdict).toBe("blocked_repo_busy");
