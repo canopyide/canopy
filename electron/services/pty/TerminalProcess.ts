@@ -1059,6 +1059,13 @@ export class TerminalProcess {
       return null;
     }
 
+    // Don't inject quit into terminals whose agent already exited — e.g.
+    // user typed /quit and the terminal demoted to a plain shell. The
+    // launchAgentId persists for identity, but the agent is gone.
+    if (!this.isAgentLive) {
+      return null;
+    }
+
     const liveAgentId = getLiveAgentId(terminal);
     const agentConfig = liveAgentId ? getEffectiveAgentConfig(liveAgentId) : undefined;
     const resume = agentConfig?.resume;

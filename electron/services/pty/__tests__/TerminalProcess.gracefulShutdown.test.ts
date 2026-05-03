@@ -246,6 +246,21 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     expect(handles.writeMock).not.toHaveBeenCalled();
   });
 
+  it("skips quit injection when agent already exited via /quit (issue #6605)", async () => {
+    // Repro #6605: user types /quit, terminal demotes to plain shell (agentState
+    // becomes "exited", detectedAgentId clears) but launchAgentId persists. On
+    // app shutdown, gracefulShutdown must NOT inject /quit into what is now a
+    // plain interactive shell.
+    const handles = createMockPty();
+    const terminal = createAgentTerminal(handles);
+
+    terminal.getInfo().agentState = "exited";
+    terminal.getInfo().detectedAgentId = undefined;
+
+    await expect(terminal.gracefulShutdown()).resolves.toBeNull();
+    expect(handles.writeMock).not.toHaveBeenCalled();
+  });
+
   it("project-scoped (Kiro) skips the session-ID capture loop and resolves null", async () => {
     // Lesson #4781: agents with directory-based sessions never emit session
     // IDs. The capture regex must NOT run for `project-scoped` resume kinds
