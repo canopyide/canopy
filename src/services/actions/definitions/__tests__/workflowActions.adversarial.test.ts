@@ -26,6 +26,7 @@ const copyTreeClientMock = vi.hoisted(() => ({
 const projectStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const recipeStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const githubConfigStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
+const preferencesStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const currentViewStoreMock = vi.hoisted(() => ({ getCurrentViewStore: vi.fn() }));
 const panelStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const selectorMock = vi.hoisted(() => ({
@@ -43,6 +44,7 @@ vi.mock("@/clients", () => ({
 vi.mock("@/store/projectStore", () => ({ useProjectStore: projectStoreMock }));
 vi.mock("@/store/recipeStore", () => ({ useRecipeStore: recipeStoreMock }));
 vi.mock("@/store/githubConfigStore", () => ({ useGitHubConfigStore: githubConfigStoreMock }));
+vi.mock("@/store/preferencesStore", () => ({ usePreferencesStore: preferencesStoreMock }));
 vi.mock("@/store/createWorktreeStore", () => currentViewStoreMock);
 vi.mock("@/store/panelStore", () => ({ usePanelStore: panelStoreMock }));
 vi.mock("@/store/slices/panelRegistry", () => selectorMock);
@@ -97,6 +99,10 @@ function setGithubUser(username: string | null) {
   githubConfigStoreMock.getState.mockReturnValue({ config: username ? { username } : null });
 }
 
+function setAssignPreference(value: boolean) {
+  preferencesStoreMock.getState.mockReturnValue({ assignWorktreeToSelf: value });
+}
+
 function setRecipe(recipeId: string | null, runImpl?: () => Promise<void>) {
   recipeStoreMock.getState.mockReturnValue({
     getRecipeById: vi.fn().mockReturnValue(recipeId ? { id: recipeId } : null),
@@ -134,6 +140,7 @@ beforeEach(() => {
   setProject({ id: "p1", path: "/repo" });
   setMainWorktree("main");
   setGithubUser(null);
+  setAssignPreference(false);
   setRecipe(null);
   setPanelTerminals([]);
   // re-arm the panel store after panel reset so focus tests get an empty terminal list by default
@@ -341,6 +348,7 @@ describe("workflow.startWorkOnIssue", () => {
     expect(result.contextInjected).toBe(true);
     expect(result.recipeLaunched).toBe(false);
     expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBeNull();
     expect(result.issueTitle).toBe("Add workflow macro tools");
   });
 
@@ -392,6 +400,8 @@ describe("workflow.startWorkOnIssue", () => {
       expect(payload.partialResult.worktreeId).toBe("wt-new");
       expect(payload.partialResult.terminalId).toBeNull();
       expect(payload.partialResult.contextInjected).toBe(false);
+      expect(payload.partialResult.assignedToSelf).toBe(false);
+      expect(payload.partialResult.assignmentError).toBeNull();
     }
   });
 
@@ -479,19 +489,107 @@ describe("workflow.startWorkOnIssue", () => {
     )) as Record<string, unknown>;
     expect(githubClientMock.assignIssue).toHaveBeenCalledWith("/repo", 6609, "ada");
     expect(result.assignedToSelf).toBe(true);
+    expect(result.assignmentError).toBeNull();
   });
 
-  it("assignToSelf is best-effort — silent failure does not abort the macro", async () => {
+  it("assignToSelf is best-effort — failure surfaces in assignmentError without aborting the macro", async () => {
     githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
     setGithubUser("ada");
-    githubClientMock.assignIssue.mockRejectedValue(new Error("403"));
+    githubClientMock.assignIssue.mockRejectedValue(new Error("403 Forbidden"));
     const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
     const result = (await def.run(
       { issueNumber: 6609, agentId: "claude", assignToSelf: true },
       {} as never
     )) as Record<string, unknown>;
     expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("403 Forbidden");
     expect(result.terminalId).toBe("term-1");
+  });
+
+  it("assignToSelf omitted falls back to assignWorktreeToSelf preference (true)", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
+    setGithubUser("ada");
+    setAssignPreference(true);
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    const result = (await def.run({ issueNumber: 6609, agentId: "claude" }, {} as never)) as Record<
+      string,
+      unknown
+    >;
+    expect(githubClientMock.assignIssue).toHaveBeenCalledWith("/repo", 6609, "ada");
+    expect(result.assignedToSelf).toBe(true);
+    expect(result.assignmentError).toBeNull();
+  });
+
+  it("assignToSelf omitted with preference (false) does not assign", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
+    setGithubUser("ada");
+    setAssignPreference(false);
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    const result = (await def.run({ issueNumber: 6609, agentId: "claude" }, {} as never)) as Record<
+      string,
+      unknown
+    >;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBeNull();
+  });
+
+  it("explicit assignToSelf: false overrides a true preference", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
+    setGithubUser("ada");
+    setAssignPreference(true);
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    const result = (await def.run(
+      { issueNumber: 6609, agentId: "claude", assignToSelf: false },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBeNull();
+  });
+
+  it("assignToSelf with no GitHub username configured surfaces a descriptive assignmentError", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
+    setGithubUser(null);
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    const result = (await def.run(
+      { issueNumber: 6609, agentId: "claude", assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("No GitHub username configured");
+    expect(result.terminalId).toBe("term-1");
+  });
+
+  it("preference fallback also surfaces 'No GitHub username configured' when assignToSelf is omitted", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
+    setGithubUser(null);
+    setAssignPreference(true);
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    const result = (await def.run({ issueNumber: 6609, agentId: "claude" }, {} as never)) as Record<
+      string,
+      unknown
+    >;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("No GitHub username configured");
+  });
+
+  it("assignment failure does not clobber other result fields", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
+    setGithubUser("ada");
+    githubClientMock.assignIssue.mockRejectedValue(new Error("rate limit"));
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    const result = (await def.run(
+      { issueNumber: 6609, agentId: "claude", assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(result.worktreeId).toBe("wt-new");
+    expect(result.terminalId).toBe("term-1");
+    expect(result.contextInjected).toBe(true);
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("rate limit");
   });
 
   it("derives a sane branch name from the issue title when none is provided", async () => {
@@ -506,6 +604,107 @@ describe("workflow.startWorkOnIssue", () => {
     const branch = call[1] as string;
     expect(branch).toMatch(/^feature\/issue-42-/);
     expect(branch).not.toMatch(/[^a-z0-9/-]/);
+  });
+});
+
+describe("worktree.createWithRecipe — issue assignment", () => {
+  it("happy path returns assignmentError: null when nothing is requested", async () => {
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run({ branchName: "feature/foo" }, {} as never)) as Record<
+      string,
+      unknown
+    >;
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBeNull();
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+  });
+
+  it("explicit assignToSelf: true with issueNumber assigns and returns null error", async () => {
+    setGithubUser("ada");
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", issueNumber: 6625, assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).toHaveBeenCalledWith("/repo", 6625, "ada");
+    expect(result.assignedToSelf).toBe(true);
+    expect(result.assignmentError).toBeNull();
+  });
+
+  it("assignToSelf omitted falls back to assignWorktreeToSelf preference (true)", async () => {
+    setGithubUser("ada");
+    setAssignPreference(true);
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", issueNumber: 6625 },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).toHaveBeenCalledWith("/repo", 6625, "ada");
+    expect(result.assignedToSelf).toBe(true);
+    expect(result.assignmentError).toBeNull();
+  });
+
+  it("assignToSelf omitted with preference (false) does not assign", async () => {
+    setGithubUser("ada");
+    setAssignPreference(false);
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", issueNumber: 6625 },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBeNull();
+  });
+
+  it("explicit assignToSelf: false overrides a true preference", async () => {
+    setGithubUser("ada");
+    setAssignPreference(true);
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", issueNumber: 6625, assignToSelf: false },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBeNull();
+  });
+
+  it("assignment failure surfaces in assignmentError but worktree still succeeds", async () => {
+    setGithubUser("ada");
+    githubClientMock.assignIssue.mockRejectedValue(new Error("403 Forbidden"));
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", issueNumber: 6625, assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(result.worktreeId).toBe("wt-new");
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("403 Forbidden");
+  });
+
+  it("missing GitHub username surfaces a descriptive assignmentError", async () => {
+    setGithubUser(null);
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", issueNumber: 6625, assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("No GitHub username configured");
+  });
+
+  it("assignToSelf without issueNumber is a no-op (nothing to assign)", async () => {
+    setGithubUser("ada");
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBeNull();
   });
 });
 

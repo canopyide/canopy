@@ -7,6 +7,7 @@ import { useRecipeStore } from "@/store/recipeStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import { usePanelStore } from "@/store/panelStore";
+import { usePreferencesStore } from "@/store/preferencesStore";
 import { selectOrderedTerminals } from "@/store/slices/panelRegistry";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
@@ -67,6 +68,8 @@ export function registerWorkflowActions(
             .describe("Use an existing branch instead of creating a new one"),
           issueNumber: z
             .number()
+            .int()
+            .positive()
             .optional()
             .describe(
               "GitHub issue number to link with the worktree. Mutually exclusive with pullRequestNumber."
@@ -82,7 +85,9 @@ export function registerWorkflowActions(
           assignToSelf: z
             .boolean()
             .optional()
-            .describe("Explicitly assign the linked issue to the current user (default: false)"),
+            .describe(
+              "Assign the linked issue to the current user. Omit to use the user's persisted 'Assign issue to me' preference (mirrors the new-worktree dialog checkbox)."
+            ),
         })
         .refine((d) => !(d.issueNumber !== undefined && d.pullRequestNumber !== undefined), {
           message: "issueNumber and pullRequestNumber are mutually exclusive",
@@ -93,6 +98,7 @@ export function registerWorkflowActions(
         branch: z.string(),
         recipeLaunched: z.boolean(),
         assignedToSelf: z.boolean(),
+        assignmentError: z.string().nullable(),
       }),
       run: async ({
         branchName,
@@ -112,6 +118,9 @@ export function registerWorkflowActions(
         if (!currentProject) {
           throw new Error("No active project");
         }
+
+        const effectiveAssignToSelf =
+          assignToSelf ?? usePreferencesStore.getState().assignWorktreeToSelf;
 
         const rootPath = currentProject.path;
 
@@ -206,21 +215,25 @@ export function registerWorkflowActions(
                 branch: effectiveBranch,
                 recipeLaunched: false,
                 assignedToSelf: false,
+                assignmentError: null,
               }
             );
           }
         }
 
         let assignedToSelf = false;
-        if (issueNumber && assignToSelf) {
+        let assignmentError: string | null = null;
+        if (issueNumber && effectiveAssignToSelf) {
           const username = useGitHubConfigStore.getState().config?.username;
           if (username) {
             try {
               await githubClient.assignIssue(rootPath, issueNumber, username);
               assignedToSelf = true;
-            } catch {
-              // Silent failure — assignment is best-effort
+            } catch (err) {
+              assignmentError = formatErrorMessage(err, "Failed to assign issue");
             }
+          } else {
+            assignmentError = "No GitHub username configured";
           }
         }
 
@@ -230,6 +243,7 @@ export function registerWorkflowActions(
           branch: effectiveBranch,
           recipeLaunched,
           assignedToSelf,
+          assignmentError,
         };
       },
     })
@@ -269,7 +283,9 @@ export function registerWorkflowActions(
         assignToSelf: z
           .boolean()
           .optional()
-          .describe("Assign the issue to the current user (default: false)"),
+          .describe(
+            "Assign the issue to the current user. Omit to use the user's persisted 'Assign issue to me' preference (mirrors the new-worktree dialog checkbox)."
+          ),
         injectContext: z
           .boolean()
           .optional()
@@ -285,6 +301,7 @@ export function registerWorkflowActions(
         terminalId: z.string().nullable(),
         recipeLaunched: z.boolean(),
         assignedToSelf: z.boolean(),
+        assignmentError: z.string().nullable(),
         contextInjected: z.boolean(),
       }),
       run: async ({
@@ -301,6 +318,8 @@ export function registerWorkflowActions(
           throw new Error("No active project");
         }
         const rootPath = currentProject.path;
+        const effectiveAssignToSelf =
+          assignToSelf ?? usePreferencesStore.getState().assignWorktreeToSelf;
 
         const issue = await githubClient.getIssueByNumber(rootPath, issueNumber);
         if (!issue) {
@@ -373,6 +392,7 @@ export function registerWorkflowActions(
                 terminalId: null,
                 recipeLaunched: false,
                 assignedToSelf: false,
+                assignmentError: null,
                 contextInjected: false,
               }
             );
@@ -402,6 +422,7 @@ export function registerWorkflowActions(
               terminalId: null,
               recipeLaunched,
               assignedToSelf: false,
+              assignmentError: null,
               contextInjected: false,
             }
           );
@@ -417,6 +438,7 @@ export function registerWorkflowActions(
             terminalId: null,
             recipeLaunched,
             assignedToSelf: false,
+            assignmentError: null,
             contextInjected: false,
           });
         }
@@ -433,15 +455,18 @@ export function registerWorkflowActions(
         }
 
         let assignedToSelf = false;
-        if (assignToSelf) {
+        let assignmentError: string | null = null;
+        if (effectiveAssignToSelf) {
           const username = useGitHubConfigStore.getState().config?.username;
           if (username) {
             try {
               await githubClient.assignIssue(rootPath, issue.number, username);
               assignedToSelf = true;
-            } catch {
-              // Silent — assignment is best-effort, agent is already running
+            } catch (err) {
+              assignmentError = formatErrorMessage(err, "Failed to assign issue");
             }
+          } else {
+            assignmentError = "No GitHub username configured";
           }
         }
 
@@ -455,6 +480,7 @@ export function registerWorkflowActions(
           terminalId,
           recipeLaunched,
           assignedToSelf,
+          assignmentError,
           contextInjected,
         };
       },
