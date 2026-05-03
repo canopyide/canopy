@@ -250,7 +250,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     | WaitingReason
     | undefined;
   const showStateIcon =
-    chrome.isAgent && agentState && agentState !== "idle" && agentState !== "completed";
+    agentState && agentState !== "idle" && agentState !== "completed" && agentState !== "exited";
   const StateIcon = showStateIcon ? getEffectiveStateIcon(agentState, waitingReason) : null;
 
   return (

@@ -84,7 +84,7 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
   const isArmed = useFleetArmingStore((s) => s.armedIds.has(term.id));
   const armBadge = useFleetArmingStore((s) => s.armOrderById[term.id]);
   const chrome = deriveTerminalChrome(term);
-  const agentState = chrome.isAgent ? term.agentState : undefined;
+  const agentState = term.agentState;
   // Only the primary ("last armed") row gets the accent ring — it's the
   // singular focus anchor that will receive keyboard focus when fleet scope
   // exits. Secondary armed peers keep the dashed shape but use a neutral
@@ -152,6 +152,8 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
 
           {agentState &&
             agentState !== "idle" &&
+            agentState !== "completed" &&
+            agentState !== "exited" &&
             (() => {
               const Icon = getEffectiveStateIcon(agentState, term.waitingReason);
               return (

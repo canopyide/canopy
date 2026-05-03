@@ -266,7 +266,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
       presetColor,
     ]
   );
-  const ownAgentState = terminalChrome.isAgent ? agentState : undefined;
+  const ownAgentState = agentState;
   // Determine effective agent state for container border styling.
   // ambientAgentState takes priority so tab groups can surface highest-urgency
   // state from hidden live-agent tabs without affecting the active header chip.

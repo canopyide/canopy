@@ -412,3 +412,130 @@ describe("WorktreeTerminalSection arming click handlers", () => {
     expect(scrollContainer).toBeTruthy();
   });
 });
+
+// #6650 — Terminal row state icon must render for any non-idle/non-completed/
+// non-exited agentState, regardless of whether agent identity has committed.
+describe("WorktreeTerminalSection row state icon (#6650)", () => {
+  beforeEach(() => {
+    useFleetArmingStore.setState({
+      armedIds: new Set<string>(),
+      armOrder: [],
+      armOrderById: {},
+      lastArmedId: null,
+    });
+  });
+
+  it("renders working icon when agentState='working' and no agent identity is set", () => {
+    const term = makeTerminal({
+      id: "no-id-1",
+      kind: "terminal",
+      hasPty: true,
+      agentState: "working",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="no-id-1"]');
+    expect(row).not.toBeNull();
+    expect(row?.getAttribute("data-terminal-agent-state")).toBe("working");
+    const stateIcon = row?.querySelector('[aria-label="working"]');
+    expect(stateIcon).not.toBeNull();
+  });
+
+  it("renders waiting icon for identity-less terminal with agentState='waiting'", () => {
+    const term = makeTerminal({
+      id: "no-id-2",
+      kind: "terminal",
+      hasPty: true,
+      agentState: "waiting",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="no-id-2"]');
+    const stateIcon = row?.querySelector('[aria-label="waiting"]');
+    expect(stateIcon).not.toBeNull();
+  });
+
+  it("does not render state icon when agentState='idle'", () => {
+    const term = makeTerminal({
+      id: "idle-1",
+      kind: "terminal",
+      hasPty: true,
+      detectedAgentId: "claude",
+      agentState: "idle",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="idle-1"]');
+    const stateIcons = row?.querySelectorAll(
+      '[aria-label="working"], [aria-label="waiting"], [aria-label="directing"]'
+    );
+    expect(stateIcons?.length ?? 0).toBe(0);
+  });
+
+  it("does not render state icon when agentState='exited' (no stale indicator)", () => {
+    const term = makeTerminal({
+      id: "exited-1",
+      kind: "terminal",
+      hasPty: true,
+      launchAgentId: "claude",
+      agentState: "exited",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="exited-1"]');
+    const stateIcon = row?.querySelector('[aria-label="exited"]');
+    expect(stateIcon).toBeNull();
+  });
+
+  it("does not render state icon when agentState='completed'", () => {
+    const term = makeTerminal({
+      id: "completed-1",
+      kind: "terminal",
+      hasPty: true,
+      detectedAgentId: "claude",
+      agentState: "completed",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="completed-1"]');
+    const stateIcon = row?.querySelector('[aria-label="done"]');
+    expect(stateIcon).toBeNull();
+  });
+
+  it("does not render state icon when agentState is undefined (plain shell)", () => {
+    const term = makeTerminal({
+      id: "plain-1",
+      kind: "terminal",
+      hasPty: true,
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="plain-1"]');
+    const stateIcons = row?.querySelectorAll("[aria-label]");
+    const stateRelated = Array.from(stateIcons ?? []).filter((el) => {
+      const label = el.getAttribute("aria-label");
+      return (
+        label === "working" || label === "waiting" || label === "directing" || label === "idle"
+      );
+    });
+    expect(stateRelated.length).toBe(0);
+  });
+});

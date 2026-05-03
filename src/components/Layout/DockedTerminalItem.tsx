@@ -261,7 +261,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     ]
   );
 
-  const agentState = chrome.isAgent ? getDockDisplayAgentState(terminal) : undefined;
+  const agentState = getDockDisplayAgentState(terminal);
   const isWorking = agentState === "working";
   const isWaiting = agentState === "waiting";
   const isActive = isWorking || isWaiting;
