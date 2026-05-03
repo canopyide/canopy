@@ -209,4 +209,18 @@ describe("DockedTerminalItem mount-time close guard (#6602)", () => {
     expect(closeDockTerminalMock).not.toHaveBeenCalled();
     expect(openDockTerminalMock).not.toHaveBeenCalled();
   });
+
+  it("still honors a real onOpenChange(false) when mounted closed", () => {
+    // Regression guard against accidentally arming the ref unconditionally.
+    mockActiveDockTerminalId = null;
+
+    render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
+    expect(capturedOnOpenChange).not.toBeNull();
+
+    act(() => {
+      capturedOnOpenChange?.(false);
+    });
+
+    expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
+  });
 });

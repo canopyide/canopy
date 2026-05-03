@@ -284,4 +284,32 @@ describe("DockedTabGroup mount-time close guard (#6602)", () => {
     expect(closeDockTerminalMock).not.toHaveBeenCalled();
     expect(openDockTerminalMock).not.toHaveBeenCalled();
   });
+
+  it("still honors a real onOpenChange(false) when mounted closed", () => {
+    // Regression guard against accidentally arming the ref unconditionally.
+    mockActiveDockTerminalId = null;
+    const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+
+    render(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
+    expect(capturedOnOpenChange).not.toBeNull();
+
+    act(() => {
+      capturedOnOpenChange?.(false);
+    });
+
+    expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores spurious close when active panel is not the group's stored active tab", () => {
+    // isOpen derives from `panels.some(p => p.id === activeDockTerminalId)`, not
+    // from group.activeTabId. A panel made active out-of-band (e.g., by an agent
+    // launcher that activates t-2 while the group's stored activeTabId is still
+    // t-1) must still arm the mount guard.
+    mockActiveDockTerminalId = "t-2";
+    const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+
+    render(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
+
+    expect(closeDockTerminalMock).not.toHaveBeenCalled();
+  });
 });

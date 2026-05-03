@@ -108,12 +108,9 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   // that mounts already-open is armed before Radix's DismissableLayer can fire a spurious
   // mount-time onOpenChange(false).
   const wasJustOpenedRef = useRef(isOpen);
-  const prevIsOpenRef = useRef(isOpen);
   const [tabListEl, setTabListEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    prevIsOpenRef.current = isOpen;
-
     if (!isOpen) return;
 
     wasJustOpenedRef.current = true;

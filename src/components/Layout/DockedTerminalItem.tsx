@@ -52,12 +52,8 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   // Initialized to `isOpen` so a component that mounts already-open is armed before Radix's
   // DismissableLayer can fire a spurious mount-time onOpenChange(false).
   const wasJustOpenedRef = useRef(isOpen);
-  const prevIsOpenRef = useRef(isOpen);
 
   useEffect(() => {
-    prevIsOpenRef.current = isOpen;
-
-    // Detect programmatic open (isOpen changed from false to true externally)
     if (!isOpen) return;
 
     wasJustOpenedRef.current = true;
