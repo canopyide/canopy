@@ -54,6 +54,7 @@ export function DaintreeAssistantSettingsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [enablingMcp, setEnablingMcp] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const agentSettings = useAgentSettingsStore((s) => s.settings);
@@ -152,6 +153,34 @@ export function DaintreeAssistantSettingsTab() {
   const toggleSkipPermissions = useCallback(() => {
     void persist({ skipPermissions: !settings.skipPermissions });
   }, [persist, settings.skipPermissions]);
+
+  const handleEnableMcpServer = useCallback(async () => {
+    if (enablingMcp) return;
+    setEnablingMcp(true);
+    try {
+      setError(null);
+      const next = await window.electron.mcpServer.setEnabled(true);
+      setMcpStatus({
+        enabled: next.enabled,
+        port: next.port,
+        apiKey: next.apiKey,
+      });
+      if (!next.enabled) {
+        setError("Couldn't start the MCP server. Check the MCP Server tab for details.");
+      }
+    } catch (err) {
+      setError(formatErrorMessage(err, "Couldn't enable MCP server"));
+      notify({
+        type: "error",
+        title: "MCP server failed",
+        message: "Couldn't enable the MCP server. Try again.",
+        priority: "low",
+      });
+      logError("Failed to enable MCP server from assistant tab", err);
+    } finally {
+      setEnablingMcp(false);
+    }
+  }, [enablingMcp]);
 
   const setRetention = useCallback(
     (value: string) => {
@@ -295,6 +324,33 @@ export function DaintreeAssistantSettingsTab() {
           ariaLabel="Allow the assistant to call Daintree control tools"
           disabled={loading}
         />
+        {!loading && settings.daintreeControl && mcpStatus && !mcpStatus.enabled && (
+          <div
+            className={cn(
+              "flex items-start gap-3 p-3 rounded-[var(--radius-md)]",
+              "bg-overlay-subtle border border-daintree-border"
+            )}
+          >
+            <AlertTriangle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+            <div className="flex-1 text-xs text-daintree-text/70 leading-relaxed select-text">
+              The MCP server is off, so the assistant can't call Daintree actions yet. Turn it on to
+              activate Daintree control.
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleEnableMcpServer()}
+              disabled={enablingMcp}
+              className={cn(
+                "shrink-0 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium transition-colors",
+                "border border-daintree-border text-daintree-text/80",
+                "hover:bg-overlay-soft hover:text-daintree-text",
+                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              )}
+            >
+              Turn on MCP server
+            </button>
+          </div>
+        )}
       </SettingsSection>
 
       {/* Security */}
@@ -358,8 +414,8 @@ export function DaintreeAssistantSettingsTab() {
           <p className="text-xs text-daintree-text/50">Couldn't load MCP status.</p>
         ) : !mcpStatus.enabled ? (
           <p className="text-xs text-daintree-text/60 select-text">
-            MCP server is off. Turn it on in the MCP Server tab to enable Daintree control and share
-            the connection with external clients.
+            MCP server is off. Turn it on in the MCP Server tab to share the connection with
+            external clients.
           </p>
         ) : (
           <div className="contents">
