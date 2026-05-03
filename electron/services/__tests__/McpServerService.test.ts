@@ -1591,6 +1591,16 @@ describe("McpServerService", () => {
         description: "Run an arbitrary command in a terminal",
       }),
       createManifestEntry({
+        id: "terminal.close" as ActionId,
+        title: "Close Terminal",
+        description: "Move a terminal to trash",
+      }),
+      createManifestEntry({
+        id: "terminal.kill" as ActionId,
+        title: "Kill Terminal",
+        description: "Permanently remove a terminal",
+      }),
+      createManifestEntry({
         id: "agent.terminal" as ActionId,
         title: "Agent Terminal",
         description: "Drive a running agent",
@@ -1602,12 +1612,23 @@ describe("McpServerService", () => {
       }),
     ];
 
-    // Spawning terminals/agents and driving them via sent commands is
-    // intentionally action-tier — see ACTION_TIER_ADDONS in McpServerService.
-    // System tier is reserved for destructive or externally-visible ops.
-    const ACTION_TIER_TOOLS = ["terminal.sendCommand", "agent.terminal", "agent.launch"] as const;
+    // Spawning terminals/agents, driving them via sent commands, and trashing
+    // terminals are intentionally action-tier — see ACTION_TIER_ADDONS in
+    // McpServerService. System tier is reserved for destructive or
+    // externally-visible ops, including permanent terminal kills.
+    const ACTION_TIER_TOOLS = [
+      "terminal.sendCommand",
+      "terminal.close",
+      "agent.terminal",
+      "agent.launch",
+    ] as const;
 
-    const SYSTEM_ONLY_TOOLS = ["git.commit", "git.push", "worktree.delete"] as const;
+    const SYSTEM_ONLY_TOOLS = [
+      "git.commit",
+      "git.push",
+      "worktree.delete",
+      "terminal.kill",
+    ] as const;
 
     it("workbench tier exposes only read-only introspection tools", async () => {
       paneTokenTiers.set("token-wb", "workbench");

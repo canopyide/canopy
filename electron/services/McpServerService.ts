@@ -119,9 +119,11 @@ const WORKBENCH_TOOLS: ReadonlySet<string> = new Set([
 
 /**
  * Action tier additions — non-destructive mutations layered on top of
- * workbench. Creates resources, spawns terminals/agents, and drives those
- * terminals via injected context or sent commands. Does not delete worktrees,
- * commit/push git state, or open external GitHub URLs.
+ * workbench. Creates resources, spawns terminals/agents, drives those
+ * terminals via injected context or sent commands, and trashes terminals
+ * (which the user can restore from the dock). Does not permanently kill
+ * terminals, delete worktrees, commit/push git state, or open external
+ * GitHub URLs.
  */
 const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set([
   "worktree.create",
@@ -133,6 +135,8 @@ const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set([
   "terminal.new",
   "terminal.sendCommand",
   "terminal.bulkCommand",
+  "terminal.close",
+  "terminal.closeAll",
 
   "recipe.list",
   "recipe.run",
@@ -150,11 +154,14 @@ const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set([
 
 /**
  * System tier additions — destructive or externally-visible operations layered
- * on top of action. Includes deleting worktrees, mutating git state, and
- * opening external GitHub URLs.
+ * on top of action. Includes permanently killing terminals (cannot be undone),
+ * deleting worktrees, mutating git state, and opening external GitHub URLs.
  */
 const SYSTEM_TIER_ADDONS: ReadonlySet<string> = new Set([
   "worktree.delete",
+
+  "terminal.kill",
+  "terminal.killAll",
 
   "git.stageFile",
   "git.unstageFile",
