@@ -65,22 +65,11 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
       name: "help-panel-storage",
       storage: createSafeJSONStorage(),
       version: 1,
-      // v1 clears any persisted `preferredAgentId` for agents that aren't
-      // wired for the assistant overlay (issue #6612). Without this, users who
-      // previously picked Gemini/Codex would silently fail to auto-launch on
-      // first open after upgrade.
-      migrate: (persistedState, version) => {
-        const persisted = (persistedState ?? {}) as Partial<HelpPanelState>;
-        if (version < 1) {
-          return {
-            ...persisted,
-            preferredAgentId: isAssistantSupportedAgentId(persisted.preferredAgentId)
-              ? persisted.preferredAgentId
-              : null,
-          } as HelpPanelState & HelpPanelActions;
-        }
-        return persisted as HelpPanelState & HelpPanelActions;
-      },
+      // v1 marks that the `preferredAgentId` rehydration guard (issue #6612)
+      // is in effect. The cleanup itself runs in `merge` below — it fires on
+      // every rehydration, so a v0 blob with `preferredAgentId: "gemini"`
+      // becomes `null` before any subscriber sees it.
+      migrate: (persistedState) => persistedState as HelpPanelState & HelpPanelActions,
       partialize: (state) => ({
         width: state.width,
         preferredAgentId: state.preferredAgentId,
