@@ -3704,6 +3704,45 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
+    it("recovers idle→busy from sparse spinner ticks WITH polling running", () => {
+      // Reproduces the actual production scenario: 500ms polling cycles run
+      // continuously, and sparse spinner ticks (~700ms intervals) accumulate
+      // in the cosmetic-redraw recovery path. The shared workingSignalDebouncer
+      // would have been reset by the polling cycle's "no signal" branch,
+      // defeating recovery; the dedicated cosmeticRecoveryDebouncer survives.
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("bg-poll-1", 1000, onStateChange, {
+        getVisibleLines: () => ["> ready"],
+        getCursorLine: () => "> ready",
+        pollingIntervalMs: 500,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+        backgroundOutputWindowMs: 2500,
+        backgroundWorkingRecoveryDelayMs: 600,
+        idleDebounceMs: 4000,
+      });
+
+      monitor.startPolling();
+      // Pre-fix, the polling cycle's no-signal branch would have erased the
+      // cosmetic accumulator. Drive several poll cycles with no data so the
+      // shared-debouncer hypothesis would have reset sustainedSince repeatedly
+      // before the next spinner tick.
+      vi.advanceTimersByTime(2000);
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // Sparse ticks: each tick is 700ms apart, with 500ms polling firing
+      // between them. With the dedicated debouncer, the 600ms gate fires on
+      // the second tick.
+      monitor.onData("\r⠙ Working (esc to interrupt)");
+      vi.advanceTimersByTime(700);
+      monitor.onData("\r⠙ Working (esc to interrupt)");
+
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+    });
+
     it("does not regress active-tier #3189 — single spinner burst stays idle", () => {
       // Active tier (50ms polling) keeps the original 1500ms debouncer, so a
       // sub-1500ms spinner burst on a non-busy agent must not escalate to busy.

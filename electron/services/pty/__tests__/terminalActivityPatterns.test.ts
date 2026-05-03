@@ -213,4 +213,13 @@ describe("buildActivityMonitorOptions", () => {
     expect(result.patternConfig).toBeDefined();
     expect(result.bootCompletePatterns).toBeDefined();
   });
+
+  it("sets background-tier recovery thresholds (#6641)", () => {
+    // Background polling (500ms) widens the volume window and shortens the
+    // recovery debouncer so backgrounded agents can escape "waiting" when
+    // output resumes. Active polling (50ms) keeps the existing thresholds.
+    const result = buildActivityMonitorOptions("claude", {});
+    expect(result.backgroundOutputWindowMs).toBe(2500);
+    expect(result.backgroundWorkingRecoveryDelayMs).toBe(600);
+  });
 });
