@@ -10,6 +10,10 @@ const WORKTREE_HEADER_PATH = path.resolve(
   __dirname,
   "../../Worktree/WorktreeCard/WorktreeHeader.tsx"
 );
+const WORKTREE_ACTIONS_TOOLBAR_PATH = path.resolve(
+  __dirname,
+  "../../Worktree/WorktreeCard/WorktreeActionsToolbar.tsx"
+);
 const HOOK_PATH = path.resolve(__dirname, "../useWorktreeGridRovingFocus.ts");
 
 describe("Worktree list keyboard grid — issue #6422", () => {
@@ -57,7 +61,7 @@ describe("Worktree list keyboard grid — issue #6422", () => {
   describe("WorktreeHeader actions toolbar", () => {
     let source: string;
     beforeEach(async () => {
-      source = await fs.readFile(WORKTREE_HEADER_PATH, "utf-8");
+      source = await fs.readFile(WORKTREE_ACTIONS_TOOLBAR_PATH, "utf-8");
     });
 
     it("marks the actions wrapper with data-worktree-row-toolbar so the controller can find it", () => {
