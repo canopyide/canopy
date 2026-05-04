@@ -42,7 +42,7 @@ export function CustomPresetChrome({
       />
       {isEditing ? (
         <input
-          className="flex-1 text-sm font-medium bg-daintree-bg border border-daintree-accent rounded px-2 py-0.5 focus:outline-hidden"
+          className="flex-1 text-sm font-medium bg-daintree-bg border border-border-strong rounded px-2 py-0.5 focus:outline-hidden"
           value={editName}
           onChange={(e) => onEditNameChange(e.target.value)}
           onBlur={onCommitEdit}

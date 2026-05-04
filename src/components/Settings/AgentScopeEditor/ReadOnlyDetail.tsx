@@ -32,7 +32,7 @@ export function ReadOnlyDetail({ scopeKind, selectedPreset, onDuplicate }: ReadO
               <div key={k} className="flex items-center gap-2 font-mono text-[11px]">
                 <span className="text-daintree-text/50 shrink-0">{k}</span>
                 <span className="text-daintree-text/30">=</span>
-                <span className="text-daintree-accent/70 truncate">{v}</span>
+                <span className="text-daintree-text/60 truncate">{v}</span>
               </div>
             ))}
           </div>
