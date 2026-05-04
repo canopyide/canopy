@@ -110,9 +110,9 @@ describe("OutputVolumeDetector", () => {
       // Two small frames with a backward timestamp on the second. The clamp
       // must prevent negative drain from inflating the level above what the
       // raw byte contributions would justify.
-      d.update(50, 2000);
-      d.update(50, 1000);
-      // Two 50-byte frames cannot reach activationThreshold=200 even when
+      expect(d.update(50, 2000)).toBe(false);
+      expect(d.update(50, 1000)).toBe(false);
+      // Three 50-byte frames cannot reach activationThreshold=200 even when
       // drain is clamped to zero — the cap on per-frame contribution holds.
       expect(d.update(50, 1500)).toBe(false);
     });
@@ -151,8 +151,34 @@ describe("OutputVolumeDetector", () => {
         activationThreshold: 100,
         maxBytesPerFrame: 50,
       });
-      // recencyWindowMs must be finite even with 0 input.
-      expect(Number.isFinite(d.recencyWindowMs)).toBe(true);
+      // recencyWindowMs must be finite and bounded — a clamp that yields an
+      // absurdly large value (e.g. 100,000ms+) would silently break the
+      // hasRecentOutputActivity gate. The 0.001 floor / 100 threshold gives
+      // 100,000ms, so the clamp must keep recencyWindowMs ≤ that bound. This
+      // assertion catches accidental "tighten the clamp" regressions.
+      expect(d.recencyWindowMs).toBeGreaterThan(0);
+      expect(d.recencyWindowMs).toBeLessThanOrEqual(100_000);
+    });
+
+    it("ignores explicit-undefined config fields and falls through to defaults", () => {
+      // Callers that spread a partial options object can pass `{ leakRatePerMs:
+      // undefined }`; the spread must not override the default with undefined
+      // and trip the clamp fallback.
+      const d = new OutputVolumeDetector({
+        enabled: true,
+        leakRatePerMs: undefined,
+        activationThreshold: undefined,
+        maxBytesPerFrame: undefined,
+      });
+      // Default recency = 2048 / 2.048 = 1000ms. A bug here would yield
+      // recency = 1 / 0.001 = 1000ms by coincidence — guard with a second
+      // assertion that the bucket actually reaches the default threshold.
+      expect(d.recencyWindowMs).toBe(1000);
+      // A single 1024-byte frame must not fire (confirms activationThreshold
+      // was not clamped to 1). Two simultaneous 1024-byte frames sum to
+      // exactly 2048 with no drain — fires.
+      expect(d.update(1024, 1000)).toBe(false);
+      expect(d.update(1024, 1000)).toBe(true);
     });
 
     it("clamps non-positive activationThreshold to 1 (always fireable)", () => {

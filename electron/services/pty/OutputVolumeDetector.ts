@@ -30,7 +30,13 @@ export class OutputVolumeDetector {
       activationThreshold: 2048,
       maxBytesPerFrame: 1024,
     };
-    const c = { ...defaults, ...config };
+    // Filter out explicit-undefined fields before merging so callers passing
+    // `{ leakRatePerMs: undefined }` (e.g. spreading partial options) don't
+    // override the defaults with undefined and trip the clamp fallback.
+    const filtered = config
+      ? Object.fromEntries(Object.entries(config).filter(([, v]) => v !== undefined))
+      : {};
+    const c = { ...defaults, ...filtered } as Required<OutputVolumeConfig>;
     this.enabled = c.enabled;
     // Defensive clamps. leakRatePerMs > 0 is required so recencyWindowMs is
     // finite; activationThreshold and maxBytesPerFrame must be positive so the
