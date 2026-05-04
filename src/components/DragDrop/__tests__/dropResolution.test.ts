@@ -73,12 +73,12 @@ describe("filterTerminalsByContainer", () => {
     (tE as unknown as Record<string, unknown>).location = undefined;
     const byId = { ...terminalsById, e: tE };
     const result = filterTerminalsByContainer(byId, [...panelIds, "e"], "grid", "wt1");
-    expect(result.map((t) => t.id)).toContain("e");
+    expect(result.map((t) => t.id)).toEqual(["a", "c", "e"]);
   });
 
   it("skips terminals with wrong worktreeId", () => {
     const result = filterTerminalsByContainer(terminalsById, panelIds, "dock", "wt1");
-    expect(result.map((t) => t.id)).not.toContain("d");
+    expect(result.map((t) => t.id)).toEqual(["b"]);
   });
 
   it("skips undefined terminals (stale ID in panelIds)", () => {
@@ -95,10 +95,8 @@ describe("filterTerminalsByContainer", () => {
     const tNull = makeTerminal("null", "grid", undefined);
     (tNull as unknown as Record<string, unknown>).worktreeId = null;
     const byId = { null: tNull };
-    // When worktreeId is null, ?? undefined converts to undefined, matching null→undefined
-    // So filtering with null worktreeId should match terminals with null worktreeId
     const result = filterTerminalsByContainer(byId, ["null"], "grid", null);
-    expect(result).toHaveLength(1);
+    expect(result.map((t) => t.id)).toEqual(["null"]);
   });
 });
 
@@ -143,7 +141,8 @@ describe("detectTargetContainer", () => {
     ).toBeNull();
   });
 
-  it("P3: falls back to dropContainer", () => {
+  it("P2: unknown sortable.containerId blocks cascade (does not fall to P3/P4)", () => {
+    // old else-if chain: entering P2 branch blocks P3/P4 even when containerId is unknown
     expect(
       detectTargetContainer(
         { sortable: { containerId: "accordion-x" } },
@@ -152,7 +151,23 @@ describe("detectTargetContainer", () => {
         terminalsById,
         false
       )
-    ).toBe("dock");
+    ).toBeNull();
+  });
+
+  it("P3: falls back to dropContainer", () => {
+    expect(detectTargetContainer(undefined, "dock", "t1", terminalsById, false)).toBe("dock");
+  });
+
+  it("P1 beats P2/P3/P4", () => {
+    expect(
+      detectTargetContainer(
+        { container: "grid", sortable: { containerId: "dock-container" } },
+        "dock",
+        "t1",
+        terminalsById,
+        false
+      )
+    ).toBe("grid");
   });
 
   it("P4: resolves from terminal location", () => {
@@ -235,7 +250,8 @@ describe("isGridFull", () => {
     const tA = makeTerminal("a", "grid", "wt1");
     const tB = makeTerminal("b", "grid", "wt1");
     const tabGroups = new Map([["g1", group]]);
-    expect(isGridFull({ a: tA, b: tB }, ["a", "b"], "wt1", tabGroups, 1)).toBe(true); // group counts as 1 slot
+    // 2-panel group counts as 1 slot; capacity=2 means NOT full (proves panels aren't double-counted)
+    expect(isGridFull({ a: tA, b: tB }, ["a", "b"], "wt1", tabGroups, 2)).toBe(false);
   });
 
   it("counts ungrouped panels separately from grouped panels", () => {
@@ -250,21 +266,21 @@ describe("isGridFull", () => {
   it("ignores dock-location groups in grid check", () => {
     const group = makeTabGroup("g1", "dock", ["a"], "wt1");
     const tA = makeTerminal("a", "grid", "wt1");
+    const tB = makeTerminal("b", "grid", "wt1");
     const tabGroups = new Map([["g1", group]]);
-    // group is dock, doesn't count; terminal is grid, counts as ungrouped
-    expect(isGridFull({ a: tA }, ["a"], "wt1", tabGroups, 1)).toBe(true);
+    // group is dock, doesn't count; 2 grid terminals = 2 slots, capacity=2 => full
+    expect(isGridFull({ a: tA, b: tB }, ["a", "b"], "wt1", tabGroups, 2)).toBe(true);
   });
 
   it("filters by worktreeId for groups", () => {
     const group = makeTabGroup("g1", "grid", ["a"], "wt2");
     const tA = makeTerminal("a", "grid", "wt1");
     const tabGroups = new Map([["g1", group]]);
-    expect(isGridFull({ a: tA }, ["a"], "wt1", tabGroups, 1)).toBe(true); // group is wt2, doesn't count; terminal counts
+    // wt2 group excluded; only 1 wt1 terminal counted; capacity=2 => not full
+    expect(isGridFull({ a: tA }, ["a"], "wt1", tabGroups, 2)).toBe(false);
   });
 
-  it("uses insert-order Map iteration", () => {
-    // TabGroups are a Map; iteration must be stable. The function
-    // iterates with values() which is insert-order guaranteed.
+  it("multiple groups fill independent slots", () => {
     const g1 = makeTabGroup("g1", "grid", ["a"], "wt1");
     const g2 = makeTabGroup("g2", "grid", ["b"], "wt1");
     const map = new Map([
@@ -273,7 +289,10 @@ describe("isGridFull", () => {
     ]);
     const tA = makeTerminal("a", "grid", "wt1");
     const tB = makeTerminal("b", "grid", "wt1");
+    // 2 groups = 2 slots; capacity=2 => full
     expect(isGridFull({ a: tA, b: tB }, ["a", "b"], "wt1", map, 2)).toBe(true);
+    // capacity=3 => not full (proves each group counts as 1, not double-counted with terminals)
+    expect(isGridFull({ a: tA, b: tB }, ["a", "b"], "wt1", map, 3)).toBe(false);
   });
 });
 

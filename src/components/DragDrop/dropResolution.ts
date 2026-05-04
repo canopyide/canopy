@@ -49,8 +49,9 @@ export function detectTargetContainer(
 ): "grid" | "dock" | null {
   if (overData?.container) return overData.container;
 
-  const resolved = resolveContainerId(overData?.sortable?.containerId ?? "");
-  if (resolved) return resolved;
+  if (overData?.sortable?.containerId) {
+    return resolveContainerId(overData.sortable.containerId);
+  }
 
   if (dropContainer) return dropContainer;
 
