@@ -1,0 +1,13 @@
+{
+  "agentId": "claude",
+  "settleMs": 6000,
+  "maxWorkingSilenceMs": 1500,
+  "transitions": [
+    { "state": "working", "previousState": "idle", "trigger": "heuristic" },
+    { "state": "waiting", "previousState": "working", "trigger": "timeout" },
+    { "state": "exited", "previousState": "waiting", "trigger": "exit", "confidence": 1 },
+    { "state": "idle", "previousState": "exited", "trigger": "activity" },
+    { "state": "working", "previousState": "idle", "trigger": "output" }
+  ],
+  "allowExtraTransitions": true
+}
