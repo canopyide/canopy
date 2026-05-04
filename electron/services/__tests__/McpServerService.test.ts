@@ -899,7 +899,7 @@ describe("McpServerService", () => {
       const onElicit = vi.fn(
         async (): Promise<ElicitResult> => ({
           action: "accept",
-          content: { confirmed: true },
+          content: {},
         })
       );
       const { window } = createMockWindow({
@@ -1035,12 +1035,12 @@ describe("McpServerService", () => {
       expect(records[0].confirmationDecision).toBe("timeout");
     });
 
-    it("treats accept-with-confirmed=false as a rejection", async () => {
+    it("requests an empty-form elicitation so accept alone is the consent signal", async () => {
       const dispatchMock = createDestructiveDispatchMock();
       const onElicit = vi.fn(
         async (): Promise<ElicitResult> => ({
           action: "accept",
-          content: { confirmed: false },
+          content: {},
         })
       );
       const { window } = createMockWindow({
@@ -1070,9 +1070,13 @@ describe("McpServerService", () => {
       );
 
       expect(onElicit).toHaveBeenCalledTimes(1);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("USER_REJECTED");
-      expect(dispatchMock).not.toHaveBeenCalled();
+      const calls = onElicit.mock.calls as unknown as Array<
+        [{ params: { requestedSchema: { properties: Record<string, unknown> } } }]
+      >;
+      const captured = calls[0]?.[0];
+      expect(captured?.params.requestedSchema.properties).toEqual({});
+      expect(result.isError).not.toBe(true);
+      expect(dispatchMock).toHaveBeenCalledWith(expect.objectContaining({ confirmed: true }));
     });
 
     it("includes a summary of tool arguments in the elicitation message", async () => {
@@ -1080,7 +1084,7 @@ describe("McpServerService", () => {
       const onElicit = vi.fn(
         async (): Promise<ElicitResult> => ({
           action: "accept",
-          content: { confirmed: true },
+          content: {},
         })
       );
       const { window } = createMockWindow({
@@ -1165,7 +1169,7 @@ describe("McpServerService", () => {
       const onElicit = vi.fn(
         async (): Promise<ElicitResult> => ({
           action: "accept",
-          content: { confirmed: true },
+          content: {},
         })
       );
       const { window } = createMockWindow({

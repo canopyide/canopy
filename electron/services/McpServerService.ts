@@ -2700,15 +2700,17 @@ export class McpServerService {
 
   /**
    * Drive the MCP `elicitation/create` round-trip used to confirm a
-   * destructive action with the client. Returns one of three shapes:
+   * destructive action with the client. The schema is intentionally an
+   * empty form — MCP's accept/decline/cancel actions are themselves the
+   * consent signal, so we don't add a redundant checkbox on top. Returns
+   * one of three shapes:
    *
-   *   - `approved`: the user accepted and ticked the confirm box; caller
-   *     should proceed with `dispatchAction(confirmed=true)`.
-   *   - `rejected`: the user declined or cancelled, or accepted without
-   *     ticking the confirm box. Caller should return the bundled
-   *     `ActionDispatchResult` (USER_REJECTED / CONFIRMATION_TIMEOUT) as
-   *     the tool result; auditing classifies it via
-   *     `deriveConfirmationDecision`.
+   *   - `approved`: the user accepted; caller should proceed with
+   *     `dispatchAction(confirmed=true)`.
+   *   - `rejected`: the user declined or cancelled. Caller should return
+   *     the bundled `ActionDispatchResult` (USER_REJECTED /
+   *     CONFIRMATION_TIMEOUT) as the tool result; auditing classifies it
+   *     via `deriveConfirmationDecision`.
    *   - `throw`: the SDK threw before reaching the client (e.g. the
    *     advertised capability is gone, or the schema validator rejected
    *     the response). Caller should surface a generic `isError: true`.
@@ -2738,14 +2740,7 @@ export class McpServerService {
         message,
         requestedSchema: {
           type: "object",
-          properties: {
-            confirmed: {
-              type: "boolean",
-              title: "Confirm destructive action",
-              default: false,
-            },
-          },
-          required: ["confirmed"],
+          properties: {},
         },
       });
     } catch (err) {
@@ -2765,7 +2760,7 @@ export class McpServerService {
       };
     }
 
-    if (result.action === "decline" || result.content?.["confirmed"] !== true) {
+    if (result.action !== "accept") {
       return {
         kind: "rejected",
         value: {
