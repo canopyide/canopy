@@ -251,11 +251,18 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
         .then((metrics) => {
           if (cancelled) return;
           if (metrics.isCurrentlySleeping) return;
+          // Re-check after the IPC round-trip: the user may have reopened the
+          // lid (hidden → visible) or onSuspend may have arrived while we
+          // were waiting. Either way, skip teardown.
+          if (!document.hidden) return;
+          if (isSystemSuspendedRef.current) return;
           tearDown();
         })
         .catch((err: unknown) => {
           if (cancelled) return;
           logError("HelpPanel: failed to read systemSleep metrics", err);
+          if (!document.hidden) return;
+          if (isSystemSuspendedRef.current) return;
           tearDown();
         });
     };

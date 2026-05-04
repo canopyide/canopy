@@ -1482,6 +1482,89 @@ describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)
     expect(mockRevokeSession).toHaveBeenCalledWith("session-sleep");
   });
 
+  it("skips teardown if the document becomes visible before getMetrics resolves", async () => {
+    let resolveMetrics:
+      | ((value: {
+          totalSleepMs: number;
+          sleepPeriods: never[];
+          isCurrentlySleeping: boolean;
+          currentSleepStart: number | null;
+        }) => void)
+      | null = null;
+    mockSystemSleepGetMetrics.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMetrics = resolve;
+        })
+    );
+
+    await act(async () => {
+      mountWithBoundTerminal();
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    await act(async () => {
+      resolveMetrics?.({
+        totalSleepMs: 0,
+        sleepPeriods: [],
+        isCurrentlySleeping: false,
+        currentSleepStart: null,
+      });
+    });
+    await flushAsync();
+
+    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+    expect(mockRevokeSession).not.toHaveBeenCalled();
+  });
+
+  it("skips teardown if onSuspend arrives while getMetrics is in flight", async () => {
+    let resolveMetrics:
+      | ((value: {
+          totalSleepMs: number;
+          sleepPeriods: never[];
+          isCurrentlySleeping: boolean;
+          currentSleepStart: number | null;
+        }) => void)
+      | null = null;
+    mockSystemSleepGetMetrics.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMetrics = resolve;
+        })
+    );
+
+    await act(async () => {
+      mountWithBoundTerminal();
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    act(() => {
+      systemSleepListeners.suspend.forEach((cb) => cb());
+    });
+
+    await act(async () => {
+      resolveMetrics?.({
+        totalSleepMs: 0,
+        sleepPeriods: [],
+        isCurrentlySleeping: false,
+        currentSleepStart: null,
+      });
+    });
+    await flushAsync();
+
+    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+    expect(mockRevokeSession).not.toHaveBeenCalled();
+  });
+
   it("clears the suspend guard on wake so subsequent visibilitychange tears down normally", async () => {
     await act(async () => {
       mountWithBoundTerminal();
