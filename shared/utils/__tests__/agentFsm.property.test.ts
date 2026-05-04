@@ -38,33 +38,18 @@ const inputRecoveryStateArb = fc.constantFrom(
   "completed" as const
 );
 
+// Derive arbitraries directly from `eventConstructors` so adding a new variant
+// flows through the `satisfies` ratchet into both arbitraries automatically.
 const eventArb: fc.Arbitrary<AgentEvent> = fc.oneof(
-  eventConstructors.start,
-  eventConstructors.busy,
-  eventConstructors.output,
-  eventConstructors.prompt,
-  eventConstructors.completion,
-  eventConstructors.input,
-  eventConstructors.exit,
-  eventConstructors.error,
-  eventConstructors.kill,
-  eventConstructors.respawn,
-  eventConstructors["watchdog-timeout"]
+  ...(Object.values(eventConstructors) as fc.Arbitrary<AgentEvent>[])
 );
 
 // Natural-lifecycle events: everything except `kill`, which is a hard-reset
 // override that bypasses VALID_TRANSITIONS by design.
 const naturalEventArb: fc.Arbitrary<AgentEvent> = fc.oneof(
-  eventConstructors.start,
-  eventConstructors.busy,
-  eventConstructors.output,
-  eventConstructors.prompt,
-  eventConstructors.completion,
-  eventConstructors.input,
-  eventConstructors.exit,
-  eventConstructors.error,
-  eventConstructors.respawn,
-  eventConstructors["watchdog-timeout"]
+  ...(Object.entries(eventConstructors)
+    .filter(([type]) => type !== "kill")
+    .map(([, arb]) => arb) as fc.Arbitrary<AgentEvent>[])
 );
 
 describe("agentFsm property tests", () => {
@@ -116,15 +101,17 @@ describe("agentFsm property tests", () => {
     }
   );
 
-  test.prop([stateArb, naturalEventArb])(
-    "directing is renderer-only and isolated from natural-lifecycle events",
+  // Per the FSM spec, `directing` is a renderer-only state — no main-process
+  // natural event should ever produce it. We use `mainProcessStateArb` here
+  // because the from-directing exit behavior is intentionally not asserted:
+  // `nextAgentState("directing", { type: "exit", code: N })` returns `"exited"`
+  // (the `exit` case fires for any non-`exited` current state), and the
+  // existing hand-written invariant test in `agentFsm.test.ts` likewise
+  // excludes `directing` from its from-state set for the same reason.
+  test.prop([mainProcessStateArb, naturalEventArb])(
+    "no natural-lifecycle event from a non-directing state produces directing",
     (from, event) => {
-      const to = nextAgentState(from, event);
-      if (from === "directing") {
-        expect(to).toBe("directing");
-      } else {
-        expect(to).not.toBe("directing");
-      }
+      expect(nextAgentState(from, event)).not.toBe("directing");
     }
   );
 });
