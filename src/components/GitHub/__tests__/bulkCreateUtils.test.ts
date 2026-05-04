@@ -13,6 +13,7 @@ import {
 } from "../bulkCreateUtils";
 
 function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test fixture with minimal fields
   return {
     number: 1,
     title: "Test issue",
@@ -23,6 +24,7 @@ function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
 }
 
 function makePR(overrides: Partial<GitHubPR> = {}): GitHubPR {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test fixture with minimal fields
   return {
     number: 1,
     title: "Test PR",
@@ -101,10 +103,7 @@ describe("planPRWorktrees", () => {
   });
 
   it("skips PRs without headRefName", () => {
-    const result = planPRWorktrees(
-      [makePR({ number: 1, headRefName: undefined } as GitHubPR)],
-      new Set()
-    );
+    const result = planPRWorktrees([makePR({ number: 1, headRefName: undefined })], new Set());
     expect(result[0]!.skipped).toBe(true);
     expect(result[0]!.skipReason).toBe("No branch info");
   });
