@@ -26,6 +26,8 @@ import { detectCompletion } from "./pty/CompletionDetector.js";
 import { CompletionTimer } from "./pty/CompletionTimer.js";
 import { BootDetector } from "./pty/BootDetector.js";
 import { classifyWaitingReason } from "./pty/WaitingReasonClassifier.js";
+import { CpuHighStateTracker } from "./pty/CpuHighStateTracker.js";
+import { WaitingWatchdog } from "./pty/WaitingWatchdog.js";
 import type { WaitingReason } from "../../shared/types/agent.js";
 
 export interface ProcessStateValidator {
@@ -118,18 +120,9 @@ export class ActivityMonitor {
   private readonly WORKING_INDICATOR_TTL_MS = 5000;
   private readonly MAX_WORKING_SILENCE_MS: number;
   private readonly MAX_WAITING_SILENCE_MS: number;
-  private readonly WATCHDOG_FAIL_THRESHOLD: number;
-  // CPU is a bounded busy-state backstop only. It never creates activity by
-  // itself; output, visible redraws, patterns, or input must put the monitor
-  // into busy first.
-  private readonly MAX_CPU_HIGH_ESCAPE_MS: number;
   private readonly CPU_HIGH_THRESHOLD = 10;
   private readonly CPU_LOW_THRESHOLD = 3;
-  private isCpuHigh = false;
-  private cpuHighSince = 0;
   private idleSince = 0;
-  private waitingWatchdogFired = false;
-  private watchdogFailCount = 0;
   private lastPatternResultAt = 0;
   private workingHoldUntil = 0;
 
@@ -158,6 +151,8 @@ export class ActivityMonitor {
   // time-counter. Driven by SynchronizedFrameDetector in TerminalProcess via
   // onSynchronizedFrame().
   private readonly synchronizedFrameAnalyzer: SynchronizedFrameAnalyzer;
+  private readonly cpuTracker: CpuHighStateTracker;
+  private readonly waitingWatchdog: WaitingWatchdog;
 
   // Resize suppression
   private resizeSuppressUntil = 0;
@@ -216,10 +211,10 @@ export class ActivityMonitor {
     this.PROMPT_FAST_PATH_MIN_QUIET_MS = options?.promptFastPathMinQuietMs ?? 3000;
     this.POLLING_MAX_BOOT_MS = options?.pollingMaxBootMs ?? 15000;
     this.MAX_WORKING_SILENCE_MS = options?.maxWorkingSilenceMs ?? 180000;
-    this.MAX_CPU_HIGH_ESCAPE_MS = options?.maxCpuHighEscapeMs ?? 60000;
+    const maxCpuHighEscapeMs = options?.maxCpuHighEscapeMs ?? 60000;
     this.MAX_WAITING_SILENCE_MS = options?.maxWaitingSilenceMs ?? 600000;
     const rawThreshold = options?.waitingWatchdogFailThreshold ?? 3;
-    this.WATCHDOG_FAIL_THRESHOLD = Number.isFinite(rawThreshold) ? Math.max(1, rawThreshold) : 3;
+    const watchdogFailThreshold = Number.isFinite(rawThreshold) ? Math.max(1, rawThreshold) : 3;
 
     this.idleSince = Date.now();
 
@@ -294,6 +289,23 @@ export class ActivityMonitor {
     // Polling interval
     this.POLLING_INTERVAL_MS = options?.pollingIntervalMs ?? 50;
 
+    this.cpuTracker = new CpuHighStateTracker(this.processStateValidator, {
+      cpuHighThreshold: this.CPU_HIGH_THRESHOLD,
+      cpuLowThreshold: this.CPU_LOW_THRESHOLD,
+      maxCpuHighEscapeMs,
+    });
+
+    this.waitingWatchdog = new WaitingWatchdog({
+      failThreshold: watchdogFailThreshold,
+      maxWaitingSilenceMs: this.MAX_WAITING_SILENCE_MS,
+      workingIndicatorTtlMs: this.WORKING_INDICATOR_TTL_MS,
+      cpuTracker: this.cpuTracker,
+      processStateValidator: this.processStateValidator,
+      onFire: (id, spawnedAt) => {
+        this.onWaitingTimeout?.(id, spawnedAt);
+      },
+    });
+
     // Apply initial tier so a monitor constructed with a background polling
     // interval (e.g. project starts hidden) gets the right thresholds before
     // any output arrives.
@@ -302,7 +314,7 @@ export class ActivityMonitor {
     // Lightweight watchdog interval: runs the waiting watchdog check periodically
     // even when there's no output/activity. 5s keeps overhead negligible while
     // ensuring hung waiting states are caught within a reasonable window.
-    this.watchdogInterval = setInterval(() => this.checkWaitingWatchdog(Date.now()), 5000);
+    this.watchdogInterval = setInterval(() => this.runWaitingWatchdogCheck(Date.now()), 5000);
   }
 
   private tierForInterval(intervalMs: number): "active" | "background" {
@@ -585,8 +597,7 @@ export class ActivityMonitor {
         // Callback failure must not prevent cleanup
       }
     }
-    this.waitingWatchdogFired = false;
-    this.watchdogFailCount = 0;
+    this.waitingWatchdog.reset();
     this.idleSince = 0;
     if (this.watchdogInterval) {
       clearInterval(this.watchdogInterval);
@@ -611,8 +622,7 @@ export class ActivityMonitor {
     this.resizeSuppressUntil = 0;
     this.lastPatternResult = undefined;
     this.lastPatternResultAt = 0;
-    this.isCpuHigh = false;
-    this.cpuHighSince = 0;
+    this.cpuTracker.reset();
     this.workingHoldUntil = 0;
     this.lastDataTimestamp = 0;
     this.lastOutputActivityAt = 0;
@@ -753,7 +763,7 @@ export class ActivityMonitor {
       }
     }
 
-    this.updateCpuHighState(now);
+    this.cpuTracker.update(now);
 
     // Safety timeout: if no PTY output for MAX_WORKING_SILENCE_MS, force idle
     if (this.isWorkingSilenceTimeout(now)) {
@@ -901,7 +911,7 @@ export class ActivityMonitor {
       shouldPreferPrompt &&
       quietForMs >= this.PROMPT_FAST_PATH_MIN_QUIET_MS &&
       now >= this.workingHoldUntil &&
-      !this.isCpuHighAndNotDeadlined(now) &&
+      !this.cpuTracker.isHighAndNotDeadlined(now) &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       this.state = "idle";
@@ -930,7 +940,7 @@ export class ActivityMonitor {
       !hasHighOutputActivity &&
       quietForMs >= LEXEME_STALL_MIN_QUIET_MS &&
       now >= this.workingHoldUntil &&
-      !this.isCpuHighAndNotDeadlined(now) &&
+      !this.cpuTracker.isHighAndNotDeadlined(now) &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       const candidateLine =
@@ -958,7 +968,7 @@ export class ActivityMonitor {
       isQuietForIdle &&
       now >= this.workingHoldUntil &&
       !hasHighOutputActivity &&
-      !this.isCpuHighAndNotDeadlined(now) &&
+      !this.cpuTracker.isHighAndNotDeadlined(now) &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       this.state = "idle";
@@ -1047,8 +1057,7 @@ export class ActivityMonitor {
     this.lastDataTimestamp = now;
     this.recordWorkingSignal(now);
     this.resetDebounceTimer();
-    this.waitingWatchdogFired = false;
-    this.watchdogFailCount = 0;
+    this.waitingWatchdog.reset();
     // Clear any in-flight cosmetic-redraw accumulator so the next idle cycle
     // starts fresh — otherwise a single spinner tick after busy→idle would
     // immediately re-trigger recovery without sustained signal.
@@ -1130,7 +1139,7 @@ export class ActivityMonitor {
         return;
       }
 
-      if (this.isCpuHighAndNotDeadlined(now)) {
+      if (this.cpuTracker.isHighAndNotDeadlined(now)) {
         this.resetDebounceTimer();
         return;
       }
@@ -1149,111 +1158,21 @@ export class ActivityMonitor {
     // Non-polling terminals have no boot phase; polling terminals must exit boot first
     if (this.getVisibleLines && !this.bootDetector.hasExitedBootState) return false;
     // High CPU prevents premature silence timeout, but only up to the escape deadline.
-    if (this.isCpuHighAndNotDeadlined(now)) return false;
+    if (this.cpuTracker.isHighAndNotDeadlined(now)) return false;
     return true;
   }
 
-  private checkWaitingWatchdog(now: number): void {
-    if (this.state !== "idle") return;
-    if (this.waitingWatchdogFired) return;
-    if (now - this.idleSince < this.MAX_WAITING_SILENCE_MS) return;
+  private runWaitingWatchdogCheck(now: number): void {
     if (!this.onWaitingTimeout) return;
-
-    // Alive-veto probes — any positive signal that the agent is still alive
-    // resets the consecutive-fail streak. Order matters only insofar as the
-    // cheapest checks come first. A single lenient veto here is preferable
-    // to a stuck dead-vote streak: the 10-minute ceiling has already elapsed,
-    // so any fresh evidence of life genuinely should restart the consensus.
-    if (this.lineRewriteDetector.isSpinnerActive(now, this.SPINNER_ACTIVE_MS)) {
-      this.watchdogFailCount = 0;
-      return;
-    }
-    if (
-      this.lastPatternResult?.isWorking &&
-      now - this.lastPatternResultAt < this.WORKING_INDICATOR_TTL_MS
-    ) {
-      this.watchdogFailCount = 0;
-      return;
-    }
-    // Veto when PTY data arrived during the current waiting period AND the
-    // arrival was recent. The `> idleSince` guard rejects the field's
-    // construction-time default (set equal to idleSince) and any stale value
-    // carried over from a prior busy cycle; the recency window
-    // (WORKING_INDICATOR_TTL_MS, matched to the 5s watchdog cadence) decays so
-    // a single mid-cycle data event doesn't pin the streak open forever.
-    if (
-      this.lastDataTimestamp > this.idleSince &&
-      now - this.lastDataTimestamp < this.WORKING_INDICATOR_TTL_MS
-    ) {
-      this.watchdogFailCount = 0;
-      return;
-    }
-    if (this.isCpuHighAndNotDeadlined(now)) {
-      this.watchdogFailCount = 0;
-      return;
-    }
-
-    // Process-tree probe is the sole dead-vote signal. `null` (validator
-    // unavailable or threw) is ambiguous and resets the streak — silence
-    // alone, without an affirmative dead vote, must never fire the watchdog.
-    const hasChildren = this.hasActiveChildrenSafe();
-    if (hasChildren !== false) {
-      this.watchdogFailCount = 0;
-      return;
-    }
-
-    this.watchdogFailCount += 1;
-    if (this.watchdogFailCount < this.WATCHDOG_FAIL_THRESHOLD) return;
-
-    this.waitingWatchdogFired = true;
-    this.onWaitingTimeout(this.terminalId, this.spawnedAt);
-  }
-
-  private hasActiveChildrenSafe(): boolean | null {
-    if (!this.processStateValidator) {
-      return null;
-    }
-    try {
-      return this.processStateValidator.hasActiveChildren();
-    } catch (error) {
-      if (process.env.DAINTREE_VERBOSE) {
-        console.warn("[ActivityMonitor] Process state validation failed:", error);
-      }
-      return true;
-    }
-  }
-
-  private getCpuUsageSafe(): number | null {
-    if (!this.processStateValidator?.getDescendantsCpuUsage) {
-      return null;
-    }
-    try {
-      return this.processStateValidator.getDescendantsCpuUsage();
-    } catch (error) {
-      if (process.env.DAINTREE_VERBOSE) {
-        console.warn("[ActivityMonitor] CPU usage query failed:", error);
-      }
-      return null;
-    }
-  }
-
-  private updateCpuHighState(now: number): void {
-    const cpu = this.getCpuUsageSafe();
-    if (cpu === null) return;
-    if (this.isCpuHigh) {
-      if (cpu < this.CPU_LOW_THRESHOLD) {
-        this.isCpuHigh = false;
-        this.cpuHighSince = 0;
-      }
-    } else if (cpu >= this.CPU_HIGH_THRESHOLD) {
-      this.isCpuHigh = true;
-      this.cpuHighSince = now;
-    }
-  }
-
-  private isCpuHighAndNotDeadlined(now: number): boolean {
-    this.updateCpuHighState(now);
-    if (!this.isCpuHigh) return false;
-    return now - this.cpuHighSince < this.MAX_CPU_HIGH_ESCAPE_MS;
+    this.waitingWatchdog.check(now, {
+      state: this.state,
+      idleSince: this.idleSince,
+      isSpinnerActive: this.lineRewriteDetector.isSpinnerActive(now, this.SPINNER_ACTIVE_MS),
+      lastPatternResult: this.lastPatternResult,
+      lastPatternResultAt: this.lastPatternResultAt,
+      lastDataTimestamp: this.lastDataTimestamp,
+      terminalId: this.terminalId,
+      spawnedAt: this.spawnedAt,
+    });
   }
 }
