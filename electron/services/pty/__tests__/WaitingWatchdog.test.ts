@@ -31,7 +31,7 @@ function makeWatchdog(opts?: {
   return { watchdog, onFire };
 }
 
-function deadProbe(now: number, idleSince: number): WaitingWatchdogProbeInputs {
+function deadProbe(_now: number, idleSince: number): WaitingWatchdogProbeInputs {
   return {
     state: "idle",
     idleSince,
