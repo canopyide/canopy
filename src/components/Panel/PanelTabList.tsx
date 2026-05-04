@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React from "react";
 import { LayoutGroup } from "framer-motion";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ export interface PanelTabListProps {
   className?: string;
 }
 
-export const PanelTabList = memo(function PanelTabList({
+export function PanelTabList({
   layoutGroupId,
   tabs,
   tabListRef,
@@ -65,4 +65,4 @@ export const PanelTabList = memo(function PanelTabList({
       {overflowTrigger}
     </div>
   );
-});
+}
