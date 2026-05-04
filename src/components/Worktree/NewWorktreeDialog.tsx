@@ -21,7 +21,6 @@ import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 import { worktreeClient, githubClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
-import type { RecipeTerminal } from "@shared/types";
 import { IssueSelector } from "@/components/GitHub/IssueSelector";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { parseBranchInput } from "./branchPrefixUtils";

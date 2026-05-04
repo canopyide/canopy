@@ -35,6 +35,7 @@ vi.mock("@/store/panelStore", () => ({
 }));
 
 function makeTerminal(overrides: Partial<RecipeTerminal> = {}): RecipeTerminal {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return {
     type: "terminal",
     title: "Terminal",
@@ -44,6 +45,7 @@ function makeTerminal(overrides: Partial<RecipeTerminal> = {}): RecipeTerminal {
 }
 
 function makeDevPreview(overrides: Partial<RecipeTerminal> = {}): RecipeTerminal {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return {
     type: "dev-preview",
     title: "Dev Preview",
@@ -54,6 +56,7 @@ function makeDevPreview(overrides: Partial<RecipeTerminal> = {}): RecipeTerminal
 }
 
 function makeAgent(overrides: Partial<RecipeTerminal> = {}): RecipeTerminal {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return {
     type: "claude",
     title: "Claude Agent",
