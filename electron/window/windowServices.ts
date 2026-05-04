@@ -293,11 +293,6 @@ export async function setupWindowServices(
         }
       }
     );
-  } else {
-    // Workspace already initialized by an earlier window — wire its refs into
-    // this window's handler deps so per-window IPC handlers can reach them.
-    handlerDeps.worktreeService = getWorkspaceClientRef() ?? undefined;
-    handlerDeps.worktreePortBroker = getWorktreePortBrokerRef() ?? undefined;
   }
 
   const { armRestoreQuota } = await import("../ipc/utils.js");

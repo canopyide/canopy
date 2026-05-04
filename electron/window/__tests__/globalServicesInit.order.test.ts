@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // task-ordering assertions below.
 const registeredTaskNames: string[] = [];
 const setMcpRegistry = vi.fn();
+let migrationCurrentVersion = 1;
+let migrationShouldThrow = false;
 
 vi.mock("../../utils/performance.js", () => ({
   markPerformance: vi.fn(),
@@ -16,9 +18,13 @@ vi.mock("../../services/StoreMigrations.js", () => ({
   LATEST_SCHEMA_VERSION: 1,
   MigrationRunner: class {
     getCurrentVersion(): number {
-      return 1;
+      return migrationCurrentVersion;
     }
-    runMigrations = vi.fn();
+    async runMigrations(): Promise<void> {
+      if (migrationShouldThrow) {
+        throw new Error("test-migration-failure");
+      }
+    }
   },
   isStoreMigrationError: () => false,
 }));
@@ -158,13 +164,19 @@ vi.mock("electron", () => ({
 }));
 
 import { initGlobalServices } from "../globalServicesInit.js";
-import { setGlobalServicesInitialized } from "../serviceRefs.js";
+import { getGlobalServicesInitialized, setGlobalServicesInitialized } from "../serviceRefs.js";
 import type { WindowRegistry } from "../WindowRegistry.js";
+import { app } from "electron";
 
 describe("initGlobalServices task ordering", () => {
   beforeEach(() => {
     registeredTaskNames.length = 0;
-    setMcpRegistry.mockClear();
+    // mockReset (not mockClear) so mockImplementation set in one test doesn't
+    // leak into the next — keeps tests independent as the suite grows.
+    setMcpRegistry.mockReset();
+    (app.exit as ReturnType<typeof vi.fn>).mockReset();
+    migrationCurrentVersion = 1;
+    migrationShouldThrow = false;
     setGlobalServicesInitialized(false);
   });
 
@@ -229,5 +241,24 @@ describe("initGlobalServices task ordering", () => {
     const fakeRegistry = { all: () => [], size: 0 } as unknown as WindowRegistry;
     const result = await initGlobalServices(fakeRegistry);
     expect(result).toBe("ok");
+  });
+
+  it("returns 'exit-requested' and calls app.exit(1) when migrations throw", async () => {
+    const fakeRegistry = { all: () => [], size: 0 } as unknown as WindowRegistry;
+    // Force the migration runner down the runMigrations() path AND make it throw
+    // — currentVersion must differ from LATEST_SCHEMA_VERSION (mocked at 1).
+    migrationCurrentVersion = 0;
+    migrationShouldThrow = true;
+
+    const result = await initGlobalServices(fakeRegistry);
+
+    expect(result).toBe("exit-requested");
+    expect(app.exit).toHaveBeenCalledWith(1);
+    // No deferred tasks should have been registered after the failure point —
+    // the function returns before reaching the post-migration registrations.
+    expect(registeredTaskNames).toEqual([]);
+    // Guard is set early so a concurrent second window doesn't double-run
+    // migrations; app.exit(1) terminates the process before that matters.
+    expect(getGlobalServicesInitialized()).toBe(true);
   });
 });
