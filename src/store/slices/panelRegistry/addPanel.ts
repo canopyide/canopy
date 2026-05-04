@@ -1,9 +1,5 @@
 import type { TerminalRuntimeStatus } from "@/types";
-import type {
-  PanelRegistryStoreApi,
-  PanelRegistrySlice,
-  TerminalInstance,
-} from "./types";
+import type { PanelRegistryStoreApi, PanelRegistrySlice, TerminalInstance } from "./types";
 import { terminalClient, projectClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
