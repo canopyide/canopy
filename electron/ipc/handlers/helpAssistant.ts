@@ -47,6 +47,7 @@ function isValidAuditRetention(value: unknown): value is HelpAssistantAuditReten
 // metacharacter that could break out of the flag list is rejected.
 function sanitizeCustomArgs(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
+  // eslint-disable-next-line no-control-regex
   const collapsed = value.replace(/[\r\n]+/g, " ").replace(/[\x00-\x1f\x7f]/g, "");
   if (
     collapsed.includes(";") ||
