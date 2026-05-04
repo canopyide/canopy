@@ -112,6 +112,89 @@ describe("useGlobalKeybindings — Cmd+W escape stack guard", () => {
     );
   });
 
+  it("dispatches terminal.close when focus is inside a grid panel even with handlers registered", () => {
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: { actionId: "terminal.close" },
+      chordPrefix: false,
+      shouldConsume: true,
+    });
+
+    const gridPanel = document.createElement("div");
+    gridPanel.setAttribute("data-panel-location", "grid");
+    const focusable = document.createElement("div");
+    focusable.tabIndex = -1;
+    gridPanel.appendChild(focusable);
+    document.body.appendChild(gridPanel);
+
+    try {
+      const escapeHandler = vi.fn();
+      registerEscape(escapeHandler);
+
+      render(<Host />);
+      focusable.focus();
+      expect(document.activeElement).toBe(focusable);
+
+      pressCmdW();
+
+      expect(escapeHandler).not.toHaveBeenCalled();
+      expect(mocks.actionService.dispatch).toHaveBeenCalledWith(
+        "terminal.close",
+        undefined,
+        expect.objectContaining({ source: "keybinding" })
+      );
+    } finally {
+      gridPanel.remove();
+    }
+  });
+
+  it("routes Cmd+W to escape stack when focus is inside a dock panel", () => {
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: { actionId: "terminal.close" },
+      chordPrefix: false,
+      shouldConsume: true,
+    });
+
+    const dockPanel = document.createElement("div");
+    dockPanel.setAttribute("data-panel-location", "dock");
+    const focusable = document.createElement("div");
+    focusable.tabIndex = -1;
+    dockPanel.appendChild(focusable);
+    document.body.appendChild(dockPanel);
+
+    try {
+      const escapeHandler = vi.fn();
+      registerEscape(escapeHandler);
+
+      render(<Host />);
+      focusable.focus();
+      expect(document.activeElement).toBe(focusable);
+
+      pressCmdW();
+
+      expect(escapeHandler).toHaveBeenCalledTimes(1);
+      expect(mocks.actionService.dispatch).not.toHaveBeenCalled();
+    } finally {
+      dockPanel.remove();
+    }
+  });
+
+  it("routes Cmd+W to escape stack when focus has no panel ancestor (dialog/body)", () => {
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: { actionId: "terminal.close" },
+      chordPrefix: false,
+      shouldConsume: true,
+    });
+
+    const escapeHandler = vi.fn();
+    registerEscape(escapeHandler);
+
+    render(<Host />);
+    pressCmdW();
+
+    expect(escapeHandler).toHaveBeenCalledTimes(1);
+    expect(mocks.actionService.dispatch).not.toHaveBeenCalled();
+  });
+
   it("falls back to terminal.close after the dialog unregisters its escape handler", () => {
     mocks.keybindingService.resolveKeybinding.mockReturnValue({
       match: { actionId: "terminal.close" },

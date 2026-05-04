@@ -106,9 +106,17 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
         if (result.match) {
           // When a dialog/palette is open, route Cmd+W to the escape stack so it
           // dismisses the topmost layer instead of falling through to the terminal.
+          // Skip this diversion when focus is inside a grid panel — persistent
+          // docks like the assistant keep an escape handler registered the whole
+          // time they are open, but Cmd+W from a focused grid panel must close
+          // that panel rather than the dock.
           if (result.match.actionId === "terminal.close" && hasHandlers()) {
-            dispatchEscape();
-            return;
+            const active = document.activeElement as HTMLElement | null;
+            const isFocusInsideGridPanel = active?.closest("[data-panel-location='grid']") != null;
+            if (!isFocusInsideGridPanel) {
+              dispatchEscape();
+              return;
+            }
           }
 
           // Dispatch through ActionService
