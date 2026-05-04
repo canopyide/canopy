@@ -449,8 +449,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     }),
 
   openCreateDialog: (initialIssue = null, options) => {
-    if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+    // Restore the worktree sidebar (only) before opening a dialog that needs
+    // it visible. The assistant gesture is left alone — dialogs don't depend
+    // on the assistant.
+    if (useFocusStore.getState().gestureSidebarHidden) {
+      useFocusStore.getState().clearSidebarGesture();
     }
     set({
       createDialog: {
@@ -464,8 +467,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
   },
 
   openCreateDialogForPR: (pr) => {
-    if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+    // Restore the worktree sidebar (only) before opening a dialog that needs
+    // it visible. The assistant gesture is left alone — dialogs don't depend
+    // on the assistant.
+    if (useFocusStore.getState().gestureSidebarHidden) {
+      useFocusStore.getState().clearSidebarGesture();
     }
     set({
       createDialog: {
@@ -490,8 +496,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     }),
 
   openBulkCreateDialog: (selectedIssues, onComplete) => {
-    if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+    // Restore the worktree sidebar (only) before opening a dialog that needs
+    // it visible. The assistant gesture is left alone — dialogs don't depend
+    // on the assistant.
+    if (useFocusStore.getState().gestureSidebarHidden) {
+      useFocusStore.getState().clearSidebarGesture();
     }
     set({
       bulkCreateDialog: {
@@ -505,8 +514,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
   },
 
   openBulkCreateDialogForPRs: (selectedPRs, onComplete) => {
-    if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+    // Restore the worktree sidebar (only) before opening a dialog that needs
+    // it visible. The assistant gesture is left alone — dialogs don't depend
+    // on the assistant.
+    if (useFocusStore.getState().gestureSidebarHidden) {
+      useFocusStore.getState().clearSidebarGesture();
     }
     set({
       bulkCreateDialog: {
@@ -525,8 +537,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     })),
 
   openQuickCreate: (context) => {
-    if (useFocusStore.getState().isFocusMode && typeof window !== "undefined") {
-      window.dispatchEvent(new Event("daintree:toggle-focus-mode"));
+    // Restore the worktree sidebar (only) before opening a dialog that needs
+    // it visible. The assistant gesture is left alone — dialogs don't depend
+    // on the assistant.
+    if (useFocusStore.getState().gestureSidebarHidden) {
+      useFocusStore.getState().clearSidebarGesture();
     }
     set({
       quickCreate: {

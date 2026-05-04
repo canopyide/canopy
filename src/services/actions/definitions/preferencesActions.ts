@@ -17,6 +17,7 @@ import { keybindingService } from "@/services/KeybindingService";
 import { useAgentPreferencesStore } from "@/store/agentPreferencesStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
+import { useFocusStore } from "@/store/focusStore";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { useProjectStore } from "@/store/projectStore";
 import { logError } from "@/utils/logger";
@@ -755,6 +756,7 @@ export function registerPreferencesActions(
           .setTerminal(result.result.terminalId, agentId, session?.sessionId ?? null);
         if (!useHelpPanelStore.getState().isOpen) {
           suppressSidebarResizes();
+          useFocusStore.getState().clearAssistantGesture();
           useHelpPanelStore.getState().setOpen(true);
         }
         window.electron.help.markTerminal(result.result.terminalId).catch(() => {});
@@ -777,6 +779,9 @@ export function registerPreferencesActions(
     keywords: ["docs", "support", "guide", "assistant"],
     run: async () => {
       suppressSidebarResizes();
+      // Clear any lingering assistant gesture suppression — this explicit
+      // toggle takes ownership of the assistant's visibility.
+      useFocusStore.getState().clearAssistantGesture();
       useHelpPanelStore.getState().toggle();
     },
   }));

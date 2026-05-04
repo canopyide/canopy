@@ -17,6 +17,7 @@ import { AllClearOverlay } from "../AllClearOverlay";
 import {
   useDiagnosticsStore,
   useDockStore,
+  useFocusStore,
   usePreferencesStore,
   useUIStore,
   type PanelState,
@@ -75,8 +76,8 @@ export function AppLayout({
   const isThemeBrowserOpen = overlayClaims.has("theme-browser");
   const themeBrowserOpen = useThemeBrowserStore((s) => s.isOpen);
   const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
-  const showSidebar = !layout.isFocusMode && currentProject != null;
-  const showAssistant = !layout.isFocusMode && layout.helpPanelOpen;
+  const showSidebar = !layout.gestureSidebarHidden && currentProject != null;
+  const showAssistant = !layout.gestureAssistantHidden && layout.helpPanelOpen;
   const effectiveAssistantWidth = showAssistant ? layout.helpPanelWidth : 0;
 
   useEffect(() => {
@@ -132,7 +133,7 @@ export function AppLayout({
   }, []);
 
   useEffect(() => {
-    if (layout.isFocusMode) return;
+    if (layout.gestureSidebarHidden) return;
     // Skip until hydration completes — the pre-hydration mount uses the
     // default 350px and would otherwise overwrite the persisted value before
     // restoreState() reads it back.
@@ -148,7 +149,7 @@ export function AppLayout({
 
     const timer = setTimeout(persistSidebarWidth, 300);
     return () => clearTimeout(timer);
-  }, [sidebarWidth, layout.isFocusMode, isHydrated]);
+  }, [sidebarWidth, layout.gestureSidebarHidden, isHydrated]);
 
   useEffect(() => {
     // Gate persistence until hydration completes and project switching ends
@@ -157,12 +158,18 @@ export function AppLayout({
       return;
     }
 
+    // Persist worktree-sidebar suppression as the legacy `focusMode` boolean.
+    // The assistant's own visibility is owned by `helpPanelStore.isOpen` (its
+    // own persisted store), so it doesn't need to round-trip through the
+    // per-project focus state.
+    const persistedFocusMode = layout.gestureSidebarHidden;
+
     const persistFocusMode = async () => {
       // Persist focus mode to per-project state if a project is active
       if (!currentProject?.id) {
         // No project - fall back to global state for backward compatibility
         try {
-          await appClient.setState({ focusMode: layout.isFocusMode });
+          await appClient.setState({ focusMode: persistedFocusMode });
         } catch (error) {
           logError("Failed to persist focus mode to global state", error);
         }
@@ -172,7 +179,7 @@ export function AppLayout({
       try {
         await window.electron.project.setFocusMode(
           currentProject.id,
-          layout.isFocusMode,
+          persistedFocusMode,
           layout.savedPanelState as PanelState | undefined
         );
       } catch (error) {
@@ -182,7 +189,7 @@ export function AppLayout({
 
     const timer = setTimeout(persistFocusMode, 100);
     return () => clearTimeout(timer);
-  }, [layout.isFocusMode, layout.savedPanelState, currentProject?.id, isHydrated]);
+  }, [layout.gestureSidebarHidden, layout.savedPanelState, currentProject?.id, isHydrated]);
 
   const handleToggleFocusMode = async () => {
     if (layout.isFocusMode) {
@@ -213,8 +220,15 @@ export function AppLayout({
         sidebarWidth,
         diagnosticsOpen: layout.diagnosticsOpen,
       };
-      layout.toggleFocusMode(currentPanelState);
-      // Persist to per-project state
+      layout.toggleFocusMode(currentPanelState, {
+        sidebarVisible: showSidebar,
+        assistantVisible: showAssistant,
+      });
+      // Persist to per-project state — only when something actually changed.
+      // toggleFocusMode is a no-op if neither sidebar was visible.
+      const persistFocusMode =
+        useFocusStore.getState().isFocusMode || showSidebar || showAssistant;
+      if (!persistFocusMode) return;
       if (currentProject?.id) {
         try {
           await window.electron.project.setFocusMode(currentProject.id, true, currentPanelState);
@@ -236,6 +250,35 @@ export function AppLayout({
   useEffect(() => {
     handleToggleFocusModeRef.current = handleToggleFocusMode;
   });
+
+  // Worktree-sidebar-only toggle (Toolbar button + nav.toggleSidebar action).
+  // Independent from the assistant: clicking this button hides/shows only the
+  // worktree sidebar, leaving the Daintree Assistant untouched.
+  const handleToggleSidebar = useCallback(() => {
+    suppressSidebarResizes();
+    const focus = useFocusStore.getState();
+    focus.setSidebarGestureHidden(!focus.gestureSidebarHidden, {
+      sidebarWidth,
+      diagnosticsOpen: layout.diagnosticsOpen,
+    });
+  }, [sidebarWidth, layout.diagnosticsOpen]);
+
+  const handleToggleSidebarRef = useRef(handleToggleSidebar);
+  useEffect(() => {
+    handleToggleSidebarRef.current = handleToggleSidebar;
+  });
+
+  useEffect(() => {
+    const handleSidebarToggle = () => {
+      if (useUIStore.getState().hasOpenOverlays()) return;
+      handleToggleSidebarRef.current();
+    };
+
+    window.addEventListener("daintree:toggle-sidebar", handleSidebarToggle);
+    return () => {
+      window.removeEventListener("daintree:toggle-sidebar", handleSidebarToggle);
+    };
+  }, []);
 
   useEffect(() => {
     const handleFocusModeToggle = () => {
@@ -312,7 +355,7 @@ export function AppLayout({
     onSettings?.();
   }, [onSettings]);
 
-  const effectiveSidebarWidth = layout.isFocusMode ? 0 : sidebarWidth;
+  const effectiveSidebarWidth = layout.gestureSidebarHidden ? 0 : sidebarWidth;
 
   useEffect(() => {
     const portalOffset = layout.portalOpen ? layout.portalWidth : 0;
@@ -347,8 +390,8 @@ export function AppLayout({
           onPreloadSettings={onPreloadSettings}
           errorCount={layout.errorCount}
           onToggleProblems={handleToggleProblems}
-          isFocusMode={layout.isFocusMode}
-          onToggleFocusMode={handleToggleFocusMode}
+          isFocusMode={layout.gestureSidebarHidden}
+          onToggleFocusMode={handleToggleSidebar}
           agentAvailability={agentAvailability}
           agentSettings={agentSettings}
           projectSwitcherPalette={projectSwitcherPalette}
