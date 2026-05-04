@@ -227,8 +227,13 @@ export function RotatingTip() {
   useEffect(() => {
     if (tip || !hydrated || filteredTips.length === 0) return;
     const counts = shortcutHintStore.getState().counts;
+    // Use shortcutActionId when present (mirrors LiveTipMessage lookup) so a tip
+    // whose kbd shortcut dispatches a different action than its label-click
+    // (e.g. worktree-overview: ⌘⇧O → "worktree.overview", click → ".open") still
+    // counts toward "used" when the user invokes it via keyboard.
+    const lookupKey = (tipEntry: TipEntry) => tipEntry.shortcutActionId ?? tipEntry.actionId ?? "";
     const prioritized = [...filteredTips]
-      .sort((a, b) => (counts[a.actionId ?? ""] ?? 0) - (counts[b.actionId ?? ""] ?? 0))
+      .sort((a, b) => (counts[lookupKey(a)] ?? 0) - (counts[lookupKey(b)] ?? 0))
       .slice(0, ROTATING_TIP_SUBSET_SIZE);
     // Pick randomly within the unused-bias subset so per-mount variety doesn't
     // require a module-level counter (which leaks between tests, see #4754).

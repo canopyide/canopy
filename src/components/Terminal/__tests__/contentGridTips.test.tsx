@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, cleanup } from "@testing-library/react";
+import { act, render, fireEvent, cleanup } from "@testing-library/react";
 
 vi.mock("@/hooks/useKeybinding", () => ({
   useKeybindingDisplay: () => "",
@@ -9,6 +9,13 @@ vi.mock("@/hooks/useKeybinding", () => ({
 const { dispatch } = vi.hoisted(() => ({ dispatch: vi.fn() }));
 vi.mock("@/services/ActionService", () => ({
   actionService: { dispatch },
+}));
+
+const { isAgentLaunchableMock } = vi.hoisted(() => ({
+  isAgentLaunchableMock: vi.fn(() => true),
+}));
+vi.mock("../../../../shared/utils/agentAvailability", () => ({
+  isAgentLaunchable: (...args: unknown[]) => isAgentLaunchableMock(...args),
 }));
 
 import { RotatingTip, TIPS } from "../contentGridTips";
@@ -45,11 +52,13 @@ describe("RotatingTip — count-biased selection (#6756)", () => {
     setUnhydrated();
     useCliAvailabilityStore.setState({ availability: makeAvailability("ready") });
     dispatch.mockClear();
+    isAgentLaunchableMock.mockReturnValue(true);
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    isAgentLaunchableMock.mockReturnValue(true);
   });
 
   it("renders nothing while shortcutHintStore is not hydrated", () => {
@@ -123,18 +132,71 @@ describe("RotatingTip — count-biased selection (#6756)", () => {
     expect(after).toBe(before);
   });
 
-  it("renders nothing when no tips pass agent availability", () => {
-    // Filter all tips out by claiming no agents are launchable AND mark every
-    // non-agent tip as having a `requiredAgents` constraint. Since we can't
-    // mutate TIPS, instead make all agents missing and verify a tip still
-    // renders (most tips have no requiredAgents). This validates the empty
-    // path indirectly via the unhydrated case above.
+  it("still renders non-agent tips when all agents are unavailable", () => {
+    // Confirms over-filtering doesn't strip the rotation entirely — most tips
+    // have no `requiredAgents`, so they survive even when every agent is missing.
     useCliAvailabilityStore.setState({ availability: makeAvailability("missing") });
     const { container } = render(<RotatingTip />);
     setHydrated();
-    // At least one non-agent-gated tip exists, so we still get a tip even with
-    // all agents missing — this confirms filtering doesn't over-exclude.
     expect(container.querySelector("p")?.textContent).toMatch(/^Tip:/);
+  });
+
+  it("renders null when filteredTips is empty (no tip survives filtering)", () => {
+    // Drive `filteredTips.length === 0` by treating every tip as agent-gated and
+    // marking every agent as unlaunchable. Exercises the empty-filter branch
+    // in the useEffect guard.
+    isAgentLaunchableMock.mockReturnValue(false);
+    useCliAvailabilityStore.setState({ availability: makeAvailability("missing") });
+    // Patch every TIPS entry to require an agent so none survive the filter.
+    const originalRequired = TIPS.map((t) => t.requiredAgents);
+    TIPS.forEach((t) => {
+      t.requiredAgents = ["claude"];
+    });
+    try {
+      const { container } = render(<RotatingTip />);
+      setHydrated();
+      expect(container.firstChild).toBeNull();
+    } finally {
+      TIPS.forEach((t, i) => {
+        t.requiredAgents = originalRequired[i];
+      });
+    }
+  });
+
+  it("uses shortcutActionId for the count lookup (worktree-overview path)", () => {
+    // The worktree-overview tip dispatches "worktree.overview" via keyboard but
+    // has actionId "worktree.overview.open" for label clicks. Counts from kbd
+    // usage land under "worktree.overview", and the bias must respect that.
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const counts: Record<string, number> = {};
+    // Saturate every tip's lookup key (shortcutActionId ?? actionId) except
+    // quick-switcher so we can confirm the chosen tip is quick-switcher.
+    for (const tip of TIPS) {
+      const key = tip.shortcutActionId ?? tip.actionId;
+      if (key && key !== "nav.quickSwitcher") {
+        counts[key] = 999;
+      }
+    }
+    const { container } = render(<RotatingTip />);
+    setHydrated(counts);
+    expect(container.querySelector("button")?.textContent).toBe("Open Quick Switcher");
+  });
+
+  it("clicking the action label dispatches the tip's actionId", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const counts: Record<string, number> = {};
+    for (const tip of TIPS) {
+      const key = tip.shortcutActionId ?? tip.actionId;
+      if (key && key !== "nav.quickSwitcher") {
+        counts[key] = 999;
+      }
+    }
+    const { container } = render(<RotatingTip />);
+    setHydrated(counts);
+    const button = container.querySelector("button");
+    expect(button).not.toBeNull();
+    fireEvent.click(button!);
+    expect(dispatch).toHaveBeenCalledWith("nav.quickSwitcher", undefined, { source: "user" });
   });
 });
 

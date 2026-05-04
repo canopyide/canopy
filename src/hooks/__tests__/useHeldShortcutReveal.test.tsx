@@ -122,6 +122,21 @@ describe("useHeldShortcutReveal", () => {
     expect(isRevealed()).toBe(false);
   });
 
+  it("cancels pending reveal if keyup fires at exactly 499ms (boundary)", () => {
+    renderHook(() => useHeldShortcutReveal());
+
+    act(() => dispatchKey("keydown", "Meta"));
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
+    act(() => dispatchKey("keyup", "Meta"));
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(isRevealed()).toBe(false);
+  });
+
   it("clears reveal on window blur", () => {
     renderHook(() => useHeldShortcutReveal());
 
