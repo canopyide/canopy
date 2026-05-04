@@ -217,8 +217,10 @@ export function useGitHubResourceListSWR({
 
             if (append) {
               setData((prev) => [...prev, ...result.items]);
+              setLoadMoreError(null);
             } else {
               setData(result.items);
+              setError(null);
             }
             setCursor(result.pageInfo.endCursor);
             setHasMore(result.pageInfo.hasNextPage);
@@ -348,6 +350,7 @@ export function useGitHubResourceListSWR({
         setHasMore(cached.hasNextPage);
         setLastUpdatedAt(cached.timestamp);
         setError(null);
+        setExactNumberNotFound(null);
         fetchData(null, false, abortController.signal, {
           revalidating: true,
           generation: gen,
@@ -360,6 +363,7 @@ export function useGitHubResourceListSWR({
       // up while the network fetch lands, no skeleton flash.
       if (isActivityRevealOfSameInputs) {
         setError(null);
+        setExactNumberNotFound(null);
         fetchData(null, false, abortController.signal, {
           revalidating: true,
           generation: gen,
