@@ -93,7 +93,7 @@ function RateLimitBucketRow({ label, bucket, now }: RateLimitBucketRowProps) {
   const exhausted = bucket.remaining <= 0;
   const ratio = bucket.limit > 0 ? Math.min(1, bucket.used / bucket.limit) : 0;
   const timeLabel = remainingMs > 0 ? formatRateLimitCountdown(remainingMs) : "Reset due";
-  const aria = `${label}: ${bucket.remaining.toLocaleString()} of ${bucket.limit.toLocaleString()} remaining. ${
+  const aria = `${label}: ${Math.max(0, bucket.remaining).toLocaleString()} of ${bucket.limit.toLocaleString()} remaining. ${
     remainingMs > 0 ? `Resets in ${timeLabel}` : "Reset available"
   }.`;
 

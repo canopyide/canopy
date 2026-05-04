@@ -26,7 +26,7 @@ export function FreshnessGlyph({ level }: { level: FreshnessLevel }) {
 }
 
 export function formatTimeSince(timestamp: number | null, now: number): string {
-  if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) {
+  if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > now) {
     return "unknown";
   }
   const seconds = Math.floor((now - timestamp) / 1000);
