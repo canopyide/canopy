@@ -46,15 +46,6 @@ export const STATE_PRIORITY: AgentState[] = [
   "idle",
 ];
 
-export const STATE_SORT_PRIORITY: Record<AgentState, number> = {
-  working: 0,
-  directing: 1,
-  waiting: 2,
-  idle: 3,
-  completed: 4,
-  exited: 5,
-};
-
 export function getEffectiveStateIcon(
   agentState: AgentState,
   waitingReason?: WaitingReason
