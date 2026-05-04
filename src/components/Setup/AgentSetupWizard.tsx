@@ -430,20 +430,31 @@ export function AgentSetupWizard({
     [setSelectedSchemeId]
   );
 
-  // Returns true when this call actually committed (vs returning early because
-  // the preference was already persisted earlier in the session). Callers use
-  // the return value to gate the silent-default inbox confirmation.
+  // Returns true when this call actually committed the preference this turn
+  // (vs returning early because it was already persisted earlier in the
+  // session). Callers use the return value to gate the silent-default inbox
+  // confirmation. The two IPCs are intentionally NOT treated as one atomic
+  // unit: a successful preference write must still surface the inbox
+  // confirmation even if the prompt-shown bookkeeping fails — otherwise a
+  // partial failure would silently re-introduce the bug this guard exists
+  // to prevent.
   const commitTelemetry = useCallback(async (level: "errors" | "off"): Promise<boolean> => {
     if (telemetryCommittedRef.current) return false;
     try {
       await window.electron.privacy.setTelemetryLevel(level);
-      await window.electron.telemetry.markPromptShown();
       telemetryCommittedRef.current = true;
-      return true;
     } catch (error) {
       logError("Failed to commit telemetry preference", error);
       return false;
     }
+    try {
+      await window.electron.telemetry.markPromptShown();
+    } catch (error) {
+      // Non-fatal: the preference is persisted; the prompt will re-show next
+      // launch, but the user's choice this session is honored.
+      logError("Failed to mark telemetry prompt shown", error);
+    }
+    return true;
   }, []);
 
   const handleTelemetryChange = useCallback((enabled: boolean) => {
@@ -531,14 +542,22 @@ export function AgentSetupWizard({
   }, []);
 
   const handleSelectionSkip = useCallback(async () => {
-    let committedNow = false;
-    if (isFirstRun) {
-      committedNow = await commitTelemetry("off");
+    // Mirror handleSelectionContinue's isSaving lock so a rapid double-click
+    // can't race two commits and two close calls through `commitTelemetry`'s
+    // ref guard before it flips.
+    setIsSaving(true);
+    try {
+      let committedNow = false;
+      if (isFirstRun) {
+        committedNow = await commitTelemetry("off");
+      }
+      if (committedNow && !telemetryToggleTouchedRef.current) {
+        notifyTelemetryDefault();
+      }
+      onClose();
+    } finally {
+      setIsSaving(false);
     }
-    if (committedNow && !telemetryToggleTouchedRef.current) {
-      notifyTelemetryDefault();
-    }
-    onClose();
   }, [onClose, isFirstRun, commitTelemetry, notifyTelemetryDefault]);
 
   const showLoadingSelections = !state.selectionsInitialized && isAvailabilityLoading;

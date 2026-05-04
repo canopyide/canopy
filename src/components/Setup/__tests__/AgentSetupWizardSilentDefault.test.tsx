@@ -95,8 +95,32 @@ vi.mock("@/components/agents/AgentCard", () => ({
 }));
 
 vi.mock("@/components/ui/AppDialog", () => {
-  const Dialog = ({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) =>
-    isOpen ? <div data-testid="app-dialog">{children}</div> : null;
+  // Expose a test-only "dismiss" button that mirrors AppDialog's real close
+  // path: it invokes onBeforeClose first, then onClose only if the gate
+  // returns truthy (matching AppDialog.tsx's handleClose behavior).
+  const Dialog = ({
+    isOpen,
+    onClose,
+    onBeforeClose,
+    children,
+  }: {
+    isOpen: boolean;
+    onClose?: () => void;
+    onBeforeClose?: () => boolean | Promise<boolean>;
+    children: React.ReactNode;
+  }) =>
+    isOpen ? (
+      <div data-testid="app-dialog">
+        <button
+          data-testid="dialog-dismiss"
+          onClick={async () => {
+            const proceed = onBeforeClose ? await onBeforeClose() : true;
+            if (proceed && onClose) onClose();
+          }}
+        />
+        {children}
+      </div>
+    ) : null;
   const Header = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   const Body = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   const Footer = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
@@ -278,5 +302,70 @@ describe("AgentSetupWizard silent-default privacy notify", () => {
     });
 
     expect(onStepChange).toHaveBeenCalledWith({ type: "selection" });
+  });
+
+  it("fires inbox confirmation when first-run user dismisses via the dialog (onBeforeClose path)", async () => {
+    const onClose = vi.fn();
+    await act(async () => {
+      render(<AgentSetupWizard isOpen onClose={onClose} isFirstRun initialAvailability={{}} />);
+    });
+
+    const dismiss = document.querySelector(
+      '[data-testid="dialog-dismiss"]'
+    ) as HTMLButtonElement | null;
+    expect(dismiss, "dialog dismiss handle should be present").not.toBeNull();
+
+    await act(async () => {
+      dismiss!.click();
+    });
+
+    expect(setTelemetryLevelMock).toHaveBeenCalledWith("off");
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("still notifies when markPromptShown rejects after setTelemetryLevel succeeds", async () => {
+    // Regression guard: a partial IPC failure must not silently revert the
+    // user to the original "telemetry off with no signal" state. The
+    // preference write is the load-bearing operation; the prompt-shown
+    // bookkeeping is best-effort.
+    markPromptShownMock.mockRejectedValueOnce(new Error("IPC down"));
+
+    const onClose = vi.fn();
+    await act(async () => {
+      render(<AgentSetupWizard isOpen onClose={onClose} isFirstRun initialAvailability={{}} />);
+    });
+
+    const skipButton = Array.from(document.querySelectorAll("button")).find(
+      (b) => b.textContent === "Skip"
+    );
+    await act(async () => {
+      skipButton!.click();
+    });
+
+    expect(setTelemetryLevelMock).toHaveBeenCalledWith("off");
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("does NOT notify if setTelemetryLevel itself fails (preference was not actually committed)", async () => {
+    setTelemetryLevelMock.mockRejectedValueOnce(new Error("IPC down"));
+
+    const onClose = vi.fn();
+    await act(async () => {
+      render(<AgentSetupWizard isOpen onClose={onClose} isFirstRun initialAvailability={{}} />);
+    });
+
+    const skipButton = Array.from(document.querySelectorAll("button")).find(
+      (b) => b.textContent === "Skip"
+    );
+    await act(async () => {
+      skipButton!.click();
+    });
+
+    expect(setTelemetryLevelMock).toHaveBeenCalledTimes(1);
+    expect(notifyMock).not.toHaveBeenCalled();
+    // Wizard still closes — failure should not strand the user.
+    expect(onClose).toHaveBeenCalled();
   });
 });

@@ -132,6 +132,10 @@ export function OnboardingFlow({
     const shouldReturn = returnToPaletteRef.current;
     const wasFirstRun = manualWizardIsFirstRun;
     returnToPaletteRef.current = false;
+    // Reset the wizard sub-step ref so the next open doesn't carry a stale
+    // value into an abandonment payload before the new wizard reports its
+    // initial step.
+    lastWizardStepRef.current = null;
     setManualWizardOpen(false);
     setManualWizardIsFirstRun(false);
     // If this open originated from the first-run welcome banner, mark the

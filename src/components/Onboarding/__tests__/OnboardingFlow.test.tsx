@@ -431,6 +431,56 @@ describe("OnboardingFlow telemetry tracking", () => {
     expect(trackMock).toHaveBeenCalledWith("onboarding_abandoned", expect.any(Object));
   });
 
+  it("clears the wizardStep ref between wizard sessions so abandonment doesn't carry stale state", async () => {
+    // Onboarding already completed: closing the wizard goes through the
+    // setCurrentStep(null) branch (no advanceStep) and leaves completedRef
+    // false, so a subsequent open + unmount will re-fire abandonment. The
+    // payload must reflect the *new* session, not the prior session's
+    // last-known wizard step.
+    onboardingMock.get.mockResolvedValue({ ...defaultOnboardingState, completed: true });
+
+    const { getByTestId, unmount } = await act(async () => {
+      return render(<OnboardingFlow {...defaultProps} />);
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // Session 1: open, advance to CLI sub-step, close.
+    await act(async () => {
+      fireOpenWizard();
+    });
+    await act(async () => {
+      getByTestId("emit-step-selection").click();
+      getByTestId("emit-step-cli").click();
+    });
+    await act(async () => {
+      getByTestId("close-wizard").click();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // Session 2: reopen, do not emit any step, unmount immediately.
+    await act(async () => {
+      fireOpenWizard();
+    });
+
+    trackMock.mockClear();
+    unmount();
+
+    expect(trackMock).toHaveBeenCalledWith(
+      "onboarding_abandoned",
+      expect.objectContaining({ wizardStep: null })
+    );
+    // And explicitly NOT the stale value.
+    expect(trackMock).not.toHaveBeenCalledWith(
+      "onboarding_abandoned",
+      expect.objectContaining({ wizardStep: "cli" })
+    );
+  });
+
   it("does NOT emit onboarding_abandoned after completion", async () => {
     const { getByTestId, unmount } = await act(async () => {
       return render(<OnboardingFlow {...defaultProps} />);
