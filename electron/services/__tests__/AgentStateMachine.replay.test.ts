@@ -9,6 +9,7 @@ import {
   type RecordedFsmTransition,
   type ReplayCastFsmOpts,
 } from "./replay/castReplayHarness.js";
+import type { ProcessStateValidator } from "../ActivityMonitor.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, "fixtures", "agent-state-machine");
@@ -63,6 +64,26 @@ describe("AgentStateMachine replay harness", () => {
       });
       expect(failures, formatFailures(failures, recorded)).toHaveLength(0);
     });
+  });
+
+  it("does not fire watchdog when processStateValidator reports active children", async () => {
+    // Inverse of the watchdog-timeout fixture: with hasActiveChildren()===true
+    // the watchdog must NOT fire, and the FSM must stay in `waiting`. Guards
+    // against regressions in the `hasChildren !== false` gate that prevents
+    // the watchdog from forcing idle on agents that are actually still alive.
+    const aliveValidator: ProcessStateValidator = { hasActiveChildren: () => true };
+    const { cast, expected } = fixture("claude-watchdog-timeout");
+    const expectedFile = loadExpectedFsm(expected);
+    const recorded = await replayCastFsm(cast, {
+      agentId: expectedFile.agentId ?? "claude",
+      settleMs: expectedFile.settleMs,
+      maxWorkingSilenceMs: expectedFile.maxWorkingSilenceMs,
+      maxWaitingSilenceMs: expectedFile.maxWaitingSilenceMs,
+      processStateValidator: aliveValidator,
+    });
+    const states = recorded.map((r) => r.state);
+    expect(states, formatRecorded(recorded)).not.toContain("idle");
+    expect(states[states.length - 1], formatRecorded(recorded)).toBe("waiting");
   });
 
   describe.each([

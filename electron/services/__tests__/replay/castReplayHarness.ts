@@ -528,6 +528,14 @@ export interface ReplayCastFsmOpts {
   maxWaitingSilenceMs?: number;
   idleDebounceMs?: number;
   promptFastPathMinQuietMs?: number;
+  /**
+   * When true (default), each cast `x` event drives a synthetic
+   * `exit` → `respawn` pair so a fresh agent restarting in the same PTY can
+   * re-enter `working` via the natural busy path. Set false to exercise the
+   * pure `exited` terminal state (no respawn) — the FSM stays in `exited`
+   * and subsequent output cannot advance it.
+   */
+  injectRespawnOnExit?: boolean;
 }
 
 const FSM_REPLAY_TERMINAL_ID = "fsm-replay-terminal";
@@ -597,34 +605,34 @@ export async function replayCastFsm(
   };
   const unsubscribe = events.on("agent:state-changed", listener);
 
-  try {
-    const monitor = new ActivityMonitor(
-      FSM_REPLAY_TERMINAL_ID,
-      startedAt,
-      (_id, _spawnedAt, state, metadata) => {
-        agentStateService.handleActivityState(terminal, state, metadata);
+  const monitor = new ActivityMonitor(
+    FSM_REPLAY_TERMINAL_ID,
+    startedAt,
+    (_id, _spawnedAt, state, metadata) => {
+      agentStateService.handleActivityState(terminal, state, metadata);
+    },
+    {
+      ...baseOptions,
+      processStateValidator: opts.processStateValidator ?? NULL_PROCESS_STATE_VALIDATOR,
+      pollingIntervalMs,
+      pollingMaxBootMs: opts.pollingMaxBootMs ?? baseOptions.pollingMaxBootMs,
+      maxWorkingSilenceMs: opts.maxWorkingSilenceMs ?? baseOptions.maxWorkingSilenceMs,
+      maxWaitingSilenceMs: opts.maxWaitingSilenceMs ?? baseOptions.maxWaitingSilenceMs,
+      idleDebounceMs: opts.idleDebounceMs ?? baseOptions.idleDebounceMs,
+      promptFastPathMinQuietMs:
+        opts.promptFastPathMinQuietMs ?? baseOptions.promptFastPathMinQuietMs,
+      onWaitingTimeout: () => {
+        agentStateService.updateAgentState(
+          terminal,
+          { type: "watchdog-timeout" },
+          "timeout",
+          0.6
+        );
       },
-      {
-        ...baseOptions,
-        processStateValidator: opts.processStateValidator ?? NULL_PROCESS_STATE_VALIDATOR,
-        pollingIntervalMs,
-        pollingMaxBootMs: opts.pollingMaxBootMs ?? baseOptions.pollingMaxBootMs,
-        maxWorkingSilenceMs: opts.maxWorkingSilenceMs ?? baseOptions.maxWorkingSilenceMs,
-        maxWaitingSilenceMs: opts.maxWaitingSilenceMs ?? baseOptions.maxWaitingSilenceMs,
-        idleDebounceMs: opts.idleDebounceMs ?? baseOptions.idleDebounceMs,
-        promptFastPathMinQuietMs:
-          opts.promptFastPathMinQuietMs ?? baseOptions.promptFastPathMinQuietMs,
-        onWaitingTimeout: () => {
-          agentStateService.updateAgentState(
-            terminal,
-            { type: "watchdog-timeout" },
-            "timeout",
-            0.6
-          );
-        },
-      }
-    );
+    }
+  );
 
+  try {
     monitor.startPolling();
 
     const rng = opts.fragmentation ? mulberry32(opts.fragmentation.seed) : null;
@@ -661,15 +669,18 @@ export async function replayCastFsm(
           monitor.notifyResize();
         }
       } else if (event.kind === "x") {
-        // Drive exit → respawn so subsequent output (a fresh agent restarting
-        // in the same PTY) re-enters working via the natural busy → working
-        // path. Production wires `exit` from the PTY's onExit callback and
-        // `respawn` from agent re-detection; replay synthesizes both
-        // deterministically from the cast's `x` event.
+        // Drive exit so the FSM reaches `exited`. Production wires this from
+        // the PTY's onExit callback. The optional respawn injection (default
+        // on) lets a fresh agent restarting in the same PTY re-enter
+        // `working` via the natural busy → working path; production fires
+        // respawn from agent re-detection. Set injectRespawnOnExit=false to
+        // exercise the pure `exited` terminal state.
         const parsedCode = Number.parseInt(event.data, 10);
         const code = Number.isFinite(parsedCode) ? parsedCode : 0;
         agentStateService.updateAgentState(terminal, { type: "exit", code }, "exit", 1.0);
-        agentStateService.updateAgentState(terminal, { type: "respawn" }, "activity", 1.0);
+        if (opts.injectRespawnOnExit ?? true) {
+          agentStateService.updateAgentState(terminal, { type: "respawn" }, "activity", 1.0);
+        }
       }
       // Ignore "m" (markers) — they don't drive state.
     }
@@ -678,10 +689,9 @@ export async function replayCastFsm(
     if (settleMs > 0) {
       vi.advanceTimersByTime(settleMs);
     }
-
+  } finally {
     monitor.dispose();
     term.dispose();
-  } finally {
     unsubscribe();
   }
 
