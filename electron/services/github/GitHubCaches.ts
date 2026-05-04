@@ -1,6 +1,6 @@
 import { Cache } from "../../utils/cache.js";
-import { GitHubStatsCache } from "../GitHubStatsCache.js";
 import { GitHubFirstPageCache } from "../GitHubFirstPageCache.js";
+import { GitHubStatsCache } from "../GitHubStatsCache.js";
 import type {
   GitHubIssue,
   GitHubPR,
@@ -53,6 +53,14 @@ export function clearGitHubCaches(): void {
   branchListETagCache.clear();
   prRequiredStatusCache.clear();
   GitHubFirstPageCache.getInstance().clear();
+  GitHubStatsCache.getInstance().clear();
+}
+
+export function truncateBody(body: string | null | undefined, maxLength = 150): string {
+  if (!body) return "";
+  const cleaned = body.replace(/\r?\n/g, " ").trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  return cleaned.slice(0, maxLength).trim() + "…";
 }
 
 export function clearPRCaches(): void {

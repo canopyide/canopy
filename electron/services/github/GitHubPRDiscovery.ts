@@ -9,8 +9,9 @@ import {
   branchListETagCache,
   prTooltipCache,
   prTooltipWrittenAt,
+  truncateBody,
 } from "./GitHubCaches.js";
-import type { PRTooltipData, LinkedPRInfo } from "../../../shared/types/github.js";
+import type { PRTooltipData } from "../../../shared/types/github.js";
 import type { PRCheckCandidate, PRCheckResult, BatchPRCheckResult, LinkedPR } from "./types.js";
 
 interface BatchPRTooltipFields {
@@ -28,13 +29,6 @@ interface BatchPRRawNode extends BatchPRTooltipFields {
   state?: string;
   isDraft?: boolean;
   merged?: boolean;
-}
-
-function truncateBody(body: string | null | undefined, maxLength = 150): string {
-  if (!body) return "";
-  const cleaned = body.replace(/\r?\n/g, " ").trim();
-  if (cleaned.length <= maxLength) return cleaned;
-  return cleaned.slice(0, maxLength).trim() + "…";
 }
 
 function buildTooltipDataFromBatchNode(node: BatchPRRawNode): PRTooltipData | undefined {

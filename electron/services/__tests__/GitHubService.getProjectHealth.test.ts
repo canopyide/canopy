@@ -56,6 +56,7 @@ vi.mock("../GitHubStatsCache.js", () => ({
     getInstance: () => ({
       get: () => null,
       set: () => {},
+      clear: () => {},
       resetInstance: () => {},
     }),
   },

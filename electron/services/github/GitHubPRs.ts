@@ -6,7 +6,6 @@ import {
   GET_PR_QUERY,
   buildBatchRequiredChecksQuery,
 } from "./GitHubQueries.js";
-import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
 import { withRepoContextRetry } from "./GitHubRepoContext.js";
 import {
@@ -15,25 +14,19 @@ import {
   prTooltipCache,
   prTooltipWrittenAt,
   prRequiredStatusCache,
+  truncateBody,
+  type PRRequiredStatusEntry,
 } from "./GitHubCaches.js";
 import { GitHubStatsCache } from "../GitHubStatsCache.js";
 import { deriveRequiredCIStatus } from "./prRequiredCIStatus.js";
 import type { RollupContextNode } from "./prRequiredCIStatus.js";
 import type {
   GitHubPR,
-  GitHubPRCIStatus,
-  GitHubPRCISummary,
   GitHubListOptions,
   GitHubListResponse,
   PRTooltipData,
 } from "../../../shared/types/github.js";
 import type { RepoContext, RepoStats } from "./types.js";
-
-// Key: `${owner}/${repo}:${prNumber}`
-interface PRRequiredStatusEntry {
-  ciStatus: GitHubPRCIStatus | undefined;
-  ciSummary: GitHubPRCISummary | undefined;
-}
 
 export function buildListCacheKey(
   type: "issue" | "pr",
@@ -123,13 +116,6 @@ export function mapPRStates(state?: string): string[] {
   if (state === "merged") return ["MERGED"];
   if (state === "all") return ["OPEN", "CLOSED", "MERGED"];
   return ["OPEN"];
-}
-
-function truncateBody(body: string | null | undefined, maxLength = 150): string {
-  if (!body) return "";
-  const cleaned = body.replace(/\r?\n/g, " ").trim();
-  if (cleaned.length <= maxLength) return cleaned;
-  return cleaned.slice(0, maxLength).trim() + "…";
 }
 
 export async function getPRTooltip(cwd: string, prNumber: number): Promise<PRTooltipData | null> {

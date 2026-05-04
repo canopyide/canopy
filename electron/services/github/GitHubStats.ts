@@ -10,7 +10,7 @@ import { GitHubStatsCache } from "../GitHubStatsCache.js";
 import { GitHubFirstPageCache } from "../GitHubFirstPageCache.js";
 import type { RepoStats, RepoStatsResult } from "./types.js";
 import type { GitHubIssue, GitHubPR } from "../../../shared/types/github.js";
-import { parseIssueNode, extractLinkedPR } from "./GitHubIssues.js";
+import { parseIssueNode } from "./GitHubIssues.js";
 import { parsePRNode, buildListCacheKey } from "./GitHubPRs.js";
 
 export async function getRepoStats(

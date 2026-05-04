@@ -1,12 +1,12 @@
 import type { GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitHubAuth, GITHUB_API_TIMEOUT_MS } from "./GitHubAuth.js";
 import { LIST_ISSUES_QUERY, SEARCH_QUERY, GET_ISSUE_QUERY } from "./GitHubQueries.js";
-import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
 import { withRepoContextRetry } from "./GitHubRepoContext.js";
 import { repoStatsCache, issueListCache, issueTooltipCache } from "./GitHubCaches.js";
 import { GitHubStatsCache } from "../GitHubStatsCache.js";
 import { buildListCacheKey, updateRepoStatsCount } from "./GitHubPRs.js";
+import { truncateBody } from "./GitHubCaches.js";
 import type {
   GitHubIssue,
   GitHubUser,
@@ -228,13 +228,6 @@ function updateIssueAssigneeInCache(
   for (const update of updates) {
     issueListCache.set(update.key, update.value);
   }
-}
-
-function truncateBody(body: string | null | undefined, maxLength = 150): string {
-  if (!body) return "";
-  const cleaned = body.replace(/\r?\n/g, " ").trim();
-  if (cleaned.length <= maxLength) return cleaned;
-  return cleaned.slice(0, maxLength).trim() + "…";
 }
 
 export async function getIssueTooltip(

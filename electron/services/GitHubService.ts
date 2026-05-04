@@ -28,4 +28,11 @@ export {
   getPRByNumber,
 } from "./github/index.js";
 
-export type { RepoStatsAndPageResult, AssignIssueResult } from "./github/index.js";
+export type {
+  RepoStatsAndPageResult,
+  AssignIssueResult,
+  PRCheckCandidate,
+  LinkedPR,
+  PRCheckResult,
+  BatchPRCheckResult,
+} from "./github/index.js";
