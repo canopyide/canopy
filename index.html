@@ -30,28 +30,20 @@
       }
 
       /*
-       * Container opacity timeline for #startup-skeleton (10.4s total):
-       *   0–400ms (0–3.85%):    invisible — Doherty anti-flicker gate
-       *   400ms–9.5s (4–91.35%): fully visible
-       *   9.5s–10.4s (91.35–100%): safety fade-out if React never hydrates
-       *
-       * One keyframe encodes both the gate and the safety-fade because two
-       * comma-separated animations on the same property would conflict via
-       * CSS animation composite order (later entry wins — the safety-fade
-       * would immediately override the gate).
+       * Doherty 400ms anti-flicker gate. `animation-fill-mode: backwards`
+       * holds the `from` keyframe (opacity: 0) during the 400ms delay so
+       * sub-threshold loads never flash a skeleton, then fades to opacity 1
+       * over 200ms. Base CSS `opacity: 1` is the post-animation resting
+       * state, which lets the JS-driven `.fade-out` transition take over
+       * cleanly when removeStartupSkeleton() runs. The previous 10s silent
+       * safety-fade is replaced by the visible stuck-state overlay at 6s.
        */
-      @keyframes skeleton-safety-fade {
-        0%,
-        3.85% {
+      @keyframes skeleton-doherty-gate {
+        from {
           opacity: 0;
         }
-        4%,
-        91.35% {
+        to {
           opacity: 1;
-        }
-        100% {
-          opacity: 0;
-          pointer-events: none;
         }
       }
 
@@ -86,8 +78,7 @@
         display: flex;
         flex-direction: column;
         background: var(--theme-surface-grid, #0e0e0d);
-        opacity: 0;
-        animation: skeleton-safety-fade 10.4s ease-out forwards;
+        animation: skeleton-doherty-gate 200ms ease-out 400ms backwards;
         transition: opacity 120ms ease-out;
       }
       #startup-skeleton.fade-out {
@@ -853,10 +844,7 @@
       /* ── Reduced motion ── */
       @media (prefers-reduced-motion: reduce) {
         #startup-skeleton {
-          /* opacity: 1 here pairs with base opacity: 0 — without animation,
-             we need an explicit visible state so the skeleton still shows. */
           animation: none;
-          opacity: 1;
         }
         .skel-shape::after,
         .skel-recipe::after,
@@ -877,8 +865,11 @@
           animation: none;
           opacity: 1;
         }
-        /* Stuck-state animation is a delay mechanism, not decoration — keep
-           the keyframe so the 6s safety threshold still gates visibility. */
+        /* Snap the stuck-state in without a fade. Duration 0ms preserves the
+           6s safety delay (the timing mechanism) while removing the motion. */
+        .skeleton-stuck {
+          animation-duration: 0ms;
+        }
       }
     </style>
   </head>
