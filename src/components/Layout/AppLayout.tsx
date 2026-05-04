@@ -232,8 +232,7 @@ export function AppLayout({
       });
       // Persist to per-project state — only when something actually changed.
       // toggleFocusMode is a no-op if neither sidebar was visible.
-      const persistFocusMode =
-        useFocusStore.getState().isFocusMode || showSidebar || showAssistant;
+      const persistFocusMode = useFocusStore.getState().isFocusMode || showSidebar || showAssistant;
       if (!persistFocusMode) return;
       if (currentProject?.id) {
         try {
@@ -327,8 +326,7 @@ export function AppLayout({
     // assistant terminal.
     const handleSuppress = () => suppressSidebarResizes();
     window.addEventListener("daintree:suppress-sidebar-resizes", handleSuppress);
-    return () =>
-      window.removeEventListener("daintree:suppress-sidebar-resizes", handleSuppress);
+    return () => window.removeEventListener("daintree:suppress-sidebar-resizes", handleSuppress);
   }, []);
 
   // Sync macro focus region visibility from layout state
