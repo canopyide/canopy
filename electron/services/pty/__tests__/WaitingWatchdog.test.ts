@@ -277,6 +277,65 @@ describe("WaitingWatchdog", () => {
     });
   });
 
+  describe("contract: busy skip does not reset failCount", () => {
+    it("partial dead-vote streak persists across a busy tick — only reset() clears it", () => {
+      const validator: ProcessStateValidator = { hasActiveChildren: () => false };
+      const { watchdog, onFire } = makeWatchdog({ validator });
+
+      const idleSince = 1000;
+      const start = idleSince + SILENCE_MS;
+      // Accumulate failCount = 2.
+      watchdog.check(start, deadProbe(start, idleSince));
+      watchdog.check(start + 5000, deadProbe(start + 5000, idleSince));
+      // Busy tick: early-return, must NOT reset.
+      const busyProbe: WaitingWatchdogProbeInputs = {
+        ...deadProbe(start + 10000, idleSince),
+        state: "busy",
+      };
+      watchdog.check(start + 10000, busyProbe);
+      // One more dead tick → failCount becomes 3 → fires.
+      watchdog.check(start + 15000, deadProbe(start + 15000, idleSince));
+      expect(onFire).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("TTL boundary for lastDataTimestamp veto", () => {
+    it("data exactly at the TTL boundary does NOT veto (strict <)", () => {
+      const validator: ProcessStateValidator = { hasActiveChildren: () => false };
+      const { watchdog, onFire } = makeWatchdog({ validator });
+
+      const idleSince = 1000;
+      const start = idleSince + SILENCE_MS;
+      // lastDataTimestamp at start - TTL_MS → now - lastDataTimestamp = TTL_MS (not < TTL).
+      // Also must satisfy lastDataTimestamp > idleSince. With idleSince=1000 and TTL=5000,
+      // lastDataTimestamp = start - TTL = 596000 which is > 1000.
+      const probe = (now: number, dataAt: number): WaitingWatchdogProbeInputs => ({
+        ...deadProbe(now, idleSince),
+        lastDataTimestamp: dataAt,
+      });
+      watchdog.check(start, probe(start, start - TTL_MS));
+      watchdog.check(start + 5000, probe(start + 5000, start + 5000 - TTL_MS));
+      watchdog.check(start + 10000, probe(start + 10000, start + 10000 - TTL_MS));
+      expect(onFire).toHaveBeenCalledTimes(1);
+    });
+
+    it("data 1ms inside the TTL boundary DOES veto", () => {
+      const validator: ProcessStateValidator = { hasActiveChildren: () => false };
+      const { watchdog, onFire } = makeWatchdog({ validator });
+
+      const idleSince = 1000;
+      const start = idleSince + SILENCE_MS;
+      const probe = (now: number, dataAt: number): WaitingWatchdogProbeInputs => ({
+        ...deadProbe(now, idleSince),
+        lastDataTimestamp: dataAt,
+      });
+      watchdog.check(start, probe(start, start - TTL_MS + 1));
+      watchdog.check(start + 5000, probe(start + 5000, start + 5000 - TTL_MS + 1));
+      watchdog.check(start + 10000, probe(start + 10000, start + 10000 - TTL_MS + 1));
+      expect(onFire).not.toHaveBeenCalled();
+    });
+  });
+
   describe("custom failThreshold", () => {
     it("clamps to 1 — fires on the first dead tick", () => {
       const validator: ProcessStateValidator = { hasActiveChildren: () => false };

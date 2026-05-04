@@ -104,13 +104,23 @@ describe("CpuHighStateTracker", () => {
   });
 
   describe("update()", () => {
-    it("advances internal state without returning a boolean", () => {
-      const validator = makeValidator([15]);
+    it("advances internal state when called standalone — proves no-op update is detected", () => {
+      // Validator returns 15 on call 1 (high), then 0 on call 2+ (well below low threshold).
+      // If update(1000) is a no-op, isHighAndNotDeadlined(1001) would consume sample #1 (15)
+      // and return true. With a real update(1000), sample #1 is consumed there, then
+      // isHighAndNotDeadlined(1001) consumes sample #2 (0) → drops low → returns false.
+      const validator: ProcessStateValidator = (() => {
+        const cpuValues = [15, 0];
+        let i = 0;
+        return {
+          hasActiveChildren: () => true,
+          getDescendantsCpuUsage: () => cpuValues[Math.min(i++, cpuValues.length - 1)],
+        };
+      })();
       const t = new CpuHighStateTracker(validator, OPTS);
-      t.update(1000);
-      // After update at t=1000, isHighAndNotDeadlined still returns true at t=1500
-      // and resamples a fresh value (validator returns last value when exhausted).
-      expect(t.isHighAndNotDeadlined(1500)).toBe(true);
+      t.update(1000); // arms high (sample 15), cpuHighSince = 1000
+      // isHighAndNotDeadlined consumes sample 0 → drops low.
+      expect(t.isHighAndNotDeadlined(1001)).toBe(false);
     });
   });
 });
