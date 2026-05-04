@@ -1969,7 +1969,7 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("should not falsely transition to working during layout-shift transients (default debounce)", () => {
+    it("should transition to working on the first post-wait output chunk", () => {
       const onStateChange = vi.fn();
       let visibleLines: string[] = ["> "];
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
@@ -1999,9 +1999,9 @@ describe("ActivityMonitor", () => {
       visibleLines = ["> "];
       vi.advanceTimersByTime(50);
 
-      // State must remain idle — 300ms transient is below the 1500ms default
-      expect(monitor.getState()).toBe("idle");
-      expect(onStateChange.mock.calls.filter((call) => call[2] === "busy")).toHaveLength(0);
+      // Any non-protocol PTY output means the agent is working again.
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange.mock.calls.filter((call) => call[2] === "busy")).toHaveLength(1);
 
       // Now simulate sustained agent work for >1500ms with periodic data
       onStateChange.mockClear();
@@ -2634,8 +2634,8 @@ describe("ActivityMonitor", () => {
       monitor.onData("agent output chunk 2");
       vi.advanceTimersByTime(50);
 
-      // Pattern detected but not sustained yet - should still be idle
-      expect(monitor.getState()).toBe("idle");
+      // Output activity is enough to recover immediately.
+      expect(monitor.getState()).toBe("busy");
 
       // Continue emitting output to sustain the working signal
       monitor.onData("agent output chunk 3");
@@ -2645,15 +2645,13 @@ describe("ActivityMonitor", () => {
       monitor.onData("agent output chunk 5");
       vi.advanceTimersByTime(50);
 
-      // Still not sustained long enough (250ms total)
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       // Advance to exceed debounce delay and emit more output
       vi.advanceTimersByTime(1300); // Total ~1550ms sustained (enough to cross 1500ms threshold)
       monitor.onData("agent output chunk 6");
       vi.advanceTimersByTime(50);
 
-      // Now sustained long enough - polling cycle should trigger recovery
       expect(monitor.getState()).toBe("busy");
 
       monitor.dispose();
@@ -2721,7 +2719,7 @@ describe("ActivityMonitor", () => {
   });
 
   describe("Working signal recovery debouncing (Issue #2215)", () => {
-    it("should NOT recover from single output event (terminal reflow)", () => {
+    it("should recover from a single non-protocol output event", () => {
       const onStateChange = vi.fn();
       const visibleLines = ["> "];
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
@@ -2740,13 +2738,12 @@ describe("ActivityMonitor", () => {
       monitor.onData("\x1b[0m");
       vi.advanceTimersByTime(200);
 
-      // Should still be idle - single event doesn't trigger recovery
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       monitor.dispose();
     });
 
-    it("should NOT recover from brief working pattern appearance", () => {
+    it("should recover from brief working pattern output", () => {
       const onStateChange = vi.fn();
       let visibleLines = ["> "];
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
@@ -2766,15 +2763,13 @@ describe("ActivityMonitor", () => {
       monitor.onData("brief output");
       vi.advanceTimersByTime(500); // Only 500ms, less than 1500ms threshold
 
-      // Should still be idle
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       // Pattern disappears
       visibleLines = ["> "];
       vi.advanceTimersByTime(100);
 
-      // Still idle - pattern wasn't sustained
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       monitor.dispose();
     });
@@ -2805,8 +2800,7 @@ describe("ActivityMonitor", () => {
       // Should now be busy after sustained signal
       expect(monitor.getState()).toBe("busy");
       expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", {
-        trigger: "pattern",
-        patternConfidence: 0.9,
+        trigger: "output",
       });
 
       monitor.dispose();
@@ -2861,8 +2855,7 @@ describe("ActivityMonitor", () => {
       monitor.onData("output 2");
       vi.advanceTimersByTime(800); // Another 800ms, but timer was reset
 
-      // Should still be idle because timer was reset when pattern disappeared
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       // Now sustain for full 1500ms from the reset
       for (let i = 0; i < 15; i++) {
@@ -2898,8 +2891,7 @@ describe("ActivityMonitor", () => {
         vi.advanceTimersByTime(50); // 1500ms total
       }
 
-      // Should still be idle (1500ms < 2000ms threshold)
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       // Continue for another 600ms (total 2100ms)
       for (let i = 0; i < 12; i++) {
@@ -4410,21 +4402,20 @@ describe("ActivityMonitor", () => {
         getVisibleLines: () => [],
         getCursorLine: () => null,
         pollingIntervalMs: 500,
-        bootCompletePatterns: [/booted/i],
+        initialState: "idle",
+        skipInitialStateEmit: true,
         backgroundWorkingRecoveryDelayMs: 600,
         idleDebounceMs: 4000,
       });
 
-      // Mark boot complete so the recovery path is reachable.
-      monitor.onData("\nbooted\n");
+      monitor.startPolling();
       expect(monitor.getState()).toBe("idle");
       onStateChange.mockClear();
 
-      // First spinner tick starts the debouncer; not yet sustained.
+      // First spinner tick is PTY output, so it recovers immediately.
       monitor.onData("\r⠙ Working (esc to interrupt)");
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
-      // 700ms elapsed > 600ms debouncer — next tick triggers recovery.
       vi.advanceTimersByTime(700);
       monitor.onData("\r⠙ Working (esc to interrupt)");
 
@@ -4477,20 +4468,19 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("does not regress active-tier #3189 — single spinner burst stays idle", () => {
-      // Active tier (50ms polling) keeps the original 1500ms debouncer, so a
-      // sub-1500ms spinner burst on a non-busy agent must not escalate to busy.
+    it("recovers active-tier idle→busy on the first spinner burst", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("active-1", 1000, onStateChange, {
         getVisibleLines: () => [],
         getCursorLine: () => null,
         pollingIntervalMs: 50,
-        bootCompletePatterns: [/booted/i],
+        initialState: "idle",
+        skipInitialStateEmit: true,
         backgroundWorkingRecoveryDelayMs: 600,
         idleDebounceMs: 4000,
       });
 
-      monitor.onData("\nbooted\n");
+      monitor.startPolling();
       onStateChange.mockClear();
 
       // 1000ms of spinner output — well below the 1500ms active debouncer.
@@ -4499,8 +4489,13 @@ describe("ActivityMonitor", () => {
         vi.advanceTimersByTime(100);
       }
 
-      expect(monitor.getState()).toBe("idle");
-      expect(onStateChange).not.toHaveBeenCalledWith("active-1", 1000, "busy", expect.anything());
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith(
+        "active-1",
+        1000,
+        "busy",
+        expect.objectContaining({ trigger: "output" })
+      );
 
       monitor.dispose();
     });
@@ -4518,9 +4513,9 @@ describe("ActivityMonitor", () => {
       monitor.onData("\nbooted\n");
       onStateChange.mockClear();
 
-      // First spinner starts the debouncer.
+      // First spinner is output and recovers immediately.
       monitor.onData("\r⠙ Working (esc to interrupt)");
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       // 1600ms elapsed > 1500ms default active debouncer.
       vi.advanceTimersByTime(1600);
@@ -4623,6 +4618,79 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
+    it("recovers a waiting polling agent immediately on same-line timer output", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("agent-timer-output", 1000, onStateChange, {
+        getVisibleLines: () => ["ready"],
+        getCursorLine: () => "ready",
+        pollingIntervalMs: 100,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+        idleDebounceMs: 800,
+        outputActivityDetection: {
+          enabled: true,
+          activationThreshold: 10_000,
+          leakRatePerMs: 0,
+          maxBytesPerFrame: 64,
+        },
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      monitor.onData("\rRunning for 8m 51s");
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith(
+        "agent-timer-output",
+        1000,
+        "busy",
+        expect.objectContaining({ trigger: "output" })
+      );
+
+      monitor.dispose();
+    });
+
+    it("recovers a waiting polling agent immediately on small non-protocol output", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("agent-small-output", 1000, onStateChange, {
+        getVisibleLines: () => ["ready"],
+        getCursorLine: () => "ready",
+        pollingIntervalMs: 100,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+        idleDebounceMs: 800,
+        outputActivityDetection: {
+          enabled: true,
+          activationThreshold: 10_000,
+          leakRatePerMs: 0,
+          maxBytesPerFrame: 64,
+        },
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      monitor.onData(".");
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith(
+        "agent-small-output",
+        1000,
+        "busy",
+        expect.objectContaining({ trigger: "output" })
+      );
+
+      vi.advanceTimersByTime(2000);
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
     it("does not keep a polling agent busy from invisible protocol noise", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("agent-protocol-noise", 1000, onStateChange, {
@@ -4665,7 +4733,8 @@ describe("ActivityMonitor", () => {
         getVisibleLines: () => [],
         getCursorLine: () => null,
         pollingIntervalMs: 500,
-        bootCompletePatterns: [/ready/i],
+        initialState: "idle",
+        skipInitialStateEmit: true,
         outputActivityDetection: {
           enabled: true,
           activationThreshold: 200,
@@ -4676,19 +4745,17 @@ describe("ActivityMonitor", () => {
         idleDebounceMs: 4000,
       });
 
-      monitor.onData("\nready\n");
-      // Let any boot-data accumulation drain.
-      vi.advanceTimersByTime(3000);
+      monitor.startPolling();
       onStateChange.mockClear();
 
       // Three 100-byte chunks at 500ms cadence (typical batched background
       // streaming): drain=50/cycle, fill=100/cycle. F1 level=100, F2=150,
       // F3=200 ≥ threshold → fire.
       monitor.onData("x".repeat(100));
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
       vi.advanceTimersByTime(500);
       monitor.onData("x".repeat(100));
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
       vi.advanceTimersByTime(500);
       monitor.onData("x".repeat(100));
 
@@ -4717,13 +4784,12 @@ describe("ActivityMonitor", () => {
       monitor.onData("\nbooted\n");
       onStateChange.mockClear();
 
-      // 700ms elapsed — would fire on background's 600ms debouncer but must
-      // NOT fire on active's 1500ms debouncer.
+      // The first spinner is output and recovers immediately regardless of tier.
       monitor.onData("\r⠙ Working (esc to interrupt)");
       vi.advanceTimersByTime(700);
       monitor.onData("\r⠙ Working (esc to interrupt)");
 
-      expect(monitor.getState()).toBe("idle");
+      expect(monitor.getState()).toBe("busy");
 
       monitor.dispose();
     });

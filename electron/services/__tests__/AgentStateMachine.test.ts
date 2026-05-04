@@ -319,12 +319,19 @@ describe("AgentStateMachine", () => {
     });
 
     describe("output event", () => {
-      it("should mark idle or waiting agents as working", () => {
+      it("should mark non-terminal active states working when output arrives", () => {
         const event: AgentEvent = { type: "output", data: "Some output" };
         expect(nextAgentState("working", event)).toBe("working");
         expect(nextAgentState("idle", event)).toBe("working");
         expect(nextAgentState("waiting", event)).toBe("working");
         expect(nextAgentState("completed", event)).toBe("working");
+        expect(nextAgentState("exited", event)).toBe("exited");
+      });
+
+      it("should ignore empty output", () => {
+        const event: AgentEvent = { type: "output", data: "" };
+        expect(nextAgentState("idle", event)).toBe("idle");
+        expect(nextAgentState("waiting", event)).toBe("waiting");
       });
     });
   });

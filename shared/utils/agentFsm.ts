@@ -74,7 +74,11 @@ export function nextAgentState(current: AgentState, event: AgentEvent): AgentSta
     case "output":
       // Visible output is activity. ActivityMonitor still debounces silence, but
       // direct observers should not strand an agent in waiting after output.
-      if (current === "waiting" || current === "idle" || current === "completed") {
+      if (
+        typeof event.data === "string" &&
+        event.data.length > 0 &&
+        (current === "waiting" || current === "idle" || current === "completed")
+      ) {
         return "working";
       }
       break;

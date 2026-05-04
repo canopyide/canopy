@@ -461,6 +461,27 @@ export class ActivityMonitor {
     // front because the debounce-reset path also gates on it: pure protocol
     // noise must not keep a busy monitor alive forever.
     const filteredLength = Buffer.byteLength(stripIdleTerminalSequences(data), "utf8");
+    const hasOutputActivity = isCosmeticRedraw || filteredLength > 0;
+
+    if (hasOutputActivity) {
+      this.lastActivityTimestamp = now;
+    }
+
+    // Agent terminals should recover from waiting on the first visible PTY
+    // output byte. Pattern, volume, and structural detectors can still refine
+    // prompts/completion, but they must not make `waiting` sticky while output
+    // is arriving.
+    if (
+      this.getVisibleLines &&
+      this.state === "idle" &&
+      hasOutputActivity &&
+      !this.isResizeSuppressed(now) &&
+      !this.inputTracker.isRecentUserInput(now) &&
+      this.bootDetector.hasExitedBootState
+    ) {
+      this.becomeBusy({ trigger: "output" }, now);
+      return;
+    }
 
     // Spinner frames and other cosmetic redraws ARE evidence the agent is alive —
     // long-running model thinking can emit only spinner ticks for tens of seconds.
@@ -495,10 +516,6 @@ export class ActivityMonitor {
         }
       }
       return;
-    }
-
-    if (filteredLength > 0) {
-      this.lastActivityTimestamp = now;
     }
 
     // Update pattern buffer and check for working patterns (non-polling terminals only)
