@@ -78,7 +78,6 @@ export interface ContentGridContext {
   isFleetScopeRender: boolean;
   fleetPanels: TerminalInstance[];
   fleetNeedsWorktreePrefix: boolean;
-  combinedGridRef: (node: HTMLDivElement | null) => void;
   isOver: boolean;
   isDragging: boolean;
   showPlaceholder: boolean;
@@ -100,7 +99,6 @@ export interface ContentGridContext {
   handleGridLaunch: (agentId: string) => void;
   handleGridLayoutChange: (strategy: "automatic" | "fixed-columns" | "fixed-rows") => void;
   handleGridRegionKeyDown: (e: React.KeyboardEvent) => void;
-  gridRegionRef: (node: HTMLDivElement | null) => void;
   hasActiveWorktree: boolean;
   activeWorktreeName: string | null;
   activeWorktreeId: string | null;
@@ -115,12 +113,18 @@ export interface ContentGridContext {
   storeTerminalIds: string[];
 }
 
+export interface ContentGridResult {
+  ctx: ContentGridContext;
+  bindCombinedGrid: (node: HTMLDivElement | null) => void;
+  bindGridRegion: (node: HTMLDivElement | null) => void;
+}
+
 export function useContentGridContext({
   className: _className,
   defaultCwd,
   agentAvailability,
   emptyContent,
-}: ContentGridProps): ContentGridContext {
+}: ContentGridProps): ContentGridResult {
   "use memo";
   const {
     panelsById,
@@ -294,7 +298,7 @@ export function useContentGridContext({
   const showPlaceholder = placeholderInGrid && sourceContainer === "dock" && !isGridFull;
   const gridItemCount = tabGroups.length + (showPlaceholder ? 1 : 0);
 
-  const gridRegionRef = useCallback((node: HTMLDivElement | null) => {
+  const bindGridRegion = useCallback((node: HTMLDivElement | null) => {
     useMacroFocusStore.getState().setRegionRef("grid", node);
   }, []);
   const isMacroFocused = useMacroFocusStore((state) => state.focusedRegion === "grid");
@@ -335,7 +339,7 @@ export function useContentGridContext({
     [isMacroFocused, focusedId]
   );
 
-  const combinedGridRef = useCallback(
+  const bindCombinedGrid = useCallback(
     (node: HTMLDivElement | null) => {
       setNodeRef(node);
       gridContainerRef.current = node;
@@ -735,7 +739,7 @@ export function useContentGridContext({
 
   const isEmpty = gridTerminals.length === 0;
 
-  return {
+  const ctx: ContentGridContext = {
     defaultCwd,
     agentAvailability,
     emptyContent,
@@ -756,7 +760,6 @@ export function useContentGridContext({
     isFleetScopeRender,
     fleetPanels,
     fleetNeedsWorktreePrefix,
-    combinedGridRef,
     isOver,
     isDragging,
     showPlaceholder,
@@ -778,7 +781,6 @@ export function useContentGridContext({
     handleGridLaunch,
     handleGridLayoutChange,
     handleGridRegionKeyDown,
-    gridRegionRef,
     hasActiveWorktree,
     activeWorktreeName,
     activeWorktreeId,
@@ -792,4 +794,6 @@ export function useContentGridContext({
     maxGridCapacity,
     storeTerminalIds,
   };
+
+  return { ctx, bindCombinedGrid, bindGridRegion };
 }

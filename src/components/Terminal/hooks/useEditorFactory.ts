@@ -97,7 +97,6 @@ export function useEditorFactory({
   plainPasteKeymap,
 }: UseEditorFactoryParams) {
   const initialValueRef = useRef(value);
-  initialValueRef.current = value;
 
   useLayoutEffect(() => {
     const host = editorHostRef.current;

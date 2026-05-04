@@ -15,7 +15,7 @@ export function ContentGrid({
 }: ContentGridProps) {
   "use memo";
 
-  const ctx = useContentGridContext({
+  const { ctx, bindCombinedGrid, bindGridRegion } = useContentGridContext({
     className,
     defaultCwd,
     agentAvailability,
@@ -29,7 +29,14 @@ export function ContentGrid({
   // tab-group logic are bypassed entirely; the armed set is the source of
   // truth for both membership and order.
   if (ctx.isFleetScopeRender) {
-    return <ContentGridFleetScope ctx={ctx} className={className} />;
+    return (
+      <ContentGridFleetScope
+        ctx={ctx}
+        bindCombinedGrid={bindCombinedGrid}
+        bindGridRegion={bindGridRegion}
+        className={className}
+      />
+    );
   }
 
   // Maximized terminal or group takes full screen
@@ -38,21 +45,47 @@ export function ContentGrid({
       const group = ctx.maximizedGroup;
       const groupPanels = ctx.maximizedGroupPanels;
       if (group && groupPanels.length > 0) {
-        return <ContentGridMaximizedGroup ctx={ctx} className={className} />;
+        return (
+          <ContentGridMaximizedGroup
+            ctx={ctx}
+            bindGridRegion={bindGridRegion}
+            className={className}
+          />
+        );
       }
       return null;
     } else {
       const terminal = ctx.gridTerminals.find((t) => t.id === ctx.maximizedId);
       if (terminal) {
-        return <ContentGridMaximizedSingle ctx={ctx} className={className} />;
+        return (
+          <ContentGridMaximizedSingle
+            ctx={ctx}
+            bindGridRegion={bindGridRegion}
+            className={className}
+          />
+        );
       }
       return null;
     }
   }
 
   if (ctx.useTwoPaneSplitMode && ctx.twoPaneTerminals) {
-    return <ContentGridTwoPaneSplit ctx={ctx} className={className} />;
+    return (
+      <ContentGridTwoPaneSplit
+        ctx={ctx}
+        bindCombinedGrid={bindCombinedGrid}
+        bindGridRegion={bindGridRegion}
+        className={className}
+      />
+    );
   }
 
-  return <ContentGridDefault ctx={ctx} className={className} />;
+  return (
+    <ContentGridDefault
+      ctx={ctx}
+      bindCombinedGrid={bindCombinedGrid}
+      bindGridRegion={bindGridRegion}
+      className={className}
+    />
+  );
 }

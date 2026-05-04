@@ -45,6 +45,7 @@ export function useEditorDomHandlers({
   setSlashContext,
   setDiffContext,
 }: UseEditorDomHandlersParams) {
+  "use no memo";
   const sendFromEditorRef = useRef(sendFromEditor);
   useEffect(() => {
     sendFromEditorRef.current = sendFromEditor;

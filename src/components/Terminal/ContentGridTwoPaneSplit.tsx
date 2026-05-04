@@ -7,9 +7,13 @@ import type { ContentGridContext } from "./useContentGridContext";
 
 export function ContentGridTwoPaneSplit({
   ctx,
+  bindCombinedGrid,
+  bindGridRegion,
   className,
 }: {
   ctx: ContentGridContext;
+  bindCombinedGrid: (node: HTMLDivElement | null) => void;
+  bindGridRegion: (node: HTMLDivElement | null) => void;
   className?: string;
 }) {
   "use memo";
@@ -19,7 +23,7 @@ export function ContentGridTwoPaneSplit({
   return (
     <div
       key="split-mode"
-      ref={ctx.gridRegionRef}
+      ref={bindGridRegion}
       role="region"
       tabIndex={-1}
       aria-label="Panel grid"
@@ -34,7 +38,7 @@ export function ContentGridTwoPaneSplit({
       <GridNotificationBar className="mx-1 mt-1 shrink-0" />
       <GridShell ctx={ctx}>
         <div
-          ref={ctx.combinedGridRef}
+          ref={bindCombinedGrid}
           className={cn(
             "relative h-full min-h-0",
             ctx.isOver && "ring-2 ring-daintree-accent/30 ring-inset"

@@ -19,9 +19,13 @@ import type { ContentGridContext } from "./useContentGridContext";
 
 export function ContentGridDefault({
   ctx,
+  bindCombinedGrid,
+  bindGridRegion,
   className,
 }: {
   ctx: ContentGridContext;
+  bindCombinedGrid: (node: HTMLDivElement | null) => void;
+  bindGridRegion: (node: HTMLDivElement | null) => void;
   className?: string;
 }) {
   "use memo";
@@ -29,7 +33,7 @@ export function ContentGridDefault({
   return (
     <div
       key="grid-mode"
-      ref={ctx.gridRegionRef}
+      ref={bindGridRegion}
       role="region"
       tabIndex={-1}
       aria-label="Panel grid"
@@ -47,7 +51,7 @@ export function ContentGridDefault({
         <SortableContext id="grid-container" items={ctx.panelIds} strategy={rectSortingStrategy}>
           <GridShell ctx={ctx} showTerminalCountWarning={false} className="relative h-full min-h-0">
             <div
-              ref={ctx.combinedGridRef}
+              ref={bindCombinedGrid}
               className={cn(
                 "h-full bg-noise p-1",
                 ctx.isOver && "ring-2 ring-daintree-accent/30 ring-inset"

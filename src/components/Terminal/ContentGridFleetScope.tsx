@@ -9,9 +9,13 @@ import { pixelSnapTransform, type ContentGridContext } from "./useContentGridCon
 
 export function ContentGridFleetScope({
   ctx,
+  bindCombinedGrid,
+  bindGridRegion,
   className,
 }: {
   ctx: ContentGridContext;
+  bindCombinedGrid: (node: HTMLDivElement | null) => void;
+  bindGridRegion: (node: HTMLDivElement | null) => void;
   className?: string;
 }) {
   "use memo";
@@ -19,7 +23,7 @@ export function ContentGridFleetScope({
   return (
     <div
       key="fleet-scope-mode"
-      ref={ctx.gridRegionRef}
+      ref={bindGridRegion}
       role="region"
       tabIndex={-1}
       aria-label="Fleet scope grid"
@@ -35,7 +39,7 @@ export function ContentGridFleetScope({
       <GridNotificationBar className="mx-1 mt-1 shrink-0" />
       <GridShell ctx={ctx}>
         <div
-          ref={ctx.combinedGridRef}
+          ref={bindCombinedGrid}
           className="h-full bg-noise p-1"
           style={{
             display: "grid",

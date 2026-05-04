@@ -5,9 +5,11 @@ import type { ContentGridContext } from "./useContentGridContext";
 
 export function ContentGridMaximizedSingle({
   ctx,
+  bindGridRegion,
   className,
 }: {
   ctx: ContentGridContext;
+  bindGridRegion: (node: HTMLDivElement | null) => void;
   className?: string;
 }) {
   "use memo";
@@ -17,7 +19,7 @@ export function ContentGridMaximizedSingle({
 
   return (
     <div
-      ref={ctx.gridRegionRef}
+      ref={bindGridRegion}
       role="region"
       tabIndex={-1}
       aria-label="Panel grid region"

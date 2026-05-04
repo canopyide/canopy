@@ -191,17 +191,33 @@ export function GitHubResourceList({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   const selection = useIssueSelection();
-  const issueCacheRef = useRef<Map<number, GitHubIssue>>(new Map());
-  const prCacheRef = useRef<Map<number, GitHubPR>>(new Map());
+  const [issueCache, setIssueCache] = useState<Map<number, GitHubIssue>>(() => new Map());
+  const [prCache, setPrCache] = useState<Map<number, GitHubPR>>(() => new Map());
 
   // Accumulate item objects into the session cache whenever data changes
   useEffect(() => {
+    const newIssues: GitHubIssue[] = [];
+    const newPRs: GitHubPR[] = [];
     for (const item of data) {
       if ("isDraft" in item) {
-        prCacheRef.current.set(item.number, item as GitHubPR);
+        newPRs.push(item as GitHubPR);
       } else {
-        issueCacheRef.current.set(item.number, item as GitHubIssue);
+        newIssues.push(item as GitHubIssue);
       }
+    }
+    if (newIssues.length > 0) {
+      setIssueCache((prev) => {
+        const next = new Map(prev);
+        for (const issue of newIssues) next.set(issue.number, issue);
+        return next;
+      });
+    }
+    if (newPRs.length > 0) {
+      setPrCache((prev) => {
+        const next = new Map(prev);
+        for (const pr of newPRs) next.set(pr.number, pr);
+        return next;
+      });
     }
   }, [data]);
 
@@ -221,8 +237,8 @@ export function GitHubResourceList({
 
   const handleClose = useCallback(() => {
     selection.clear();
-    issueCacheRef.current.clear();
-    prCacheRef.current.clear();
+    setIssueCache(new Map());
+    setPrCache(new Map());
     onClose?.();
   }, [onClose, selection]);
 
@@ -824,14 +840,14 @@ export function GitHubResourceList({
         selectedIssues={
           type === "issue"
             ? Array.from(selection.selectedIds)
-                .map((id) => issueCacheRef.current.get(id))
+                .map((id) => issueCache.get(id))
                 .filter((issue): issue is GitHubIssue => issue !== undefined)
             : []
         }
         selectedPRs={
           type === "pr"
             ? Array.from(selection.selectedIds)
-                .map((id) => prCacheRef.current.get(id))
+                .map((id) => prCache.get(id))
                 .filter((pr): pr is GitHubPR => pr !== undefined)
             : []
         }
