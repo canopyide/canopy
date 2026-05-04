@@ -159,7 +159,7 @@ export function findGroupIndex(
   groupId: string | undefined,
   terminalId: string
 ): number {
-  let idx = tabGroups.findIndex((g) => g.id === groupId);
+  const idx = tabGroups.findIndex((g) => g.id === groupId);
   if (idx !== -1) return idx;
   return tabGroups.findIndex((g) => g.panelIds.includes(terminalId));
 }
