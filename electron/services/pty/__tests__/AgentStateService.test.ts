@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentStateService } from "../AgentStateService.js";
 import { events } from "../../events.js";
 import type { TerminalInfo } from "../types.js";
@@ -401,6 +401,155 @@ describe("AgentStateService", () => {
       // clears detectedAgentType and reverts to shell mode.
       expect(activityEvents).toHaveLength(1);
       expect(activityEvents[0]?.headline).toBe("Exited");
+    });
+  });
+
+  // #6665 — A high-confidence transition should not be flipped by a
+  // lower-confidence opposite-direction trigger arriving inside a short
+  // hysteresis window. Lifecycle events and same- or higher-confidence
+  // signals always pass through.
+  describe("hysteresis (#6665)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-04T00:00:00Z"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("suppresses low-confidence timeout that would flip working back to waiting within window", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({ agentState: "idle" });
+      const stateChanges: Array<{ state: string; trigger: string }> = [];
+
+      events.on("agent:state-changed", (payload) => {
+        stateChanges.push({ state: payload.state, trigger: payload.trigger });
+      });
+
+      // High-confidence input transitions idle → working
+      service.updateAgentState(terminal, { type: "input" });
+      expect(terminal.agentState).toBe("working");
+      expect(stateChanges).toHaveLength(1);
+
+      // 100ms later, watchdog timeout fires → would normally flip working → waiting
+      vi.setSystemTime(Date.now() + 100);
+      const changed = service.handleActivityState(terminal, "idle", { trigger: "timeout" });
+
+      expect(terminal.agentState).toBe("working");
+      expect(stateChanges).toHaveLength(1);
+      expect(changed).toBeUndefined();
+    });
+
+    it("suppresses heuristic prompt that would flip working back to waiting within window", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({ agentState: "idle" });
+      const stateChanges: Array<{ state: string }> = [];
+
+      events.on("agent:state-changed", (payload) => {
+        stateChanges.push({ state: payload.state });
+      });
+
+      // High-confidence busy heuristic (0.9) transitions idle → working and locks
+      service.transitionState(terminal, { type: "busy" }, "heuristic", 0.9, terminal.spawnedAt);
+      expect(terminal.agentState).toBe("working");
+
+      // 200ms later, prompt heuristic at 0.75 → suppressed
+      vi.setSystemTime(Date.now() + 200);
+      const changed = service.transitionState(
+        terminal,
+        { type: "prompt" },
+        "heuristic",
+        0.75,
+        terminal.spawnedAt
+      );
+
+      expect(changed).toBe(false);
+      expect(terminal.agentState).toBe("working");
+      expect(stateChanges).toHaveLength(1);
+    });
+
+    it("allows the transition once the hysteresis window has expired", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({ agentState: "idle" });
+
+      service.updateAgentState(terminal, { type: "input" });
+      expect(terminal.agentState).toBe("working");
+
+      // 501ms later — past the 500ms window
+      vi.setSystemTime(Date.now() + 501);
+      const changed = service.handleActivityState(terminal, "idle", { trigger: "timeout" });
+
+      expect(changed).toBeUndefined();
+      expect(terminal.agentState).toBe("waiting");
+    });
+
+    it("high-confidence opposite event passes through within the window", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({ agentState: "idle" });
+
+      service.updateAgentState(terminal, { type: "input" });
+      expect(terminal.agentState).toBe("working");
+
+      // Within the window, an explicit high-confidence prompt (1.0) wins
+      vi.setSystemTime(Date.now() + 100);
+      const changed = service.transitionState(
+        terminal,
+        { type: "prompt" },
+        "activity",
+        1.0,
+        terminal.spawnedAt
+      );
+
+      expect(changed).toBe(true);
+      expect(terminal.agentState).toBe("waiting");
+    });
+
+    it("lifecycle exit event is never suppressed by the hysteresis window", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({ agentState: "idle" });
+
+      service.updateAgentState(terminal, { type: "input" });
+      expect(terminal.agentState).toBe("working");
+
+      vi.setSystemTime(Date.now() + 100);
+      const changed = service.updateAgentState(terminal, { type: "exit", code: 0 });
+
+      expect(changed).toBe(true);
+      expect(terminal.agentState).toBe("exited");
+    });
+
+    it("same-direction confirmations do not extend the original window", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({ agentState: "idle" });
+
+      // First high-confidence input at t=0 sets the lock to t=500
+      service.updateAgentState(terminal, { type: "input" });
+      const lockAfterFirst = terminal.hysteresisLockedUntil;
+      expect(lockAfterFirst).toBeDefined();
+
+      // A same-state input at t=200 produces no state change (working → working)
+      // and therefore must NOT shift the lock — hysteresis is anchored to actual
+      // direction-changing high-confidence transitions, not no-ops.
+      vi.setSystemTime(Date.now() + 200);
+      service.updateAgentState(terminal, { type: "input" });
+      expect(terminal.hysteresisLockedUntil).toBe(lockAfterFirst);
+    });
+
+    it("a fresh terminal (new session) starts with no hysteresis lock", () => {
+      const service = new AgentStateService();
+      const terminal = createTerminal({ agentState: "idle" });
+
+      // A low-confidence transition on a brand-new terminal must not be
+      // affected by any prior session's lock — TerminalInfo is per-session.
+      const changed = service.handleActivityState(terminal, "busy", {
+        trigger: "pattern",
+        patternConfidence: 0.7,
+      });
+
+      expect(changed).toBeUndefined();
+      expect(terminal.agentState).toBe("working");
+      expect(terminal.hysteresisLockedUntil).toBeUndefined();
     });
   });
 
