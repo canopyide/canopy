@@ -12,10 +12,10 @@ vi.mock("@/services/ActionService", () => ({
 }));
 
 const { isAgentLaunchableMock } = vi.hoisted(() => ({
-  isAgentLaunchableMock: vi.fn(() => true),
+  isAgentLaunchableMock: vi.fn((_arg: unknown) => true),
 }));
 vi.mock("../../../../shared/utils/agentAvailability", () => ({
-  isAgentLaunchable: (...args: unknown[]) => isAgentLaunchableMock(...args),
+  isAgentLaunchable: (arg: unknown) => isAgentLaunchableMock(arg),
 }));
 
 import { RotatingTip, TIPS } from "../contentGridTips";
