@@ -601,7 +601,9 @@ export function Toolbar({
       effectiveAgentSettings,
       onLaunchAgent,
       sidebarShortcut,
+      sidebarHintHover,
       copyTreeShortcut,
+      copyTreeHintHover,
       hasActiveVoiceRecording,
       currentProject,
       handleCopyTreeClick,
@@ -618,6 +620,7 @@ export function Toolbar({
       pluginButtonIds,
       pluginConfigs,
       devServerShortcut,
+      devServerHintHover,
     ]
   );
 
