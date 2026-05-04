@@ -174,6 +174,37 @@ describe("TerminalWriteController.write", () => {
     expect(deps.incrementUnseen).toHaveBeenCalledWith("t1", false);
     expect(deps.acknowledgeData).not.toHaveBeenCalled();
     expect(deps.notifyWriteComplete).not.toHaveBeenCalled();
+
+    // pendingWrites was incremented synchronously in `write()` and is
+    // intentionally NOT decremented on the stale-callback path. The
+    // replaced instance owns its own pendingWrites counter; the old
+    // managed object is being torn down, so leaving its counter at 1 is
+    // harmless. This mirrors the pre-extraction behavior in TIS.
+    expect(managed.pendingWrites).toBe(1);
+  });
+
+  it("posts ack/notify only after terminal.write resolves, not synchronously", () => {
+    // Defer the callback to prove the async contract: bookkeeping runs in
+    // the callback, not at write() time.
+    const term = managed.terminal as unknown as MockTerminal;
+    let captured: (() => void) | undefined;
+    term.write = vi.fn((_data: string | Uint8Array, cb?: () => void) => {
+      captured = cb;
+    });
+
+    controller.write("t1", "abc");
+
+    expect(managed.pendingWrites).toBe(1);
+    expect(deps.acknowledgePortData).not.toHaveBeenCalled();
+    expect(deps.acknowledgeData).not.toHaveBeenCalled();
+    expect(deps.notifyWriteComplete).not.toHaveBeenCalled();
+
+    captured?.();
+
+    expect(managed.pendingWrites).toBe(0);
+    expect(deps.acknowledgePortData).toHaveBeenCalledWith("t1", 3);
+    expect(deps.acknowledgeData).toHaveBeenCalledWith("t1", 3);
+    expect(deps.notifyWriteComplete).toHaveBeenCalledWith("t1", 3);
   });
 
   it("samples once every 64 writes", async () => {

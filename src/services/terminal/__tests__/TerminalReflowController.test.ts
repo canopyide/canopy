@@ -212,7 +212,7 @@ describe("TerminalReflowController dispose / listener cleanup", () => {
     document.body.innerHTML = "";
   });
 
-  it("removes document and window listeners and clears the heartbeat timer", () => {
+  it("removes document and window listeners on dispose", () => {
     const docAdd = vi.spyOn(document, "addEventListener");
     const docRemove = vi.spyOn(document, "removeEventListener");
     const winAdd = vi.spyOn(window, "addEventListener");
@@ -232,6 +232,72 @@ describe("TerminalReflowController dispose / listener cleanup", () => {
     docRemove.mockRestore();
     winAdd.mockRestore();
     winRemove.mockRestore();
+  });
+
+  it("heartbeat fires every 3 s and reflows visible standard terminals", () => {
+    vi.useFakeTimers();
+
+    const managed = makeManaged();
+    instances = [managed];
+    controller = new TerminalReflowController({ getInstances: () => instances });
+
+    // Heartbeat hasn't fired yet.
+    expect(paddingHistory(managed).length).toBe(0);
+
+    vi.advanceTimersByTime(3000);
+    expect(paddingHistory(managed)).toContain("0.01px");
+
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
+  it("heartbeat stops firing after dispose", () => {
+    vi.useFakeTimers();
+
+    const managed = makeManaged();
+    instances = [managed];
+    controller = new TerminalReflowController({ getInstances: () => instances });
+
+    vi.advanceTimersByTime(3000);
+    const reflowsAfterFirstTick = paddingHistory(managed).length;
+    expect(reflowsAfterFirstTick).toBeGreaterThan(0);
+
+    controller.dispose();
+
+    // Reset the throttle so a second heartbeat would fire if the interval
+    // were still active.
+    managed.lastReflowAt = 0;
+    vi.advanceTimersByTime(10_000);
+
+    expect(paddingHistory(managed).length).toBe(reflowsAfterFirstTick);
+    vi.useRealTimers();
+  });
+
+  it("heartbeat skips when the document is hidden", () => {
+    vi.useFakeTimers();
+
+    const managed = makeManaged();
+    instances = [managed];
+    controller = new TerminalReflowController({ getInstances: () => instances });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    vi.advanceTimersByTime(3000);
+    expect(paddingHistory(managed).length).toBe(0);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    // Reset throttle in case the visibilitychange listener fired one already.
+    managed.lastReflowAt = 0;
+    vi.advanceTimersByTime(3000);
+    expect(paddingHistory(managed)).toContain("0.01px");
+
+    controller.dispose();
+    vi.useRealTimers();
   });
 
   it("focus listener reflows every visible standard terminal", () => {
