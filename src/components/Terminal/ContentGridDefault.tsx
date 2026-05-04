@@ -13,6 +13,7 @@ import {
   SortableGridPlaceholder,
 } from "@/components/DragDrop";
 import { GridShell } from "./GridShell";
+import { TerminalCountWarning } from "./TerminalCountWarning";
 import { ContentGridEmptyState } from "./ContentGridEmptyState";
 import type { ContentGridContext } from "./useContentGridContext";
 
@@ -41,12 +42,16 @@ export function ContentGridDefault({
       )}
     >
       <GridNotificationBar className="mx-1 mt-1 shrink-0" />
+      <TerminalCountWarning className="mx-1 mt-1 shrink-0" />
       <div className="relative flex-1 min-h-0">
         <SortableContext id="grid-container" items={ctx.panelIds} strategy={rectSortingStrategy}>
-          <GridShell ctx={ctx}>
+          <GridShell ctx={ctx} showTerminalCountWarning={false}>
             <div
               ref={ctx.combinedGridRef}
-              className="h-full bg-noise p-1"
+              className={cn(
+                "h-full bg-noise p-1",
+                ctx.isOver && "ring-2 ring-daintree-accent/30 ring-inset"
+              )}
               style={{
                 display: "grid",
                 gridTemplateColumns: `repeat(${ctx.gridCols}, minmax(0, 1fr))`,
