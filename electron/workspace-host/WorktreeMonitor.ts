@@ -19,42 +19,15 @@ import { categorizeWorktree } from "../services/worktree/mood.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "../services/worktree/index.js";
 import { ensureSerializable } from "../../shared/utils/serialization.js";
 import { extractIssueNumberSync, extractIssueNumber } from "../services/issueExtractor.js";
-import { GitFileWatcher } from "../utils/gitFileWatcher.js";
-import { MutableDisposable, toDisposable, type IDisposable } from "../utils/lifecycle.js";
+import { FetchScheduler, type FetchSchedulerHost } from "./FetchScheduler.js";
+import { ResourcePollTimer, type ResourcePollTimerHost } from "./ResourcePollTimer.js";
+import { WatcherController, type WatcherControllerHost } from "./WatcherController.js";
 
-const GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000;
-const WATCHER_FALLBACK_POLL_INTERVAL_MS = 30_000;
-const WATCHER_GIT_ONLY_ACTIVE_POLL_INTERVAL_MS = 10_000;
-const WATCHER_RETRY_INTERVAL_MS = 30_000;
-const WATCHER_MAX_RETRIES = 5;
-const WATCHER_WORKTREE_MIN_DEBOUNCE_MS = 150;
-const WATCHER_WORKTREE_MAX_DEBOUNCE_MS = 800;
-const WATCHER_WORKTREE_MAX_WAIT_MS = 1500;
 const PLAN_FILE_CANDIDATES = ["TODO.md", "PLAN.md", "plan.md", "TASKS.md"] as const;
 const RESOURCE_POLL_DEFAULT_ACTIVE_MS = 30_000;
 const RESOURCE_POLL_DEFAULT_BACKGROUND_MS = 120_000;
 const HEARTBEAT_GAP_MULTIPLIER = 3;
 const HEARTBEAT_GAP_FLOOR_MS = 30_000;
-
-// Background fetch cadence — independent from the local-status poll. Focused
-// (current) worktrees fetch frequently so ahead/behind counts stay fresh while
-// the user is looking at them; everything else falls back to a low-rate
-// background tier to avoid hammering remotes for repos the user isn't viewing.
-// Jitter is applied at the call site to avoid thundering-herd alignment when
-// multiple worktrees were started together.
-const FETCH_INTERVAL_FOCUSED_MIN_MS = 30_000;
-const FETCH_INTERVAL_FOCUSED_MAX_MS = 45_000;
-const FETCH_INTERVAL_BACKGROUND_MIN_MS = 5 * 60_000;
-const FETCH_INTERVAL_BACKGROUND_MAX_MS = 10 * 60_000;
-// Initial fetch fires shortly after start so users don't wait a full cadence
-// window for fresh ahead/behind on app launch.
-const FETCH_INITIAL_DELAY_MIN_MS = 2_000;
-const FETCH_INITIAL_DELAY_MAX_MS = 5_000;
-
-function randomBetween(minMs: number, maxMs: number): number {
-  if (maxMs <= minMs) return minMs;
-  return minMs + Math.floor(Math.random() * (maxMs - minMs));
-}
 
 export interface WorktreeMonitorConfig {
   basePollingInterval: number;
@@ -134,20 +107,13 @@ export class WorktreeMonitor {
   private pollingEnabled: boolean = true;
   private _hasInitialStatus: boolean = false;
 
-  // File watcher state — MutableDisposable auto-disposes the previous watcher
-  // on reassignment, eliminating the manual stop-old-start-new dance.
-  private gitWatcher = new MutableDisposable<IDisposable>();
-  // Tracks the active watcher granularity. "recursive" reads worktree edits;
-  // "git-only" preserves the cheap .git/ watchers when the recursive watcher
-  // is unavailable (focus-tier or post-failure degraded state).
-  private gitWatcherMode: "none" | "git-only" | "recursive" = "none";
-  private gitWatchDebounceTimer: NodeJS.Timeout | null = null;
-  private gitWatchRefreshPending: boolean = false;
+  // File watcher state — owned by `watcherController`. The remaining fields
+  // here are inputs to the controller's host interface (read by the watcher
+  // but written by the monitor or its callers).
+  private readonly watcherController: WatcherController;
   private gitWatchEnabled: boolean;
   private gitWatchDebounceMs: number;
   private lastGitStatusCompletedAt: number = 0;
-  private watcherRetryTimer: NodeJS.Timeout | null = null;
-  private watcherRetryCount: number = 0;
 
   // Extra state
   private _createdAt: number | undefined;
@@ -168,15 +134,14 @@ export class WorktreeMonitor {
   private _worktreeMode: string = "local";
   private _worktreeEnvironmentLabel: string | undefined;
 
-  // Resource status auto-polling
-  private resourcePollTimer: NodeJS.Timeout | null = null;
+  // Resource status auto-polling — owned by `resourcePollTimer`.
+  private readonly resourcePollTimer: ResourcePollTimer;
   private resourcePollIntervalMs: number = 0; // 0 = disabled
 
-  // Background fetch timer — separate from the local-status poll so a stuck
-  // remote can't poison local-status updates. Cadence flips based on
+  // Background fetch scheduler — separate from the local-status poll so a
+  // stuck remote can't poison local-status updates. Cadence flips based on
   // `_isCurrent`; rescheduling happens in the `isCurrent` setter.
-  private fetchTimer: NodeJS.Timeout | null = null;
-  private _pendingFetchPromise: Promise<void> | null = null;
+  private readonly fetchScheduler: FetchScheduler;
 
   // Fetch freshness state — surfaced to the renderer via the snapshot so the
   // worktree card can show "Last fetched X ago", an in-flight pulse, and a
@@ -189,13 +154,6 @@ export class WorktreeMonitor {
   private _fetchAuthFailed: boolean = false;
   private _fetchNetworkFailed: boolean = false;
   private _isGitHubRemote: boolean = false;
-  /**
-   * When `triggerFetchNow()` is called while a non-force fetch is in-flight,
-   * we can't drop the force request — wake / auth-rotation hooks rely on it
-   * bypassing the failure cache. Defer it: set this flag, let the in-flight
-   * call complete, then run a forced fetch in the post-pending hook.
-   */
-  private _pendingForceFetch: boolean = false;
 
   // Poll queue concurrency
   private _pendingPollPromise: Promise<void> | null = null;
@@ -242,6 +200,93 @@ export class WorktreeMonitor {
     );
 
     this.noteReader = new NoteFileReader(worktree.path);
+
+    // Each controller's host is a thin live-getter view onto monitor state.
+    // Aliasing `this` keeps the getter syntax compact (object-literal
+    // getters can't be arrow functions, and we need a fresh read on each
+    // access).
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const monitor = this;
+    const fetchHost: FetchSchedulerHost = {
+      get isRunning() {
+        return monitor._isRunning;
+      },
+      get isCurrent() {
+        return monitor._isCurrent;
+      },
+      get hasInitialStatus() {
+        return monitor._hasInitialStatus;
+      },
+      get hasFetchCallback() {
+        return Boolean(monitor.callbacks.onScheduleFetch);
+      },
+      onExecuteFetch: (force: boolean) => {
+        const cb = monitor.callbacks.onScheduleFetch;
+        if (!cb) return;
+        return cb(monitor.id, monitor._isCurrent, force);
+      },
+      onUpdate: () => monitor.emitUpdate(),
+    };
+    this.fetchScheduler = new FetchScheduler(fetchHost);
+
+    const resourceHost: ResourcePollTimerHost = {
+      get isRunning() {
+        return monitor._isRunning;
+      },
+      get hasResourceConfig() {
+        return monitor._hasResourceConfig;
+      },
+      get hasStatusCommand() {
+        return monitor._hasStatusCommand;
+      },
+      get resourcePollIntervalMs() {
+        return monitor.resourcePollIntervalMs;
+      },
+      get worktreeId() {
+        return monitor.id;
+      },
+      onResourceStatusPoll: (worktreeId: string) =>
+        monitor.callbacks.onResourceStatusPoll?.(worktreeId),
+    };
+    this.resourcePollTimer = new ResourcePollTimer(resourceHost);
+
+    const watcherHost: WatcherControllerHost = {
+      get isRunning() {
+        return monitor._isRunning;
+      },
+      get isCurrent() {
+        return monitor._isCurrent;
+      },
+      get gitWatchEnabled() {
+        return monitor.gitWatchEnabled;
+      },
+      get gitWatchDebounceMs() {
+        return monitor.gitWatchDebounceMs;
+      },
+      get worktreeId() {
+        return monitor.id;
+      },
+      get worktreePath() {
+        return monitor.path;
+      },
+      get branch() {
+        return monitor._branch;
+      },
+      get isUpdating() {
+        return monitor._isUpdating;
+      },
+      get lastGitStatusCompletedAt() {
+        return monitor.lastGitStatusCompletedAt;
+      },
+      onTriggerUpdate: () => {
+        void monitor.updateGitStatus(true);
+      },
+      onInotifyLimitReached: (worktreeId: string) =>
+        monitor.callbacks.onInotifyLimitReached?.(worktreeId),
+      onEmfileLimitReached: (worktreeId: string) =>
+        monitor.callbacks.onEmfileLimitReached?.(worktreeId),
+    };
+    this.watcherController = new WatcherController(watcherHost);
 
     this._isWslPath = Boolean(worktree.isWslPath);
     this._wslDistro = worktree.wslDistro;
@@ -386,9 +431,9 @@ export class WorktreeMonitor {
     // Re-tier the watcher granularity on focus change so background worktrees
     // drop their recursive watch and the newly-focused one arms it.
     if (changed && this._isRunning && this.gitWatchEnabled) {
-      const desired = this.desiredWatcherMode();
-      if (this.gitWatcherMode !== desired) {
-        this.updateWatcher();
+      const desired = this.watcherController.desiredMode();
+      if (this.watcherController.currentMode !== desired) {
+        this.watcherController.update();
         // Poll cadence depends on watcher mode + focus, so re-derive it.
         if (this.pollingTimer) {
           clearTimeout(this.pollingTimer);
@@ -402,8 +447,7 @@ export class WorktreeMonitor {
     // changes so the user sees fresh counts shortly after switching to a
     // worktree that hadn't been actively fetched.
     if (changed && this._isRunning) {
-      this.clearFetchTimer();
-      this.scheduleNextFetch(true);
+      this.fetchScheduler.reschedule(true);
     }
   }
 
@@ -436,7 +480,7 @@ export class WorktreeMonitor {
   }
 
   get hasWatcher(): boolean {
-    return this.gitWatcher.value !== undefined;
+    return this.watcherController.hasWatcher;
   }
 
   setIssueNumber(issueNumber: number | undefined): void {
@@ -590,34 +634,11 @@ export class WorktreeMonitor {
   }
 
   private scheduleResourcePoll(): void {
-    if (this.resourcePollTimer) return;
-    if (this.resourcePollIntervalMs <= 0 || !this._hasResourceConfig || !this._hasStatusCommand)
-      return;
-
-    this.resourcePollTimer = setTimeout(async () => {
-      this.resourcePollTimer = null;
-      if (
-        this._isRunning &&
-        this._hasResourceConfig &&
-        this._hasStatusCommand &&
-        this.resourcePollIntervalMs > 0
-      ) {
-        try {
-          await this.callbacks.onResourceStatusPoll?.(this.id);
-        } catch {
-          // Poll callback failure — swallowed intentionally
-        }
-        if (!this._isRunning) return;
-        this.scheduleResourcePoll();
-      }
-    }, this.resourcePollIntervalMs);
+    this.resourcePollTimer.schedule();
   }
 
   private clearResourcePollTimer(): void {
-    if (this.resourcePollTimer) {
-      clearTimeout(this.resourcePollTimer);
-      this.resourcePollTimer = null;
-    }
+    this.resourcePollTimer.clear();
   }
 
   get worktreeMode(): string {
@@ -672,14 +693,14 @@ export class WorktreeMonitor {
     this._pollAbortController = new AbortController();
 
     if (this.gitWatchEnabled) {
-      this.startWatcher();
+      this.watcherController.start();
     }
 
     await this.updateGitStatus(true);
 
     if (this._isRunning && this.pollingEnabled) {
       this.scheduleNextPoll();
-      this.scheduleNextFetch(true);
+      this.fetchScheduler.schedule(true);
     }
   }
 
@@ -693,7 +714,7 @@ export class WorktreeMonitor {
     this._pollAbortController = new AbortController();
 
     if (this.gitWatchEnabled) {
-      this.startWatcher();
+      this.watcherController.start();
     }
 
     // Skipping the initial git status scan is a perf optimization — freshly
@@ -709,7 +730,7 @@ export class WorktreeMonitor {
 
     if (this._isRunning && this.pollingEnabled) {
       this.scheduleNextPoll();
-      this.scheduleNextFetch(true);
+      this.fetchScheduler.schedule(true);
     }
   }
 
@@ -718,7 +739,7 @@ export class WorktreeMonitor {
     this._pollAbortController.abort();
     this._pollAbortController = new AbortController();
     this.clearTimers();
-    this.stopWatcher();
+    this.watcherController.stop();
   }
 
   /**
@@ -727,7 +748,7 @@ export class WorktreeMonitor {
    * coordinator still serializes against any in-flight fetch on the same repo.
    */
   triggerFetchNow(): Promise<void> {
-    return this.runFetch(true);
+    return this.fetchScheduler.triggerNow();
   }
 
   async refresh(): Promise<void> {
@@ -759,7 +780,7 @@ export class WorktreeMonitor {
     }
 
     this.scheduleResourcePoll();
-    this.scheduleNextFetch(true);
+    this.fetchScheduler.schedule(true);
   }
 
   getSnapshot(): WorktreeSnapshot {
@@ -816,7 +837,7 @@ export class WorktreeMonitor {
       // Read in-flight state authoritatively at snapshot time (lesson #1700)
       // so a snapshot emitted between fetch-start and fetch-end always
       // serializes the correct value, never a stale cached copy.
-      isFetchInFlight: this._pendingFetchPromise !== null || undefined,
+      isFetchInFlight: this.fetchScheduler.isFetchInFlight || undefined,
       isGitHubRemote: this._isGitHubRemote || undefined,
       isWslPath: this._isWslPath || undefined,
       wslDistro: this._wslDistro,
@@ -843,7 +864,7 @@ export class WorktreeMonitor {
   triggerRefreshIfUpdating(): void {
     invalidateGitStatusCache(this.path);
     if (this._isUpdating) {
-      this.gitWatchRefreshPending = true;
+      this.watcherController.markPending();
     } else {
       void this.updateGitStatus(true);
     }
@@ -865,228 +886,11 @@ export class WorktreeMonitor {
   }
 
   ensureWatcherState(): void {
-    if (!this.gitWatchEnabled && this.gitWatcher.value) {
-      this.stopWatcher();
-    } else if (this.gitWatchEnabled && this._isRunning && !this.gitWatcher.value) {
-      this.startWatcher();
-    } else if (
-      this.gitWatchEnabled &&
-      this._isRunning &&
-      this.gitWatcher.value &&
-      this.gitWatcherMode !== this.desiredWatcherMode()
-    ) {
-      // Existing watcher granularity disagrees with focus state — re-arm
-      // so the active worktree gets the recursive watcher and background
-      // worktrees stay on the cheap .git/-only watch.
-      this.updateWatcher();
-    }
+    this.watcherController.ensureState();
   }
 
   restartWatcherIfRunning(): void {
-    if (this.gitWatcher.value) {
-      this.updateWatcher();
-    }
-  }
-
-  // --- File watcher management ---
-
-  /**
-   * Start the git file watcher. The mode is tiered by `_isCurrent`: focused
-   * worktrees get the recursive watcher; background worktrees get only the
-   * cheap .git/ watchers, which still catch staging/commit/branch events
-   * without consuming inotify descriptors per worktree-tree node.
-   *
-   * On recursive failure (e.g. ENOSPC at startup), the per-file .git/
-   * watchers are preserved by immediately reconstructing in "git-only" mode.
-   */
-  private startWatcher(mode: "git-only" | "recursive" = this.desiredWatcherMode()): void {
-    if (!this._isRunning || !this.gitWatchEnabled || this.gitWatcher.value) {
-      return;
-    }
-
-    const watcher = new GitFileWatcher({
-      worktreePath: this.path,
-      branch: this._branch,
-      debounceMs: this.gitWatchDebounceMs,
-      onChange: () => this.handleGitFileChange(),
-      watchWorktree: mode === "recursive",
-      worktreeMinDebounceMs: WATCHER_WORKTREE_MIN_DEBOUNCE_MS,
-      worktreeMaxDebounceMs: WATCHER_WORKTREE_MAX_DEBOUNCE_MS,
-      worktreeMaxWaitMs: WATCHER_WORKTREE_MAX_WAIT_MS,
-      onWatcherFailed: () => this.handleWatcherFailed(),
-      onInotifyLimitReached: () => this.callbacks.onInotifyLimitReached?.(this.id),
-      onEmfileLimitReached: () => this.callbacks.onEmfileLimitReached?.(this.id),
-    });
-
-    const started = watcher.start();
-    if (started) {
-      this.gitWatcher.value = toDisposable(() => watcher.dispose());
-      this.gitWatcherMode = mode;
-      // Only a successful recursive arm clears the retry budget. Installing
-      // git-only is a degradation, not a recovery.
-      if (mode === "recursive") {
-        this.watcherRetryCount = 0;
-      }
-    } else {
-      watcher.dispose();
-      if (mode === "recursive") {
-        // The recursive watcher fires `onWatcherFailed` synchronously on
-        // startup ENOSPC/EMFILE before returning false, so handleWatcherFailed
-        // may have already installed a git-only fallback by this point. Only
-        // attempt the downgrade ourselves when no degraded watcher exists.
-        if (!this.gitWatcher.value) {
-          this.startWatcher("git-only");
-        }
-        // Background worktrees don't want recursive at all, so don't keep
-        // poking at it; the next focus flip re-arms via the isCurrent setter.
-        if (this._isCurrent) {
-          this.scheduleWatcherRetry();
-        }
-      } else {
-        // git-only itself failed (e.g. getGitDir returned null). Stay dark
-        // and let the polling fallback cover it; no retry loop.
-        this.gitWatcherMode = "none";
-      }
-    }
-  }
-
-  private desiredWatcherMode(): "git-only" | "recursive" {
-    return this._isCurrent ? "recursive" : "git-only";
-  }
-
-  /**
-   * Poll cadence is mode-aware. Recursive coverage keeps the heartbeat at
-   * 30s; git-only on the active worktree tightens to 10s so mid-edit
-   * changes that bypass .git/ are still picked up promptly; background
-   * git-only stays at 30s; no watcher falls back to the adaptive strategy.
-   */
-  private computeWatcherPollInterval(): number {
-    switch (this.gitWatcherMode) {
-      case "recursive":
-        return WATCHER_FALLBACK_POLL_INTERVAL_MS;
-      case "git-only":
-        return this._isCurrent
-          ? WATCHER_GIT_ONLY_ACTIVE_POLL_INTERVAL_MS
-          : WATCHER_FALLBACK_POLL_INTERVAL_MS;
-      case "none":
-      default:
-        return this.pollingStrategy.calculateNextInterval();
-    }
-  }
-
-  /**
-   * Tear down the watcher. The recursive-retry budget (timer + counter) is
-   * separate from the watcher instance and survives benign rotations like
-   * focus changes, branch checkouts, and mode upgrades; only a true shutdown
-   * (`stop()`) or a feature disable (`gitWatchEnabled` flipped off via
-   * `ensureWatcherState`) should reset it.
-   */
-  private stopWatcher(resetRetryBudget: boolean = true): void {
-    this.gitWatcher.clear();
-    this.gitWatcherMode = "none";
-    if (this.gitWatchDebounceTimer) {
-      clearTimeout(this.gitWatchDebounceTimer);
-      this.gitWatchDebounceTimer = null;
-    }
-    if (resetRetryBudget) {
-      if (this.watcherRetryTimer) {
-        clearTimeout(this.watcherRetryTimer);
-        this.watcherRetryTimer = null;
-      }
-      this.watcherRetryCount = 0;
-    }
-    this.gitWatchRefreshPending = false;
-  }
-
-  private updateWatcher(): void {
-    // Rotation, not shutdown — keep the recursive retry budget intact so a
-    // user-triggered refresh or a branch checkout doesn't grant the failing
-    // recursive arm a fresh 5-attempt budget on the same constrained kernel.
-    this.stopWatcher(false);
-    if (this._isRunning && this.gitWatchEnabled) {
-      this.startWatcher();
-    }
-  }
-
-  /**
-   * Recursive watcher reported a runtime failure. Preserve the cheap .git/
-   * watchers by reconstructing in "git-only" mode, then schedule a retry of
-   * the recursive arm on the active worktree only.
-   */
-  private handleWatcherFailed(): void {
-    this.gitWatcher.clear();
-    this.gitWatcherMode = "none";
-    this.startWatcher("git-only");
-    if (this._isCurrent) {
-      this.scheduleWatcherRetry();
-    }
-  }
-
-  private scheduleWatcherRetry(): void {
-    if (!this._isRunning || !this.gitWatchEnabled || this.watcherRetryTimer || !this._isCurrent) {
-      return;
-    }
-
-    this.watcherRetryCount++;
-    if (this.watcherRetryCount > WATCHER_MAX_RETRIES) {
-      return;
-    }
-
-    this.watcherRetryTimer = setTimeout(() => {
-      this.watcherRetryTimer = null;
-      if (
-        this._isRunning &&
-        this.gitWatchEnabled &&
-        this._isCurrent &&
-        this.gitWatcherMode !== "recursive"
-      ) {
-        // Drop any current git-only instance so startWatcher's idempotent
-        // guard doesn't bail; reconstruction installs the recursive variant.
-        this.gitWatcher.clear();
-        this.gitWatcherMode = "none";
-        this.startWatcher("recursive");
-      }
-    }, WATCHER_RETRY_INTERVAL_MS);
-  }
-
-  private handleGitFileChange(): void {
-    if (!this._isRunning) {
-      return;
-    }
-
-    if (!this._isUpdating) {
-      const msSinceLastStatus = Date.now() - this.lastGitStatusCompletedAt;
-      if (msSinceLastStatus < GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS) {
-        this.gitWatchRefreshPending = true;
-        return;
-      }
-    }
-
-    this.gitWatchRefreshPending = true;
-    invalidateGitStatusCache(this.path);
-
-    if (this._isUpdating) {
-      if (this.gitWatchDebounceTimer) {
-        clearTimeout(this.gitWatchDebounceTimer);
-      }
-      this.gitWatchDebounceTimer = setTimeout(() => {
-        this.gitWatchDebounceTimer = null;
-        this.flushPendingGitWatchRefresh();
-      }, this.gitWatchDebounceMs);
-      return;
-    }
-
-    this.flushPendingGitWatchRefresh();
-  }
-
-  private flushPendingGitWatchRefresh(): void {
-    if (!this._isRunning || this._isUpdating || !this.gitWatchRefreshPending) {
-      return;
-    }
-
-    this.gitWatchRefreshPending = false;
-    invalidateGitStatusCache(this.path);
-    void this.updateGitStatus(true);
+    this.watcherController.restartIfRunning();
   }
 
   // --- Timers ---
@@ -1100,84 +904,9 @@ export class WorktreeMonitor {
       clearTimeout(this.resumeTimer);
       this.resumeTimer = null;
     }
-    if (this.watcherRetryTimer) {
-      clearTimeout(this.watcherRetryTimer);
-      this.watcherRetryTimer = null;
-    }
+    this.watcherController.clearRetryTimer();
     this.clearResourcePollTimer();
-    this.clearFetchTimer();
-  }
-
-  private clearFetchTimer(): void {
-    if (this.fetchTimer) {
-      clearTimeout(this.fetchTimer);
-      this.fetchTimer = null;
-    }
-  }
-
-  private scheduleNextFetch(initial: boolean = false): void {
-    if (!this._isRunning) return;
-    if (!this.callbacks.onScheduleFetch) return;
-    if (this.fetchTimer) return;
-
-    const delay = initial
-      ? randomBetween(FETCH_INITIAL_DELAY_MIN_MS, FETCH_INITIAL_DELAY_MAX_MS)
-      : this._isCurrent
-        ? randomBetween(FETCH_INTERVAL_FOCUSED_MIN_MS, FETCH_INTERVAL_FOCUSED_MAX_MS)
-        : randomBetween(FETCH_INTERVAL_BACKGROUND_MIN_MS, FETCH_INTERVAL_BACKGROUND_MAX_MS);
-
-    this.fetchTimer = setTimeout(() => {
-      this.fetchTimer = null;
-      if (!this._isRunning) return;
-      void this.runFetch(false);
-    }, delay);
-  }
-
-  private async runFetch(force: boolean): Promise<void> {
-    if (!this._isRunning) return;
-    if (!this.callbacks.onScheduleFetch) return;
-    if (this._pendingFetchPromise) {
-      // A fetch is already in-flight. Drop non-force duplicates, but defer a
-      // force request so wake / auth-rotation can still bypass the failure
-      // cache once the current fetch lands.
-      if (force) {
-        this._pendingForceFetch = true;
-        await this._pendingFetchPromise;
-      }
-      return;
-    }
-
-    const run = Promise.resolve(this.callbacks.onScheduleFetch(this.id, this._isCurrent, force))
-      .catch(() => {
-        // Coordinator handles classification; monitor doesn't surface fetch
-        // errors directly — they don't block local-status updates.
-      })
-      .finally(() => {
-        this._pendingFetchPromise = null;
-        const queuedForce = this._pendingForceFetch;
-        this._pendingForceFetch = false;
-        // Emit so `isFetchInFlight` flips back to false on the renderer.
-        // `WorkspaceService` will follow up with the freshly-resolved
-        // `lastFetchedAt`/`fetchAuthFailed` via `setFetchState`, which emits
-        // again only if those values changed.
-        if (this._hasInitialStatus) {
-          this.emitUpdate();
-        }
-        if (this._isRunning) {
-          if (queuedForce) {
-            void this.runFetch(true);
-          } else {
-            this.scheduleNextFetch(false);
-          }
-        }
-      });
-    this._pendingFetchPromise = run;
-    // Surface the in-flight transition immediately so the card pulses while
-    // git is talking to the remote, without waiting for a status poll.
-    if (this._hasInitialStatus) {
-      this.emitUpdate();
-    }
-    await run;
+    this.fetchScheduler.clearTimer();
   }
 
   private scheduleCircuitBreakerRetry(): void {
@@ -1221,7 +950,9 @@ export class WorktreeMonitor {
       return;
     }
 
-    const baseInterval = this.computeWatcherPollInterval();
+    const baseInterval = this.watcherController.pollIntervalMs(() =>
+      this.pollingStrategy.calculateNextInterval()
+    );
     const jitterRange = Math.min(2000, Math.floor(baseInterval * 0.2));
     const jitter = jitterRange > 0 ? Math.floor(Math.random() * jitterRange) : 0;
     const delayMs = baseInterval + jitter;
@@ -1298,7 +1029,7 @@ export class WorktreeMonitor {
         // Force a status refresh when the active worktree lacks recursive
         // coverage — both no-watcher and git-only modes can miss mid-edit
         // changes that haven't reached .git/ yet.
-        const forceRefresh = this._isCurrent && this.gitWatcherMode !== "recursive";
+        const forceRefresh = this._isCurrent && this.watcherController.currentMode !== "recursive";
         await this.updateGitStatus(forceRefresh);
         this.pollingStrategy.recordSuccess(Date.now() - startTime, queueDelayMs);
       } catch (_error) {
@@ -1393,10 +1124,10 @@ export class WorktreeMonitor {
       const branchChanged = currentBranch !== undefined && currentBranch !== this._branch;
       if (branchChanged) {
         this._branch = currentBranch;
-        const hadPendingRefresh = this.gitWatchRefreshPending;
-        this.updateWatcher();
+        const hadPendingRefresh = this.watcherController.takePending();
+        this.watcherController.update();
         if (hadPendingRefresh) {
-          this.gitWatchRefreshPending = true;
+          this.watcherController.markPending();
         }
         const syncIssueNumber = extractIssueNumberSync(currentBranch, this._name);
         if (syncIssueNumber) {
@@ -1503,13 +1234,8 @@ export class WorktreeMonitor {
 
       const errorMessage = (error as Error).message || "";
       if (errorMessage.includes("index.lock")) {
-        this.gitWatchRefreshPending = true;
-        if (!this.gitWatchDebounceTimer) {
-          this.gitWatchDebounceTimer = setTimeout(() => {
-            this.gitWatchDebounceTimer = null;
-            this.flushPendingGitWatchRefresh();
-          }, this.gitWatchDebounceMs);
-        }
+        this.watcherController.markPending();
+        this.watcherController.scheduleDelayedFlush();
         return;
       }
 
@@ -1519,9 +1245,7 @@ export class WorktreeMonitor {
     } finally {
       this._isUpdating = false;
       this.lastGitStatusCompletedAt = Date.now();
-      if (this.gitWatchRefreshPending && !this.gitWatchDebounceTimer) {
-        this.flushPendingGitWatchRefresh();
-      }
+      this.watcherController.flushPendingIfReady(true);
     }
   }
 
