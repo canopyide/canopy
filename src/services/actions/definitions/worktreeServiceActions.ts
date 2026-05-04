@@ -6,7 +6,7 @@ import { worktreeClient } from "@/clients";
 
 export function registerWorktreeServiceActions(
   actions: ActionRegistry,
-  callbacks: ActionCallbacks
+  _callbacks: ActionCallbacks
 ): void {
   actions.set("worktree.refresh", () => ({
     id: "worktree.refresh",

@@ -30,7 +30,7 @@ function notifyWorktreeResourceError(err: unknown, title: string, fallbackMessag
 
 export function registerWorktreeResourceActions(
   actions: ActionRegistry,
-  _callbacks: ActionCallbacks
+  callbacks: ActionCallbacks
 ): void {
   actions.set("worktree.resource.provision", () =>
     defineAction({
@@ -240,7 +240,7 @@ export function registerWorktreeResourceActions(
         if (!connectCommand)
           throw new Error("No resource connect command configured for this worktree");
 
-        await _callbacks.onAddTerminal({
+        await callbacks.onAddTerminal({
           kind: "terminal",
           cwd: worktree.path,
           command: connectCommand,
