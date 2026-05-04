@@ -738,5 +738,47 @@ describe("WelcomeScreen", () => {
 
       expect(screen.getByText("Getting Started")).toBeTruthy();
     });
+
+    it("falls through to the checklist when scan finished but no agents are launchable", () => {
+      agentDiscoveryState.loaded = true;
+      agentDiscoveryState.setupBannerDismissed = true;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "missing", codex: "missing" };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
+      expect(screen.getByText("Getting Started")).toBeTruthy();
+    });
+
+    it("falls through to the checklist when an agent is already pinned", () => {
+      agentDiscoveryState.loaded = true;
+      agentDiscoveryState.setupBannerDismissed = true;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "ready" };
+      agentSettingsState.settings = { agents: { claude: { pinned: true } } };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
+      expect(screen.getByText("Getting Started")).toBeTruthy();
+    });
+
+    it("renders nothing while onboarding state is hydrating", () => {
+      agentDiscoveryState.loaded = false;
+      agentDiscoveryState.setupBannerDismissed = false;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "ready" };
+      agentSettingsState.settings = { agents: {} };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.queryByTestId("agent-setup-banner")).toBeNull();
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
+      expect(screen.queryByText("Getting Started")).toBeNull();
+    });
   });
 });

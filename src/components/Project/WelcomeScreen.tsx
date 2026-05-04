@@ -182,6 +182,19 @@ function NudgeSequencer({
 }) {
   const { loaded, setupBannerDismissed, welcomeCardDismissed } = useAgentDiscoveryOnboarding();
   const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
+  const availability = useCliAvailabilityStore((s) => s.availability);
+  const agentSettings = useAgentSettingsStore((s) => s.settings);
+
+  // Mirror AgentWelcomeCard's render predicate so that when the card would
+  // return null (no launchable agents, or any built-in already pinned) we
+  // fall through to the checklist instead of silently suppressing it.
+  const welcomeCardEligible = useMemo(() => {
+    if (!hasRealData || welcomeCardDismissed) return false;
+    const hasReady = BUILT_IN_AGENT_IDS.some((id) => isAgentLaunchable(availability?.[id]));
+    if (!hasReady) return false;
+    const hasPinned = BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agentSettings?.agents?.[id]));
+    return !hasPinned;
+  }, [hasRealData, welcomeCardDismissed, availability, agentSettings]);
 
   // Wait for hydration so we don't briefly render setup banner before its
   // persisted dismiss flag arrives, then flip to a different nudge.
@@ -189,10 +202,7 @@ function NudgeSequencer({
 
   if (!setupBannerDismissed) return <AgentSetupBannerCard />;
 
-  // Defer to the welcome card only when it could actually render (we have
-  // availability data). Otherwise fall through so the checklist isn't
-  // suppressed for users with no installed agents.
-  if (hasRealData && !welcomeCardDismissed) return <AgentWelcomeCard />;
+  if (welcomeCardEligible) return <AgentWelcomeCard />;
 
   if (showChecklist && checklist) {
     return (
