@@ -1,10 +1,9 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { X, ArrowLeft } from "lucide-react";
+import { Settings2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
 import { MissingCliGate } from "@/components/Terminal/MissingCliGate";
-import { HelpAgentPicker } from "./HelpAgentPicker";
 import { HelpIntroBanner } from "./HelpIntroBanner";
 import {
   useHelpPanelStore,
@@ -103,6 +102,23 @@ async function provisionHelpSession(): Promise<ProvisionOutcome | null> {
   }
 }
 
+// Fetches the user-configured custom CLI args from helpAssistant settings and
+// splits them into a flag array. Settings are loaded at launch time (not at
+// render) so changes in the Daintree Assistant settings tab take effect on the
+// next launch without remounting the panel. Errors are logged and treated as
+// "no custom flags" so a settings IPC failure can't block the assistant.
+async function loadCustomLaunchFlags(): Promise<string[]> {
+  try {
+    const settings = await window.electron.helpAssistant.getSettings();
+    const raw = settings.customArgs?.trim();
+    if (!raw) return [];
+    return raw.split(/\s+/).filter(Boolean);
+  } catch (err) {
+    logError("Failed to load helpAssistant customArgs", err);
+    return [];
+  }
+}
+
 function buildHelpEnv(
   session: HelpSessionRef | null,
   projectId: string | null
@@ -143,7 +159,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
   const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
   const animateWidth = !isResizing && !reduceAnimations;
   const isVisible = effectiveWidth > 0;
-  const [pendingAction, setPendingAction] = useState<"close" | "back" | null>(null);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const {
     isOpen,
@@ -155,7 +171,6 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
     setWidth,
     setOpen,
     clearTerminal,
-    clearPreferredAgent,
     dismissIntro,
   } = useHelpPanelStore();
 
@@ -168,9 +183,9 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
   const agentConfig = agentId ? getAgentConfig(agentId) : undefined;
 
   // Intersection of "wired for the assistant overlay" and "CLI is installed".
-  // Drives the picker's visible options and the single-supported-agent
-  // auto-skip effect below. Recomputes only when availability or load state
-  // changes — `getAssistantSupportedAgentIds()` reads from a static registry.
+  // Drives the single-supported-agent auto-skip effect below. Recomputes only
+  // when availability or load state changes — `getAssistantSupportedAgentIds()`
+  // reads from a static registry.
   const supportedInstalledAgentIds = useMemo(() => {
     if (!cliHasRealData) return [];
     return getAssistantSupportedAgentIds().filter((id) => isAgentInstalled(cliAvailability[id]));
@@ -252,6 +267,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
         const cwd = session?.sessionPath ?? folderPath;
         const projectId = useProjectStore.getState().currentProject?.id ?? null;
         const env = buildHelpEnv(session, projectId);
+        const customLaunchFlags = await loadCustomLaunchFlags();
 
         const result = await actionService.dispatch<{ terminalId: string | null }>(
           "agent.launch",
@@ -261,15 +277,16 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
             cwd,
             ephemeral: true,
             ...(env && { env }),
+            ...(customLaunchFlags.length > 0 && { agentLaunchFlags: customLaunchFlags }),
           },
           { source: "user" }
         );
 
-        // Stale-launch guard: if the user navigated back to the picker or
-        // switched preferred agent while the IPC was in flight, discard
-        // this result and clean up the spawned panel rather than reviving
-        // a stale terminal. Reset hasAutoLaunched so the next preferred
-        // agent (if any) can auto-launch on the next effect tick.
+        // Stale-launch guard: if the user changed the preferred agent
+        // (via the settings tab) while the IPC was in flight, discard this
+        // result and clean up the spawned panel rather than reviving a
+        // stale terminal. Reset hasAutoLaunched so the new preferred
+        // agent can auto-launch on the next effect tick.
         const currentPreferred = useHelpPanelStore.getState().preferredAgentId;
         if (currentPreferred !== launchAgentId) {
           if (result.ok && result.result?.terminalId) {
@@ -290,9 +307,9 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
           return;
         }
 
-        // Stale-launch guard: handleClose / handleBack revoked the pending
-        // session via revokePendingSession (clearing the ref). Drop the orphan
-        // terminal rather than binding a panel to a revoked token.
+        // Stale-launch guard: handleClose revoked the pending session via
+        // revokePendingSession (clearing the ref). Drop the orphan terminal
+        // rather than binding a panel to a revoked token.
         const expectedSessionId = session?.sessionId ?? null;
         if (expectedSessionId && pendingSessionIdRef.current !== expectedSessionId) {
           usePanelStore.getState().removePanel(result.result.terminalId);
@@ -395,7 +412,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
           // Reset the auto-launch gate so a recovered MCP can re-launch on
           // the next render — the single-supported-agent useEffect uses
           // this same ref to one-shot itself, so without the reset the
-          // user is stuck on the picker until they close and reopen.
+          // panel is stuck on the empty state until close/reopen.
           hasAutoLaunched.current = false;
           if (outcome.code === "MCP_NOT_READY") {
             notifyMcpNotReady(outcome.message);
@@ -409,6 +426,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
         const cwd = session?.sessionPath ?? folderPath;
         const projectId = useProjectStore.getState().currentProject?.id ?? null;
         const env = buildHelpEnv(session, projectId);
+        const customLaunchFlags = await loadCustomLaunchFlags();
 
         const result = await actionService.dispatch<{ terminalId: string | null }>(
           "agent.launch",
@@ -418,6 +436,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
             cwd,
             ephemeral: true,
             ...(env && { env }),
+            ...(customLaunchFlags.length > 0 && { agentLaunchFlags: customLaunchFlags }),
           },
           { source: "user" }
         );
@@ -431,9 +450,9 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
           return;
         }
 
-        // Stale-launch guard: if handleClose / handleBack revoked the pending
-        // session while dispatch was in-flight, the session is dead. Drop the
-        // orphan terminal rather than binding a panel to a revoked token.
+        // Stale-launch guard: if handleClose revoked the pending session while
+        // dispatch was in-flight, the session is dead. Drop the orphan terminal
+        // rather than binding a panel to a revoked token.
         const expectedSessionId = session?.sessionId ?? null;
         if (expectedSessionId && pendingSessionIdRef.current !== expectedSessionId) {
           usePanelStore.getState().removePanel(result.result.terminalId);
@@ -454,11 +473,12 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
     [removePanel, clearTerminal]
   );
 
-  // Single-supported-agent auto-skip: when only one assistant-supported agent
-  // is installed and there's no persisted preference, skip the picker and
-  // launch directly. Mutually exclusive with the preferred-agent auto-launch
-  // (which only runs when `preferredAgentId` is set), so they share the same
-  // `hasAutoLaunched` ref to prevent any double-fire.
+  // Single-supported-agent auto-launch: when only one assistant-supported
+  // agent is installed and there's no persisted preference, launch it
+  // directly instead of showing the empty "open settings" state. Mutually
+  // exclusive with the preferred-agent auto-launch (which only runs when
+  // `preferredAgentId` is set), so they share the same `hasAutoLaunched`
+  // ref to prevent any double-fire.
   useEffect(() => {
     if (!isOpen || terminalId || preferredAgentId || hasAutoLaunched.current) return;
     if (supportedInstalledAgentIds.length !== 1) return;
@@ -478,17 +498,6 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
     supportedInstalledAgentIds,
     handleSelectAgent,
   ]);
-
-  const doBack = useCallback(() => {
-    const { sessionId } = useHelpPanelStore.getState();
-    if (terminalId) {
-      removePanel(terminalId);
-    }
-    revokeHelpSession(sessionId);
-    revokePendingSession();
-    hasAutoLaunched.current = false;
-    clearPreferredAgent();
-  }, [terminalId, removePanel, clearPreferredAgent, revokePendingSession]);
 
   const doClose = useCallback(() => {
     const { sessionId } = useHelpPanelStore.getState();
@@ -511,31 +520,25 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
     terminal?.agentState !== undefined &&
     CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState);
 
-  const handleBack = useCallback(() => {
-    if (shouldConfirmClose) {
-      setPendingAction("back");
-      return;
-    }
-    doBack();
-  }, [shouldConfirmClose, doBack]);
-
   const handleClose = useCallback(() => {
     if (shouldConfirmClose) {
-      setPendingAction("close");
+      setShowCloseConfirm(true);
       return;
     }
     doClose();
   }, [shouldConfirmClose, doClose]);
 
-  const handleConfirmPendingAction = useCallback(() => {
-    const action = pendingAction;
-    setPendingAction(null);
-    if (action === "close") doClose();
-    else if (action === "back") doBack();
-  }, [pendingAction, doClose, doBack]);
+  const handleConfirmClose = useCallback(() => {
+    setShowCloseConfirm(false);
+    doClose();
+  }, [doClose]);
 
-  const handleCancelPendingAction = useCallback(() => {
-    setPendingAction(null);
+  const handleCancelClose = useCallback(() => {
+    setShowCloseConfirm(false);
+  }, []);
+
+  const handleOpenSettings = useCallback(() => {
+    void actionService.dispatch("app.settings.openTab", { tab: "assistant" }, { source: "user" });
   }, []);
 
   // Esc-to-close. The xterm-helper-textarea check lets Escape reach the
@@ -675,16 +678,6 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
 
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-daintree-border shrink-0">
-        {showTerminal && supportedInstalledAgentIds.length > 1 && (
-          <button
-            type="button"
-            onClick={handleBack}
-            className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors"
-            aria-label="Back to agent picker"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-          </button>
-        )}
         <div className="flex items-center min-w-0 flex-1">
           <DaintreeIcon className="w-4 h-4 text-daintree-text/50 shrink-0" />
           <span className="ml-1.5 text-xs font-medium text-daintree-text/70 truncate">
@@ -728,10 +721,25 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
             </>
           )
         ) : (
-          <HelpAgentPicker
-            onSelectAgent={handleSelectAgent}
-            supportedAgentIds={supportedInstalledAgentIds}
-          />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
+            <p className="text-sm text-daintree-text/70">No assistant agent configured.</p>
+            <p className="text-xs text-daintree-text/50 max-w-[28ch]">
+              Pick an agent and customize launch flags in the Daintree Assistant settings tab.
+            </p>
+            <button
+              type="button"
+              onClick={handleOpenSettings}
+              className={cn(
+                "mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)]",
+                "text-xs font-medium border border-daintree-border text-daintree-text/80",
+                "hover:bg-overlay-soft hover:text-daintree-text transition-colors",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+              )}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>Open assistant settings</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -756,16 +764,12 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
       )}
 
       <ConfirmDialog
-        isOpen={pendingAction !== null}
+        isOpen={showCloseConfirm}
         title="Stop this agent?"
-        description={
-          pendingAction === "back"
-            ? "The agent is currently working. Switching agents will stop it."
-            : "The agent is currently working. Closing the assistant panel will stop it."
-        }
-        confirmLabel={pendingAction === "back" ? "Stop and switch" : "Stop and close"}
-        onConfirm={handleConfirmPendingAction}
-        onClose={handleCancelPendingAction}
+        description="The agent is currently working. Closing the assistant panel will stop it."
+        confirmLabel="Stop and close"
+        onConfirm={handleConfirmClose}
+        onClose={handleCancelClose}
         variant="destructive"
       />
     </aside>

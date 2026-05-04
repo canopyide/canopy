@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -8,16 +8,20 @@ import {
   KeyRound,
   RefreshCw,
   ShieldAlert,
+  Sliders,
   Wrench,
 } from "lucide-react";
 import { DaintreeIcon, McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "./SettingsSection";
+import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
 import { logError } from "@/utils/logger";
+import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
+import { useHelpPanelStore } from "@/store/helpPanelStore";
 import type { HelpAssistantSettings } from "@shared/types";
 
 const COPY_RESET_DELAY_MS = 2000;
@@ -27,6 +31,7 @@ const DEFAULT_SETTINGS: HelpAssistantSettings = {
   daintreeControl: true,
   skipPermissions: false,
   auditRetention: 7,
+  customArgs: "",
 };
 
 interface McpStatusSnapshot {
@@ -48,6 +53,20 @@ export function DaintreeAssistantSettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const preferredAgentId = useHelpPanelStore((s) => s.preferredAgentId);
+  const setPreferredAgent = useHelpPanelStore((s) => s.setPreferredAgent);
+
+  const agentOptions = useMemo(() => {
+    return getAssistantSupportedAgentIds().map((id) => ({
+      value: id,
+      label: getAgentConfig(id)?.name ?? id,
+    }));
+  }, []);
+  // Track the persisted choice exactly — falling back to a default would visually
+  // suggest a value is set when it isn't, leaving onChange unfired and the help
+  // panel still in its empty state. The placeholder makes "no selection" explicit.
+  const agentSelectValue = preferredAgentId ?? "";
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +180,20 @@ export function DaintreeAssistantSettingsTab() {
     [persist]
   );
 
+  const handleAgentChange = useCallback(
+    (value: string) => {
+      setPreferredAgent(value || null);
+    },
+    [setPreferredAgent]
+  );
+
+  const handleCustomArgsChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      void persist({ customArgs: event.target.value });
+    },
+    [persist]
+  );
+
   const handleRotateKey = useCallback(async () => {
     try {
       const key = await window.electron.mcpServer.rotateApiKey();
@@ -208,6 +241,42 @@ export function DaintreeAssistantSettingsTab() {
           </p>
         </div>
       </header>
+
+      {/* Agent */}
+      <SettingsSection
+        icon={Sliders}
+        title="Agent"
+        description="Pick which CLI runs the assistant and pass extra flags at launch."
+      >
+        <SettingsSelect
+          label="Agent"
+          description="The CLI launched when you open the Daintree Assistant."
+          value={agentSelectValue}
+          onValueChange={handleAgentChange}
+          options={agentOptions}
+          placeholder="Choose an agent"
+          disabled={loading || agentOptions.length === 0}
+        />
+        <SettingsInput
+          label="Custom CLI args"
+          description={
+            <>
+              Whitespace-separated flags appended to the launch command — e.g.{" "}
+              <code className="font-mono text-[11px]">--model sonnet</code>. Applies to new
+              assistant sessions.
+            </>
+          }
+          type="text"
+          spellCheck={false}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          placeholder="--model sonnet"
+          value={settings.customArgs}
+          onChange={handleCustomArgsChange}
+          disabled={loading}
+        />
+      </SettingsSection>
 
       {/* Behavior */}
       <SettingsSection
