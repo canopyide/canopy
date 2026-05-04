@@ -16,7 +16,6 @@ import { DockedTabGroup } from "./DockedTabGroup";
 import { TrashContainer } from "./TrashContainer";
 import { WaitingContainer } from "./WaitingContainer";
 import { BackgroundContainer } from "./BackgroundContainer";
-import { HelpAgentDockButton } from "./HelpAgentDockButton";
 import { DockLaunchButton } from "./DockLaunchButton";
 import {
   DockLaunchMenuItems,
@@ -342,11 +341,6 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
             <BackgroundContainer compact={isCompact} />
             <WaitingContainer compact={isCompact} />
             <TrashContainer trashedTerminals={trashedItems} compact={isCompact} />
-          </div>
-
-          {/* Right-aligned cluster: help */}
-          <div className="ml-auto shrink-0 flex items-center gap-2">
-            <HelpAgentDockButton />
           </div>
         </div>
       </ContextMenuTrigger>

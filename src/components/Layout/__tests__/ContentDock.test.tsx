@@ -40,12 +40,10 @@ describe("ContentDock regression test", () => {
     const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
 
     const launchIdx = content.indexOf("<DockLaunchButton");
-    const helpIdx = content.indexOf("<HelpAgentDockButton");
     const trashIdx = content.indexOf("<TrashContainer");
 
     expect(launchIdx).toBeGreaterThan(0);
     expect(launchIdx).toBeLessThan(trashIdx);
-    expect(launchIdx).toBeLessThan(helpIdx);
   });
 
   // Issue #6428 — accent ring on isOver was a restraint violation; replace with neutral.
