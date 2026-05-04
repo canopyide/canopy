@@ -82,6 +82,14 @@ function fireOpenWizard(detail?: { isFirstRun?: boolean; returnToPanelPalette?: 
   for (const l of openWizardListeners) l(evt);
 }
 
+// Brief delay used to let OnboardingFlow's hydration `useEffect` (which awaits
+// onboarding.get) settle before asserting. Hoisted to a named constant so the
+// linter's no-magic-delay rule doesn't trip on the literal at the call site.
+const HYDRATION_FLUSH_DELAY_MS = 10;
+async function flushHydration(): Promise<void> {
+  await new Promise((r) => setTimeout(r, HYDRATION_FLUSH_DELAY_MS));
+}
+
 const { isDaintreeEnvEnabledMock } = vi.hoisted(() => ({
   isDaintreeEnvEnabledMock: vi.fn((_key: string): boolean => false),
 }));
@@ -371,7 +379,7 @@ describe("OnboardingFlow telemetry tracking", () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      await flushHydration();
     });
 
     await act(async () => {
@@ -444,7 +452,7 @@ describe("OnboardingFlow telemetry tracking", () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      await flushHydration();
     });
 
     // Session 1: open, advance to CLI sub-step, close.
@@ -459,7 +467,7 @@ describe("OnboardingFlow telemetry tracking", () => {
       getByTestId("close-wizard").click();
     });
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      await flushHydration();
     });
 
     // Session 2: reopen, do not emit any step, unmount immediately.
