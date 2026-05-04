@@ -8,6 +8,7 @@ import {
   agentStateDotColor,
   getDominantAgentState,
 } from "../AgentStatusIndicator";
+import { STATE_PRIORITY } from "../terminalStateConfig";
 import type { AgentState } from "@/types";
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -143,6 +144,29 @@ describe("getDominantAgentState", () => {
   it("returns waiting when a worktree mixes completed and waiting (waiting outranks completed)", () => {
     expect(getDominantAgentState(["completed", "waiting"])).toBe("waiting");
     expect(getDominantAgentState(["waiting", "completed"])).toBe("waiting");
+  });
+});
+
+// STATE_PRIORITY is consumed directly by WorktreeHeader, WorktreeTerminalSection,
+// and (via getDominantAgentState) every tray/button surface — a silent reorder
+// or omission here would drift behavior across all of them at once. These
+// invariants pin the array shape so the function-level tests above can't be
+// the only thing standing between the source of truth and the UI.
+describe("STATE_PRIORITY contract", () => {
+  it("includes every AgentState exactly once", () => {
+    const all: AgentState[] = ["working", "directing", "waiting", "completed", "exited", "idle"];
+    expect([...STATE_PRIORITY].sort()).toEqual([...all].sort());
+    expect(STATE_PRIORITY.length).toBe(new Set(STATE_PRIORITY).size);
+  });
+
+  it.each([
+    ["working", "directing"],
+    ["directing", "waiting"],
+    ["waiting", "completed"],
+    ["completed", "exited"],
+    ["exited", "idle"],
+  ] as const)("ranks %s above %s", (higher, lower) => {
+    expect(STATE_PRIORITY.indexOf(higher)).toBeLessThan(STATE_PRIORITY.indexOf(lower));
   });
 });
 
