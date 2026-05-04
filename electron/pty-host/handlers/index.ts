@@ -26,7 +26,11 @@ export { mapTerminalInfo, narrowDetectedAgentId } from "./terminalInfo.js";
 export function createPtyHostMessageDispatcher(
   ctx: HostContext
 ): (msg: any, ports?: MessagePort[]) => void | Promise<void> {
-  const handlers: HandlerMap = {
+  // Use a null-prototype map so message types that collide with
+  // Object.prototype keys (e.g. "constructor", "toString") fall through to
+  // the unknown-message warning rather than silently dispatching to an
+  // inherited method. The original switch had no such cases either.
+  const handlers: HandlerMap = Object.assign(Object.create(null) as HandlerMap, {
     ...createConnectionHandlers(ctx),
     ...createLifecycleHandlers(ctx),
     ...createTerminalIOHandlers(ctx),
@@ -34,12 +38,14 @@ export function createPtyHostMessageDispatcher(
     ...createTerminalQueryHandlers(ctx),
     ...createStateConfigHandlers(ctx),
     ...createResourceConfigHandlers(ctx),
-  };
+  });
 
   return (msg: any, ports?: MessagePort[]) => {
-    const handler: PtyHostHandler | undefined = handlers[msg?.type];
+    const type = msg?.type;
+    const handler: PtyHostHandler | undefined =
+      typeof type === "string" ? handlers[type] : undefined;
     if (!handler) {
-      console.warn("[PtyHost] Unknown message type:", msg?.type);
+      console.warn("[PtyHost] Unknown message type:", type);
       return;
     }
     return handler(msg, ports);

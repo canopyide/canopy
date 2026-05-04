@@ -121,6 +121,23 @@ describe("createPtyHostMessageDispatcher", () => {
     expect(warn).toHaveBeenCalledWith("[PtyHost] Unknown message type:", "no-such-message");
   });
 
+  it("treats prototype-chain keys as unknown message types", () => {
+    // The handler map is built with Object.create(null) so that message
+    // types colliding with Object.prototype methods ("constructor",
+    // "toString", "hasOwnProperty", "__proto__") don't silently dispatch
+    // to an inherited function instead of falling through to the warning.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const ctx = makeCtx();
+    const dispatch = createPtyHostMessageDispatcher(ctx);
+
+    for (const type of ["constructor", "toString", "hasOwnProperty", "__proto__"]) {
+      warn.mockClear();
+      const result = dispatch({ type });
+      expect(result).toBeUndefined();
+      expect(warn).toHaveBeenCalledWith("[PtyHost] Unknown message type:", type);
+    }
+  });
+
   it("returns synchronously for fire-and-forget get-serialized-state", async () => {
     // get-serialized-state intentionally fires an internal IIFE that the
     // handler does NOT await. The dispatcher therefore returns immediately
