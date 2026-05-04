@@ -504,6 +504,15 @@ export const CHANNELS = {
   MCP_SERVER_SET_AUDIT_ENABLED: "mcp-server:set-audit-enabled",
   MCP_SERVER_SET_AUDIT_MAX_RECORDS: "mcp-server:set-audit-max-records",
   MCP_SERVER_GET_AUDIT_CONFIG: "mcp-server:get-audit-config",
+  /**
+   * Mount-time hydration of the runtime-state snapshot. Distinct from
+   * `MCP_SERVER_GET_STATUS` (which exposes config — enabled/port/apiKey)
+   * because the renderer needs the derived `disabled|starting|ready|failed`
+   * state plus `lastError` to drive the dock-button readiness pip.
+   */
+  MCP_SERVER_GET_RUNTIME_STATE: "mcp-server:get-runtime-state",
+  /** Push channel for runtime-state transitions. */
+  MCP_SERVER_RUNTIME_STATE_CHANGED: "mcp-server:runtime-state-changed",
 
   // Voice Input channels
   VOICE_INPUT_GET_SETTINGS: "voice-input:get-settings",

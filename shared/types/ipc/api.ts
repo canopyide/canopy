@@ -1274,6 +1274,16 @@ export interface ElectronAPI {
     setAuditEnabled(enabled: boolean): Promise<{ enabled: boolean; maxRecords: number }>;
     /** Update the ring-buffer cap (clamped to MCP_AUDIT_MIN/MAX). */
     setAuditMaxRecords(max: number): Promise<{ enabled: boolean; maxRecords: number }>;
+    /**
+     * Get the derived runtime-state snapshot
+     * (`disabled|starting|ready|failed`). Distinct from `getStatus()` —
+     * surfaces the dock-pip readiness state and last-failure reason.
+     */
+    getRuntimeState(): Promise<import("./mcpServer.js").McpRuntimeSnapshot>;
+    /** Subscribe to runtime-state transitions. */
+    onRuntimeStateChanged(
+      callback: (snapshot: import("./mcpServer.js").McpRuntimeSnapshot) => void
+    ): () => void;
   };
   helpAssistant: {
     getSettings(): Promise<HelpAssistantSettings>;

@@ -416,6 +416,53 @@ describe("HelpPanel — manual select agent (handleSelectAgent)", () => {
 
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", null);
   });
+
+  it("surfaces a Start-MCP-failed toast and skips dispatch when provisionSession rejects with MCP_NOT_READY", async () => {
+    projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj" };
+    mockGetFolderPath.mockResolvedValue("/help");
+    const err = new Error("port collision") as Error & { code: string };
+    err.code = "MCP_NOT_READY";
+    mockProvisionSession.mockRejectedValueOnce(err);
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("pick-claude"));
+    });
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        title: "Start MCP failed",
+        action: expect.objectContaining({
+          label: "Open settings",
+          actionId: "app.settings.openTab",
+        }),
+      })
+    );
+  });
+
+  it("falls back to a generic launch-failed toast when provisionSession rejects without a typed code", async () => {
+    projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj" };
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockProvisionSession.mockRejectedValueOnce(new Error("ipc disconnected"));
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("pick-claude"));
+    });
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        title: "Assistant launch failed",
+      })
+    );
+  });
 });
 
 describe("HelpPanel — auto-launch (preferredAgentId)", () => {

@@ -2,15 +2,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
+import type { McpRuntimeSnapshot } from "../../../shared/types/ipc/mcpServer.js";
 
 const { mockUserDataDir, mockHelpFolderPath, mockMcpServerService, mockStoreGet } = vi.hoisted(
   () => ({
     mockUserDataDir: vi.fn<() => string>(),
     mockHelpFolderPath: vi.fn<() => string | null>(),
     mockMcpServerService: {
-      isRunning: false,
+      isRunning: true,
       currentPort: 45454 as number | null,
+      enabled: true,
+      isEnabled() {
+        return this.enabled;
+      },
       start: vi.fn().mockResolvedValue(undefined),
+      setEnabled: vi.fn().mockResolvedValue(undefined),
+      setHelpTokenValidator: vi.fn(),
+      getRuntimeState: vi.fn<
+        () => import("../../../shared/types/ipc/mcpServer.js").McpRuntimeSnapshot
+      >(() => ({
+        enabled: true,
+        state: "ready",
+        port: 45454,
+        lastError: null,
+      })),
     },
     mockStoreGet: vi.fn<(key: string) => unknown>(),
   })
@@ -81,9 +96,18 @@ describe("HelpSessionService", () => {
     mockStoreGet.mockReturnValue(undefined);
     mockMcpServerService.isRunning = true;
     mockMcpServerService.currentPort = 45454;
+    mockMcpServerService.enabled = true;
     mockMcpServerService.start.mockClear();
+    mockMcpServerService.setEnabled.mockClear();
+    mockMcpServerService.setHelpTokenValidator.mockClear();
 
     service = new HelpSessionService();
+    // The new `ensureMcpServerReady` path throws if no registry is wired —
+    // every existing test predates the throw and assumes the wire-up
+    // happened during app boot. Set it here so the tests exercise the
+    // happy path; one test below intentionally tests the registry-set flow
+    // by overriding to a different fakeRegistry.
+    service.setMcpRegistry({} as never);
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
@@ -303,10 +327,51 @@ describe("HelpSessionService", () => {
 
   it("starts the MCP server when daintreeControl is true and registry is set", async () => {
     mockMcpServerService.isRunning = false;
+    // start() succeeds and flips isRunning so provisionSession completes
+    // the post-start readiness check.
+    mockMcpServerService.start.mockImplementationOnce(async () => {
+      mockMcpServerService.isRunning = true;
+    });
     const fakeRegistry = {} as never;
     service.setMcpRegistry(fakeRegistry);
 
     await service.provisionSession(provisionInput());
     expect(mockMcpServerService.start).toHaveBeenCalledWith(fakeRegistry);
+  });
+
+  it("auto-enables a disabled MCP server before provisioning when daintreeControl is on", async () => {
+    // Models the contradictory shipped defaults: daintreeControl true but
+    // mcpServer.enabled false. ensureMcpServerReady must coerce-enable so
+    // the assistant doesn't launch with a broken `.mcp.json`.
+    mockMcpServerService.enabled = false;
+    mockMcpServerService.isRunning = false;
+    mockMcpServerService.setEnabled.mockImplementationOnce(async (next: boolean) => {
+      mockMcpServerService.enabled = next;
+      mockMcpServerService.isRunning = true;
+    });
+
+    const result = await service.provisionSession(provisionInput());
+    expect(mockMcpServerService.setEnabled).toHaveBeenCalledWith(true);
+    expect(result?.mcpUrl).toBe("http://127.0.0.1:45454/sse");
+  });
+
+  it("throws MCP_NOT_READY when the MCP server cannot be wired", async () => {
+    mockMcpServerService.isRunning = false;
+    // setEnabled appears to succeed but isRunning stays false — models a
+    // failed bind (port exhaustion, etc).
+    mockMcpServerService.enabled = false;
+    mockMcpServerService.setEnabled.mockResolvedValueOnce(undefined);
+    const failed: McpRuntimeSnapshot = {
+      enabled: true,
+      state: "failed",
+      port: null,
+      lastError: "port collision",
+    };
+    mockMcpServerService.getRuntimeState.mockReturnValueOnce(failed);
+
+    await expect(service.provisionSession(provisionInput())).rejects.toMatchObject({
+      name: "HelpSessionError",
+      code: "MCP_NOT_READY",
+    });
   });
 });

@@ -6,6 +6,7 @@ import type { WindowRegistry } from "../window/WindowRegistry.js";
 import { store } from "../store.js";
 import { getHelpFolderPath } from "./HelpService.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 
 const SESSIONS_DIR_NAME = "help-sessions";
@@ -72,6 +73,22 @@ function deepClonePlainJson<T>(value: T): T {
 
 function projectPathHash(projectPath: string): string {
   return createHash("sha256").update(projectPath).digest("hex").slice(0, PROJECT_HASH_LEN);
+}
+
+/**
+ * Typed provision failure surfaced through the IPC layer with a structured
+ * code so the renderer can match-and-display without parsing prose. Today
+ * the only non-validation code is `MCP_NOT_READY` — used when Daintree
+ * control is enabled but the in-process MCP server cannot be made ready,
+ * which would otherwise launch the assistant with a broken MCP wiring.
+ */
+export class HelpSessionError extends Error {
+  readonly code: "MCP_NOT_READY";
+  constructor(code: "MCP_NOT_READY", message: string) {
+    super(message);
+    this.name = "HelpSessionError";
+    this.code = code;
+  }
 }
 
 export class HelpSessionService {
@@ -157,7 +174,19 @@ export class HelpSessionService {
     const sessionPath = path.join(sessionsRoot, pathHash);
 
     if (settings.daintreeControl) {
-      await this.ensureMcpServerRunning();
+      try {
+        await this.ensureMcpServerReady();
+      } catch (err) {
+        // Surface as a typed error the renderer can display verbatim. The
+        // alternative (silently writing a `.mcp.json` without the daintree
+        // entry and launching anyway) is exactly the silent-degrade path
+        // the user observed and asked us to fix.
+        const reason = formatErrorMessage(err, "in-process MCP server isn't ready");
+        throw new HelpSessionError(
+          "MCP_NOT_READY",
+          `Daintree Assistant needs the in-process MCP server, but it isn't ready: ${reason}`
+        );
+      }
     }
 
     await fs.mkdir(sessionsRoot, { recursive: true, mode: 0o700 });
@@ -318,15 +347,48 @@ export class HelpSessionService {
     return path.join(app.getPath("userData"), SESSIONS_DIR_NAME);
   }
 
-  private async ensureMcpServerRunning(): Promise<void> {
-    if (!this.mcpRegistry) return;
-    try {
-      const { mcpServerService } = await import("./McpServerService.js");
-      if (!mcpServerService.isRunning) {
-        await mcpServerService.start(this.mcpRegistry);
-      }
-    } catch (err) {
-      console.warn("[HelpSessionService] Failed to start MCP server for help session:", err);
+  /**
+   * Resolves once the in-process MCP server is bound and listening, OR
+   * throws if it cannot be made ready. Daintree control on the assistant is
+   * meaningless without a live MCP server, so we treat unreachable as a
+   * hard launch failure rather than silently degrading the session.
+   *
+   * Defense-in-depth:
+   *
+   * - Force-enables the persisted `mcpServer.enabled` flag if it's off. The
+   *   shipped defaults can ship `daintreeControl: true` alongside
+   *   `mcpServer.enabled: false`, so a fresh install would otherwise hit
+   *   this path with the server disabled and `start()` would silently
+   *   no-op (`McpServerService.start()` early-returns when `!isEnabled()`).
+   *   The IPC handler for `helpAssistant.setSettings` couples the toggle
+   *   going forward; this handles boot.
+   * - Wires the help-token validator on `McpServerService`. The deferred
+   *   `mcp-server` task in `windowServices.ts` also wires this — but the
+   *   renderer can call `provisionSession` before that task drains, so we
+   *   register here too. The setter is idempotent.
+   */
+  private async ensureMcpServerReady(): Promise<void> {
+    if (!this.mcpRegistry) {
+      throw new Error("MCP registry not yet wired (app still initializing)");
+    }
+    const { mcpServerService } = await import("./McpServerService.js");
+    mcpServerService.setHelpTokenValidator((token) => this.validateToken(token));
+    if (!mcpServerService.isEnabled()) {
+      // setEnabled() will only call start() internally if it has its own
+      // `registry` already set — which it doesn't on cold boot if the
+      // deferred `mcp-server` task hasn't drained yet. So we just persist
+      // the enabled flag here and rely on the explicit start() below to
+      // bind the server with our `mcpRegistry`.
+      await mcpServerService.setEnabled(true);
+    }
+    if (!mcpServerService.isRunning) {
+      await mcpServerService.start(this.mcpRegistry);
+    }
+    if (!mcpServerService.isRunning) {
+      const snapshot = mcpServerService.getRuntimeState();
+      throw new Error(
+        snapshot.lastError ?? "MCP server is not running (state: " + snapshot.state + ")"
+      );
     }
   }
 

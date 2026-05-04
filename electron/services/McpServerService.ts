@@ -27,6 +27,8 @@ import {
   type McpAuditRecord,
   type McpAuditResult,
   type McpConfirmationDecision,
+  type McpRuntimeSnapshot,
+  type McpRuntimeState,
   MCP_AUDIT_DEFAULT_MAX_RECORDS,
   MCP_AUDIT_MAX_RECORDS,
   MCP_AUDIT_MIN_RECORDS,
@@ -48,6 +50,27 @@ const MCP_SERVER_KEY = "daintree";
 const DEFAULT_PORT = 45454;
 const MAX_PORT_RETRIES = 10;
 const MCP_SSE_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+/**
+ * Bounded-backoff supervision for unexpected http.Server `close` events.
+ * Caps total wall-clock recovery time at ~32s (500ms, 1s, 2s, 4s, 8s,
+ * 15s ceiling) and gives up after this many attempts so a permanently
+ * broken environment (e.g. port hijacked by another process, file
+ * descriptor exhaustion) doesn't burn CPU forever. The renderer surfaces
+ * the `failed` runtime state so the user can re-enable manually.
+ */
+const MAX_RESTART_ATTEMPTS = 5;
+const RESTART_BASE_DELAY_MS = 500;
+const RESTART_MAX_DELAY_MS = 15_000;
+const RESTART_JITTER_MS = 250;
+/**
+ * Window after a successful bind during which the server is considered
+ * "stable" and the restart-attempt counter resets to 0. Without this, a
+ * server that flap-binds-and-drops repeatedly would never trip the
+ * MAX_RESTART_ATTEMPTS cap because each successful bind would zero the
+ * counter — supervisor would loop forever.
+ */
+const RESTART_STABLE_RESET_MS = 30_000;
 
 /**
  * Native MCP tool — implemented entirely in this service rather than backed by
@@ -742,9 +765,45 @@ export class McpServerService {
    */
   private rotateInFlight: Promise<string> | null = null;
   private helpTokenValidator: HelpTokenValidator | null = null;
+  /**
+   * Most recent failure reason from `start()` or supervisor restart. Cleared
+   * on successful bind. Drives the `failed` runtime state surfaced to the
+   * renderer.
+   */
+  private lastError: string | null = null;
+  /**
+   * Set true while `stop()` is closing the server so the persistent `close`
+   * listener attached after bind treats the close as expected and skips
+   * restart. Reset to false after stop completes.
+   */
+  private intentionalStop = false;
+  private restartAttempts = 0;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Resets `restartAttempts` after the server has been bound and stable for
+   * `RESTART_STABLE_RESET_MS`. Without this, a server that flap-binds-and-
+   * crashes never trips the restart cap because each successful bind would
+   * zero the counter mid-flap.
+   */
+  private stableTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Mirrors `startPromise` — held while `stop()` is awaiting the http
+   * server's close callback. Lets a concurrent `start()` await the stop
+   * before binding a new server, avoiding a race where stop's
+   * `httpServer = null` clobbers a freshly bound new instance.
+   */
+  private stopPromise: Promise<void> | null = null;
+  private runtimeStateListeners = new Set<(snapshot: McpRuntimeSnapshot) => void>();
 
+  /**
+   * True iff the http server is bound, accepting connections, and tracked as
+   * the live instance. `httpServer.listening` is the authoritative signal —
+   * a non-null `httpServer` reference can lie if the OS closed the socket
+   * (sandbox eviction, port hijack, FD exhaustion) without a corresponding
+   * `close()` call from us.
+   */
   get isRunning(): boolean {
-    return this.httpServer !== null && this.port !== null;
+    return this.httpServer !== null && this.httpServer.listening && this.port !== null;
   }
 
   /**
@@ -756,6 +815,19 @@ export class McpServerService {
     this.statusListeners.add(listener);
     return () => {
       this.statusListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Register a subscriber for the richer 4-state readiness snapshot
+   * (`disabled` / `starting` / `ready` / `failed`). Distinct from
+   * `onStatusChange` because the renderer needs to distinguish failure from
+   * "user disabled it" — both collapse to `running=false`.
+   */
+  onRuntimeStateChange(listener: (snapshot: McpRuntimeSnapshot) => void): () => void {
+    this.runtimeStateListeners.add(listener);
+    return () => {
+      this.runtimeStateListeners.delete(listener);
     };
   }
 
@@ -777,6 +849,43 @@ export class McpServerService {
         console.error("[MCP] Status change listener threw:", err);
       }
     }
+    this.emitRuntimeStateChange();
+  }
+
+  private emitRuntimeStateChange(): void {
+    const snapshot = this.getRuntimeState();
+    for (const listener of this.runtimeStateListeners) {
+      try {
+        listener(snapshot);
+      } catch (err) {
+        console.error("[MCP] Runtime-state listener threw:", err);
+      }
+    }
+  }
+
+  /**
+   * Coarse readiness for the renderer. Derived from `isEnabled()`,
+   * `isRunning`, and `lastError` — a single source of truth so the dock-icon
+   * pip and any future status surfaces stay consistent.
+   */
+  getRuntimeState(): McpRuntimeSnapshot {
+    const enabled = this.isEnabled();
+    let state: McpRuntimeState;
+    if (!enabled) {
+      state = "disabled";
+    } else if (this.isRunning) {
+      state = "ready";
+    } else if (this.lastError) {
+      state = "failed";
+    } else {
+      state = "starting";
+    }
+    return {
+      enabled,
+      state,
+      port: this.port,
+      lastError: this.lastError,
+    };
   }
 
   get currentPort(): number | null {
@@ -807,11 +916,19 @@ export class McpServerService {
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
+    const wasEnabled = this.isEnabled();
     this.persistConfig({ enabled });
     if (enabled && this.registry && !this.isRunning) {
       await this.start(this.registry);
     } else if (!enabled && this.isRunning) {
       await this.stop();
+    } else if (wasEnabled !== enabled) {
+      // Toggle persisted but no service-state transition needed (e.g. user
+      // disabled while in a `failed` retry-exhausted state). Clear the
+      // recorded failure since the user has now intentionally disabled the
+      // server, then surface the runtime-state change.
+      if (!enabled) this.lastError = null;
+      this.emitRuntimeStateChange();
     }
   }
 
@@ -1044,7 +1161,16 @@ export class McpServerService {
   async start(registry: WindowRegistry): Promise<void> {
     this.registry = registry;
 
-    if (this.httpServer) {
+    // Wait for any in-flight stop to settle before evaluating state. Without
+    // this gate, a setEnabled(false)→stop in flight followed by a
+    // setEnabled(true)→start could let the new bind complete, then stop's
+    // `httpServer = null` (after its await resolves) would null out the
+    // freshly bound new instance.
+    if (this.stopPromise) {
+      await this.stopPromise;
+    }
+
+    if (this.isRunning) {
       return;
     }
 
@@ -1062,6 +1188,12 @@ export class McpServerService {
       console.log("[MCP] Server disabled — skipping start");
       return;
     }
+
+    // Clear any prior failure as we begin a fresh attempt and surface the
+    // `starting` state so the dock pip can render the in-flight indicator.
+    const hadPriorFailure = this.lastError !== null;
+    this.lastError = null;
+    if (hadPriorFailure) this.emitRuntimeStateChange();
 
     this.startPromise = (async () => {
       try {
@@ -1103,10 +1235,26 @@ export class McpServerService {
 
         this.port = boundPort;
         this.httpServer = server;
+        this.attachServerSupervision(server);
+        // Defer the restart-attempt reset until the server has stayed up for
+        // RESTART_STABLE_RESET_MS — see `stableTimer` field comment.
+        if (this.stableTimer) clearTimeout(this.stableTimer);
+        this.stableTimer = setTimeout(() => {
+          this.stableTimer = null;
+          this.restartAttempts = 0;
+        }, RESTART_STABLE_RESET_MS);
+        this.stableTimer.unref?.();
         console.log(
           `[MCP] Server started on http://127.0.0.1:${this.port}/mcp (Streamable HTTP) and /sse (legacy SSE)`
         );
         this.emitStatusChange();
+      } catch (err) {
+        // Record the failure so the renderer can render `failed` rather than
+        // a permanently-stuck `starting`. Always emit so listeners that were
+        // waiting on `starting → ready` see `starting → failed` instead.
+        this.lastError = formatErrorMessage(err, "MCP server failed to start");
+        this.emitRuntimeStateChange();
+        throw err;
       } finally {
         this.startPromise = null;
       }
@@ -1115,15 +1263,81 @@ export class McpServerService {
     return this.startPromise;
   }
 
-  async stop(): Promise<void> {
+  /**
+   * Attach persistent `error` and `close` listeners to a server we have
+   * just bound. Distinct from the temporary listener used inside
+   * `listenWithRetry` for the bind handshake — those are removed once
+   * `listening` fires. These long-lived listeners detect post-bind failures:
+   * the OS evicting the listening socket, file-descriptor exhaustion, or
+   * any other condition that takes the server down without us calling
+   * `stop()`. The supervisor then attempts a bounded-backoff restart.
+   */
+  private attachServerSupervision(server: http.Server): void {
+    server.on("error", (err) => {
+      // Log only — node fires `close` after fatal listening-socket errors,
+      // and the `close` listener owns the runtime-state transition. Setting
+      // `lastError` here would render the dock pip as `failed` instead of
+      // `starting` during the backoff window the supervisor is about to
+      // schedule.
+      console.error("[MCP] HTTP server error after bind:", err);
+    });
+    server.on("close", () => {
+      // Ignore closes for stale server instances (we already swapped to a
+      // new one) and closes initiated by our own stop()/setPort() flows.
+      if (server !== this.httpServer || this.intentionalStop) return;
+      console.warn("[MCP] HTTP server closed unexpectedly — scheduling restart");
+      this.handleUnexpectedClose();
+    });
+  }
+
+  private handleUnexpectedClose(): void {
+    // Drain the same per-server resources that `stop()` would — without
+    // this, `start()`'s next call to `setupIpcListeners()` would add
+    // duplicate `mcp:get-manifest-response` / `mcp:dispatch-action-response`
+    // listeners on `ipcMain`, and stale `pendingManifests`/`pendingDispatches`
+    // would never resolve because the SDK's transports vanished with the
+    // dying server.
+    this.tearDownServerResources("MCP server closed unexpectedly");
+
+    // Cancel the stable-runtime timer so a stale fire doesn't reset
+    // restartAttempts mid-backoff and let a flap loop bypass the cap.
+    if (this.stableTimer) {
+      clearTimeout(this.stableTimer);
+      this.stableTimer = null;
+    }
+
+    this.httpServer = null;
+    this.port = null;
+    // Stay silent on lastError: the supervisor is about to retry, and the
+    // renderer should render `starting` while in the backoff window — not
+    // `failed`. Only `scheduleRestart()` sets lastError if the cap is hit.
+    this.lastError = null;
+    this.emitStatusChange();
+
+    if (!this.isEnabled() || !this.registry) return;
+    this.scheduleRestart();
+  }
+
+  /**
+   * Per-server teardown shared by `stop()` and `handleUnexpectedClose()`:
+   * drain SSE + HTTP sessions, audit flush, resource subscriptions, IPC
+   * listeners registered via `setupIpcListeners()`, and reject pending
+   * manifest / dispatch promises with the supplied reason. Does NOT touch
+   * `httpServer` / `port` / supervisor state — caller owns those.
+   */
+  private tearDownServerResources(rejectReason: string): void {
     this.flushAuditLogNow();
 
     for (const session of this.sessions.values()) {
       clearTimeout(session.idleTimer);
       try {
-        await session.transport.close();
+        // Catch on the promise as well as the synchronous throw — async
+        // close() rejections would otherwise leak as unhandled promises.
+        Promise.resolve(session.transport.close()).catch(() => {
+          /* best-effort during teardown */
+        });
       } catch {
-        // ignore close errors during shutdown
+        // ignore synchronous close errors during teardown
       }
     }
     this.sessions.clear();
@@ -1131,61 +1345,146 @@ export class McpServerService {
     for (const session of this.httpSessions.values()) {
       clearTimeout(session.idleTimer);
       try {
-        await session.transport.close();
+        Promise.resolve(session.transport.close()).catch(() => {
+          /* best-effort during teardown */
+        });
       } catch {
-        // ignore close errors during shutdown
+        // ignore synchronous close errors during teardown
       }
     }
     this.httpSessions.clear();
     this.sessionTierMap.clear();
 
-    // Drain any remaining resource-subscription listeners. Normal teardown
-    // happens via transport.onclose, but a transport.close() that throws
-    // before the SDK fires onclose would leak listeners otherwise.
     for (const bucket of this.resourceSubscriptions.values()) {
       for (const unsub of bucket.values()) {
         try {
           unsub();
         } catch {
-          // ignore; best-effort during shutdown
+          // best-effort during teardown
         }
       }
     }
     this.resourceSubscriptions.clear();
 
     for (const cleanup of this.cleanupListeners) {
-      cleanup();
+      try {
+        cleanup();
+      } catch {
+        // best-effort during teardown
+      }
     }
     this.cleanupListeners = [];
 
     for (const [id, pending] of this.pendingManifests) {
       clearTimeout(pending.timer);
       pending.destroyedCleanup?.();
-      pending.reject(new Error("MCP server stopped"));
+      pending.reject(new Error(rejectReason));
       this.pendingManifests.delete(id);
     }
     for (const [id, pending] of this.pendingDispatches) {
       clearTimeout(pending.timer);
       pending.destroyedCleanup?.();
-      pending.reject(new Error("MCP server stopped"));
+      pending.reject(new Error(rejectReason));
       this.pendingDispatches.delete(id);
     }
     this.cachedManifest = null;
+  }
 
-    let wasRunning = false;
-    if (this.httpServer) {
-      wasRunning = true;
-      await new Promise<void>((resolve) => {
-        this.httpServer!.close(() => resolve());
+  private scheduleRestart(): void {
+    if (this.restartTimer) return;
+    if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) {
+      this.lastError = `MCP server restart limit reached after ${MAX_RESTART_ATTEMPTS} attempts`;
+      this.emitRuntimeStateChange();
+      return;
+    }
+    this.restartAttempts++;
+    const baseDelay = RESTART_BASE_DELAY_MS * Math.pow(2, this.restartAttempts - 1);
+    const jitter = Math.random() * RESTART_JITTER_MS;
+    const delay = Math.min(baseDelay + jitter, RESTART_MAX_DELAY_MS);
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      if (!this.isEnabled() || !this.registry) return;
+      void this.start(this.registry).catch((err) => {
+        console.error("[MCP] Auto-restart attempt failed:", err);
+        // start() catches internally and sets lastError, so a thrown error
+        // here means the bind itself failed. Re-arm the supervisor so the
+        // user gets a real backoff series rather than a single attempt.
+        if (!this.isRunning && this.isEnabled() && this.registry) {
+          this.scheduleRestart();
+        }
       });
-      this.httpServer = null;
-      this.port = null;
-    }
+    }, delay);
+    this.restartTimer.unref?.();
+  }
 
-    console.log("[MCP] Server stopped");
-    if (wasRunning) {
-      this.emitStatusChange();
+  async stop(): Promise<void> {
+    // Single-flight: a concurrent setEnabled(true) → start() will await the
+    // same promise via `start()`'s `if (this.stopPromise)` gate, avoiding a
+    // race where the new bind completes and then this stop's
+    // `httpServer = null` clobbers it.
+    if (this.stopPromise) return this.stopPromise;
+
+    // Cancel any pending supervisor restart and mark this teardown as
+    // expected so the persistent `close` listener attached in start() doesn't
+    // schedule a fresh restart against the dying server.
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
     }
+    if (this.stableTimer) {
+      clearTimeout(this.stableTimer);
+      this.stableTimer = null;
+    }
+    this.restartAttempts = 0;
+    this.intentionalStop = true;
+
+    this.stopPromise = (async () => {
+      try {
+        // Inverse race: if `start()` is mid-bind when stop() arrives, we'd
+        // otherwise see `httpServer = null` (no-op) and let the bind
+        // complete unsupervised — leaving an MCP server running while the
+        // user has just disabled it. Wait for the bind to settle so the
+        // close path below sees the new server and tears it down.
+        if (this.startPromise) {
+          try {
+            await this.startPromise;
+          } catch {
+            // start failed; no server to close
+          }
+        }
+
+        this.tearDownServerResources("MCP server stopped");
+
+        let wasRunning = false;
+        if (this.httpServer) {
+          wasRunning = this.httpServer.listening;
+          await new Promise<void>((resolve) => {
+            this.httpServer!.close(() => resolve());
+          });
+          this.httpServer = null;
+          this.port = null;
+        }
+
+        // A clean stop is not a failure — clear lastError so the renderer sees
+        // the runtime state collapse to `disabled` (not `failed`) when the user
+        // toggles the server off.
+        this.lastError = null;
+
+        console.log("[MCP] Server stopped");
+        if (wasRunning) {
+          this.emitStatusChange();
+        } else {
+          // Even if no listening transition happened, runtime state may have
+          // changed (e.g. lastError cleared). Notify runtime-state-only listeners.
+          this.emitRuntimeStateChange();
+        }
+      } finally {
+        this.intentionalStop = false;
+        this.stopPromise = null;
+      }
+    })();
+
+    return this.stopPromise;
   }
 
   getStatus(): {

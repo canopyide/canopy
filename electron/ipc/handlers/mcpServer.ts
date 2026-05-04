@@ -1,6 +1,6 @@
 import { CHANNELS } from "../channels.js";
 import type * as McpServerServiceModule from "../../services/McpServerService.js";
-import { typedHandle } from "../utils.js";
+import { broadcastToRenderer, typedHandle } from "../utils.js";
 
 type McpServerSingleton = typeof McpServerServiceModule.mcpServerService;
 
@@ -102,5 +102,37 @@ export function registerMcpServerHandlers(): () => void {
     })
   );
 
-  return () => handlers.forEach((cleanup) => cleanup());
+  // Runtime-state surface — distinct from `getStatus()` because the renderer
+  // needs the derived 4-state snapshot (`disabled|starting|ready|failed`)
+  // plus `lastError`, not just config + bound port.
+  handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_GET_RUNTIME_STATE, async () => {
+      const svc = await getMcpServerService();
+      return svc.getRuntimeState();
+    })
+  );
+
+  // Push runtime-state transitions to every renderer. Subscribed lazily so
+  // we don't pay the McpServerService import cost just to register a no-op
+  // listener — but cleanup MUST observe whichever side won the race:
+  //   - import resolves first → cleanup unsubscribes
+  //   - cleanup runs first    → import resolves after, sees the cancel flag
+  //                             and skips the subscription entirely
+  // Without this, an early teardown (test harness, app shutdown) would
+  // miss the unsubscribe and leak a `runtimeStateListeners` entry.
+  let cancelled = false;
+  let pendingUnsubscribe: (() => void) | null = null;
+  void getMcpServerService().then((svc) => {
+    if (cancelled) return;
+    pendingUnsubscribe = svc.onRuntimeStateChange((snapshot) => {
+      broadcastToRenderer(CHANNELS.MCP_SERVER_RUNTIME_STATE_CHANGED, snapshot);
+    });
+  });
+
+  return () => {
+    cancelled = true;
+    handlers.forEach((cleanup) => cleanup());
+    pendingUnsubscribe?.();
+    pendingUnsubscribe = null;
+  };
 }

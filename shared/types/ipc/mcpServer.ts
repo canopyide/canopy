@@ -59,3 +59,29 @@ export interface McpAuditRecord {
 export const MCP_AUDIT_MIN_RECORDS = 50;
 export const MCP_AUDIT_MAX_RECORDS = 10000;
 export const MCP_AUDIT_DEFAULT_MAX_RECORDS = 500;
+
+/**
+ * Coarse readiness state surfaced to the renderer for the in-process MCP
+ * server. Distinct from the boolean `running` flag emitted by
+ * `onStatusChange` because the renderer needs to distinguish "the user
+ * disabled it" from "it's still starting" from "the bind failed and we
+ * gave up after backoff" — all of which collapse to `running=false`.
+ *
+ * - `disabled`: persisted `enabled` flag is false; the server is not
+ *   intended to run.
+ * - `starting`: enabled but the listening socket is not yet bound (cold
+ *   boot, deferred startup in flight, or an in-progress restart).
+ * - `ready`: bound, listening, and accepting connections.
+ * - `failed`: enabled but the most recent start attempt failed (port
+ *   exhaustion, OS error, restart-budget exhausted). `lastError` carries
+ *   the diagnostic message.
+ */
+export type McpRuntimeState = "disabled" | "starting" | "ready" | "failed";
+
+export interface McpRuntimeSnapshot {
+  enabled: boolean;
+  state: McpRuntimeState;
+  port: number | null;
+  /** Most recent failure reason, if any. Cleared on successful start. */
+  lastError: string | null;
+}

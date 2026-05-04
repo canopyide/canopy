@@ -5,6 +5,18 @@ import type {
   HelpAssistantAuditRetention,
   HelpAssistantSettings,
 } from "../../../shared/types/ipc/api.js";
+import type * as McpServerServiceModule from "../../services/McpServerService.js";
+
+type McpServerSingleton = typeof McpServerServiceModule.mcpServerService;
+
+let cachedMcpServerService: McpServerSingleton | null = null;
+async function getMcpServerService(): Promise<McpServerSingleton> {
+  if (!cachedMcpServerService) {
+    const mod = await import("../../services/McpServerService.js");
+    cachedMcpServerService = mod.mcpServerService;
+  }
+  return cachedMcpServerService;
+}
 
 const HELP_ASSISTANT_DEFAULTS: HelpAssistantSettings = {
   docSearch: true,
@@ -49,6 +61,7 @@ export function registerHelpAssistantHandlers(): () => void {
 
   const handleSetSettings = async (patch: Partial<HelpAssistantSettings>): Promise<void> => {
     if (!patch || typeof patch !== "object") return;
+    let daintreeControlTurnedOn = false;
     for (const [field, value] of Object.entries(patch)) {
       if (value === undefined) continue;
       if (!KNOWN_KEYS.has(field)) continue;
@@ -59,7 +72,34 @@ export function registerHelpAssistantHandlers(): () => void {
       ) {
         continue;
       }
+      if (field === "daintreeControl" && value === true) {
+        const previous = store.get("helpAssistant")?.daintreeControl ?? true;
+        if (previous !== true) daintreeControlTurnedOn = true;
+      }
       store.set(`helpAssistant.${field}`, value);
+    }
+
+    // Auto-couple: turning on Daintree control implies the in-process MCP
+    // server must be running, since the assistant talks to Daintree
+    // exclusively through that server. Without this, the contradictory
+    // shipped defaults (`daintreeControl: true`, `mcpServer.enabled: false`)
+    // would silently launch the assistant with no daintree MCP wired —
+    // exactly the failure mode this auto-coupling was added to prevent.
+    // Failures are logged but do not block the settings write; the renderer
+    // observes the failure via the runtime-state push and surfaces it
+    // through the dock pip and the Settings tab's status panel.
+    if (daintreeControlTurnedOn) {
+      try {
+        const svc = await getMcpServerService();
+        if (!svc.isEnabled()) {
+          await svc.setEnabled(true);
+        }
+      } catch (err) {
+        console.warn(
+          "[HelpAssistant] Auto-enable of MCP server after daintreeControl=on failed:",
+          err
+        );
+      }
     }
   };
 

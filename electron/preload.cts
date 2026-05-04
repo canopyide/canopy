@@ -14,6 +14,7 @@ import { isTrustedRendererUrl } from "../shared/utils/trustedRenderer.js";
 import { isIpcEnvelope } from "../shared/types/ipc/errors.js";
 import { deserializeError } from "../shared/utils/ipcErrorSerialization.js";
 import type { AppErrorCode } from "../shared/types/appError.js";
+import type { McpRuntimeSnapshot } from "../shared/types/ipc/mcpServer.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { buildClipboardPreloadBindings } from "./ipc/handlers/clipboard.preload.js";
 import { buildSlashCommandsPreloadBindings } from "./ipc/handlers/slashCommands.preload.js";
@@ -2338,6 +2339,9 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_AUDIT_ENABLED, enabled),
     setAuditMaxRecords: (max: number) =>
       _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS, max),
+    getRuntimeState: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_RUNTIME_STATE),
+    onRuntimeStateChanged: (callback: (snapshot: McpRuntimeSnapshot) => void) =>
+      _typedOn(CHANNELS.MCP_SERVER_RUNTIME_STATE_CHANGED, callback),
   },
 
   helpAssistant: {

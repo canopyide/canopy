@@ -26,6 +26,7 @@ import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { TerminalRefreshTier } from "@/types";
 import { logError } from "@/utils/logger";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
@@ -45,6 +46,22 @@ function notifyLaunchFailed(agentId: string, reason: string): void {
   });
 }
 
+function notifyMcpNotReady(reason: string): void {
+  notify({
+    type: "error",
+    title: "Start MCP failed",
+    message: `Daintree Assistant needs MCP, but the server didn't start. ${reason}`,
+    action: {
+      label: "Open settings",
+      actionId: "app.settings.openTab",
+      actionArgs: { tab: "assistant" },
+      onClick: () => {
+        void actionService.dispatch("app.settings.openTab", { tab: "assistant" });
+      },
+    },
+  });
+}
+
 interface HelpSessionRef {
   sessionId: string;
   sessionPath: string;
@@ -53,7 +70,12 @@ interface HelpSessionRef {
   windowId: number;
 }
 
-async function provisionHelpSession(): Promise<HelpSessionRef | null> {
+type ProvisionOutcome =
+  | { ok: true; session: HelpSessionRef }
+  | { ok: false; code: "MCP_NOT_READY"; message: string }
+  | { ok: false; code: "UNKNOWN"; message: string };
+
+async function provisionHelpSession(): Promise<ProvisionOutcome | null> {
   const project = useProjectStore.getState().currentProject;
   if (!project) return null;
   try {
@@ -61,10 +83,23 @@ async function provisionHelpSession(): Promise<HelpSessionRef | null> {
       projectId: project.id,
       projectPath: project.path,
     });
-    return result;
+    if (!result) return null;
+    return { ok: true, session: result };
   } catch (err) {
     logError("Failed to provision help session", err);
-    return null;
+    // The main process throws `HelpSessionError` with `.code = "MCP_NOT_READY"`
+    // when daintreeControl is on but the in-process MCP server can't be
+    // wired. Bubble that up so the launcher renders a specific toast
+    // instead of the generic "agent didn't start" message.
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? (err as Record<string, unknown>).code
+        : undefined;
+    const message = formatErrorMessage(err, "Couldn't provision help session");
+    if (code === "MCP_NOT_READY") {
+      return { ok: false, code: "MCP_NOT_READY", message };
+    }
+    return { ok: false, code: "UNKNOWN", message };
   }
 }
 
@@ -202,7 +237,17 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
           return;
         }
 
-        const session = await provisionHelpSession();
+        const outcome = await provisionHelpSession();
+        if (outcome && !outcome.ok) {
+          hasAutoLaunched.current = false;
+          if (outcome.code === "MCP_NOT_READY") {
+            notifyMcpNotReady(outcome.message);
+          } else {
+            notifyLaunchFailed(launchAgentId, outcome.message);
+          }
+          return;
+        }
+        const session = outcome?.ok ? outcome.session : null;
         if (session) pendingSessionIdRef.current = session.sessionId;
         const cwd = session?.sessionPath ?? folderPath;
         const projectId = useProjectStore.getState().currentProject?.id ?? null;
@@ -345,7 +390,21 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
           return;
         }
 
-        const session = await provisionHelpSession();
+        const outcome = await provisionHelpSession();
+        if (outcome && !outcome.ok) {
+          // Reset the auto-launch gate so a recovered MCP can re-launch on
+          // the next render — the single-supported-agent useEffect uses
+          // this same ref to one-shot itself, so without the reset the
+          // user is stuck on the picker until they close and reopen.
+          hasAutoLaunched.current = false;
+          if (outcome.code === "MCP_NOT_READY") {
+            notifyMcpNotReady(outcome.message);
+          } else {
+            notifyLaunchFailed(selectedAgentId, outcome.message);
+          }
+          return;
+        }
+        const session = outcome?.ok ? outcome.session : null;
         if (session) pendingSessionIdRef.current = session.sessionId;
         const cwd = session?.sessionPath ?? folderPath;
         const projectId = useProjectStore.getState().currentProject?.id ?? null;
@@ -364,6 +423,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
         );
 
         if (!result.ok || !result.result?.terminalId) {
+          hasAutoLaunched.current = false;
           revokeHelpSession(session?.sessionId ?? null);
           pendingSessionIdRef.current = null;
           logError("Help launch failed", { agentId: selectedAgentId, result });
@@ -515,7 +575,16 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
       (async () => {
         let session: HelpSessionRef | null = null;
         try {
-          session = await provisionHelpSession();
+          const outcome = await provisionHelpSession();
+          if (outcome && !outcome.ok) {
+            if (outcome.code === "MCP_NOT_READY") {
+              notifyMcpNotReady(outcome.message);
+            } else {
+              notifyLaunchFailed(launchAgentId, outcome.message);
+            }
+            return;
+          }
+          session = outcome?.ok ? outcome.session : null;
           const cwd = session?.sessionPath ?? panel.cwd ?? "";
           const projectId = useProjectStore.getState().currentProject?.id ?? null;
           const helpEnv = buildHelpEnv(session, projectId);

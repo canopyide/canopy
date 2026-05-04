@@ -21,6 +21,13 @@ const serviceMock = vi.hoisted(() => ({
   clearAuditLog: vi.fn(),
   setAuditEnabled: vi.fn(() => ({ enabled: true, maxRecords: 500 })),
   setAuditMaxRecords: vi.fn(() => ({ enabled: true, maxRecords: 500 })),
+  getRuntimeState: vi.fn(() => ({
+    enabled: false,
+    state: "disabled" as const,
+    port: null,
+    lastError: null,
+  })),
+  onRuntimeStateChange: vi.fn(() => () => {}),
 }));
 
 vi.mock("electron", () => ({ ipcMain: ipcMainMock }));
@@ -185,8 +192,8 @@ describe("mcpServer IPC adversarial", () => {
     expect(serviceMock.clearAuditLog).toHaveBeenCalledTimes(1);
   });
 
-  it("cleanup removes all ten registered handlers", () => {
-    expect(ipcHandlers.size).toBe(10);
+  it("cleanup removes all eleven registered handlers", () => {
+    expect(ipcHandlers.size).toBe(11);
     cleanup();
     expect(ipcHandlers.size).toBe(0);
   });

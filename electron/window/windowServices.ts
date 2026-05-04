@@ -668,6 +668,20 @@ export async function setupWindowServices(
 
     if (windowRegistry) {
       const registryRef = windowRegistry;
+      // Wire `helpSessionService.mcpRegistry` synchronously, BEFORE the
+      // deferred queue drains. The renderer can call `help:provision-session`
+      // as soon as IPC handlers are registered (a few hundred ms before the
+      // first deferred task runs); without this synchronous wire-up,
+      // `ensureMcpServerReady()` would no-op on the null registry and the
+      // assistant would launch with a stub `.mcp.json` missing the daintree
+      // entry. The setter is just a reference store — no MCP SDK loaded.
+      try {
+        const { helpSessionService } = await import("../services/HelpSessionService.js");
+        helpSessionService.setMcpRegistry(registryRef);
+      } catch (err) {
+        console.error("[MAIN] Failed to wire HelpSessionService MCP registry:", err);
+      }
+
       registerDeferredTask({
         name: "mcp-server",
         run: async () => {
@@ -676,11 +690,11 @@ export async function setupWindowServices(
             const { helpSessionService } = await import("../services/HelpSessionService.js");
             // Register the help-token validator before start() so the very first
             // request can authenticate against a help session if the renderer
-            // races ahead of us.
+            // races ahead of us. (Also wired in HelpSessionService.ensureMcpServerReady
+            // — this deferred wiring covers the no-assistant warm-start path.)
             mcpServerService.setHelpTokenValidator((token) =>
               helpSessionService.validateToken(token)
             );
-            helpSessionService.setMcpRegistry(registryRef);
             await mcpServerService.start(registryRef);
           } catch (err) {
             console.error("[MAIN] MCP server failed to start:", err);

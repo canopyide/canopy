@@ -1847,6 +1847,10 @@ export interface IpcInvokeMap {
     args: [max: number];
     result: { enabled: boolean; maxRecords: number };
   };
+  "mcp-server:get-runtime-state": {
+    args: [];
+    result: import("./mcpServer.js").McpRuntimeSnapshot;
+  };
 
   // Webview console capture
   "webview:start-console-capture": {
@@ -2338,6 +2342,14 @@ export interface IpcEventMap {
 
   // Per-service connectivity state push
   "connectivity:service-changed": ServiceConnectivityPayload;
+
+  /**
+   * MCP server runtime-state transition. Distinct from
+   * `connectivity:service-changed` because the renderer needs the derived
+   * `disabled|starting|ready|failed` state plus `lastError`, not just
+   * binary reachability.
+   */
+  "mcp-server:runtime-state-changed": import("./mcpServer.js").McpRuntimeSnapshot;
 
   // Error events
   "error:notify": ErrorRecord;
