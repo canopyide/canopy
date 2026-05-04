@@ -5,6 +5,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+);
+
 const mockWorktreeCreate = vi.fn();
 const mockGetAvailableBranch = vi.fn();
 const mockGetDefaultPath = vi.fn();
