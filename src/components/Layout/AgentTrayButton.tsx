@@ -558,6 +558,15 @@ export function AgentTrayButton({
   // availability data has landed.
   const showFallback = !isAvailabilityLoading && !hasAnyContent && fallbackSetup.length > 0;
 
+  const shouldShowEmptyTrayLabel = hasNoPinnedAgents && !isAvailabilityLoading;
+  const emptyTrayLabel: string | null = !shouldShowEmptyTrayLabel
+    ? null
+    : showFallback
+      ? "Set up agents"
+      : hasAnyContent
+        ? "Pin agents"
+        : null;
+
   const renderLaunchItem = (row: AgentRow) => {
     if (row.presets && row.presets.length > 0) {
       return <SplitLaunchItem key={`launch-${row.id}`} row={row} onLaunch={handleLaunch} />;
@@ -588,9 +597,9 @@ export function AgentTrayButton({
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size={emptyTrayLabel ? "sm" : "icon"}
               data-toolbar-item={dataToolbarItem}
-              className="toolbar-agent-button text-daintree-text transition-colors"
+              className={`toolbar-agent-button transition-colors${emptyTrayLabel ? "" : " text-daintree-text"}`}
               aria-label={showDiscoveryBadge ? "Agent tray — new agents detected" : "Agent tray"}
               onPointerEnter={clearFocusRestoreSuppression}
             >
@@ -604,6 +613,7 @@ export function AgentTrayButton({
                   />
                 )}
               </span>
+              {emptyTrayLabel}
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>

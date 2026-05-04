@@ -1198,6 +1198,63 @@ describe("AgentTrayButton", () => {
     });
   });
 
+  describe("empty-state trigger label", () => {
+    it("shows 'Pin agents' label on trigger when agents are available but not pinned", () => {
+      const availability = {
+        claude: "ready",
+        gemini: "ready",
+        codex: "ready",
+      } as unknown as CliAvailability;
+      mockSettings = settingsWith({
+        claude: { pinned: false },
+        gemini: { pinned: false },
+        codex: { pinned: false },
+      });
+      // Suppress the discovery badge so aria-label stays "Agent tray".
+      mockSeenAgentIds = ["claude", "gemini", "codex"];
+
+      const { getByText, container, getAllByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      expect(getByText("Pin agents")).toBeTruthy();
+      expect(container.querySelector('[aria-label="Agent tray"]')).toBeTruthy();
+      expect(getAllByTestId("plug-icon").length).toBeGreaterThan(0);
+    });
+
+    it("shows 'Set up agents' label on trigger when nothing is installed", () => {
+      mockHasRealData = true;
+      const availability = {
+        claude: "missing",
+        gemini: "missing",
+        codex: "missing",
+      } as unknown as CliAvailability;
+
+      const { getByText, container, getAllByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      expect(getByText("Set up agents")).toBeTruthy();
+      expect(container.querySelector('[aria-label="Agent tray"]')).toBeTruthy();
+      expect(getAllByTestId("plug-icon").length).toBeGreaterThan(0);
+    });
+
+    it("shows no label on trigger during availability loading", () => {
+      mockHasRealData = false;
+      mockSettings = settingsWith({
+        claude: { pinned: false },
+        gemini: { pinned: false },
+        codex: { pinned: false },
+      });
+
+      const { queryByText, container } = render(<AgentTrayButton />);
+
+      expect(queryByText("Pin agents")).toBeNull();
+      expect(queryByText("Set up agents")).toBeNull();
+      expect(container.querySelector('[aria-label="Agent tray"]')).toBeTruthy();
+    });
+  });
+
   describe("SplitLaunchItem saved-preset indicator", () => {
     function arrangeAgentWithPresets() {
       const availability = { claude: "ready" } as unknown as CliAvailability;
