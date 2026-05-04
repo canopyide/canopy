@@ -57,45 +57,16 @@ function inferTrigger(event: AgentEvent): AgentStateChangeTrigger {
 }
 
 /**
- * Infer confidence level based on event type and trigger.
+ * Infer confidence level based on trigger. The worker's `inferTrigger` never
+ * returns "heuristic" or "ai-classification" (those are produced only by
+ * main-process pattern/AI detection paths), so this only covers the triggers
+ * the worker can actually emit.
  */
-function inferConfidence(event: AgentEvent, trigger: AgentStateChangeTrigger): number {
-  if (trigger === "input" || trigger === "exit") {
-    return 1.0;
-  }
-
-  if (trigger === "output") {
-    return 1.0;
-  }
-
-  if (trigger === "activity") {
-    return 1.0;
-  }
-
-  if (trigger === "heuristic") {
-    if (event.type === "busy") {
-      return 0.9;
-    }
-    if (event.type === "prompt") {
-      return 0.75;
-    }
-    if (event.type === "start") {
-      return 0.7;
-    }
-    if (event.type === "error") {
-      return 0.65;
-    }
-  }
-
-  if (trigger === "ai-classification") {
-    return 0.85;
-  }
-
+function inferConfidence(_event: AgentEvent, trigger: AgentStateChangeTrigger): number {
   if (trigger === "timeout") {
     return 0.6;
   }
-
-  return 0.5;
+  return 1.0;
 }
 
 /**

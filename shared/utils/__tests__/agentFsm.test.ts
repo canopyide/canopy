@@ -25,6 +25,39 @@ describe("agentFsm", () => {
     });
   });
 
+  describe("FSM invariant", () => {
+    // VALID_TRANSITIONS describes the natural lifecycle. `kill` is a hard-reset
+    // override that bypasses the table by design, so it is excluded from this
+    // invariant. `directing` is renderer-only and never receives main-process
+    // events; we don't assert table coverage for transitions out of it.
+    it("every natural-lifecycle nextAgentState result is permitted by VALID_TRANSITIONS", () => {
+      const states: AgentState[] = ["idle", "working", "waiting", "completed", "exited"];
+      const events: AgentEvent[] = [
+        { type: "start" },
+        { type: "busy" },
+        { type: "prompt" },
+        { type: "completion" },
+        { type: "input" },
+        { type: "exit", code: 0 },
+        { type: "respawn" },
+        { type: "watchdog-timeout" },
+        { type: "error", error: "x" },
+        { type: "output", data: "x" },
+      ];
+      for (const from of states) {
+        for (const event of events) {
+          const to = nextAgentState(from, event);
+          if (to !== from) {
+            expect(
+              isValidTransition(from, to),
+              `${from} -[${event.type}]-> ${to} must be in VALID_TRANSITIONS`
+            ).toBe(true);
+          }
+        }
+      }
+    });
+  });
+
   describe("isValidTransition", () => {
     it("allows canonical forward transitions", () => {
       expect(isValidTransition("idle", "working")).toBe(true);
@@ -35,9 +68,12 @@ describe("agentFsm", () => {
       expect(isValidTransition("exited", "idle")).toBe(true);
     });
 
-    it("rejects transitions out of directing", () => {
+    it("rejects all transitions out of directing (renderer-managed state)", () => {
       expect(isValidTransition("directing", "idle")).toBe(false);
       expect(isValidTransition("directing", "working")).toBe(false);
+      expect(isValidTransition("directing", "waiting")).toBe(false);
+      expect(isValidTransition("directing", "completed")).toBe(false);
+      expect(isValidTransition("directing", "exited")).toBe(false);
     });
 
     it("rejects unknown transitions", () => {
@@ -91,7 +127,14 @@ describe("agentFsm", () => {
     });
 
     it("treats kill as a hard reset to idle from any state", () => {
-      const states: AgentState[] = ["idle", "working", "waiting", "completed", "exited"];
+      const states: AgentState[] = [
+        "idle",
+        "working",
+        "waiting",
+        "directing",
+        "completed",
+        "exited",
+      ];
       for (const state of states) {
         expect(nextAgentState(state, { type: "kill" })).toBe("idle");
       }

@@ -21,13 +21,18 @@ export type AgentEvent =
   | { type: "respawn" } // New agent session detected in same PTY after a prior exit
   | { type: "watchdog-timeout" }; // Watchdog: waiting state timed out with dead children
 
+// Natural-lifecycle transitions — the set of state changes produced by ordinary
+// agent events (start/busy/prompt/completion/input/exit/respawn/watchdog-timeout).
+// `kill` is a hard-reset override that bypasses this table by design and
+// returns to `idle` from any state, so `kill`-driven transitions are
+// intentionally NOT enumerated here.
 export const VALID_TRANSITIONS: Record<AgentState, AgentState[]> = {
   idle: ["working", "exited"],
   working: ["waiting", "completed", "exited"],
   waiting: ["working", "completed", "exited", "idle"],
-  directing: [], // Renderer-only state, never produced by main process
+  directing: [], // Renderer-only state, never produced by main process.
   completed: ["working", "waiting", "exited"],
-  exited: ["idle"], // Terminal per agent lifecycle; `respawn` allows a fresh agent session in the same PTY
+  exited: ["idle"], // Terminal per agent lifecycle; `respawn` allows a fresh agent session in the same PTY.
 };
 
 export function isValidTransition(from: AgentState, to: AgentState): boolean {
