@@ -93,14 +93,7 @@ const INITIAL_FOREGROUND_SENTINEL = Object.freeze({
   foregroundPgid: 2,
 });
 
-const IDENTITY_DEBUG_ENABLED =
-  process.env.NODE_ENV === "development" || Boolean(process.env.DAINTREE_DEBUG);
-
-function logIdentityDebug(message: string): void {
-  if (IDENTITY_DEBUG_ENABLED) {
-    console.log(message);
-  }
-}
+import { logIdentityDebug } from "./identityDebug.js";
 
 type CursorBuffer = {
   cursorY?: number;
