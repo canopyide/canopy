@@ -288,6 +288,12 @@ vi.mock("lucide-react", () => ({
   Check: ({ className }: { className?: string }) => (
     <span data-testid="check-icon" data-classname={className} />
   ),
+  Circle: ({ className }: { className?: string }) => (
+    <span data-testid="circle-icon" data-classname={className} />
+  ),
+  CheckCircle2: ({ className }: { className?: string }) => (
+    <span data-testid="check-circle2-icon" data-classname={className} />
+  ),
   Plug: () => <span data-testid="plug-icon" />,
   Pin: ({ className }: { className?: string; strokeWidth?: number }) => (
     <span data-testid="pin-icon" data-classname={className} />
