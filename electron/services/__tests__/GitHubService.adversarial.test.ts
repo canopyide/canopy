@@ -33,9 +33,11 @@ vi.mock("../ProjectStore.js", () => ({
   },
 }));
 
-vi.mock("../github/index.js", async () => {
-  const actual = await vi.importActual<typeof import("../github/index.js")>("../github/index.js");
+vi.mock("../github/GitHubAuth.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../github/GitHubAuth.js")>("../github/GitHubAuth.js");
   return {
+    ...actual,
     GitHubAuth: {
       createClient: shared.createClient,
       getToken: () => shared.tokenState.token,
@@ -50,17 +52,26 @@ vi.mock("../github/index.js", async () => {
       getConfigAsync: () => Promise.resolve({ token: shared.tokenState.token }),
       validate: vi.fn(),
     },
-    GITHUB_API_TIMEOUT_MS: 15_000,
-    REPO_STATS_QUERY: "REPO_STATS_QUERY",
-    PROJECT_HEALTH_QUERY: "PROJECT_HEALTH_QUERY",
-    LIST_ISSUES_QUERY: "LIST_ISSUES_QUERY",
-    LIST_PRS_QUERY: "LIST_PRS_QUERY",
-    SEARCH_QUERY: "SEARCH_QUERY",
-    GET_ISSUE_QUERY: "GET_ISSUE_QUERY",
-    GET_PR_QUERY: "GET_PR_QUERY",
-    buildBatchPRQuery: vi.fn(),
-    buildBatchRequiredChecksQuery: vi.fn(() => null),
-    deriveRequiredCIStatus: actual.deriveRequiredCIStatus,
+  };
+});
+
+vi.mock("../github/GitHubQueries.js", async () => {
+  const actual = await vi.importActual<typeof import("../github/GitHubQueries.js")>(
+    "../github/GitHubQueries.js"
+  );
+  return {
+    ...actual,
+    buildBatchPRQuery: vi.fn(actual.buildBatchPRQuery),
+    buildBatchRequiredChecksQuery: vi.fn(actual.buildBatchRequiredChecksQuery),
+  };
+});
+
+vi.mock("../github/GitHubRateLimitService.js", async () => {
+  const actual = await vi.importActual<typeof import("../github/GitHubRateLimitService.js")>(
+    "../github/GitHubRateLimitService.js"
+  );
+  return {
+    ...actual,
     gitHubRateLimitService: {
       onStateChange: vi.fn().mockReturnValue(() => {}),
       shouldBlockRequest: vi.fn().mockReturnValue({ blocked: false, reason: null }),
@@ -92,6 +103,9 @@ vi.mock("../GitHubStatsCache.js", () => ({
           prCount: value.prCount,
           lastUpdated: value.lastUpdated ?? Date.now(),
         });
+      },
+      clear: () => {
+        shared.diskCache.clear();
       },
       resetInstance: () => {
         shared.diskCache.clear();
