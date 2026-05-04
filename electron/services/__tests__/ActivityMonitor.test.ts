@@ -3678,13 +3678,15 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(16000);
       expect(onWaitingTimeout).toHaveBeenCalledTimes(1);
 
-      // Transition to busy
+      // Transition to busy — must reset waitingWatchdogFired AND watchdogFailCount.
       monitor.onInput("\r");
       onWaitingTimeout.mockClear();
 
-      // Still busy, watchdog shouldn't fire
-      vi.advanceTimersByTime(16000);
-      expect(onWaitingTimeout).not.toHaveBeenCalled();
+      // Default idleDebounceMs=4000 returns to idle without further input.
+      // Then the new waiting period needs another 3-tick streak past the
+      // ceiling to fire — proving the count was actually reset, not retained.
+      vi.advanceTimersByTime(40000);
+      expect(onWaitingTimeout).toHaveBeenCalledTimes(1);
 
       monitor.dispose();
     });
@@ -3732,10 +3734,11 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(50);
       expect(onWaitingTimeout).not.toHaveBeenCalled();
 
-      // Advance past WORKING_HOLD_MS (1500ms) + idleDebounceMs + maxWaitingSilenceMs.
-      // Polling cycle fires checkWaitingWatchdog every poll; once idle + dead
-      // children + watchdog interval elapsed, onWaitingTimeout fires.
-      vi.advanceTimersByTime(2000);
+      // The watchdog runs solely on its dedicated 5s interval (independent of
+      // the polling cadence) to keep WATCHDOG_FAIL_THRESHOLD consistent across
+      // polling and non-polling monitors. With threshold=3 and ceiling
+      // already met, fire requires 3 watchdog ticks ≈ 15s.
+      vi.advanceTimersByTime(16000);
       expect(monitor.getState()).toBe("idle");
       expect(onWaitingTimeout).toHaveBeenCalledTimes(1);
       expect(onWaitingTimeout).toHaveBeenCalledWith("test-wd-9", 100);
