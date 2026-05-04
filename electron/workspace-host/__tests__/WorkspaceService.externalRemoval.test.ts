@@ -221,6 +221,41 @@ describe("WorkspaceService external worktree removal", () => {
     });
   });
 
+  describe("discoverAndSyncWorktrees() prune failure handling (#6669)", () => {
+    it("continues refresh when 'git worktree prune' itself fails", async () => {
+      createAndRegisterMonitor();
+
+      let listCalled = false;
+      mockSimpleGit.raw.mockImplementation(async (args: string[]) => {
+        if (args[0] === "worktree" && args[1] === "prune") {
+          throw new Error("fatal: failed to prune (EPERM)");
+        }
+        if (args[0] === "worktree" && args[1] === "list") {
+          listCalled = true;
+          // List still includes the registered monitor — refresh succeeds,
+          // sync runs, monitor remains registered (no phantom to clean up).
+          return [
+            "worktree /test/root",
+            "HEAD aaaaaaaaaaaaaaaaaaaa",
+            "branch refs/heads/main",
+            "",
+            "worktree /test/worktree",
+            "HEAD bbbbbbbbbbbbbbbbbbbb",
+            "branch refs/heads/feature/test",
+            "",
+          ].join("\n");
+        }
+        return undefined;
+      });
+
+      service["listService"].invalidateCache();
+
+      await expect(service["discoverAndSyncWorktrees"]()).resolves.not.toThrow();
+      expect(listCalled).toBe(true);
+      expect(service["monitors"].has("/test/worktree")).toBe(true);
+    });
+  });
+
   describe("handleExternalWorktreeRemoval()", () => {
     it("removes non-main worktree and emits removal event", () => {
       createAndRegisterMonitor();

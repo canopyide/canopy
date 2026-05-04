@@ -288,10 +288,20 @@ describe("WorkspaceService.deleteWorktree", () => {
     const mockReadFile = vi.mocked(fsModule.readFile);
 
     mockAccess.mockImplementation(async (p: unknown) => {
-      if (n(p as string).endsWith("/test/root/.daintree/config.json")) return undefined;
+      const norm = n(p as string);
+      if (norm.endsWith("/test/root/.daintree/config.json")) return undefined;
+      // Worktree dir is present so we exercise the normal `git worktree
+      // remove` path, not the #6669 prune-on-missing branch.
+      if (norm === "/test/worktree") return undefined;
       throw new Error("ENOENT");
     });
     mockReadFile.mockResolvedValue(JSON.stringify(teardownConfig));
+
+    const gitCalls: string[][] = [];
+    mockSimpleGit.raw.mockImplementation(async (args: string[]) => {
+      gitCalls.push(args);
+      return undefined;
+    });
 
     const childProcessModule = await import("child_process");
     const mockSpawn = vi.mocked(childProcessModule.spawn);
@@ -311,6 +321,9 @@ describe("WorkspaceService.deleteWorktree", () => {
     createAndRegisterMonitor();
 
     await service.deleteWorktree("req-5", "/test/worktree");
+
+    const removeCalls = gitCalls.filter((c) => c[0] === "worktree" && c[1] === "remove");
+    expect(removeCalls.length).toBe(1);
 
     expect(mockSendEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -494,6 +507,38 @@ describe("WorkspaceService.deleteWorktree", () => {
       })
     );
     expect(service["monitors"].has("/test/worktree")).toBe(false);
+  });
+
+  it("falls through to git remove on non-ENOENT access error (e.g. EPERM)", async () => {
+    const fsModule = await import("fs/promises");
+    const mockAccess = vi.mocked(fsModule.access);
+    const eperm: NodeJS.ErrnoException = Object.assign(new Error("EPERM"), {
+      code: "EPERM",
+    });
+    mockAccess.mockRejectedValue(eperm);
+
+    const gitCalls: string[][] = [];
+    mockSimpleGit.raw.mockImplementation(async (args: string[]) => {
+      gitCalls.push(args);
+      return undefined;
+    });
+
+    createAndRegisterMonitor();
+
+    await service.deleteWorktree("req-eperm", "/test/worktree");
+
+    const removeCalls = gitCalls.filter((c) => c[0] === "worktree" && c[1] === "remove");
+    const pruneCalls = gitCalls.filter((c) => c[0] === "worktree" && c[1] === "prune");
+    expect(removeCalls.length).toBe(1);
+    expect(pruneCalls.length).toBe(0);
+
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "delete-worktree-result",
+        requestId: "req-eperm",
+        success: true,
+      })
+    );
   });
 
   it("propagates non-stale git errors from worktree remove", async () => {

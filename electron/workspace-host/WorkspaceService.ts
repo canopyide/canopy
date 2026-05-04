@@ -321,6 +321,18 @@ export class WorkspaceService {
       this.git = createHardenedGit(projectRootPath, this._shutdownController.signal);
       this.listService.setGit(this.git, projectRootPath);
 
+      // #6669: prune at startup so externally-deleted worktrees (kept in
+      // `worktree list --porcelain` as `prunable` since Git 2.31+) don't
+      // re-appear in the sidebar after restart. Best-effort — a prune
+      // failure must not block project load.
+      try {
+        await this.git.raw(["worktree", "prune"]);
+      } catch (pruneError) {
+        console.warn(
+          `[WorkspaceHost] worktree prune at load failed for ${projectRootPath}: ${(pruneError as Error).message}`
+        );
+      }
+
       const rawWorktrees = await this.listService.list();
       const worktrees = this.listService.mapToWorktrees(rawWorktrees);
 
@@ -1000,7 +1012,16 @@ export class WorkspaceService {
     // are dropped from the list. Without this, `syncMonitors` re-creates a
     // monitor for the phantom path and the sidebar entry never clears.
     // `prune` skips locked worktrees, so this is safe to run on every refresh.
-    await this.git.raw(["worktree", "prune"]);
+    // Best-effort: if prune fails (e.g. EPERM on .git/worktrees/), don't block
+    // the rest of the refresh — that would recreate the original "refresh is a
+    // no-op" symptom under a different trigger.
+    try {
+      await this.git.raw(["worktree", "prune"]);
+    } catch (pruneError) {
+      console.warn(
+        `[WorkspaceHost] worktree prune during refresh failed: ${(pruneError as Error).message}`
+      );
+    }
 
     const rawWorktrees = await this.listService.list({ forceRefresh: true });
     const worktrees = this.listService.mapToWorktrees(rawWorktrees);
@@ -1640,6 +1661,9 @@ export class WorkspaceService {
         // `git worktree remove` (which fails with `is not a working tree`)
         // and run `git worktree prune` instead to clean up the leftover
         // metadata. This is the only UI recovery path for a phantom entry.
+        // Only ENOENT routes to prune — other access errors (EPERM, EACCES,
+        // ENOTDIR) fall through so we don't skip the remove on transient
+        // permission issues; the remove call's own errors will surface.
         let pathMissing = false;
         try {
           await access(monitor.path);
