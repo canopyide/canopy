@@ -303,15 +303,18 @@ export class RunCommandDetector {
       } else if (typeof postStart === "object" && postStart !== null) {
         const keys = Object.keys(postStart as Record<string, unknown>);
         if (keys.length > 0) {
+          const isValidVal = (v: unknown): boolean =>
+            (typeof v === "string" && v.trim().length > 0) || Array.isArray(v);
+
           const keyPriority = ["server", "dev", "start", "app"];
           const bestKey =
             keyPriority.find((k) => {
               const v = (postStart as Record<string, unknown>)[k];
-              return typeof v === "string" || Array.isArray(v);
+              return isValidVal(v);
             }) ??
             keys.find((k) => {
               const v = (postStart as Record<string, unknown>)[k];
-              return typeof v === "string" || Array.isArray(v);
+              return isValidVal(v);
             });
           if (bestKey) {
             const val = (postStart as Record<string, unknown>)[bestKey];

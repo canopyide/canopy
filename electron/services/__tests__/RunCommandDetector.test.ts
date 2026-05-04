@@ -484,6 +484,26 @@ describe("RunCommandDetector", () => {
       expect(dc[0]?.command).toBe("npm run dev");
     });
 
+    it("skips empty-string priority key in object postStartCommand", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({
+          postStartCommand: {
+            server: "",
+            dev: "npm run dev",
+          },
+        }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc[0]?.command).toBe("npm run dev");
+    });
+
     it("falls back to first valid key when no priority keys match", async () => {
       const devcontainerDir = path.join(tempDir, ".devcontainer");
       await fs.mkdir(devcontainerDir);

@@ -147,19 +147,14 @@ export function GeneralTab({
     return allDetectedRunners?.find((r) => r.id === "devcontainer-poststart");
   }, [allDetectedRunners, turbopackEnabled]);
 
+  const detectedCandidateRef = useRef(detectedCandidate);
+  detectedCandidateRef.current = detectedCandidate;
+
   const handleApplyDetected = useCallback(() => {
-    const candidate =
-      findDevServerCandidate(
-        useProjectSettingsStore.getState().allDetectedRunners,
-        turbopackEnabled
-      ) ??
-      useProjectSettingsStore
-        .getState()
-        .allDetectedRunners.find((r) => r.id === "devcontainer-poststart");
-    if (candidate) {
-      onDevServerCommandChange(candidate.command);
+    if (detectedCandidateRef.current) {
+      onDevServerCommandChange(detectedCandidateRef.current.command);
     }
-  }, [turbopackEnabled, onDevServerCommandChange]);
+  }, [onDevServerCommandChange]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
