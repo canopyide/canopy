@@ -39,6 +39,8 @@ export async function spawnPanelsFromRecipe(options: SpawnPanelsOptions): Promis
     }
   }
 
+  const errors: { index: number; error: unknown }[] = [];
+
   for (const [index, t] of terminals.entries()) {
     if (signal?.aborted) return;
 
@@ -87,12 +89,32 @@ export async function spawnPanelsFromRecipe(options: SpawnPanelsOptions): Promis
       }
 
       if (panelId != null) {
-        onPanelSpawned?.(index, panelId);
+        try {
+          onPanelSpawned?.(index, panelId);
+        } catch {
+          // Callback threw — it already fired once, nothing to do.
+        }
       } else {
-        onPanelSpawned?.(index, null, new Error("addPanel returned null"));
+        const err = new Error("addPanel returned null");
+        if (onPanelSpawned) {
+          onPanelSpawned(index, null, err);
+        } else {
+          errors.push({ index, error: err });
+        }
       }
     } catch (err) {
-      onPanelSpawned?.(index, null, err);
+      if (onPanelSpawned) {
+        onPanelSpawned(index, null, err);
+      } else {
+        errors.push({ index, error: err });
+      }
     }
+  }
+
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors.map((e) => e.error),
+      `${errors.length} panel(s) failed to spawn`
+    );
   }
 }

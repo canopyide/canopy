@@ -260,4 +260,69 @@ describe("spawnPanelsFromRecipe", () => {
       expect.objectContaining({ clipboardDirectory: undefined })
     );
   });
+
+  it("throws AggregateError when addPanel returns null and no callback is provided", async () => {
+    mockAddPanel.mockResolvedValue(null);
+
+    await expect(
+      spawnPanelsFromRecipe({
+        terminals: [makeTerminal()],
+        worktreeId: "wt-1",
+        cwd: "/path/to/wt",
+      })
+    ).rejects.toThrow(AggregateError);
+  });
+
+  it("throws AggregateError when addPanel throws and no callback is provided", async () => {
+    mockAddPanel.mockRejectedValue(new Error("boom"));
+
+    await expect(
+      spawnPanelsFromRecipe({
+        terminals: [makeTerminal()],
+        worktreeId: "wt-1",
+        cwd: "/path/to/wt",
+      })
+    ).rejects.toThrow(AggregateError);
+  });
+
+  it("does not throw when errors occur but callback is provided", async () => {
+    mockAddPanel.mockRejectedValue(new Error("boom"));
+    const cb = vi.fn();
+
+    await spawnPanelsFromRecipe({
+      terminals: [makeTerminal()],
+      worktreeId: "wt-1",
+      cwd: "/path/to/wt",
+      onPanelSpawned: cb,
+    });
+
+    expect(cb).toHaveBeenCalledWith(0, null, expect.any(Error));
+  });
+
+  it("does not double-fire callback when success callback throws", async () => {
+    const cb = vi.fn().mockImplementation(() => {
+      throw new Error("callback error");
+    });
+
+    await spawnPanelsFromRecipe({
+      terminals: [makeTerminal()],
+      worktreeId: "wt-1",
+      cwd: "/path/to/wt",
+      onPanelSpawned: cb,
+    });
+
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it("collects errors from multiple panels and throws single AggregateError", async () => {
+    mockAddPanel.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("fail"));
+
+    await expect(
+      spawnPanelsFromRecipe({
+        terminals: [makeTerminal({ title: "T1" }), makeTerminal({ title: "T2" })],
+        worktreeId: "wt-1",
+        cwd: "/path/to/wt",
+      })
+    ).rejects.toThrow(AggregateError);
+  });
 });
