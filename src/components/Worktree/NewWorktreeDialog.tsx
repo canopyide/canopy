@@ -76,7 +76,7 @@ export function NewWorktreeDialog({
   const keepEditingButtonRef = useRef<HTMLButtonElement>(null);
   const isCreatingRef = useRef(false);
 
-  const { errors, setValidationError, clearErrors, setCreationError, markTouched } =
+  const { errors, setValidationError, clearErrors, setCreationError, markTouched, resetErrors } =
     useWorktreeFormErrors();
 
   const assignWorktreeToSelf = usePreferencesStore((s) => s.assignWorktreeToSelf);
@@ -260,7 +260,7 @@ export function NewWorktreeDialog({
     if (!isOpen) return;
 
     setLoading(true);
-    clearErrors();
+    resetErrors();
     setPrBranchResolved(null);
     setBranches([]);
     setBaseBranch("");
@@ -664,8 +664,9 @@ export function NewWorktreeDialog({
   const handlePrefixSelectWrap = useCallback(
     (suggestion: { type: { prefix: string; displayName: string } }) => {
       handlePrefixSelect(suggestion.type.prefix);
+      markTouched("branchInput");
     },
-    [handlePrefixSelect]
+    [handlePrefixSelect, markTouched]
   );
 
   const handleIssueSelectWrapper = useCallback(

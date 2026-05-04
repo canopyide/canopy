@@ -55,7 +55,7 @@ describe("useWorktreeFormErrors", () => {
       result.current.setCreationError({
         friendly: "Creation failed",
         raw: "Error: Creation failed",
-        recovery: null,
+        recovery: undefined,
       });
     });
 

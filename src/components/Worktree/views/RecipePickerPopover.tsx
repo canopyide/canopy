@@ -41,13 +41,13 @@ export function RecipePickerPopover({
 
   return (
     <div className="space-y-2">
-      <label htmlFor={listId} className="block text-sm font-medium text-daintree-text">
+      <label htmlFor={`${listId}-trigger`} className="block text-sm font-medium text-daintree-text">
         {label}
       </label>
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
           <Button
-            id={listId}
+            id={`${listId}-trigger`}
             variant="outline"
             role="combobox"
             aria-expanded={open}
