@@ -76,7 +76,7 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
           aria-label={ariaLabel}
           aria-pressed={isOpen}
         >
-          <DaintreeIcon aria-hidden="true" />
+          <DaintreeIcon />
           {pip && (
             <span
               aria-hidden="true"
