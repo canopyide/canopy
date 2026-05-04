@@ -22,16 +22,21 @@ const HYSTERESIS_WINDOW_MS = 500;
 // inside the window is what we suppress. Note this is intentionally distinct
 // from `ACTIVE_AGENT_STATES` in shared/types/agent.ts, which classifies
 // states by "agent still present" (used for close-confirmation/eviction).
-const ACTIVE_GROUP: ReadonlySet<AgentState> = new Set(["working", "directing"]);
-const PASSIVE_GROUP: ReadonlySet<AgentState> = new Set(["idle", "waiting", "completed", "exited"]);
-
 function getStateGroup(state: AgentState): "active" | "passive" {
-  if (ACTIVE_GROUP.has(state)) return "active";
-  if (PASSIVE_GROUP.has(state)) return "passive";
-  // Exhaustiveness — TypeScript errors here if AgentState gains a new
-  // variant that hasn't been classified into either group.
-  const _exhaustive: never = state;
-  return _exhaustive;
+  switch (state) {
+    case "working":
+    case "directing":
+      return "active";
+    case "idle":
+    case "waiting":
+    case "completed":
+    case "exited":
+      return "passive";
+    default: {
+      const _exhaustive: never = state;
+      return _exhaustive;
+    }
+  }
 }
 
 function isOppositeDirectionTransition(from: AgentState, to: AgentState): boolean {
