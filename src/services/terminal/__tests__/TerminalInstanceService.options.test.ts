@@ -155,4 +155,46 @@ describe("TerminalInstanceService - options", () => {
 
     terminalInstanceService.destroy("test-options");
   });
+
+  it("preserves agent cosmetic overrides when existing terminal is reused with fresh options", async () => {
+    const { terminalInstanceService } = await import("../TerminalInstanceService");
+
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    });
+
+    // First creation — agent terminal
+    const managed = terminalInstanceService.getOrCreate(
+      "test-options",
+      "claude",
+      {},
+      () => TerminalRefreshTier.FOCUSED,
+      undefined
+    );
+
+    expect(managed.terminal.options.cursorBlink).toBe(false);
+
+    // Simulate XtermAdapter re-rendering with fresh options from getXtermOptions()
+    // which includes cursorBlink: true from BASE_TERMINAL_OPTIONS
+    terminalInstanceService.getOrCreate(
+      "test-options",
+      "claude",
+      { cursorBlink: true, fontSize: 14 },
+      () => TerminalRefreshTier.FOCUSED,
+      undefined
+    );
+
+    expect(managed.terminal.options).toMatchObject({
+      cursorBlink: false,
+      rescaleOverlappingGlyphs: false,
+      customGlyphs: false,
+    });
+    expect(managed.terminal.options.fontSize).toBe(14);
+
+    terminalInstanceService.destroy("test-options");
+  });
 });

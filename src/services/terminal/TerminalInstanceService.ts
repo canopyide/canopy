@@ -636,6 +636,11 @@ class TerminalInstanceService {
       if (options) {
         this.updateOptions(id, options);
       }
+      if (launchAgentId !== undefined && !existing.isHibernated) {
+        existing.terminal.options.cursorBlink = false;
+        existing.terminal.options.rescaleOverlappingGlyphs = false;
+        existing.terminal.options.customGlyphs = false;
+      }
       return existing;
     }
 
