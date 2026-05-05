@@ -65,11 +65,13 @@ export class WatcherController {
   }
 
   /**
-   * Poll cadence is mode-aware. Recursive coverage keeps the heartbeat at
-   * 30s; git-only on the active worktree tightens to 10s so mid-edit
-   * changes that bypass .git/ are still picked up promptly; background
-   * git-only stays at 30s; no watcher falls back to the supplied adaptive
-   * interval.
+   * Poll cadence is mode-aware. Recursive coverage drops the heartbeat to
+   * 5min — the watcher catches every working-tree edit, so the timer is
+   * just a safety net for OS suspend/wake and rare watcher-ghost cases.
+   * Git-only on the active worktree tightens to 60s so mid-edit changes
+   * that bypass .git/ are still picked up reasonably; background git-only
+   * shares the 5min fallback. No watcher falls back to the supplied
+   * adaptive interval.
    */
   pollIntervalMs(adaptiveFallback: () => number): number {
     switch (this.gitWatcherMode) {
