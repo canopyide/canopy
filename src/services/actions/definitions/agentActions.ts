@@ -216,8 +216,9 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         // Skip ephemeral panels (e.g. the Daintree Assistant's own dock
         // terminal) for the same reason terminal.list filters them — the
         // assistant must not be able to introspect its own process.
-        if (panel?.ephemeral === true) continue;
-        if (panel?.launchAgentId === agentId) {
+        if (!panel || panel.ephemeral === true) continue;
+        const effectiveAgentId = panel.detectedAgentId ?? panel.launchAgentId;
+        if (effectiveAgentId === agentId) {
           return {
             agentId,
             state: panel.agentState ?? null,

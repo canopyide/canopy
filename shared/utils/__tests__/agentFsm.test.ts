@@ -166,9 +166,11 @@ describe("agentFsm", () => {
       }
     });
 
-    it("treats output events as no-ops", () => {
+    it("treats output as working activity", () => {
       expect(nextAgentState("working", { type: "output", data: "x" })).toBe("working");
-      expect(nextAgentState("idle", { type: "output", data: "x" })).toBe("idle");
+      expect(nextAgentState("idle", { type: "output", data: "x" })).toBe("working");
+      expect(nextAgentState("waiting", { type: "output", data: "x" })).toBe("working");
+      expect(nextAgentState("completed", { type: "output", data: "x" })).toBe("working");
     });
 
     it("guards against malformed events", () => {

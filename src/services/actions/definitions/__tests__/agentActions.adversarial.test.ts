@@ -262,6 +262,32 @@ describe("agentActions adversarial", () => {
     });
   });
 
+  it("agent.getState returns runtime-detected agent state without launch affinity", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["term-runtime"],
+      panelsById: {
+        "term-runtime": {
+          id: "term-runtime",
+          detectedAgentId: "claude",
+          agentState: "working",
+          lastStateChange: 1717000009000,
+        },
+      },
+    });
+
+    const callbacks = makeCallbacks();
+    const actions = setupActions(callbacks);
+    const result = await callAction(actions, "agent.getState", { agentId: "claude" });
+
+    expect(result).toEqual({
+      agentId: "claude",
+      state: "working",
+      lastTransitionAt: 1717000009000,
+      terminalId: "term-runtime",
+      found: true,
+    });
+  });
+
   it("agent.getState returns found:false with null fields when no panel matches", async () => {
     panelStoreMock.getState.mockReturnValue({
       panelIds: ["term-a"],

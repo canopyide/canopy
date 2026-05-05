@@ -6,9 +6,9 @@ import type { PatternDetectionConfig } from "./AgentPatternDetector.js";
 import type { ActivityMonitorOptions, ProcessStateValidator } from "../ActivityMonitor.js";
 import type { ProcessTreeCache } from "../ProcessTreeCache.js";
 
-// Newer agents can batch long paragraphs without progress frames, so waiting
-// requires a conservative quiet window even when prompt fast-paths are present.
-const AGENT_WAITING_QUIET_MS = 6000;
+// Agent status is intentionally output-driven: any observed output means
+// working, and sustained silence means waiting.
+const AGENT_WAITING_QUIET_MS = 8000;
 
 export function buildPatternConfig(
   detection: AgentDetectionConfig | undefined,
@@ -227,6 +227,7 @@ export function buildActivityMonitorOptions(
     promptConfidence: detection?.promptConfidence,
     idleDebounceMs,
     promptFastPathMinQuietMs,
+    simpleOutputState: effectiveAgentId !== undefined,
     maxWaitingSilenceMs: 600_000,
     // Background polling (500ms) shortens the recovery debouncer so
     // backgrounded agents can escape "waiting" when output resumes (#6641).

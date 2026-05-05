@@ -88,6 +88,7 @@ export interface ActivityMonitorOptions {
   maxWorkingSilenceMs?: number;
   maxCpuHighEscapeMs?: number;
   maxWaitingSilenceMs?: number;
+  simpleOutputState?: boolean;
   // Consecutive watchdog ticks that must all observe a dead-looking probe
   // result before onWaitingTimeout fires. Defaults to 3 (≈15s of sustained
   // consensus at the 5s watchdog cadence) to ride through transient false
@@ -183,6 +184,7 @@ export class ActivityMonitor {
 
   // State preservation for project switch
   private readonly skipInitialStateEmit: boolean;
+  private readonly simpleOutputState: boolean;
 
   // Polling interval configuration
   private POLLING_INTERVAL_MS: number;
@@ -207,7 +209,8 @@ export class ActivityMonitor {
     ) => void,
     options?: ActivityMonitorOptions
   ) {
-    this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? 4000;
+    const simpleOutputState = options?.simpleOutputState ?? options?.agentId !== undefined;
+    this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? (simpleOutputState ? 8000 : 4000);
     this.PROMPT_FAST_PATH_MIN_QUIET_MS = options?.promptFastPathMinQuietMs ?? 3000;
     this.POLLING_MAX_BOOT_MS = options?.pollingMaxBootMs ?? 15000;
     this.MAX_WORKING_SILENCE_MS = options?.maxWorkingSilenceMs ?? 180000;
@@ -285,6 +288,7 @@ export class ActivityMonitor {
     // State preservation
     this.state = options?.initialState ?? "idle";
     this.skipInitialStateEmit = options?.skipInitialStateEmit ?? false;
+    this.simpleOutputState = simpleOutputState;
 
     // Polling interval
     this.POLLING_INTERVAL_MS = options?.pollingIntervalMs ?? 50;
@@ -362,10 +366,19 @@ export class ActivityMonitor {
     if (this.isDisposed) return;
     const now = Date.now();
 
-    this.lastDataTimestamp = now;
-
     const isLikelyUserEcho = data ? this.inputTracker.isLikelyUserEcho(data, now) : false;
     const isCosmeticRedraw = data ? isStatusLineRewrite(data) : false;
+
+    if (this.simpleOutputState) {
+      if (!data || isLikelyUserEcho) {
+        return;
+      }
+      this.lastActivityTimestamp = now;
+      this.becomeBusy({ trigger: "output" }, now);
+      return;
+    }
+
+    this.lastDataTimestamp = now;
 
     if (data && !isLikelyUserEcho && isCosmeticRedraw) {
       // Spinner/status-line rewrite — latch lastSpinnerDetectedAt for polling's isSpinnerActive()
@@ -531,6 +544,11 @@ export class ActivityMonitor {
     if (!this.getVisibleLines) return;
 
     const now = Date.now();
+    if (this.simpleOutputState) {
+      this.lastActivityTimestamp = now;
+      this.becomeBusy({ trigger: "output" }, now);
+      return;
+    }
     if (this.isResizeSuppressed(now)) return;
     // Pre-boot frames are part of the agent's startup chrome — let the boot
     // detector handle them via the regular onData path.
@@ -697,6 +715,10 @@ export class ActivityMonitor {
       this.recordWorkingSignal(this.bootDetector.pollingStartTime);
     }
 
+    if (this.simpleOutputState && this.state === "busy") {
+      this.resetDebounceTimer();
+    }
+
     this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
   }
 
@@ -705,6 +727,20 @@ export class ActivityMonitor {
     if (!this.getVisibleLines) return;
 
     const now = Date.now();
+
+    if (this.simpleOutputState) {
+      if (
+        this.state === "busy" &&
+        now - this.lastActivityTimestamp >= this.IDLE_DEBOUNCE_MS &&
+        now >= this.workingHoldUntil
+      ) {
+        this.state = "idle";
+        this.idleSince = now;
+        this.patternBuf.clear();
+        this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
+      }
+      return;
+    }
 
     const scanCount = !this.bootDetector.hasExitedBootState
       ? Math.max(this.promptDetectorConfig.promptScanLineCount, 50)
@@ -1092,6 +1128,29 @@ export class ActivityMonitor {
 
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
+    }
+
+    if (this.simpleOutputState) {
+      this.debounceTimer = setTimeout(() => {
+        if (this.isDisposed) {
+          this.debounceTimer = null;
+          return;
+        }
+
+        const now = Date.now();
+        if (
+          this.state === "busy" &&
+          now - this.lastDataTimestamp >= this.IDLE_DEBOUNCE_MS &&
+          now >= this.workingHoldUntil
+        ) {
+          this.state = "idle";
+          this.idleSince = now;
+          this.patternBuf.clear();
+          this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
+        }
+        this.debounceTimer = null;
+      }, this.IDLE_DEBOUNCE_MS);
+      return;
     }
 
     this.debounceTimer = setTimeout(() => {

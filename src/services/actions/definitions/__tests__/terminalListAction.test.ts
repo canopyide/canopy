@@ -84,4 +84,24 @@ describe("terminal.list isFocused field", () => {
     const dock = items.find((t) => t.id === "term-dock");
     expect(dock?.isFocused).toBe(true);
   });
+
+  it("reports runtime-detected agents as agent terminals", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      focusedId: null,
+      panelIds: ["term-runtime"],
+      panelsById: {
+        "term-runtime": {
+          id: "term-runtime",
+          kind: "terminal",
+          location: "grid",
+          detectedAgentId: "claude",
+          agentState: "working",
+        },
+      },
+    });
+
+    const items = await callList(setupActions());
+    expect(items).toHaveLength(1);
+    expect(items[0]?.agentId).toBe("claude");
+  });
 });

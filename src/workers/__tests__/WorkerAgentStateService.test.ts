@@ -204,12 +204,12 @@ describe("WorkerAgentStateService", () => {
     });
 
     describe("output event", () => {
-      it("should not change state on output", () => {
+      it("should mark idle or waiting agents as working", () => {
         const event: AgentEvent = { type: "output", data: "Some output" };
         expect(calcState("working", event)).toBe("working");
-        expect(calcState("idle", event)).toBe("idle");
-        expect(calcState("waiting", event)).toBe("waiting");
-        expect(calcState("completed", event)).toBe("completed");
+        expect(calcState("idle", event)).toBe("working");
+        expect(calcState("waiting", event)).toBe("working");
+        expect(calcState("completed", event)).toBe("working");
       });
     });
   });

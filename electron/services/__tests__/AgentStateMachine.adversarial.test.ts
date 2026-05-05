@@ -21,9 +21,9 @@ describe("AgentStateMachine adversarial", () => {
       applyEvents("working", [
         { type: "completion" },
         { type: "start" },
-        { type: "output", data: "ignored" },
+        { type: "output", data: "resumed" },
       ])
-    ).toBe("completed");
+    ).toBe("working");
   });
 
   it("treats malformed runtime events as no-ops instead of throwing", () => {

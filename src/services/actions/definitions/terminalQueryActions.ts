@@ -58,7 +58,7 @@ export function registerTerminalQueryActions(
         worktreeId: t.worktreeId ?? null,
         title: t.title ?? null,
         location: t.location ?? "grid",
-        agentId: t.launchAgentId ?? null,
+        agentId: t.detectedAgentId ?? t.launchAgentId ?? null,
         agentState: t.agentState ?? null,
         isInputLocked: t.isInputLocked ?? false,
         isFocused: t.id === state.focusedId,

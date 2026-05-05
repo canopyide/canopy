@@ -668,6 +668,63 @@ describe("ActivityMonitor", () => {
     });
   });
 
+  describe("Simple output-driven agent state", () => {
+    it("treats any agent output, including spinner redraws, as working until 8s of silence", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("agent-simple-1", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => ["⠋ thinking"],
+        getCursorLine: () => "⠋ thinking",
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      monitor.onData("\r⠋ thinking");
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith("agent-simple-1", 1000, "busy", {
+        trigger: "output",
+      });
+
+      vi.advanceTimersByTime(7999);
+      expect(monitor.getState()).toBe("busy");
+
+      vi.advanceTimersByTime(1);
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).toHaveBeenCalledWith("agent-simple-1", 1000, "idle", {
+        trigger: "timeout",
+      });
+
+      monitor.dispose();
+    });
+
+    it("resets the 8s silence window on tiny repeated output", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("agent-simple-2", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => ["."],
+        getCursorLine: () => ".",
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      monitor.onData(".");
+      vi.advanceTimersByTime(7900);
+      monitor.onData(".");
+      vi.advanceTimersByTime(7900);
+
+      expect(monitor.getState()).toBe("busy");
+
+      vi.advanceTimersByTime(100);
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange.mock.calls.filter((call) => call[2] === "busy")).toHaveLength(1);
+
+      monitor.dispose();
+    });
+  });
+
   describe("notifySubmission (hybrid input bar)", () => {
     it("should immediately transition to busy on submission (Issue #2185)", () => {
       const onStateChange = vi.fn();
@@ -3494,7 +3551,10 @@ describe("ActivityMonitor", () => {
     it("swaps detector so old-agent patterns no longer match after reconfigure", () => {
       vi.setSystemTime(10000);
       const onStateChange = vi.fn();
-      const monitor = new ActivityMonitor("reconf-1", 1, onStateChange, { agentId: "claude" });
+      const monitor = new ActivityMonitor("reconf-1", 1, onStateChange, {
+        agentId: "claude",
+        simpleOutputState: false,
+      });
 
       // Baseline: claude detector matches its own pattern
       monitor.onData(CLAUDE_WORKING);
@@ -3516,7 +3576,10 @@ describe("ActivityMonitor", () => {
     it("clears pattern buffer and TTL fields on reconfigure", () => {
       vi.setSystemTime(10000);
       const onStateChange = vi.fn();
-      const monitor = new ActivityMonitor("reconf-2", 1, onStateChange, { agentId: "claude" });
+      const monitor = new ActivityMonitor("reconf-2", 1, onStateChange, {
+        agentId: "claude",
+        simpleOutputState: false,
+      });
 
       monitor.onData(CLAUDE_WORKING);
       expect(monitor.getLastPatternResult()?.isWorking).toBe(true);
@@ -3570,6 +3633,7 @@ describe("ActivityMonitor", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("reconf-4", 1, onStateChange, {
         agentId: "claude",
+        simpleOutputState: false,
         idleDebounceMs: 1000,
       });
 
