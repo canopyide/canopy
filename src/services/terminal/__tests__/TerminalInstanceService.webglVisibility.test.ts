@@ -51,6 +51,7 @@ type WebGLVisibilityService = {
   instances: Map<string, Record<string, unknown>>;
   setVisible: (id: string, visible: boolean, expectedGeneration?: number) => void;
   destroy: (id: string) => void;
+  applyRendererPolicy: (id: string, tier: TerminalRefreshTier) => void;
   webGLManager: {
     isActive: (id: string) => boolean;
     ensureContext: (id: string, managed: unknown) => void;
@@ -65,6 +66,9 @@ function makeMockManaged(overrides: Record<string, unknown> = {}) {
     refresh: vi.fn(),
     loadAddon: vi.fn(),
     dispose: vi.fn(),
+    hasSelection: vi.fn(() => false),
+    options: { scrollback: 1000 },
+    buffer: { active: { length: 24 } },
     element: document.createElement("div"),
   };
 
@@ -162,7 +166,10 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     expect(service.webGLManager.isActive("t1")).toBe(false);
   });
 
-  it("setVisible(false) calls terminal.refresh after WebGL release for DOM fallback", () => {
+  it("setVisible(false) does not call terminal.refresh after WebGL release", () => {
+    // Calling refresh on the hide path forces the DOM renderer to paint a
+    // freshly-empty frame for an offscreen terminal — the visible flash on
+    // next show. Removed in #6802.
     const managed = makeMockManaged();
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
@@ -170,7 +177,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
 
     service.setVisible("t1", false);
 
-    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("setVisible(false) does not refresh when no WebGL was active", () => {
@@ -198,7 +205,11 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     expect(service.webGLManager.isActive("t1")).toBe(true);
   });
 
-  it("setVisible(true) calls terminal.refresh after re-acquiring WebGL", () => {
+  it("setVisible(true) does not call terminal.refresh on the show path", () => {
+    // The pre-debounce rAF + the post-ensureContext refresh both painted
+    // stale DOM rows during the WebGL transition, producing the flash.
+    // WebglAddon.onLoad self-schedules its first frame; forceXtermReflow
+    // covers IntersectionObserver recovery. Removed in #6802.
     const managed = makeMockManaged({ isVisible: false });
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     (managed.terminal.refresh as ReturnType<typeof vi.fn>).mockClear();
@@ -206,7 +217,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     service.setVisible("t1", true);
     vi.advanceTimersByTime(100);
 
-    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("rapid hide→show→hide before debounce expires keeps context released", () => {
@@ -305,6 +316,46 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     // Matching generation — release proceeds
     service.setVisible("t1", false, 5);
     expect(service.webGLManager.isActive("t1")).toBe(false);
+  });
+
+  it("tier demotion while hidden does not refresh (project-switch flash)", () => {
+    // Project switches simultaneously hide terminals and demote their tier.
+    // Refreshing an offscreen DOM produces a stale frame that flashes on
+    // next show — the same root cause as the setVisible() refresh removals.
+    const managed = makeMockManaged({
+      isVisible: false,
+      lastAppliedTier: TerminalRefreshTier.FOCUSED,
+      getRefreshTier: () => TerminalRefreshTier.BACKGROUND,
+    });
+    service.instances.set("t1", managed as unknown as Record<string, unknown>);
+    service.webGLManager.ensureContext("t1", managed);
+    (managed.terminal.refresh as ReturnType<typeof vi.fn>).mockClear();
+
+    service.applyRendererPolicy("t1", TerminalRefreshTier.BACKGROUND);
+    // Downgrades go through a hysteresis timer (TIER_DOWNGRADE_HYSTERESIS_MS).
+    vi.advanceTimersByTime(500);
+
+    expect(service.webGLManager.isActive("t1")).toBe(false);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
+  });
+
+  it("tier demotion while visible still refreshes (DOM fallback paint)", () => {
+    // A visible terminal whose tier demotes (e.g., resource pressure)
+    // needs the DOM repaint so it doesn't go blank on screen.
+    const managed = makeMockManaged({
+      isVisible: true,
+      lastAppliedTier: TerminalRefreshTier.FOCUSED,
+      getRefreshTier: () => TerminalRefreshTier.BACKGROUND,
+    });
+    service.instances.set("t1", managed as unknown as Record<string, unknown>);
+    service.webGLManager.ensureContext("t1", managed);
+    (managed.terminal.refresh as ReturnType<typeof vi.fn>).mockClear();
+
+    service.applyRendererPolicy("t1", TerminalRefreshTier.BACKGROUND);
+    vi.advanceTimersByTime(500);
+
+    expect(service.webGLManager.isActive("t1")).toBe(false);
+    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
   it("agent demotion during debounce window cancels WebGL restore", () => {
