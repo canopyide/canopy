@@ -52,8 +52,24 @@ export const createTrashExpiryHelpers = (
     const state = get();
     const now = Date.now();
     for (const [id, trashedInfo] of Array.from(state.trashedTerminals.entries())) {
-      if (trashedInfo.expiresAt <= now) {
-        state.removePanel(id);
+      if (trashedInfo.expiresAt > now) continue;
+      const terminal = state.panelsById[id];
+      try {
+        if (terminal?.location === "trash") {
+          state.removePanel(id);
+        } else {
+          // Terminal either doesn't exist or isn't in trash — the trash
+          // metadata is stale/corrupted. Clean it up without touching
+          // the terminal itself.
+          set((state) => {
+            if (!state.trashedTerminals.has(id)) return state;
+            const newTrashed = new Map(state.trashedTerminals);
+            newTrashed.delete(id);
+            return { trashedTerminals: newTrashed };
+          });
+        }
+      } catch {
+        // Abort this entry but continue sweeping remaining entries.
       }
     }
   };

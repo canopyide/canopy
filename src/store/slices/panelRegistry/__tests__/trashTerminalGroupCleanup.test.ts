@@ -590,4 +590,77 @@ describe("trash expiry visibility sweep", () => {
     const afterState = usePanelStore.getState();
     expect(afterState.trashedTerminals.has("term-1")).toBe(true);
   });
+
+  it("should not remove active terminal with stale trash metadata", () => {
+    setTerminals([
+      {
+        id: "term-1",
+        title: "Term 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+
+    // Seed stale trash metadata for an active (grid-located) terminal.
+    // This simulates corrupted state where trashedTerminals is out of sync
+    // with the panel's actual location.
+    usePanelStore.setState({
+      trashedTerminals: new Map([["term-1", { id: "term-1", expiresAt: Date.now() - 1 }]]),
+    });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    // The active terminal must survive — the sweep must not remove it.
+    expect(afterState.panelsById["term-1"]).toBeDefined();
+    expect(afterState.panelsById["term-1"]?.location).toBe("grid");
+    // The stale trash metadata should be cleaned up.
+    expect(afterState.trashedTerminals.has("term-1")).toBe(false);
+  });
+
+  it("should clean up expired trash metadata for missing panel safely", () => {
+    // Seed a trash entry with no corresponding panelsById entry.
+    usePanelStore.setState({
+      trashedTerminals: new Map([["orphan-1", { id: "orphan-1", expiresAt: Date.now() - 1 }]]),
+    });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    // Metadata should be cleaned up without any side effects.
+    expect(afterState.trashedTerminals.has("orphan-1")).toBe(false);
+  });
+
+  it("sweeps only expired entries leaving non-expired intact", () => {
+    setTerminals([
+      { id: "term-1", title: "T1", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+      { id: "term-2", title: "T2", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+      { id: "term-3", title: "T3", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+    ]);
+
+    const { trashPanel } = usePanelStore.getState();
+    trashPanel("term-1");
+    trashPanel("term-2");
+    trashPanel("term-3");
+
+    const state = usePanelStore.getState();
+    const now = Date.now();
+    const mixed = new Map(state.trashedTerminals);
+    // term-1 expired, term-2 expired, term-3 still valid
+    const info1 = mixed.get("term-1")!;
+    const info2 = mixed.get("term-2")!;
+    mixed.set("term-1", { ...info1, expiresAt: now - 1 });
+    mixed.set("term-2", { ...info2, expiresAt: now - 1 });
+    usePanelStore.setState({ trashedTerminals: mixed });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    expect(afterState.trashedTerminals.has("term-1")).toBe(false);
+    expect(afterState.trashedTerminals.has("term-2")).toBe(false);
+    expect(afterState.trashedTerminals.has("term-3")).toBe(true);
+    expect(afterState.panelsById["term-3"]?.location).toBe("trash");
+  });
 });
