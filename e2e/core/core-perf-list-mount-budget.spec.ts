@@ -19,11 +19,12 @@ import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
-import { T_LONG, T_SETTLE } from "../helpers/timeouts";
+import { T_SHORT, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 interface E2EPerfWindow extends Window {
   __daintreeE2ePerfEntries?: Array<{ duration: number; startTime: number }>;
   __daintreeE2ePerfObserver?: PerformanceObserver;
+  __daintreeE2eMountStart?: number;
 }
 
 const FILE_COUNT = 1000;
@@ -56,12 +57,13 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
     const { window } = ctx;
 
     const lastFileName = `bulk-unstaged/file-${FILE_COUNT}.txt`;
+    const midFileName = `bulk-unstaged/file-0500.txt`;
 
     // Snapshot baseline DOM node count before opening the hub
     const beforeNodeCount = await window.evaluate(() => document.getElementsByTagName("*").length);
 
     // Install a PerformanceObserver for long-animation-frames before triggering
-    // the mount, so buffered entries and new entries during render are captured.
+    // the mount. Do NOT use buffered: true — it captures startup noise.
     const observerInstalled = await window.evaluate(() => {
       if (!("PerformanceObserver" in window)) return false;
       const supported = PerformanceObserver.supportedEntryTypes ?? [];
@@ -69,14 +71,23 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
 
       const win = window as unknown as E2EPerfWindow;
       win.__daintreeE2ePerfEntries = [];
-      const obs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          win.__daintreeE2ePerfEntries!.push(entry.toJSON());
-        }
-      });
-      obs.observe({ type: "long-animation-frame", buffered: true });
-      win.__daintreeE2ePerfObserver = obs;
+      try {
+        const obs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            win.__daintreeE2ePerfEntries!.push(entry.toJSON());
+          }
+        });
+        obs.observe({ type: "long-animation-frame", durationThreshold: 100 });
+        win.__daintreeE2ePerfObserver = obs;
+      } catch {
+        return false;
+      }
       return true;
+    });
+
+    // Record mount start time for entry filtering
+    await window.evaluate(() => {
+      (window as unknown as E2EPerfWindow).__daintreeE2eMountStart = performance.now();
     });
 
     // Open the ReviewHub
@@ -86,9 +97,17 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
     const hub = window.locator(SEL.reviewHub.container);
     await expect(hub).toBeVisible({ timeout: T_LONG });
 
-    // Wait for the last file row to render — confirms full data load completed
+    // Confirm the hub is showing file data, not an empty state
+    await expect(hub.locator(SEL.reviewHub.cleanState)).not.toBeVisible({ timeout: T_SHORT });
+    await expect(hub.locator(SEL.reviewHub.noUnstagedChanges)).not.toBeVisible({
+      timeout: T_SHORT,
+    });
+
+    // Wait for both last and mid-range rows — confirms full list span
     const lastStageBtn = hub.locator(SEL.reviewHub.stageButton(lastFileName));
+    const midStageBtn = hub.locator(SEL.reviewHub.stageButton(midFileName));
     await expect(lastStageBtn).toBeVisible({ timeout: T_LONG });
+    await expect(midStageBtn).toBeVisible({ timeout: T_SHORT });
 
     // Allow a brief settle for final paints and observer callbacks
     await window.waitForTimeout(T_SETTLE);
@@ -96,14 +115,18 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
     // Snapshot post-mount DOM node count
     const afterNodeCount = await window.evaluate(() => document.getElementsByTagName("*").length);
 
-    // Collect longtask entries
+    // Collect longtask entries, filtering to post-click timestamps
     const longTaskEntries: Array<{ duration: number; startTime: number }> = await window.evaluate(
       () => {
         const win = window as unknown as E2EPerfWindow;
         win.__daintreeE2ePerfObserver?.disconnect();
-        const entries = win.__daintreeE2ePerfEntries ?? [];
+        const mountStart = win.__daintreeE2eMountStart ?? 0;
+        const entries = (win.__daintreeE2ePerfEntries ?? []).filter(
+          (e) => e.startTime >= mountStart
+        );
         delete win.__daintreeE2ePerfObserver;
         delete win.__daintreeE2ePerfEntries;
+        delete win.__daintreeE2eMountStart;
         return entries;
       }
     );
@@ -115,15 +138,14 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
     );
     expect(domDelta).toBeLessThanOrEqual(MAX_DOM_DELTA);
 
-    // Assert longtask count (skip if the API is unsupported in this runtime)
+    // Assert longtask count
     if (observerInstalled) {
       const longTaskCount = longTaskEntries.length;
       console.log(`[perf-budget] Long-animation-frames: ${longTaskCount}`);
       expect(longTaskCount).toBeLessThanOrEqual(MAX_LONG_TASKS);
     } else {
-      console.warn(
-        "[perf-budget] long-animation-frame not supported in this runtime; skipping longtask budget assertion"
-      );
+      // Fail rather than skip — a release gate must not silently drop coverage
+      throw new Error("long-animation-frame API must be supported for the perf budget gate");
     }
   });
 });

@@ -100,10 +100,10 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
     writeFileSync(path.join(dir, "uncommitted.txt"), "This file is not committed.\n");
   }
 
+  if (!Number.isInteger(unstagedFileCount) || unstagedFileCount < 0) {
+    throw new Error(`unstagedFileCount must be a non-negative integer, got ${unstagedFileCount}`);
+  }
   if (unstagedFileCount > 0) {
-    if (!Number.isInteger(unstagedFileCount) || unstagedFileCount < 0) {
-      throw new Error(`unstagedFileCount must be a non-negative integer, got ${unstagedFileCount}`);
-    }
     const bulkDir = path.join(dir, "bulk-unstaged");
     mkdirSync(bulkDir, { recursive: true });
     const width = String(unstagedFileCount).length;
