@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import type { Scratch } from "@shared/types";
-import { scratchClient } from "@/clients";
+// Import the client directly (not via the @/clients barrel) so tests that
+// mock the barrel — without listing scratchClient — don't crash on access.
+// The barrel is mocked in many test setups; importing from the leaf module
+// keeps this store decoupled from those mocks.
+import { scratchClient } from "@/clients/scratchClient";
 
 /**
  * Renderer-side Zustand store for Scratch (one-off agent workspace) state.
