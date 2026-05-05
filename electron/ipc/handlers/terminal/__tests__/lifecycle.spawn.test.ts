@@ -77,14 +77,19 @@ vi.mock("../../../../shared/config/agentRegistry.js", () => ({
   isRegisteredAgent: vi.fn(() => false),
 }));
 
-const { mockValidateToken, mockIsRunning, mockCurrentPort, mockPreparePaneConfig } = vi.hoisted(
-  () => ({
-    mockValidateToken: vi.fn<(token: string) => "action" | "system" | false>(),
-    mockIsRunning: vi.fn<() => boolean>(),
-    mockCurrentPort: vi.fn<() => number | null>(),
-    mockPreparePaneConfig: vi.fn(),
-  })
-);
+const {
+  mockValidateToken,
+  mockIsRunning,
+  mockCurrentPort,
+  mockPreparePaneConfig,
+  mockEnsureReady,
+} = vi.hoisted(() => ({
+  mockValidateToken: vi.fn<(token: string) => "action" | "system" | false>(),
+  mockIsRunning: vi.fn<() => boolean>(),
+  mockCurrentPort: vi.fn<() => number | null>(),
+  mockPreparePaneConfig: vi.fn(),
+  mockEnsureReady: vi.fn<() => Promise<boolean>>(),
+}));
 
 vi.mock("../../../../services/HelpSessionService.js", () => ({
   helpSessionService: {
@@ -100,6 +105,7 @@ vi.mock("../../../../services/McpServerService.js", () => ({
     get currentPort() {
       return mockCurrentPort();
     },
+    ensureReady: () => mockEnsureReady(),
   },
 }));
 
@@ -124,6 +130,11 @@ function getSpawnHandler() {
     options: Record<string, unknown>
   ) => Promise<string>;
 }
+
+beforeEach(() => {
+  mockEnsureReady.mockReset();
+  mockEnsureReady.mockResolvedValue(false);
+});
 
 describe("terminal spawn handler - projectId resolution", () => {
   const projectA = { id: "project-a-id", name: "Project A", path: "/projects/a" };
@@ -655,5 +666,76 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(spawnArgs.command).toContain("--mcp-config");
     expect(spawnArgs.command).not.toContain("--strict-mcp-config");
     expect(mockPreparePaneConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts MCP on demand before injecting config for restored Claude agent spawns", async () => {
+    mockValidateToken.mockReturnValue(false);
+    mockIsRunning.mockReturnValue(false);
+    mockCurrentPort.mockReturnValue(45454);
+    mockEnsureReady.mockImplementation(async () => {
+      mockIsRunning.mockReturnValue(true);
+      return true;
+    });
+    mockPreparePaneConfig.mockResolvedValue({
+      configPath: "/tmp/pane-config.json",
+      token: "pane-token",
+    });
+    mockGetProjectSettings.mockResolvedValue({ daintreeMcpTier: "action" });
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        id: "restored-pane",
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude",
+        launchAgentId: "claude",
+        restore: true,
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(mockEnsureReady).toHaveBeenCalledTimes(1);
+    expect(mockPreparePaneConfig).toHaveBeenCalledWith({
+      paneId: "restored-pane",
+      port: 45454,
+      tier: "action",
+    });
+    expect(spawnArgs.command).toContain("--mcp-config");
+    expect(spawnArgs.env?.DAINTREE_MCP_TOKEN).toBe("pane-token");
+  });
+
+  it("continues without per-pane MCP injection when MCP cannot be made ready", async () => {
+    mockValidateToken.mockReturnValue(false);
+    mockIsRunning.mockReturnValue(false);
+    mockCurrentPort.mockReturnValue(null);
+    mockEnsureReady.mockResolvedValue(false);
+    mockGetProjectSettings.mockResolvedValue({ daintreeMcpTier: "action" });
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude",
+        launchAgentId: "claude",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(mockEnsureReady).toHaveBeenCalledTimes(1);
+    expect(mockPreparePaneConfig).not.toHaveBeenCalled();
+    expect(spawnArgs.command).toBe("claude");
+    expect(spawnArgs.env?.DAINTREE_MCP_TOKEN).toBeUndefined();
   });
 });

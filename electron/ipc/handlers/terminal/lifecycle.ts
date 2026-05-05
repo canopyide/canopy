@@ -244,12 +244,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           .replace(/\s{2,}/g, " ")
           .trim();
       }
-    } else if (
-      launchAgentId === "claude" &&
-      safeCommand.length > 0 &&
-      projectId &&
-      mcpServerService.isRunning
-    ) {
+    } else if (launchAgentId === "claude" && safeCommand.length > 0 && projectId) {
       // Daintree MCP injection for normal Claude Code agent launches.
       // Mints a per-pane bearer token, writes a managed --mcp-config JSON under
       // userData, and injects the flag into the command + the token into env.
@@ -258,8 +253,14 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         const projSettings = await projectStore.getProjectSettings(projectId);
         const tier = resolveDaintreeMcpTier(projSettings);
         if (tier !== "off") {
+          const ready = mcpServerService.isRunning || (await mcpServerService.ensureReady());
+          if (!ready) {
+            console.warn(
+              "[TerminalSpawn] Daintree MCP requested for Claude launch, but the MCP server is not ready; continuing without MCP injection"
+            );
+          }
           const port = mcpServerService.currentPort;
-          if (port) {
+          if (ready && port) {
             const { configPath, token } = await mcpPaneConfigService.preparePaneConfig({
               paneId: id,
               port,

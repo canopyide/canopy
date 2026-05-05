@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { store } from "../store.js";
 import type { WindowRegistry } from "../window/WindowRegistry.js";
+import { getWindowRegistry } from "../window/windowRef.js";
 import type {
   McpRuntimeSnapshot,
   McpRuntimeState,
@@ -204,6 +205,24 @@ export class McpServerService {
   async start(registry: WindowRegistry): Promise<void> {
     this._registry = registry;
     await this.httpLifecycle.start(registry);
+  }
+
+  async ensureReady(): Promise<boolean> {
+    if (!this.isEnabled()) {
+      return false;
+    }
+
+    if (this.isRunning) {
+      return true;
+    }
+
+    const registry = this._registry ?? getWindowRegistry();
+    if (!registry) {
+      return false;
+    }
+
+    await this.start(registry);
+    return this.isRunning;
   }
 
   async stop(): Promise<void> {
