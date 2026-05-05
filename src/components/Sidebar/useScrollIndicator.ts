@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import type { RefObject } from "react";
+import { useResizeObserverRaf } from "@/hooks/useResizeObserverRaf";
 
 interface UseScrollIndicatorParams {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -21,6 +22,13 @@ function useScrollIndicator({
 }: UseScrollIndicatorParams): UseScrollIndicatorReturn {
   const [hiddenAbove, setHiddenAbove] = useState(0);
   const [hiddenBelow, setHiddenBelow] = useState(0);
+  const [containerEl, setContainerEl] = useState<HTMLElement | null>(null);
+  const [contentEl, setContentEl] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    setContainerEl(scrollContainerRef.current);
+    setContentEl(scrollContentRef.current);
+  }, [scrollContainerRef, scrollContentRef]);
 
   const updateScrollIndicators = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -58,9 +66,11 @@ function useScrollIndicator({
     updateScrollIndicators();
   }, [updateScrollIndicators, itemCount]);
 
+  useResizeObserverRaf(containerEl, () => updateScrollIndicators());
+  useResizeObserverRaf(contentEl, () => updateScrollIndicators());
+
   useEffect(() => {
     const container = scrollContainerRef.current;
-    const content = scrollContentRef.current;
     if (!container) return;
 
     let rafId: number | null = null;
@@ -73,16 +83,12 @@ function useScrollIndicator({
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
-    const resizeObserver = new ResizeObserver(() => updateScrollIndicators());
-    resizeObserver.observe(container);
-    if (content) resizeObserver.observe(content);
 
     return () => {
       container.removeEventListener("scroll", handleScroll);
       if (rafId !== null) cancelAnimationFrame(rafId);
-      resizeObserver.disconnect();
     };
-  }, [updateScrollIndicators, scrollContainerRef, scrollContentRef]);
+  }, [updateScrollIndicators, scrollContainerRef]);
 
   const scrollToTop = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });

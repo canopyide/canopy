@@ -347,18 +347,30 @@ export function useContentGridContext({
     [setNodeRef]
   );
 
-  // Attach ResizeObserver to track container dimensions
+  // Observe container resizes with rAF deferral to avoid RO depth-cap warnings.
+  // Recreated when the container element or layout-affecting deps change.
   useEffect(() => {
     const container = gridContainerRef.current;
     if (!container) return;
 
+    let rafId: number | null = null;
+    let latestEntry: ResizeObserverEntry | null = null;
+
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry) {
-        const { width, height } = entry.contentRect;
-        setGridWidth((prev) => (prev === width ? prev : width));
-        setGridDimensions({ width, height });
-      }
+      if (!entry) return;
+      latestEntry = entry;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const entry = latestEntry;
+        latestEntry = null;
+        if (entry) {
+          const { width, height } = entry.contentRect;
+          setGridWidth((prev) => (prev === width ? prev : width));
+          setGridDimensions({ width, height });
+        }
+      });
     });
 
     observer.observe(container);
@@ -367,6 +379,7 @@ export function useContentGridContext({
 
     return () => {
       observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
       setGridDimensions(null);
     };
   }, [setGridDimensions, gridTerminals.length, maximizedId, twoPaneSplitEnabled, showPlaceholder]);
