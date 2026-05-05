@@ -165,7 +165,7 @@ export function ThemeBrowser() {
     if (state.previewSchemeId !== null) {
       const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
       setPreviewSchemeId(null);
-      injectSchemeToDOM(committed);
+      injectSchemeToDOM(committed, { immediate: true });
     }
     setPreviewAnnouncement("");
   }, [setPreviewSchemeId]);
@@ -204,7 +204,7 @@ export function ThemeBrowser() {
 
     commitSchemeSelection(targetId);
     const scheme = resolveAppTheme(targetId, useAppThemeStore.getState().customSchemes);
-    runThemeReveal(origin, () => injectSchemeToDOM(scheme));
+    runThemeReveal(origin, () => injectSchemeToDOM(scheme, { immediate: true }));
 
     // Close the browser synchronously after the reveal fires — the Settings
     // reopen effect keys on this store transition, so deferring it until after
@@ -258,7 +258,7 @@ export function ThemeBrowser() {
       if (state.previewSchemeId !== null) {
         const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
         useAppThemeStore.getState().setPreviewSchemeId(null);
-        injectSchemeToDOM(committed);
+        injectSchemeToDOM(committed, { immediate: true });
       }
     };
   }, []);

@@ -149,7 +149,7 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
 
       commitSchemeSelection(id);
       const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
-      runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme));
+      runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme, { immediate: true }));
 
       try {
         await appThemeClient.setColorScheme(id);

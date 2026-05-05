@@ -388,12 +388,13 @@ export function AppLayout({
     //   is wider. Portal overlays the Assistant when both are open, so the
     //   rightmost obstruction is max, not sum (issue #6629).
     const obstructionOffset = Math.max(portalOffset, effectiveAssistantWidth);
-    document.body.style.setProperty("--portal-right-offset", `${portalOffset}px`);
-    document.body.style.setProperty("--right-obstruction-offset", `${obstructionOffset}px`);
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--portal-right-offset", `${portalOffset}px`);
+    rootStyle.setProperty("--right-obstruction-offset", `${obstructionOffset}px`);
 
     return () => {
-      document.body.style.removeProperty("--portal-right-offset");
-      document.body.style.removeProperty("--right-obstruction-offset");
+      rootStyle.removeProperty("--portal-right-offset");
+      rootStyle.removeProperty("--right-obstruction-offset");
     };
   }, [layout.portalOpen, layout.portalWidth, effectiveAssistantWidth]);
 
