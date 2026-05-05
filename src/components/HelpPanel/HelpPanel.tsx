@@ -142,23 +142,27 @@ function revokeHelpSession(sessionId: string | null): void {
 
 interface HelpPanelProps {
   /**
-   * Effective rendered width in pixels. Owned by `AppLayout` so focus mode
-   * and `helpPanelOpen` collapse the panel to 0 without unmounting the
-   * xterm PTY. Width 0 means hidden chrome (aria-hidden, no pointer
-   * events, no focusable children).
+   * Configured panel width in pixels (the stable stored size, never 0).
+   * Visibility is controlled by the `isVisible` prop; the panel always
+   * renders at this width and the parent positions it absolutely with a
+   * compositor-only translateX slide-over.
    */
   width: number;
+  /**
+   * Whether the panel is visible. When false, the parent slides the panel
+   * off-screen via translateX without reflowing sibling content. Defaults
+   * to width > 0 for backward compatibility.
+   */
+  isVisible?: boolean;
 }
 
-export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
+export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
-  const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
   const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
-  const animateWidth = !isResizing && !reduceAnimations;
-  const isVisible = effectiveWidth > 0;
+  const isVisible = isVisibleProp ?? effectiveWidth > 0;
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const {
@@ -705,8 +709,6 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
         "relative shrink-0 flex flex-col h-full overflow-hidden outline-hidden",
         "bg-daintree-bg border-l border-daintree-border",
         "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
-        animateWidth &&
-          "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
         !isVisible && "pointer-events-none"
       )}
       style={{ width: effectiveWidth }}
