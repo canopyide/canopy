@@ -607,7 +607,9 @@ describe("trash expiry visibility sweep", () => {
     // This simulates corrupted state where trashedTerminals is out of sync
     // with the panel's actual location.
     usePanelStore.setState({
-      trashedTerminals: new Map([["term-1", { id: "term-1", expiresAt: Date.now() - 1 }]]),
+      trashedTerminals: new Map([
+        ["term-1", { id: "term-1", expiresAt: Date.now() - 1, originalLocation: "grid" as const }],
+      ]),
     });
 
     dispatchVisibilityChange("visible");
@@ -623,7 +625,12 @@ describe("trash expiry visibility sweep", () => {
   it("should clean up expired trash metadata for missing panel safely", () => {
     // Seed a trash entry with no corresponding panelsById entry.
     usePanelStore.setState({
-      trashedTerminals: new Map([["orphan-1", { id: "orphan-1", expiresAt: Date.now() - 1 }]]),
+      trashedTerminals: new Map([
+        [
+          "orphan-1",
+          { id: "orphan-1", expiresAt: Date.now() - 1, originalLocation: "grid" as const },
+        ],
+      ]),
     });
 
     dispatchVisibilityChange("visible");
