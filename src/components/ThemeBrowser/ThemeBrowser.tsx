@@ -165,7 +165,7 @@ export function ThemeBrowser() {
     if (state.previewSchemeId !== null) {
       const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
       setPreviewSchemeId(null);
-      injectSchemeToDOM(committed);
+      injectSchemeToDOM(committed, { immediate: true });
     }
     setPreviewAnnouncement("");
   }, [setPreviewSchemeId]);
