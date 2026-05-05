@@ -26,6 +26,7 @@ import { appThemeClient } from "@/clients/appThemeClient";
 import type { AppColorScheme } from "@shared/types/appTheme";
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
+import { notify } from "@/lib/notify";
 
 const AGENT_ORDER = BUILT_IN_AGENT_IDS;
 
@@ -316,6 +317,7 @@ interface AgentSetupWizardProps {
   onClose: () => void;
   initialAvailability?: CliAvailability;
   isFirstRun?: boolean;
+  onStepChange?: (step: WizardStep) => void;
 }
 
 export function AgentSetupWizard({
@@ -323,6 +325,7 @@ export function AgentSetupWizard({
   onClose,
   initialAvailability,
   isFirstRun = false,
+  onStepChange,
 }: AgentSetupWizardProps) {
   const [state, dispatch] = useReducer(
     wizardReducer,
@@ -346,6 +349,11 @@ export function AgentSetupWizard({
   // Telemetry state (first-run only)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
   const telemetryCommittedRef = useRef(false);
+  // Tracks whether the user explicitly engaged the privacy toggle (in either
+  // direction). Distinct from `telemetryCommittedRef`: silent close paths still
+  // commit telemetry off, but only fire the inbox confirmation when the user
+  // never touched the toggle — silence is not consent.
+  const telemetryToggleTouchedRef = useRef(false);
 
   const isOpenRef = useRef(isOpen);
   const initRef = useRef(false);
@@ -367,6 +375,7 @@ export function AgentSetupWizard({
       initRef.current = false;
       hasAutoSelected.current = false;
       telemetryCommittedRef.current = false;
+      telemetryToggleTouchedRef.current = false;
       setTelemetryEnabled(false);
       void useAgentSettingsStore.getState().initialize();
       directionRef.current = 1;
@@ -421,16 +430,49 @@ export function AgentSetupWizard({
     [setSelectedSchemeId]
   );
 
-  const commitTelemetry = useCallback(async (level: "errors" | "off") => {
-    if (telemetryCommittedRef.current) return;
+  // Returns true when this call actually committed the preference this turn
+  // (vs returning early because it was already persisted earlier in the
+  // session). Callers use the return value to gate the silent-default inbox
+  // confirmation. The two IPCs are intentionally NOT treated as one atomic
+  // unit: a successful preference write must still surface the inbox
+  // confirmation even if the prompt-shown bookkeeping fails — otherwise a
+  // partial failure would silently re-introduce the bug this guard exists
+  // to prevent.
+  const commitTelemetry = useCallback(async (level: "errors" | "off"): Promise<boolean> => {
+    if (telemetryCommittedRef.current) return false;
     try {
       await window.electron.privacy.setTelemetryLevel(level);
-      await window.electron.telemetry.markPromptShown();
       telemetryCommittedRef.current = true;
     } catch (error) {
       logError("Failed to commit telemetry preference", error);
+      return false;
     }
+    try {
+      await window.electron.telemetry.markPromptShown();
+    } catch (error) {
+      // Non-fatal: the preference is persisted; the prompt will re-show next
+      // launch, but the user's choice this session is honored.
+      logError("Failed to mark telemetry prompt shown", error);
+    }
+    return true;
   }, []);
+
+  const handleTelemetryChange = useCallback((enabled: boolean) => {
+    telemetryToggleTouchedRef.current = true;
+    setTelemetryEnabled(enabled);
+  }, []);
+
+  // Surface wizard step transitions so OnboardingFlow can record the
+  // sub-step at abandonment time (the wizard's internal step is otherwise
+  // invisible to the parent). Read via ref to keep the parent's callback
+  // identity from triggering this effect.
+  const onStepChangeRef = useRef(onStepChange);
+  useEffect(() => {
+    onStepChangeRef.current = onStepChange;
+  });
+  useEffect(() => {
+    onStepChangeRef.current?.(state.step);
+  }, [state.step]);
 
   const installedAgents = useMemo(
     () => AGENT_ORDER.filter((id) => isAgentLaunchable(state.availability[id])),
@@ -489,21 +531,46 @@ export function AgentSetupWizard({
     onClose();
   }, [onClose]);
 
+  const notifyTelemetryDefault = useCallback(() => {
+    notify({
+      type: "info",
+      title: "Crash reporting off by default",
+      message: "Crash reporting is off. Enable it in Settings → Privacy & Data",
+      priority: "low",
+      countable: false,
+    });
+  }, []);
+
   const handleSelectionSkip = useCallback(async () => {
-    if (isFirstRun) {
-      await commitTelemetry("off");
+    // Mirror handleSelectionContinue's isSaving lock so a rapid double-click
+    // can't race two commits and two close calls through `commitTelemetry`'s
+    // ref guard before it flips.
+    setIsSaving(true);
+    try {
+      let committedNow = false;
+      if (isFirstRun) {
+        committedNow = await commitTelemetry("off");
+      }
+      if (committedNow && !telemetryToggleTouchedRef.current) {
+        notifyTelemetryDefault();
+      }
+      onClose();
+    } finally {
+      setIsSaving(false);
     }
-    onClose();
-  }, [onClose, isFirstRun, commitTelemetry]);
+  }, [onClose, isFirstRun, commitTelemetry, notifyTelemetryDefault]);
 
   const showLoadingSelections = !state.selectionsInitialized && isAvailabilityLoading;
 
   const handleBeforeClose = useCallback(async () => {
     if (isFirstRun && state.step.type === "selection") {
-      await commitTelemetry("off");
+      const committedNow = await commitTelemetry("off");
+      if (committedNow && !telemetryToggleTouchedRef.current) {
+        notifyTelemetryDefault();
+      }
     }
     return true;
-  }, [isFirstRun, state.step.type, commitTelemetry]);
+  }, [isFirstRun, state.step.type, commitTelemetry, notifyTelemetryDefault]);
 
   return (
     <AppDialog
@@ -551,7 +618,7 @@ export function AgentSetupWizard({
                   selectedSchemeId={selectedSchemeId}
                   onThemeSelect={handleThemeSelect}
                   telemetryEnabled={telemetryEnabled}
-                  onTelemetryChange={setTelemetryEnabled}
+                  onTelemetryChange={handleTelemetryChange}
                 />
               )}
               {state.step.type === "cli" && (
