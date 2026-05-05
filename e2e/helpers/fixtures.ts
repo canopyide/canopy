@@ -10,6 +10,7 @@ interface FixtureRepoOptions {
   withImageFile?: boolean;
   withUncommittedChanges?: boolean;
   withSpreadCommits?: boolean;
+  unstagedFileCount?: number;
 }
 
 function git(cmd: string, cwd: string) {
@@ -24,6 +25,7 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
     withImageFile = false,
     withUncommittedChanges = false,
     withSpreadCommits = false,
+    unstagedFileCount = 0,
   } = options;
 
   const dir = mkdtempSync(path.join(tmpdir(), `daintree-e2e-${name}-`));
@@ -96,6 +98,19 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
 
   if (withUncommittedChanges) {
     writeFileSync(path.join(dir, "uncommitted.txt"), "This file is not committed.\n");
+  }
+
+  if (!Number.isInteger(unstagedFileCount) || unstagedFileCount < 0) {
+    throw new Error(`unstagedFileCount must be a non-negative integer, got ${unstagedFileCount}`);
+  }
+  if (unstagedFileCount > 0) {
+    const bulkDir = path.join(dir, "bulk-unstaged");
+    mkdirSync(bulkDir, { recursive: true });
+    const width = String(unstagedFileCount).length;
+    for (let i = 1; i <= unstagedFileCount; i++) {
+      const filename = `file-${String(i).padStart(width, "0")}.txt`;
+      writeFileSync(path.join(bulkDir, filename), `# file ${i}\n`);
+    }
   }
 
   return dir;
