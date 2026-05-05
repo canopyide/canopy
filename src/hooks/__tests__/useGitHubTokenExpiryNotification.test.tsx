@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import type { NotifyPayload } from "@/lib/notify";
 
 const notifyMock = vi.fn<(payload: NotifyPayload) => string>();
@@ -153,5 +153,17 @@ describe("useGitHubTokenExpiryNotification", () => {
     rerender({ isTokenError: true });
     rerender({ isTokenError: true });
     expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it("reacts to Zustand store change without explicit rerender", () => {
+    renderHook(({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError), {
+      initialProps: { isTokenError: true },
+    });
+    expect(notifyMock).not.toHaveBeenCalled();
+
+    act(() => {
+      useGitHubTokenHealthStore.setState({ isUnhealthy: true });
+    });
+    expect(notifyMock).toHaveBeenCalledTimes(1);
   });
 });
