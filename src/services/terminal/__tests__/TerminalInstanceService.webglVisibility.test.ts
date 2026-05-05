@@ -162,7 +162,10 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     expect(service.webGLManager.isActive("t1")).toBe(false);
   });
 
-  it("setVisible(false) calls terminal.refresh after WebGL release for DOM fallback", () => {
+  it("setVisible(false) does not call terminal.refresh after WebGL release", () => {
+    // Calling refresh on the hide path forces the DOM renderer to paint a
+    // freshly-empty frame for an offscreen terminal — the visible flash on
+    // next show. Removed in #6802.
     const managed = makeMockManaged();
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
@@ -170,7 +173,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
 
     service.setVisible("t1", false);
 
-    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("setVisible(false) does not refresh when no WebGL was active", () => {
@@ -198,7 +201,11 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     expect(service.webGLManager.isActive("t1")).toBe(true);
   });
 
-  it("setVisible(true) calls terminal.refresh after re-acquiring WebGL", () => {
+  it("setVisible(true) does not call terminal.refresh on the show path", () => {
+    // The pre-debounce rAF + the post-ensureContext refresh both painted
+    // stale DOM rows during the WebGL transition, producing the flash.
+    // WebglAddon.onLoad self-schedules its first frame; forceXtermReflow
+    // covers IntersectionObserver recovery. Removed in #6802.
     const managed = makeMockManaged({ isVisible: false });
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     (managed.terminal.refresh as ReturnType<typeof vi.fn>).mockClear();
@@ -206,7 +213,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     service.setVisible("t1", true);
     vi.advanceTimersByTime(100);
 
-    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("rapid hide→show→hide before debounce expires keeps context released", () => {

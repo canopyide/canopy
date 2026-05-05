@@ -483,13 +483,6 @@ class TerminalInstanceService {
           forceXtermReflow(termEl);
         }
 
-        requestAnimationFrame(() => {
-          const current = this.instances.get(id);
-          if (current && current.isVisible) {
-            current.terminal.refresh(0, current.terminal.rows - 1);
-          }
-        });
-
         // Debounced WebGL restore for same-tier transitions. If
         // applyRendererPolicy above triggers a tier upgrade (e.g.
         // BACKGROUND→VISIBLE), onTierApplied loads the addon immediately
@@ -503,19 +496,12 @@ class TerminalInstanceService {
           current.webGLRestoreTimer = undefined;
           if (!this.shouldRestoreWebGL(current)) return;
           this.webGLManager.ensureContext(id, current);
-          if (current.terminal.rows > 0) {
-            current.terminal.refresh(0, current.terminal.rows - 1);
-          }
         }, WEBGL_RESTORE_DEBOUNCE_MS);
       } else {
         // Going offscreen. Release the WebGL context immediately to free a
         // pool slot — xterm falls back to the DOM renderer until the
         // terminal becomes visible again.
-        const hadWebGL = this.webGLManager.isActive(id);
         this.webGLManager.releaseContext(id);
-        if (hadWebGL && managed.terminal.rows > 0) {
-          managed.terminal.refresh(0, managed.terminal.rows - 1);
-        }
 
         // If we're already in a hibernation-eligible tier, onTierApplied
         // won't fire to start the timer — do it here instead.
