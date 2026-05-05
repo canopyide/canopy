@@ -504,6 +504,7 @@ function ScratchSection({
   onSaveAsProject,
 }: ScratchSectionProps) {
   const [collapsed, setCollapsed] = useState<boolean>(scratches.length === 0);
+  const previousScratchCountRef = useRef(scratches.length);
   // `now` is captured per-render so the countdown updates whenever the
   // surrounding component re-renders. Refresh is naturally driven by store
   // updates (loadScratches on palette open, scratch:updated push events) —
@@ -513,10 +514,12 @@ function ScratchSection({
   // If a scratch was just created from the empty state, expand the section
   // so the new entry is visible.
   useEffect(() => {
-    if (scratches.length > 0 && collapsed) setCollapsed(false);
-    // We intentionally only react to length === 0 -> >0 transitions; do not
-    // auto-collapse if the user expanded an empty section.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const previousScratchCount = previousScratchCountRef.current;
+    previousScratchCountRef.current = scratches.length;
+
+    if (previousScratchCount === 0 && scratches.length > 0) {
+      setCollapsed(false);
+    }
   }, [scratches.length]);
 
   return (

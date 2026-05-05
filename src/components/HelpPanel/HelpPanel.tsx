@@ -144,14 +144,13 @@ interface HelpPanelProps {
   /**
    * Configured panel width in pixels (the stable stored size, never 0).
    * Visibility is controlled by the `isVisible` prop; the panel always
-   * renders at this width and the parent positions it absolutely with a
-   * compositor-only translateX slide-over.
+   * renders at this width inside AppLayout's reserved right sidebar slot.
    */
   width: number;
   /**
-   * Whether the panel is visible. When false, the parent slides the panel
-   * off-screen via translateX without reflowing sibling content. Defaults
-   * to width > 0 for backward compatibility.
+   * Whether the panel is visible. When false, AppLayout collapses the clipped
+   * right-sidebar slot so the panel grid slides over it. Defaults to width > 0
+   * for backward compatibility.
    */
   isVisible?: boolean;
 }

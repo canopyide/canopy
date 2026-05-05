@@ -39,12 +39,27 @@ export function useAutocompletePositioning({
   const [inputShellEl, setInputShellEl] = useState<HTMLDivElement | null>(null);
   const [viewDomEl, setViewDomEl] = useState<HTMLElement | null>(null);
 
-  // Sync element state from refs during render so useResizeObserverRaf
-  // re-subscribes when editorViewRef.current is populated asynchronously.
-  const nextInputShell = inputShellRef.current;
-  const nextViewDom = editorViewRef.current?.dom ?? null;
-  if (nextInputShell !== inputShellEl) setInputShellEl(nextInputShell);
-  if (nextViewDom !== viewDomEl) setViewDomEl(nextViewDom);
+  useLayoutEffect(() => {
+    let cancelled = false;
+    let rafId: number | null = null;
+
+    const syncObservedElements = () => {
+      if (cancelled) return;
+      const nextInputShell = inputShellRef.current;
+      const nextViewDom = editorViewRef.current?.dom ?? null;
+
+      setInputShellEl((current) => (current === nextInputShell ? current : nextInputShell));
+      setViewDomEl((current) => (current === nextViewDom ? current : nextViewDom));
+    };
+
+    syncObservedElements();
+    rafId = requestAnimationFrame(syncObservedElements);
+
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [editorViewRef, inputShellRef]);
 
   const compute = useCallback(() => {
     const view = editorViewRef.current;

@@ -181,6 +181,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   const isDragging = useIsDragging();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const titleEditing = useTitleEditing();
+  const editingStartedAt = titleEditing.editingStartedAt;
 
   // Hover/focus preview from the fleet selection menu — true when the user
   // is previewing a state-preset menu item that *would* arm this pane. The
@@ -337,15 +338,12 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     // Only the BLUR path needs this suppression — explicit Enter (handled
     // by handleTitleInputKeyDown) calls commitTitle directly so a fast
     // type-then-Enter flow still saves immediately.
-    if (
-      titleEditing.editingStartedAtRef.current &&
-      Date.now() - titleEditing.editingStartedAtRef.current < 300
-    ) {
+    if (editingStartedAt && Date.now() - editingStartedAt < 300) {
       requestAnimationFrame(() => titleInputRef.current?.focus());
       return;
     }
     commitTitle();
-  }, [titleEditing, commitTitle]);
+  }, [editingStartedAt, commitTitle]);
 
   const handleTitleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

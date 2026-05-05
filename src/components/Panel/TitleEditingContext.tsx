@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 export interface TitleEditingContextValue {
   isEditingTitle: boolean;
   editingValue: string;
+  editingStartedAt: number;
   startEditing: () => void;
   stopEditing: () => void;
   setEditingValue: (value: string) => void;
@@ -35,10 +36,15 @@ export function TitleEditingProvider({
 }: TitleEditingProviderProps): ReactElement {
   const [isEditingTitle, setIsEditingTitleState] = useState(false);
   const [editingValue, setEditingValue] = useState(title);
+  const [editingStartedAt, setEditingStartedAt] = useState(0);
   const editingStartedAtRef = useRef(0);
 
   const setIsEditingTitle = useCallback((next: boolean) => {
-    if (next) editingStartedAtRef.current = Date.now();
+    if (next) {
+      const now = Date.now();
+      editingStartedAtRef.current = now;
+      setEditingStartedAt(now);
+    }
     setIsEditingTitleState(next);
   }, []);
 
@@ -120,6 +126,7 @@ export function TitleEditingProvider({
   const value: TitleEditingContextValue = {
     isEditingTitle,
     editingValue,
+    editingStartedAt,
     startEditing,
     stopEditing,
     setEditingValue,

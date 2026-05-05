@@ -57,31 +57,42 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
     );
   });
 
-  it("computes effectiveAssistantWidth so focus mode collapses the panel without unmounting", () => {
+  it("computes effectiveAssistantWidth directly from visible assistant state", () => {
     expect(source).toContain(
       "const effectiveAssistantWidth = showAssistant ? layout.helpPanelWidth : 0"
     );
+    // The slot must not stay reserved until a timer fires. That caused the
+    // Assistant to slide out, then disappear, instead of matching the
+    // worktree sidebar's simultaneous grid-over-sidebar motion.
+    expect(source).not.toContain("assistantSlotReserved");
   });
 
-  it("mounts HelpPanel unconditionally as an absolute overlay so the xterm PTY survives close (issue #6619, #6816)", () => {
+  it("mounts HelpPanel unconditionally inside a flex-reserved sidebar slot (issue #6619, #6816)", () => {
     // The old conditional-render guard (which destroyed the PTY on every
     // toggle) must not be reintroduced.
     expect(source).not.toMatch(/\{layout\.helpPanelOpen && \(\s*\n\s*<ErrorBoundary[^>]*HelpPanel/);
     expect(source).toMatch(
       /<HelpPanel\s+width=\{layout\.helpPanelWidth\}\s+isVisible=\{showAssistant\}/
     );
-    // The wrapper must use absolute positioning to avoid reflowing sibling content.
-    expect(source).toMatch(/"absolute top-0 right-0 bottom-0 z-30"/);
+    // The Assistant must remain a structural flex sibling that reserves
+    // horizontal space instead of reverting to an overlay on top of terminals.
+    expect(source).toContain('"relative h-full shrink-0 overflow-hidden"');
+    expect(source).toContain("style={{ width: effectiveAssistantWidth }}");
+    expect(source).not.toMatch(/"absolute top-0 right-0 bottom-0 z-30"/);
   });
 
-  it("passes stable helpPanelWidth to HelpPanel so content renders at full width without reflow (issue #6816)", () => {
-    // width is always the stored configured width; visibility is controlled
-    // by the isVisible prop + translateX transform, not by collapsing width to 0.
+  it("clips a full-width Assistant while the right sidebar slot animates like the worktree sidebar", () => {
+    // The Assistant content stays full width and pinned to the viewport edge.
+    // The flex slot width animates underneath it, so the panel grid slides
+    // over the Assistant instead of the Assistant floating over terminals.
     expect(source).toContain(
       "<HelpPanel width={layout.helpPanelWidth} isVisible={showAssistant} />"
     );
-    // The old effectiveAssistantWidth (collapsing to 0 on close) must not be
-    // passed as the width prop — that defeats the transform-based slide.
+    expect(source).toContain("transition-[width]");
+    expect(source).toContain('className="absolute top-0 right-0 h-full"');
+    expect(source).not.toContain("translate-x-full");
+    // The effective slot width must not be passed as the content width; that
+    // would resize the Assistant contents instead of clipping/revealing them.
     expect(source).not.toContain("<HelpPanel width={effectiveAssistantWidth}");
   });
 

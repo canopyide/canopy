@@ -58,12 +58,22 @@ describe("FetchScheduler", () => {
     const host = makeHost({ isCurrent: false });
     const scheduler = new FetchScheduler(host as FetchSchedulerHost);
 
-    scheduler.schedule(false);
-    await vi.advanceTimersByTimeAsync(4 * 60_000);
-    expect(host.onExecuteFetch).not.toHaveBeenCalled();
+    // Pin Math.random so both the initial delay and the post-completion
+    // reschedule land at 7.5min — the second fetch fires at ~15min, safely
+    // outside the 11min window we advance through here. Without this, T1+T2
+    // can be as low as 10min and the test races the second fetch.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
 
-    await vi.advanceTimersByTimeAsync(7 * 60_000);
-    expect(host.onExecuteFetch).toHaveBeenCalledTimes(1);
+    try {
+      scheduler.schedule(false);
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(host.onExecuteFetch).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(7 * 60_000);
+      expect(host.onExecuteFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   it("is idempotent — schedule() while a timer is armed does not stack timers", async () => {

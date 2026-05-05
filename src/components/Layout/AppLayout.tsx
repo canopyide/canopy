@@ -462,14 +462,19 @@ export function AppLayout({
           <ErrorBoundary variant="section" componentName="HelpPanel">
             <div
               className={cn(
-                "absolute top-0 right-0 bottom-0 z-30",
+                "relative h-full shrink-0 overflow-hidden",
                 !reduceAnimations &&
-                  "transition-transform duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
-                !showAssistant && "pointer-events-none translate-x-full"
+                  "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+                !showAssistant && "pointer-events-none"
               )}
-              style={{ width: layout.helpPanelWidth }}
+              style={{ width: effectiveAssistantWidth }}
             >
-              <HelpPanel width={layout.helpPanelWidth} isVisible={showAssistant} />
+              <div
+                className="absolute top-0 right-0 h-full"
+                style={{ width: layout.helpPanelWidth }}
+              >
+                <HelpPanel width={layout.helpPanelWidth} isVisible={showAssistant} />
+              </div>
             </div>
           </ErrorBoundary>
         </div>
