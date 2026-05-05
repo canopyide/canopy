@@ -234,7 +234,9 @@ class TerminalInstanceService {
           } else {
             const hadWebGL = this.webGLManager.isActive(id);
             this.webGLManager.releaseContext(id);
-            if (hadWebGL && managed.terminal.rows > 0) {
+            // Only refresh for a visible terminal — repainting an offscreen
+            // DOM produces a stale frame that flashes on next show (#6802).
+            if (hadWebGL && managed.isVisible && managed.terminal.rows > 0) {
               managed.terminal.refresh(0, managed.terminal.rows - 1);
             }
           }
