@@ -434,6 +434,13 @@ function App() {
   useEffect(() => {
     if (isStateLoaded) removeStartupSkeleton();
   }, [isStateLoaded]);
+  // The skeleton is z-index 9999 and intercepts pointer events. The crash
+  // recovery dialog is rendered before hydration completes, so without this
+  // the dialog would be visible but unclickable until hydration finishes
+  // (which it can't, since the user must resolve the crash first).
+  useEffect(() => {
+    if (crashState.status === "pending") removeStartupSkeleton();
+  }, [crashState.status]);
   useEffect(() => {
     useNotificationSettingsStore.getState().hydrate();
   }, []);

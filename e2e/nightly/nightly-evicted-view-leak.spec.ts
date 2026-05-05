@@ -12,8 +12,8 @@ import {
   cleanupHeapSnapshot,
 } from "../helpers/heapSnapshot";
 
-const PROJECT_A = "Heap A";
-const PROJECT_B = "Heap B";
+const PROJECT_A = "project-A";
+const PROJECT_B = "project-B";
 
 // Class names whose instance counts we log diagnostically. These are real
 // main-process ES6 classes — TypeScript interfaces (e.g. `ViewEntry`) are

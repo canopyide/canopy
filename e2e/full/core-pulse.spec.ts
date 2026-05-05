@@ -26,7 +26,7 @@ test.describe.serial("Core: Project Pulse", () => {
 
   test("card header shows project name and default range", async () => {
     const { window } = ctx;
-    const title = window.getByText("Pulse Test Project Pulse");
+    const title = window.getByText(/pulse-test.*Project Pulse/i);
     await expect(title).toBeVisible({ timeout: T_MEDIUM });
     const rangeGroup = window.locator(SEL.pulse.rangeTrigger);
     await expect(rangeGroup).toBeVisible({ timeout: T_SHORT });

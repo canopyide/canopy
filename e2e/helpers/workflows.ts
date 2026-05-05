@@ -49,7 +49,10 @@ export async function selectExistingProject(window: Page, projectName: string): 
       const palette = window.locator(SEL.projectSwitcher.palette);
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 
-      await palette.getByText(projectName, { exact: true }).first().click();
+      // Substring match — createFixtureRepo produces directories like
+      // daintree-e2e-${name}-XXXXXX and projectClient.add() derives the
+      // displayed name from path.basename, so callers pass the stem.
+      await palette.getByText(projectName, { exact: false }).first().click();
       // After WebContentsView migration the palette is rendered in the
       // outgoing project's view, which is hidden (not destroyed) once the
       // switch lands — so the close-after-click assertion can race with the

@@ -17,7 +17,7 @@ let server: Server;
 let port: number;
 let mainBranch: string;
 let switchRepo: string;
-const PROJECT_NAME = "Advanced Test";
+const PROJECT_NAME = "advanced-test";
 
 test.describe.serial("Core: Advanced", () => {
   test.beforeAll(async () => {

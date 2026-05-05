@@ -60,7 +60,7 @@ test.describe.serial("Core: Project Management Advanced", () => {
       // Confirm dialog appears with project name
       const dialog = window.getByRole("dialog", { name: "Remove project from list?" }).last();
       await expect(dialog).toBeVisible({ timeout: T_MEDIUM });
-      await expect(dialog.locator(`text="${SECONDARY_NAME}"`)).toBeVisible();
+      await expect(dialog.getByText(SECONDARY_NAME, { exact: false }).first()).toBeVisible();
 
       // Cancel — project should remain
       await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -69,7 +69,9 @@ test.describe.serial("Core: Project Management Advanced", () => {
       // Reopen palette and verify project is still listed
       await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-      await expect(palette.locator(`text="${SECONDARY_NAME}"`)).toBeVisible({ timeout: T_SHORT });
+      await expect(palette.getByText(SECONDARY_NAME, { exact: false })).toBeVisible({
+        timeout: T_SHORT,
+      });
 
       // Close palette
       await window.keyboard.press("Escape");
@@ -101,7 +103,7 @@ test.describe.serial("Core: Project Management Advanced", () => {
       await window.waitForTimeout(T_SETTLE);
       await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-      await expect(palette.locator(`text="${SECONDARY_NAME}"`)).not.toBeVisible({
+      await expect(palette.getByText(SECONDARY_NAME, { exact: false })).not.toBeVisible({
         timeout: T_SHORT,
       });
 

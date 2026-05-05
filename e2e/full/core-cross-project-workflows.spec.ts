@@ -320,7 +320,7 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
         const current = await ctx.window.evaluate(async () => {
           return await (window as any).electron.project.getCurrent();
         });
-        expect(current.name).toBe(PROJECT_A);
+        expect(current.name).toContain(PROJECT_A);
       },
       { box: true }
     );
