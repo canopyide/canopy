@@ -28,7 +28,7 @@ function useScrollIndicator({
   useLayoutEffect(() => {
     setContainerEl(scrollContainerRef.current);
     setContentEl(scrollContentRef.current);
-  });
+  }, [scrollContainerRef, scrollContentRef]);
 
   const updateScrollIndicators = useCallback(() => {
     const container = scrollContainerRef.current;

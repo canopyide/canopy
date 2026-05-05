@@ -34,7 +34,7 @@ export function TwoPaneSplitLayout({
   const [containerWidth, setContainerWidth] = useState<number>(0);
   useLayoutEffect(() => {
     setContainerEl(containerRef.current);
-  });
+  }, []);
   const [localRatio, setLocalRatio] = useState<number | null>(null);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
