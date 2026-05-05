@@ -118,7 +118,14 @@ export class CrashRecoveryService {
   private registerSleepListeners(): void {
     try {
       this.removeSuspendListener = getSystemSleepService().onSuspend(() => {
-        this.stopBackupTimer();
+        if (this.backupTimer) {
+          clearInterval(this.backupTimer);
+          this.backupTimer = null;
+        }
+        if (this.debounceTimer) {
+          clearTimeout(this.debounceTimer);
+          this.debounceTimer = null;
+        }
       });
       this.removeWakeListener = getSystemSleepService().onWake(() => {
         this.startBackupTimer();

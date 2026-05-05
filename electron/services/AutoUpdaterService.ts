@@ -206,7 +206,7 @@ class AutoUpdaterService {
     autoUpdater.allowDowngrade = channel === "nightly";
   }
 
-  private runUpdateCheck(context: "Initial" | "Periodic" | "Retry"): void {
+  private runUpdateCheck(context: "Initial" | "Periodic" | "Retry" | "Resume"): void {
     try {
       const result = autoUpdater.checkForUpdatesAndNotify();
       Promise.resolve(result).catch((err) => {

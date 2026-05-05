@@ -229,16 +229,11 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
   const poll = () => {
     try {
       pollCount++;
-      // Kick off a Blink-memory sample fan-out for this tick. Renderer replies
-      // arrive asynchronously via the SYSTEM_REPORT_BLINK_MEMORY handler and
-      // populate `blinkSamples` for the next poll's diagnostics.
       try {
         actions?.sampleBlinkMemory?.();
       } catch {
         /* non-critical */
       }
-      // Kick off a renderer-ELU sample fan-out alongside Blink-memory. Replies
-      // arrive via SYSTEM_REPORT_RENDERER_ELU and populate `eluSamples`.
       try {
         actions?.sampleRendererElu?.();
       } catch {
@@ -266,7 +261,6 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
           });
         }
 
-        // Trend detection: bucket-minimum + EMA
         let state = trendState.get(proc.pid);
         if (!state) {
           state = {
@@ -289,7 +283,6 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
             state.emaHistory.shift();
           }
 
-          // Evaluate trend with dual suppression
           if (
             Date.now() - state.startedAt >= STARTUP_SUPPRESSION_MS &&
             state.emaHistory.length === BUCKET_WINDOW
@@ -329,7 +322,6 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
         }
       }
 
-      // Prune stale PID state
       for (const pid of trendState.keys()) {
         if (!activePids.has(pid)) trendState.delete(pid);
       }
@@ -406,7 +398,9 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
       clearAlignedInterval?.();
       clearAlignedInterval = null;
       trendState.clear();
-      snapshotCooldowns.clear();
+      consecutivePressureCount = 0;
+      lastTier2At = 0;
+      mitigationInFlight = false;
     });
     removeWakeListener = getSystemSleepService().onWake(() => {
       if (clearAlignedInterval !== null) return;
