@@ -1,12 +1,27 @@
 import type { FdLeakWarningPayload } from "@shared/types/pty-host";
-import { notify } from "@/lib/notify";
 import { DisposableStore, toDisposable } from "@/utils/disposable";
 
 let lastWarningTimestamp = 0;
-const REARM_MS = 5 * 60 * 1000; // 5 min cooldown before re-arming
+const REARM_MS = 5 * 60 * 1000; // 5 min cooldown before logging again
 
 export function _resetFdLeakWarningCooldown() {
   lastWarningTimestamp = 0;
+}
+
+function formatFdLeakWarning(data: FdLeakWarningPayload): string {
+  const fdPct =
+    data.ptmxLimit != null && data.ptmxLimit > 0
+      ? ` (${Math.round((data.fdCount / data.ptmxLimit) * 100)}% of limit)`
+      : "";
+
+  const orphanedPids =
+    data.orphanedPids.length > 0 ? `, orphaned PIDs: ${data.orphanedPids.join(", ")}` : "";
+
+  return (
+    `[TerminalDiagnostics] FD leak warning: ${data.fdCount} open file descriptors, ` +
+    `${data.activeTerminals} active terminals, ~${data.estimatedLeaked} leaked${fdPct}` +
+    `${orphanedPids}.`
+  );
 }
 
 export function setupFdLeakWarningListeners(): DisposableStore {
@@ -19,18 +34,7 @@ export function setupFdLeakWarningListeners(): DisposableStore {
         if (now - lastWarningTimestamp < REARM_MS) return;
         lastWarningTimestamp = now;
 
-        const fdPct =
-          data.ptmxLimit != null && data.ptmxLimit > 0
-            ? ` (${Math.round((data.fdCount / data.ptmxLimit) * 100)}% of limit)`
-            : "";
-
-        notify({
-          type: "warning",
-          title: "FD leak detected",
-          message: `${data.fdCount} open file descriptors, ${data.activeTerminals} active terminals, ~${data.estimatedLeaked} leaked${fdPct}.`,
-          priority: "high",
-          correlationId: "terminal:fd-leak-warning",
-        });
+        console.warn(formatFdLeakWarning(data));
       })
     )
   );

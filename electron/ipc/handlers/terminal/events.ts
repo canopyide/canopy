@@ -106,8 +106,8 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
   ptyClient.on("resource-metrics", handleResourceMetrics);
   handlers.push(() => ptyClient.off("resource-metrics", handleResourceMetrics));
 
-  // FD leak warning — forwarded to renderer for user-visible notification.
-  // Deduplication is handled renderer-side with a 5-min cooldown.
+  // FD leak warning — forwarded to renderer as a diagnostic-only event.
+  // Deduplication is handled renderer-side with a 5-min log cooldown.
   const handleFdLeakWarning = (payload: FdLeakWarningPayload) => {
     broadcastToRenderer(CHANNELS.TERMINAL_FD_LEAK_WARNING, payload);
   };
