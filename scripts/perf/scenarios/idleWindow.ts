@@ -221,6 +221,7 @@ export const idleWindowScenarios: PerfScenario[] = [
           eluUtilization: result.eluUtilization,
           heapDeltaMb: result.heapDeltaMb,
           memoryGrowthPct: result.memoryGrowthPct,
+          checksum: result.checksum,
         },
         notes: JSON.stringify({
           throttling: "basic (1s floor, top-of-second alignment)",
@@ -254,6 +255,7 @@ export const idleWindowScenarios: PerfScenario[] = [
           eluUtilization: result.eluUtilization,
           heapDeltaMb: result.heapDeltaMb,
           memoryGrowthPct: result.memoryGrowthPct,
+          checksum: result.checksum,
         },
         notes: JSON.stringify({
           throttling: "intensive (60s floor, top-of-minute alignment, 5+ min hidden)",

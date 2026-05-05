@@ -74,14 +74,24 @@ describe("idleWindow scenarios", () => {
 
   it("both scenarios produce consistent results across repeated runs", async () => {
     const basic = idleWindowScenarios.find((s) => s.id === "PERF-090")!;
+    const intensive = idleWindowScenarios.find((s) => s.id === "PERF-091")!;
 
-    const run1 = await basic.run(context);
-    const run2 = await basic.run(context);
+    const basic1 = await basic.run(context);
+    const basic2 = await basic.run(context);
 
-    // Deterministic simulation: wakeUpCount must be identical
-    expect(run1.metrics!.wakeUpCount).toBe(run2.metrics!.wakeUpCount);
-    expect(run1.metrics!.unthrottledCallbackCount).toBe(run2.metrics!.unthrottledCallbackCount);
-    expect(run1.metrics!.maxDriftMs).toBe(run2.metrics!.maxDriftMs);
-    expect(run1.metrics!.meanDriftMs).toBe(run2.metrics!.meanDriftMs);
+    expect(basic1.metrics!.wakeUpCount).toBe(basic2.metrics!.wakeUpCount);
+    expect(basic1.metrics!.unthrottledCallbackCount).toBe(basic2.metrics!.unthrottledCallbackCount);
+    expect(basic1.metrics!.maxDriftMs).toBe(basic2.metrics!.maxDriftMs);
+    expect(basic1.metrics!.meanDriftMs).toBe(basic2.metrics!.meanDriftMs);
+
+    const intensive1 = await intensive.run(context);
+    const intensive2 = await intensive.run(context);
+
+    expect(intensive1.metrics!.wakeUpCount).toBe(intensive2.metrics!.wakeUpCount);
+    expect(intensive1.metrics!.unthrottledCallbackCount).toBe(
+      intensive2.metrics!.unthrottledCallbackCount
+    );
+    expect(intensive1.metrics!.maxDriftMs).toBe(intensive2.metrics!.maxDriftMs);
+    expect(intensive1.metrics!.meanDriftMs).toBe(intensive2.metrics!.meanDriftMs);
   });
 });
