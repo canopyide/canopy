@@ -74,6 +74,13 @@ import { TerminalExitObservers, type TerminalExitArgs } from "./TerminalExitObse
 import { gracefulShutdown as runGracefulShutdown } from "./TerminalGracefulShutdown.js";
 import { handleAgentDetection as runHandleAgentDetection } from "./TerminalAgentDetection.js";
 import { TerminalProcessLifecycle } from "./TerminalProcessLifecycle.js";
+import {
+  AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
+  AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
+  AGENT_WORKING_RECOVERY_WINDOW_MS,
+  SustainedChangeTracker,
+  hashStrings,
+} from "./SustainedChangeTracker.js";
 
 type CursorBuffer = {
   cursorY?: number;
@@ -116,6 +123,12 @@ export class TerminalProcess {
   private headlessResponderDisposable: { dispose: () => void } | null = null;
   private synchronizedFrameDetector: SynchronizedFrameDetector | null = null;
   private sessionSnapshotter!: SessionSnapshotter;
+  private readonly agentOutputRecoveryTracker = new SustainedChangeTracker({
+    windowMs: AGENT_WORKING_RECOVERY_WINDOW_MS,
+    minChangedFrames: AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
+    maxQuietMs: AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
+  });
+  private agentOutputContentFingerprint: number | undefined;
 
   private readonly terminalInfo: TerminalInfo;
 
@@ -456,6 +469,8 @@ export class TerminalProcess {
 
   private disposeHeadless(): void {
     const terminal = this.terminalInfo;
+    this.agentOutputRecoveryTracker.reset();
+    this.agentOutputContentFingerprint = undefined;
     if (!terminal.headlessTerminal) {
       return;
     }
@@ -1233,19 +1248,47 @@ export class TerminalProcess {
     this.exitObservers.dispose();
   }
 
-  private noteAgentOutputActivity(data: string): void {
-    if (!data || !this.isAgentLive) {
+  private getAgentOutputContentFingerprint(): number | undefined {
+    if (!this.terminalInfo.headlessTerminal) {
+      return undefined;
+    }
+    return hashStrings(this.getLastNLines(50));
+  }
+
+  private noteAgentOutputActivity(beforeFingerprint: number | undefined): void {
+    if (!this.isAgentLive) {
+      this.agentOutputRecoveryTracker.reset();
+      this.agentOutputContentFingerprint = undefined;
       return;
     }
 
     const state = this.terminalInfo.agentState;
     if (state !== "waiting" && state !== "idle" && state !== "completed") {
+      this.agentOutputRecoveryTracker.reset();
       return;
     }
 
-    this.deps.agentStateService.handleActivityState(this.terminalInfo, "busy", {
-      trigger: "output",
-    });
+    const afterFingerprint = this.getAgentOutputContentFingerprint();
+    if (afterFingerprint === undefined) {
+      return;
+    }
+
+    const changed =
+      beforeFingerprint !== undefined
+        ? beforeFingerprint !== afterFingerprint
+        : this.agentOutputContentFingerprint !== undefined &&
+          this.agentOutputContentFingerprint !== afterFingerprint;
+    this.agentOutputContentFingerprint = afterFingerprint;
+
+    if (
+      this.agentOutputRecoveryTracker.observe(Date.now(), changed) &&
+      this.terminalInfo.agentState === state
+    ) {
+      this.agentOutputRecoveryTracker.reset();
+      this.deps.agentStateService.handleActivityState(this.terminalInfo, "busy", {
+        trigger: "output",
+      });
+    }
   }
 
   private setupPtyHandlers(ptyProcess: pty.IPty): void {
@@ -1257,11 +1300,11 @@ export class TerminalProcess {
       }
 
       terminal.lastOutputTime = Date.now();
+      const beforeContentFingerprint = this.getAgentOutputContentFingerprint();
 
       if (this.activityMonitor) {
         this.activityMonitor.onData(data);
       }
-      this.noteAgentOutputActivity(data);
 
       // The headless responder answers device-attribute queries (CSI 6n, 5n)
       // for plain terminals so zsh et al. don't block waiting. When an agent
@@ -1283,7 +1326,13 @@ export class TerminalProcess {
         });
       }
 
-      terminal.headlessTerminal?.write(data);
+      if (terminal.headlessTerminal) {
+        terminal.headlessTerminal.write(data, () => {
+          this.noteAgentOutputActivity(beforeContentFingerprint);
+        });
+      } else {
+        this.noteAgentOutputActivity(beforeContentFingerprint);
+      }
       this.sessionSnapshotter.schedule();
 
       this.emitData(rendererData);

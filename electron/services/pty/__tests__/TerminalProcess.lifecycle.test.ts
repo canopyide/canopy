@@ -58,6 +58,14 @@ function createControllablePty(): IPty & {
   return pty as IPty & { emitData: (d: string) => void; emitExit: (c: number, s?: number) => void };
 }
 
+async function emitDataAndFlush(
+  pty: ReturnType<typeof createControllablePty>,
+  data: string
+): Promise<void> {
+  pty.emitData(data);
+  await vi.advanceTimersByTimeAsync(0);
+}
+
 function defaultSpawnContext(): SpawnContext {
   return {
     shell: "/bin/zsh",
@@ -201,7 +209,9 @@ describe("TerminalProcess — terminal:exited event", () => {
 });
 
 describe("TerminalProcess — observer-driven exit handlers", () => {
-  it("recovers a waiting live agent to working on PTY output without a monitor", () => {
+  it("does not recover a waiting live agent on unchanged redraw output without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
     const pty = createControllablePty();
     const handleActivityState = vi.fn();
     const terminal = createTerminal(
@@ -218,14 +228,75 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
       "t-output-recovery"
     );
 
-    terminal.stopActivityMonitor();
-    terminal.getInfo().agentState = "waiting";
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
 
-    pty.emitData("still working\n");
+      await emitDataAndFlush(pty, "waiting");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
 
-    expect(handleActivityState).toHaveBeenCalledWith(terminal.getInfo(), "busy", {
-      trigger: "output",
-    });
+      await emitDataAndFlush(pty, "\rwaiting");
+      vi.advanceTimersByTime(500);
+      await emitDataAndFlush(pty, "\rwaiting");
+      vi.advanceTimersByTime(600);
+      await emitDataAndFlush(pty, "\rwaiting");
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers a waiting live agent to working on sustained PTY content changes without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-recovery"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "waiting");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      await emitDataAndFlush(pty, "\rworking 1");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(400);
+      await emitDataAndFlush(pty, "\rworking 2");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(350);
+      await emitDataAndFlush(pty, "\rworking 2");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(400);
+      await emitDataAndFlush(pty, "\rworking 3");
+
+      expect(handleActivityState).toHaveBeenCalledWith(terminal.getInfo(), "busy", {
+        trigger: "output",
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
   });
 
   it("fires fallback classifier on natural agent exit with connection error tail", () => {

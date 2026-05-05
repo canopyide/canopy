@@ -669,18 +669,35 @@ describe("ActivityMonitor", () => {
   });
 
   describe("Simple output-driven agent state", () => {
-    it("treats any agent output, including spinner redraws, as working until 8s of silence", () => {
+    it("requires sustained visible changes before recovering to working", () => {
       const onStateChange = vi.fn();
+      let visible = "waiting";
       const monitor = new ActivityMonitor("agent-simple-1", 1000, onStateChange, {
         agentId: "claude",
-        getVisibleLines: () => ["⠋ thinking"],
-        getCursorLine: () => "⠋ thinking",
+        getVisibleLines: () => [visible],
+        getCursorLine: () => visible,
         initialState: "idle",
         skipInitialStateEmit: true,
       });
 
       monitor.startPolling();
-      monitor.onData("\r⠋ thinking");
+
+      vi.advanceTimersByTime(400);
+      visible = "tick 1";
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(250);
+      visible = "tick 2";
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(350);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(300);
+      visible = "tick 3";
+      vi.advanceTimersByTime(50);
 
       expect(monitor.getState()).toBe("busy");
       expect(onStateChange).toHaveBeenCalledWith("agent-simple-1", 1000, "busy", {
@@ -699,20 +716,43 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("resets the 8s silence window on tiny repeated output", () => {
+    it("ignores unchanged redraw frames while idle", () => {
       const onStateChange = vi.fn();
-      const monitor = new ActivityMonitor("agent-simple-2", 1000, onStateChange, {
+      const monitor = new ActivityMonitor("agent-simple-redraw", 1000, onStateChange, {
         agentId: "claude",
-        getVisibleLines: () => ["."],
-        getCursorLine: () => ".",
+        getVisibleLines: () => ["waiting"],
+        getCursorLine: () => "waiting",
         initialState: "idle",
         skipInitialStateEmit: true,
       });
 
       monitor.startPolling();
-      monitor.onData(".");
+      vi.advanceTimersByTime(500);
+      monitor.onData("\rwaiting");
+      vi.advanceTimersByTime(600);
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      monitor.dispose();
+    });
+
+    it("resets the 8s silence window on tiny repeated visible changes", () => {
+      const onStateChange = vi.fn();
+      let visible = "tick 1";
+      const monitor = new ActivityMonitor("agent-simple-2", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => [visible],
+        getCursorLine: () => visible,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      monitor.notifySubmission();
       vi.advanceTimersByTime(7900);
-      monitor.onData(".");
+      visible = "tick 2";
+      vi.advanceTimersByTime(50);
       vi.advanceTimersByTime(7900);
 
       expect(monitor.getState()).toBe("busy");
@@ -724,20 +764,21 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("treats echo-like output as working in simple agent mode", () => {
+    it("keeps Enter immediate in simple agent mode", () => {
       const onStateChange = vi.fn();
-      const monitor = new ActivityMonitor("agent-simple-echo", 1000, onStateChange, {
+      const monitor = new ActivityMonitor("agent-simple-enter", 1000, onStateChange, {
         agentId: "claude",
+        getVisibleLines: () => ["> "],
+        getCursorLine: () => "> ",
         initialState: "idle",
         skipInitialStateEmit: true,
       });
 
-      monitor.onInput("x");
-      monitor.onData("x");
+      monitor.onInput("run\r");
 
       expect(monitor.getState()).toBe("busy");
-      expect(onStateChange).toHaveBeenCalledWith("agent-simple-echo", 1000, "busy", {
-        trigger: "output",
+      expect(onStateChange).toHaveBeenCalledWith("agent-simple-enter", 1000, "busy", {
+        trigger: "input",
       });
 
       monitor.dispose();

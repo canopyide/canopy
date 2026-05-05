@@ -17,6 +17,13 @@ import {
   type StructuralSignal,
 } from "./pty/SynchronizedFrameAnalyzer.js";
 import {
+  AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
+  AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
+  AGENT_WORKING_RECOVERY_WINDOW_MS,
+  SustainedChangeTracker,
+  hashStrings,
+} from "./pty/SustainedChangeTracker.js";
+import {
   detectPrompt,
   detectPromptLexeme,
   DEFAULT_PROMPT_PATTERNS,
@@ -29,6 +36,8 @@ import { classifyWaitingReason } from "./pty/WaitingReasonClassifier.js";
 import { CpuHighStateTracker } from "./pty/CpuHighStateTracker.js";
 import { WaitingWatchdog } from "./pty/WaitingWatchdog.js";
 import type { WaitingReason } from "../../shared/types/agent.js";
+
+const SIMPLE_VISIBLE_LINE_COUNT = 50;
 
 export interface ProcessStateValidator {
   hasActiveChildren(): boolean;
@@ -185,6 +194,12 @@ export class ActivityMonitor {
   // State preservation for project switch
   private readonly skipInitialStateEmit: boolean;
   private readonly simpleOutputState: boolean;
+  private readonly simpleOutputChangeTracker = new SustainedChangeTracker({
+    windowMs: AGENT_WORKING_RECOVERY_WINDOW_MS,
+    minChangedFrames: AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
+    maxQuietMs: AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
+  });
+  private simpleOutputFingerprint: number | undefined;
 
   // Polling interval configuration
   private POLLING_INTERVAL_MS: number;
@@ -370,8 +385,10 @@ export class ActivityMonitor {
       if (!data) {
         return;
       }
-      this.lastActivityTimestamp = now;
-      this.becomeBusy({ trigger: "output" }, now);
+      this.lastDataTimestamp = now;
+      if (!this.getVisibleLines) {
+        this.noteSimpleOutputFingerprint(hashStrings([data]), now);
+      }
       return;
     }
 
@@ -545,8 +562,9 @@ export class ActivityMonitor {
 
     const now = Date.now();
     if (this.simpleOutputState) {
-      this.lastActivityTimestamp = now;
-      this.becomeBusy({ trigger: "output" }, now);
+      // Simple output mode uses the full visible-line fingerprint from the
+      // polling cycle. Mixing per-frame bottom-row hashes with full-screen
+      // hashes makes unchanged frames look like changes.
       return;
     }
     if (this.isResizeSuppressed(now)) return;
@@ -598,6 +616,43 @@ export class ActivityMonitor {
     }
   }
 
+  private captureSimpleOutputFingerprint(): number | undefined {
+    if (!this.getVisibleLines) {
+      return undefined;
+    }
+    return hashStrings(this.getVisibleLines(SIMPLE_VISIBLE_LINE_COUNT));
+  }
+
+  private noteSimpleOutputFingerprint(fingerprint: number, now: number): void {
+    const previousFingerprint = this.simpleOutputFingerprint;
+    this.simpleOutputFingerprint = fingerprint;
+
+    if (previousFingerprint === undefined) {
+      this.simpleOutputChangeTracker.reset();
+      return;
+    }
+
+    const changed = previousFingerprint !== fingerprint;
+    if (!changed) {
+      this.simpleOutputChangeTracker.observe(now, false);
+      return;
+    }
+
+    this.lastActivityTimestamp = now;
+    this.lastDataTimestamp = now;
+
+    if (this.state === "busy") {
+      this.simpleOutputChangeTracker.reset();
+      this.resetDebounceTimer();
+      return;
+    }
+
+    if (this.simpleOutputChangeTracker.observe(now, true)) {
+      this.simpleOutputChangeTracker.reset();
+      this.becomeBusy({ trigger: "output" }, now);
+    }
+  }
+
   isHighOutputActivity(now: number = Date.now()): boolean {
     return this.highOutputDetector.isHighOutput(now);
   }
@@ -633,6 +688,7 @@ export class ActivityMonitor {
     this.workingSignalDebouncer.reset();
     this.cosmeticRecoveryDebouncer.reset();
     this.structuralRecoveryDebouncer.reset();
+    this.simpleOutputChangeTracker.reset();
     this.lineRewriteDetector.reset();
     this.synchronizedFrameAnalyzer.reset();
     this.patternBuf.reset();
@@ -646,6 +702,7 @@ export class ActivityMonitor {
     this.lastOutputActivityAt = 0;
     this.lastWorkingIndicatorTimestamp = 0;
     this.promptStableSince = 0;
+    this.simpleOutputFingerprint = undefined;
   }
 
   getLastPatternResult(): PatternDetectionResult | undefined {
@@ -672,6 +729,8 @@ export class ActivityMonitor {
     // tied to the current agent's rendering. Swapping detectors is a strong
     // signal that the agent identity changed — discard accumulated state.
     this.synchronizedFrameAnalyzer.reset();
+    this.simpleOutputChangeTracker.reset();
+    this.simpleOutputFingerprint = undefined;
   }
 
   notifySubmission(): void {
@@ -686,6 +745,8 @@ export class ActivityMonitor {
     // (rowOffset, col); a resize invalidates that mapping. Reset so the
     // first post-resize frame doesn't compare against pre-resize cells.
     this.synchronizedFrameAnalyzer.reset();
+    this.simpleOutputChangeTracker.reset();
+    this.simpleOutputFingerprint = undefined;
   }
 
   private isResizeSuppressed(now: number): boolean {
@@ -715,8 +776,11 @@ export class ActivityMonitor {
       this.recordWorkingSignal(this.bootDetector.pollingStartTime);
     }
 
-    if (this.simpleOutputState && this.state === "busy") {
-      this.resetDebounceTimer();
+    if (this.simpleOutputState) {
+      this.simpleOutputFingerprint = this.captureSimpleOutputFingerprint();
+      if (this.state === "busy") {
+        this.resetDebounceTimer();
+      }
     }
 
     this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
@@ -729,6 +793,15 @@ export class ActivityMonitor {
     const now = Date.now();
 
     if (this.simpleOutputState) {
+      if (!this.isResizeSuppressed(now)) {
+        const fingerprint = this.captureSimpleOutputFingerprint();
+        if (fingerprint !== undefined) {
+          this.noteSimpleOutputFingerprint(fingerprint, now);
+        }
+      } else {
+        this.simpleOutputChangeTracker.observe(now, false);
+      }
+
       if (
         this.state === "busy" &&
         now - this.lastActivityTimestamp >= this.IDLE_DEBOUNCE_MS &&
@@ -1099,6 +1172,7 @@ export class ActivityMonitor {
     // immediately re-trigger recovery without sustained signal.
     this.cosmeticRecoveryDebouncer.reset();
     this.structuralRecoveryDebouncer.reset();
+    this.simpleOutputChangeTracker.reset();
 
     // Reset completion state for the new work cycle
     this.completionTimer.reset();
@@ -1140,7 +1214,7 @@ export class ActivityMonitor {
         const now = Date.now();
         if (
           this.state === "busy" &&
-          now - this.lastDataTimestamp >= this.IDLE_DEBOUNCE_MS &&
+          now - this.lastActivityTimestamp >= this.IDLE_DEBOUNCE_MS &&
           now >= this.workingHoldUntil
         ) {
           this.state = "idle";
