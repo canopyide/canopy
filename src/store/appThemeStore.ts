@@ -42,17 +42,54 @@ interface AppThemeState {
   setAccentColorOverride: (color: string | null) => void;
 }
 
-function injectSchemeToDOM(scheme: AppColorScheme): void {
-  // Read accent override + CVD from the store on every injection so the
-  // modal-close revert, follow-system switch, and unmount cleanup paths
-  // all pick up the current user overrides without each callsite having
-  // to reapply them.
+let pendingScheme: AppColorScheme | null = null;
+let pendingFrame: number | null = null;
+
+function applySchemeToDOMNow(scheme: AppColorScheme): void {
   const { colorVisionMode, accentColorOverride } = useAppThemeStore.getState();
   const effective = applyAccentOverrideToScheme(scheme, accentColorOverride);
   applyAppThemeToRoot(document.documentElement, effective);
-  // Reapply CVD overrides after theme injection so they aren't overwritten
   if (colorVisionMode !== "default") {
     applyColorVisionMode(document.documentElement, colorVisionMode);
+  }
+}
+
+/**
+ * Inject a scheme's CSS custom properties into the DOM. By default, mutations
+ * are RAF-coalesced — rapid calls within a single animation frame are collapsed
+ * into one write. Pass `{ immediate: true }` inside a `startViewTransition`
+ * mutate callback or during unmount cleanup where synchronous DOM is required.
+ */
+function injectSchemeToDOM(scheme: AppColorScheme, opts?: { immediate?: boolean }): void {
+  if (opts?.immediate) {
+    if (pendingFrame !== null) {
+      cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    }
+    pendingScheme = null;
+    applySchemeToDOMNow(scheme);
+    return;
+  }
+
+  pendingScheme = scheme;
+  if (pendingFrame === null) {
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = null;
+      if (pendingScheme) applySchemeToDOMNow(pendingScheme);
+      pendingScheme = null;
+    });
+  }
+}
+
+/** Flush any pending RAF theme injection synchronously. No-op if nothing is pending. */
+function flushPendingTheme(): void {
+  if (pendingFrame !== null) {
+    cancelAnimationFrame(pendingFrame);
+    pendingFrame = null;
+  }
+  if (pendingScheme) {
+    applySchemeToDOMNow(pendingScheme);
+    pendingScheme = null;
   }
 }
 
@@ -142,4 +179,4 @@ export const useAppThemeStore = create<AppThemeState>()((set) => ({
   },
 }));
 
-export { injectSchemeToDOM };
+export { injectSchemeToDOM, flushPendingTheme };

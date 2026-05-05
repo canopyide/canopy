@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { BUILT_IN_APP_SCHEMES, DEFAULT_APP_SCHEME_ID } from "@/config/appColorSchemes";
-import { useAppThemeStore } from "../appThemeStore";
+import { flushPendingTheme, injectSchemeToDOM, useAppThemeStore } from "../appThemeStore";
 
 describe("appThemeStore.recentSchemeIds LRU", () => {
   beforeEach(() => {
@@ -96,10 +96,12 @@ describe("appThemeStore.recentSchemeIds LRU", () => {
   it("setAccentColorOverride patches the CSS variables on :root", () => {
     // Start from a known dark built-in so base accent is a predictable hex.
     useAppThemeStore.getState().setSelectedSchemeIdSilent("daintree");
+    flushPendingTheme();
     const baseAccent = document.documentElement.style.getPropertyValue("--theme-accent-primary");
     expect(baseAccent).toBeTruthy();
 
     useAppThemeStore.getState().setAccentColorOverride("#ff00aa");
+    flushPendingTheme();
     expect(useAppThemeStore.getState().accentColorOverride).toBe("#ff00aa");
     const overridden = document.documentElement.style.getPropertyValue("--theme-accent-primary");
     expect(overridden).toBe("#ff00aa");
@@ -115,14 +117,17 @@ describe("appThemeStore.recentSchemeIds LRU", () => {
 
   it("setAccentColorOverride(null) clears the override and restores theme accent", () => {
     useAppThemeStore.getState().setSelectedSchemeIdSilent("daintree");
+    flushPendingTheme();
     const daintree = BUILT_IN_APP_SCHEMES.find((s) => s.id === "daintree")!;
 
     useAppThemeStore.getState().setAccentColorOverride("#112233");
+    flushPendingTheme();
     expect(document.documentElement.style.getPropertyValue("--theme-accent-primary")).toBe(
       "#112233"
     );
 
     useAppThemeStore.getState().setAccentColorOverride(null);
+    flushPendingTheme();
     expect(useAppThemeStore.getState().accentColorOverride).toBeNull();
     expect(document.documentElement.style.getPropertyValue("--theme-accent-primary")).toBe(
       daintree.tokens["accent-primary"]
@@ -131,14 +136,17 @@ describe("appThemeStore.recentSchemeIds LRU", () => {
 
   it("override survives a subsequent setSelectedSchemeId (theme switch)", () => {
     useAppThemeStore.getState().setAccentColorOverride("#abcdef");
+    flushPendingTheme();
     // Switch to a different theme — the override must still be applied.
     useAppThemeStore.getState().setSelectedSchemeId("bondi");
+    flushPendingTheme();
     expect(useAppThemeStore.getState().accentColorOverride).toBe("#abcdef");
     expect(document.documentElement.style.getPropertyValue("--theme-accent-primary")).toBe(
       "#abcdef"
     );
     // And setSelectedSchemeIdSilent (follow-system, hydration) path too.
     useAppThemeStore.getState().setSelectedSchemeIdSilent("daintree");
+    flushPendingTheme();
     expect(document.documentElement.style.getPropertyValue("--theme-accent-primary")).toBe(
       "#abcdef"
     );
@@ -159,5 +167,78 @@ describe("appThemeStore.recentSchemeIds LRU", () => {
 
     useAppThemeStore.getState().removeCustomScheme("custom-app-theme");
     expect(useAppThemeStore.getState().recentSchemeIds).not.toContain("custom-app-theme");
+  });
+});
+
+describe("injectSchemeToDOM RAF coalescing", () => {
+  beforeEach(() => {
+    useAppThemeStore.setState({
+      selectedSchemeId: DEFAULT_APP_SCHEME_ID,
+      customSchemes: [],
+      colorVisionMode: "default",
+      followSystem: false,
+      accentColorOverride: null,
+      recentSchemeIds: [],
+    });
+  });
+
+  it("coalesces multiple injectSchemeToDOM calls in the same frame into one DOM write", () => {
+    const daintree = BUILT_IN_APP_SCHEMES.find((s) => s.id === "daintree")!;
+    const bondi = BUILT_IN_APP_SCHEMES.find((s) => s.id === "bondi")!;
+
+    // Apply daintree first
+    injectSchemeToDOM(daintree);
+    // Immediately apply bondi — should overwrite pendingScheme
+    injectSchemeToDOM(bondi);
+
+    // DOM should still be unchanged (RAF hasn't fired in jsdom without fake timers)
+    // Flush and check that only bondi tokens are present.
+    flushPendingTheme();
+
+    const canvas = document.documentElement.style.getPropertyValue("--theme-surface-canvas");
+    expect(canvas).toBe(bondi.tokens["surface-canvas"]);
+    expect(canvas).not.toBe(daintree.tokens["surface-canvas"]);
+  });
+
+  it("Zustand state updates synchronously even when DOM is deferred", () => {
+    useAppThemeStore.getState().setAccentColorOverride("#aabbcc");
+    // Zustand state must be immediately available — no flush needed
+    expect(useAppThemeStore.getState().accentColorOverride).toBe("#aabbcc");
+    // DOM is deferred — flush for the assertion
+    flushPendingTheme();
+    expect(document.documentElement.style.getPropertyValue("--theme-accent-primary")).toBe(
+      "#aabbcc"
+    );
+  });
+
+  it("immediate mode applies synchronously and cancels any pending RAF scheme", () => {
+    const daintree = BUILT_IN_APP_SCHEMES.find((s) => s.id === "daintree")!;
+    const bondi = BUILT_IN_APP_SCHEMES.find((s) => s.id === "bondi")!;
+
+    // Queue daintree via RAF
+    injectSchemeToDOM(daintree);
+    // Immediate call should cancel the pending daintree write
+    injectSchemeToDOM(bondi, { immediate: true });
+
+    // DOM should already have bondi tokens applied synchronously
+    expect(document.documentElement.style.getPropertyValue("--theme-surface-canvas")).toBe(
+      bondi.tokens["surface-canvas"]
+    );
+
+    // Flush should be a no-op (pending was cleared by immediate)
+    flushPendingTheme();
+    expect(document.documentElement.style.getPropertyValue("--theme-surface-canvas")).toBe(
+      bondi.tokens["surface-canvas"]
+    );
+  });
+
+  it("flushPendingTheme is a no-op when nothing is pending", () => {
+    const daintree = BUILT_IN_APP_SCHEMES.find((s) => s.id === "daintree")!;
+    injectSchemeToDOM(daintree, { immediate: true });
+
+    const before = document.documentElement.style.getPropertyValue("--theme-surface-canvas");
+    // Second flush should not change anything
+    flushPendingTheme();
+    expect(document.documentElement.style.getPropertyValue("--theme-surface-canvas")).toBe(before);
   });
 });

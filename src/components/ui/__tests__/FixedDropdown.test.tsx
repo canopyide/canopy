@@ -567,8 +567,8 @@ describe("FixedDropdown right-edge anchor (issue #6800)", () => {
 
   afterEach(() => {
     _resetForTests();
-    document.body.style.removeProperty("--portal-right-offset");
-    document.body.style.removeProperty("--right-obstruction-offset");
+    document.documentElement.style.removeProperty("--portal-right-offset");
+    document.documentElement.style.removeProperty("--right-obstruction-offset");
   });
 
   it("anchors right edge to --portal-right-offset, not --right-obstruction-offset", () => {
@@ -595,8 +595,8 @@ describe("FixedDropdown right-edge anchor (issue #6800)", () => {
     // Assistant open (--right-obstruction-offset = 320). The toolbar dropdown
     // must NOT pick up the 320px shift, because only the Portal body-portals
     // over the toolbar.
-    document.body.style.setProperty("--portal-right-offset", "0px");
-    document.body.style.setProperty("--right-obstruction-offset", "320px");
+    document.documentElement.style.setProperty("--portal-right-offset", "0px");
+    document.documentElement.style.setProperty("--right-obstruction-offset", "320px");
 
     render(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>

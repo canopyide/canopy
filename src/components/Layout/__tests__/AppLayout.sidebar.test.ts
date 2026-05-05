@@ -95,9 +95,7 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
     // the toolbar. Toolbar dropdowns must dodge the Portal (body-portaled web
     // chat) but not the Assistant. The previous shared-max value pushed
     // dropdowns left by Assistant width even when the Portal was closed.
-    expect(source).toMatch(
-      /document\.body\.style\.setProperty\("--portal-right-offset", `\$\{portalOffset\}px`\)/
-    );
+    expect(source).toMatch(/setProperty\("--portal-right-offset", `\$\{portalOffset\}px`\)/);
     // The portal-only var must not be re-conflated with Assistant width.
     expect(source).not.toMatch(/setProperty\("--portal-right-offset",[^)]*Math\.max\(portalOffset/);
   });
@@ -110,7 +108,7 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
     // otherwise be hidden behind the wider of the two panels.
     expect(source).toContain("Math.max(portalOffset, effectiveAssistantWidth)");
     expect(source).toMatch(
-      /document\.body\.style\.setProperty\("--right-obstruction-offset", `\$\{obstructionOffset\}px`\)/
+      /setProperty\("--right-obstruction-offset", `\$\{obstructionOffset\}px`\)/
     );
     expect(source).toMatch(/\[layout\.portalOpen, layout\.portalWidth, effectiveAssistantWidth\]/);
     // The old sum semantics must not be reintroduced.
@@ -118,8 +116,8 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
   });
 
   it("removes both right-edge vars on cleanup", () => {
-    expect(source).toContain('document.body.style.removeProperty("--portal-right-offset")');
-    expect(source).toContain('document.body.style.removeProperty("--right-obstruction-offset")');
+    expect(source).toContain('removeProperty("--portal-right-offset")');
+    expect(source).toContain('removeProperty("--right-obstruction-offset")');
   });
 });
 
