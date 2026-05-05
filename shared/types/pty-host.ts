@@ -297,6 +297,15 @@ export type PtyHostEvent =
       results: BroadcastWriteTargetResult[];
     };
 
+export interface FdLeakWarningPayload {
+  fdCount: number;
+  activeTerminals: number;
+  estimatedLeaked: number;
+  orphanedPids: number[];
+  ptmxLimit: number | null;
+  timestamp: number;
+}
+
 /**
  * Sub-union of host-to-main events that carry a `requestId` field — i.e. broker
  * responses correlated with a `register()` call on the main side. Use this with

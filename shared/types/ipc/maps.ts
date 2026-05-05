@@ -155,6 +155,7 @@ import type {
   TerminalStatusPayload,
   TerminalResourceBatchPayload,
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
 } from "../pty-host.js";
 import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
 import type { IdleTerminalNotifyConfig, IdleTerminalNotifyPayload } from "./idleTerminals.js";
@@ -2320,6 +2321,7 @@ export interface IpcEventMap {
   "terminal:restored": { id: string };
   "terminal:status": TerminalStatusPayload;
   "terminal:reliability-metric": TerminalReliabilityMetricPayload;
+  "terminal:fd-leak-warning": FdLeakWarningPayload;
   "terminal:resource-metrics": { metrics: TerminalResourceBatchPayload; timestamp: number };
   "terminal:broadcast-write-result": BroadcastWriteResultPayload;
   "terminal:send-key": [id: string, key: string];

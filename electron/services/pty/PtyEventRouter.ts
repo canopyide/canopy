@@ -22,6 +22,7 @@
 import type { EventEmitter } from "events";
 import type {
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
   PtyHostEvent,
   PtyHostSpawnOptions,
   SpawnResult,
@@ -236,6 +237,19 @@ export function routeHostEvent(event: PtyHostEvent, deps: PtyEventRouterDeps): b
     case "resource-metrics": {
       const rmEvent: { metrics: TerminalResourceBatchPayload; timestamp: number } = event;
       emitter.emit("resource-metrics", rmEvent.metrics, rmEvent.timestamp);
+      return true;
+    }
+
+    case "fd-leak-warning": {
+      const flwEvent: FdLeakWarningPayload = {
+        fdCount: event.fdCount,
+        activeTerminals: event.activeTerminals,
+        estimatedLeaked: event.estimatedLeaked,
+        orphanedPids: event.orphanedPids,
+        ptmxLimit: event.ptmxLimit,
+        timestamp: event.timestamp,
+      };
+      emitter.emit("fd-leak-warning", flwEvent);
       return true;
     }
 

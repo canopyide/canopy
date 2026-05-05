@@ -270,6 +270,35 @@ describe("routeHostEvent", () => {
     expect(spawnListener).toHaveBeenCalled();
   });
 
+  it("emits fd-leak-warning and returns true", () => {
+    const { deps, emitter } = makeDeps();
+    const listener = vi.fn();
+    emitter.on("fd-leak-warning", listener);
+
+    const handled = routeHostEvent(
+      {
+        type: "fd-leak-warning",
+        fdCount: 50,
+        activeTerminals: 5,
+        estimatedLeaked: 30,
+        orphanedPids: [],
+        ptmxLimit: 511,
+        timestamp: 1000,
+      },
+      deps
+    );
+
+    expect(handled).toBe(true);
+    expect(listener).toHaveBeenCalledWith({
+      fdCount: 50,
+      activeTerminals: 5,
+      estimatedLeaked: 30,
+      orphanedPids: [],
+      ptmxLimit: 511,
+      timestamp: 1000,
+    });
+  });
+
   it("emits resource-metrics with timestamp", () => {
     const { deps, emitter } = makeDeps();
     const listener = vi.fn();
