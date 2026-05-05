@@ -12,6 +12,10 @@
  *          active (timeout before the first tick, interval after).
  */
 export function setAlignedInterval(fn: () => void, periodMs: number): () => void {
+  if (!Number.isFinite(periodMs) || periodMs <= 0) {
+    throw new RangeError("periodMs must be a positive finite number");
+  }
+
   const delay = (periodMs - (Date.now() % periodMs)) % periodMs;
 
   let interval: ReturnType<typeof setInterval> | null = null;
