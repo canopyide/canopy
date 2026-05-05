@@ -21,6 +21,11 @@ import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_LONG, T_SETTLE } from "../helpers/timeouts";
 
+interface E2EPerfWindow extends Window {
+  __daintreeE2ePerfEntries?: Array<{ duration: number; startTime: number }>;
+  __daintreeE2ePerfObserver?: PerformanceObserver;
+}
+
 const FILE_COUNT = 1000;
 const MAX_DOM_DELTA = 25_000;
 const MAX_LONG_TASKS = 10;
@@ -62,14 +67,15 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
       const supported = PerformanceObserver.supportedEntryTypes ?? [];
       if (!supported.includes("long-animation-frame")) return false;
 
-      (window as any).__daintreeE2ePerfEntries = [];
+      const win = window as unknown as E2EPerfWindow;
+      win.__daintreeE2ePerfEntries = [];
       const obs = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          (window as any).__daintreeE2ePerfEntries.push(entry.toJSON());
+          win.__daintreeE2ePerfEntries!.push(entry.toJSON());
         }
       });
       obs.observe({ type: "long-animation-frame", buffered: true });
-      (window as any).__daintreeE2ePerfObserver = obs;
+      win.__daintreeE2ePerfObserver = obs;
       return true;
     });
 
@@ -93,11 +99,11 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
     // Collect longtask entries
     const longTaskEntries: Array<{ duration: number; startTime: number }> = await window.evaluate(
       () => {
-        const obs = (window as any).__daintreeE2ePerfObserver as PerformanceObserver | undefined;
-        obs?.disconnect();
-        const entries = (window as any).__daintreeE2ePerfEntries ?? [];
-        delete (window as any).__daintreeE2ePerfObserver;
-        delete (window as any).__daintreeE2ePerfEntries;
+        const win = window as unknown as E2EPerfWindow;
+        win.__daintreeE2ePerfObserver?.disconnect();
+        const entries = win.__daintreeE2ePerfEntries ?? [];
+        delete win.__daintreeE2ePerfObserver;
+        delete win.__daintreeE2ePerfEntries;
         return entries;
       }
     );
