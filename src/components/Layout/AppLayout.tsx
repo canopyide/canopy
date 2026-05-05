@@ -494,7 +494,7 @@ export function AppLayout({
                 WebContentsView is already hidden via PortalVisibilityController. */}
             <div
               {...(isThemeBrowserOpen ? { inert: true } : {})}
-              className="fixed top-0 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"
+              className="fixed top-12 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"
             >
               <PortalDock />
             </div>

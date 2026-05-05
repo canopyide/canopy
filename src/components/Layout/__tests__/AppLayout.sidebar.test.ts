@@ -141,7 +141,7 @@ describe("AppLayout portal viewport coverage — issue #6629", () => {
     // fixed` lets the Portal escape <main>'s width and overlay the Assistant.
     expect(source).toMatch(/\{layout\.portalOpen &&\s*\n\s*createPortal\(/);
     expect(source).toContain(
-      '"fixed top-0 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"'
+      '"fixed top-12 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"'
     );
     // The portal target must be document.body to escape the inert subtrees and
     // the <main> width constraint. A different target would silently reintroduce
