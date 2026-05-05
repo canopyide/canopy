@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { EditorView } from "@codemirror/view";
 import type {
   AtFileContext,
@@ -38,7 +38,10 @@ export function useAutocompletePositioning({
 }: UseAutocompletePositioningParams) {
   const viewDomRef = useRef<HTMLElement | null>(null);
 
-  const compute = () => {
+  // Sync in render phase so useResizeObserverRaf's layout effect sees the current element
+  viewDomRef.current = editorViewRef.current?.dom ?? null;
+
+  const compute = useCallback(() => {
     const view = editorViewRef.current;
     const shell = inputShellRef.current;
     if (!view || !shell || !isAutocompleteOpen) return;
@@ -68,24 +71,11 @@ export function useAutocompletePositioning({
     const clampedAbsoluteLeft = Math.max(0, Math.min(menuAbsoluteLeft, maxAbsoluteLeft));
     const clampedLeft = clampedAbsoluteLeft - shellRect.left;
     setMenuLeftPx(Math.max(0, clampedLeft));
-  };
-
-  useResizeObserverRaf(inputShellRef, () => compute());
-  useResizeObserverRaf(viewDomRef, () => compute());
-
-  useLayoutEffect(() => {
-    // Sync view.dom ref for the ResizeObserver hook
-    viewDomRef.current = editorViewRef.current?.dom ?? null;
-
-    if (!isAutocompleteOpen) return;
-    compute();
-
-    const onResize = () => compute();
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-    };
   }, [
+    editorViewRef,
+    inputShellRef,
+    menuRef,
+    setMenuLeftPx,
     activeMode,
     atContext?.atStart,
     diffContext?.atStart,
@@ -94,4 +84,18 @@ export function useAutocompletePositioning({
     isAutocompleteOpen,
     slashContext?.start,
   ]);
+
+  useResizeObserverRaf(inputShellRef, () => compute());
+  useResizeObserverRaf(viewDomRef, () => compute());
+
+  useLayoutEffect(() => {
+    if (!isAutocompleteOpen) return;
+    compute();
+
+    const onResize = () => compute();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, [compute, isAutocompleteOpen]);
 }

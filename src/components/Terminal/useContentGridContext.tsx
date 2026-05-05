@@ -43,7 +43,6 @@ import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplication
 import { getEffectiveAgentIds, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
 import { getMaximizedGroupFocusTarget } from "./contentGridFocus";
 import { actionService } from "@/services/ActionService";
-import { useResizeObserverRaf } from "@/hooks/useResizeObserverRaf";
 
 export function pixelSnapTransform({ x, y }: TransformProperties): string {
   const tx = typeof x === "number" ? x : parseFloat(x ?? "0") || 0;
@@ -348,21 +347,39 @@ export function useContentGridContext({
     [setNodeRef]
   );
 
-  useResizeObserverRaf(gridContainerRef, (entry) => {
-    const { width, height } = entry.contentRect;
-    setGridWidth((prev) => (prev === width ? prev : width));
-    setGridDimensions({ width, height });
-  });
-
-  // Synchronous initial dimension read on mount and when layout-affecting state changes
+  // Observe container resizes with rAF deferral to avoid RO depth-cap warnings.
+  // Recreated when the container element or layout-affecting deps change.
   useEffect(() => {
     const container = gridContainerRef.current;
     if (!container) return;
 
+    let rafId: number | null = null;
+    let latestEntry: ResizeObserverEntry | null = null;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      latestEntry = entry;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const entry = latestEntry;
+        latestEntry = null;
+        if (entry) {
+          const { width, height } = entry.contentRect;
+          setGridWidth((prev) => (prev === width ? prev : width));
+          setGridDimensions({ width, height });
+        }
+      });
+    });
+
+    observer.observe(container);
     setGridWidth(container.clientWidth);
     setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
 
     return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
       setGridDimensions(null);
     };
   }, [setGridDimensions, gridTerminals.length, maximizedId, twoPaneSplitEnabled, showPlaceholder]);

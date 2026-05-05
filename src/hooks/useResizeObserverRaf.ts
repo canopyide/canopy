@@ -36,5 +36,5 @@ export function useResizeObserverRaf(
         rafIdRef.current = null;
       }
     };
-  }, [ref, onResizeStable]);
+  }, [ref]);
 }

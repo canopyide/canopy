@@ -5,6 +5,7 @@ import { useRef } from "react";
 import { useResizeObserverRaf } from "../useResizeObserverRaf";
 
 function createEntry(width: number, height: number): ResizeObserverEntry {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return {
     contentRect: { width, height, x: 0, y: 0, top: 0, bottom: 0, left: 0, right: 0 },
     target: document.createElement("div"),
@@ -28,18 +29,22 @@ describe("useResizeObserverRaf", () => {
 
     vi.stubGlobal(
       "ResizeObserver",
-      vi.fn(function (this: any, cb: (entries: ResizeObserverEntry[]) => void) {
+      vi.fn(function ResizeObserverMock(
+        this: ResizeObserver | void,
+        cb: (entries: ResizeObserverEntry[]) => void
+      ) {
         observerCallback = cb;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const obs = {
           observe: vi.fn(),
           unobserve: vi.fn(),
           disconnect: vi.fn(() => {
             observerCallback = null;
           }),
-        };
-        observers.push(obs as unknown as ResizeObserver);
+        } as unknown as ResizeObserver;
+        observers.push(obs);
         return obs;
-      } as any)
+      })
     );
 
     vi.stubGlobal(
