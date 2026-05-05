@@ -63,6 +63,7 @@ import { ToolbarLauncherButton } from "./ToolbarLauncherButton";
 import { ToolbarSettingsButton } from "./ToolbarSettingsButton";
 import { ToolbarProblemsButton } from "./ToolbarProblemsButton";
 import { ToolbarPortalButton } from "./ToolbarPortalButton";
+import { ToolbarAssistantButton } from "./ToolbarAssistantButton";
 import { useOverflowBadgeSeverity, type OverflowBadgeSeverity } from "./useOverflowBadgeSeverity";
 
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
@@ -570,6 +571,10 @@ export function Toolbar({
         ),
         isAvailable: showDeveloperTools,
       },
+      "assistant-toggle": {
+        render: () => <ToolbarAssistantButton key="assistant-toggle" data-toolbar-item="" />,
+        isAvailable: true,
+      },
       "portal-toggle": {
         render: () => <ToolbarPortalButton key="portal-toggle" data-toolbar-item="" />,
         isAvailable: true,
@@ -596,7 +601,9 @@ export function Toolbar({
       effectiveAgentSettings,
       onLaunchAgent,
       sidebarShortcut,
+      sidebarHintHover,
       copyTreeShortcut,
+      copyTreeHintHover,
       hasActiveVoiceRecording,
       currentProject,
       handleCopyTreeClick,
@@ -613,6 +620,7 @@ export function Toolbar({
       pluginButtonIds,
       pluginConfigs,
       devServerShortcut,
+      devServerHintHover,
     ]
   );
 
@@ -1031,7 +1039,10 @@ export function Toolbar({
 
           <div className={toolbarDividerClass} />
 
-          <div className="app-no-drag">{buttonRegistry["portal-toggle"]!.render()}</div>
+          <div className="app-no-drag flex items-center gap-0.5">
+            {buttonRegistry["assistant-toggle"]!.render()}
+            {buttonRegistry["portal-toggle"]!.render()}
+          </div>
         </div>
       </div>
     </header>

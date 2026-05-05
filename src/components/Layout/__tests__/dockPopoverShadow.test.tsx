@@ -111,7 +111,6 @@ describe("Dock Popover Visual Layer - Issue #2316", () => {
       "../StatusContainer.tsx",
       "../BackgroundContainer.tsx",
       "../TrashContainer.tsx",
-      "../HelpAgentDockButton.tsx",
     ];
 
     for (const relativePath of dockButtonFiles) {
