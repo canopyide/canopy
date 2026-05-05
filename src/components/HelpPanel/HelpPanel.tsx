@@ -172,6 +172,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     agentId,
     preferredAgentId,
     introDismissed,
+    conversationTouched,
+    markConversationStarted,
     setWidth,
     setOpen,
     clearTerminal,
@@ -285,6 +287,17 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       document.removeEventListener("visibilitychange", handler);
     };
   }, [revokePendingSession]);
+
+  // Latch conversationTouched when the terminal's agent state first leaves idle,
+  // so the close-confirm guard protects accumulated chat history indefinitely.
+  useEffect(() => {
+    if (terminalId && terminal?.agentState !== undefined && terminal.agentState !== "idle") {
+      const store = useHelpPanelStore.getState();
+      if (store.terminalId === terminalId) {
+        markConversationStarted();
+      }
+    }
+  }, [terminalId, terminal?.agentState, markConversationStarted]);
 
   // Auto-launch preferred agent when panel opens without an active terminal.
   // Always starts a new conversation (never resumes).
@@ -562,14 +575,16 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     setOpen(false);
   }, [terminalId, removePanel, clearTerminal, setOpen, revokePendingSession]);
 
-  // Confirm before discarding an in-flight assistant turn. Mirrors the
-  // CLOSE_CONFIRM_AGENT_STATES gate used by GridPanel/DockedPanel/*TabGroup
-  // and honours the same skipWorkingCloseConfirm preference, so the
-  // assistant chat behaves consistently with regular terminal close paths.
+  // Confirm before discarding an in-flight assistant turn or accumulated
+  // conversation. Mirrors the CLOSE_CONFIRM_AGENT_STATES gate used by
+  // GridPanel/DockedPanel/*TabGroup but additionally protects non-empty
+  // chat history even after the agent goes idle — the conversation itself
+  // is the artifact (issue #6809). The skipWorkingCloseConfirm preference
+  // bypasses all confirmation.
   const shouldConfirmClose =
     !skipWorkingCloseConfirm &&
-    terminal?.agentState !== undefined &&
-    CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState);
+    ((terminal?.agentState !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState)) ||
+      conversationTouched);
 
   const handleClose = useCallback(() => {
     if (shouldConfirmClose) {

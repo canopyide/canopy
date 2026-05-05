@@ -20,6 +20,7 @@ interface HelpPanelState {
   preferredAgentId: string | null;
   sessionId: string | null;
   introDismissed: boolean;
+  conversationTouched: boolean;
 }
 
 interface HelpPanelActions {
@@ -30,6 +31,7 @@ interface HelpPanelActions {
   clearTerminal: () => void;
   setPreferredAgent: (agentId: string | null) => void;
   dismissIntro: () => void;
+  markConversationStarted: () => void;
 }
 
 const initialState: HelpPanelState = {
@@ -40,6 +42,7 @@ const initialState: HelpPanelState = {
   preferredAgentId: null,
   sessionId: null,
   introDismissed: false,
+  conversationTouched: false,
 };
 
 export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
@@ -57,13 +60,22 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
         }),
 
       setTerminal: (terminalId, agentId, sessionId) =>
-        set({ terminalId, agentId, sessionId, preferredAgentId: agentId }),
+        set({
+          terminalId,
+          agentId,
+          sessionId,
+          preferredAgentId: agentId,
+          conversationTouched: false,
+        }),
 
-      clearTerminal: () => set({ terminalId: null, agentId: null, sessionId: null }),
+      clearTerminal: () =>
+        set({ terminalId: null, agentId: null, sessionId: null, conversationTouched: false }),
 
       setPreferredAgent: (agentId) => set({ preferredAgentId: agentId }),
 
       dismissIntro: () => set({ introDismissed: true }),
+
+      markConversationStarted: () => set({ conversationTouched: true }),
     }),
     {
       name: "help-panel-storage",

@@ -58,6 +58,8 @@ const {
     preferredAgentId: null as string | null,
     sessionId: null as string | null,
     introDismissed: true,
+    conversationTouched: false,
+    markConversationStarted: vi.fn(),
     setWidth: vi.fn(),
     setOpen: vi.fn(),
     clearTerminal: vi.fn(),
@@ -255,6 +257,8 @@ function resetState() {
   helpPanelState.preferredAgentId = null;
   helpPanelState.sessionId = null;
   helpPanelState.introDismissed = true;
+  helpPanelState.conversationTouched = false;
+  helpPanelState.markConversationStarted = vi.fn();
   helpPanelState.setTerminal = vi.fn();
   helpPanelState.setOpen = vi.fn();
   helpPanelState.setWidth = vi.fn();
@@ -1213,9 +1217,10 @@ describe("HelpPanel — customArgs threading", () => {
 });
 
 describe("HelpPanel — close confirmation guard (issue #6623)", () => {
-  it("closes immediately when the assistant is idle (no dialog)", () => {
+  it("closes immediately when the assistant is idle with no conversation (no dialog)", () => {
     helpPanelState.terminalId = "term-1";
     helpPanelState.agentId = "claude";
+    helpPanelState.conversationTouched = false;
     panelStoreState.panelsById = {
       "term-1": {
         id: "term-1",
@@ -1307,10 +1312,11 @@ describe("HelpPanel — close confirmation guard (issue #6623)", () => {
   });
 
   it.each(["waiting", "directing", "completed", "exited"] as const)(
-    "closes immediately for %s agent state (only 'working' triggers confirm)",
+    "closes immediately for %s agent state when conversation is untouched",
     (state) => {
       helpPanelState.terminalId = "term-1";
       helpPanelState.agentId = "claude";
+      helpPanelState.conversationTouched = false;
       panelStoreState.panelsById = {
         "term-1": {
           id: "term-1",
@@ -1383,6 +1389,131 @@ describe("HelpPanel — close confirmation guard (issue #6623)", () => {
     expect(getByTestId("dialog-confirm").textContent).toBe("Stop and close");
     expect(panelStoreState.removePanel).not.toHaveBeenCalled();
     expect(helpPanelState.setOpen).not.toHaveBeenCalled();
+  });
+
+  it("shows confirm dialog for idle agent when conversation has been touched", () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    helpPanelState.conversationTouched = true;
+    panelStoreState.panelsById = {
+      "term-1": {
+        id: "term-1",
+        kind: "terminal",
+        spawnStatus: "ready",
+        cwd: "/help",
+        agentState: "idle",
+      },
+    };
+
+    const { container, getByTestId } = render(<HelpPanel width={380} />);
+    fireEvent.click(container.querySelector('button[aria-label="Close help panel"]')!);
+
+    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+    expect(helpPanelState.setOpen).not.toHaveBeenCalled();
+    expect(getByTestId("dialog-title").textContent).toBe("Stop this agent?");
+    expect(getByTestId("dialog-confirm").textContent).toBe("Stop and close");
+  });
+
+  it.each(["waiting", "directing", "completed"] as const)(
+    "shows confirm dialog for %s agent when conversation has been touched",
+    (state) => {
+      helpPanelState.terminalId = "term-1";
+      helpPanelState.agentId = "claude";
+      helpPanelState.conversationTouched = true;
+      panelStoreState.panelsById = {
+        "term-1": {
+          id: "term-1",
+          kind: "terminal",
+          spawnStatus: "ready",
+          cwd: "/help",
+          agentState: state,
+        },
+      };
+
+      const { container, getByTestId } = render(<HelpPanel width={380} />);
+      fireEvent.click(container.querySelector('button[aria-label="Close help panel"]')!);
+
+      expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+      expect(getByTestId("dialog-title").textContent).toBe("Stop this agent?");
+    }
+  );
+
+  it("closes immediately when skipWorkingCloseConfirm is true even with touched conversation", () => {
+    preferencesState.skipWorkingCloseConfirm = true;
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    helpPanelState.conversationTouched = true;
+    panelStoreState.panelsById = {
+      "term-1": {
+        id: "term-1",
+        kind: "terminal",
+        spawnStatus: "ready",
+        cwd: "/help",
+        agentState: "idle",
+      },
+    };
+
+    const { container, queryByTestId } = render(<HelpPanel width={380} />);
+    fireEvent.click(container.querySelector('button[aria-label="Close help panel"]')!);
+
+    expect(queryByTestId("confirm-dialog")).toBeNull();
+    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-1");
+    expect(helpPanelState.setOpen).toHaveBeenCalledWith(false);
+  });
+
+  it("marks conversation started when agent state leaves idle on mount", () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "term-1": {
+        id: "term-1",
+        kind: "terminal",
+        spawnStatus: "ready",
+        cwd: "/help",
+        agentState: "working",
+      },
+    };
+
+    render(<HelpPanel width={380} />);
+
+    expect(helpPanelState.markConversationStarted).toHaveBeenCalled();
+  });
+
+  it("does not mark conversation started when agent state is idle on mount", () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "term-1": {
+        id: "term-1",
+        kind: "terminal",
+        spawnStatus: "ready",
+        cwd: "/help",
+        agentState: "idle",
+      },
+    };
+
+    render(<HelpPanel width={380} />);
+
+    expect(helpPanelState.markConversationStarted).not.toHaveBeenCalled();
+  });
+
+  it("does not mark conversation started after clearTerminal (stale guard)", () => {
+    // Simulate: terminal was set but clearTerminal was called before render.
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    panelStoreState.panelsById = {
+      "term-1": {
+        id: "term-1",
+        kind: "terminal",
+        spawnStatus: "ready",
+        cwd: "/help",
+        agentState: "working",
+      },
+    };
+
+    render(<HelpPanel width={380} />);
+
+    expect(helpPanelState.markConversationStarted).not.toHaveBeenCalled();
   });
 });
 

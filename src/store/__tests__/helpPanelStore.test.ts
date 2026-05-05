@@ -271,4 +271,90 @@ describe("helpPanelStore persistence migration", () => {
 
     expect(store.getState().isOpen).toBe(false);
   });
+
+  it("starts with conversationTouched: false on a fresh install", async () => {
+    installLocalStorage({});
+
+    const { useHelpPanelStore: store } = await import("../helpPanelStore");
+
+    expect(store.getState().conversationTouched).toBe(false);
+  });
+
+  it("markConversationStarted sets conversationTouched to true", async () => {
+    installLocalStorage({});
+
+    const { useHelpPanelStore: store } = await import("../helpPanelStore");
+    store.getState().markConversationStarted();
+
+    expect(store.getState().conversationTouched).toBe(true);
+  });
+
+  it("markConversationStarted is idempotent (calling twice still yields true)", async () => {
+    installLocalStorage({});
+
+    const { useHelpPanelStore: store } = await import("../helpPanelStore");
+    store.getState().markConversationStarted();
+    store.getState().markConversationStarted();
+
+    expect(store.getState().conversationTouched).toBe(true);
+  });
+
+  it("setTerminal resets conversationTouched to false", async () => {
+    installLocalStorage({});
+
+    const { useHelpPanelStore: store } = await import("../helpPanelStore");
+    store.getState().markConversationStarted();
+    expect(store.getState().conversationTouched).toBe(true);
+
+    store.getState().setTerminal("term-1", "claude", null);
+    expect(store.getState().conversationTouched).toBe(false);
+  });
+
+  it("clearTerminal resets conversationTouched to false", async () => {
+    installLocalStorage({});
+
+    const { useHelpPanelStore: store } = await import("../helpPanelStore");
+    store.getState().markConversationStarted();
+    expect(store.getState().conversationTouched).toBe(true);
+
+    store.getState().clearTerminal();
+    expect(store.getState().conversationTouched).toBe(false);
+  });
+
+  it("conversationTouched is NOT persisted", async () => {
+    const backing = installLocalStorage({});
+
+    const { useHelpPanelStore: store } = await import("../helpPanelStore");
+    store.getState().markConversationStarted();
+
+    const written = backing.get(STORAGE_KEY);
+    expect(written).toBeDefined();
+    const parsed = JSON.parse(written!) as {
+      version: number;
+      state: Record<string, unknown>;
+    };
+    // conversationTouched is excluded from the persisted blob
+    expect(parsed.state).not.toHaveProperty("conversationTouched");
+    // The field is still true in the store
+    expect(store.getState().conversationTouched).toBe(true);
+  });
+
+  it("conversationTouched defaults to false after rehydration regardless of persisted blob", async () => {
+    // Simulate a (hypothetical) blob that somehow got conversationTouched injected
+    const blob = JSON.stringify({
+      version: 2,
+      state: {
+        isOpen: false,
+        width: 400,
+        preferredAgentId: null,
+        introDismissed: false,
+        conversationTouched: true,
+      },
+    });
+    installLocalStorage({ [STORAGE_KEY]: blob });
+
+    const { useHelpPanelStore: store } = await import("../helpPanelStore");
+
+    expect(store.getState().conversationTouched).toBe(false);
+  });
 });
