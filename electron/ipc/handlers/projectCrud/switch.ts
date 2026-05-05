@@ -159,10 +159,15 @@ async function activateProjectView(
   // active scratch pointer + notifies renderers so palette/UI state stays
   // coherent. Without this, `currentScratchId` would linger in app_state
   // and `scratchStore.getCurrentScratch()` would return stale data.
-  const hadActiveScratch = scratchStore.getCurrentScratchId() !== null;
-  if (hadActiveScratch) {
-    scratchStore.clearCurrentScratch();
-    broadcastToRenderer(CHANNELS.SCRATCH_ON_SWITCH, { scratch: null, switchId: "" });
+  // Wrapped because some test environments don't initialize the shared DB —
+  // a project switch must not fail because optional cross-store cleanup did.
+  try {
+    if (scratchStore.getCurrentScratchId() !== null) {
+      scratchStore.clearCurrentScratch();
+      broadcastToRenderer(CHANNELS.SCRATCH_ON_SWITCH, { scratch: null, switchId: "" });
+    }
+  } catch (err) {
+    console.warn("[ProjectSwitch] Failed to clear active scratch:", err);
   }
 
   // Update the main process global state

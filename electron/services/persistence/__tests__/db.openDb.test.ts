@@ -43,11 +43,13 @@ describe("openDb (integration)", () => {
       expect(names).toContain("app_state");
       expect(names).toContain("__drizzle_migrations");
 
+      expect(names).toContain("scratches");
+
       const migrations = sqlite.prepare("SELECT id, hash FROM __drizzle_migrations").all() as {
         id: number;
         hash: string;
       }[];
-      expect(migrations).toHaveLength(1);
+      expect(migrations).toHaveLength(2);
       expect(migrations[0].hash).toBeTruthy();
     } finally {
       sqlite.close();
@@ -86,7 +88,7 @@ describe("openDb (integration)", () => {
       const migrations = second.sqlite.prepare("SELECT id FROM __drizzle_migrations").all() as {
         id: number;
       }[];
-      expect(migrations).toHaveLength(1);
+      expect(migrations).toHaveLength(2);
     } finally {
       second.sqlite.close();
     }
@@ -167,7 +169,7 @@ describe("openDb (integration)", () => {
       const migrations = sqlite.prepare("SELECT id FROM __drizzle_migrations").all() as {
         id: number;
       }[];
-      expect(migrations).toHaveLength(1);
+      expect(migrations).toHaveLength(2);
     } finally {
       sqlite.close();
     }
@@ -253,7 +255,7 @@ describe("openDb (integration)", () => {
       const migrations = sqlite.prepare("SELECT id FROM __drizzle_migrations").all() as {
         id: number;
       }[];
-      expect(migrations).toHaveLength(1);
+      expect(migrations).toHaveLength(2);
     } finally {
       sqlite.close();
     }
