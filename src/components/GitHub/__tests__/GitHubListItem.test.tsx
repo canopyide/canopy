@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { Activity, type ReactNode } from "react";
 import { GitHubListItem } from "../GitHubListItem";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 import { actionService } from "@/services/ActionService";
@@ -167,6 +167,33 @@ describe("GitHubListItem", () => {
 
     // Check icon should be gone
     const checkIconAfter = copyButton.querySelector(".text-status-success");
+    expect(checkIconAfter).toBeNull();
+  });
+
+  it("resets copy state on Activity hide/reveal so checkmark does not persist across reopen", async () => {
+    function Harness({ mode }: { mode: "visible" | "hidden" }) {
+      return (
+        <Activity mode={mode}>
+          <GitHubListItem item={baseIssue} type="issue" />
+        </Activity>
+      );
+    }
+
+    const { rerender } = render(<Harness mode="visible" />);
+    const copyButton = screen.getByLabelText("Copy number 42");
+
+    await act(async () => {
+      fireEvent.click(copyButton);
+    });
+
+    const checkIcon = copyButton.querySelector(".text-status-success");
+    expect(checkIcon).not.toBeNull();
+
+    rerender(<Harness mode="hidden" />);
+    rerender(<Harness mode="visible" />);
+
+    const copyButtonAfter = screen.getByLabelText("Copy number 42");
+    const checkIconAfter = copyButtonAfter.querySelector(".text-status-success");
     expect(checkIconAfter).toBeNull();
   });
 
