@@ -22,6 +22,13 @@ function useScrollIndicator({
 }: UseScrollIndicatorParams): UseScrollIndicatorReturn {
   const [hiddenAbove, setHiddenAbove] = useState(0);
   const [hiddenBelow, setHiddenBelow] = useState(0);
+  const [containerEl, setContainerEl] = useState<HTMLElement | null>(null);
+  const [contentEl, setContentEl] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    setContainerEl(scrollContainerRef.current);
+    setContentEl(scrollContentRef.current);
+  });
 
   const updateScrollIndicators = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -59,8 +66,8 @@ function useScrollIndicator({
     updateScrollIndicators();
   }, [updateScrollIndicators, itemCount]);
 
-  useResizeObserverRaf(scrollContainerRef, () => updateScrollIndicators());
-  useResizeObserverRaf(scrollContentRef, () => updateScrollIndicators());
+  useResizeObserverRaf(containerEl, () => updateScrollIndicators());
+  useResizeObserverRaf(contentEl, () => updateScrollIndicators());
 
   useEffect(() => {
     const container = scrollContainerRef.current;

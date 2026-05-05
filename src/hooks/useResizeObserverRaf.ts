@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useEffectEvent } from "react";
 
 export function useResizeObserverRaf(
-  ref: React.RefObject<HTMLElement | null>,
+  element: HTMLElement | null,
   onResize: (entry: ResizeObserverEntry) => void
 ): void {
   const onResizeStable = useEffectEvent(onResize);
@@ -9,7 +9,6 @@ export function useResizeObserverRaf(
   const latestEntryRef = useRef<ResizeObserverEntry | null>(null);
 
   useLayoutEffect(() => {
-    const element = ref.current;
     if (!element) return;
 
     const observer = new ResizeObserver((entries) => {
@@ -36,5 +35,5 @@ export function useResizeObserverRaf(
         rafIdRef.current = null;
       }
     };
-  }, [ref]);
+  }, [element]);
 }

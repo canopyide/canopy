@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useRef } from "react";
 import { useResizeObserverRaf } from "../useResizeObserverRaf";
 
 function createEntry(width: number, height: number): ResizeObserverEntry {
@@ -83,9 +82,7 @@ describe("useResizeObserverRaf", () => {
     onResize: (entry: ResizeObserverEntry) => void;
     element: HTMLElement | null;
   }) {
-    const ref = useRef<HTMLElement | null>(null);
-    (ref as { current: HTMLElement | null }).current = element;
-    useResizeObserverRaf(ref, onResize);
+    useResizeObserverRaf(element, onResize);
     return null;
   }
 
@@ -159,12 +156,29 @@ describe("useResizeObserverRaf", () => {
     expect(onResize).toHaveBeenCalledTimes(0);
   });
 
-  it("no-ops when ref is null", () => {
+  it("no-ops when element is null", () => {
     const onResize = vi.fn();
 
     renderHook(() => TestWrapper({ onResize, element: null }));
 
     expect(ResizeObserver).not.toHaveBeenCalled();
+  });
+
+  it("re-subscribes when element becomes non-null after mount", () => {
+    const onResize = vi.fn();
+    const el = document.createElement("div");
+
+    const { rerender } = renderHook(
+      ({ element }: { element: HTMLElement | null }) => TestWrapper({ onResize, element }),
+      { initialProps: { element: null as HTMLElement | null } }
+    );
+
+    expect(ResizeObserver).not.toHaveBeenCalled();
+
+    rerender({ element: el });
+
+    expect(ResizeObserver).toHaveBeenCalledTimes(1);
+    expect(observers[0]?.observe).toHaveBeenCalledWith(el);
   });
 
   it("no-ops when entry array is empty", () => {

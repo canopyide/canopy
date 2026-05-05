@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useState, useMemo } from "react";
+import { useCallback, useRef, useEffect, useLayoutEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,11 @@ export function TwoPaneSplitLayout({
   onAddTabRight,
 }: TwoPaneSplitLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
+  useLayoutEffect(() => {
+    setContainerEl(containerRef.current);
+  });
   const [localRatio, setLocalRatio] = useState<number | null>(null);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
@@ -103,7 +107,7 @@ export function TwoPaneSplitLayout({
     return computeDefaultRatio();
   }, [localRatio, effectiveStoredRatio, computeDefaultRatio]);
 
-  useResizeObserverRaf(containerRef, (entry) => {
+  useResizeObserverRaf(containerEl, (entry) => {
     setContainerWidth(entry.contentRect.width);
   });
 

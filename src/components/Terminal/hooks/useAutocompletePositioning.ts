@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useLayoutEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { EditorView } from "@codemirror/view";
 import type {
   AtFileContext,
@@ -36,10 +36,15 @@ export function useAutocompletePositioning({
   selectionContext,
   setMenuLeftPx,
 }: UseAutocompletePositioningParams) {
-  const viewDomRef = useRef<HTMLElement | null>(null);
+  const [inputShellEl, setInputShellEl] = useState<HTMLDivElement | null>(null);
+  const [viewDomEl, setViewDomEl] = useState<HTMLElement | null>(null);
 
-  // Sync in render phase so useResizeObserverRaf's layout effect sees the current element
-  viewDomRef.current = editorViewRef.current?.dom ?? null;
+  // Sync element state from refs in a layout effect so useResizeObserverRaf
+  // re-subscribes when editorViewRef.current is populated asynchronously.
+  useLayoutEffect(() => {
+    setInputShellEl(inputShellRef.current);
+    setViewDomEl(editorViewRef.current?.dom ?? null);
+  });
 
   const compute = useCallback(() => {
     const view = editorViewRef.current;
@@ -85,8 +90,8 @@ export function useAutocompletePositioning({
     slashContext?.start,
   ]);
 
-  useResizeObserverRaf(inputShellRef, () => compute());
-  useResizeObserverRaf(viewDomRef, () => compute());
+  useResizeObserverRaf(inputShellEl, () => compute());
+  useResizeObserverRaf(viewDomEl, () => compute());
 
   useLayoutEffect(() => {
     if (!isAutocompleteOpen) return;
