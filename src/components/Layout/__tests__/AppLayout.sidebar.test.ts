@@ -63,19 +63,26 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
     );
   });
 
-  it("mounts HelpPanel unconditionally as a flex sibling so the xterm PTY survives close (issue #6619)", () => {
+  it("mounts HelpPanel unconditionally as an absolute overlay so the xterm PTY survives close (issue #6619, #6816)", () => {
     // The old conditional-render guard (which destroyed the PTY on every
     // toggle) must not be reintroduced.
     expect(source).not.toMatch(/\{layout\.helpPanelOpen && \(\s*\n\s*<ErrorBoundary[^>]*HelpPanel/);
     expect(source).toMatch(
-      /<ErrorBoundary[^>]*componentName="HelpPanel"[^>]*>\s*\n\s*<HelpPanel\s+width=\{effectiveAssistantWidth\}\s*\/>/
+      /<HelpPanel\s+width=\{layout\.helpPanelWidth\}\s+isVisible=\{showAssistant\}/
     );
+    // The wrapper must use absolute positioning to avoid reflowing sibling content.
+    expect(source).toMatch(/"absolute top-0 right-0 bottom-0 z-30"/);
   });
 
-  it("passes effectiveAssistantWidth to HelpPanel so focus mode collapses width to 0", () => {
-    // Without the prop, HelpPanel reads its own store and ignores focus mode,
-    // leaving the panel at full width when the user enters focus mode.
-    expect(source).toContain("<HelpPanel width={effectiveAssistantWidth} />");
+  it("passes stable helpPanelWidth to HelpPanel so content renders at full width without reflow (issue #6816)", () => {
+    // width is always the stored configured width; visibility is controlled
+    // by the isVisible prop + translateX transform, not by collapsing width to 0.
+    expect(source).toContain(
+      "<HelpPanel width={layout.helpPanelWidth} isVisible={showAssistant} />"
+    );
+    // The old effectiveAssistantWidth (collapsing to 0 on close) must not be
+    // passed as the width prop — that defeats the transform-based slide.
+    expect(source).not.toContain("<HelpPanel width={effectiveAssistantWidth}");
   });
 
   it("uses showAssistant for the macro-focus assistant visibility effect", () => {

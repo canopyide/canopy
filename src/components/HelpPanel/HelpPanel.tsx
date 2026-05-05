@@ -148,9 +148,15 @@ interface HelpPanelProps {
    * events, no focusable children).
    */
   width: number;
+  /**
+   * Whether the panel is visible. When false, the panel slides off-screen
+   * via translateX without reflowing sibling content. Defaults to width > 0
+   * for backward compatibility.
+   */
+  isVisible?: boolean;
 }
 
-export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
+export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -158,7 +164,7 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
   const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
   const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
   const animateWidth = !isResizing && !reduceAnimations;
-  const isVisible = effectiveWidth > 0;
+  const isVisible = isVisibleProp ?? effectiveWidth > 0;
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const {
@@ -706,8 +712,8 @@ export function HelpPanel({ width: effectiveWidth }: HelpPanelProps) {
         "bg-daintree-bg border-l border-daintree-border",
         "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
         animateWidth &&
-          "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
-        !isVisible && "pointer-events-none"
+          "transition-transform duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+        !isVisible && "translate-x-full pointer-events-none"
       )}
       style={{ width: effectiveWidth }}
     >

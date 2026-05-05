@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { TerminalDockRegion } from "./TerminalDockRegion";
@@ -430,8 +431,8 @@ export function AppLayout({
         style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}
       >
         <div
-          className="flex-1 flex overflow-hidden"
-          style={{ flex: 1, display: "flex", overflow: "hidden" }}
+          className="flex-1 flex overflow-hidden relative"
+          style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}
         >
           {currentProject != null && (
             <ErrorBoundary variant="section" componentName="Sidebar">
@@ -458,7 +459,17 @@ export function AppLayout({
             </main>
           </ErrorBoundary>
           <ErrorBoundary variant="section" componentName="HelpPanel">
-            <HelpPanel width={effectiveAssistantWidth} />
+            <div
+              className={cn(
+                "absolute top-0 right-0 bottom-0 z-30",
+                !reduceAnimations &&
+                  "transition-transform duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+                !showAssistant && "pointer-events-none translate-x-full"
+              )}
+              style={{ width: layout.helpPanelWidth }}
+            >
+              <HelpPanel width={layout.helpPanelWidth} isVisible={showAssistant} />
+            </div>
           </ErrorBoundary>
         </div>
         {/* Unified diagnostics dock replaces LogsPanel, EventInspectorPanel, and ProblemsPanel */}
