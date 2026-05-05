@@ -1023,7 +1023,7 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("defaults to 120s polling for background worktree", async () => {
+    it("defaults to 300s polling for background worktree", async () => {
       const backgroundWorktree: Worktree = { ...TEST_WORKTREE, isCurrent: false };
       const callbacks = makeCallbacks({ onResourceStatusPoll: vi.fn() });
       const monitor = new WorktreeMonitor(backgroundWorktree, TEST_CONFIG, callbacks, "main");
@@ -1032,17 +1032,17 @@ describe("WorktreeMonitor", () => {
       monitor.setHasResourceConfig(true);
       monitor.setHasStatusCommand(true);
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(270_000);
       expect(callbacks.onResourceStatusPoll).not.toHaveBeenCalled();
 
-      await vi.advanceTimersByTimeAsync(90_000);
+      await vi.advanceTimersByTimeAsync(30_000);
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledWith("/test/worktree");
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledTimes(1);
 
       monitor.stop();
     });
 
-    it("switches from 120s to 30s when isCurrent becomes true", async () => {
+    it("switches from 300s to 30s when isCurrent becomes true", async () => {
       const backgroundWorktree: Worktree = { ...TEST_WORKTREE, isCurrent: false };
       const callbacks = makeCallbacks({ onResourceStatusPoll: vi.fn() });
       const monitor = new WorktreeMonitor(backgroundWorktree, TEST_CONFIG, callbacks, "main");
@@ -1129,6 +1129,37 @@ describe("WorktreeMonitor", () => {
       monitor.isCurrent = true;
 
       await vi.advanceTimersByTimeAsync(60_000);
+      expect(callbacks.onResourceStatusPoll).toHaveBeenCalledWith("/test/worktree");
+      expect(callbacks.onResourceStatusPoll).toHaveBeenCalledTimes(1);
+
+      monitor.stop();
+    });
+
+    it("explicit interval matching a default constant survives focus flip", async () => {
+      // Regression: the focus-flip auto-adapt previously checked whether the
+      // current interval equaled either default, which collided with explicit
+      // user values that happened to match. After the new background default
+      // landed at 300s, `statusInterval: 300` was a plausible production
+      // value that would silently flip to 30s on focus change.
+      const backgroundWorktree: Worktree = { ...TEST_WORKTREE, isCurrent: false };
+      const callbacks = makeCallbacks({ onResourceStatusPoll: vi.fn() });
+      const monitor = new WorktreeMonitor(backgroundWorktree, TEST_CONFIG, callbacks, "main");
+
+      monitor.startWithoutGitStatus();
+      monitor.setHasResourceConfig(true);
+      monitor.setHasStatusCommand(true);
+      // Explicit value that exactly matches RESOURCE_POLL_DEFAULT_BACKGROUND_MS.
+      monitor.setResourcePollInterval(300_000);
+
+      monitor.isCurrent = true;
+
+      // If the focus-flip incorrectly reverted to the active default (30s),
+      // the callback would fire after 30s. With the explicit-flag guard it
+      // must wait the full 300s.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(callbacks.onResourceStatusPoll).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(240_000);
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledWith("/test/worktree");
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledTimes(1);
 
@@ -1460,11 +1491,12 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("does not mark stale when elapsed exceeds 30s floor but is below 3x interval", async () => {
+    it("does not mark stale when elapsed exceeds 30s floor but is below 360s ceiling", async () => {
       mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
 
       const callbacks = makeCallbacks();
-      // Use the watcher fallback path: base interval = 30s, threshold = 90s.
+      // Watcher fallback path: base interval = 300s, raw threshold = 900s,
+      // capped to 360s by HEARTBEAT_GAP_CEILING_MS.
       const watcherConfig: WorktreeMonitorConfig = {
         ...TEST_CONFIG,
         gitWatchEnabled: true,
@@ -1474,11 +1506,14 @@ describe("WorktreeMonitor", () => {
       await monitor.start();
 
       mockGetWorktreeChangesWithStats.mockClear();
-      // 60s gap > 30s floor but < 3 * 30s base = 90s threshold.
+      // Advance most of the way to the heartbeat fire (timer is at +300s).
+      await vi.advanceTimersByTimeAsync(245_000);
+      // Simulate a watcher-driven update landing at T+245s — lastCompleted is now recent.
       (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
-        Date.now() - 60_000;
-
-      await vi.advanceTimersByTimeAsync(35_000);
+        Date.now();
+      // Advance another 60s to fire the heartbeat at T+305s.
+      // elapsed at fire = 55s: above 30s floor, below 360s ceiling — must not mark stale.
+      await vi.advanceTimersByTimeAsync(60_000);
 
       const moods = getMoodSequence(callbacks);
       expect(moods).not.toContain("stale");
@@ -1531,7 +1566,7 @@ describe("WorktreeMonitor", () => {
       expect(mockGetWorktreeChangesWithStats).not.toHaveBeenCalled();
     });
 
-    it("watcher fallback interval (30s) requires 90s+ gap to trigger stale", async () => {
+    it("watcher fallback interval (300s) triggers stale when gap exceeds 360s ceiling", async () => {
       mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
       mockWatcherStartResult = true;
 
@@ -1544,14 +1579,43 @@ describe("WorktreeMonitor", () => {
       const monitor = new WorktreeMonitor(TEST_WORKTREE, watcherConfig, callbacks, "main");
       await monitor.start();
 
-      // 100s gap exceeds the 90s threshold for the 30s watcher fallback interval.
+      // 100s past offset on lastCompleted plus the 300s timer fire gives an
+      // elapsed of ~400s at fire — above the 360s ceiling. Raw threshold
+      // (3 * 300s = 900s) is clamped to 360s so suspend/wake detection stays
+      // bounded regardless of base interval.
       (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
         Date.now() - 100_000;
 
-      await vi.advanceTimersByTimeAsync(35_000);
+      await vi.advanceTimersByTimeAsync(305_000);
 
       const moods = getMoodSequence(callbacks);
       expect(moods).toContain("stale");
+
+      monitor.stop();
+    });
+
+    it("watcher fallback interval (300s) does not trigger stale on a quiet repo", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+      mockWatcherStartResult = true;
+
+      const watcherConfig: WorktreeMonitorConfig = {
+        ...TEST_CONFIG,
+        gitWatchEnabled: true,
+      };
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, watcherConfig, callbacks, "main");
+      await monitor.start();
+
+      // After the initial poll, lastCompleted is set and the heartbeat timer
+      // is scheduled for +300s. Advance to fire it without mutating
+      // lastCompleted (no watcher events, no manual override). Elapsed at
+      // fire is the base interval (~300s) — below the 360s ceiling, so the
+      // safety net must NOT flicker stale on every cycle.
+      await vi.advanceTimersByTimeAsync(305_000);
+
+      const moods = getMoodSequence(callbacks);
+      expect(moods).not.toContain("stale");
 
       monitor.stop();
     });

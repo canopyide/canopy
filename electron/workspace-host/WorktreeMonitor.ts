@@ -25,9 +25,16 @@ import { WatcherController, type WatcherControllerHost } from "./WatcherControll
 
 const PLAN_FILE_CANDIDATES = ["TODO.md", "PLAN.md", "plan.md", "TASKS.md"] as const;
 const RESOURCE_POLL_DEFAULT_ACTIVE_MS = 30_000;
-const RESOURCE_POLL_DEFAULT_BACKGROUND_MS = 120_000;
+const RESOURCE_POLL_DEFAULT_BACKGROUND_MS = 300_000;
 const HEARTBEAT_GAP_MULTIPLIER = 3;
 const HEARTBEAT_GAP_FLOOR_MS = 30_000;
+// Cap on the heartbeat-gap stale threshold. Keeps suspend/wake detection
+// bounded as the base poll interval grows: with the 300s watcher-fallback
+// cadence the raw 3x threshold would balloon to 900s. The ceiling must sit
+// above the largest base interval (300s) so a normal heartbeat fire on a
+// quiet repo doesn't false-positive — 360s leaves ~60s of headroom for
+// timer drift past the expected fire time.
+const HEARTBEAT_GAP_CEILING_MS = 360_000;
 
 export interface WorktreeMonitorConfig {
   basePollingInterval: number;
@@ -137,6 +144,10 @@ export class WorktreeMonitor {
   // Resource status auto-polling — owned by `resourcePollTimer`.
   private readonly resourcePollTimer: ResourcePollTimer;
   private resourcePollIntervalMs: number = 0; // 0 = disabled
+  // True when a recipe / config supplied an explicit `statusInterval`. Guards
+  // the focus-flip auto-adapt in the `isCurrent` setter so user values aren't
+  // silently overwritten when they happen to equal a default constant.
+  private resourcePollIntervalExplicit: boolean = false;
 
   // Background fetch scheduler — separate from the local-status poll so a
   // stuck remote can't poison local-status updates. Cadence flips based on
@@ -416,11 +427,11 @@ export class WorktreeMonitor {
     const changed = this._isCurrent !== value;
     this._isCurrent = value;
     if (changed && this._hasResourceConfig && this._hasStatusCommand && this._isRunning) {
-      // Only adapt if no explicit statusInterval was configured (i.e., using defaults)
-      const isUsingDefaultInterval =
-        this.resourcePollIntervalMs === RESOURCE_POLL_DEFAULT_ACTIVE_MS ||
-        this.resourcePollIntervalMs === RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
-      if (isUsingDefaultInterval) {
+      // Only adapt if no explicit statusInterval was configured. Pre-PR this
+      // was a value-equality check against the default constants; that
+      // collided with explicit user values that happened to match a default
+      // (e.g. `statusInterval: 300` matching the new 300s background default).
+      if (!this.resourcePollIntervalExplicit) {
         this.resourcePollIntervalMs = value
           ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
           : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
@@ -627,6 +638,7 @@ export class WorktreeMonitor {
    */
   setResourcePollInterval(ms: number): void {
     this.resourcePollIntervalMs = ms;
+    this.resourcePollIntervalExplicit = ms > 0;
     this.clearResourcePollTimer();
     if (ms > 0 && this._hasResourceConfig && this._isRunning) {
       this.scheduleResourcePoll();
@@ -971,7 +983,10 @@ export class WorktreeMonitor {
       // longer than the floor (e.g., a slow git on a frozen filesystem).
       if (!this._isUpdating && this.lastGitStatusCompletedAt > 0) {
         const elapsedMs = Date.now() - this.lastGitStatusCompletedAt;
-        const threshold = Math.max(delayMs * HEARTBEAT_GAP_MULTIPLIER, HEARTBEAT_GAP_FLOOR_MS);
+        const threshold = Math.min(
+          Math.max(delayMs * HEARTBEAT_GAP_MULTIPLIER, HEARTBEAT_GAP_FLOOR_MS),
+          HEARTBEAT_GAP_CEILING_MS
+        );
         if (elapsedMs > threshold) {
           this.mood = "stale";
           this.emitUpdate();

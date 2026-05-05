@@ -3,8 +3,8 @@ import { invalidateGitStatusCache } from "../utils/git.js";
 import { MutableDisposable, toDisposable, type IDisposable } from "../utils/lifecycle.js";
 
 const GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000;
-const WATCHER_FALLBACK_POLL_INTERVAL_MS = 30_000;
-const WATCHER_GIT_ONLY_ACTIVE_POLL_INTERVAL_MS = 10_000;
+const WATCHER_FALLBACK_POLL_INTERVAL_MS = 300_000;
+const WATCHER_GIT_ONLY_ACTIVE_POLL_INTERVAL_MS = 60_000;
 const WATCHER_RETRY_INTERVAL_MS = 30_000;
 const WATCHER_MAX_RETRIES = 5;
 const WATCHER_WORKTREE_MIN_DEBOUNCE_MS = 150;
@@ -65,11 +65,13 @@ export class WatcherController {
   }
 
   /**
-   * Poll cadence is mode-aware. Recursive coverage keeps the heartbeat at
-   * 30s; git-only on the active worktree tightens to 10s so mid-edit
-   * changes that bypass .git/ are still picked up promptly; background
-   * git-only stays at 30s; no watcher falls back to the supplied adaptive
-   * interval.
+   * Poll cadence is mode-aware. Recursive coverage drops the heartbeat to
+   * 5min — the watcher catches every working-tree edit, so the timer is
+   * just a safety net for OS suspend/wake and rare watcher-ghost cases.
+   * Git-only on the active worktree tightens to 60s so mid-edit changes
+   * that bypass .git/ are still picked up reasonably; background git-only
+   * shares the 5min fallback. No watcher falls back to the supplied
+   * adaptive interval.
    */
   pollIntervalMs(adaptiveFallback: () => number): number {
     switch (this.gitWatcherMode) {
