@@ -127,6 +127,7 @@ import type {
   SpawnResult,
   TerminalResourceBatchPayload,
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
 } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
 import type {
@@ -278,6 +279,7 @@ export interface ElectronAPI {
     onResourceMetrics(
       callback: (data: { metrics: TerminalResourceBatchPayload; timestamp: number }) => void
     ): () => void;
+    onFdLeakWarning(callback: (data: FdLeakWarningPayload) => void): () => void;
     onBackendCrashed(
       callback: (data: {
         crashType: string;

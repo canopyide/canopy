@@ -5,6 +5,7 @@ import { setupLifecycleListeners } from "./listeners/panel/lifecycle";
 import { setupActivityListeners } from "./listeners/panel/activity";
 import { setupBackendHealthListeners } from "./listeners/panel/backendHealth";
 import { setupResourceListeners } from "./listeners/panel/resource";
+import { setupFdLeakWarningListeners } from "./listeners/panel/fdLeakWarning";
 
 let store: DisposableStore | null = null;
 
@@ -30,6 +31,7 @@ export function setupTerminalStoreListeners() {
   disposables.add(setupActivityListeners());
   disposables.add(setupBackendHealthListeners());
   disposables.add(setupResourceListeners());
+  disposables.add(setupFdLeakWarningListeners());
 
   return cleanupTerminalStoreListeners;
 }

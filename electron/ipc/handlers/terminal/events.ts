@@ -9,6 +9,7 @@ import { mcpPaneConfigService } from "../../../services/McpPaneConfigService.js"
 import type {
   SpawnResult,
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
 } from "../../../../shared/types/pty-host.js";
 import type { HandlerDependencies } from "../../types.js";
 
@@ -104,6 +105,20 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
   };
   ptyClient.on("resource-metrics", handleResourceMetrics);
   handlers.push(() => ptyClient.off("resource-metrics", handleResourceMetrics));
+
+  // FD leak warning — rising-edge gating to suppress the 2s repeat cadence.
+  // Only forwards on state transitions (no-warning → warning). When the leak
+  // clears the ResourceGovernor stops emitting, so a fresh warning after a
+  // clear period re-arms naturally.
+  let lastFdLeakWarning: FdLeakWarningPayload | null = null;
+  const handleFdLeakWarning = (payload: FdLeakWarningPayload) => {
+    if (lastFdLeakWarning === null) {
+      lastFdLeakWarning = payload;
+      broadcastToRenderer(CHANNELS.TERMINAL_FD_LEAK_WARNING, payload);
+    }
+  };
+  ptyClient.on("fd-leak-warning", handleFdLeakWarning);
+  handlers.push(() => ptyClient.off("fd-leak-warning", handleFdLeakWarning));
 
   // Terminal activity
   const unsubTerminalActivity = events.on(
