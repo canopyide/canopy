@@ -112,4 +112,6 @@ export { useShortcutHintHover } from "./useShortcutHintHover";
 
 export { useTruncationDetection, isElementTruncated } from "./useTruncationDetection";
 
+export { useResizeObserverRaf } from "./useResizeObserverRaf";
+
 export { useConnectivity, useConnectivitySnapshot } from "./useConnectivity";

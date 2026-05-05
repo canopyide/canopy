@@ -1,4 +1,4 @@
-import { useLayoutEffect, type Dispatch, type SetStateAction } from "react";
+import { useLayoutEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { EditorView } from "@codemirror/view";
 import type {
   AtFileContext,
@@ -7,6 +7,7 @@ import type {
   AtTerminalContext,
   AtSelectionContext,
 } from "../hybridInputParsing";
+import { useResizeObserverRaf } from "@/hooks/useResizeObserverRaf";
 
 interface UseAutocompletePositioningParams {
   editorViewRef: React.RefObject<EditorView | null>;
@@ -35,11 +36,12 @@ export function useAutocompletePositioning({
   selectionContext,
   setMenuLeftPx,
 }: UseAutocompletePositioningParams) {
-  useLayoutEffect(() => {
-    if (!isAutocompleteOpen) return;
+  const viewDomRef = useRef<HTMLElement | null>(null);
+
+  const compute = () => {
     const view = editorViewRef.current;
     const shell = inputShellRef.current;
-    if (!view || !shell) return;
+    if (!view || !shell || !isAutocompleteOpen) return;
 
     const anchorIndex =
       activeMode === "terminal"
@@ -55,29 +57,33 @@ export function useAutocompletePositioning({
                 : null;
     if (anchorIndex === null || anchorIndex === undefined) return;
 
-    const compute = () => {
-      const shellRect = shell.getBoundingClientRect();
-      const coords = view.coordsAtPos(anchorIndex);
-      if (!coords) return;
-      const rawLeft = coords.left - shellRect.left;
-      const menuWidth = menuRef.current?.offsetWidth ?? 420;
-      const viewportRight = window.innerWidth;
-      const menuAbsoluteLeft = shellRect.left + rawLeft;
-      const maxAbsoluteLeft = viewportRight - menuWidth;
-      const clampedAbsoluteLeft = Math.max(0, Math.min(menuAbsoluteLeft, maxAbsoluteLeft));
-      const clampedLeft = clampedAbsoluteLeft - shellRect.left;
-      setMenuLeftPx(Math.max(0, clampedLeft));
-    };
+    const shellRect = shell.getBoundingClientRect();
+    const coords = view.coordsAtPos(anchorIndex);
+    if (!coords) return;
+    const rawLeft = coords.left - shellRect.left;
+    const menuWidth = menuRef.current?.offsetWidth ?? 420;
+    const viewportRight = window.innerWidth;
+    const menuAbsoluteLeft = shellRect.left + rawLeft;
+    const maxAbsoluteLeft = viewportRight - menuWidth;
+    const clampedAbsoluteLeft = Math.max(0, Math.min(menuAbsoluteLeft, maxAbsoluteLeft));
+    const clampedLeft = clampedAbsoluteLeft - shellRect.left;
+    setMenuLeftPx(Math.max(0, clampedLeft));
+  };
+
+  useResizeObserverRaf(inputShellRef, () => compute());
+  useResizeObserverRaf(viewDomRef, () => compute());
+
+  useLayoutEffect(() => {
+    // Sync view.dom ref for the ResizeObserver hook
+    viewDomRef.current = editorViewRef.current?.dom ?? null;
+
+    if (!isAutocompleteOpen) return;
     compute();
 
     const onResize = () => compute();
     window.addEventListener("resize", onResize);
-    const ro = new ResizeObserver(() => compute());
-    ro.observe(shell);
-    ro.observe(view.dom);
     return () => {
       window.removeEventListener("resize", onResize);
-      ro.disconnect();
     };
   }, [
     activeMode,

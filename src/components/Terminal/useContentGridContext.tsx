@@ -43,6 +43,7 @@ import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplication
 import { getEffectiveAgentIds, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
 import { getMaximizedGroupFocusTarget } from "./contentGridFocus";
 import { actionService } from "@/services/ActionService";
+import { useResizeObserverRaf } from "@/hooks/useResizeObserverRaf";
 
 export function pixelSnapTransform({ x, y }: TransformProperties): string {
   const tx = typeof x === "number" ? x : parseFloat(x ?? "0") || 0;
@@ -347,26 +348,21 @@ export function useContentGridContext({
     [setNodeRef]
   );
 
-  // Attach ResizeObserver to track container dimensions
+  useResizeObserverRaf(gridContainerRef, (entry) => {
+    const { width, height } = entry.contentRect;
+    setGridWidth((prev) => (prev === width ? prev : width));
+    setGridDimensions({ width, height });
+  });
+
+  // Synchronous initial dimension read on mount and when layout-affecting state changes
   useEffect(() => {
     const container = gridContainerRef.current;
     if (!container) return;
 
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        const { width, height } = entry.contentRect;
-        setGridWidth((prev) => (prev === width ? prev : width));
-        setGridDimensions({ width, height });
-      }
-    });
-
-    observer.observe(container);
     setGridWidth(container.clientWidth);
     setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
 
     return () => {
-      observer.disconnect();
       setGridDimensions(null);
     };
   }, [setGridDimensions, gridTerminals.length, maximizedId, twoPaneSplitEnabled, showPlaceholder]);
