@@ -8,6 +8,7 @@ import { persistenceScenarios } from "./persistence";
 import { soakScenarios } from "./soak";
 import { projectSwitchScenarios } from "./projectSwitch";
 import { migrationScenarios } from "./migrations";
+import { idleWindowScenarios } from "./idleWindow";
 
 export const allScenarios: PerfScenario[] = [
   ...startupScenarios,
@@ -19,6 +20,7 @@ export const allScenarios: PerfScenario[] = [
   ...soakScenarios,
   ...projectSwitchScenarios,
   ...migrationScenarios,
+  ...idleWindowScenarios,
 ];
 
 export function getScenariosForMode(mode: PerfMode): PerfScenario[] {
@@ -57,6 +59,8 @@ export function assertMatrixCoverage(): void {
     "PERF-072",
     "PERF-073",
     "PERF-080",
+    "PERF-090",
+    "PERF-091",
   ]);
 
   const actualIds = new Set(allScenarios.map((scenario) => scenario.id));
