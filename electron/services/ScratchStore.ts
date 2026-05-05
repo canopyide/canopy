@@ -1,8 +1,6 @@
-import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
-import { app } from "electron";
 import { eq, desc } from "drizzle-orm";
 import type { Scratch } from "../../shared/types/scratch.js";
 import { getSharedDb } from "./persistence/db.js";
@@ -194,9 +192,3 @@ export const scratchStore = new ScratchStore();
 // Test-only helper for asserting the auto-name format. Not part of the public
 // surface but exported for unit tests.
 export const __test = { defaultScratchName };
-
-// Re-exposed so other electron modules don't need to import the electron
-// `app` module in tests.
-export function _scratchesRootForTesting(): string {
-  return path.join(app.getPath("userData"), "scratches");
-}
