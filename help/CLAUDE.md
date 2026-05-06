@@ -35,7 +35,7 @@ When choosing what to do, prefer the least-privileged path. If the user asks you
 
 **Recipe:**
 
-1. **Snapshot in parallel.** Call `terminal.waitUntilIdle` with `timeoutMs: 0` for each terminal you're watching. Each call returns immediately with `busyState`, `idleReason`, and `lastTransitionAt`. The `timedOut` field is always `false` for snapshots.
+1. **Snapshot in parallel.** Call `terminal.waitUntilIdle` with `timeoutMs: 0` for each terminal you're watching. Each call returns immediately with `busyState`, `idleReason`, `lastTransitionAt`, and `timedOut`. With `timeoutMs: 0`, `timedOut` is `true` when the agent is still `working` (the zero-length wait elapsed) and `false` when the agent is already idle or no agent is attached — treat it as a busy/idle indicator on the snapshot path, not an error.
 2. **Skip working terminals.** When `busyState === "working"` the agent is mid-task — there's nothing to act on this round.
 3. **Skip already-handled transitions.** Track the last `lastTransitionAt` you acted on per terminal and skip when it hasn't advanced. `lastTransitionAt` is `undefined` for terminals that have never transitioned — treat that as "no transition yet," not as "changed."
 4. **Act on `idleReason`** when `busyState === "idle"`:
@@ -49,12 +49,14 @@ When choosing what to do, prefer the least-privileged path. If the user asks you
 Sketch:
 
 ```ts
-const snapshots = await Promise.all(
+const results = await Promise.allSettled(
   terminalIds.map((id) => waitUntilIdle({ terminalId: id, timeoutMs: 0 }))
 );
-for (const s of snapshots) {
+for (const r of results) {
+  if (r.status === "rejected") continue; // log and move on
+  const s = r.value;
   if (s.busyState === "working") continue;
-  if (s.lastTransitionAt && s.lastTransitionAt === lastSeen[s.terminalId]) continue;
+  if (s.lastTransitionAt !== undefined && s.lastTransitionAt === lastSeen[s.terminalId]) continue;
   switch (s.idleReason) {
     case "completed":
       /* dispatch next step */ break;
@@ -63,10 +65,12 @@ for (const s of snapshots) {
     case "waiting_for_user":
       /* verify, then act or ask */ break;
   }
-  if (s.lastTransitionAt) lastSeen[s.terminalId] = s.lastTransitionAt;
+  if (s.lastTransitionAt !== undefined) lastSeen[s.terminalId] = s.lastTransitionAt;
 }
 // then: ScheduleWakeup({ delaySeconds: 30, ... });
 ```
+
+`Promise.allSettled` keeps a single bad terminalId from killing the whole round; bare `Promise.all` would discard every other snapshot.
 
 For a single terminal a normal blocking `waitUntilIdle` call is fine.
 
