@@ -18,8 +18,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import {
   UI_ENTER_DURATION,
   UI_EXIT_DURATION,
-  UI_ENTER_EASING,
-  UI_EXIT_EASING,
+  UI_ENTER_EASING_FM,
+  UI_EXIT_EASING_FM,
 } from "@/lib/animationUtils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -720,7 +720,7 @@ export function GitHubResourceList({
               key="github-skeleton"
               initial={false}
               exit={{ opacity: 0 }}
-              transition={{ duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING }}
+              transition={{ duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM }}
               className="overflow-y-auto flex-1 min-h-0"
             >
               <GitHubResourceRowsSkeleton
@@ -734,9 +734,9 @@ export function GitHubResourceList({
               animate={{ opacity: 1 }}
               exit={{
                 opacity: 0,
-                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING },
+                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM },
               }}
-              transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING }}
+              transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING_FM }}
               className="flex-1 min-h-0 flex flex-col"
             >
               {error && (

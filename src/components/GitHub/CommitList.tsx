@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 import {
   UI_ENTER_DURATION,
   UI_EXIT_DURATION,
-  UI_ENTER_EASING,
-  UI_EXIT_EASING,
+  UI_ENTER_EASING_FM,
+  UI_EXIT_EASING_FM,
 } from "@/lib/animationUtils";
 import { CommitListItem } from "./CommitListItem";
 import type { GitCommit, GitCommitListResponse } from "@shared/types/github";
@@ -244,7 +244,7 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
               key="commit-skeleton"
               initial={false}
               exit={{ opacity: 0 }}
-              transition={{ duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING }}
+              transition={{ duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM }}
             >
               <CommitListSkeleton count={initialCount} />
             </m.div>
@@ -255,9 +255,9 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
               animate={{ opacity: 1 }}
               exit={{
                 opacity: 0,
-                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING },
+                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM },
               }}
-              transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING }}
+              transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING_FM }}
             >
               {error && renderError()}
               <div

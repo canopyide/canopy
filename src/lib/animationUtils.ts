@@ -56,6 +56,11 @@ export const UI_TOOLTIP_SKIP_DELAY_DURATION = DURATION_150;
 export const UI_ENTER_EASING = EASE_SPRING_CRITICAL;
 export const UI_EXIT_EASING = "cubic-bezier(0.2, 0, 0.7, 0)";
 
+/** Framer-motion-compatible easing tuples. framer-motion 12.x tightened
+ *  Transition.ease to its own Easing type and rejects CSS string easings. */
+export const UI_ENTER_EASING_FM: [number, number, number, number] = [0.2, 0, 0, 1];
+export const UI_EXIT_EASING_FM: [number, number, number, number] = [0.2, 0, 0.7, 0];
+
 export function getUiTransitionDuration(direction: "enter" | "exit"): number {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return direction === "enter" ? UI_ENTER_DURATION : UI_EXIT_DURATION;
