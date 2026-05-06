@@ -707,10 +707,10 @@ describe("ActivityMonitor", () => {
         trigger: "output",
       });
 
-      vi.advanceTimersByTime(7999);
+      vi.advanceTimersByTime(5999);
       expect(monitor.getState()).toBe("busy");
 
-      vi.advanceTimersByTime(1);
+      vi.advanceTimersByTime(200);
       expect(monitor.getState()).toBe("idle");
       expect(onStateChange).toHaveBeenCalledWith("agent-simple-1", 1000, "idle", {
         trigger: "timeout",
@@ -825,6 +825,52 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
+    it("does not recover to working from resize-only reflow bursts", () => {
+      const onStateChange = vi.fn();
+      let visible = "waiting";
+      const monitor = new ActivityMonitor("agent-simple-resize-burst", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => [visible],
+        getCursorLine: () => visible,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      onStateChange.mockClear();
+
+      monitor.notifyResize(1000);
+      visible = "reflow frame 1";
+      vi.advanceTimersByTime(800);
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.notifyResize(1000);
+      visible = "reflow frame 2";
+      vi.advanceTimersByTime(800);
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.notifyResize(1000);
+      visible = "reflow frame 3";
+      vi.advanceTimersByTime(800);
+      expect(monitor.getState()).toBe("idle");
+
+      visible = "post resize baseline";
+      vi.advanceTimersByTime(1000);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(3000);
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalledWith(
+        "agent-simple-resize-burst",
+        1000,
+        "busy",
+        expect.anything()
+      );
+
+      monitor.dispose();
+    });
+
     it("recovers from a sustained one-character activity indicator", () => {
       const onStateChange = vi.fn();
       let visible = "Working |";
@@ -886,7 +932,7 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("resets the 8s silence window on tiny repeated visible changes", () => {
+    it("resets the 6s silence window on tiny repeated visible changes", () => {
       const onStateChange = vi.fn();
       let visible = "tick 1";
       const monitor = new ActivityMonitor("agent-simple-2", 1000, onStateChange, {
@@ -899,14 +945,14 @@ describe("ActivityMonitor", () => {
 
       monitor.startPolling();
       monitor.notifySubmission();
-      vi.advanceTimersByTime(7900);
+      vi.advanceTimersByTime(5900);
       visible = "tick 2";
       vi.advanceTimersByTime(50);
-      vi.advanceTimersByTime(7900);
+      vi.advanceTimersByTime(5900);
 
       expect(monitor.getState()).toBe("busy");
 
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(200);
       expect(monitor.getState()).toBe("idle");
       expect(onStateChange.mock.calls.filter((call) => call[2] === "busy")).toHaveLength(1);
 

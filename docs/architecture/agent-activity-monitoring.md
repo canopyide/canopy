@@ -75,7 +75,6 @@ Spinner and time-counter frames are activity evidence. Cosmetic-only frames can 
 - waiting dwell: `6000ms`
 - activity gap reset: `3000ms`
 - resize quiet period: `1000ms`
-- resize max blind period: `2000ms`
 
 Visible changes add heat. Silence decays heat exponentially. The model emits a `busy` hint only when heat is above the working threshold for the working dwell. It emits an `idle` hint only when heat has cooled below the waiting threshold for the waiting dwell.
 
@@ -138,7 +137,7 @@ Current behavior:
 - The synchronized-frame analyzer resets because row and column coordinates are invalid after resize.
 - The temperature model suppresses observations during the quiet period.
 - After suppression, the next visible snapshot is treated as a baseline.
-- Continuous resize is capped by the max blind period so observation can resume.
+- Repeated resize events extend suppression from the last event. Resize/reflow bursts cannot satisfy working dwell by accumulating across layout changes.
 
 This is a temporal mitigation. A stronger future fix is marker-anchored snapshotting, where visible content is compared relative to stable xterm buffer markers instead of viewport-relative rows.
 

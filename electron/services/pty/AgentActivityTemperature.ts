@@ -12,7 +12,6 @@ const DEFAULT_WORKING_DWELL_MS = 2000;
 const DEFAULT_WAITING_DWELL_MS = 6000;
 const DEFAULT_ACTIVE_GAP_RESET_MS = 3000;
 const DEFAULT_RESIZE_QUIET_MS = 1000;
-const DEFAULT_RESIZE_MAX_BLIND_MS = 2000;
 const DEFAULT_MAX_TEMPERATURE = 100;
 const DEFAULT_VISIBLE_BASE_IMPULSE = 22;
 const DEFAULT_VISIBLE_LOG_SCALE = 8;
@@ -26,7 +25,6 @@ export interface AgentActivityTemperatureOptions {
   waitingDwellMs?: number;
   activeGapResetMs?: number;
   resizeQuietMs?: number;
-  resizeMaxBlindMs?: number;
   maxTemperature?: number;
   visibleBaseImpulse?: number;
   visibleLogScale?: number;
@@ -56,7 +54,6 @@ export class AgentActivityTemperature {
   private readonly waitingDwellMs: number;
   private readonly activeGapResetMs: number;
   private readonly resizeQuietMs: number;
-  private readonly resizeMaxBlindMs: number;
   private readonly maxTemperature: number;
   private readonly visibleBaseImpulse: number;
   private readonly visibleLogScale: number;
@@ -67,7 +64,6 @@ export class AgentActivityTemperature {
   private activeEvidenceStartedAt = 0;
   private lastChangedAt = 0;
   private quietStartedAt = 0;
-  private resizeStartedAt = 0;
   private resizeSuppressUntil = 0;
   private baselineInvalid = false;
   private lastSnapshot: VisibleContentSnapshot | undefined;
@@ -80,7 +76,6 @@ export class AgentActivityTemperature {
     this.waitingDwellMs = nonNegative(options?.waitingDwellMs, DEFAULT_WAITING_DWELL_MS);
     this.activeGapResetMs = positive(options?.activeGapResetMs, DEFAULT_ACTIVE_GAP_RESET_MS);
     this.resizeQuietMs = nonNegative(options?.resizeQuietMs, DEFAULT_RESIZE_QUIET_MS);
-    this.resizeMaxBlindMs = nonNegative(options?.resizeMaxBlindMs, DEFAULT_RESIZE_MAX_BLIND_MS);
     this.maxTemperature = positive(options?.maxTemperature, DEFAULT_MAX_TEMPERATURE);
     this.visibleBaseImpulse = nonNegative(
       options?.visibleBaseImpulse,
@@ -103,16 +98,12 @@ export class AgentActivityTemperature {
     this.activeEvidenceStartedAt = 0;
     this.lastChangedAt = 0;
     this.quietStartedAt = 0;
-    this.resizeStartedAt = 0;
     this.resizeSuppressUntil = 0;
     this.baselineInvalid = false;
     this.lastSnapshot = undefined;
   }
 
   noteResize(now: number, quietMs = this.resizeQuietMs): void {
-    if (this.resizeStartedAt === 0 || now - this.resizeStartedAt > this.resizeMaxBlindMs) {
-      this.resizeStartedAt = now;
-    }
     this.resizeSuppressUntil = now + nonNegative(quietMs, this.resizeQuietMs);
     this.baselineInvalid = true;
     this.lastSnapshot = undefined;
@@ -288,11 +279,7 @@ export class AgentActivityTemperature {
   }
 
   private isResizeSuppressed(now: number): boolean {
-    if (!this.baselineInvalid || this.resizeStartedAt === 0) {
-      return false;
-    }
-
-    if (this.resizeMaxBlindMs > 0 && now - this.resizeStartedAt >= this.resizeMaxBlindMs) {
+    if (!this.baselineInvalid) {
       return false;
     }
 
@@ -300,7 +287,6 @@ export class AgentActivityTemperature {
   }
 
   private clearResizeSuppression(): void {
-    this.resizeStartedAt = 0;
     this.resizeSuppressUntil = 0;
     this.baselineInvalid = false;
   }

@@ -739,6 +739,9 @@ export class ActivityMonitor {
   notifyResize(suppressionMs = 1000): void {
     this.resizeSuppressUntil = Date.now() + suppressionMs;
     this.highOutputDetector.resetWindow();
+    this.workingSignalDebouncer.reset();
+    this.cosmeticRecoveryDebouncer.reset();
+    this.structuralRecoveryDebouncer.reset();
     // Structural tier keys cell ring buffers by viewport-bottom-relative
     // (rowOffset, col); a resize invalidates that mapping. Reset so the
     // first post-resize frame doesn't compare against pre-resize cells.

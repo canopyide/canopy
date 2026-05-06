@@ -71,7 +71,7 @@ describe("AgentActivityTemperature", () => {
     expect(model.observeSnapshot(5800, snapshot("post resize 4")).stateHint).toBe("busy");
   });
 
-  it("caps resize blindness during continuous resize", () => {
+  it("keeps resize suppressed until the last resize event settles", () => {
     const model = new AgentActivityTemperature();
 
     model.seedSnapshot(snapshot("waiting 0"), 1000);
@@ -79,9 +79,13 @@ describe("AgentActivityTemperature", () => {
     model.noteResize(2300);
     model.noteResize(3100);
 
-    const result = model.observeSnapshot(3500, snapshot("baseline after long resize"));
-    expect(result.seeded).toBe(true);
-    expect(result.suppressed).toBe(false);
+    const stillResizing = model.observeSnapshot(3500, snapshot("reflow in progress"));
+    expect(stillResizing.suppressed).toBe(true);
+    expect(stillResizing.stateHint).toBeUndefined();
+
+    const settled = model.observeSnapshot(4100, snapshot("baseline after resize"));
+    expect(settled.seeded).toBe(true);
+    expect(settled.suppressed).toBe(false);
   });
 
   it("keeps decorative spinner heat below the working threshold", () => {
