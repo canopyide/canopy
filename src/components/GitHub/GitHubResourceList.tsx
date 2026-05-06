@@ -784,9 +784,7 @@ export function GitHubResourceList({
                 .map((n) => `#${n}`)
                 .join(", ");
               label =
-                nums.length > 3
-                  ? `Showing ${shown} + ${nums.length - 3} more`
-                  : `Showing ${shown}`;
+                nums.length > 3 ? `Showing ${shown} + ${nums.length - 3} more` : `Showing ${shown}`;
             } else if (numberQuery.kind === "range") {
               label = numberQuery.truncated
                 ? `Showing first ${MULTI_FETCH_CAP} of range #${numberQuery.from}..#${numberQuery.to} (capped)`

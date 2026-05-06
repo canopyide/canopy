@@ -1754,9 +1754,7 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
 
     // After the full 500ms minimum dwell elapses, the spinner clears.
     await vi.advanceTimersByTimeAsync(550);
-    const finalIcon = screen
-      .getByRole("button", { name: /refresh issues/i })
-      .querySelector("svg");
+    const finalIcon = screen.getByRole("button", { name: /refresh issues/i }).querySelector("svg");
     expect(finalIcon?.classList.contains("animate-spin")).toBe(false);
   });
 });
