@@ -563,9 +563,11 @@ describe("OnboardingFlow launch-agent CTA", () => {
       await flushHydration();
     });
 
-    const paletteDispatches = actionDispatchMock.mock.calls.filter(
-      ([actionId]) => actionId === "panel.palette"
-    );
+    const paletteDispatches =
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (actionDispatchMock.mock.calls as unknown as Array<[string, ...unknown[]]>).filter(
+        (call) => call[0] === "panel.palette"
+      );
     expect(paletteDispatches).toHaveLength(1);
   });
 
@@ -590,9 +592,11 @@ describe("OnboardingFlow launch-agent CTA", () => {
       await flushHydration();
     });
 
-    const paletteDispatches = actionDispatchMock.mock.calls.filter(
-      ([actionId]) => actionId === "panel.palette"
-    );
+    const paletteDispatches =
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (actionDispatchMock.mock.calls as unknown as Array<[string, ...unknown[]]>).filter(
+        (call) => call[0] === "panel.palette"
+      );
     expect(paletteDispatches).toHaveLength(1);
   });
 });
