@@ -20,6 +20,10 @@ vi.mock("@/services/terminal/panelDuplicationService", () => ({
   buildPanelSnapshotOptions: vi.fn((p: { id: string }) => ({ id: p.id })),
 }));
 
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(() => "mock-notification-id"),
+}));
+
 vi.mock("@/store/terminalInputStore", () => ({
   useTerminalInputStore: {
     getState: () => ({ clearAllDraftInputs: vi.fn() }),
@@ -32,6 +36,7 @@ vi.mock("@/store/terminalInputStore", () => ({
 (window as unknown as Record<string, unknown>).electron = {
   terminal: {
     trash: vi.fn().mockResolvedValue(undefined),
+    kill: vi.fn().mockResolvedValue(undefined),
   },
 };
 
@@ -194,6 +199,89 @@ describe("panelStore adversarial", () => {
     const post = usePanelStore.getState().watchedPanels;
     expect(post).not.toBe(pre);
     expect(post.size).toBe(0);
+  });
+
+  it("trashPanel emits an undo toast naming the closed terminal", async () => {
+    const { notify } = await import("@/lib/notify");
+    const notifyMock = vi.mocked(notify);
+
+    usePanelStore.setState({
+      panelsById: {
+        "term-1": {
+          id: "term-1",
+          title: "agent-foo",
+          cwd: "/a",
+          location: "grid",
+          createdAt: 1,
+          type: "claude",
+          kind: "terminal",
+        } as unknown as never,
+      },
+      panelIds: ["term-1"],
+    });
+
+    usePanelStore.getState().trashPanel("term-1");
+
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    const payload = notifyMock.mock.calls[0]![0]!;
+    expect(payload.message).toBe("Closed 'agent-foo'");
+    expect(payload.transient).toBe(true);
+    expect(payload.duration).toBe(8000);
+    expect(payload.action?.label).toBe("Undo");
+    expect(payload.coalesce?.key).toBe("terminal:close-undo");
+    // The coalesced message must change between count===1 and count>1 so that
+    // notify()'s contentKey detector resets the dismiss timer on every fire.
+    expect(payload.coalesce?.buildMessage(1)).toBe("Closed 'agent-foo'");
+    expect(payload.coalesce?.buildMessage(2)).toBe("Closed 2 terminals");
+  });
+
+  it("trashPanel does not emit an undo toast for non-PTY panels", async () => {
+    const { notify } = await import("@/lib/notify");
+    const notifyMock = vi.mocked(notify);
+
+    usePanelStore.setState({
+      panelsById: {
+        "browser-1": {
+          id: "browser-1",
+          title: "Docs",
+          cwd: "/",
+          location: "grid",
+          createdAt: 1,
+          type: "browser",
+          kind: "browser",
+        } as unknown as never,
+      },
+      panelIds: ["browser-1"],
+    });
+
+    usePanelStore.getState().trashPanel("browser-1");
+
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it("trashPanel skips the undo toast for ephemeral panels", async () => {
+    const { notify } = await import("@/lib/notify");
+    const notifyMock = vi.mocked(notify);
+
+    usePanelStore.setState({
+      panelsById: {
+        "ephemeral-1": {
+          id: "ephemeral-1",
+          title: "Daintree Assistant",
+          cwd: "/",
+          location: "grid",
+          createdAt: 1,
+          type: "claude",
+          kind: "terminal",
+          ephemeral: true,
+        } as unknown as never,
+      },
+      panelIds: ["ephemeral-1"],
+    });
+
+    usePanelStore.getState().trashPanel("ephemeral-1");
+
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 
   it("trashPanel preserves existing lastClosedConfig when snapshot returns null", async () => {

@@ -17,7 +17,6 @@ import {
   useProjectStore,
 } from "@/store";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
-import { usePreferencesStore } from "@/store";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
 import { isAgentInstalled } from "../../../shared/utils/agentAvailability";
 import { actionService } from "@/services/ActionService";
@@ -160,7 +159,6 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   const contentRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
-  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
   const isVisible = isVisibleProp ?? effectiveWidth > 0;
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
@@ -575,15 +573,12 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   }, [terminalId, removePanel, clearTerminal, setOpen, revokePendingSession]);
 
   // Confirm before discarding an in-flight assistant turn or accumulated
-  // conversation. Mirrors the CLOSE_CONFIRM_AGENT_STATES gate used by
-  // GridPanel/DockedPanel/*TabGroup but additionally protects non-empty
-  // chat history even after the agent goes idle — the conversation itself
-  // is the artifact (issue #6809). The skipWorkingCloseConfirm preference
-  // bypasses all confirmation.
+  // conversation. The conversation itself is the artifact — losing it
+  // wholesale on an accidental close is unrecoverable (issue #6809), so
+  // protect non-empty chat history even after the agent goes idle.
   const shouldConfirmClose =
-    !skipWorkingCloseConfirm &&
-    ((terminal?.agentState !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState)) ||
-      conversationTouched);
+    (terminal?.agentState !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState)) ||
+    conversationTouched;
 
   const handleClose = useCallback(() => {
     if (shouldConfirmClose) {

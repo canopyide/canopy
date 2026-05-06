@@ -249,74 +249,8 @@ describe("preferencesStore migration", () => {
     });
   });
 
-  describe("skipWorkingCloseConfirm", () => {
-    it("defaults to false on a fresh install", async () => {
-      const store = await loadStore();
-      expect(store.getState().skipWorkingCloseConfirm).toBe(false);
-    });
-
-    it("setSkipWorkingCloseConfirm updates the flag", async () => {
-      const store = await loadStore();
-      store.getState().setSkipWorkingCloseConfirm(true);
-      expect(store.getState().skipWorkingCloseConfirm).toBe(true);
-      store.getState().setSkipWorkingCloseConfirm(false);
-      expect(store.getState().skipWorkingCloseConfirm).toBe(false);
-    });
-
-    it("persists the value to localStorage", async () => {
-      const store = await loadStore();
-      store.getState().setSkipWorkingCloseConfirm(true);
-      await vi.waitFor(() => {
-        const persisted = storageMock.getItem(STORAGE_KEY);
-        expect(persisted).not.toBeNull();
-        const parsed = JSON.parse(persisted!);
-        expect(parsed.state.skipWorkingCloseConfirm).toBe(true);
-      });
-    });
-
-    it("migrates v4 state (pre-skipWorkingCloseConfirm) to v5 with default false", async () => {
-      setStoredState(
-        {
-          showProjectPulse: true,
-          showDeveloperTools: false,
-          showGridAgentHighlights: true,
-          showDockAgentHighlights: false,
-          dockDensity: "comfortable",
-          assignWorktreeToSelf: false,
-          reduceAnimations: false,
-          lastSelectedWorktreeRecipeIdByProject: {},
-        },
-        4
-      );
-
-      const store = await loadStore();
-      const state = store.getState();
-      expect(state.skipWorkingCloseConfirm).toBe(false);
-      expect(state.reduceAnimations).toBe(false);
-      expect(state.dockDensity).toBe("comfortable");
-    });
-
-    it("preserves an explicitly persisted true value across v5 migrations", async () => {
-      setStoredState(
-        {
-          skipWorkingCloseConfirm: true,
-          showProjectPulse: true,
-          showDeveloperTools: false,
-          showGridAgentHighlights: false,
-          showDockAgentHighlights: false,
-          dockDensity: "normal",
-          assignWorktreeToSelf: false,
-          reduceAnimations: false,
-          lastSelectedWorktreeRecipeIdByProject: {},
-        },
-        4
-      );
-
-      const store = await loadStore();
-      expect(store.getState().skipWorkingCloseConfirm).toBe(true);
-    });
-
-    it("leaves an explicit v5 value unchanged", async () => {
+  describe("skipWorkingCloseConfirm retirement (v6 migration)", () => {
+    it("drops a persisted skipWorkingCloseConfirm field when migrating from v5", async () => {
       setStoredState(
         {
           skipWorkingCloseConfirm: true,
@@ -333,7 +267,39 @@ describe("preferencesStore migration", () => {
       );
 
       const store = await loadStore();
-      expect(store.getState().skipWorkingCloseConfirm).toBe(true);
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+      expect(state.showProjectPulse).toBe(true);
+      expect(state.dockDensity).toBe("normal");
+      expect(state.reduceAnimations).toBe(false);
+    });
+
+    it("drops a persisted skipWorkingCloseConfirm field when migrating from v4 cumulatively", async () => {
+      setStoredState(
+        {
+          skipWorkingCloseConfirm: true,
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        4
+      );
+
+      const store = await loadStore();
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+    });
+
+    it("does not introduce skipWorkingCloseConfirm on a fresh install", async () => {
+      const store = await loadStore();
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+      expect(state.setSkipWorkingCloseConfirm).toBeUndefined();
     });
   });
 });

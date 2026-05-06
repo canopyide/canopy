@@ -87,7 +87,7 @@ const {
   projectStoreState: {
     currentProject: null as { id: string; path: string } | null,
   },
-  preferencesState: { reduceAnimations: false, skipWorkingCloseConfirm: false },
+  preferencesState: { reduceAnimations: false },
 }));
 
 vi.mock("@/lib/utils", () => ({ cn: (...args: unknown[]) => args.filter(Boolean).join(" ") }));
@@ -284,7 +284,6 @@ function resetState() {
 
   projectStoreState.currentProject = null;
   preferencesState.reduceAnimations = false;
-  preferencesState.skipWorkingCloseConfirm = false;
   mockProvisionSession.mockReset();
   mockProvisionSession.mockResolvedValue(null);
   mockRevokeSession.mockReset();
@@ -1336,28 +1335,6 @@ describe("HelpPanel — close confirmation guard (issue #6623)", () => {
     }
   );
 
-  it("closes immediately when skipWorkingCloseConfirm preference is on", () => {
-    preferencesState.skipWorkingCloseConfirm = true;
-    helpPanelState.terminalId = "term-1";
-    helpPanelState.agentId = "claude";
-    panelStoreState.panelsById = {
-      "term-1": {
-        id: "term-1",
-        kind: "terminal",
-        spawnStatus: "ready",
-        cwd: "/help",
-        agentState: "working",
-      },
-    };
-
-    const { container, queryByTestId } = render(<HelpPanel width={380} />);
-    fireEvent.click(container.querySelector('button[aria-label="Close help panel"]')!);
-
-    expect(queryByTestId("confirm-dialog")).toBeNull();
-    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-1");
-    expect(helpPanelState.setOpen).toHaveBeenCalledWith(false);
-  });
-
   it("Escape inherits the guard via handleClose (working state shows dialog, no cleanup)", () => {
     helpPanelState.terminalId = "term-1";
     helpPanelState.agentId = "claude";
@@ -1437,29 +1414,6 @@ describe("HelpPanel — close confirmation guard (issue #6623)", () => {
       expect(getByTestId("dialog-title").textContent).toBe("Stop this agent?");
     }
   );
-
-  it("closes immediately when skipWorkingCloseConfirm is true even with touched conversation", () => {
-    preferencesState.skipWorkingCloseConfirm = true;
-    helpPanelState.terminalId = "term-1";
-    helpPanelState.agentId = "claude";
-    helpPanelState.conversationTouched = true;
-    panelStoreState.panelsById = {
-      "term-1": {
-        id: "term-1",
-        kind: "terminal",
-        spawnStatus: "ready",
-        cwd: "/help",
-        agentState: "idle",
-      },
-    };
-
-    const { container, queryByTestId } = render(<HelpPanel width={380} />);
-    fireEvent.click(container.querySelector('button[aria-label="Close help panel"]')!);
-
-    expect(queryByTestId("confirm-dialog")).toBeNull();
-    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-1");
-    expect(helpPanelState.setOpen).toHaveBeenCalledWith(false);
-  });
 
   it("marks conversation started when agent state leaves idle on mount", () => {
     helpPanelState.terminalId = "term-1";

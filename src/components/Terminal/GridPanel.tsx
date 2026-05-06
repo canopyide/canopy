@@ -1,6 +1,5 @@
-import React, { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
-import { usePreferencesStore } from "@/store/preferencesStore";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   getPanelKindDefinition,
@@ -15,8 +14,6 @@ import { usePanelHandlers } from "@/hooks/usePanelHandlers";
 import { buildPanelProps } from "@/utils/panelProps";
 import type { AgentState } from "@/types";
 import { terminalChromeDescriptorsEqual } from "@/utils/terminalChrome";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
 
 export interface GridPanelProps {
   terminal: TerminalInstance;
@@ -147,50 +144,12 @@ export const GridPanel = React.memo(function GridPanel({
   const toggleMaximize = usePanelStore((state) => state.toggleMaximize);
   const getPanelGroup = usePanelStore((state) => state.getPanelGroup);
   const moveTerminalToDock = usePanelStore((state) => state.moveTerminalToDock);
-  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
 
   const lifecycle = usePanelLifecycle();
   const { handleFocus, handleClose, handleTitleChange } = usePanelHandlers({
     terminalId: terminal.id,
     lifecycle,
   });
-
-  // The panel-header X button calls handleClose(false) which trashes the
-  // entire group via trashPanelGroup. Single-tab groups have no per-tab X,
-  // so this is the only close affordance — and multi-tab groups can lose
-  // every active agent in one click. Mirror the per-tab guard here against
-  // any tab with an active agent. Alt+Click force-close (force=true) skips
-  // the prompt as documented on the close button.
-  const [pendingGroupClose, setPendingGroupClose] = useState(false);
-  const guardedHandleClose = useCallback(
-    (force?: boolean) => {
-      if (force) {
-        handleClose(true);
-        return;
-      }
-      if (skipWorkingCloseConfirm) {
-        handleClose(false);
-        return;
-      }
-      const candidates = tabs?.length ? tabs.map((t) => t.agentState) : [terminal.agentState];
-      const hasActiveAgent = candidates.some(
-        (state) => state !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(state)
-      );
-      if (hasActiveAgent) {
-        setPendingGroupClose(true);
-        return;
-      }
-      handleClose(false);
-    },
-    [handleClose, tabs, terminal.agentState, skipWorkingCloseConfirm]
-  );
-  const handleConfirmGroupClose = useCallback(() => {
-    setPendingGroupClose(false);
-    handleClose(false);
-  }, [handleClose]);
-  const handleCancelGroupClose = useCallback(() => {
-    setPendingGroupClose(false);
-  }, []);
 
   const handleToggleMaximize = useCallback(() => {
     toggleMaximize(terminal.id, gridCols, gridPanelCount, getPanelGroup);
@@ -244,7 +203,7 @@ export const GridPanel = React.memo(function GridPanel({
           gridPanelCount,
           ambientAgentState,
           onFocus: handleFocus,
-          onClose: guardedHandleClose,
+          onClose: handleClose,
           // Fleet scope disables per-panel maximize — the armed grid is a single
           // read-only composite view; promoting one cell would drop the rest.
           onToggleMaximize: isFleetScope ? undefined : handleToggleMaximize,
@@ -271,7 +230,7 @@ export const GridPanel = React.memo(function GridPanel({
       gridPanelCount,
       ambientAgentState,
       handleFocus,
-      guardedHandleClose,
+      handleClose,
       handleToggleMaximize,
       handleTitleChange,
       handleMinimize,
@@ -287,66 +246,51 @@ export const GridPanel = React.memo(function GridPanel({
     ]
   );
 
-  const closeGuardDialog = (
-    <ConfirmDialog
-      isOpen={pendingGroupClose}
-      onClose={handleCancelGroupClose}
-      title="Stop this agent?"
-      description="The agent is currently working. Closing this tab will stop it."
-      confirmLabel="Stop and close"
-      onConfirm={handleConfirmGroupClose}
-      variant="destructive"
-    />
-  );
-
   if (!definition) {
     const isPluginOwned = Boolean(terminal.pluginId) || kind.includes(".");
     if (!isPluginOwned) {
       console.warn(`[GridPanel] No component registered for kind: ${kind}`);
     }
     return (
-      <>
-        <ContentPanel
-          id={terminal.id}
-          title={terminal.title}
-          kind={kind}
-          isFocused={isFocused}
-          isMaximized={isMaximized}
-          location="grid"
-          ambientAgentState={ambientAgentState}
-          onFocus={handleFocus}
-          onClose={guardedHandleClose}
-          onToggleMaximize={handleToggleMaximize}
-          onTitleChange={handleTitleChange}
-          onMinimize={handleMinimize}
-          tabs={tabs}
-          groupId={groupId}
-          onTabClick={onTabClick}
-          onTabClose={onTabClose}
-          onTabRename={onTabRename}
-          onAddTab={onAddTab}
-          onTabReorder={onTabReorder}
-        >
-          {isPluginOwned ? (
-            <PluginMissingPanel
-              kind={kind}
-              pluginId={terminal.pluginId}
-              onRemove={() => handleClose(true)}
-            />
-          ) : (
-            <div className="flex flex-1 items-center justify-center bg-surface-panel text-text-muted">
-              <div className="text-center">
-                <p className="text-sm font-medium">Unknown Panel Type</p>
-                <p className="text-xs mt-1 text-daintree-text/50">Kind: {kind}</p>
-                <p className="text-xs mt-2 text-daintree-text/40">
-                  No component registered for this panel kind
-                </p>
-              </div>
+      <ContentPanel
+        id={terminal.id}
+        title={terminal.title}
+        kind={kind}
+        isFocused={isFocused}
+        isMaximized={isMaximized}
+        location="grid"
+        ambientAgentState={ambientAgentState}
+        onFocus={handleFocus}
+        onClose={handleClose}
+        onToggleMaximize={handleToggleMaximize}
+        onTitleChange={handleTitleChange}
+        onMinimize={handleMinimize}
+        tabs={tabs}
+        groupId={groupId}
+        onTabClick={onTabClick}
+        onTabClose={onTabClose}
+        onTabRename={onTabRename}
+        onAddTab={onAddTab}
+        onTabReorder={onTabReorder}
+      >
+        {isPluginOwned ? (
+          <PluginMissingPanel
+            kind={kind}
+            pluginId={terminal.pluginId}
+            onRemove={() => handleClose(true)}
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center bg-surface-panel text-text-muted">
+            <div className="text-center">
+              <p className="text-sm font-medium">Unknown Panel Type</p>
+              <p className="text-xs mt-1 text-daintree-text/50">Kind: {kind}</p>
+              <p className="text-xs mt-2 text-daintree-text/40">
+                No component registered for this panel kind
+              </p>
             </div>
-          )}
-        </ContentPanel>
-        {closeGuardDialog}
-      </>
+          </div>
+        )}
+      </ContentPanel>
     );
   }
 
@@ -354,18 +298,15 @@ export const GridPanel = React.memo(function GridPanel({
   const componentName = PanelComponent.displayName || PanelComponent.name || `Panel(${kind})`;
 
   return (
-    <>
-      <ErrorBoundary
-        variant="component"
-        componentName={componentName}
-        resetKeys={[terminal.id, terminal.worktreeId].filter(
-          (key): key is string => key !== undefined
-        )}
-        context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
-      >
-        <PanelComponent {...panelProps} />
-      </ErrorBoundary>
-      {closeGuardDialog}
-    </>
+    <ErrorBoundary
+      variant="component"
+      componentName={componentName}
+      resetKeys={[terminal.id, terminal.worktreeId].filter(
+        (key): key is string => key !== undefined
+      )}
+      context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+    >
+      <PanelComponent {...panelProps} />
+    </ErrorBoundary>
   );
 }, gridPanelPropsAreEqual);

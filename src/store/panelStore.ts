@@ -36,12 +36,52 @@ import { logInfo, logWarn, logError } from "@/utils/logger";
 import { clearTerminalRestartGuard } from "./restartExitSuppression";
 import { buildPanelSnapshotOptions } from "@/services/terminal/panelDuplicationService";
 import { setPanelStoreGetter } from "./projectStore";
+import { notify } from "@/lib/notify";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 export type { TerminalInstance, AddPanelOptions, QueuedCommand, CrashType };
 export { isAgentReady };
 export type { TerminalMruSlice, WatchedPanelsSlice };
 
 const PROJECT_SWITCH_RESIZE_SUPPRESSION_MS = 10_000;
+
+const UNDO_TOAST_COALESCE_KEY = "terminal:close-undo";
+// Hold the toast for 8 seconds — long enough for an Undo glance, short enough
+// that a quietly-trashed terminal doesn't block the corner indefinitely. The
+// coalesce window matches so a second close inside that range collapses into
+// the same toast and resets its dismiss timer (count change forces contentKey
+// bump in notify()).
+const UNDO_TOAST_DURATION_MS = 8_000;
+const UNDO_TOAST_WINDOW_MS = 8_000;
+
+function fireUndoToast(title: string): void {
+  notify({
+    type: "success",
+    transient: true,
+    duration: UNDO_TOAST_DURATION_MS,
+    message: `Closed '${title}'`,
+    action: {
+      label: "Undo",
+      onClick: () => usePanelStore.getState().restoreLastTrashed(),
+    },
+    coalesce: {
+      key: UNDO_TOAST_COALESCE_KEY,
+      windowMs: UNDO_TOAST_WINDOW_MS,
+      buildMessage: (count) => (count === 1 ? `Closed '${title}'` : `Closed ${count} terminals`),
+      buildAction: () => ({
+        label: "Undo",
+        onClick: () => usePanelStore.getState().restoreLastTrashed(),
+      }),
+    },
+  });
+}
+
+function shouldNotifyUndo(panel: TerminalInstance | undefined): boolean {
+  if (!panel) return false;
+  if (panel.location === "trash") return false;
+  if (panel.ephemeral === true) return false;
+  return panelKindHasPty(panel.kind ?? "terminal");
+}
 
 export function getTerminalRefreshTier(
   terminal: TerminalInstance | undefined,
@@ -289,7 +329,14 @@ export const usePanelStore = create<PanelGridState>()(
           }
         }
 
+        const shouldFireUndo = shouldNotifyUndo(terminalToTrash);
+        const undoTitle = shouldFireUndo ? (terminalToTrash?.title ?? "") : "";
+
         registrySlice.trashPanel(id);
+
+        if (shouldFireUndo) {
+          fireUndoToast(undoTitle);
+        }
 
         // Clear watch when panel is trashed (onTerminalRemoved only fires on full removal)
         get().unwatchPanel(id);
@@ -348,7 +395,17 @@ export const usePanelStore = create<PanelGridState>()(
           }
         }
 
+        // For multi-tab groups the snapshot source is the active tab; for
+        // single-panel groups it's just the panel itself. Use that title for
+        // the toast so the user sees a name they recognize.
+        const shouldFireUndo = shouldNotifyUndo(snapshotSource);
+        const undoTitle = shouldFireUndo ? (snapshotSource?.title ?? "") : "";
+
         registrySlice.trashPanelGroup(panelId);
+
+        if (shouldFireUndo) {
+          fireUndoToast(undoTitle);
+        }
 
         const updates: Partial<PanelGridState> = {};
 

@@ -31,6 +31,10 @@ vi.mock("@/services/TerminalInstanceService", () => ({
   },
 }));
 
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(() => "mock-notification-id"),
+}));
+
 const { usePanelStore } = await import("../panelStore");
 const { useWorktreeSelectionStore } = await import("../worktreeStore");
 
