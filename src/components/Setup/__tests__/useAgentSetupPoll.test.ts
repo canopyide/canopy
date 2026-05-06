@@ -25,6 +25,15 @@ function setHidden(hidden: boolean) {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
+function fireWindowFocus(hasFocus: boolean) {
+  vi.spyOn(document, "hasFocus").mockReturnValue(hasFocus);
+  window.dispatchEvent(new Event("focus"));
+}
+
+function fireWindowBlur() {
+  window.dispatchEvent(new Event("blur"));
+}
+
 describe("useAgentSetupPoll", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -34,10 +43,12 @@ describe("useAgentSetupPoll", () => {
       configurable: true,
       get: () => false,
     });
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("calls refresh immediately when open while visible", () => {
@@ -147,14 +158,17 @@ describe("useAgentSetupPoll", () => {
   });
 
   it("cleans up interval and listener on unmount", () => {
-    const removeEventListenerSpy = vi.spyOn(document, "removeEventListener");
+    const removeDocListenerSpy = vi.spyOn(document, "removeEventListener");
+    const removeWinListenerSpy = vi.spyOn(window, "removeEventListener");
 
     const setAvailability = vi.fn();
     const { unmount } = renderHook(() => useAgentSetupPoll(true, setAvailability));
 
     unmount();
 
-    expect(removeEventListenerSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+    expect(removeDocListenerSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+    expect(removeWinListenerSpy).toHaveBeenCalledWith("blur", expect.any(Function));
+    expect(removeWinListenerSpy).toHaveBeenCalledWith("focus", expect.any(Function));
 
     // Advancing time should not trigger more calls
     mockRefresh.mockClear();
@@ -163,7 +177,129 @@ describe("useAgentSetupPoll", () => {
     });
     expect(mockRefresh).toHaveBeenCalledTimes(0);
 
-    removeEventListenerSpy.mockRestore();
+    removeDocListenerSpy.mockRestore();
+    removeWinListenerSpy.mockRestore();
+  });
+
+  it("stops polling when the window loses focus (Cmd+Tab away)", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    mockRefresh.mockClear();
+
+    act(() => {
+      fireWindowBlur();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(9000);
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+  });
+
+  it("resumes polling with an immediate refresh when the window regains focus", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    act(() => {
+      fireWindowBlur();
+    });
+
+    mockRefresh.mockClear();
+
+    act(() => {
+      fireWindowFocus(true);
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+
+    mockRefresh.mockClear();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores window.focus when document.hasFocus() is false (inter-view switch)", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    act(() => {
+      fireWindowBlur();
+    });
+
+    mockRefresh.mockClear();
+
+    act(() => {
+      fireWindowFocus(false);
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+
+    // Interval remains stopped
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+  });
+
+  it("does not double-poll when visibilitychange and window.focus fire in sequence (unminimize)", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    // Simulate minimize
+    act(() => {
+      setHidden(true);
+    });
+
+    mockRefresh.mockClear();
+
+    // Simulate unminimize: Chromium fires visibilitychange (visible) then window.focus
+    act(() => {
+      setHidden(false);
+      fireWindowFocus(true);
+    });
+
+    // Only one immediate refresh — the focus handler skips because the interval is already running
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start polling at mount when document.hasFocus() is false", () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+
+    // Interval is not running
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+
+    // Resumes correctly when focus is gained
+    act(() => {
+      fireWindowFocus(true);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not resume polling on focus when the dialog is closed", () => {
+    const setAvailability = vi.fn();
+    const { rerender } = renderHook(({ isOpen }) => useAgentSetupPoll(isOpen, setAvailability), {
+      initialProps: { isOpen: true },
+    });
+
+    rerender({ isOpen: false });
+    mockRefresh.mockClear();
+
+    act(() => {
+      fireWindowFocus(true);
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
   });
 
   it("dispatches result to setAvailability when refresh resolves", async () => {
