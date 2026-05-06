@@ -4,6 +4,7 @@ import { useErrorStore } from "@/store/errorStore";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
 import { captureRendererException } from "@/utils/rendererSentry";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import { buildReportIssueUrl } from "./buildReportIssueUrl";
 import { notify } from "@/lib/notify";
 
@@ -198,10 +199,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           { source: "user" }
         );
         if (!result.ok) {
-          void window.electron.system.openExternal(url);
+          safeFireAndForget(window.electron.system.openExternal(url), {
+            context: "ErrorBoundary.handleReport openExternal fallback",
+          });
         }
       } catch {
-        void window.electron.system.openExternal(url);
+        safeFireAndForget(window.electron.system.openExternal(url), {
+          context: "ErrorBoundary.handleReport openExternal fallback",
+        });
       }
     } finally {
       this.reportInFlight = false;
