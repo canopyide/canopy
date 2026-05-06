@@ -333,7 +333,11 @@ export function EnvironmentSettingsTab() {
           </Button>
         </div>
 
-        {saveError && <p className="text-xs text-status-error">{saveError}</p>}
+        {saveError && (
+          <p role="alert" className="text-xs text-status-error">
+            {saveError}
+          </p>
+        )}
 
         {isDirty && (
           <div className="flex items-center gap-2 pt-2">

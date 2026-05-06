@@ -61,7 +61,7 @@ export function SettingsCheckbox({
           }}
           disabled={disabled}
           aria-describedby={describedBy}
-          aria-invalid={isError}
+          aria-invalid={isError || undefined}
           className={cn(
             "relative flex shrink-0 w-4 h-4 mt-0.5 rounded border transition-colors duration-150",
             "bg-daintree-bg border-border-strong",

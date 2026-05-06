@@ -636,6 +636,19 @@ describe("SettingsCheckbox", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("omits aria-invalid when no error is present", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.getAttribute("aria-invalid")).toBeNull();
+  });
+
   it("hides description when error is shown", () => {
     render(
       <SettingsCheckbox
