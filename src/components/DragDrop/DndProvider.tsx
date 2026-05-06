@@ -124,7 +124,7 @@ export function isNoDndTarget(target: EventTarget | null): boolean {
 // MouseSensor variant that refuses to activate when the mousedown originates
 // inside a [data-no-dnd] subtree. Mirrors the upstream MouseSensor.activators
 // shape exactly so options like activationConstraint flow through unchanged.
-class NoDndMouseSensor extends MouseSensor {
+export class NoDndMouseSensor extends MouseSensor {
   static activators: {
     eventName: "onMouseDown";
     handler: (event: ReactMouseEvent, options: MouseSensorOptions) => boolean;

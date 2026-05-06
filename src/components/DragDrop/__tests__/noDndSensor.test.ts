@@ -2,8 +2,17 @@
 // Tests for the `isNoDndTarget` predicate that gates `NoDndMouseSensor`
 // activation. The predicate is the integration seam — testing it directly
 // avoids mounting `DndProvider` (which requires mocking 10+ modules).
-import { afterEach, describe, expect, it } from "vitest";
-import { isNoDndTarget } from "../DndProvider";
+import type { MouseEvent as ReactMouseEvent } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { isNoDndTarget, NoDndMouseSensor } from "../DndProvider";
+
+type Activator = (typeof NoDndMouseSensor.activators)[number];
+
+function buildSyntheticEvent(target: EventTarget | null, button = 0): ReactMouseEvent {
+  return {
+    nativeEvent: { target, button } as unknown as MouseEvent,
+  } as ReactMouseEvent;
+}
 
 describe("isNoDndTarget", () => {
   afterEach(() => {
@@ -47,5 +56,66 @@ describe("isNoDndTarget", () => {
   it("returns false for detached Element nodes that lack [data-no-dnd]", () => {
     const detached = document.createElement("button");
     expect(isNoDndTarget(detached)).toBe(false);
+  });
+
+  it("returns true for detached Element nodes that carry [data-no-dnd]", () => {
+    const detached = document.createElement("button");
+    detached.setAttribute("data-no-dnd", "");
+    expect(isNoDndTarget(detached)).toBe(true);
+  });
+});
+
+describe("NoDndMouseSensor.activators handler", () => {
+  const activator = NoDndMouseSensor.activators[0] as Activator;
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("targets the onMouseDown synthetic event", () => {
+    expect(activator.eventName).toBe("onMouseDown");
+  });
+
+  it("returns false and does not call onActivation when target is inside [data-no-dnd]", () => {
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-no-dnd", "");
+    const button = document.createElement("button");
+    wrapper.appendChild(button);
+    document.body.appendChild(wrapper);
+
+    const onActivation = vi.fn();
+    const result = activator.handler(buildSyntheticEvent(button), { onActivation });
+
+    expect(result).toBe(false);
+    expect(onActivation).not.toHaveBeenCalled();
+  });
+
+  it("returns true and calls onActivation for a normal left-click target", () => {
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+
+    const onActivation = vi.fn();
+    const result = activator.handler(buildSyntheticEvent(button), { onActivation });
+
+    expect(result).toBe(true);
+    expect(onActivation).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false and does not call onActivation for a right-click", () => {
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+
+    const onActivation = vi.fn();
+    const result = activator.handler(buildSyntheticEvent(button, 2), { onActivation });
+
+    expect(result).toBe(false);
+    expect(onActivation).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when onActivation is undefined on a normal click", () => {
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+
+    expect(() => activator.handler(buildSyntheticEvent(button), {})).not.toThrow();
   });
 });
