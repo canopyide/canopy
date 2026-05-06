@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   DndContext,
@@ -26,6 +27,7 @@ import {
   type Modifier,
   type Announcements,
   type MeasuringConfiguration,
+  type MouseSensorOptions,
 } from "@dnd-kit/core";
 import {
   usePanelStore,
@@ -106,6 +108,38 @@ export function useIsWorktreeSortDragging() {
 // Minimum distance (px) pointer must move before drag starts
 // This allows clicks to work for popovers without triggering drag
 const DRAG_ACTIVATION_DISTANCE = 8;
+
+// Right-click button index for MouseEvent.button (matches dnd-kit upstream).
+const MOUSE_RIGHT_CLICK = 2;
+
+// Returns true when the event target sits inside an opt-out subtree marked
+// with [data-no-dnd]. Used by NoDndMouseSensor to short-circuit drag activation
+// for inline interactive elements (popover triggers, dropdown menus, badges,
+// etc.) that share a sortable's drag surface. Pattern from
+// https://github.com/clauderic/dnd-kit/issues/477.
+export function isNoDndTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("[data-no-dnd]") !== null;
+}
+
+// MouseSensor variant that refuses to activate when the mousedown originates
+// inside a [data-no-dnd] subtree. Mirrors the upstream MouseSensor.activators
+// shape exactly so options like activationConstraint flow through unchanged.
+class NoDndMouseSensor extends MouseSensor {
+  static activators: {
+    eventName: "onMouseDown";
+    handler: (event: ReactMouseEvent, options: MouseSensorOptions) => boolean;
+  }[] = [
+    {
+      eventName: "onMouseDown",
+      handler: ({ nativeEvent: event }, { onActivation }) => {
+        if (event.button === MOUSE_RIGHT_CLICK) return false;
+        if (isNoDndTarget(event.target)) return false;
+        onActivation?.({ event });
+        return true;
+      },
+    },
+  ];
+}
 
 // Cursor offset from top of preview (positions cursor in title bar area)
 const TITLE_BAR_CURSOR_OFFSET = 12;
@@ -343,7 +377,7 @@ export function DndProvider({ children }: DndProviderProps) {
 
   // Configure sensors with activation constraint so clicks work for popovers
   const sensors = useSensors(
-    useSensor(MouseSensor, {
+    useSensor(NoDndMouseSensor, {
       activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE },
     }),
     useSensor(TouchSensor, {

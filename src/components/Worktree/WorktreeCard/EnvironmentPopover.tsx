@@ -89,6 +89,7 @@ export function EnvironmentPopover({
     <Popover>
       <PopoverTrigger asChild>
         <button
+          data-no-dnd
           className="shrink-0 rounded focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
           aria-label={`${worktreeMode} environment status`}
         >
