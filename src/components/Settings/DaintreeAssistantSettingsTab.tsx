@@ -18,7 +18,7 @@ import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
-import { notify } from "@/lib/notify";
+
 import { logError } from "@/utils/logger";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
@@ -98,23 +98,11 @@ export function DaintreeAssistantSettingsTab() {
       .catch((err) => {
         if (cancelled) return;
         setError(formatErrorMessage(err, "Couldn't load assistant settings"));
-        notify({
-          type: "error",
-          title: "Settings load failed",
-          message: "Couldn't load Daintree Assistant settings. The panel may be out of date.",
-          priority: "low",
-        });
         logError("Failed to load Daintree Assistant settings", err);
       });
 
     const mcpLoad = refreshStatus().catch((err) => {
       if (cancelled) return;
-      notify({
-        type: "error",
-        title: "MCP status failed",
-        message: "Couldn't load the MCP server status. The connection panel may be out of date.",
-        priority: "low",
-      });
       logError("Failed initial MCP status load for assistant tab", err);
     });
 
@@ -145,12 +133,6 @@ export function DaintreeAssistantSettingsTab() {
         await window.electron.helpAssistant.setSettings(patch);
       } catch (err) {
         setError(formatErrorMessage(err, "Couldn't save assistant settings"));
-        notify({
-          type: "error",
-          title: "Settings save failed",
-          message: "Couldn't save the change. Try again.",
-          priority: "low",
-        });
         logError("Failed to save Daintree Assistant settings", err);
       }
       // settings is intentionally read at call time via the closure; no stale risk
@@ -198,20 +180,8 @@ export function DaintreeAssistantSettingsTab() {
     try {
       const key = await window.electron.mcpServer.rotateApiKey();
       setMcpStatus((prev) => (prev ? { ...prev, apiKey: key } : prev));
-      notify({
-        type: "success",
-        title: "Key rotated",
-        message: "A new MCP API key has been generated. Update your MCP clients.",
-        priority: "low",
-      });
     } catch (err) {
       setError(formatErrorMessage(err, "Couldn't rotate key"));
-      notify({
-        type: "error",
-        title: "Key rotation failed",
-        message: "Couldn't rotate the API key. Try again.",
-        priority: "low",
-      });
       logError("Failed to rotate MCP API key", err);
     }
   }, []);
