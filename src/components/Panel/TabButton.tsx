@@ -117,6 +117,9 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       const detail = e.detail as unknown;
       if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
       if ((detail as { id: string }).id === id) {
+        clearErrorTimers();
+        setShowRenameError(false);
+        setShowRenameErrorTint(false);
         setEditValue(title);
         setIsEditing(true);
         didCommitOrCancelRef.current = false;
@@ -128,7 +131,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       signal: controller.signal,
     });
     return () => controller.abort();
-  }, [id, title, onRename]);
+  }, [id, title, onRename, clearErrorTimers]);
 
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
