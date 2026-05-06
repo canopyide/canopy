@@ -637,6 +637,19 @@ describe("SettingsCheckbox", () => {
     expect(screen.getByText("Invalid state")).toBeTruthy();
   });
 
+  it("omits aria-invalid attribute when no error is provided", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.getAttribute("aria-invalid")).toBeNull();
+  });
+
   it("calls onChange with false when unchecking", async () => {
     const onChange = vi.fn();
     render(

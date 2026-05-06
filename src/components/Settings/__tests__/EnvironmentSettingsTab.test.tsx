@@ -168,6 +168,36 @@ describe("EnvironmentSettingsTab", () => {
     expect(valueInput.getAttribute("aria-describedby")).toBeNull();
   });
 
+  it("flags duplicate variable name on the second key input via aria-invalid", async () => {
+    window.electron = {
+      globalEnv: {
+        get: vi.fn().mockResolvedValue({ FOO: "first", BAR: "second" }),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+    } as unknown as typeof window.electron;
+
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Environment variable name")).toHaveLength(2);
+    });
+
+    const nameInputs = screen.getAllByLabelText("Environment variable name");
+    fireEvent.change(nameInputs[1]!, { target: { value: "FOO" } });
+
+    const saveButton = screen.getByRole("button", { name: /save/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(nameInputs[1]!.getAttribute("aria-invalid")).toBe("true");
+    });
+
+    const describedBy = nameInputs[1]!.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toContain("Duplicate");
+    expect(nameInputs[0]!.getAttribute("aria-invalid")).toBeNull();
+  });
+
   it("emits role=alert on saveError when globalEnv.set fails", async () => {
     window.electron = {
       globalEnv: {
