@@ -39,22 +39,26 @@ export function SafeModeBanner() {
   };
 
   const skipped =
-    Number.isFinite(skippedPanelCount) && (skippedPanelCount as number) > 0
-      ? (skippedPanelCount as number)
+    typeof skippedPanelCount === "number" &&
+    Number.isFinite(skippedPanelCount) &&
+    skippedPanelCount > 0
+      ? skippedPanelCount
       : 0;
   const crashes =
-    Number.isFinite(crashCount) && (crashCount as number) > 0 ? (crashCount as number) : 0;
-  const hasTimestamp = Number.isFinite(lastCrashAt);
-  const hasCrashMeta = crashes > 0 || hasTimestamp;
-  const hasDetails = skipped > 0 || hasCrashMeta;
+    typeof crashCount === "number" && Number.isFinite(crashCount) && crashCount > 0
+      ? crashCount
+      : 0;
+  const crashTimestamp =
+    typeof lastCrashAt === "number" && Number.isFinite(lastCrashAt) ? lastCrashAt : null;
+  const hasDetails = skipped > 0 || crashes > 0 || crashTimestamp !== null;
 
   let crashMetaText: string | null = null;
-  if (crashes > 0 && hasTimestamp) {
-    crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected, last ${formatRelativeTime(lastCrashAt as number)}`;
+  if (crashes > 0 && crashTimestamp !== null) {
+    crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected, last ${formatRelativeTime(crashTimestamp)}`;
   } else if (crashes > 0) {
     crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected`;
-  } else if (hasTimestamp) {
-    crashMetaText = `Last crash ${formatRelativeTime(lastCrashAt as number)}`;
+  } else if (crashTimestamp !== null) {
+    crashMetaText = `Last crash ${formatRelativeTime(crashTimestamp)}`;
   }
 
   return (
