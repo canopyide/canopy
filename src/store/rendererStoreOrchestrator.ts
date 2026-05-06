@@ -12,6 +12,7 @@ import { useVoiceRecordingStore } from "./voiceRecordingStore";
 import { useLayoutUndoStore } from "./layoutUndoStore";
 import { useCliAvailabilityStore } from "./cliAvailabilityStore";
 import { useAgentSettingsStore } from "./agentSettingsStore";
+import { setActiveContextAccessors } from "@/lib/notify";
 import { debounce } from "@/utils/debounce";
 import { DisposableStore, toDisposable } from "@/utils/disposable";
 
@@ -21,6 +22,27 @@ let cleanupFn: (() => void) | null = null;
 
 export function initStoreOrchestrator(): () => void {
   if (cleanupFn) return cleanupFn;
+
+  // Register accessors so notify() can suppress toasts whose origin surface
+  // (worktree or panel) is already visible, and promote them if the user
+  // navigates away within the grace window.
+  setActiveContextAccessors({
+    getActiveWorktreeId: () => useWorktreeSelectionStore.getState().activeWorktreeId,
+    getFocusedPanelId: () => usePanelStore.getState().focusedId,
+    subscribeActiveContext: (cb) => {
+      const unsubWorktree = useWorktreeSelectionStore.subscribe((state, prev) => {
+        if (state.activeWorktreeId !== prev.activeWorktreeId) cb();
+      });
+      const unsubPanel = usePanelStore.subscribe(
+        (state) => state.focusedId,
+        () => cb()
+      );
+      return () => {
+        unsubWorktree();
+        unsubPanel();
+      };
+    },
+  });
 
   const disposables = new DisposableStore();
 

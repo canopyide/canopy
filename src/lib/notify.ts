@@ -96,6 +96,65 @@ export function _resetCoalesceMap(): void {
   _activeCoalesced.clear();
 }
 
+// ── active-context suppression ──────────────────────────────────────────────
+//
+// When a focused, high-priority notification originates from a surface the
+// user is already looking at (matching `context.worktreeId` or
+// `context.panelId`), the toast is suppressed and the event is recorded
+// only in the inbox. A 500ms grace window catches navigate-away races: if
+// the user moves to a different surface before the timer expires, the
+// suppressed event is promoted to a real toast so the missed signal still
+// reaches them.
+
+export interface ActiveContextAccessors {
+  getActiveWorktreeId: () => string | null;
+  getFocusedPanelId: () => string | null;
+  /** Subscribes to changes in either active worktree or focused panel. Returns an unsubscribe. */
+  subscribeActiveContext: (cb: () => void) => () => void;
+}
+
+let _activeContextAccessors: ActiveContextAccessors | null = null;
+
+export function setActiveContextAccessors(accessors: ActiveContextAccessors): void {
+  _activeContextAccessors = accessors;
+}
+
+export function _resetActiveContextAccessorsForTest(): void {
+  _activeContextAccessors = null;
+}
+
+const SUPPRESS_GRACE_MS = 500;
+
+interface PendingSuppressedEntry {
+  timerId: ReturnType<typeof setTimeout>;
+  unsub: () => void;
+}
+
+const _pendingSuppressed = new Map<string, PendingSuppressedEntry>();
+
+export function _resetPendingSuppressedForTest(): void {
+  for (const entry of _pendingSuppressed.values()) {
+    clearTimeout(entry.timerId);
+    entry.unsub();
+  }
+  _pendingSuppressed.clear();
+}
+
+function isOriginSurfaceVisible(context: NotifyPayload["context"]): boolean {
+  if (!context) return false;
+  if (!_activeContextAccessors) return false;
+  if (typeof document !== "undefined" && !document.hasFocus()) return false;
+
+  if (context.worktreeId) {
+    if (_activeContextAccessors.getActiveWorktreeId() === context.worktreeId) return true;
+  }
+  if (context.panelId) {
+    if (_activeContextAccessors.getFocusedPanelId() === context.panelId) return true;
+  }
+  // `projectId` alone is not a surface — a project can have many worktrees.
+  return false;
+}
+
 // ── transient error escalation ──────────────────────────────────────────────
 //
 // Transient errors (EBUSY, EAGAIN, ETIMEDOUT, ECONNRESET, ENOTFOUND) are
@@ -377,7 +436,10 @@ export function notify(payload: NotifyPayload): string {
 
   const isFocused = typeof document !== "undefined" ? document.hasFocus() : true;
 
-  const shouldToast = priority === "watch" || (priority === "high" && isFocused);
+  const originVisible =
+    priority === "high" && isFocused && isOriginSurfaceVisible(context);
+  const shouldToast =
+    priority === "watch" || (priority === "high" && isFocused && !originVisible);
   const shouldNative = priority === "watch";
 
   const historyEntryId = historyMessage
@@ -386,7 +448,7 @@ export function notify(payload: NotifyPayload): string {
         title,
         message: historyMessage,
         correlationId,
-        seenAsToast: !isQuiet && notificationsEnabled && shouldToast,
+        seenAsToast: !isQuiet && notificationsEnabled && (shouldToast || originVisible),
         countable: payload.countable,
         actions: historyActions.length > 0 ? historyActions : undefined,
         context,
@@ -400,6 +462,11 @@ export function notify(payload: NotifyPayload): string {
       title: title ?? "Daintree",
       body: historyMessage,
     });
+  }
+
+  if (originVisible && historyEntryId) {
+    scheduleSuppressionGrace(historyEntryId, payload, priority, context);
+    return "";
   }
 
   if (shouldToast && payload.coalesce) {
@@ -481,4 +548,53 @@ export function notify(payload: NotifyPayload): string {
   }
 
   return "";
+}
+
+function scheduleSuppressionGrace(
+  historyEntryId: string,
+  payload: NotifyPayload,
+  priority: NotificationPriority,
+  context: NotifyPayload["context"]
+): void {
+  const subscriber = _activeContextAccessors?.subscribeActiveContext;
+
+  // Replace any prior pending entry for this id (defensive — historyEntryId
+  // is a UUID, but cancel-and-replace keeps the invariant clean).
+  const prev = _pendingSuppressed.get(historyEntryId);
+  if (prev) {
+    clearTimeout(prev.timerId);
+    prev.unsub();
+    _pendingSuppressed.delete(historyEntryId);
+  }
+
+  const cleanup = (): void => {
+    const entry = _pendingSuppressed.get(historyEntryId);
+    if (!entry) return;
+    clearTimeout(entry.timerId);
+    entry.unsub();
+    _pendingSuppressed.delete(historyEntryId);
+  };
+
+  const promote = (): void => {
+    // Re-read state at callback time to avoid the stale-closure trap (#5087).
+    if (isOriginSurfaceVisible(context)) return;
+    cleanup();
+    if (!useNotificationSettingsStore.getState().enabled) return;
+    if (!payload.urgent && (Date.now() < _quietUntil || isScheduledQuietHours())) return;
+    useNotificationStore.getState().addNotification({
+      ...payload,
+      priority,
+      historyEntryId,
+    });
+  };
+
+  const timerId = setTimeout(() => {
+    cleanup();
+  }, SUPPRESS_GRACE_MS);
+
+  // If no subscriber is registered (very early startup), the timer is the
+  // sole gate — falls back to "suppress for 500ms then drop".
+  const unsub = subscriber ? subscriber(promote) : () => {};
+
+  _pendingSuppressed.set(historyEntryId, { timerId, unsub });
 }
