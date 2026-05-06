@@ -113,12 +113,13 @@ export function GitHubResourceListSkeleton({
       </div>
 
       {/* Footer — matches GitHubResourceList */}
-      <div className="p-3 border-t border-[var(--border-divider)] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="p-3 border-t border-[var(--border-divider)] grid grid-cols-[1fr_auto_1fr] items-center shrink-0">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-self-start">
           <ExternalLink className="h-3.5 w-3.5" />
-          View on GitHub
+          GitHub
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span aria-hidden="true" />
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-self-end">
           <Plus className="h-3.5 w-3.5" />
           New
         </div>

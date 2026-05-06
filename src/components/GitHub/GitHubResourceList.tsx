@@ -798,12 +798,6 @@ export function GitHubResourceList({
               </p>
             );
           })()}
-
-        {!error && !loading && lastUpdatedAt != null && !debouncedSearch && (
-          <p className="text-[10px] text-muted-foreground/60 px-1">
-            Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
-          </p>
-        )}
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col relative">
@@ -941,21 +935,28 @@ export function GitHubResourceList({
         {!loading && !error && !data.length && renderEmpty()}
       </div>
 
-      <div className="p-3 border-t border-[var(--border-divider)] flex items-center justify-between shrink-0">
+      <div className="p-3 border-t border-[var(--border-divider)] grid grid-cols-[1fr_auto_1fr] items-center shrink-0">
         <Button
           variant="ghost"
           size="sm"
           onClick={handleOpenInGitHub}
-          className="text-muted-foreground hover:text-daintree-text gap-1.5"
+          className="text-muted-foreground hover:text-daintree-text gap-1.5 justify-self-start"
         >
           <ExternalLink className="h-3.5 w-3.5" />
-          View on GitHub
+          GitHub
         </Button>
+        {!error && !loading && lastUpdatedAt != null && !debouncedSearch ? (
+          <p className="text-[10px] text-muted-foreground/60 whitespace-nowrap text-center">
+            Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
+          </p>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <Button
           variant="ghost"
           size="sm"
           onClick={handleCreateNew}
-          className="text-muted-foreground hover:text-daintree-text gap-1.5"
+          className="text-muted-foreground hover:text-daintree-text gap-1.5 justify-self-end"
         >
           <Plus className="h-3.5 w-3.5" />
           New
