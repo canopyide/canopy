@@ -141,6 +141,10 @@ export default tseslint.config(
   // Note: the renderer block below re-declares no-restricted-syntax at "warn"
   // level for src/** with additional selectors. That block's array is the
   // effective set for src/ files, so it must keep these selectors in sync.
+  // Renderer-only selectors (notify({type:"error",priority:"low"}) — #6885;
+  // Math.random in template literals; magic setTimeout/setInterval delays)
+  // intentionally live ONLY in the renderer block since their call sites are
+  // renderer-only — duplicating into the global block would add no coverage.
   {
     files: ["**/*.{ts,tsx}"],
     rules: {
