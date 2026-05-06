@@ -54,8 +54,9 @@ export function SortableDockItem({
       {...remainingAttributes}
       aria-roledescription="sortable item"
     >
-      <div ref={setNodeRef} style={style} className={cn("flex-shrink-0")}>
+      <div ref={setNodeRef} style={style} role="listitem" className={cn("flex-shrink-0")}>
         <m.div
+          className="h-full"
           animate={{ opacity: isDragging ? 0.4 : 1 }}
           transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
         >

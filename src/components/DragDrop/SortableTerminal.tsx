@@ -92,6 +92,7 @@ export function SortableTerminal({
         )}
       >
         <m.div
+          className="h-full"
           animate={{ opacity: isDragging ? 0.4 : 1 }}
           transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
         >

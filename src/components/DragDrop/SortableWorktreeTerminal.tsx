@@ -52,7 +52,13 @@ export function SortableWorktreeTerminal({
     transition,
   };
 
-  const { role: _role, "aria-roledescription": _ariaRoleDesc, ...filteredAttributes } = attributes;
+  const {
+    role: _role,
+    "aria-roledescription": _ariaRoleDesc,
+    tabIndex: _tabIndex,
+    ...filteredAttributes
+  } = attributes;
+  void _tabIndex;
 
   return (
     <m.div layout="position" transformTemplate={pixelSnapTransform} className="h-full min-w-0">
@@ -65,6 +71,7 @@ export function SortableWorktreeTerminal({
         {...filteredAttributes}
       >
         <m.div
+          className="h-full"
           animate={{ opacity: isDragging ? 0.4 : 1 }}
           transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
         >
