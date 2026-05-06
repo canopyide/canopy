@@ -197,7 +197,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     id: "agent.getState",
     title: "Get Agent State",
     description:
-      "Query agent state by agentId; returns agentId, state, waitingReason, lastTransitionAt, terminalId, found. waitingReason ('prompt' | 'question') is non-null only when state is 'waiting'.",
+      "Query agent state; returns state, waitingReason ('prompt'|'question', non-null when waiting), terminalId, found.",
     category: "agent",
     kind: "query",
     danger: "safe",
