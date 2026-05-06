@@ -302,8 +302,10 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
           },
         };
         await projectClient.saveSettings(projectId, updated);
-        const settingsStore = useProjectSettingsStore.getState();
-        settingsStore.setSettings(updated);
+        const settingsState = useProjectSettingsStore.getState();
+        if (settingsState.projectId === projectId) {
+          settingsState.setSettings(updated);
+        }
         if (updated.notificationOverrides) {
           useProjectSettingsStore.setState((s) => ({
             notificationOverridesByProjectId: {
