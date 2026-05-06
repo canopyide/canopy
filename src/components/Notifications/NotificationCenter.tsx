@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2, X } from "lucide-react";
+import { Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import {
   useNotificationHistoryStore,
@@ -313,9 +313,9 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                   onClick={handleResumeNotifications}
                   aria-label="Resume notifications"
                   title="Resume notifications"
-                  className="ml-0.5 inline-flex items-center justify-center rounded-full p-0.5 text-daintree-text/50 hover:bg-overlay-emphasis hover:text-daintree-text/80 transition-colors"
+                  className="ml-0.5 inline-flex items-center justify-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium text-daintree-text/70 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
                 >
-                  <X className="w-3 h-3" aria-hidden="true" />
+                  Resume
                 </button>
               )}
             </span>
@@ -333,7 +333,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 className={`px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                   filter === "all"
                     ? "bg-overlay-medium text-daintree-text/80"
-                    : "text-daintree-text/40 hover:text-daintree-text/60"
+                    : "text-daintree-text/70 hover:text-daintree-text"
                 }`}
               >
                 All
@@ -344,7 +344,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 className={`px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                   filter === "unread"
                     ? "bg-overlay-medium text-daintree-text/80"
-                    : "text-daintree-text/40 hover:text-daintree-text/60"
+                    : "text-daintree-text/70 hover:text-daintree-text"
                 }`}
               >
                 Unread
@@ -360,10 +360,10 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               aria-pressed={groupByContext}
               title="Group by project or worktree"
               onClick={() => setGroupByContext(!groupByContext)}
-              className={`p-1 transition-colors rounded-[var(--radius-sm)] ${
+              className={`p-1 transition-colors rounded-[var(--radius-sm)] border ${
                 groupByContext
-                  ? "bg-overlay-medium text-daintree-text/80"
-                  : "text-daintree-text/50 hover:bg-daintree-text/10 hover:text-daintree-text/80"
+                  ? "border-transparent bg-overlay-medium text-daintree-text/80"
+                  : "border-daintree-text/15 text-daintree-text/50 hover:bg-daintree-text/10 hover:text-daintree-text/80"
               }`}
             >
               <Layers className="w-3 h-3" aria-hidden="true" />
