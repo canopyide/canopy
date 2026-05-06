@@ -44,6 +44,13 @@ function getEffectiveAgentId(terminal: TerminalInfo): string | undefined {
   return terminal.detectedAgentId;
 }
 
+export function normalizeSubmitEnterDelay(delayMs: number | null | undefined): number {
+  if (delayMs === undefined || delayMs === null || isNaN(delayMs) || delayMs < 0) {
+    return SUBMIT_ENTER_DELAY_MS;
+  }
+  return Math.min(delayMs, 5000);
+}
+
 export function supportsBracketedPaste(terminal: TerminalInfo): boolean {
   const agentId = getEffectiveAgentId(terminal);
   if (!agentId) return true;
@@ -60,11 +67,7 @@ export function getSubmitEnterDelay(terminal: TerminalInfo): number {
   const agentId = getEffectiveAgentId(terminal);
   if (!agentId) return SUBMIT_ENTER_DELAY_MS;
   const config = getEffectiveAgentConfig(agentId);
-  const delayMs = config?.capabilities?.submitEnterDelayMs;
-  if (delayMs === undefined || delayMs === null || isNaN(delayMs) || delayMs < 0) {
-    return SUBMIT_ENTER_DELAY_MS;
-  }
-  return Math.min(delayMs, 5000);
+  return normalizeSubmitEnterDelay(config?.capabilities?.submitEnterDelayMs);
 }
 
 export function isBracketedPaste(data: string): boolean {

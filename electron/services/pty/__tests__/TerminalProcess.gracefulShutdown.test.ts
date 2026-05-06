@@ -3,6 +3,7 @@ import type { IPty } from "node-pty";
 import { TerminalProcess } from "../TerminalProcess.js";
 import type { SpawnContext } from "../terminalSpawn.js";
 import { GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS, GRACEFUL_SHUTDOWN_TIMEOUT_MS } from "../types.js";
+import { SUBMIT_ENTER_DELAY_MS } from "../terminalInput.js";
 
 vi.mock("node-pty", () => {
   return { spawn: vi.fn() };
@@ -70,13 +71,13 @@ function defaultSpawnContext(overrides?: Partial<SpawnContext>): SpawnContext {
 
 type TerminalProcessOptions = ConstructorParameters<typeof TerminalProcess>[1];
 
-function createAgentTerminal(handles: MockPtyHandles): TerminalProcess {
+function createAgentTerminal(handles: MockPtyHandles, agentId = "claude"): TerminalProcess {
   const opts: TerminalProcessOptions = {
     cwd: process.cwd(),
     cols: 80,
     rows: 24,
     kind: "terminal",
-    launchAgentId: "claude",
+    launchAgentId: agentId,
   };
   return new TerminalProcess(
     "t1",
@@ -105,7 +106,7 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     vi.useRealTimers();
   });
 
-  it("writes Ctrl-E + Ctrl-U before the quit command, separated by the clear delay", async () => {
+  it("writes Ctrl-E + Ctrl-U before submitting the quit command with a separate Enter", async () => {
     const handles = createMockPty();
     const terminal = createAgentTerminal(handles);
 
@@ -119,11 +120,16 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     expect(handles.writeMock).toHaveBeenCalledTimes(1);
     expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
 
-    // Advance past the clear delay and the second write should fire.
+    // Advance past the clear delay and the quit command body should fire.
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
 
     expect(handles.writeMock).toHaveBeenCalledTimes(2);
-    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
+
+    // Enter is sent as a separate key after the same delay used by normal submit.
+    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
+    expect(handles.writeMock).toHaveBeenCalledTimes(3);
+    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
 
     // Emit the session-ID line and the promise should resolve with the captured ID.
     handles.emitData("claude --resume abc-123\n");
@@ -139,6 +145,7 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
     const shutdownPromise = terminal.gracefulShutdown();
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
+    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
 
     // The CLI echoes back ANSI erase sequences in response to Ctrl-U before the real
     // session-ID line. stripAnsiCodes in the matcher should strip these cleanly.
@@ -156,11 +163,11 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_TIMEOUT_MS);
 
     await expect(shutdownPromise).resolves.toBeNull();
-    // Both writes must have been attempted before the timeout — guards against a
-    // broken async IIFE that silently swallows the second write.
-    expect(handles.writeMock).toHaveBeenCalledTimes(2);
+    // Prelude, quit body, and Enter must all be attempted before timeout.
+    expect(handles.writeMock).toHaveBeenCalledTimes(3);
     expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
-    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
+    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
   });
 
   it("skips the quit write when the PTY exits during the clear-delay window", async () => {
@@ -205,7 +212,7 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
   it("resolves null when the quit-command write throws after a successful prelude", async () => {
     const handles = createMockPty((data: string) => {
-      if (data === "/quit\r") {
+      if (data === "/quit") {
         throw new Error("pty dead after prelude");
       }
     });
@@ -297,10 +304,53 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
     expect(handles.writeMock).toHaveBeenCalledTimes(2);
     expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
-    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
+
+    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
+    expect(handles.writeMock).toHaveBeenCalledTimes(3);
+    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
 
     handles.emitData("claude --resume live-agent\n");
     await expect(shutdownPromise).resolves.toBe("live-agent");
+  });
+
+  it("captures Codex session ID after split-submitting /quit", async () => {
+    const handles = createMockPty();
+    const terminal = createAgentTerminal(handles, "codex");
+
+    const shutdownPromise = terminal.gracefulShutdown();
+    await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
+
+    expect(handles.writeMock).toHaveBeenCalledTimes(2);
+    expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
+
+    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
+    expect(handles.writeMock).toHaveBeenCalledTimes(3);
+    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
+
+    handles.emitData("codex resume codex-session-123\n");
+    await expect(shutdownPromise).resolves.toBe("codex-session-123");
+    expect(terminal.getInfo().agentSessionId).toBe("codex-session-123");
+  });
+
+  it("skips Enter when the agent demotes during the quit-submit delay", async () => {
+    const handles = createMockPty();
+    const terminal = createAgentTerminal(handles);
+
+    const shutdownPromise = terminal.gracefulShutdown();
+    await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
+
+    expect(handles.writeMock).toHaveBeenCalledTimes(2);
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
+
+    terminal.getInfo().agentState = "exited";
+    terminal.getInfo().detectedAgentId = undefined;
+
+    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
+
+    await expect(shutdownPromise).resolves.toBeNull();
+    expect(handles.writeMock).toHaveBeenCalledTimes(2);
   });
 
   it("project-scoped (Kiro) skips the session-ID capture loop and resolves null", async () => {
@@ -338,7 +388,11 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
     expect(handles.writeMock).toHaveBeenCalledTimes(2);
     expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
-    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
+
+    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
+    expect(handles.writeMock).toHaveBeenCalledTimes(3);
+    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
 
     // Emit a string that LOOKS like a Claude session-ID line — it must be
     // ignored (Kiro doesn't have a sessionIdPattern at all in the new schema).

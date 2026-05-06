@@ -7,6 +7,7 @@ import {
   type TerminalInfo,
 } from "./types.js";
 import { getLiveAgentId } from "./terminalTitle.js";
+import { normalizeSubmitEnterDelay } from "./terminalInput.js";
 
 export interface TerminalGracefulShutdownHost {
   readonly terminalInfo: TerminalInfo;
@@ -50,6 +51,9 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
   if (!quitCommand && !shutdownKeySequence) {
     return null;
   }
+  const quitSubmitEnterDelayMs = normalizeSubmitEnterDelay(
+    agentConfig?.capabilities?.submitEnterDelayMs
+  );
 
   // Only `session-id` triggers the post-quit pattern-match capture loop —
   // other kinds (rolling-history, named-target, project-scoped) just send
@@ -143,7 +147,19 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
           terminal.ptyProcess.write(shutdownKeySequence);
         }
         if (quitCommand) {
-          terminal.ptyProcess.write(quitCommand + "\r");
+          terminal.ptyProcess.write(quitCommand);
+          await new Promise<void>((r) => setTimeout(r, quitSubmitEnterDelayMs));
+
+          if (resolved) return;
+
+          if (!host.isAgentLive) {
+            origOnData.dispose();
+            origOnExit.dispose();
+            finish(null);
+            return;
+          }
+
+          terminal.ptyProcess.write("\r");
         }
       } catch {
         origOnData.dispose();
