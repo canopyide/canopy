@@ -26,6 +26,7 @@ export interface NotificationHistoryEntry {
     projectId?: string;
     worktreeId?: string;
     panelId?: string;
+    eventKind?: "completed" | "waiting" | "workingPulse" | "uiFeedback";
   };
   actions?: NotificationHistoryAction[];
 }

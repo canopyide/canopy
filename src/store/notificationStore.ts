@@ -58,6 +58,7 @@ export interface Notification {
     projectId?: string;
     worktreeId?: string;
     panelId?: string;
+    eventKind?: "completed" | "waiting" | "workingPulse" | "uiFeedback";
   };
   /**
    * Number of events collapsed into this toast. `undefined` means a single

@@ -332,6 +332,7 @@ describe("project action hardening", () => {
       "project.getSettings",
       "project.saveSettings",
       "project.muteNotifications",
+      "project.silenceNotificationKind",
       "project.detectRunners",
       "project.getStats",
       "project.cloneRepo",

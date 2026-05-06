@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, Info, AlertTriangle, MoreHorizontal, X } from "l
 import { cn } from "@/lib/utils";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 import { actionService } from "@/services/ActionService";
+import { EVENT_KIND_LABEL, isNotificationEventKind } from "@/lib/notify";
 import type { ActionId } from "@shared/types/actions";
 import type { NotificationType } from "@/store/notificationStore";
 import { DURATION_250 } from "@/lib/animationUtils";
@@ -158,31 +159,54 @@ export function NotificationCenterEntry({
         {isNew && (
           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-status-info shrink-0" />
         )}
-        {entry.context?.projectId && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label="Notification options"
-                onClick={(e) => e.stopPropagation()}
-                className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
-              >
-                <MoreHorizontal className="h-3 w-3" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={4}>
-              <DropdownMenuItem
-                onSelect={() => {
-                  const projectId = entry.context?.projectId;
-                  if (!projectId) return;
-                  void actionService.dispatch("project.muteNotifications", { projectId });
-                }}
-              >
-                Mute project notifications
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        {(entry.context?.projectId || entry.context?.eventKind) &&
+          (() => {
+            const eventKind = entry.context?.eventKind;
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Notification options"
+                    onClick={(e) => e.stopPropagation()}
+                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+                  >
+                    <MoreHorizontal className="h-3 w-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={4}>
+                  {isNotificationEventKind(eventKind) && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        const projectId = entry.context?.projectId;
+                        if (!isNotificationEventKind(eventKind)) return;
+                        void actionService.dispatch("project.silenceNotificationKind", {
+                          kind: eventKind,
+                          projectId,
+                        });
+                      }}
+                    >
+                      Silence {EVENT_KIND_LABEL[eventKind]}
+                      {entry.context?.projectId && eventKind !== "uiFeedback"
+                        ? " from this project"
+                        : ""}
+                    </DropdownMenuItem>
+                  )}
+                  {entry.context?.projectId && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        const projectId = entry.context?.projectId;
+                        if (!projectId) return;
+                        void actionService.dispatch("project.muteNotifications", { projectId });
+                      }}
+                    >
+                      Mute project notifications
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          })()}
         {onDismiss && (
           <button
             type="button"
