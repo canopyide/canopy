@@ -2,7 +2,8 @@
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
 import { ReEntrySummary } from "../ReEntrySummary";
-import type { ReEntrySummaryState } from "@/hooks/useReEntrySummary";
+import type { ReEntrySummaryState, WorktreeRow } from "@/hooks/useReEntrySummary";
+import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 
 vi.stubGlobal(
   "requestAnimationFrame",
@@ -10,12 +11,23 @@ vi.stubGlobal(
 );
 vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
 
+function makeRow(overrides: Partial<WorktreeRow> = {}): WorktreeRow {
+  return {
+    worktreeId: "wt-1",
+    worktreeName: "feature-test",
+    worstType: "error" as NotificationHistoryEntry["type"],
+    highlightTitle: "Build failed",
+    entryCount: 2,
+    ...overrides,
+  };
+}
+
 function makeState(overrides: Partial<ReEntrySummaryState> = {}): ReEntrySummaryState {
   return {
     visible: true,
     entries: [],
-    counts: { warning: 0, error: 0, success: 0, info: 0 },
-    singleWorktreeId: null,
+    rows: [],
+    overflowCount: 0,
     dismiss: vi.fn(),
     ...overrides,
   };
@@ -35,21 +47,37 @@ describe("ReEntrySummary", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("renders with correct counts for mixed entry types", () => {
+  it("renders worktree rows with severity icon, name, and title", () => {
     const state = makeState({
-      counts: { warning: 1, error: 2, success: 3, info: 0 },
+      rows: [
+        makeRow({
+          worktreeId: "wt-1",
+          worktreeName: "feature-foo",
+          worstType: "error",
+          highlightTitle: "Build failed",
+        }),
+        makeRow({
+          worktreeId: "wt-2",
+          worktreeName: "feature-bar",
+          worstType: "warning",
+          highlightTitle: "Tests flaky",
+        }),
+      ],
     });
     render(<ReEntrySummary state={state} />);
     expect(screen.getByText("While you were away")).toBeTruthy();
-    expect(screen.getByText("2 failed")).toBeTruthy();
-    expect(screen.getByText("1 waiting for input")).toBeTruthy();
-    expect(screen.getByText("3 completed")).toBeTruthy();
+    expect(screen.getByText("feature-foo")).toBeTruthy();
+    expect(screen.getByText("Build failed")).toBeTruthy();
+    expect(screen.getByText("feature-bar")).toBeTruthy();
+    expect(screen.getByText("Tests flaky")).toBeTruthy();
   });
 
   it("has role=status", () => {
     render(
       <ReEntrySummary
-        state={makeState({ counts: { warning: 0, error: 0, success: 1, info: 0 } })}
+        state={makeState({
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
     expect(screen.getByRole("status")).toBeTruthy();
@@ -59,7 +87,10 @@ describe("ReEntrySummary", () => {
     const dismiss = vi.fn();
     render(
       <ReEntrySummary
-        state={makeState({ dismiss, counts: { warning: 0, error: 0, success: 1, info: 0 } })}
+        state={makeState({
+          dismiss,
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
     fireEvent.click(screen.getByLabelText("Dismiss summary"));
@@ -74,7 +105,10 @@ describe("ReEntrySummary", () => {
     const dismiss = vi.fn();
     render(
       <ReEntrySummary
-        state={makeState({ dismiss, counts: { warning: 0, error: 0, success: 1, info: 0 } })}
+        state={makeState({
+          dismiss,
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
     fireEvent.click(screen.getByText("Open Notifications"));
@@ -82,29 +116,7 @@ describe("ReEntrySummary", () => {
     expect(dismiss).toHaveBeenCalledOnce();
   });
 
-  it("Go to Worktree button appears only when singleWorktreeId is set", () => {
-    const { rerender } = render(
-      <ReEntrySummary
-        state={makeState({
-          singleWorktreeId: null,
-          counts: { warning: 0, error: 0, success: 1, info: 0 },
-        })}
-      />
-    );
-    expect(screen.queryByText("Go to Worktree")).toBeNull();
-
-    rerender(
-      <ReEntrySummary
-        state={makeState({
-          singleWorktreeId: "wt-1",
-          counts: { warning: 0, error: 0, success: 1, info: 0 },
-        })}
-      />
-    );
-    expect(screen.getByText("Go to Worktree")).toBeTruthy();
-  });
-
-  it("Go to Worktree button calls selectWorktree and dismiss", async () => {
+  it("clicking a worktree row calls selectWorktree and dismiss", async () => {
     const { useWorktreeSelectionStore } = await import("@/store/worktreeStore");
     const selectSpy = vi.fn();
     useWorktreeSelectionStore.setState({ selectWorktree: selectSpy });
@@ -114,13 +126,45 @@ describe("ReEntrySummary", () => {
       <ReEntrySummary
         state={makeState({
           dismiss,
-          singleWorktreeId: "wt-42",
-          counts: { warning: 0, error: 0, success: 1, info: 0 },
+          rows: [makeRow({ worktreeId: "wt-42", worktreeName: "fix-bug" })],
         })}
       />
     );
-    fireEvent.click(screen.getByText("Go to Worktree"));
+    fireEvent.click(screen.getByText("fix-bug"));
     expect(selectSpy).toHaveBeenCalledWith("wt-42");
+    expect(dismiss).toHaveBeenCalledOnce();
+  });
+
+  it("renders +N more overflow row when overflowCount > 0", () => {
+    const state = makeState({
+      rows: [
+        makeRow({ worktreeId: "wt-1", worktreeName: "a" }),
+        makeRow({ worktreeId: "wt-2", worktreeName: "b" }),
+        makeRow({ worktreeId: "wt-3", worktreeName: "c" }),
+      ],
+      overflowCount: 2,
+    });
+    render(<ReEntrySummary state={state} />);
+    expect(screen.getByText("+2 more")).toBeTruthy();
+  });
+
+  it("overflow row opens notification center", async () => {
+    const { useUIStore } = await import("@/store/uiStore");
+    const openSpy = vi.fn();
+    useUIStore.setState({ openNotificationCenter: openSpy });
+
+    const dismiss = vi.fn();
+    render(
+      <ReEntrySummary
+        state={makeState({
+          dismiss,
+          rows: [makeRow()],
+          overflowCount: 3,
+        })}
+      />
+    );
+    fireEvent.click(screen.getByText("+3 more"));
+    expect(openSpy).toHaveBeenCalledOnce();
     expect(dismiss).toHaveBeenCalledOnce();
   });
 
@@ -128,7 +172,10 @@ describe("ReEntrySummary", () => {
     const dismiss = vi.fn();
     render(
       <ReEntrySummary
-        state={makeState({ dismiss, counts: { warning: 0, error: 0, success: 1, info: 0 } })}
+        state={makeState({
+          dismiss,
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
     expect(dismiss).not.toHaveBeenCalled();
@@ -142,7 +189,10 @@ describe("ReEntrySummary", () => {
     const dismiss = vi.fn();
     render(
       <ReEntrySummary
-        state={makeState({ dismiss, counts: { warning: 0, error: 0, success: 1, info: 0 } })}
+        state={makeState({
+          dismiss,
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
     const card = screen.getByRole("status");
@@ -160,28 +210,59 @@ describe("ReEntrySummary", () => {
     expect(dismiss).toHaveBeenCalledOnce();
   });
 
-  it("shows info count with correct pluralization", () => {
+  it("pin button toggles aria-pressed and prevents auto-dismiss", () => {
+    const dismiss = vi.fn();
     render(
       <ReEntrySummary
-        state={makeState({ counts: { warning: 0, error: 0, success: 0, info: 1 } })}
+        state={makeState({
+          dismiss,
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
-    expect(screen.getByText("1 update")).toBeTruthy();
+
+    const pinButton = screen.getByLabelText("Pin summary");
+    expect(pinButton.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(pinButton);
+    expect(pinButton.getAttribute("aria-pressed")).toBe("true");
+
+    act(() => {
+      vi.advanceTimersByTime(20000);
+    });
+    expect(dismiss).not.toHaveBeenCalled();
   });
 
-  it("shows plural info count", () => {
+  it("unpin resumes auto-dismiss behavior", () => {
+    const dismiss = vi.fn();
     render(
       <ReEntrySummary
-        state={makeState({ counts: { warning: 0, error: 0, success: 0, info: 3 } })}
+        state={makeState({
+          dismiss,
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
-    expect(screen.getByText("3 updates")).toBeTruthy();
+
+    const pinButton = screen.getByLabelText("Pin summary");
+    fireEvent.click(pinButton);
+    expect(pinButton.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(pinButton);
+    expect(pinButton.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => {
+      vi.advanceTimersByTime(8000);
+    });
+    expect(dismiss).toHaveBeenCalledOnce();
   });
 
   it("does not steal focus", () => {
     render(
       <ReEntrySummary
-        state={makeState({ counts: { warning: 0, error: 0, success: 1, info: 0 } })}
+        state={makeState({
+          rows: [makeRow({ worstType: "success", highlightTitle: "Done" })],
+        })}
       />
     );
     const card = screen.getByRole("status");

@@ -4,10 +4,15 @@ import { act, renderHook } from "@testing-library/react";
 import { useReEntrySummary } from "../useReEntrySummary";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 
+vi.mock("@/store/createWorktreeStore", () => ({
+  getCurrentViewStoreOrNull: vi.fn(),
+}));
+
 function addEntry(
   overrides: Partial<{
     type: "success" | "error" | "info" | "warning";
     message: string;
+    title: string;
     seenAsToast: boolean;
     context: { worktreeId?: string };
   }> = {}
@@ -15,6 +20,7 @@ function addEntry(
   useNotificationHistoryStore.getState().addEntry({
     type: overrides.type ?? "success",
     message: overrides.message ?? "Test",
+    title: overrides.title,
     seenAsToast: overrides.seenAsToast,
     ...(overrides.context ? { context: overrides.context } : {}),
   });
@@ -41,9 +47,11 @@ function simulateBlurFocusCycle(blurDurationMs: number) {
 describe("useReEntrySummary", () => {
   let hasFocusSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     useNotificationHistoryStore.setState({ entries: [], unreadCount: 0 });
     hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const { getCurrentViewStoreOrNull } = await import("@/store/createWorktreeStore");
+    vi.mocked(getCurrentViewStoreOrNull).mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -54,6 +62,7 @@ describe("useReEntrySummary", () => {
     const { result } = renderHook(() => useReEntrySummary());
     expect(result.current.visible).toBe(false);
     expect(result.current.entries).toHaveLength(0);
+    expect(result.current.rows).toHaveLength(0);
   });
 
   it("shows summary on focus after 3+ seconds blur with unseen entries", () => {
@@ -63,8 +72,16 @@ describe("useReEntrySummary", () => {
       window.dispatchEvent(new Event("blur"));
     });
 
-    addEntry({ type: "error", message: "Build failed" });
-    addEntry({ type: "success", message: "Agent done" });
+    addEntry({
+      type: "error",
+      message: "Build failed",
+      context: { worktreeId: "wt-1" },
+    });
+    addEntry({
+      type: "success",
+      message: "Agent done",
+      context: { worktreeId: "wt-2" },
+    });
 
     const realNow = Date.now;
     const later = realNow() + 5000;
@@ -78,8 +95,9 @@ describe("useReEntrySummary", () => {
 
     expect(result.current.visible).toBe(true);
     expect(result.current.entries).toHaveLength(2);
-    expect(result.current.counts.error).toBe(1);
-    expect(result.current.counts.success).toBe(1);
+    expect(result.current.rows).toHaveLength(2);
+    expect(result.current.rows[0]!.worstType).toBe("error");
+    expect(result.current.rows[1]!.worstType).toBe("success");
   });
 
   it("does not show summary when blur is less than 3 seconds", () => {
@@ -93,7 +111,12 @@ describe("useReEntrySummary", () => {
   it("does not show summary when no unseen entries exist", () => {
     const { result } = renderHook(() => useReEntrySummary());
 
-    addEntry({ type: "success", message: "Seen", seenAsToast: true });
+    addEntry({
+      type: "success",
+      message: "Seen",
+      seenAsToast: true,
+      context: { worktreeId: "wt-1" },
+    });
 
     simulateBlurFocusCycle(5000);
 
@@ -106,7 +129,11 @@ describe("useReEntrySummary", () => {
     act(() => {
       window.dispatchEvent(new Event("blur"));
     });
-    addEntry({ type: "success", message: "First batch" });
+    addEntry({
+      type: "success",
+      message: "First batch",
+      context: { worktreeId: "wt-1" },
+    });
 
     const realNow = Date.now;
     let now = realNow();
@@ -129,7 +156,11 @@ describe("useReEntrySummary", () => {
     });
 
     now += 5000;
-    addEntry({ type: "error", message: "Second batch" });
+    addEntry({
+      type: "error",
+      message: "Second batch",
+      context: { worktreeId: "wt-1" },
+    });
 
     now += 5000;
     act(() => {
@@ -149,7 +180,11 @@ describe("useReEntrySummary", () => {
     act(() => {
       window.dispatchEvent(new Event("blur"));
     });
-    addEntry({ type: "success", message: "Test" });
+    addEntry({
+      type: "success",
+      message: "Test",
+      context: { worktreeId: "wt-1" },
+    });
 
     const realNow = Date.now;
     Date.now = () => realNow() + 5000;
@@ -160,8 +195,8 @@ describe("useReEntrySummary", () => {
 
     Date.now = realNow;
 
-    const entries = useNotificationHistoryStore.getState().entries;
-    expect(entries[0]!.summarized).toBe(true);
+    const storeEntries = useNotificationHistoryStore.getState().entries;
+    expect(storeEntries[0]!.summarized).toBe(true);
   });
 
   it("does not trigger when document.hasFocus() returns false", () => {
@@ -171,53 +206,15 @@ describe("useReEntrySummary", () => {
     act(() => {
       window.dispatchEvent(new Event("blur"));
     });
-    addEntry({ type: "success", message: "Test" });
+    addEntry({
+      type: "success",
+      message: "Test",
+      context: { worktreeId: "wt-1" },
+    });
 
     simulateBlurFocusCycle(5000);
 
     expect(result.current.visible).toBe(false);
-  });
-
-  it("computes singleWorktreeId when all entries share one worktree", () => {
-    const { result } = renderHook(() => useReEntrySummary());
-
-    act(() => {
-      window.dispatchEvent(new Event("blur"));
-    });
-    addEntry({ type: "success", message: "A", context: { worktreeId: "wt-1" } });
-    addEntry({ type: "error", message: "B", context: { worktreeId: "wt-1" } });
-
-    const realNow = Date.now;
-    Date.now = () => realNow() + 5000;
-
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
-
-    Date.now = realNow;
-
-    expect(result.current.singleWorktreeId).toBe("wt-1");
-  });
-
-  it("returns null singleWorktreeId when entries span multiple worktrees", () => {
-    const { result } = renderHook(() => useReEntrySummary());
-
-    act(() => {
-      window.dispatchEvent(new Event("blur"));
-    });
-    addEntry({ type: "success", message: "A", context: { worktreeId: "wt-1" } });
-    addEntry({ type: "error", message: "B", context: { worktreeId: "wt-2" } });
-
-    const realNow = Date.now;
-    Date.now = () => realNow() + 5000;
-
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
-
-    Date.now = realNow;
-
-    expect(result.current.singleWorktreeId).toBeNull();
   });
 
   it("dismiss hides the summary", () => {
@@ -226,7 +223,11 @@ describe("useReEntrySummary", () => {
     act(() => {
       window.dispatchEvent(new Event("blur"));
     });
-    addEntry({ type: "success", message: "Test" });
+    addEntry({
+      type: "success",
+      message: "Test",
+      context: { worktreeId: "wt-1" },
+    });
 
     const realNow = Date.now;
     Date.now = () => realNow() + 5000;
@@ -246,6 +247,204 @@ describe("useReEntrySummary", () => {
     expect(result.current.visible).toBe(false);
   });
 
+  it("groups entries by worktreeId and picks worst severity and highlight title", () => {
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({
+      type: "info",
+      message: "Info message",
+      title: "Info Title",
+      context: { worktreeId: "wt-1" },
+    });
+    addEntry({
+      type: "error",
+      message: "Error message",
+      title: "Error Title",
+      context: { worktreeId: "wt-1" },
+    });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.visible).toBe(true);
+    expect(result.current.rows).toHaveLength(1);
+    expect(result.current.rows[0]!.worktreeId).toBe("wt-1");
+    expect(result.current.rows[0]!.worstType).toBe("error");
+    expect(result.current.rows[0]!.highlightTitle).toBe("Error Title");
+    expect(result.current.rows[0]!.entryCount).toBe(2);
+  });
+
+  it("falls back to message when title is undefined", () => {
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({
+      type: "warning",
+      message: "Warning fallback",
+      context: { worktreeId: "wt-1" },
+    });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.rows[0]!.highlightTitle).toBe("Warning fallback");
+  });
+
+  it("sorts rows by severity, then entry count, then worktree name", () => {
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({
+      type: "info",
+      message: "A",
+      context: { worktreeId: "wt-info" },
+    });
+    addEntry({
+      type: "error",
+      message: "B",
+      context: { worktreeId: "wt-error" },
+    });
+    addEntry({
+      type: "warning",
+      message: "C",
+      context: { worktreeId: "wt-warn" },
+    });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.rows[0]!.worstType).toBe("error");
+    expect(result.current.rows[1]!.worstType).toBe("warning");
+    expect(result.current.rows[2]!.worstType).toBe("info");
+  });
+
+  it("caps rows at 3 and sets overflowCount", () => {
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    for (let i = 0; i < 5; i++) {
+      addEntry({
+        type: "info",
+        message: `Entry ${i}`,
+        context: { worktreeId: `wt-${i}` },
+      });
+    }
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.rows).toHaveLength(3);
+    expect(result.current.overflowCount).toBe(2);
+  });
+
+  it("resolves worktree name from current view store", async () => {
+    const { getCurrentViewStoreOrNull } = await import("@/store/createWorktreeStore");
+    vi.mocked(getCurrentViewStoreOrNull).mockReturnValue({
+      getState: () => ({
+        worktrees: new Map([["wt-1", { name: "feature-xyz" }]]),
+      }),
+    } as ReturnType<typeof getCurrentViewStoreOrNull>);
+
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({
+      type: "success",
+      message: "Done",
+      context: { worktreeId: "wt-1" },
+    });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.rows[0]!.worktreeName).toBe("feature-xyz");
+  });
+
+  it("falls back to truncated worktreeId when worktree not in store", () => {
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({
+      type: "success",
+      message: "Done",
+      context: { worktreeId: "abcdef1234567890" },
+    });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.rows[0]!.worktreeName).toBe("abcdef123456");
+  });
+
+  it("suppresses card when all entries lack worktreeId", () => {
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({ type: "success", message: "No worktree" });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.visible).toBe(false);
+  });
+
   it("only includes entries created during the blur period", () => {
     const realNow = Date.now;
     let now = 10000;
@@ -253,7 +452,11 @@ describe("useReEntrySummary", () => {
 
     const { result } = renderHook(() => useReEntrySummary());
 
-    addEntry({ type: "info", message: "Old low-priority" });
+    addEntry({
+      type: "info",
+      message: "Old low-priority",
+      context: { worktreeId: "wt-old" },
+    });
 
     now += 5000;
     act(() => {
@@ -261,7 +464,11 @@ describe("useReEntrySummary", () => {
     });
 
     now += 1000;
-    addEntry({ type: "error", message: "During blur" });
+    addEntry({
+      type: "error",
+      message: "During blur",
+      context: { worktreeId: "wt-new" },
+    });
 
     now += 4000;
     act(() => {
