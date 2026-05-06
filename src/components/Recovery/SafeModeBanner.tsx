@@ -45,7 +45,6 @@ export function SafeModeBanner() {
   if (lastCrashAt) {
     summaryParts.push(`last ${formatRelativeTime(lastCrashAt)}`);
   }
-  const summary = summaryParts.length > 0 ? ` — ${summaryParts.join(", ")}` : "";
 
   const skipped =
     typeof skippedPanelCount === "number" && skippedPanelCount > 0 ? skippedPanelCount : 0;
