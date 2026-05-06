@@ -51,6 +51,12 @@ describe("dialogEscapeBackstop — capture-phase Radix probe", () => {
     expect(radixLayerWasOpenWhenEscapePressed()).toBe(true);
   });
 
+  it("records radixLayerOpenAtCapture=true for an open tooltip", () => {
+    addRadixLayer("tooltip");
+    fireEscape();
+    expect(radixLayerWasOpenWhenEscapePressed()).toBe(true);
+  });
+
   it("ignores modal dialogs (aria-modal=true) — those are AppDialog territory", () => {
     const el = addRadixLayer("dialog");
     el.setAttribute("aria-modal", "true");
@@ -182,6 +188,48 @@ describe("dialogEscapeBackstop — LIFO stack semantics", () => {
 
     expect(outer).toHaveBeenCalledOnce();
     expect(inner).toHaveBeenCalledOnce();
+  });
+
+  it("three-layer stack unwinds in reverse order across successive Escape presses", () => {
+    const a = vi.fn();
+    const b = vi.fn();
+    const c = vi.fn();
+    registerDialogEscapeBackstop(a);
+    const disposeB = registerDialogEscapeBackstop(b);
+    const disposeC = registerDialogEscapeBackstop(c);
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (radixLayerWasOpenWhenEscapePressed()) return;
+      if (isTopmostDialogBackstop(c)) {
+        c();
+      } else if (isTopmostDialogBackstop(b)) {
+        b();
+      } else if (isTopmostDialogBackstop(a)) {
+        a();
+      }
+      markBackstopConsumedEscape();
+    };
+    document.addEventListener("keydown", handler);
+
+    fireEscape();
+    expect(c).toHaveBeenCalledOnce();
+    expect(b).not.toHaveBeenCalled();
+    expect(a).not.toHaveBeenCalled();
+
+    disposeC();
+    fireEscape();
+    expect(b).toHaveBeenCalledOnce();
+    expect(a).not.toHaveBeenCalled();
+
+    disposeB();
+    fireEscape();
+
+    document.removeEventListener("keydown", handler);
+
+    expect(a).toHaveBeenCalledOnce();
+    expect(b).toHaveBeenCalledOnce();
+    expect(c).toHaveBeenCalledOnce();
   });
 
   it("unregistering a middle entry preserves order of remaining", () => {
