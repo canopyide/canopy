@@ -22,6 +22,7 @@ export function KeybindingProfileActions({ onImportComplete }: KeybindingProfile
           type: "success",
           title: "Shortcuts exported",
           message: "Keybinding profile saved successfully.",
+          transient: true,
         });
       }
     } catch {
@@ -60,6 +61,7 @@ export function KeybindingProfileActions({ onImportComplete }: KeybindingProfile
           result.applied > 0
             ? `Applied ${result.applied} shortcut${result.applied !== 1 ? "s" : ""}.`
             : "No shortcuts were applied.",
+        transient: true,
       });
     } catch {
       notify({

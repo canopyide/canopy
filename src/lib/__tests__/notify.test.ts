@@ -291,6 +291,154 @@ describe("notify()", () => {
     });
   });
 
+  describe("transient — toast only, no inbox entry", () => {
+    it("skips history entry when transient is true", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        title: "Path copied",
+        message: "/Users/me/project",
+        transient: true,
+      });
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+      expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
+    });
+
+    it("still shows the toast when transient is true", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "success",
+        title: "Shortcuts exported",
+        message: "Saved.",
+        transient: true,
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationStore.getState().notifications[0]!.historyEntryId).toBeUndefined();
+    });
+
+    it("skips history for grid-bar placement when transient", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "Inline confirmation",
+        placement: "grid-bar",
+        transient: true,
+      });
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("still writes history when transient is false or omitted", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "success", message: "Default behavior" });
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
+    });
+
+    it("transient + priority: 'low' is a silent no-op", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      notify({ type: "info", message: "Nope", priority: "low", transient: true });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("transient: true with priority: 'low'")
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it("transient + priority: 'watch' still fires native with no inbox", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "warning", message: "Watch me", priority: "watch", transient: true });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+      expect(mockShowNative).toHaveBeenCalledOnce();
+    });
+
+    it("transient + urgent during quiet period still fires the toast", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      _setQuietUntil(Date.now() + 10_000);
+      notify({
+        type: "info",
+        message: "Mute confirmation",
+        priority: "high",
+        transient: true,
+        urgent: true,
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+    });
+
+    it("warns and drops silently when transient is paired with a visible origin context", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      setActiveContextAccessors({
+        getActiveWorktreeId: () => "wt-1",
+        getFocusedPanelId: () => null,
+        subscribeActiveContext: () => () => {},
+      });
+      try {
+        notify({
+          type: "info",
+          message: "Origin visible",
+          priority: "high",
+          transient: true,
+          context: { worktreeId: "wt-1" },
+        });
+        expect(useNotificationStore.getState().notifications).toHaveLength(0);
+        expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("transient: true with context")
+        );
+      } finally {
+        _resetActiveContextAccessorsForTest();
+        _resetPendingSuppressedForTest();
+        consoleSpy.mockRestore();
+      }
+    });
+  });
+
+  describe("dev guard — error notifications without actions", () => {
+    it("warns when type is error and no actions are provided", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      notify({ type: "error", title: "Build failed", message: "Compile error." });
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[notify] error notification has no actions"),
+        expect.objectContaining({ type: "error", title: "Build failed" })
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it("does not warn when type is error and an action is provided", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      notify({
+        type: "error",
+        title: "Build failed",
+        message: "Compile error.",
+        action: { label: "Retry", onClick: () => {} },
+      });
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("[notify] error notification has no actions"),
+        expect.any(Object)
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it("does not warn for non-error types without actions", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      notify({ type: "info", message: "Informational" });
+      notify({ type: "success", message: "Done" });
+      notify({ type: "warning", message: "Heads up" });
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("[notify] error notification has no actions"),
+        expect.any(Object)
+      );
+      consoleSpy.mockRestore();
+    });
+  });
+
   describe("routing — focused + high → toast only", () => {
     it("adds toast notification when focused + high", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);

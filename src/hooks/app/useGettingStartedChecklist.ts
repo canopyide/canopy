@@ -108,6 +108,7 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
         title: "Checklist complete!",
         message: "You're all set! Open the Action Palette (Cmd+K) to explore shortcuts.",
         duration: 5000,
+        transient: true,
       });
       setShowCelebration(true);
       safeFireAndForget(window.electron.onboarding.markChecklistCelebrationShown(), {
