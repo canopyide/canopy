@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, RefreshCw, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import type { TerminalRestartError, SpawnError, TerminalReconnectError } from "@/types";
 import { cn } from "@/lib/utils";
@@ -161,7 +161,6 @@ function TerminalPaneComponent({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
   const [isAutoRestarting, setIsAutoRestarting] = useState(false);
-  const [isRestartingService, setIsRestartingService] = useState(false);
   const autoRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestartAttemptRef = useRef(0);
   const processStartTimeRef = useRef<number>(0);
@@ -200,7 +199,6 @@ function TerminalPaneComponent({
   const addPanel = usePanelStore((state) => state.addPanel);
   const removePanel = usePanelStore((state) => state.removePanel);
   const backendStatus = usePanelStore((state) => state.backendStatus);
-  const lastCrashType = usePanelStore((state) => state.lastCrashType);
   const clearReconnectError = usePanelStore((state) => state.clearReconnectError);
 
   const cliDetails = useCliAvailabilityStore((state) => state.details);
@@ -277,17 +275,6 @@ function TerminalPaneComponent({
   const isBackendDisconnected = backendStatus === "disconnected";
   const isBackendRecovering = backendStatus === "recovering";
 
-  useEffect(() => {
-    if (backendStatus !== "disconnected") {
-      setIsRestartingService(false);
-    }
-  }, [backendStatus]);
-
-  useEffect(() => {
-    if (!isRestartingService) return;
-    const timeout = setTimeout(() => setIsRestartingService(false), 15_000);
-    return () => clearTimeout(timeout);
-  }, [isRestartingService]);
   const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
   // Panel kind is always "terminal" for PTY panels; live identity is runtime chrome.
@@ -922,91 +909,16 @@ function TerminalPaneComponent({
 
               <TerminalScrollIndicator terminalId={id} />
 
-              {/* Backend Disconnect Overlay */}
               {(isBackendDisconnected || isBackendRecovering) && (
                 <div
                   className="absolute inset-0 z-50 flex items-center justify-center bg-scrim-strong backdrop-blur-sm"
                   role={isBackendRecovering ? "status" : "alert"}
                   aria-live={isBackendRecovering ? "polite" : "assertive"}
                 >
-                  {isBackendRecovering ? (
+                  {isBackendRecovering && (
                     <div className="flex flex-col items-center gap-3">
                       <Spinner size="2xl" className="text-status-warning" />
                       <span className="text-text-inverse font-medium">Reconnecting...</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-4 p-6 bg-daintree-sidebar border border-daintree-border rounded-xl shadow-[var(--theme-shadow-dialog)] max-w-md text-center">
-                      <div className="flex items-center gap-3 text-status-error">
-                        <AlertTriangle className="w-6 h-6" />
-                        <h3 className="font-semibold text-lg">
-                          {lastCrashType === "OUT_OF_MEMORY"
-                            ? "Memory Limit Exceeded"
-                            : lastCrashType === "SIGNAL_TERMINATED"
-                              ? "Terminal Service Terminated"
-                              : "Connection Lost"}
-                        </h3>
-                      </div>
-
-                      {lastCrashType === "OUT_OF_MEMORY" && (
-                        <div className="text-sm text-daintree-text/80">
-                          <p className="mb-3">
-                            The terminal backend ran out of memory processing high-throughput
-                            output.
-                          </p>
-                          <p className="font-medium text-daintree-text/90 mb-2">Suggestions:</p>
-                          <ul className="list-disc list-inside text-left space-y-1">
-                            <li>Reduce agent output volume</li>
-                            <li>Split long-running tasks into smaller sessions</li>
-                            <li>Close unused terminals</li>
-                          </ul>
-                        </div>
-                      )}
-
-                      {lastCrashType === "SIGNAL_TERMINATED" && (
-                        <p className="text-sm text-daintree-text/80">
-                          The terminal backend became unresponsive and was automatically restarted
-                          by the watchdog. Automatic recovery is in progress.
-                        </p>
-                      )}
-
-                      {(lastCrashType === "UNKNOWN_CRASH" ||
-                        lastCrashType === "ASSERTION_FAILURE" ||
-                        !lastCrashType ||
-                        (lastCrashType !== "OUT_OF_MEMORY" &&
-                          lastCrashType !== "SIGNAL_TERMINATED")) && (
-                        <p className="text-sm text-daintree-text/80">
-                          The terminal backend process terminated unexpectedly. Automatic recovery
-                          is in progress.
-                        </p>
-                      )}
-
-                      <div className="flex flex-col gap-2 w-full">
-                        <button
-                          onClick={() => {
-                            setIsRestartingService(true);
-                            terminalClient.restartService().catch(() => {
-                              setIsRestartingService(false);
-                            });
-                          }}
-                          disabled={isRestartingService}
-                          className="px-4 py-2 border border-daintree-border text-daintree-text/80 hover:bg-overlay-soft hover:text-daintree-text rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center justify-center gap-2"
-                        >
-                          {isRestartingService ? (
-                            <Spinner size="md" />
-                          ) : (
-                            <RefreshCw className="w-4 h-4" />
-                          )}
-                          {isRestartingService ? "Restarting..." : "Restart Terminal Service"}
-                        </button>
-                        <button
-                          onClick={() =>
-                            void actionService.dispatch("ui.refresh", undefined, { source: "user" })
-                          }
-                          className="px-4 py-2 bg-status-error/10 hover:bg-status-error/20 text-daintree-text/60 rounded-lg border border-daintree-border transition-colors text-sm"
-                        >
-                          Restart Application
-                        </button>
-                      </div>
                     </div>
                   )}
                 </div>

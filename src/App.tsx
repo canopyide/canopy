@@ -46,6 +46,7 @@ import { CrashRecoveryDialog } from "./components/Recovery/CrashRecoveryDialog";
 import { SafeModeBanner } from "./components/Recovery/SafeModeBanner";
 import { CloudSyncBanner } from "./components/Recovery/CloudSyncBanner";
 import { GitHubTokenBanner } from "./components/Recovery/GitHubTokenBanner";
+import { HostCrashBanner } from "./components/Recovery/HostCrashBanner";
 import {
   useAppHydration,
   useProjectSwitchRehydration,
@@ -664,6 +665,7 @@ function App() {
             {isSafeMode && <SafeModeBanner />}
             <GitHubTokenBanner />
             <CloudSyncBanner />
+            <HostCrashBanner />
             <DndProvider>
               <VoiceRecordingAnnouncer />
               <AccessibilityAnnouncer />
