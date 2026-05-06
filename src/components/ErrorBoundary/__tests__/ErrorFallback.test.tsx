@@ -114,7 +114,7 @@ describe("ErrorFallback", () => {
       expect(baseProps.resetError).toHaveBeenCalledOnce();
     });
 
-    it("shows Report Issue button for section variant with onReport", () => {
+    it("shows Report issue button for section variant with onReport", () => {
       vi.stubEnv("DEV", false);
       const onReport = vi.fn();
       render(<ErrorFallback {...baseProps} variant="section" onReport={onReport} />);
