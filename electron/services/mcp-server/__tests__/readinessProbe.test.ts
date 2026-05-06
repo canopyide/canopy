@@ -1,0 +1,268 @@
+import http from "node:http";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  PROBE_BASE_DELAY_MS,
+  PROBE_MAX_ATTEMPTS,
+  PROBE_PROTOCOL_VERSION,
+  probeMcpServer,
+} from "../readinessProbe.js";
+
+interface CapturedRequest {
+  method: string;
+  path: string;
+  headers: http.IncomingHttpHeaders;
+  body: string;
+}
+
+interface FakeServer {
+  port: number;
+  requests: CapturedRequest[];
+  close: () => Promise<void>;
+}
+
+type Handler = (req: http.IncomingMessage, res: http.ServerResponse, body: string) => void;
+
+async function startFakeServer(handler: Handler): Promise<FakeServer> {
+  const requests: CapturedRequest[] = [];
+  const server = http.createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on("end", () => {
+      const body = Buffer.concat(chunks).toString("utf-8");
+      requests.push({
+        method: req.method ?? "",
+        path: req.url ?? "",
+        headers: req.headers,
+        body,
+      });
+      handler(req, res, body);
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (typeof address !== "object" || address === null) {
+    throw new Error("failed to bind fake server");
+  }
+
+  return {
+    port: address.port,
+    requests,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections?.();
+        server.close(() => resolve());
+      }),
+  };
+}
+
+describe("probeMcpServer", () => {
+  let fake: FakeServer | null = null;
+
+  afterEach(async () => {
+    if (fake) {
+      await fake.close();
+      fake = null;
+    }
+  });
+
+  it("resolves when the server responds 200 with mcp-session-id and sends DELETE cleanup", async () => {
+    const sessionId = "test-session-id-12345";
+    fake = await startFakeServer((req, res) => {
+      if (req.method === "POST" && req.url === "/mcp") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "mcp-session-id": sessionId,
+        });
+        // Flush headers without ending — mimic a long-lived SSE stream.
+        // The probe should destroy the request after reading headers.
+        res.flushHeaders();
+        return;
+      }
+      if (req.method === "DELETE" && req.url === "/mcp") {
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await probeMcpServer(fake.port, "test-api-key");
+
+    // POST happened first
+    expect(fake.requests[0]?.method).toBe("POST");
+    expect(fake.requests[0]?.path).toBe("/mcp");
+    expect(fake.requests[0]?.headers.authorization).toBe("Bearer test-api-key");
+    const parsed = JSON.parse(fake.requests[0]?.body ?? "{}");
+    expect(parsed.method).toBe("initialize");
+    expect(parsed.params.protocolVersion).toBe(PROBE_PROTOCOL_VERSION);
+    expect(parsed.params.clientInfo.name).toBe("daintree-readiness-probe");
+
+    // Wait briefly for cleanup DELETE to land — it's fire-and-await but
+    // the server might still be writing.
+    await new Promise((r) => setTimeout(r, 50));
+    const deleteReq = fake.requests.find((r) => r.method === "DELETE");
+    expect(deleteReq).toBeDefined();
+    expect(deleteReq?.headers["mcp-session-id"]).toBe(sessionId);
+    expect(deleteReq?.headers.authorization).toBe("Bearer test-api-key");
+  });
+
+  it("rejects when the server returns 401", async () => {
+    fake = await startFakeServer((_req, res) => {
+      res.writeHead(401, { "Content-Type": "text/plain" });
+      res.end("Unauthorized");
+    });
+
+    await expect(probeMcpServer(fake.port, "wrong-key", { hardTimeoutMs: 500 })).rejects.toThrow(
+      /status 401/
+    );
+  });
+
+  it("rejects after retries when the server consistently returns 500", async () => {
+    fake = await startFakeServer((_req, res) => {
+      res.writeHead(500);
+      res.end();
+    });
+
+    await expect(
+      probeMcpServer(fake.port, "test-api-key", { hardTimeoutMs: 500, baseDelayMs: 10 })
+    ).rejects.toThrow(/MCP readiness probe failed after \d+ attempt/);
+
+    expect(fake.requests.filter((r) => r.method === "POST").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rejects when the response is missing the mcp-session-id header", async () => {
+    fake = await startFakeServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end();
+    });
+
+    await expect(
+      probeMcpServer(fake.port, "test-api-key", { hardTimeoutMs: 500, baseDelayMs: 10 })
+    ).rejects.toThrow(/missing mcp-session-id/);
+  });
+
+  it("rejects when the port is not listening (connection refused)", async () => {
+    // Use a port we know is closed — bind and immediately release.
+    const tmp = http.createServer();
+    await new Promise<void>((resolve) => tmp.listen(0, "127.0.0.1", () => resolve()));
+    const address = tmp.address();
+    if (typeof address !== "object" || address === null) throw new Error("bind failed");
+    const closedPort = address.port;
+    await new Promise<void>((resolve) => tmp.close(() => resolve()));
+
+    await expect(
+      probeMcpServer(closedPort, "test-api-key", { hardTimeoutMs: 500, baseDelayMs: 10 })
+    ).rejects.toThrow(/MCP readiness probe failed/);
+  });
+
+  it("treats DELETE cleanup failures as non-fatal", async () => {
+    let postCount = 0;
+    fake = await startFakeServer((req, res) => {
+      if (req.method === "POST") {
+        postCount++;
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "mcp-session-id": "sess-1",
+        });
+        res.flushHeaders();
+        return;
+      }
+      // DELETE — close the socket abruptly to simulate failure
+      res.destroy();
+    });
+
+    await expect(probeMcpServer(fake.port, "test-api-key")).resolves.toBeUndefined();
+    expect(postCount).toBe(1);
+  });
+
+  it("retries with exponential backoff up to maxAttempts on transient failures", async () => {
+    let attempts = 0;
+    fake = await startFakeServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+      attempts++;
+      if (attempts < 2) {
+        res.writeHead(500);
+        res.end();
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "mcp-session-id": "recovered",
+      });
+      // Flush headers, but don't end (SSE stream) — probe destroys after headers
+      res.flushHeaders();
+    });
+
+    await probeMcpServer(fake.port, "test-api-key", { baseDelayMs: 10 });
+    expect(attempts).toBe(2);
+  });
+
+  it("respects the hard timeout", async () => {
+    fake = await startFakeServer((_req, res) => {
+      // Hang forever — never respond. The per-request timeout will
+      // eventually destroy the request, but the hard timeout should
+      // bound the entire probe.
+      void res;
+    });
+
+    const start = Date.now();
+    await expect(
+      probeMcpServer(fake.port, "test-api-key", {
+        hardTimeoutMs: 200,
+        requestTimeoutMs: 80,
+        baseDelayMs: 10,
+      })
+    ).rejects.toThrow();
+    const elapsed = Date.now() - start;
+    // Hard timeout caps the loop. Generous CI slack but not so loose
+    // that a regression to "no hard timeout" would pass.
+    expect(elapsed).toBeLessThan(800);
+  });
+
+  it("logs a warning when DELETE cleanup returns non-2xx (still resolves)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fake = await startFakeServer((req, res) => {
+      if (req.method === "POST") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "mcp-session-id": "doomed",
+        });
+        res.flushHeaders();
+        return;
+      }
+      // DELETE returns 404 — server says "no such session" — non-fatal
+      // but should be logged so operators can see something is off.
+      res.writeHead(404);
+      res.end();
+    });
+
+    await probeMcpServer(fake.port, "test-api-key");
+    // DELETE is fire-and-forget — give it time to complete and log.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Readiness probe cleanup DELETE failed"),
+      expect.objectContaining({ message: expect.stringContaining("status 404") })
+    );
+    warn.mockRestore();
+  });
+});
+
+describe("probe constants", () => {
+  it("exports sane defaults", () => {
+    expect(PROBE_MAX_ATTEMPTS).toBeGreaterThanOrEqual(1);
+    expect(PROBE_BASE_DELAY_MS).toBeGreaterThan(0);
+  });
+});
