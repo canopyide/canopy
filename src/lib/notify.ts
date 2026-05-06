@@ -436,10 +436,8 @@ export function notify(payload: NotifyPayload): string {
 
   const isFocused = typeof document !== "undefined" ? document.hasFocus() : true;
 
-  const originVisible =
-    priority === "high" && isFocused && isOriginSurfaceVisible(context);
-  const shouldToast =
-    priority === "watch" || (priority === "high" && isFocused && !originVisible);
+  const originVisible = priority === "high" && isFocused && isOriginSurfaceVisible(context);
+  const shouldToast = priority === "watch" || (priority === "high" && isFocused && !originVisible);
   const shouldNative = priority === "watch";
 
   const historyEntryId = historyMessage
