@@ -165,7 +165,13 @@ const createProjectSettingsStore: StateCreator<ProjectSettingsState & ProjectSet
         for (const id of unique) {
           const incoming = record[id];
           const existing = next[id];
-          if (!incoming) continue;
+          if (!incoming) {
+            if (existing) {
+              delete next[id];
+              changed = true;
+            }
+            continue;
+          }
           if (
             existing?.completedEnabled !== incoming.completedEnabled ||
             existing?.waitingEnabled !== incoming.waitingEnabled
