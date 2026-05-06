@@ -226,7 +226,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    fireEvent.click(screen.getByText("Report Issue"));
+    fireEvent.click(screen.getByText("Report issue"));
     // Wait a microtask so the async handler resolves.
     await Promise.resolve();
     await Promise.resolve();
@@ -260,7 +260,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    fireEvent.click(screen.getByText("Report Issue"));
+    fireEvent.click(screen.getByText("Report issue"));
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -307,7 +307,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    fireEvent.click(screen.getByText("Report Issue"));
+    fireEvent.click(screen.getByText("Report issue"));
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -343,7 +343,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    fireEvent.click(screen.getByText("Report Issue"));
+    fireEvent.click(screen.getByText("Report issue"));
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -371,7 +371,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    const button = screen.getByText("Report Issue");
+    const button = screen.getByText("Report issue");
     fireEvent.click(button);
     fireEvent.click(button); // second click while first is in-flight
     await Promise.resolve();
@@ -392,7 +392,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    fireEvent.click(screen.getByText("Report Issue"));
+    fireEvent.click(screen.getByText("Report issue"));
     await Promise.resolve();
     await Promise.resolve();
 
