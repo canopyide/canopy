@@ -399,7 +399,7 @@ describe("useProjectSettingsForm", () => {
     expect(result.current.devServerCommand).toBe("yarn dev");
   });
 
-  it("cancels pending debounce on close without firing save", async () => {
+  it("flushes pending debounce on close so unsaved edits survive (#6875)", async () => {
     vi.useFakeTimers();
     const { result, rerender } = renderHook(
       ({ isOpen, projectId }: FormProps) => useProjectSettingsForm({ projectId, isOpen }),
@@ -416,12 +416,40 @@ describe("useProjectSettingsForm", () => {
     act(() => {
       result.current.setProjectName("Unsaved Name");
     });
-    // Debounce is now pending (500ms). Close the dialog before it fires.
-    rerender({ isOpen: false, tick: 3, projectId: "proj-1" });
-    vi.clearAllMocks();
-
+    // Debounce is now pending (500ms). Close the dialog before it fires —
+    // the reset effect must flush pending writes, not cancel them.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
+      rerender({ isOpen: false, tick: 3, projectId: "proj-1" });
+      await vi.runAllTimersAsync();
+    });
+
+    expect(mockUpdateProject).toHaveBeenCalledWith("proj-1", {
+      name: "Unsaved Name",
+      emoji: "🌲",
+      color: undefined,
+    });
+    expect(mockSaveSettings).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("flush() is a no-op when nothing has changed since the last save", async () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(
+      ({ isOpen }: { isOpen: boolean; tick: number }) =>
+        useProjectSettingsForm({ projectId: "proj-1", isOpen }),
+      { initialProps: { isOpen: false, tick: 0 } }
+    );
+    rerender({ isOpen: true, tick: 1 });
+    mockSettings.value = baseSettings;
+    rerender({ isOpen: true, tick: 2 });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    expect(result.current.projectIsInitialized).toBe(true);
+
+    vi.clearAllMocks();
+    await act(async () => {
+      await result.current.flush();
     });
     expect(mockSaveSettings).not.toHaveBeenCalled();
     expect(mockUpdateProject).not.toHaveBeenCalled();

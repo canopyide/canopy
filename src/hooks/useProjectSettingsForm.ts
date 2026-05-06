@@ -181,7 +181,10 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
 
   useEffect(() => {
     if (!isOpen) {
-      debouncedProjectSaveRef.current?.cancel();
+      // Flush pending saves before resetting state. Cancelling silently dropped
+      // in-flight edits when the dialog closed via paths that bypass
+      // handleClose — e.g., WebContentsView detach on project switch (#6875).
+      void debouncedProjectSaveRef.current?.flush();
       setProjectIsInitialized(false);
       setEnvironmentVariables([]);
       setProjectIconSvg(undefined);
@@ -442,11 +445,15 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
   const flush = async () => {
     // First try flushing any pending debounced save
     await debouncedProjectSaveRef.current?.flush();
-    // If no debounced save was pending (state changed but useEffect hasn't
-    // scheduled it yet), force a direct save to avoid data loss on close
-    if (projectIsInitialized && projectPersistRef.current) {
-      await projectPersistRef.current();
-    }
+    if (!projectIsInitialized || !projectPersistRef.current) return;
+    // After the debounced flush, only force a direct save when the snapshot
+    // shows unsaved changes — covers the case where state changed but the
+    // autosave effect hadn't scheduled the debounce yet. Skips the spurious
+    // IPC that previously fired on every close with no edits.
+    const lastSaved = lastSavedSnapshotRef.current;
+    const current = currentProjectSnapshotRef.current;
+    if (lastSaved && current && areSnapshotsEqual(lastSaved, current)) return;
+    await projectPersistRef.current();
   };
 
   return {

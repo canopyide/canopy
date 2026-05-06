@@ -39,6 +39,7 @@ export interface LazySettingsTabEntry extends SettingsTabEntry {
   readonly needsSubtabs?: boolean;
   readonly needsOnClose?: boolean;
   readonly needsOnSettingsChange?: boolean;
+  readonly needsFlushRef?: boolean;
 }
 
 export interface EagerSettingsTabEntry extends SettingsTabEntry {
@@ -227,6 +228,7 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importEnvironmentSettingsTab,
     LazyComponent: LazyEnvironmentSettingsTab,
+    needsFlushRef: true,
   } satisfies LazySettingsTabEntry,
 
   // ═══ Global — Assistant ═══

@@ -40,7 +40,11 @@ function envVarsToRecord(vars: EnvVar[]): Record<string, string> {
 
 const ENV_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
-export function EnvironmentSettingsTab() {
+interface EnvironmentSettingsTabProps {
+  flushRef?: React.RefObject<(() => Promise<void>) | null>;
+}
+
+export function EnvironmentSettingsTab({ flushRef }: EnvironmentSettingsTabProps = {}) {
   const [envRows, setEnvRows] = useState<EnvVar[]>([]);
   const [visibleEnvVars, setVisibleEnvVars] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -209,6 +213,42 @@ export function EnvironmentSettingsTab() {
     setSaveError(null);
     setIsDirty(false);
   }, [savedSnapshot]);
+
+  // Expose a flush callback so SettingsDialog can persist dirty rows when the
+  // dialog closes or the WebContentsView detaches on project switch (#6875).
+  // Empty-key drafts and invalid keys are silently dropped — matches the
+  // sanitize-on-save policy already used by envVarsToRecord.
+  const isDirtyRef = useRef(isDirty);
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+  const envRowsRef = useRef(envRows);
+  useEffect(() => {
+    envRowsRef.current = envRows;
+  }, [envRows]);
+  const loadFailedRef = useRef(loadFailed);
+  useEffect(() => {
+    loadFailedRef.current = loadFailed;
+  }, [loadFailed]);
+
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = async () => {
+      if (loadFailedRef.current) return;
+      if (!isDirtyRef.current) return;
+      const record = envVarsToRecord(envRowsRef.current);
+      try {
+        await window.electron.globalEnv.set(record);
+        setSavedSnapshot(record);
+        setIsDirty(false);
+      } catch (err) {
+        logError("Failed to flush environment variables", err);
+      }
+    };
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flushRef]);
 
   if (isLoading) {
     return (

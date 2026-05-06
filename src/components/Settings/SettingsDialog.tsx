@@ -338,15 +338,58 @@ function SettingsDialogInner({
       });
   }, [isOpen]);
 
+  // Ref to the EnvironmentSettingsTab's flush callback. The tab assigns this
+  // when mounted; SettingsDialog calls it on close and on view detach so dirty
+  // global env edits survive a project switch (#6875).
+  const envFlushRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Track isOpen via ref so the visibilitychange listener can read the latest
+  // value without re-registering on every render.
+  const isOpenRef = useRef(isOpen);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
   const handleBeforeClose = useCallback(async () => {
-    await projectForm.flush();
+    await Promise.allSettled([
+      projectForm.flush(),
+      envFlushRef.current ? envFlushRef.current() : Promise.resolve(),
+    ]);
     return true;
   }, [projectForm]);
 
   const handleClose = useCallback(async () => {
-    await projectForm.flush();
+    await Promise.allSettled([
+      projectForm.flush(),
+      envFlushRef.current ? envFlushRef.current() : Promise.resolve(),
+    ]);
     onClose();
   }, [onClose, projectForm]);
+
+  // Persist unsaved edits when the WebContentsView detaches (project switch,
+  // window close). In Electron 41, beforeunload does not fire on detach but
+  // visibilitychange does — same pattern used by HelpPanel. The renderer
+  // stays alive in the LRU cache so the async flush completes normally.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const handler = () => {
+      if (!document.hidden) return;
+      if (!isOpenRef.current) return;
+      if (cancelled) return;
+      projectForm.flush().catch((err) => {
+        logError("SettingsDialog: failed to flush project form on hide", err);
+      });
+      envFlushRef.current?.().catch((err) => {
+        logError("SettingsDialog: failed to flush environment tab on hide", err);
+      });
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handler);
+    };
+  }, [isOpen, projectForm]);
 
   const searchResults = useMemo(
     () =>
@@ -842,6 +885,7 @@ function SettingsDialogInner({
                             isActive={isActive && !isSearching}
                             scrollToSectionId={scrollToSection}
                             onScrollToSectionHandled={handleScrollToSectionHandled}
+                            envFlushRef={envFlushRef}
                           />
                         </Suspense>
                       ) : null}
@@ -1143,6 +1187,7 @@ function LazyTabContent({
   isActive,
   scrollToSectionId,
   onScrollToSectionHandled,
+  envFlushRef,
 }: {
   entry: LazySettingsTabEntry;
   activeSubtabs: Partial<Record<SettingsTab, string>>;
@@ -1152,6 +1197,7 @@ function LazyTabContent({
   isActive: boolean;
   scrollToSectionId: string | null;
   onScrollToSectionHandled: (id: string) => void;
+  envFlushRef: React.RefObject<(() => Promise<void>) | null>;
 }) {
   const id = entry.id as SettingsTab;
   const activeSubtab = activeSubtabs[id] ?? null;
@@ -1169,6 +1215,9 @@ function LazyTabContent({
   }
   if (entry.needsOnSettingsChange) {
     props.onSettingsChange = onSettingsChange;
+  }
+  if (entry.needsFlushRef) {
+    props.flushRef = envFlushRef;
   }
 
   // Runs synchronously after the lazy chunk's Suspense boundary commits, so

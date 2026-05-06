@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import { createRef } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EnvironmentSettingsTab } from "../EnvironmentSettingsTab";
 import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 
@@ -130,6 +131,95 @@ describe("EnvironmentSettingsTab", () => {
         duration: 0,
       })
     );
+  });
+
+  it("flushRef saves dirty rows via globalEnv.set without an explicit Save click (#6875)", async () => {
+    window.electron = {
+      globalEnv: {
+        get: vi.fn().mockResolvedValue({ EXISTING: "value" }),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+    } as unknown as typeof window.electron;
+
+    const flushRef = createRef<(() => Promise<void>) | null>();
+    render(
+      <SettingsValidationProvider>
+        <EnvironmentSettingsTab flushRef={flushRef} />
+      </SettingsValidationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Environment variable name")).toHaveLength(1);
+    });
+
+    const valueInput = screen.getByLabelText("Environment variable value");
+    fireEvent.change(valueInput, { target: { value: "new-value" } });
+
+    expect(flushRef.current).toBeTruthy();
+    await act(async () => {
+      await flushRef.current?.();
+    });
+
+    expect(window.electron.globalEnv.set).toHaveBeenCalledWith({ EXISTING: "new-value" });
+  });
+
+  it("flushRef silently drops empty-key drafts (matches sanitize-on-save policy)", async () => {
+    window.electron = {
+      globalEnv: {
+        get: vi.fn().mockResolvedValue({}),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+    } as unknown as typeof window.electron;
+
+    const flushRef = createRef<(() => Promise<void>) | null>();
+    render(
+      <SettingsValidationProvider>
+        <EnvironmentSettingsTab flushRef={flushRef} />
+      </SettingsValidationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("No environment variables configured yet")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /add variable/i }));
+    // Leave the key empty — the row is dirty but unsaveable. Flush should
+    // still be safe to call and write an empty record.
+    fireEvent.change(screen.getByLabelText("Environment variable value"), {
+      target: { value: "stranded" },
+    });
+
+    await act(async () => {
+      await flushRef.current?.();
+    });
+
+    expect(window.electron.globalEnv.set).toHaveBeenCalledWith({});
+  });
+
+  it("flushRef is a no-op when nothing is dirty", async () => {
+    window.electron = {
+      globalEnv: {
+        get: vi.fn().mockResolvedValue({ EXISTING: "value" }),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+    } as unknown as typeof window.electron;
+
+    const flushRef = createRef<(() => Promise<void>) | null>();
+    render(
+      <SettingsValidationProvider>
+        <EnvironmentSettingsTab flushRef={flushRef} />
+      </SettingsValidationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Environment variable name")).toHaveLength(1);
+    });
+
+    await act(async () => {
+      await flushRef.current?.();
+    });
+
+    expect(window.electron.globalEnv.set).not.toHaveBeenCalled();
   });
 
   it("adds new variable row and saves via globalEnv.set", async () => {
