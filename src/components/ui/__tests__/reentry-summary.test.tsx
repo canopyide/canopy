@@ -15,6 +15,19 @@ vi.stubGlobal(
 );
 vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
 
+function makeEntry(overrides: Partial<NotificationHistoryEntry> = {}): NotificationHistoryEntry {
+  return {
+    id: "e1",
+    type: "info",
+    message: "test",
+    timestamp: 1,
+    seenAsToast: false,
+    summarized: false,
+    countable: true,
+    ...overrides,
+  };
+}
+
 function makeRow(overrides: Partial<WorktreeRow> = {}): WorktreeRow {
   return {
     worktreeId: "wt-1",
@@ -41,12 +54,40 @@ describe("ReEntrySummary", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     const { getCurrentViewStoreOrNull } = await import("@/store/createWorktreeStore");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     vi.mocked(getCurrentViewStoreOrNull).mockReturnValue({
       getState: () => ({
         worktrees: new Map([
-          ["wt-1", { name: "feature-test" }],
-          ["wt-2", { name: "feature-other" }],
-          ["wt-42", { name: "fix-bug" }],
+          [
+            "wt-1",
+            {
+              id: "wt-1",
+              path: "/tmp/wt-1",
+              name: "feature-test",
+              isCurrent: false,
+              worktreeId: "wt-1",
+            },
+          ],
+          [
+            "wt-2",
+            {
+              id: "wt-2",
+              path: "/tmp/wt-2",
+              name: "feature-other",
+              isCurrent: false,
+              worktreeId: "wt-2",
+            },
+          ],
+          [
+            "wt-42",
+            {
+              id: "wt-42",
+              path: "/tmp/wt-42",
+              name: "fix-bug",
+              isCurrent: false,
+              worktreeId: "wt-42",
+            },
+          ],
         ]),
       }),
     } as ReturnType<typeof getCurrentViewStoreOrNull>);
@@ -315,7 +356,7 @@ describe("ReEntrySummary", () => {
       <ReEntrySummary
         state={makeState({
           dismiss,
-          entries: [{ id: "a", type: "info", message: "x", timestamp: 1 } as any],
+          entries: [makeEntry({ id: "a", message: "x" })],
           rows: [makeRow({ worktreeId: "wt-1", highlightTitle: "First" })],
         })}
       />
@@ -329,7 +370,7 @@ describe("ReEntrySummary", () => {
       <ReEntrySummary
         state={makeState({
           dismiss,
-          entries: [{ id: "b", type: "info", message: "y", timestamp: 2 } as any],
+          entries: [makeEntry({ id: "b", message: "y" })],
           rows: [makeRow({ worktreeId: "wt-2", highlightTitle: "Second" })],
         })}
       />

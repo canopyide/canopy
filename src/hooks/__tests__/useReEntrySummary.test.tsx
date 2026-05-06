@@ -372,9 +372,21 @@ describe("useReEntrySummary", () => {
 
   it("resolves worktree name from current view store", async () => {
     const { getCurrentViewStoreOrNull } = await import("@/store/createWorktreeStore");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     vi.mocked(getCurrentViewStoreOrNull).mockReturnValue({
       getState: () => ({
-        worktrees: new Map([["wt-1", { name: "feature-xyz" }]]),
+        worktrees: new Map([
+          [
+            "wt-1",
+            {
+              id: "wt-1",
+              path: "/tmp/wt-1",
+              name: "feature-xyz",
+              isCurrent: false,
+              worktreeId: "wt-1",
+            },
+          ],
+        ]),
       }),
     } as ReturnType<typeof getCurrentViewStoreOrNull>);
 
@@ -427,9 +439,15 @@ describe("useReEntrySummary", () => {
 
   it("falls back to truncated ID when worktree name is empty string", async () => {
     const { getCurrentViewStoreOrNull } = await import("@/store/createWorktreeStore");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     vi.mocked(getCurrentViewStoreOrNull).mockReturnValue({
       getState: () => ({
-        worktrees: new Map([["wt-1", { name: "" }]]),
+        worktrees: new Map([
+          [
+            "wt-1",
+            { id: "wt-1", path: "/tmp/wt-1", name: "", isCurrent: false, worktreeId: "wt-1" },
+          ],
+        ]),
       }),
     } as ReturnType<typeof getCurrentViewStoreOrNull>);
 
