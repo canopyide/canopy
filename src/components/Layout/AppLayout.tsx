@@ -435,13 +435,25 @@ export function AppLayout({
           className="flex-1 flex overflow-hidden relative"
           style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}
         >
-          {currentProject != null && (
-            <ErrorBoundary variant="section" componentName="Sidebar">
-              <Sidebar width={effectiveSidebarWidth} onResize={handleSidebarResize}>
-                {sidebarContent}
-              </Sidebar>
-            </ErrorBoundary>
-          )}
+          <div
+            className={cn(
+              "relative h-full shrink-0 overflow-clip",
+              !reduceAnimations &&
+                "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+              !showSidebar && "pointer-events-none"
+            )}
+            style={{ width: effectiveSidebarWidth, overflowClipMargin: "6px" }}
+          >
+            <div className="absolute top-0 left-0 h-full" style={{ width: sidebarWidth }}>
+              {currentProject != null && (
+                <ErrorBoundary variant="section" componentName="Sidebar">
+                  <Sidebar width={sidebarWidth} onResize={handleSidebarResize}>
+                    {sidebarContent}
+                  </Sidebar>
+                </ErrorBoundary>
+              )}
+            </div>
+          </div>
           <ErrorBoundary variant="section" componentName="MainContent">
             <main
               aria-label="Content"

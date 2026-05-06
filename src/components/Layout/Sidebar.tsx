@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 import { ProjectResourceBadge, QuickRun } from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
-import { usePreferencesStore } from "@/store";
 import { DEFAULT_SIDEBAR_WIDTH } from "./AppLayout";
 import { actionService } from "@/services/ActionService";
 import {
@@ -38,8 +37,6 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
   const isMacroFocused = useMacroFocusStore((state) => state.focusedRegion === "sidebar");
-  const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
-  const animateWidth = !isResizing && !reduceAnimations;
 
   useEffect(() => {
     useMacroFocusStore.getState().setRegionRef("sidebar", sidebarRef.current);
@@ -108,16 +105,12 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
           data-macro-focus={isMacroFocused ? "true" : undefined}
           className={cn(
             "sidebar-root",
-            "relative shrink-0 flex flex-col outline-hidden overflow-hidden",
+            "relative w-full h-full flex flex-col outline-hidden overflow-hidden",
             "surface-chrome",
             "border-r border-divider",
             "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
-            animateWidth &&
-              "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
-            width === 0 && "pointer-events-none",
             className
           )}
-          style={{ width }}
         >
           <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
 
