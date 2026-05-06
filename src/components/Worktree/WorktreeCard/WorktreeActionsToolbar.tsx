@@ -136,6 +136,7 @@ export function WorktreeActionsToolbar({
                 e.stopPropagation();
                 onCleanupWorktree();
               }}
+              data-no-dnd
               className="sidebar-action-button p-1.5 text-status-error/70 hover:text-status-error rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
               aria-label="Delete worktree"
               data-testid="worktree-cleanup-button"
@@ -149,6 +150,7 @@ export function WorktreeActionsToolbar({
       {canCollapse && (
         <button
           onClick={onToggleCollapse}
+          data-no-dnd
           className="sidebar-action-button p-1.5 text-daintree-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
           aria-expanded={!isCollapsed}
           aria-controls={isCollapsed ? undefined : contentId}
@@ -169,6 +171,7 @@ export function WorktreeActionsToolbar({
             <DropdownMenuTrigger asChild>
               <button
                 onClick={(e) => e.stopPropagation()}
+                data-no-dnd
                 className="sidebar-action-button p-1.5 text-daintree-text/60 hover:text-text-primary rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
                 aria-label="More actions"
                 data-testid="worktree-actions-menu"
