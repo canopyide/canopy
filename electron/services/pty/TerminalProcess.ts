@@ -75,15 +75,14 @@ import { gracefulShutdown as runGracefulShutdown } from "./TerminalGracefulShutd
 import { handleAgentDetection as runHandleAgentDetection } from "./TerminalAgentDetection.js";
 import { TerminalProcessLifecycle } from "./TerminalProcessLifecycle.js";
 import {
-  AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
-  AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
-  AGENT_WORKING_RECOVERY_WINDOW_MS,
-  AGENT_OUTPUT_ACTIVITY_LINE_COUNT,
-  SustainedChangeTracker,
   createVisibleContentSnapshot,
   measureVisibleContentDelta,
   type VisibleContentSnapshot,
 } from "./SustainedChangeTracker.js";
+import {
+  AGENT_OUTPUT_ACTIVITY_LINE_COUNT,
+  AgentActivityTemperature,
+} from "./AgentActivityTemperature.js";
 
 type CursorBuffer = {
   cursorY?: number;
@@ -126,11 +125,7 @@ export class TerminalProcess {
   private headlessResponderDisposable: { dispose: () => void } | null = null;
   private synchronizedFrameDetector: SynchronizedFrameDetector | null = null;
   private sessionSnapshotter!: SessionSnapshotter;
-  private readonly agentOutputRecoveryTracker = new SustainedChangeTracker({
-    windowMs: AGENT_WORKING_RECOVERY_WINDOW_MS,
-    minChangedFrames: AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
-    maxQuietMs: AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
-  });
+  private readonly agentOutputTemperature = new AgentActivityTemperature();
   private agentOutputContentSnapshot: VisibleContentSnapshot | undefined;
 
   private readonly terminalInfo: TerminalInfo;
@@ -472,7 +467,7 @@ export class TerminalProcess {
 
   private disposeHeadless(): void {
     const terminal = this.terminalInfo;
-    this.agentOutputRecoveryTracker.reset();
+    this.agentOutputTemperature.reset();
     this.agentOutputContentSnapshot = undefined;
     if (!terminal.headlessTerminal) {
       return;
@@ -899,7 +894,7 @@ export class TerminalProcess {
       if (this.activityMonitor) {
         this.activityMonitor.notifyResize();
       }
-      this.agentOutputRecoveryTracker.reset();
+      this.agentOutputTemperature.noteResize(Date.now());
       this.agentOutputContentSnapshot = undefined;
     } catch (error) {
       console.error(`Failed to resize terminal ${this.id}:`, error);
@@ -1286,14 +1281,13 @@ export class TerminalProcess {
 
   private noteAgentOutputActivity(beforeSnapshot: VisibleContentSnapshot | undefined): void {
     if (!this.isAgentLive) {
-      this.agentOutputRecoveryTracker.reset();
+      this.agentOutputTemperature.reset();
       this.agentOutputContentSnapshot = undefined;
       return;
     }
 
     const state = this.terminalInfo.agentState;
     if (state !== "waiting" && state !== "idle" && state !== "completed") {
-      this.agentOutputRecoveryTracker.reset();
       return;
     }
 
@@ -1306,13 +1300,17 @@ export class TerminalProcess {
       beforeSnapshot ?? this.agentOutputContentSnapshot,
       afterSnapshot
     );
+    const hadFallbackBaseline = this.agentOutputContentSnapshot !== undefined;
     this.agentOutputContentSnapshot = afterSnapshot;
+    if (!hadFallbackBaseline) {
+      this.agentOutputTemperature.observeDelta(Date.now(), { changedChars: 0 });
+      return;
+    }
 
-    if (
-      this.agentOutputRecoveryTracker.observe(Date.now(), { changedChars: delta.changedChars }) &&
-      this.terminalInfo.agentState === state
-    ) {
-      this.agentOutputRecoveryTracker.reset();
+    const result = this.agentOutputTemperature.observeDelta(Date.now(), {
+      changedChars: delta.changedChars,
+    });
+    if (result.stateHint === "busy" && this.terminalInfo.agentState === state) {
       this.deps.agentStateService.handleActivityState(this.terminalInfo, "busy", {
         trigger: "output",
       });

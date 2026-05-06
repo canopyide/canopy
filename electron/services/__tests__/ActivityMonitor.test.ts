@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ActivityMonitor } from "../ActivityMonitor.js";
-import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../pty/SustainedChangeTracker.js";
+import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../pty/AgentActivityTemperature.js";
 
 describe("ActivityMonitor", () => {
   beforeEach(() => {
@@ -780,6 +780,45 @@ describe("ActivityMonitor", () => {
 
       expect(monitor.getState()).toBe("busy");
       expect(onStateChange).toHaveBeenCalledWith("agent-simple-tail", 1000, "busy", {
+        trigger: "output",
+      });
+
+      monitor.dispose();
+    });
+
+    it("treats resize as suppressed baseline reseed before simple output recovery", () => {
+      const onStateChange = vi.fn();
+      let visible = "waiting";
+      const monitor = new ActivityMonitor("agent-simple-resize", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => [visible],
+        getCursorLine: () => visible,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      onStateChange.mockClear();
+
+      monitor.notifyResize(1000);
+      visible = "resize reflow";
+      vi.advanceTimersByTime(500);
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      visible = "post resize baseline";
+      vi.advanceTimersByTime(600);
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      for (let i = 0; i < 4; i += 1) {
+        visible = `post resize activity ${i + 1}`;
+        vi.advanceTimersByTime(700);
+      }
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith("agent-simple-resize", 1000, "busy", {
         trigger: "output",
       });
 

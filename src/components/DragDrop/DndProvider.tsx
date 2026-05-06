@@ -6,7 +6,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  type MutableRefObject,
 } from "react";
 import {
   DndContext,
@@ -221,12 +220,12 @@ function DragOverlayWithCursorTracking({
   activeTerminal,
   activeWorktree,
   groupTabCount,
-  isCancelDropRef,
+  isCancelDrop,
 }: {
   activeTerminal: TerminalInstance | null;
   activeWorktree: WorktreeSnapshot | null;
   groupTabCount?: number;
-  isCancelDropRef: MutableRefObject<boolean>;
+  isCancelDrop: boolean;
 }) {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
@@ -295,7 +294,7 @@ function DragOverlayWithCursorTracking({
   return (
     <DragOverlay
       dropAnimation={
-        isCancelDropRef.current
+        isCancelDrop
           ? { duration: PANEL_RESTORE_DURATION, easing: EASE_OUT_EXPO, sideEffects: null }
           : null
       }
@@ -340,7 +339,7 @@ export function DndProvider({ children }: DndProviderProps) {
   const stabilizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dockRetryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-  const isCancelDropRef = useRef(false);
+  const [isCancelDrop, setIsCancelDrop] = useState(false);
 
   // Configure sensors with activation constraint so clicks work for popovers
   const sensors = useSensors(
@@ -371,7 +370,7 @@ export function DndProvider({ children }: DndProviderProps) {
   }, [activeId, activeData, panelsById]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    isCancelDropRef.current = false;
+    setIsCancelDrop(false);
 
     const { active } = event;
     const dragId = active.id as string;
@@ -895,7 +894,7 @@ export function DndProvider({ children }: DndProviderProps) {
       const { active, over } = event;
 
       if (!over) {
-        isCancelDropRef.current = true;
+        setIsCancelDrop(true);
         return true;
       }
 
@@ -908,7 +907,7 @@ export function DndProvider({ children }: DndProviderProps) {
       const draggedId = activeDataRaw?.terminal?.id ?? (active?.id ? String(active.id) : null);
 
       if (!activeDataRaw || !draggedId) {
-        isCancelDropRef.current = true;
+        setIsCancelDrop(true);
         return true;
       }
 
@@ -920,7 +919,7 @@ export function DndProvider({ children }: DndProviderProps) {
         activeDataRaw.groupPanelIds.length > 1;
       const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
       if (isWorktreeDrop && isGroupDrag) {
-        isCancelDropRef.current = true;
+        setIsCancelDrop(true);
         return true;
       }
 
@@ -946,7 +945,7 @@ export function DndProvider({ children }: DndProviderProps) {
             );
 
             if (gridIsFull) {
-              isCancelDropRef.current = true;
+              setIsCancelDrop(true);
               return true;
             }
           }
@@ -1074,7 +1073,7 @@ export function DndProvider({ children }: DndProviderProps) {
         activeTerminal={activeTerminal}
         activeWorktree={activeSortWorktree}
         groupTabCount={activeData?.groupPanelIds?.length}
-        isCancelDropRef={isCancelDropRef}
+        isCancelDrop={isCancelDrop}
       />
     </DndContext>
   );

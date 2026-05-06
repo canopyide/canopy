@@ -26,13 +26,13 @@ Actions expose themselves as an MCP-compatible manifest via `actionService.list(
 
 ## Key Files
 
-| File                                        | Purpose                                                                          |
-| ------------------------------------------- | -------------------------------------------------------------------------------- |
-| `shared/types/actions.ts`                   | Type definitions: `ActionId`, `ActionDefinition`, `ActionSource`, `ActionDanger` |
-| `src/services/ActionService.ts`             | Singleton registry and dispatcher                                                |
-| `src/services/actions/definitions/*.ts`     | 17 domain-specific action definition files                                       |
-| `src/services/actions/actionDefinitions.ts` | Registration aggregator                                                          |
-| `src/hooks/useActionRegistry.ts`            | React hook that wires UI callbacks to the service                                |
+| File | Purpose |
+| --- | --- |
+| `shared/types/actions.ts` | Type definitions: `ActionId`, `ActionDefinition`, `ActionSource`, `ActionDanger` |
+| `src/services/ActionService.ts` | Singleton registry and dispatcher |
+| `src/services/actions/definitions/*.ts` | 17 domain-specific action definition files |
+| `src/services/actions/actionDefinitions.ts` | Registration aggregator |
+| `src/hooks/useActionRegistry.ts` | React hook that wires UI callbacks to the service |
 
 ## Action Definition Anatomy
 
@@ -239,21 +239,21 @@ Use the Event Inspector (Developer Tools) to view action history in real-time.
 
 ## Action Categories
 
-| Category      | Description               | Example Actions                                          |
-| ------------- | ------------------------- | -------------------------------------------------------- |
-| `terminal`    | Terminal/panel operations | `terminal.new`, `terminal.kill`, `terminal.focusNext`    |
-| `agent`       | AI agent spawning         | `agent.launch`                                           |
-| `worktree`    | Git worktree management   | `worktree.create`, `worktree.delete`, `worktree.refresh` |
-| `project`     | Project switching/config  | `project.switch`, `project.add`                          |
-| `github`      | GitHub integration        | `github.openIssues`, `github.listPullRequests`           |
-| `git`         | Git operations            | `git.getProjectPulse`, `git.listCommits`                 |
-| `navigation`  | UI navigation             | `nav.toggleFocusMode`                                    |
-| `app`         | Application settings      | `app.settings.openTab`                                   |
-| `preferences` | User preferences          | `preferences.showProjectPulse.set`                       |
-| `browser`     | Browser panel control     | `browser.reload`, `browser.navigate`                     |
-| `system`      | System operations         | `system.openExternal`, `system.checkCommand`             |
-| `logs`        | Log management            | `logs.openFile`, `logs.clear`                            |
-| `portal`      | Portal browser            | `portal.toggle`, `portal.openUrl`                        |
+| Category | Description | Example Actions |
+| --- | --- | --- |
+| `terminal` | Terminal/panel operations | `terminal.new`, `terminal.kill`, `terminal.focusNext` |
+| `agent` | AI agent spawning | `agent.launch` |
+| `worktree` | Git worktree management | `worktree.create`, `worktree.delete`, `worktree.refresh` |
+| `project` | Project switching/config | `project.switch`, `project.add` |
+| `github` | GitHub integration | `github.openIssues`, `github.listPullRequests` |
+| `git` | Git operations | `git.getProjectPulse`, `git.listCommits` |
+| `navigation` | UI navigation | `nav.toggleFocusMode` |
+| `app` | Application settings | `app.settings.openTab` |
+| `preferences` | User preferences | `preferences.showProjectPulse.set` |
+| `browser` | Browser panel control | `browser.reload`, `browser.navigate` |
+| `system` | System operations | `system.openExternal`, `system.checkCommand` |
+| `logs` | Log management | `logs.openFile`, `logs.clear` |
+| `portal` | Portal browser | `portal.toggle`, `portal.openUrl` |
 
 ## FAQ
 

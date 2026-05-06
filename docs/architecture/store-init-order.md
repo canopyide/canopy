@@ -10,11 +10,11 @@ The lazy getter pattern allows stores to reference each other **after** both mod
 
 ## Current Lazy Injection Sites
 
-| Source Module                     | Target Module            | Injection Type      | Setter Call                | Purpose                                                               |
-| --------------------------------- | ------------------------ | ------------------- | -------------------------- | --------------------------------------------------------------------- |
-| `projectStore.ts`                 | `panelStore.ts`          | Circular dependency | `panelStore.ts:524-529`    | Snapshot persistable panel state synchronously before project switch  |
-| `projectStore.ts`                 | `worktreeSelectionStore` | Circular dependency | `worktreeStore.ts:537-538` | Capture active worktree ID during project switch                      |
-| `persistence/panelPersistence.ts` | `projectStore.ts`        | Optional lazy dep   | `projectStore.ts:636`      | Provide project ID getter for persistence operations (fails silently) |
+| Source Module | Target Module | Injection Type | Setter Call | Purpose |
+| --- | --- | --- | --- | --- |
+| `projectStore.ts` | `panelStore.ts` | Circular dependency | `panelStore.ts:524-529` | Snapshot persistable panel state synchronously before project switch |
+| `projectStore.ts` | `worktreeSelectionStore` | Circular dependency | `worktreeStore.ts:537-538` | Capture active worktree ID during project switch |
+| `persistence/panelPersistence.ts` | `projectStore.ts` | Optional lazy dep | `projectStore.ts:636` | Provide project ID getter for persistence operations (fails silently) |
 
 ## How It Works
 

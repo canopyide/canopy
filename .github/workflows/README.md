@@ -21,12 +21,12 @@ Automated build and publish workflow for Daintree releases to Cloudflare R2.
 
 Add these secrets in **Settings → Secrets and variables → Actions**:
 
-| Secret                 | Value                     | Example                                         |
-| ---------------------- | ------------------------- | ----------------------------------------------- |
-| `R2_ENDPOINT`          | R2 S3-compatible endpoint | `https://<account-id>.r2.cloudflarestorage.com` |
-| `R2_BUCKET`            | Bucket name               | `daintree-updates`                              |
-| `R2_ACCESS_KEY_ID`     | R2 API token access key   | (from step 2)                                   |
-| `R2_SECRET_ACCESS_KEY` | R2 API token secret       | (from step 2)                                   |
+| Secret | Value | Example |
+| --- | --- | --- |
+| `R2_ENDPOINT` | R2 S3-compatible endpoint | `https://<account-id>.r2.cloudflarestorage.com` |
+| `R2_BUCKET` | Bucket name | `daintree-updates` |
+| `R2_ACCESS_KEY_ID` | R2 API token access key | (from step 2) |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret | (from step 2) |
 
 ### 4. Update package.json
 

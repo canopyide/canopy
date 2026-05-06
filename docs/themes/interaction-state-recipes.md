@@ -186,13 +186,13 @@ This document maps each interactive component role to its canonical Tailwind cla
 
 ## Transition Patterns
 
-| Need                    | Use Instead                                     | Why                                                                        |
-| ----------------------- | ----------------------------------------------- | -------------------------------------------------------------------------- |
-| Color/bg/border changes | `transition-colors`                             | Covers color, background-color, border-color for most interactive states   |
-| Width/height changes    | `transition-[width]` / `transition-[height]`    | Layout-impacting properties should be explicit                             |
-| Opacity changes         | `transition-opacity`                            | Visual fades only                                                          |
-| Transform changes       | `transition-transform`                          | Animations, scale effects                                                  |
-| Multiple props          | `transition-[color,background-color,transform]` | Explicit is better than `transition-all` — forces all props to interpolate |
+| Need | Use Instead | Why |
+| --- | --- | --- |
+| Color/bg/border changes | `transition-colors` | Covers color, background-color, border-color for most interactive states |
+| Width/height changes | `transition-[width]` / `transition-[height]` | Layout-impacting properties should be explicit |
+| Opacity changes | `transition-opacity` | Visual fades only |
+| Transform changes | `transition-transform` | Animations, scale effects |
+| Multiple props | `transition-[color,background-color,transform]` | Explicit is better than `transition-all` — forces all props to interpolate |
 
 ---
 
@@ -216,20 +216,20 @@ Each recipe is a class fragment to apply to a suitable base component, not a sta
 
 ## Canonical Examples
 
-| Component             | File                                     | Key Pattern                                      |
-| --------------------- | ---------------------------------------- | ------------------------------------------------ |
-| Quick Switcher Item   | `QuickSwitcherItem.tsx`                  | Selected state with accent rail via `before:`    |
-| Settings Input        | `SettingsInput.tsx`                      | Input focus with outline ring                    |
-| Settings Textarea     | `SettingsTextarea.tsx`                   | Input focus with outline ring                    |
-| Button Ghost          | `button.tsx` (line 21)                   | Ghost button hover with overlay-soft             |
-| Button Pill           | `HelpAgentDockButton.tsx`                | Dock item active with border + ring combo        |
-| Settings Subtab       | `SettingsSubtabBar.tsx`                  | Active tab with bottom border accent             |
-| Worktree Card         | `WorktreeCard.tsx`                       | Card hover with accent-tinged border + elevation |
-| GitHub Settings Tab   | `GitHubSettingsTab.tsx` (line 213)       | Input focus with border-shift (no outline)       |
-| Notification Settings | `NotificationSettingsTab.tsx` (line 217) | Input focus with border-shift (no outline)       |
-| Settings Switch Row   | `SettingsSwitchCard.tsx`                 | Neutral row, accent only on switch track         |
-| Portal Drag Handle    | `PortalToolbar.tsx` (line 107)           | Drag state with elevation + scale, no accent     |
-| Inline Rename Input   | `TabButton.tsx` (line 274)               | Neutral border with accent focus outline only    |
+| Component | File | Key Pattern |
+| --- | --- | --- |
+| Quick Switcher Item | `QuickSwitcherItem.tsx` | Selected state with accent rail via `before:` |
+| Settings Input | `SettingsInput.tsx` | Input focus with outline ring |
+| Settings Textarea | `SettingsTextarea.tsx` | Input focus with outline ring |
+| Button Ghost | `button.tsx` (line 21) | Ghost button hover with overlay-soft |
+| Button Pill | `HelpAgentDockButton.tsx` | Dock item active with border + ring combo |
+| Settings Subtab | `SettingsSubtabBar.tsx` | Active tab with bottom border accent |
+| Worktree Card | `WorktreeCard.tsx` | Card hover with accent-tinged border + elevation |
+| GitHub Settings Tab | `GitHubSettingsTab.tsx` (line 213) | Input focus with border-shift (no outline) |
+| Notification Settings | `NotificationSettingsTab.tsx` (line 217) | Input focus with border-shift (no outline) |
+| Settings Switch Row | `SettingsSwitchCard.tsx` | Neutral row, accent only on switch track |
+| Portal Drag Handle | `PortalToolbar.tsx` (line 107) | Drag state with elevation + scale, no accent |
+| Inline Rename Input | `TabButton.tsx` (line 274) | Neutral border with accent focus outline only |
 
 ---
 

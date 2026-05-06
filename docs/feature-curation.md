@@ -64,15 +64,15 @@ If it increases cognitive load or demands manual interaction, **reject it**.
 
 A feature belongs in Daintree **only if it satisfies at least two** of these criteria:
 
-| Criterion                         | Description                                                                                                          |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Accelerates Context Injection** | Makes it faster to feed the "right" files, errors, diffs, or screenshots to an agent                                 |
-| **Unblocks the Agent**            | Detects when an agent is stuck, waiting, or failed, and helps human intervene quickly                                |
-| **Manages Multiplicity**          | Helps manage _multiple_ concurrent workstreams that a human brain can't track alone                                  |
-| **Bridges the Gap**               | Fixes a friction point between CLI agents and the GUI orchestration layer                                            |
-| **Provides Omniscience**          | Aggregates data from multiple isolated contexts (worktrees/agents) into a single view                                |
-| **Enables Automation**            | Allows the user to set up reactive workflows that reduce manual monitoring and intervention                          |
-| **Reinforces Identity**           | Strengthens Daintree's visual distinctiveness, user comfort, accessibility, or helps users personalize their habitat |
+| Criterion | Description |
+| --- | --- |
+| **Accelerates Context Injection** | Makes it faster to feed the "right" files, errors, diffs, or screenshots to an agent |
+| **Unblocks the Agent** | Detects when an agent is stuck, waiting, or failed, and helps human intervene quickly |
+| **Manages Multiplicity** | Helps manage _multiple_ concurrent workstreams that a human brain can't track alone |
+| **Bridges the Gap** | Fixes a friction point between CLI agents and the GUI orchestration layer |
+| **Provides Omniscience** | Aggregates data from multiple isolated contexts (worktrees/agents) into a single view |
+| **Enables Automation** | Allows the user to set up reactive workflows that reduce manual monitoring and intervention |
+| **Reinforces Identity** | Strengthens Daintree's visual distinctiveness, user comfort, accessibility, or helps users personalize their habitat |
 
 If a feature doesn't satisfy at least 2 of these, it doesn't belong in Daintree.
 
@@ -80,13 +80,13 @@ If a feature doesn't satisfy at least 2 of these, it doesn't belong in Daintree.
 
 Daintree **explicitly rejects** features that:
 
-| Anti-Pattern                          | Why                                                                                                                                                                                                                                                                    |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Reinvents the Code Editor**         | Code editing, refactoring tools, linting → Send user to VS Code. Read-only viewing and annotation are fine.                                                                                                                                                            |
-| **Reinvents the Git GUI**             | We are not making SourceTree. Git matters for worktrees, diffs, and lightweight commit/push only.                                                                                                                                                                      |
-| **Reinvents the Chat UI**             | We are not building ChatGPT. Agents run in real terminals. The Assistant is the exception — it has orchestration context.                                                                                                                                              |
-| **Excessive Configuration**           | Each feature should work with zero configuration. Settings exist for power users, not as requirements. If a feature can't ship with opinionated defaults, it's too complex.                                                                                            |
-| **Purposeless Decoration**            | Animations or UI elements that don't convey state, reinforce identity, or serve user comfort. Themes, pulse animations, and project colors are purposeful — gratuitous animation is not.                                                                               |
+| Anti-Pattern | Why |
+| --- | --- |
+| **Reinvents the Code Editor** | Code editing, refactoring tools, linting → Send user to VS Code. Read-only viewing and annotation are fine. |
+| **Reinvents the Git GUI** | We are not making SourceTree. Git matters for worktrees, diffs, and lightweight commit/push only. |
+| **Reinvents the Chat UI** | We are not building ChatGPT. Agents run in real terminals. The Assistant is the exception — it has orchestration context. |
+| **Excessive Configuration** | Each feature should work with zero configuration. Settings exist for power users, not as requirements. If a feature can't ship with opinionated defaults, it's too complex. |
+| **Purposeless Decoration** | Animations or UI elements that don't convey state, reinforce identity, or serve user comfort. Themes, pulse animations, and project colors are purposeful — gratuitous animation is not. |
 | **Duplicates Agents Without Context** | If the CLI agent already does it well and you're just rebuilding the same thing in a GUI, don't. But wrapping agent capabilities with Daintree's orchestration context (seeing all panels, worktrees, project state) adds real value — that's what the Assistant does. |
 
 **Additional anti-patterns:**
@@ -100,12 +100,12 @@ Daintree **explicitly rejects** features that:
 
 Daintree features should trend toward automation, not interaction:
 
-| Level          | Description                                           | Daintree Fit                   |
-| -------------- | ----------------------------------------------------- | ------------------------------ |
-| **Manual**     | User must perform action every time                   | Poor — should be a shell alias |
-| **Assisted**   | Daintree detects something, user acts                 | Acceptable — bridges the gap   |
-| **Reactive**   | Daintree detects and responds with minimal user input | Good — reduces cognitive load  |
-| **Autonomous** | Daintree handles it entirely, user is notified        | Excellent — true orchestration |
+| Level | Description | Daintree Fit |
+| --- | --- | --- |
+| **Manual** | User must perform action every time | Poor — should be a shell alias |
+| **Assisted** | Daintree detects something, user acts | Acceptable — bridges the gap |
+| **Reactive** | Daintree detects and responds with minimal user input | Good — reduces cognitive load |
+| **Autonomous** | Daintree handles it entirely, user is notified | Excellent — true orchestration |
 
 Features at the "Manual" level rarely belong. Features at "Reactive" or "Autonomous" level are strong candidates.
 
@@ -121,30 +121,30 @@ If the answer is **Workshop**, we don't build the feature. At most, we build a *
 
 ## Decision Examples
 
-| Feature Proposal           | Decision                 | Reasoning                                                                                                                |
-| -------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Full File Editor           | **REJECT**               | Workshop feature. VS Code exists. Red Light: reinvents code editor.                                                      |
-| Agent "Retry" Button       | **APPROVE**              | Reduces cognitive load. Unblocks agent. Bridges CLI gap.                                                                 |
-| Theme System               | **APPROVE**              | Reinforces identity, serves comfort/accessibility, differentiates Daintree. 14 built-in themes with accessibility modes. |
-| Custom Themes              | **APPROVE**              | Natural extension of theme system. User identity, community sharing potential. Approve when infrastructure is ready.     |
-| Read-Only File Viewer      | **APPROVE**              | Accelerates context injection. Read-only with syntax highlighting for reviewing agent output. Not a code editor.         |
-| Cross-Worktree Diff        | **APPROVE**              | Manages multiplicity. Provides omniscience. Unique to orchestration.                                                     |
-| Review Hub                 | **APPROVE**              | Bridges gap. Lightweight stage/commit/push. Not a full Git GUI.                                                          |
-| Completion Notifications   | **APPROVE**              | Unblocks agent. Manages multiplicity. Enables reactive workflow.                                                         |
-| Voice Input                | **APPROVE**              | Bridges gap. Hands-free delegation while monitoring other agents. Accessibility value.                                   |
-| Integrated Browser         | **APPROVE**              | Localhost preview, console capture, and agent-app debugging. Bridges gap. Not a general-purpose browser.                 |
-| Daintree Assistant         | **APPROVE**              | Wraps AI with orchestration context (panels, worktrees, actions). Not a generic chat — it's orchestration-aware.         |
-| Notes Panel                | **APPROVE**              | Annotation alongside agent work. Markdown editing for note-taking, not code editing. Bridges gap.                        |
-| Terminal Recipes           | **APPROVE**              | Enables automation. Repeatable multi-agent setups reduce manual panel configuration.                                     |
-| Portal (Web Agent Dock)    | **APPROVE**              | Bridges gap between CLI agents and web agent UIs. Manages multiplicity across agent interfaces.                          |
-| Workflow Engine            | **APPROVE**              | Enables automation. DAG-based reactive workflows with approval gates. Core orchestration.                                |
-| Chat History Search        | **APPROVE**              | Manages multiplicity. Essential for auditing agent work across sessions.                                                 |
-| npm Script Runner          | **APPROVE (Simplified)** | Only start/stop via Dev Preview. Not editing package.json.                                                               |
-| Random Theme Cycler        | **APPROVE**              | Habitat principle: helps users discover the theme that feels right. Reinforces identity through exploration.             |
-| Git Graph/Tree             | **REJECT**               | Red Light: reinvents Git GUI. Too much visual noise.                                                                     |
-| Code Editing in FileViewer | **REJECT**               | Red Light: reinvents code editor. Workshop feature. Read-only is the line.                                               |
-| Settings with 10 toggles   | **REJECT**               | Red Light: excessive configuration. Feature should work out of the box.                                                  |
-| Merge Conflict Resolution  | **REJECT**               | Red Light: reinvents Git GUI. Send to VS Code.                                                                           |
+| Feature Proposal | Decision | Reasoning |
+| --- | --- | --- |
+| Full File Editor | **REJECT** | Workshop feature. VS Code exists. Red Light: reinvents code editor. |
+| Agent "Retry" Button | **APPROVE** | Reduces cognitive load. Unblocks agent. Bridges CLI gap. |
+| Theme System | **APPROVE** | Reinforces identity, serves comfort/accessibility, differentiates Daintree. 14 built-in themes with accessibility modes. |
+| Custom Themes | **APPROVE** | Natural extension of theme system. User identity, community sharing potential. Approve when infrastructure is ready. |
+| Read-Only File Viewer | **APPROVE** | Accelerates context injection. Read-only with syntax highlighting for reviewing agent output. Not a code editor. |
+| Cross-Worktree Diff | **APPROVE** | Manages multiplicity. Provides omniscience. Unique to orchestration. |
+| Review Hub | **APPROVE** | Bridges gap. Lightweight stage/commit/push. Not a full Git GUI. |
+| Completion Notifications | **APPROVE** | Unblocks agent. Manages multiplicity. Enables reactive workflow. |
+| Voice Input | **APPROVE** | Bridges gap. Hands-free delegation while monitoring other agents. Accessibility value. |
+| Integrated Browser | **APPROVE** | Localhost preview, console capture, and agent-app debugging. Bridges gap. Not a general-purpose browser. |
+| Daintree Assistant | **APPROVE** | Wraps AI with orchestration context (panels, worktrees, actions). Not a generic chat — it's orchestration-aware. |
+| Notes Panel | **APPROVE** | Annotation alongside agent work. Markdown editing for note-taking, not code editing. Bridges gap. |
+| Terminal Recipes | **APPROVE** | Enables automation. Repeatable multi-agent setups reduce manual panel configuration. |
+| Portal (Web Agent Dock) | **APPROVE** | Bridges gap between CLI agents and web agent UIs. Manages multiplicity across agent interfaces. |
+| Workflow Engine | **APPROVE** | Enables automation. DAG-based reactive workflows with approval gates. Core orchestration. |
+| Chat History Search | **APPROVE** | Manages multiplicity. Essential for auditing agent work across sessions. |
+| npm Script Runner | **APPROVE (Simplified)** | Only start/stop via Dev Preview. Not editing package.json. |
+| Random Theme Cycler | **APPROVE** | Habitat principle: helps users discover the theme that feels right. Reinforces identity through exploration. |
+| Git Graph/Tree | **REJECT** | Red Light: reinvents Git GUI. Too much visual noise. |
+| Code Editing in FileViewer | **REJECT** | Red Light: reinvents code editor. Workshop feature. Read-only is the line. |
+| Settings with 10 toggles | **REJECT** | Red Light: excessive configuration. Feature should work out of the box. |
+| Merge Conflict Resolution | **REJECT** | Red Light: reinvents Git GUI. Send to VS Code. |
 
 ## Architectural Requirements
 

@@ -190,20 +190,13 @@ Confidence levels (per-agent):
 
 ### Activity-Based Detection
 
-The `ActivityMonitor` tracks terminal activity:
+The `ActivityMonitor` tracks terminal activity. This section is a listener-facing summary; the canonical architecture and tuning details live in [agent-activity-monitoring.md](./architecture/agent-activity-monitoring.md).
 
-1. **Output Volume**: High bytes/second indicates working state
-2. **Line Rewrites**: Spinner-like CR sequences
-3. **Silence Detection**: Debounce period without output triggers waiting
+1. **Visible output temperature**: Sustained visible-tail changes indicate working.
+2. **Line rewrites and synchronized frames**: Spinner, status-line, and time-counter motion are liveness evidence.
+3. **Prompt and silence detection**: Stable prompts and sustained quiet return the terminal to waiting.
 
-Configuration defaults for agent terminals:
-
-- Idle debounce: 2000ms
-- Activity window: 1000ms
-- Minimum frames: 2
-- Minimum bytes: 32 bytes
-
-High-output recovery threshold: 2048 bytes/second (separate guard mechanism)
+Current tuning is intentionally centralized in `ActivityMonitor` and `AgentActivityTemperature`; do not copy debounce constants into listener code.
 
 ### Prompt Detection
 

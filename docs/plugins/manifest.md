@@ -87,8 +87,7 @@ Scoped plugin identifier in `publisher.plugin-name` format. Enforced by the rege
 - Exactly one period, separating publisher from plugin name
 - No spaces, no uppercase
 
-Good: `acme.linear-planner`, `gpriday.cost-management`, `foo.bar-baz`
-Bad: `LinearPlanner`, `acme/linear`, `acme.linear.planner`, `Acme.LinearPlanner`
+Good: `acme.linear-planner`, `gpriday.cost-management`, `foo.bar-baz` Bad: `LinearPlanner`, `acme/linear`, `acme.linear.planner`, `Acme.LinearPlanner`
 
 The publisher segment should identify you (GitHub handle, company name, domain prefix). It prevents naming collisions across the ecosystem.
 

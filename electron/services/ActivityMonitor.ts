@@ -17,15 +17,14 @@ import {
   type StructuralSignal,
 } from "./pty/SynchronizedFrameAnalyzer.js";
 import {
-  AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
-  AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
-  AGENT_WORKING_RECOVERY_WINDOW_MS,
-  AGENT_OUTPUT_ACTIVITY_LINE_COUNT,
-  SustainedChangeTracker,
   createVisibleContentSnapshot,
-  measureVisibleContentDelta,
   type VisibleContentSnapshot,
 } from "./pty/SustainedChangeTracker.js";
+import {
+  AGENT_OUTPUT_ACTIVITY_LINE_COUNT,
+  AgentActivityTemperature,
+  type AgentActivityObservationResult,
+} from "./pty/AgentActivityTemperature.js";
 import {
   detectPrompt,
   detectPromptLexeme,
@@ -195,12 +194,7 @@ export class ActivityMonitor {
   // State preservation for project switch
   private readonly skipInitialStateEmit: boolean;
   private readonly simpleOutputState: boolean;
-  private readonly simpleOutputChangeTracker = new SustainedChangeTracker({
-    windowMs: AGENT_WORKING_RECOVERY_WINDOW_MS,
-    minChangedFrames: AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
-    maxQuietMs: AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
-  });
-  private simpleOutputSnapshot: VisibleContentSnapshot | undefined;
+  private readonly simpleOutputTemperature = new AgentActivityTemperature();
 
   // Polling interval configuration
   private POLLING_INTERVAL_MS: number;
@@ -625,32 +619,37 @@ export class ActivityMonitor {
   }
 
   private noteSimpleOutputSnapshot(snapshot: VisibleContentSnapshot, now: number): void {
-    const previousSnapshot = this.simpleOutputSnapshot;
-    this.simpleOutputSnapshot = snapshot;
+    this.applySimpleOutputTemperature(
+      this.simpleOutputTemperature.observeSnapshot(now, snapshot),
+      now
+    );
+  }
 
-    if (previousSnapshot === undefined) {
-      this.simpleOutputChangeTracker.reset();
+  private applySimpleOutputTemperature(result: AgentActivityObservationResult, now: number): void {
+    if (result.suppressed || result.seeded) {
       return;
     }
 
-    const delta = measureVisibleContentDelta(previousSnapshot, snapshot);
-    if (!delta.changed) {
-      this.simpleOutputChangeTracker.observe(now, { changedChars: 0 });
-      return;
+    if (result.changed) {
+      this.lastActivityTimestamp = now;
+      this.lastDataTimestamp = now;
     }
 
-    this.lastActivityTimestamp = now;
-    this.lastDataTimestamp = now;
-
-    if (this.state === "busy") {
-      this.simpleOutputChangeTracker.reset();
+    if (this.state === "busy" && result.changed) {
       this.resetDebounceTimer();
       return;
     }
 
-    if (this.simpleOutputChangeTracker.observe(now, { changedChars: delta.changedChars })) {
-      this.simpleOutputChangeTracker.reset();
+    if (this.state !== "busy" && result.stateHint === "busy") {
       this.becomeBusy({ trigger: "output" }, now);
+      return;
+    }
+
+    if (this.state === "busy" && result.stateHint === "idle" && now >= this.workingHoldUntil) {
+      this.state = "idle";
+      this.idleSince = now;
+      this.patternBuf.clear();
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
     }
   }
 
@@ -689,7 +688,7 @@ export class ActivityMonitor {
     this.workingSignalDebouncer.reset();
     this.cosmeticRecoveryDebouncer.reset();
     this.structuralRecoveryDebouncer.reset();
-    this.simpleOutputChangeTracker.reset();
+    this.simpleOutputTemperature.reset();
     this.lineRewriteDetector.reset();
     this.synchronizedFrameAnalyzer.reset();
     this.patternBuf.reset();
@@ -703,7 +702,6 @@ export class ActivityMonitor {
     this.lastOutputActivityAt = 0;
     this.lastWorkingIndicatorTimestamp = 0;
     this.promptStableSince = 0;
-    this.simpleOutputSnapshot = undefined;
   }
 
   getLastPatternResult(): PatternDetectionResult | undefined {
@@ -730,8 +728,7 @@ export class ActivityMonitor {
     // tied to the current agent's rendering. Swapping detectors is a strong
     // signal that the agent identity changed — discard accumulated state.
     this.synchronizedFrameAnalyzer.reset();
-    this.simpleOutputChangeTracker.reset();
-    this.simpleOutputSnapshot = undefined;
+    this.simpleOutputTemperature.reset();
   }
 
   notifySubmission(): void {
@@ -746,8 +743,7 @@ export class ActivityMonitor {
     // (rowOffset, col); a resize invalidates that mapping. Reset so the
     // first post-resize frame doesn't compare against pre-resize cells.
     this.synchronizedFrameAnalyzer.reset();
-    this.simpleOutputChangeTracker.reset();
-    this.simpleOutputSnapshot = undefined;
+    this.simpleOutputTemperature.noteResize(Date.now(), suppressionMs);
   }
 
   private isResizeSuppressed(now: number): boolean {
@@ -778,7 +774,10 @@ export class ActivityMonitor {
     }
 
     if (this.simpleOutputState) {
-      this.simpleOutputSnapshot = this.captureSimpleOutputSnapshot();
+      const snapshot = this.captureSimpleOutputSnapshot();
+      if (snapshot !== undefined) {
+        this.simpleOutputTemperature.seedSnapshot(snapshot, this.bootDetector.pollingStartTime);
+      }
       if (this.state === "busy") {
         this.resetDebounceTimer();
       }
@@ -794,13 +793,9 @@ export class ActivityMonitor {
     const now = Date.now();
 
     if (this.simpleOutputState) {
-      if (!this.isResizeSuppressed(now)) {
-        const snapshot = this.captureSimpleOutputSnapshot();
-        if (snapshot !== undefined) {
-          this.noteSimpleOutputSnapshot(snapshot, now);
-        }
-      } else {
-        this.simpleOutputChangeTracker.observe(now, { changedChars: 0 });
+      const snapshot = this.captureSimpleOutputSnapshot();
+      if (snapshot !== undefined) {
+        this.noteSimpleOutputSnapshot(snapshot, now);
       }
 
       if (
@@ -1173,7 +1168,6 @@ export class ActivityMonitor {
     // immediately re-trigger recovery without sustained signal.
     this.cosmeticRecoveryDebouncer.reset();
     this.structuralRecoveryDebouncer.reset();
-    this.simpleOutputChangeTracker.reset();
 
     // Reset completion state for the new work cycle
     this.completionTimer.reset();

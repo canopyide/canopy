@@ -36,13 +36,13 @@ Daintree themes flow through three layers. Each layer has a specific role:
 
 ### Component CSS (extension surfaces)
 
-| Component          | File                                 | Variable prefix                                    |
-| ------------------ | ------------------------------------ | -------------------------------------------------- |
-| Toolbar            | `src/styles/components/toolbar.css`  | `--toolbar-*`                                      |
-| Sidebar / Worktree | `src/styles/components/sidebar.css`  | `--sidebar-*`, `--worktree-*`                      |
-| Settings dialog    | `src/styles/components/settings.css` | `--settings-*`                                     |
-| Project Pulse      | `src/styles/components/pulse.css`    | `--pulse-*`                                        |
-| Panel chrome       | `src/styles/components/panels.css`   | `--chrome-*`, `--dialog-*`, `--floating-surface-*` |
+| Component | File | Variable prefix |
+| --- | --- | --- |
+| Toolbar | `src/styles/components/toolbar.css` | `--toolbar-*` |
+| Sidebar / Worktree | `src/styles/components/sidebar.css` | `--sidebar-*`, `--worktree-*` |
+| Settings dialog | `src/styles/components/settings.css` | `--settings-*` |
+| Project Pulse | `src/styles/components/pulse.css` | `--pulse-*` |
+| Panel chrome | `src/styles/components/panels.css` | `--chrome-*`, `--dialog-*`, `--floating-surface-*` |
 
 ## Palette Structure
 

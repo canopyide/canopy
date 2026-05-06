@@ -3,7 +3,7 @@ import type { IPty } from "node-pty";
 import { TerminalProcess } from "../TerminalProcess.js";
 import type { SpawnContext } from "../terminalSpawn.js";
 import { events } from "../../events.js";
-import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../SustainedChangeTracker.js";
+import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../AgentActivityTemperature.js";
 
 vi.mock("node-pty", () => {
   return { spawn: vi.fn() };

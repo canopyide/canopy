@@ -31,8 +31,8 @@ export default {
   // End of line: LF (Unix)
   endOfLine: "lf",
 
-  // Prose wrap for markdown
-  proseWrap: "preserve",
+  // Keep Markdown prose on author-controlled lines instead of hard-wrapping paragraphs.
+  proseWrap: "never",
 
   // HTML whitespace sensitivity
   htmlWhitespaceSensitivity: "css",

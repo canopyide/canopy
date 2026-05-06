@@ -6,10 +6,6 @@ export const AGENT_WORKING_RECOVERY_MIN_HEAT = 4;
 export const AGENT_WORKING_RECOVERY_LARGE_CHANGE_WINDOW_MS = 1000;
 export const AGENT_WORKING_RECOVERY_LARGE_CHANGE_MIN_FRAMES = 3;
 export const AGENT_WORKING_RECOVERY_LARGE_CHANGE_MIN_HEAT = 12;
-// Keep activity snapshots focused on the cursor-visible tail. Wider scans can
-// treat old visible history, wrapping, or reflow as fresh agent output.
-export const AGENT_OUTPUT_ACTIVITY_LINE_COUNT = 15;
-
 export interface SustainedChangeTrackerOptions {
   windowMs: number;
   minChangedFrames: number;

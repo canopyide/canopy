@@ -103,12 +103,12 @@ The `resonance` parameter scales all Q factors: 0.7 = dead branch, 1.1 = resonan
 
 A sine carrier frequency-modulated by a sine oscillator. The modulation index decays rapidly (within 50-100ms), so FM adds brightness only on the attack.
 
-| Parameter     | Default          | Purpose                                                                          |
-| ------------- | ---------------- | -------------------------------------------------------------------------------- |
-| `fmRatio`     | 1.4142 (sqrt(2)) | Irrational ratio = woody inharmonics. Error uses sqrt(3) for metallic character. |
-| `fmIndex`     | 1.5              | Modulation depth. Higher = more harmonics in the FM spectrum.                    |
-| `fmDecayRate` | 16               | How fast FM dies. Higher = shorter shimmer.                                      |
-| `fmAmt`       | 0.5              | Contribution to the composite excitation signal.                                 |
+| Parameter | Default | Purpose |
+| --- | --- | --- |
+| `fmRatio` | 1.4142 (sqrt(2)) | Irrational ratio = woody inharmonics. Error uses sqrt(3) for metallic character. |
+| `fmIndex` | 1.5 | Modulation depth. Higher = more harmonics in the FM spectrum. |
+| `fmDecayRate` | 16 | How fast FM dies. Higher = shorter shimmer. |
+| `fmAmt` | 0.5 | Contribution to the composite excitation signal. |
 
 ### Layer 3: Composite Mallet Exciter
 
@@ -277,27 +277,27 @@ The base file (without suffix) is always variant 0. Settings UI shows "Chime", "
 
 The generator includes these reusable DSP building blocks:
 
-| Class/Function                  | Purpose                                                                 |
-| ------------------------------- | ----------------------------------------------------------------------- |
-| `PhaseOsc`                      | Phase-accumulating sine oscillator (click-free under frequency changes) |
-| `Envelope`                      | ADSR envelope with exponential curves                                   |
-| `expDecay(t, duration, rate)`   | Simple exponential decay                                                |
-| `SVFilter`                      | State-variable bandpass filter                                          |
-| `DCBlocker`                     | Removes DC offset (~14Hz high-pass)                                     |
-| `OnePole`                       | One-pole lowpass filter                                                 |
-| `LowpassCombFilter`             | Comb filter with HF absorption in feedback loop                         |
-| `AllpassFilter`                 | Allpass filter for reverb diffusion                                     |
-| `Freeverb`                      | 4 parallel LBCF + 2 series APF reverb                                   |
-| `ModalResonator`                | Biquad bandpass resonator (one mode of the wood)                        |
-| `WoodModal`                     | Bank of modal resonators + split-fundamental + strike deformation       |
-| `PinkNoise`                     | Paul Kellet approximation                                               |
-| `BrownNoise`                    | Integrated white noise (-6dB/octave)                                    |
-| `waveshape(x, drive, bias)`     | Asymmetric tanh soft-clip                                               |
-| `generateExcitation(n, opts)`   | Composite mallet: brown noise + LF thump                                |
-| `daintreeNote(freq, dur, opts)` | Full Daintree note synthesizer                                          |
-| `sequence(notes, opts)`         | Multi-note sequencer with humanized timing                              |
-| `postProcess(samples, opts)`    | Full post-processing chain                                              |
-| `writeWav(samples, path)`       | 16-bit mono PCM WAV writer with TPDF dither                             |
+| Class/Function | Purpose |
+| --- | --- |
+| `PhaseOsc` | Phase-accumulating sine oscillator (click-free under frequency changes) |
+| `Envelope` | ADSR envelope with exponential curves |
+| `expDecay(t, duration, rate)` | Simple exponential decay |
+| `SVFilter` | State-variable bandpass filter |
+| `DCBlocker` | Removes DC offset (~14Hz high-pass) |
+| `OnePole` | One-pole lowpass filter |
+| `LowpassCombFilter` | Comb filter with HF absorption in feedback loop |
+| `AllpassFilter` | Allpass filter for reverb diffusion |
+| `Freeverb` | 4 parallel LBCF + 2 series APF reverb |
+| `ModalResonator` | Biquad bandpass resonator (one mode of the wood) |
+| `WoodModal` | Bank of modal resonators + split-fundamental + strike deformation |
+| `PinkNoise` | Paul Kellet approximation |
+| `BrownNoise` | Integrated white noise (-6dB/octave) |
+| `waveshape(x, drive, bias)` | Asymmetric tanh soft-clip |
+| `generateExcitation(n, opts)` | Composite mallet: brown noise + LF thump |
+| `daintreeNote(freq, dur, opts)` | Full Daintree note synthesizer |
+| `sequence(notes, opts)` | Multi-note sequencer with humanized timing |
+| `postProcess(samples, opts)` | Full post-processing chain |
+| `writeWav(samples, path)` | 16-bit mono PCM WAV writer with TPDF dither |
 
 ## Adding a New Sound
 
@@ -361,16 +361,16 @@ Verify: all files play cleanly, variants are detectably different, typecheck pas
 
 ## Key Files
 
-| File                                                  | Purpose                                               |
-| ----------------------------------------------------- | ----------------------------------------------------- |
-| `scripts/generate-sounds.mjs`                         | Sound generator script (the synthesis engine)         |
-| `electron/resources/sounds/*.wav`                     | Generated WAV files                                   |
-| `electron/utils/soundPlayer.ts`                       | Cross-platform playback (afplay/paplay/PowerShell)    |
-| `electron/services/AgentNotificationService.ts`       | When and how sounds are triggered, variant resolution |
-| `electron/ipc/handlers/notifications.ts`              | Sound file allowlist, preview handler                 |
-| `src/components/Settings/NotificationSettingsTab.tsx` | Global sound picker UI                                |
-| `src/components/Project/ProjectNotificationsTab.tsx`  | Per-project sound picker UI                           |
-| `electron/store.ts`                                   | Sound preference persistence                          |
+| File | Purpose |
+| --- | --- |
+| `scripts/generate-sounds.mjs` | Sound generator script (the synthesis engine) |
+| `electron/resources/sounds/*.wav` | Generated WAV files |
+| `electron/utils/soundPlayer.ts` | Cross-platform playback (afplay/paplay/PowerShell) |
+| `electron/services/AgentNotificationService.ts` | When and how sounds are triggered, variant resolution |
+| `electron/ipc/handlers/notifications.ts` | Sound file allowlist, preview handler |
+| `src/components/Settings/NotificationSettingsTab.tsx` | Global sound picker UI |
+| `src/components/Project/ProjectNotificationsTab.tsx` | Per-project sound picker UI |
+| `electron/store.ts` | Sound preference persistence |
 
 ## Future Considerations
 

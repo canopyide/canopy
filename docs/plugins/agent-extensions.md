@@ -31,13 +31,13 @@ Daintree supervises any MCP server a plugin ships. It spawns the process lazily,
 
 **Fields:**
 
-| Field     | Required | Notes                                                                                                                                                             |
-| --------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`      | yes      | Namespaced at runtime as `{pluginId}.{id}`.                                                                                                                       |
-| `name`    | yes      | Display name in the agent's tool list and Daintree UI.                                                                                                            |
-| `command` | yes      | Executable. Relative paths resolve inside the plugin directory. Absolute paths and bare commands (`node`, `python`, `npx`, `uv`) work too.                        |
-| `args`    | no       | Argv after the command.                                                                                                                                           |
-| `env`     | no       | Environment variables. Values support the `${settings:settingId}` syntax, which resolves to the current value of the plugin's setting with that ID at spawn time. |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Namespaced at runtime as `{pluginId}.{id}`. |
+| `name` | yes | Display name in the agent's tool list and Daintree UI. |
+| `command` | yes | Executable. Relative paths resolve inside the plugin directory. Absolute paths and bare commands (`node`, `python`, `npx`, `uv`) work too. |
+| `args` | no | Argv after the command. |
+| `env` | no | Environment variables. Values support the `${settings:settingId}` syntax, which resolves to the current value of the plugin's setting with that ID at spawn time. |
 
 **Intentionally excluded:** remote transports (no `url` field), explicit transport declarations (stdio is inferred from `command`'s presence), per-server working directories, restart policies. Shape deliberately matches the Claude Desktop / Cursor MCP config format — authors shipping the same server as a standalone Claude Desktop extension can copy their config verbatim.
 
@@ -130,12 +130,12 @@ This is the right contribution point when the extension is about **knowledge or 
 
 **Fields:**
 
-| Field      | Required | Notes                                                                                        |
-| ---------- | -------- | -------------------------------------------------------------------------------------------- |
-| `id`       | yes      | Namespaced at runtime as `{pluginId}.{id}`.                                                  |
-| `name`     | yes      | Human label.                                                                                 |
-| `path`     | yes      | Markdown file, relative to the plugin directory.                                             |
-| `triggers` | no       | Phrase fragments that help agents discover the skill in Daintree's MCP `skills/search` tool. |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Namespaced at runtime as `{pluginId}.{id}`. |
+| `name` | yes | Human label. |
+| `path` | yes | Markdown file, relative to the plugin directory. |
+| `triggers` | no | Phrase fragments that help agents discover the skill in Daintree's MCP `skills/search` tool. |
 
 ### Skill file format
 
@@ -156,23 +156,19 @@ Follow this sequence for any new feature:
 
 ## 1. Red
 
-Write the smallest possible failing test that describes the behavior.
-Run the test suite — it must fail for the expected reason.
+Write the smallest possible failing test that describes the behavior. Run the test suite — it must fail for the expected reason.
 
 ## 2. Green
 
-Write the minimum code needed to make the test pass.
-Don't refactor yet.
+Write the minimum code needed to make the test pass. Don't refactor yet.
 
 ## 3. Refactor
 
-Clean up the code while keeping the test green.
-Extract helpers, rename for clarity, eliminate duplication.
+Clean up the code while keeping the test green. Extract helpers, rename for clarity, eliminate duplication.
 
 ## When to stop
 
-One feature = one Red-Green-Refactor cycle.
-Never skip Red — a test that's never seen a failure state isn't a test.
+One feature = one Red-Green-Refactor cycle. Never skip Red — a test that's never seen a failure state isn't a test.
 ```
 
 **Frontmatter:**
@@ -202,15 +198,15 @@ This keeps Daintree's skill system compatible with any agent that speaks MCP —
 
 ## When to use which
 
-| I want to…                                              | Use                                                  |
-| ------------------------------------------------------- | ---------------------------------------------------- |
-| Give the agent a new tool that does something           | MCP server                                           |
-| Teach the agent a methodology or rubric                 | Skill                                                |
-| Wrap an external API (Linear, Jira, Sentry)             | MCP server                                           |
-| Provide a checklist or step-by-step                     | Skill                                                |
-| Do anything that requires secret credentials at runtime | MCP server                                           |
-| Share knowledge that travels cleanly across projects    | Skill                                                |
-| Intercept or modify agent tool calls                    | MCP server (the plugin's MCP server acts as a proxy) |
+| I want to… | Use |
+| --- | --- |
+| Give the agent a new tool that does something | MCP server |
+| Teach the agent a methodology or rubric | Skill |
+| Wrap an external API (Linear, Jira, Sentry) | MCP server |
+| Provide a checklist or step-by-step | Skill |
+| Do anything that requires secret credentials at runtime | MCP server |
+| Share knowledge that travels cleanly across projects | Skill |
+| Intercept or modify agent tool calls | MCP server (the plugin's MCP server acts as a proxy) |
 
 Plugins often ship both — for example, a Linear plugin might ship an MCP server that exposes Linear's API and a skill that teaches the agent the team's preferred ticket planning format.
 
