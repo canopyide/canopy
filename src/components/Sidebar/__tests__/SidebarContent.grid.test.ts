@@ -70,6 +70,31 @@ describe("Worktree list keyboard grid — issue #6422", () => {
     });
   });
 
+  describe("WorktreeCard drag handle", () => {
+    const SIDEBAR_CSS_PATH = path.resolve(__dirname, "../../../styles/components/sidebar.css");
+
+    it("marks the drag handle with data-worktree-row-drag-handle so focus CSS can target it", async () => {
+      const cardSource = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+      expect(cardSource).toContain('data-worktree-row-drag-handle=""');
+    });
+
+    it("reveals drag handle on keyboard focus via [data-worktree-row-drag-handle] CSS selector", async () => {
+      const cssSource = await fs.readFile(SIDEBAR_CSS_PATH, "utf-8");
+      expect(cssSource).toContain("[data-worktree-row-drag-handle]");
+    });
+
+    it("uses group-hover/card for mouse row-level reveal (not self-scoped hover)", async () => {
+      const cardSource = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+      expect(cardSource).toContain("group-hover/card:text-text-primary/30");
+      expect(cardSource).toContain("group-hover/card:bg-overlay-soft");
+    });
+
+    it("keeps motion-reduce:transition-none on the drag handle for WCAG reduced-motion", async () => {
+      const cardSource = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+      expect(cardSource).toContain("motion-reduce:transition-none");
+    });
+  });
+
   describe("SidebarContent grid wiring", () => {
     let source: string;
     beforeEach(async () => {
