@@ -156,7 +156,8 @@ export function McpServerSettingsTab() {
       const snippet = await window.electron.mcpServer.getConfigSnippet();
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to copy config"));
       logError("Failed to copy MCP config", err);
@@ -207,6 +208,7 @@ export function McpServerSettingsTab() {
 
   const handleAuditEnabledToggle = useCallback(async () => {
     try {
+      setError(null);
       const next = !auditEnabled;
       const cfg = await window.electron.mcpServer.setAuditEnabled(next);
       setAuditEnabled(cfg.enabled);
@@ -229,6 +231,7 @@ export function McpServerSettingsTab() {
       return;
     }
     try {
+      setError(null);
       const cfg = await window.electron.mcpServer.setAuditMaxRecords(parsed);
       setAuditEnabled(cfg.enabled);
       setAuditMaxRecords(cfg.maxRecords);
@@ -242,6 +245,7 @@ export function McpServerSettingsTab() {
 
   const handleClearAuditLog = useCallback(async () => {
     try {
+      setError(null);
       await window.electron.mcpServer.clearAuditLog();
       setAuditRecords([]);
     } catch (err) {
@@ -252,11 +256,17 @@ export function McpServerSettingsTab() {
 
   const handleCopyAuditAsJson = useCallback(async (records: McpAuditRecord[]) => {
     try {
+      setError(null);
       await navigator.clipboard.writeText(JSON.stringify(records, null, 2));
       setCopiedAudit(true);
       if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
       auditCopyTimeoutRef.current = setTimeout(() => setCopiedAudit(false), 2000);
     } catch (err) {
+      setCopiedAudit(false);
+      if (auditCopyTimeoutRef.current) {
+        clearTimeout(auditCopyTimeoutRef.current);
+        auditCopyTimeoutRef.current = null;
+      }
       setError(formatErrorMessage(err, "Failed to copy audit log"));
       logError("Failed to copy MCP audit log", err);
     }
