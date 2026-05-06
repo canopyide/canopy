@@ -4,7 +4,7 @@ import path from "path";
 
 const SIDEBAR_CONTENT_PATH = path.resolve(__dirname, "../SidebarContent.tsx");
 
-describe("SidebarContent quick-state empty state — issue #6333", () => {
+describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed by #6934)", () => {
   let source: string;
 
   beforeAll(async () => {
@@ -12,10 +12,14 @@ describe("SidebarContent quick-state empty state — issue #6333", () => {
   });
 
   describe("store wiring", () => {
-    it("subscribes to clearQuickStateFilter from the filter store", () => {
+    it("subscribes to clearAll from the filter store as clearAllFilters", () => {
       expect(source).toMatch(
-        /const clearQuickStateFilter = useWorktreeFilterStore\(\(state\) => state\.clearQuickStateFilter\)/
+        /const clearAllFilters = useWorktreeFilterStore\(\(state\) => state\.clearAll\)/
       );
+    });
+
+    it("does not subscribe to clearQuickStateFilter (single-CTA shape since #6934)", () => {
+      expect(source).not.toContain("state.clearQuickStateFilter");
     });
   });
 
@@ -89,31 +93,49 @@ describe("SidebarContent quick-state empty state — issue #6333", () => {
       expect(quickStateIdx).toBeLessThan(genericIdx);
     });
 
-    it("titles the empty state with the active quick-state label", () => {
-      expect(source).toContain("No {quickStateFilter} worktrees");
+    it("titles the quick-state empty state with the active filter label via the EmptyState primitive", () => {
+      expect(source).toMatch(/title=\{`No \$\{quickStateFilter\} worktrees`\}/);
     });
 
-    it("primary CTA resets only the quick-state filter", () => {
-      const block = source.match(
-        /onClick=\{clearQuickStateFilter\}[\s\S]*?>\s*Show all states\s*</
+    it("uses the EmptyState filtered-empty variant for the quick-state branch", () => {
+      // The quick-state empty state migrated from raw markup to the canonical
+      // EmptyState primitive (#6934). The variant carries role=status and
+      // aria-live=polite at the component level.
+      const branchStart = source.indexOf("showQuickStateEmptyState ?");
+      const branchEnd = source.indexOf("filteredWorktrees.length === 0 && hasFilters", branchStart);
+      const branch = source.slice(branchStart, branchEnd);
+      expect(branch).toContain("<EmptyState");
+      expect(branch).toContain('variant="filtered-empty"');
+    });
+
+    it("collapses the quick-state empty state to a single 'Clear filters' CTA wired to clearAllFilters", () => {
+      // #6934: the dual-CTA shape ('Show all states' + conditional 'Clear all filters')
+      // was an empty-state anti-pattern. clearAll() resets every dimension including
+      // quickStateFilter, so a single button is the natural recovery shape.
+      const branchStart = source.indexOf("showQuickStateEmptyState ?");
+      const branchEnd = source.indexOf("filteredWorktrees.length === 0 && hasFilters", branchStart);
+      const branch = source.slice(branchStart, branchEnd);
+      expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
+      expect(branch).not.toContain("Show all states");
+      expect(branch).not.toContain("clearQuickStateFilter");
+    });
+
+    it("does not render two recovery CTAs side-by-side in the quick-state branch", () => {
+      // Regression guard against the dual-button anti-pattern returning.
+      expect(source).not.toContain("Show all states");
+      expect(source).not.toContain("Clear all filters");
+    });
+
+    it("preserves the 'No worktrees match your filters' branch via the EmptyState primitive", () => {
+      const branchStart = source.indexOf(
+        "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ?"
       );
-      expect(block).not.toBeNull();
-    });
-
-    it("only renders the secondary 'Clear all filters' CTA when popover filters are active", () => {
-      // The secondary button is gated on hasPopoverFilters so it doesn't
-      // appear when the quick-state filter is the *only* active filter
-      // (otherwise users see two buttons that appear to do the same thing).
-      const block = source.match(
-        /\{hasPopoverFilters \?[\s\S]*?onClick=\{clearAllFilters\}[\s\S]*?Clear all filters[\s\S]*?: null\}/
-      );
-      expect(block).not.toBeNull();
-    });
-
-    it("preserves the existing 'No worktrees match your filters' branch for popover-only cases", () => {
-      expect(source).toContain("No worktrees match your filters");
-      // Original Clear filters button is still wired to clearAllFilters
-      expect(source).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
+      const branchEnd = source.indexOf("groupedSections ?", branchStart);
+      const branch = source.slice(branchStart, branchEnd);
+      expect(branch).toContain("<EmptyState");
+      expect(branch).toContain('variant="filtered-empty"');
+      expect(branch).toContain('title="No worktrees match your filters"');
+      expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
     });
   });
 });
@@ -178,5 +200,45 @@ describe("SidebarContent zero-worktrees empty state — issue #6752 (supersedes 
     expect(dialogIdx).toBeGreaterThan(0);
     expect(firstEarlyReturnIdx).toBeGreaterThan(0);
     expect(dialogIdx).toBeLessThan(firstEarlyReturnIdx);
+  });
+});
+
+describe("SidebarContent zero-worktrees taxonomy alignment — issue #6934", () => {
+  let source: string;
+
+  beforeAll(async () => {
+    source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+  });
+
+  it("uses the EmptyState primitive with the zero-data variant", () => {
+    const branchStart = source.indexOf("if (worktrees.length === 0) {");
+    const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toContain("<EmptyState");
+    expect(branch).toContain('variant="zero-data"');
+  });
+
+  it("names the action in the title slot, not the absence", () => {
+    // CLAUDE.md "Empty States" rule: first-run empty states name what the user
+    // can do next. Migrating from "No worktrees yet" (the absence) to the
+    // action sentence as the title fixes the slot-swap drift.
+    const branchStart = source.indexOf("if (worktrees.length === 0) {");
+    const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toContain('title="Open a Git repository to get started"');
+    expect(branch).not.toContain("No worktrees yet");
+  });
+
+  it("imports the EmptyState primitive", () => {
+    expect(source).toMatch(/import \{ EmptyState \} from "@\/components\/ui\/EmptyState"/);
+  });
+
+  it("removes FilterX from lucide-react imports (no longer rendered after EmptyState migration)", () => {
+    // FilterX was the icon used in the raw filter-empty markup. The
+    // filtered-empty EmptyState variant intentionally omits icons, so the
+    // import becomes unused — keeping it would be dead code.
+    const importLine = source.match(/import \{[^}]*\} from "lucide-react"/);
+    expect(importLine).not.toBeNull();
+    expect(importLine![0]).not.toContain("FilterX");
   });
 });
