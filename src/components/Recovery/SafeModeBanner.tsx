@@ -38,17 +38,20 @@ export function SafeModeBanner() {
     }
   };
 
-  const summaryParts: string[] = [];
-  if (typeof crashCount === "number" && crashCount > 0) {
-    summaryParts.push(`${crashCount} ${crashCount === 1 ? "crash" : "crashes"}`);
-  }
-  if (lastCrashAt) {
-    summaryParts.push(`last ${formatRelativeTime(lastCrashAt)}`);
-  }
-  const summary = summaryParts.length > 0 ? ` — ${summaryParts.join(", ")}` : "";
-
   const skipped =
     typeof skippedPanelCount === "number" && skippedPanelCount > 0 ? skippedPanelCount : 0;
+  const crashes = typeof crashCount === "number" && crashCount > 0 ? crashCount : 0;
+  const hasCrashMeta = crashes > 0 || lastCrashAt != null;
+  const hasDetails = skipped > 0 || hasCrashMeta;
+
+  let crashMetaText: string | null = null;
+  if (crashes > 0 && lastCrashAt != null) {
+    crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected, last ${formatRelativeTime(lastCrashAt)}`;
+  } else if (crashes > 0) {
+    crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected`;
+  } else if (lastCrashAt != null) {
+    crashMetaText = `Last crash ${formatRelativeTime(lastCrashAt)}`;
+  }
 
   return (
     <div
@@ -57,10 +60,8 @@ export function SafeModeBanner() {
       className="flex items-center gap-3 px-4 py-2 bg-[var(--color-status-warning)]/15 border-b border-[var(--color-status-warning)]/30 text-[var(--color-status-warning)] text-sm shrink-0"
     >
       <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-      <span className="flex-1">
-        Safe mode{summary}. Panels weren't restored to break the crash loop.
-      </span>
-      {skipped > 0 && (
+      <span className="flex-1">Safe mode — panels weren't restored</span>
+      {hasDetails && (
         <Popover>
           <PopoverTrigger
             type="button"
@@ -73,17 +74,13 @@ export function SafeModeBanner() {
             sideOffset={8}
             className="p-3 text-xs max-w-xs space-y-2 text-daintree-text"
           >
-            <p className="font-medium">
-              {skipped} {skipped === 1 ? "panel was" : "panels were"} skipped
-            </p>
-            <p className="text-daintree-text/70">
-              Daintree booted in safe mode after repeated crashes. Saved panels weren't restored so
-              you can recover the app.
-            </p>
-            <p className="text-daintree-text/70">
-              Restart normally to reload them. If crashes return, check Settings &gt;
-              Troubleshooting.
-            </p>
+            {crashMetaText && <p className="font-medium">{crashMetaText}</p>}
+            {skipped > 0 && (
+              <p className="text-daintree-text/70">
+                {skipped} {skipped === 1 ? "panel was" : "panels were"} skipped so you can recover
+                the app. Restart normally to reload them.
+              </p>
+            )}
           </PopoverContent>
         </Popover>
       )}
