@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { GitHubSettingsTab } from "../GitHubSettingsTab";
+import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 
 vi.mock("@/store", () => ({
   useGitHubConfigStore: vi.fn(),
@@ -41,7 +42,11 @@ describe("GitHubSettingsTab accessibility", () => {
   });
 
   it("password input has an accessible name and autoComplete", () => {
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
     const input = screen.getByLabelText(/github personal access token/i);
     expect(input).toBeTruthy();
     expect(input.getAttribute("type")).toBe("password");
@@ -49,21 +54,33 @@ describe("GitHubSettingsTab accessibility", () => {
   });
 
   it("Test button has aria-label and aria-busy=false when idle", () => {
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
     const btn = screen.getByRole("button", { name: "Test token" });
     expect(btn).toBeTruthy();
     expect(btn.getAttribute("aria-busy")).toBe("false");
   });
 
   it("Save button has aria-label and aria-busy=false when idle", () => {
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
     const btn = screen.getByRole("button", { name: "Save token" });
     expect(btn).toBeTruthy();
     expect(btn.getAttribute("aria-busy")).toBe("false");
   });
 
   it("decorative icons inside idle buttons have aria-hidden", () => {
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
     const testBtn = screen.getByRole("button", { name: "Test token" });
     const svgs = testBtn.querySelectorAll("svg");
     expect(svgs.length).toBeGreaterThan(0);
@@ -73,7 +90,11 @@ describe("GitHubSettingsTab accessibility", () => {
   });
 
   it("Test button shows aria-busy=true and retains accessible name during loading", () => {
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
     const input = screen.getByLabelText(/github personal access token/i);
     fireEvent.change(input, { target: { value: "ghp_test123" } });
 
@@ -91,7 +112,11 @@ describe("GitHubSettingsTab accessibility", () => {
   });
 
   it("Save button shows aria-busy=true and retains accessible name during loading", () => {
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
     const input = screen.getByLabelText(/github personal access token/i);
     fireEvent.change(input, { target: { value: "ghp_test123" } });
 
@@ -109,7 +134,11 @@ describe("GitHubSettingsTab accessibility", () => {
   });
 
   it("Create Token button opens GitHub with correct description", () => {
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
     const btn = screen.getByRole("button", { name: /create token on github/i });
     fireEvent.click(btn);
 

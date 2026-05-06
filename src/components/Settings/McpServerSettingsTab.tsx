@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
+import { useSettingsTabValidation } from "@/components/Settings/SettingsValidationRegistry";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 import {
@@ -89,6 +90,8 @@ export function McpServerSettingsTab() {
   const [auditLoading, setAuditLoading] = useState(true);
   const [toolFilter, setToolFilter] = useState("");
   const [resultFilter, setResultFilter] = useState<AuditResultFilter>("all");
+
+  useSettingsTabValidation("mcp", Boolean(error));
 
   const refreshAuditRecords = useCallback(async (): Promise<void> => {
     try {

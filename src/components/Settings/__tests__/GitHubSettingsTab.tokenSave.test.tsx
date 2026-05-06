@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GitHubSettingsTab } from "../GitHubSettingsTab";
+import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 
 vi.mock("@/store", () => ({
   useGitHubConfigStore: vi.fn(),
@@ -63,7 +64,11 @@ describe("GitHubSettingsTab handleSaveToken", () => {
       return { ok: true, result: undefined } as never;
     });
 
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     fireEvent.change(screen.getByLabelText(/github personal access token/i), {
       target: { value: "ghp_valid_token" },
@@ -96,7 +101,11 @@ describe("GitHubSettingsTab handleSaveToken", () => {
       return { ok: true, result: undefined } as never;
     });
 
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     fireEvent.change(screen.getByLabelText(/github personal access token/i), {
       target: { value: "ghp_invalid" },
@@ -127,7 +136,11 @@ describe("GitHubSettingsTab handleSaveToken", () => {
       return { ok: true, result: undefined } as never;
     });
 
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     fireEvent.change(screen.getByLabelText(/github personal access token/i), {
       target: { value: "ghp_token" },

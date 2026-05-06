@@ -6,6 +6,7 @@ import { useGitHubConfigStore } from "@/store";
 import { actionService } from "@/services/ActionService";
 import type { GitHubTokenConfig, GitHubTokenValidation } from "@/types";
 import { SettingsSection } from "./SettingsSection";
+import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { logError } from "@/utils/logger";
 
 type ValidationResult = "success" | "error" | "test-success" | "test-error" | null;
@@ -151,6 +152,8 @@ export function GitHubSettingsTab() {
       { source: "user" }
     );
   }, []);
+
+  useSettingsTabValidation("github", Boolean(loadError) || loadTimedOut);
 
   if (isLoading) {
     if (loadTimedOut) {

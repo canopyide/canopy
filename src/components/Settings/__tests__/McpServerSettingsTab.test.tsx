@@ -2,6 +2,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { McpServerSettingsTab } from "../McpServerSettingsTab";
+import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 import { notify } from "@/lib/notify";
 import { logError } from "@/utils/logger";
 
@@ -69,7 +70,11 @@ describe("McpServerSettingsTab", () => {
     );
 
   it("renders API key in a non-input display element", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     const displayArea = container.querySelector(".bg-surface-disabled");
@@ -81,7 +86,11 @@ describe("McpServerSettingsTab", () => {
   });
 
   it("shows masked bullets by default, reveals key on toggle", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     const displayArea = container.querySelector(".bg-surface-disabled")!;
@@ -100,7 +109,11 @@ describe("McpServerSettingsTab", () => {
   });
 
   it("copy button writes unmasked key to clipboard", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     fireEvent.click(screen.getByLabelText("Copy API key"));
@@ -110,7 +123,11 @@ describe("McpServerSettingsTab", () => {
   });
 
   it("copy button shows Copied! feedback", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     fireEvent.click(screen.getByLabelText("Copy API key"));
@@ -122,7 +139,11 @@ describe("McpServerSettingsTab", () => {
   });
 
   it("Rotate calls rotateApiKey and surfaces the new key", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     fireEvent.click(screen.getByTitle("Rotate API key"));
@@ -137,7 +158,11 @@ describe("McpServerSettingsTab", () => {
   });
 
   it("does not render a Remove button — the key is mandatory", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     expect(screen.queryByRole("button", { name: /^remove$/i })).toBeNull();
@@ -148,7 +173,11 @@ describe("McpServerSettingsTab", () => {
       getStatus: vi.fn().mockRejectedValue(new Error("IPC down")),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     await waitForContent(container, "IPC down");
 
@@ -166,7 +195,11 @@ describe("McpServerSettingsTab", () => {
       }),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "MCP server is off");
 
     expect(screen.getByRole("button", { name: /turn on mcp server/i })).toBeTruthy();
@@ -189,7 +222,11 @@ describe("McpServerSettingsTab", () => {
       setEnabled: setEnabledMock,
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "MCP server is off");
 
     fireEvent.click(screen.getByRole("button", { name: /turn on mcp server/i }));
@@ -205,12 +242,20 @@ describe("McpServerSettingsTab", () => {
       getStatus: vi.fn().mockReturnValue(new Promise(() => {})),
     });
 
-    render(<McpServerSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     expect(screen.queryByText("MCP server is off")).toBeNull();
   });
 
   it("hides the empty state once MCP is enabled", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     expect(screen.queryByText("MCP server is off")).toBeNull();
@@ -221,7 +266,11 @@ describe("McpServerSettingsTab", () => {
       getStatus: vi.fn().mockRejectedValue(new Error("IPC down")),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     await waitForContent(container, "IPC down");
 
@@ -245,7 +294,11 @@ describe("McpServerSettingsTab", () => {
       setEnabled: setEnabledMock,
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "MCP server is off");
 
     fireEvent.click(screen.getByRole("button", { name: /turn on mcp server/i }));
@@ -260,7 +313,11 @@ describe("McpServerSettingsTab", () => {
       setEnabled: vi.fn().mockRejectedValue(new Error("toggle failed")),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "MCP Server");
 
     fireEvent.click(screen.getByLabelText("Enable MCP server"));
@@ -271,7 +328,11 @@ describe("McpServerSettingsTab", () => {
   });
 
   it("shows inline error for invalid audit max records instead of notifying", async () => {
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     const maxRecordsInput = container.querySelector("#mcp-audit-max-records") as HTMLInputElement;
@@ -289,7 +350,11 @@ describe("McpServerSettingsTab", () => {
       setAuditEnabled: vi.fn().mockRejectedValue(new Error("audit toggle failed")),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "API key active");
 
     fireEvent.click(screen.getByRole("button", { name: /capture on/i }));
@@ -316,7 +381,11 @@ describe("McpServerSettingsTab", () => {
       ]),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "files.read");
 
     fireEvent.click(screen.getByRole("button", { name: /clear log/i }));
@@ -340,7 +409,11 @@ describe("McpServerSettingsTab", () => {
       clearAuditLog: vi.fn().mockRejectedValue(new Error("clear failed")),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "files.read");
 
     fireEvent.click(screen.getByRole("button", { name: /clear log/i }));
@@ -364,7 +437,11 @@ describe("McpServerSettingsTab", () => {
       ]),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "files.read");
 
     fireEvent.click(screen.getByRole("button", { name: /copy all as json/i }));
@@ -405,7 +482,11 @@ describe("McpServerSettingsTab", () => {
       ]),
     });
 
-    const { container } = render(<McpServerSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "files.read");
 
     fireEvent.click(screen.getByRole("button", { name: /copy all as json/i }));

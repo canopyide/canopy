@@ -69,10 +69,12 @@ export function useSettingsTabValidation(tab: SettingsTab, hasError: boolean) {
     throw new Error("useSettingsTabValidation must be used within a SettingsValidationProvider");
   }
 
+  const { setTabHasError, clearTab } = context;
+
   useEffect(() => {
-    context.setTabHasError(tab, hasError);
+    setTabHasError(tab, hasError);
     return () => {
-      context.clearTab(tab);
+      clearTab(tab);
     };
-  }, [context, tab, hasError]);
+  }, [setTabHasError, clearTab, tab, hasError]);
 }

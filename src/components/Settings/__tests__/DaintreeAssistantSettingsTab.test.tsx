@@ -99,6 +99,7 @@ vi.mock("@/config/agents", () => ({
 }));
 
 import { DaintreeAssistantSettingsTab } from "../DaintreeAssistantSettingsTab";
+import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 
 const writeText = vi.fn().mockResolvedValue(undefined);
 
@@ -174,7 +175,11 @@ describe("DaintreeAssistantSettingsTab", () => {
     );
 
   it("loads settings and MCP status on mount", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Search documentation");
 
     expect(window.electron.helpAssistant.getSettings).toHaveBeenCalledTimes(1);
@@ -182,7 +187,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("toggling doc search persists docSearch=false", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Search documentation");
 
     const toggle = screen.getByLabelText("Allow the assistant to search Daintree documentation");
@@ -194,7 +203,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("turning on skip permissions reveals the inline warning copy", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Skip permission prompts");
 
     expect(container.textContent).not.toContain("becomes the only safeguard");
@@ -209,7 +222,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("rotate key calls mcpServer.rotateApiKey", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Rotate MCP key");
 
     fireEvent.click(screen.getByRole("button", { name: /rotate mcp key/i }));
@@ -220,7 +237,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("copy MCP config writes the snippet to the clipboard and shows confirmation", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Copy MCP config");
 
     fireEvent.click(screen.getByRole("button", { name: /copy mcp config/i }));
@@ -245,7 +266,11 @@ describe("DaintreeAssistantSettingsTab", () => {
       }
     );
 
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "MCP server is off");
 
     expect(screen.queryByRole("button", { name: /rotate mcp key/i })).toBeNull();
@@ -253,7 +278,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("does not render a Preferred model section", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Search documentation");
 
     expect(container.textContent).not.toContain("Preferred model");
@@ -273,7 +302,11 @@ describe("DaintreeAssistantSettingsTab", () => {
       { getStatus: vi.fn().mockRejectedValue(new Error("ipc down")) }
     );
 
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Search documentation");
 
     const docSearchToggle = screen.getByLabelText(
@@ -288,7 +321,11 @@ describe("DaintreeAssistantSettingsTab", () => {
       setSettings: vi.fn().mockRejectedValue(new Error("disk full")),
     });
 
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Search documentation");
 
     fireEvent.click(screen.getByLabelText("Allow the assistant to search Daintree documentation"));
@@ -299,7 +336,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   it("does not flash 'Copied' when clipboard.writeText rejects", async () => {
     writeText.mockRejectedValueOnce(new Error("permission denied"));
 
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Copy MCP config");
 
     fireEvent.click(screen.getByRole("button", { name: /copy mcp config/i }));
@@ -314,7 +355,11 @@ describe("DaintreeAssistantSettingsTab", () => {
     const setEnabled = vi.fn();
     installApi({}, { setEnabled });
 
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Daintree control");
 
     fireEvent.click(screen.getByLabelText("Allow the assistant to call Daintree control tools"));
@@ -328,7 +373,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("audit retention select offers off / 7 / 30 day options and persists changes", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Audit log retention");
 
     const select = screen.getByLabelText("Audit log retention") as HTMLSelectElement;
@@ -345,7 +394,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("renders an agent dropdown listing assistant-supported agents", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Agent");
 
     const select = screen.getByRole("combobox", { name: "Agent" }) as HTMLSelectElement;
@@ -354,7 +407,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("calls helpPanelStore.setPreferredAgent when the agent dropdown changes", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Agent");
 
     const select = screen.getByRole("combobox", { name: "Agent" }) as HTMLSelectElement;
@@ -374,7 +431,11 @@ describe("DaintreeAssistantSettingsTab", () => {
       }),
     });
 
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Custom CLI args");
 
     const input = screen.getByLabelText("Custom CLI args") as HTMLInputElement;
@@ -382,7 +443,11 @@ describe("DaintreeAssistantSettingsTab", () => {
   });
 
   it("persists customArgs via setSettings on input change", async () => {
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Custom CLI args");
 
     const input = screen.getByLabelText("Custom CLI args") as HTMLInputElement;
@@ -406,7 +471,11 @@ describe("DaintreeAssistantSettingsTab", () => {
       }),
     });
 
-    const { container } = render(<DaintreeAssistantSettingsTab />);
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
     await waitForContent(container, "Custom CLI args");
 
     const input = screen.getByLabelText("Custom CLI args") as HTMLInputElement;
