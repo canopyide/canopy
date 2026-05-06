@@ -586,7 +586,7 @@ export function WorktreeOverviewModal({
                           "border border-divider",
                           "bg-daintree-sidebar/50",
                           "transition duration-150",
-                          "hover:border-daintree-accent/50 hover:shadow-lg hover:shadow-daintree-accent/5"
+                          "hover:shadow-[var(--theme-shadow-ambient)]"
                         )}
                       >
                         <OverviewWorktreeCard
@@ -631,7 +631,7 @@ export function WorktreeOverviewModal({
                     "border border-divider",
                     "bg-daintree-sidebar/50",
                     "transition duration-150",
-                    "hover:border-daintree-accent/50 hover:shadow-lg hover:shadow-daintree-accent/5"
+                    "hover:shadow-[var(--theme-shadow-ambient)]"
                   )}
                 >
                   <OverviewWorktreeCard
