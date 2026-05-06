@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Settings2, X } from "lucide-react";
+import { Settings2, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
@@ -27,8 +27,6 @@ import { logError } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const RESIZE_STEP = 10;
 
@@ -160,7 +158,6 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   const [isResizing, setIsResizing] = useState(false);
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
   const isVisible = isVisibleProp ?? effectiveWidth > 0;
-  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const {
     isOpen,
@@ -169,7 +166,6 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     agentId,
     preferredAgentId,
     introDismissed,
-    conversationTouched,
     markConversationStarted,
     setWidth,
     setOpen,
@@ -560,42 +556,15 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     handleSelectAgent,
   ]);
 
-  const doClose = useCallback(() => {
-    const { sessionId } = useHelpPanelStore.getState();
-    if (terminalId) {
-      removePanel(terminalId);
-      clearTerminal();
-    }
-    revokeHelpSession(sessionId);
-    revokePendingSession();
+  // Hide the panel without tearing down the agent or conversation. The PTY,
+  // chat history, and help session all stay resident so reopening lands the
+  // user exactly where they left off — closing is collapse, not destroy.
+  // The destructive equivalent (end this session, start a new one) lives on
+  // a separate "+ New session" affordance.
+  const handleClose = useCallback(() => {
     suppressSidebarResizes();
     setOpen(false);
-  }, [terminalId, removePanel, clearTerminal, setOpen, revokePendingSession]);
-
-  // Confirm before discarding an in-flight assistant turn or accumulated
-  // conversation. The conversation itself is the artifact — losing it
-  // wholesale on an accidental close is unrecoverable (issue #6809), so
-  // protect non-empty chat history even after the agent goes idle.
-  const shouldConfirmClose =
-    (terminal?.agentState !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState)) ||
-    conversationTouched;
-
-  const handleClose = useCallback(() => {
-    if (shouldConfirmClose) {
-      setShowCloseConfirm(true);
-      return;
-    }
-    doClose();
-  }, [shouldConfirmClose, doClose]);
-
-  const handleConfirmClose = useCallback(() => {
-    setShowCloseConfirm(false);
-    doClose();
-  }, [doClose]);
-
-  const handleCancelClose = useCallback(() => {
-    setShowCloseConfirm(false);
-  }, []);
+  }, [setOpen]);
 
   const handleOpenSettings = useCallback(() => {
     void actionService.dispatch("app.settings.openTab", { tab: "assistant" }, { source: "user" });
@@ -750,9 +719,10 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           type="button"
           onClick={handleClose}
           className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors"
-          aria-label="Close help panel"
+          aria-label="Hide help panel"
+          title="Hide"
         >
-          <X className="w-3.5 h-3.5" />
+          <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
 
@@ -824,16 +794,6 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           </a>
         </div>
       )}
-
-      <ConfirmDialog
-        isOpen={showCloseConfirm}
-        title="Stop this agent?"
-        description="The agent is currently working. Closing the assistant panel will stop it."
-        confirmLabel="Stop and close"
-        onConfirm={handleConfirmClose}
-        onClose={handleCancelClose}
-        variant="destructive"
-      />
     </aside>
   );
 }
