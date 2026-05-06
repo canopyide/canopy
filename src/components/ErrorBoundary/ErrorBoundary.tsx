@@ -4,6 +4,9 @@ import { useErrorStore } from "@/store/errorStore";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
 import { captureRendererException } from "@/utils/rendererSentry";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
+import { buildReportIssueUrl } from "./buildReportIssueUrl";
+import { notify } from "@/lib/notify";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -27,6 +30,10 @@ interface ErrorBoundaryState {
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Guards against double-fire when the user clicks "Report Issue" twice
+  // before the async clipboard/openExternal chain completes.
+  private reportInFlight = false;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
@@ -54,7 +61,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     const correlationId = crypto.randomUUID();
 
-    captureRendererException(error, {
+    const sentryEventId = captureRendererException(error, {
       tags: {
         source: "react-error-boundary",
         component: componentName ?? "ErrorBoundary",
@@ -63,9 +70,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       extra: { correlationId, ...(context ?? {}) },
     });
 
-    let incidentId: string | null = null;
+    let storeIncidentId: string | null = null;
     try {
-      incidentId = useErrorStore.getState().addError({
+      storeIncidentId = useErrorStore.getState().addError({
         type: "unknown",
         message: error.message || "Component rendering error",
         details: `${error.stack || ""}\n\nComponent Stack:${componentStack}`,
@@ -77,6 +84,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     } catch (storeError) {
       logError("Failed to add error to store", storeError);
     }
+
+    // Prefer the Sentry event ID for the user-visible "Error ID" — engineers
+    // can search Sentry by it directly. Fall back to the error-store ID when
+    // Sentry isn't initialized so users always have *something* to quote.
+    const incidentId = sentryEventId ?? storeIncidentId;
 
     this.setState({
       errorInfo,
@@ -137,34 +149,67 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     });
   };
 
-  handleReport = (): void => {
-    const { error, errorInfo, incidentId } = this.state;
-    const { componentName, context } = this.props;
+  handleReport = async (): Promise<void> => {
+    if (this.reportInFlight) return;
+    this.reportInFlight = true;
+    try {
+      const { error, errorInfo, incidentId } = this.state;
+      const { componentName, context } = this.props;
 
-    const issueBody = encodeURIComponent(
-      `## Error Report\n\n` +
-        `**Component:** ${componentName || "Unknown"}\n` +
-        `**Incident ID:** ${incidentId ?? "unknown"}\n` +
-        `**Message:** ${error?.message || "Unknown error"}\n\n` +
-        `**Context:**\n` +
-        `${context ? JSON.stringify(context, null, 2) : "None"}\n\n` +
-        `**Stack Trace:**\n\`\`\`\n${error?.stack || "No stack trace"}\n\`\`\`\n\n` +
-        `**Component Stack:**\n\`\`\`\n${errorInfo?.componentStack || "No component stack"}\n\`\`\``
-    );
+      if (!error) return;
 
-    const issueUrl = `https://github.com/daintreehq/daintree/issues/new?title=${encodeURIComponent(`Component Error: ${error?.message || "Unknown"}`)}&body=${issueBody}`;
+      const { url, fullBody, usedClipboardFallback } = buildReportIssueUrl({
+        incidentId,
+        componentName,
+        message: error.message,
+        stack: error.stack ?? "",
+        componentStack: errorInfo?.componentStack ?? "",
+        context,
+      });
 
-    if (window.electron?.system?.openExternal) {
-      actionService
-        .dispatch("system.openExternal", { url: issueUrl }, { source: "user" })
-        .then((result) => {
-          if (!result.ok) {
-            window.electron.system.openExternal(issueUrl);
+      if (usedClipboardFallback) {
+        const writeText = window.electron?.clipboard?.writeText;
+        let clipboardOk = false;
+        if (writeText) {
+          try {
+            await writeText(fullBody);
+            clipboardOk = true;
+          } catch (clipboardError) {
+            logError("Failed to copy crash report to clipboard", clipboardError);
           }
-        })
-        .catch(() => {
-          window.electron.system.openExternal(issueUrl);
+        }
+        notify({
+          type: "info",
+          title: clipboardOk ? "Error details copied" : "Error details too long",
+          message: clipboardOk
+            ? "The full crash report was copied to your clipboard — paste it into the issue body."
+            : "Couldn't copy the full report. Quote the Error ID shown above when filing the issue.",
+          inboxMessage: clipboardOk
+            ? "Crash report copied to clipboard for the issue body."
+            : "Couldn't copy crash report to clipboard.",
         });
+      }
+
+      if (!window.electron?.system?.openExternal) return;
+
+      try {
+        const result = await actionService.dispatch(
+          "system.openExternal",
+          { url },
+          { source: "user" }
+        );
+        if (!result.ok) {
+          safeFireAndForget(window.electron.system.openExternal(url), {
+            context: "ErrorBoundary.handleReport openExternal fallback",
+          });
+        }
+      } catch {
+        safeFireAndForget(window.electron.system.openExternal(url), {
+          context: "ErrorBoundary.handleReport openExternal fallback",
+        });
+      }
+    } finally {
+      this.reportInFlight = false;
     }
   };
 
