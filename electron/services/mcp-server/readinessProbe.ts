@@ -55,8 +55,11 @@ export async function probeMcpServer(
     try {
       const result = await sendInitialize(port, apiKey, perAttemptTimeout);
       // Best-effort cleanup so the probe session doesn't sit in the
-      // session map for 30 minutes. Swallow errors — session will expire.
-      await sendDelete(port, apiKey, result.sessionId, perAttemptTimeout).catch((err) => {
+      // session map for 30 minutes. Detached so the probe returns
+      // immediately on success — the hard timeout only bounds initialize.
+      // Cleanup gets its own per-request timeout regardless of remaining
+      // budget; failures are logged but never bubble up.
+      void sendDelete(port, apiKey, result.sessionId, requestTimeoutMs).catch((err) => {
         console.warn("[MCP] Readiness probe cleanup DELETE failed (non-fatal):", err);
       });
       return;
@@ -193,7 +196,12 @@ function sendDelete(
           },
         },
         (res) => {
+          const status = res.statusCode ?? 0;
           res.resume();
+          if (status < 200 || status >= 300) {
+            settle(() => reject(new Error(`DELETE returned status ${status}`)));
+            return;
+          }
           settle(() => resolve());
         }
       );

@@ -409,6 +409,12 @@ export class HelpSessionService {
     // self-probe (real `initialize` round-trip with the bearer) so we
     // don't write `.mcp.json` and launch the assistant against a server
     // that hangs or 500s on the first request.
+    //
+    // Probe targets `/mcp` (Streamable HTTP) even though the assistant
+    // .mcp.json points at `/sse`. The auth + host validation + handler
+    // dispatch are shared between the two paths, so a passing probe
+    // proves the server is genuinely live; only an SSE-transport-specific
+    // initialization fault would slip through this gate.
     const port = mcpServerService.currentPort;
     const apiKey = mcpServerService.currentApiKey;
     if (port === null || !apiKey) {

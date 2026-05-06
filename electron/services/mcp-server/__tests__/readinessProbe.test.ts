@@ -1,5 +1,5 @@
 import http from "node:http";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PROBE_BASE_DELAY_MS,
   PROBE_MAX_ATTEMPTS,
@@ -227,8 +227,36 @@ describe("probeMcpServer", () => {
       })
     ).rejects.toThrow();
     const elapsed = Date.now() - start;
-    // Hard timeout caps the loop; allow generous slack for CI.
-    expect(elapsed).toBeLessThan(1500);
+    // Hard timeout caps the loop. Generous CI slack but not so loose
+    // that a regression to "no hard timeout" would pass.
+    expect(elapsed).toBeLessThan(800);
+  });
+
+  it("logs a warning when DELETE cleanup returns non-2xx (still resolves)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fake = await startFakeServer((req, res) => {
+      if (req.method === "POST") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "mcp-session-id": "doomed",
+        });
+        res.flushHeaders();
+        return;
+      }
+      // DELETE returns 404 — server says "no such session" — non-fatal
+      // but should be logged so operators can see something is off.
+      res.writeHead(404);
+      res.end();
+    });
+
+    await probeMcpServer(fake.port, "test-api-key");
+    // DELETE is fire-and-forget — give it time to complete and log.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Readiness probe cleanup DELETE failed"),
+      expect.objectContaining({ message: expect.stringContaining("status 404") })
+    );
+    warn.mockRestore();
   });
 });
 
