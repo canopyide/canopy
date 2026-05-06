@@ -51,7 +51,7 @@ export const WAIT_UNTIL_IDLE_INPUT_SCHEMA: Record<string, unknown> = {
       type: "integer",
       minimum: 0,
       maximum: MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS,
-      description: `Maximum time to block in milliseconds. Defaults to ${DEFAULT_WAIT_UNTIL_IDLE_TIMEOUT_MS} ms (${DEFAULT_WAIT_UNTIL_IDLE_TIMEOUT_MS / 60_000} minutes); clamped to ${MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS} ms (${MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS / 60_000 / 60} hours). Use 0 for an immediate snapshot.`,
+      description: `Pass 0 for an immediate non-blocking snapshot — the recommended mode when polling multiple terminals in parallel. Otherwise, the maximum time to block in milliseconds; defaults to ${DEFAULT_WAIT_UNTIL_IDLE_TIMEOUT_MS} ms (${DEFAULT_WAIT_UNTIL_IDLE_TIMEOUT_MS / 60_000} minutes) and clamped to ${MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS} ms (${MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS / 60_000 / 60} hours).`,
     },
   },
   required: ["terminalId"],
@@ -76,7 +76,7 @@ export const WAIT_UNTIL_IDLE_OUTPUT_SCHEMA: Record<string, unknown> = {
 };
 
 export const WAIT_UNTIL_IDLE_DESCRIPTION =
-  "[terminal] Wait until idle: blocks until the agent in the given terminal transitions out of the `working` state, or until the timeout elapses. Resolves immediately if the agent is already non-working or no agent is attached. Honours client cancellation.";
+  "[terminal] Wait until idle: blocks until the agent in the given terminal transitions out of the `working` state, or until the timeout elapses. Resolves immediately if the agent is already non-working or no agent is attached. Honours client cancellation. When orchestrating multiple terminals, call with `timeoutMs: 0` in parallel for snapshots — do not issue concurrent default-timeout waits, which race unpredictably and can each block for 30 minutes.";
 
 export function mapAgentStateToBusyState(state: AgentState | undefined): "working" | "idle" {
   return state === "working" ? "working" : "idle";
