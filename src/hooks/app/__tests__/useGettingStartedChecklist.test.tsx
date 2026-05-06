@@ -439,6 +439,48 @@ describe("useGettingStartedChecklist", () => {
       }
     });
 
+    it("applies onChecklistPush(dismissed:true) immediately when no hold is active", async () => {
+      let pushHandler: ((next: ChecklistStateLike) => void) | null = null;
+      const onChecklistPushMock = vi.fn((fn: (next: ChecklistStateLike) => void) => {
+        pushHandler = fn;
+        return () => {};
+      });
+      const augmentedMock = onboardingMock as typeof onboardingMock & {
+        onChecklistPush: typeof onChecklistPushMock;
+      };
+      augmentedMock.onChecklistPush = onChecklistPushMock;
+
+      try {
+        const { result } = renderHook(() => useGettingStartedChecklist(true));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+
+        expect(result.current.visible).toBe(true);
+        expect(pushHandler).not.toBeNull();
+
+        // No markItem(allDone), so pendingDismissRef is false. The push gate
+        // must be inactive and dismissed:true must take effect immediately.
+        await act(async () => {
+          pushHandler!({
+            items: {
+              openedProject: true,
+              launchedAgent: true,
+              createdWorktree: true,
+              ranSecondParallelAgent: true,
+            },
+            dismissed: true,
+            celebrationShown: false,
+          });
+        });
+
+        expect(result.current.checklist?.dismissed).toBe(true);
+        expect(result.current.visible).toBe(false);
+      } finally {
+        delete (augmentedMock as Partial<typeof augmentedMock>).onChecklistPush;
+      }
+    });
+
     it("manual dismiss() during the hold dismisses the panel immediately", async () => {
       const { result } = renderHook(() => useGettingStartedChecklist(true));
       await act(async () => {

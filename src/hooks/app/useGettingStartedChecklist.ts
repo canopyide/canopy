@@ -295,6 +295,10 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
       pendingDismissRef.current = false;
       setPendingDismiss(false);
       setChecklist((prev) => (prev ? { ...prev, dismissed: true } : prev));
+      // forceShow keeps `visible` true even after `dismissed:true`. If the
+      // user reached completion via Help > Getting Started, clear it here
+      // so the panel exits with the rest of the beat.
+      setForceShow(false);
     }, PENDING_DISMISS_HOLD_MS);
     return () => clearTimeout(timer);
   }, [pendingDismiss]);

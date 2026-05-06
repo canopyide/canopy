@@ -75,7 +75,9 @@ function readAnchor(): { x: number; y: number } {
 
 export function CelebrationConfetti() {
   const [reducedMotion] = useState(isReducedMotion);
-  const [particles] = useState(generateParticles);
+  // Skip the spring-particle setup work entirely under reduced-motion or
+  // performance-mode — the flash overlay below is the only thing we render.
+  const [particles] = useState<Particle[]>(() => (reducedMotion ? [] : generateParticles()));
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
