@@ -422,6 +422,140 @@ describe("SettingsShortcutCapture", () => {
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });
 
+  describe("IME composition guard", () => {
+    it("ignores keydown when isComposing is true", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      // jsdom ignores isComposing in the constructor init dict.
+      Object.defineProperty(keyEvent, "isComposing", { value: true, configurable: true });
+      const stopPropagationSpy = vi.spyOn(keyEvent, "stopPropagation");
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+      });
+
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+      expect(keyEvent.defaultPrevented).toBe(false);
+      // Guard must run before stopPropagation — otherwise the IME candidate window
+      // can break in the surrounding application.
+      expect(stopPropagationSpy).not.toHaveBeenCalled();
+    });
+
+    it("ignores keydown when keyCode is 229 (Chromium Process key)", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "Process",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(keyEvent, "keyCode", { value: 229, configurable: true });
+      const stopPropagationSpy = vi.spyOn(keyEvent, "stopPropagation");
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+      });
+
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+      expect(keyEvent.defaultPrevented).toBe(false);
+      expect(stopPropagationSpy).not.toHaveBeenCalled();
+    });
+
+    it("does not record an IME-composing Enter as the first chord token", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const composingEnter = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(composingEnter, "isComposing", { value: true, configurable: true });
+
+      act(() => {
+        window.dispatchEvent(composingEnter);
+        vi.advanceTimersByTime(1100);
+      });
+
+      // No combo captured — Save button should not appear and the prompt is unchanged.
+      expect(screen.queryByText("Save")).toBeNull();
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+    });
+
+    it("does not record an IME-composing Enter as the second token of a pending chord", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      // First chord token — Ctrl+K — opens the "waiting for second key" window.
+      const firstToken = new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        window.dispatchEvent(firstToken);
+      });
+      expect(screen.getByText(/press second key or wait to finish/)).toBeTruthy();
+
+      // IME commit Enter while we're waiting must NOT become the second chord token.
+      const composingEnter = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(composingEnter, "isComposing", { value: true, configurable: true });
+      act(() => {
+        window.dispatchEvent(composingEnter);
+        vi.advanceTimersByTime(1100);
+      });
+
+      // The single-token Ctrl+K should finalize cleanly with no chord suffix.
+      expect(screen.queryByText(/press second key or wait to finish/)).toBeNull();
+      expect(screen.queryByText(/\(chord\)/)).toBeNull();
+      expect(screen.getByText("Save")).toBeTruthy();
+    });
+  });
+
   describe("conflict remediation", () => {
     it("renders unbind buttons for each conflict", async () => {
       const { keybindingService } = await import("@/services/KeybindingService");
