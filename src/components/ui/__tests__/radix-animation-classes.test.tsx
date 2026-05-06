@@ -28,6 +28,15 @@ const UI_DURATION_CLASSES = [
   "data-[state=closed]:duration-[120ms]",
 ];
 
+const TRANSFORM_ORIGIN_VARS: Record<string, string> = {
+  popover: "var(--radix-popover-content-transform-origin)",
+  dropdownContent: "var(--radix-dropdown-menu-content-transform-origin)",
+  dropdownSubContent: "var(--radix-dropdown-menu-content-transform-origin)",
+  contextContent: "var(--radix-context-menu-content-transform-origin)",
+  contextSubContent: "var(--radix-context-menu-content-transform-origin)",
+  select: "var(--radix-select-content-transform-origin)",
+};
+
 const TOOLTIP_CLASSES = [
   "animate-in",
   "fade-in-0",
@@ -74,6 +83,7 @@ describe("Radix overlay animation classes — runtime render", () => {
     );
     expectAllInString(el.className, ENTER_EXIT_CLASSES, "PopoverContent");
     expectAllInString(el.className, UI_DURATION_CLASSES, "PopoverContent");
+    expect(el.style.transformOrigin).toBe(TRANSFORM_ORIGIN_VARS.popover);
   });
 
   it("DropdownMenuContent renders with full enter/exit class set and UI durations", () => {
@@ -88,6 +98,7 @@ describe("Radix overlay animation classes — runtime render", () => {
     const el = assertHTMLElement(document.querySelector("[role='menu']"), "DropdownMenuContent");
     expectAllInString(el.className, ENTER_EXIT_CLASSES, "DropdownMenuContent");
     expectAllInString(el.className, UI_DURATION_CLASSES, "DropdownMenuContent");
+    expect(el.style.transformOrigin).toBe(TRANSFORM_ORIGIN_VARS.dropdownContent);
   });
 
   it("DropdownMenuSubContent renders with full enter/exit class set and UI durations", () => {
@@ -108,6 +119,23 @@ describe("Radix overlay animation classes — runtime render", () => {
     const sub = assertHTMLElement(menus[menus.length - 1], "DropdownMenuSubContent");
     expectAllInString(sub.className, ENTER_EXIT_CLASSES, "DropdownMenuSubContent");
     expectAllInString(sub.className, UI_DURATION_CLASSES, "DropdownMenuSubContent");
+    expect(sub.style.transformOrigin).toBe(TRANSFORM_ORIGIN_VARS.dropdownSubContent);
+  });
+
+  it("PopoverContent respects caller-provided transformOrigin override", () => {
+    render(
+      <PopoverPrimitive.Root open>
+        <PopoverPrimitive.Trigger>trigger</PopoverPrimitive.Trigger>
+        <PopoverContent forceMount style={{ transformOrigin: "center" } as React.CSSProperties}>
+          content
+        </PopoverContent>
+      </PopoverPrimitive.Root>
+    );
+    const el = assertHTMLElement(
+      document.querySelector("[data-radix-popper-content-wrapper] > *"),
+      "PopoverContent"
+    );
+    expect(el.style.transformOrigin).toBe("center");
   });
 });
 
@@ -116,6 +144,7 @@ describe("Radix overlay animation classes — wrapper source", () => {
     const src = readWrapperSource("popover.tsx");
     expectAllInString(src, ENTER_EXIT_CLASSES, "popover.tsx");
     expectAllInString(src, UI_DURATION_CLASSES, "popover.tsx");
+    expect(src).toContain("var(--radix-popover-content-transform-origin)");
   });
 
   it("dropdown-menu.tsx contains the full enter/exit set and UI durations on Content and SubContent", () => {
@@ -124,6 +153,9 @@ describe("Radix overlay animation classes — wrapper source", () => {
     expectAllInString(src, UI_DURATION_CLASSES, "dropdown-menu.tsx");
     const occurrences = src.split("data-[state=open]:duration-200").length - 1;
     expect(occurrences, "duration-200 must appear on both Content and SubContent").toBe(2);
+    const originOccurrences =
+      src.split("var(--radix-dropdown-menu-content-transform-origin)").length - 1;
+    expect(originOccurrences, "transformOrigin must appear on both Content and SubContent").toBe(2);
   });
 
   it("context-menu.tsx contains the full enter/exit set and UI durations on Content and SubContent", () => {
@@ -132,12 +164,16 @@ describe("Radix overlay animation classes — wrapper source", () => {
     expectAllInString(src, UI_DURATION_CLASSES, "context-menu.tsx");
     const occurrences = src.split("data-[state=open]:duration-200").length - 1;
     expect(occurrences, "duration-200 must appear on both Content and SubContent").toBe(2);
+    const originOccurrences =
+      src.split("var(--radix-context-menu-content-transform-origin)").length - 1;
+    expect(originOccurrences, "transformOrigin must appear on both Content and SubContent").toBe(2);
   });
 
   it("select.tsx contains the full enter/exit set and UI durations", () => {
     const src = readWrapperSource("select.tsx");
     expectAllInString(src, ENTER_EXIT_CLASSES, "select.tsx");
     expectAllInString(src, UI_DURATION_CLASSES, "select.tsx");
+    expect(src).toContain("var(--radix-select-content-transform-origin)");
   });
 
   it("tooltip.tsx contains palette enter/exit set with palette durations", () => {
