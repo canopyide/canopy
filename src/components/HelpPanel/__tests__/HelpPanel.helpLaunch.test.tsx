@@ -688,7 +688,11 @@ describe("HelpPanel — handleRunAnyway", () => {
     cliAvailabilityState.details = {
       claude: { state: "missing", resolvedPath: null, via: null },
     };
-    panelStoreState.addPanel = vi.fn().mockResolvedValue("restarted-term");
+    panelStoreState.addPanel = vi
+      .fn()
+      .mockImplementation((opts: { requestedId?: string }) =>
+        Promise.resolve(opts.requestedId ?? "restarted-term")
+      );
 
     const { getByTestId } = render(<HelpPanel width={380} />);
 
@@ -698,13 +702,23 @@ describe("HelpPanel — handleRunAnyway", () => {
 
     expect(panelStoreState.removePanel).toHaveBeenCalledWith("gate-1");
     expect(panelStoreState.addPanel).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "terminal", launchAgentId: "claude", cwd: "/help" })
+      expect.objectContaining({
+        kind: "terminal",
+        launchAgentId: "claude",
+        cwd: "/help",
+        requestedId: expect.stringMatching(/^terminal-/),
+        activateDockOnCreate: true,
+      })
     );
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("restarted-term", "claude", null);
-    expect(mockMarkTerminal).toHaveBeenCalledWith("restarted-term");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
+      expect.stringMatching(/^terminal-/),
+      "claude",
+      null
+    );
+    expect(mockMarkTerminal).toHaveBeenCalledWith(expect.stringMatching(/^terminal-/));
   });
 
-  it("notifies on addPanel rejection", async () => {
+  it("notifies and reverts the reserved help-terminal id on addPanel rejection", async () => {
     helpPanelState.terminalId = "gate-1";
     helpPanelState.agentId = "claude";
     panelStoreState.panelsById = {
@@ -729,10 +743,95 @@ describe("HelpPanel — handleRunAnyway", () => {
       fireEvent.click(getByTestId("run-anyway"));
     });
 
-    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+    // The pre-set fired once (reserving the slot), then clearTerminal reverted it
+    // when addPanel rejected — so no second setTerminal call carrying a session id.
+    expect(helpPanelState.setTerminal).toHaveBeenCalledTimes(1);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
+      expect.stringMatching(/^terminal-/),
+      "claude",
+      null
+    );
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ type: "error", title: "Assistant launch failed" })
     );
+  });
+
+  it("reserves the new help-terminal id BEFORE addPanel resolves (race fix for #6951)", async () => {
+    helpPanelState.terminalId = "gate-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "gate-1": {
+        id: "gate-1",
+        kind: "terminal",
+        spawnStatus: "missing-cli",
+        cwd: "/help",
+        title: "Claude",
+        command: "claude",
+        location: "dock",
+      },
+    };
+    cliAvailabilityState.details = {
+      claude: { state: "missing", resolvedPath: null, via: null },
+    };
+
+    // Hold addPanel resolution until after we've inspected store state.
+    let resolveAdd: (value: string) => void = () => {};
+    let capturedRequestedId: string | undefined;
+    panelStoreState.addPanel = vi.fn().mockImplementation((opts: { requestedId?: string }) => {
+      capturedRequestedId = opts.requestedId;
+      return new Promise<string>((r) => {
+        resolveAdd = r;
+      });
+    });
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("run-anyway"));
+    });
+
+    // setTerminal fired with the pre-generated id while addPanel is still pending.
+    expect(capturedRequestedId).toMatch(/^terminal-/);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(capturedRequestedId, "claude", null);
+
+    await act(async () => {
+      resolveAdd(capturedRequestedId!);
+    });
+  });
+
+  it("reverts the reserved id when provisionHelpSession returns a non-ok outcome", async () => {
+    helpPanelState.terminalId = "gate-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "gate-1": {
+        id: "gate-1",
+        kind: "terminal",
+        spawnStatus: "missing-cli",
+        cwd: "/help",
+        title: "Claude",
+        command: "claude",
+        location: "dock",
+      },
+    };
+    cliAvailabilityState.details = {
+      claude: { state: "missing", resolvedPath: null, via: null },
+    };
+    projectStoreState.currentProject = { id: "proj-1", path: "/repo" };
+    const mcpErr = new Error("MCP server not ready") as Error & { code: string };
+    mcpErr.code = "MCP_NOT_READY";
+    mockProvisionSession.mockRejectedValueOnce(mcpErr);
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("run-anyway"));
+    });
+
+    // Pre-set fired, then was reverted by the !outcome.ok branch.
+    expect(helpPanelState.setTerminal).toHaveBeenCalledTimes(1);
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+    expect(panelStoreState.addPanel).not.toHaveBeenCalled();
   });
 
   it("revokes the freshly-provisioned session when addPanel throws (regression: leaked token)", async () => {
@@ -1288,7 +1387,11 @@ describe("HelpPanel — + New session destructive reset", () => {
 
   it("resets immediately without a confirm when the agent is idle and conversation is untouched", async () => {
     setupBoundTerminal({ agentState: "idle", conversationTouched: false });
-    panelStoreState.addPanel = vi.fn().mockResolvedValue("fresh-term");
+    panelStoreState.addPanel = vi
+      .fn()
+      .mockImplementation((opts: { requestedId?: string }) =>
+        Promise.resolve(opts.requestedId ?? "fresh-term")
+      );
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
       sessionPath: "/sessions/fresh",
@@ -1308,9 +1411,18 @@ describe("HelpPanel — + New session destructive reset", () => {
     expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
     expect(helpPanelState.clearTerminal).toHaveBeenCalled();
     expect(panelStoreState.addPanel).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "terminal", launchAgentId: "claude" })
+      expect.objectContaining({
+        kind: "terminal",
+        launchAgentId: "claude",
+        requestedId: expect.stringMatching(/^terminal-/),
+        activateDockOnCreate: true,
+      })
     );
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("fresh-term", "claude", "sess-fresh");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
+      expect.stringMatching(/^terminal-/),
+      "claude",
+      "sess-fresh"
+    );
   });
 
   it("shows the confirm dialog when the agent is working", () => {
@@ -1353,7 +1465,11 @@ describe("HelpPanel — + New session destructive reset", () => {
 
   it("runs the destructive teardown and relaunches when the user confirms", async () => {
     setupBoundTerminal({ agentState: "working", conversationTouched: true });
-    panelStoreState.addPanel = vi.fn().mockResolvedValue("fresh-term");
+    panelStoreState.addPanel = vi
+      .fn()
+      .mockImplementation((opts: { requestedId?: string }) =>
+        Promise.resolve(opts.requestedId ?? "fresh-term")
+      );
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
       sessionPath: "/sessions/fresh",
@@ -1372,7 +1488,181 @@ describe("HelpPanel — + New session destructive reset", () => {
     expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-1");
     expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
     expect(helpPanelState.clearTerminal).toHaveBeenCalled();
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("fresh-term", "claude", "sess-fresh");
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
+      expect.stringMatching(/^terminal-/),
+      "claude",
+      "sess-fresh"
+    );
+  });
+
+  it("reserves the new help-terminal id BEFORE addPanel resolves (race fix for #6951)", async () => {
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-fresh",
+      sessionPath: "/sessions/fresh",
+      token: "tok-fresh",
+      tier: "action",
+      mcpUrl: null,
+      windowId: 1,
+    });
+
+    let resolveAdd: (value: string) => void = () => {};
+    let capturedRequestedId: string | undefined;
+    panelStoreState.addPanel = vi.fn().mockImplementation((opts: { requestedId?: string }) => {
+      capturedRequestedId = opts.requestedId;
+      return new Promise<string>((r) => {
+        resolveAdd = r;
+      });
+    });
+
+    const { container } = render(<HelpPanel width={380} />);
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    // Pre-set already fired with the same id we passed as requestedId.
+    expect(capturedRequestedId).toMatch(/^terminal-/);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(capturedRequestedId, "claude", null);
+
+    await act(async () => {
+      resolveAdd(capturedRequestedId!);
+    });
+  });
+
+  it("forwards requestedId and activateDockOnCreate to addPanel", async () => {
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+    panelStoreState.addPanel = vi
+      .fn()
+      .mockImplementation((opts: { requestedId?: string }) =>
+        Promise.resolve(opts.requestedId ?? "fresh")
+      );
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-fresh",
+      sessionPath: "/sessions/fresh",
+      token: "tok-fresh",
+      tier: "action",
+      mcpUrl: null,
+      windowId: 1,
+    });
+
+    const { container } = render(<HelpPanel width={380} />);
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedId: expect.stringMatching(/^terminal-/),
+        activateDockOnCreate: true,
+      })
+    );
+  });
+
+  it("reverts the reserved id when addPanel rejects (no ghost helpTerminalId)", async () => {
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-fresh",
+      sessionPath: "/sessions/fresh",
+      token: "tok-fresh",
+      tier: "action",
+      mcpUrl: null,
+      windowId: 1,
+    });
+    panelStoreState.addPanel = vi.fn().mockRejectedValue(new Error("spawn failed"));
+
+    const { container } = render(<HelpPanel width={380} />);
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    // setTerminal called once (pre-set), then clearTerminal reverted it on catch.
+    // setTerminal must NOT be called again with a session id.
+    const setCalls = (helpPanelState.setTerminal as ReturnType<typeof vi.fn>).mock.calls;
+    expect(setCalls.length).toBe(1);
+    expect(setCalls[0]?.[2]).toBeNull();
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", title: "Assistant launch failed" })
+    );
+  });
+
+  it("reverts the reserved id when provisionHelpSession returns a non-ok outcome", async () => {
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+    const mcpErr = new Error("MCP server not ready") as Error & { code: string };
+    mcpErr.code = "MCP_NOT_READY";
+    mockProvisionSession.mockRejectedValueOnce(mcpErr);
+
+    const { container } = render(<HelpPanel width={380} />);
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    expect(panelStoreState.addPanel).not.toHaveBeenCalled();
+    const setCalls = (helpPanelState.setTerminal as ReturnType<typeof vi.fn>).mock.calls;
+    expect(setCalls.length).toBe(1);
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+  });
+
+  it("does NOT wipe the reservation when the cleanup effect re-runs mid-launch", async () => {
+    // Regression: without the pendingNewTerminalIdRef guard in the cleanup
+    // effect at HelpPanel.tsx:221, a re-render fired while
+    // `terminalId === newId` but `panelsById[newId]` is not yet committed
+    // would observe `terminalId && !terminal` and call clearTerminal —
+    // re-opening the dock-leak gap that #6951 closes. This test wires up a
+    // stateful setTerminal/clearTerminal so React actually sees the
+    // intermediate state (the standard mocks are vi.fn() and don't mutate).
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+
+    helpPanelState.setTerminal = vi
+      .fn()
+      .mockImplementation((tId: string, aId: string, sId: string | null) => {
+        helpPanelState.terminalId = tId;
+        helpPanelState.agentId = aId;
+        helpPanelState.sessionId = sId;
+      });
+    helpPanelState.clearTerminal = vi.fn().mockImplementation(() => {
+      helpPanelState.terminalId = null;
+      helpPanelState.agentId = null;
+      helpPanelState.sessionId = null;
+    });
+
+    // Hold provisionHelpSession to keep us in the in-flight window.
+    let resolveProvision: ((value: unknown) => void) | undefined;
+    mockProvisionSession.mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveProvision = r;
+        })
+    );
+
+    panelStoreState.addPanel = vi
+      .fn()
+      .mockImplementation((opts: { requestedId?: string }) =>
+        Promise.resolve(opts.requestedId ?? "fresh")
+      );
+
+    const { container, rerender } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    // We're in the in-flight window. Force a re-render so the cleanup
+    // effect re-evaluates: terminalId is the reserved id, panelsById has
+    // no entry for it yet. The ref guard must suppress the cleanup.
+    await act(async () => {
+      rerender(<HelpPanel width={380} />);
+    });
+
+    // Exactly one clearTerminal call (the explicit synchronous reset
+    // before the pre-set). If the effect had fired, we'd see 2+.
+    expect(helpPanelState.clearTerminal).toHaveBeenCalledTimes(1);
+    expect(helpPanelState.terminalId).toMatch(/^terminal-/);
+
+    // Drain the pending promise so vitest's act() doesn't warn.
+    await act(async () => {
+      resolveProvision?.(null);
+    });
   });
 });
 

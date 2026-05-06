@@ -206,6 +206,13 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   // from a project switch without this flag (issue #6758).
   const isSystemSuspendedRef = useRef(false);
 
+  // Tracks an id reserved by doNewSession / handleRunAnyway that has been
+  // pre-recorded in helpPanelStore *before* addPanel commits the new panel
+  // to panelsById. Without this, the cleanup effect below would observe
+  // `terminalId && !terminal` during the provision/spawn await and wipe the
+  // reservation — re-opening the dock-filter gap that #6951 is closing.
+  const pendingNewTerminalIdRef = useRef<string | null>(null);
+
   const revokePendingSession = useCallback(() => {
     const pending = pendingSessionIdRef.current;
     if (pending) {
@@ -216,10 +223,12 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
 
   // Revoke the bound help session if the underlying PTY panel disappears from
   // the panel store. addPanel puts the placeholder in panelsById before
-  // setTerminal records the id here, so a missing entry means the process
-  // exited and removePanel was called from elsewhere.
+  // setTerminal records the id here, so a missing entry usually means the
+  // process exited and removePanel was called from elsewhere — except during
+  // the brief window where the +New session / Run-anyway flows have reserved
+  // the id but addPanel has not yet committed it (guarded by the ref).
   useEffect(() => {
-    if (terminalId && !terminal) {
+    if (terminalId && !terminal && terminalId !== pendingNewTerminalIdRef.current) {
       const { sessionId } = useHelpPanelStore.getState();
       revokeHelpSession(sessionId);
       clearTerminal();
@@ -584,11 +593,22 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     const launchAgentId = agentId;
     const previousSessionId = useHelpPanelStore.getState().sessionId;
 
+    // Reserve the new terminal id synchronously so the dock filter
+    // (`helpTerminalId` exclusion in ContentDock) is active the moment
+    // `addPanel` commits the new panel — not one microtask later. Without
+    // this, the gap between `addPanel` resolving and `setTerminal` running
+    // leaves a stray help terminal visible in the dock for one render.
+    // The ref tells the line-221 cleanup effect to leave the reservation
+    // alone while addPanel is still in flight (panelsById[newId] absent).
+    const newId = `terminal-${crypto.randomUUID()}`;
+    pendingNewTerminalIdRef.current = newId;
+
     isLaunchingRef.current = true;
     removePanel(terminalId);
     revokeHelpSession(previousSessionId);
     revokePendingSession();
     clearTerminal();
+    useHelpPanelStore.getState().setTerminal(newId, launchAgentId, null);
 
     safeFireAndForget(
       (async () => {
@@ -596,6 +616,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
         try {
           const outcome = await provisionHelpSession();
           if (outcome && !outcome.ok) {
+            pendingNewTerminalIdRef.current = null;
+            useHelpPanelStore.getState().clearTerminal();
             if (outcome.code === "MCP_NOT_READY") {
               notifyMcpNotReady(outcome.message);
             } else {
@@ -610,7 +632,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           const env: Record<string, string> | undefined =
             helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
-          const newId = await usePanelStore.getState().addPanel({
+          const returnedId = await usePanelStore.getState().addPanel({
             kind: "terminal",
             launchAgentId,
             command: panel.command,
@@ -622,15 +644,20 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             agentModelId: panel.agentModelId,
             agentPresetId: panel.agentPresetId,
             env,
+            requestedId: newId,
+            activateDockOnCreate: true,
           });
 
-          if (!newId) {
+          if (!returnedId) {
+            pendingNewTerminalIdRef.current = null;
+            useHelpPanelStore.getState().clearTerminal();
             revokeHelpSession(session?.sessionId ?? null);
             logError("Help new-session returned no terminal id", { agentId: launchAgentId });
             notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
             return;
           }
 
+          pendingNewTerminalIdRef.current = null;
           useHelpPanelStore
             .getState()
             .setTerminal(newId, launchAgentId, session?.sessionId ?? null);
@@ -638,6 +665,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             logError("Failed to mark help terminal", err);
           });
         } catch (error) {
+          pendingNewTerminalIdRef.current = null;
+          useHelpPanelStore.getState().clearTerminal();
           revokeHelpSession(session?.sessionId ?? null);
           logError("Help new-session failed", error);
           notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
@@ -706,10 +735,19 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     const launchAgentId = agentId;
     const previousSessionId = useHelpPanelStore.getState().sessionId;
 
+    // Reserve the new terminal id synchronously so the dock filter is
+    // active the instant `addPanel` commits — see doNewSession for the full
+    // rationale; this path has the identical race. The ref guards the
+    // line-221 cleanup effect during the in-flight window.
+    const newId = `terminal-${crypto.randomUUID()}`;
+    pendingNewTerminalIdRef.current = newId;
+
     isLaunchingRef.current = true;
     removePanel(terminalId);
     revokeHelpSession(previousSessionId);
+    revokePendingSession();
     clearTerminal();
+    useHelpPanelStore.getState().setTerminal(newId, launchAgentId, null);
 
     safeFireAndForget(
       (async () => {
@@ -717,6 +755,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
         try {
           const outcome = await provisionHelpSession();
           if (outcome && !outcome.ok) {
+            pendingNewTerminalIdRef.current = null;
+            useHelpPanelStore.getState().clearTerminal();
             if (outcome.code === "MCP_NOT_READY") {
               notifyMcpNotReady(outcome.message);
             } else {
@@ -731,7 +771,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           const env: Record<string, string> | undefined =
             helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
-          const newId = await usePanelStore.getState().addPanel({
+          const returnedId = await usePanelStore.getState().addPanel({
             kind: "terminal",
             launchAgentId,
             command: panel.command,
@@ -743,15 +783,20 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             agentModelId: panel.agentModelId,
             agentPresetId: panel.agentPresetId,
             env,
+            requestedId: newId,
+            activateDockOnCreate: true,
           });
 
-          if (!newId) {
+          if (!returnedId) {
+            pendingNewTerminalIdRef.current = null;
+            useHelpPanelStore.getState().clearTerminal();
             revokeHelpSession(session?.sessionId ?? null);
             logError("Help run-anyway returned no terminal id", { agentId: launchAgentId });
             notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
             return;
           }
 
+          pendingNewTerminalIdRef.current = null;
           useHelpPanelStore
             .getState()
             .setTerminal(newId, launchAgentId, session?.sessionId ?? null);
@@ -759,6 +804,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             logError("Failed to mark help terminal", err);
           });
         } catch (error) {
+          pendingNewTerminalIdRef.current = null;
+          useHelpPanelStore.getState().clearTerminal();
           revokeHelpSession(session?.sessionId ?? null);
           logError("Help run-anyway failed", error);
           notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
@@ -768,7 +815,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       })(),
       { context: "Help: run-anyway re-launch" }
     );
-  }, [terminalId, agentId, removePanel, clearTerminal]);
+  }, [terminalId, agentId, removePanel, clearTerminal, revokePendingSession]);
 
   const getRefreshTier = useMemo(() => {
     return () => {
