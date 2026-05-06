@@ -12,6 +12,7 @@ vi.mock("react-dom", async () => {
 });
 
 vi.mock("framer-motion", () => {
+  const passthrough = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   const MotionDiv = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
     ({ children, ...props }, ref) => {
       const {
@@ -28,8 +29,9 @@ vi.mock("framer-motion", () => {
     }
   );
   return {
-    LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    AnimatePresence: passthrough,
+    LayoutGroup: passthrough,
+    LazyMotion: passthrough,
     domAnimation: {},
     domMax: {},
     m: { div: MotionDiv },
