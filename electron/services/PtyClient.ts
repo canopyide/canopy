@@ -119,7 +119,9 @@ export interface PtyClientConfig {
 
 const DEFAULT_CONFIG: Required<PtyClientConfig> = {
   maxRestartAttempts: 3,
-  healthCheckIntervalMs: 30000,
+  // 5s × 3 missed pongs = ~15s detection window (matches VS Code's PTY host).
+  // Was 30s × 3 = ~90s, which left users staring at frozen terminals.
+  healthCheckIntervalMs: 5000,
   showCrashDialog: true,
   memoryLimitMb: 512,
 };

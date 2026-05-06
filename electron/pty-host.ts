@@ -79,6 +79,9 @@ process.on("uncaughtException", (err) => {
   } catch {
     // ignore
   }
+  // Exit on next tick so Mojo IPC can flush the error event before the process dies.
+  // Without this, the parent never sees `child-process-gone` and the host stays a zombie.
+  setImmediate(() => process.exit(1));
 });
 
 process.on("unhandledRejection", (reason) => {
@@ -93,6 +96,9 @@ process.on("unhandledRejection", (reason) => {
   } catch {
     // ignore
   }
+  // Electron 37+ no longer crashes on unhandled rejection by default — exit explicitly
+  // so the parent's child-process-gone supervision path triggers.
+  setImmediate(() => process.exit(1));
 });
 
 const ptyManager = new PtyManager();
@@ -847,11 +853,12 @@ async function initialize(): Promise<void> {
   } catch (error) {
     console.error("[PtyHost] Initialization failed:", error);
     emergencyLogFatal("INIT_ERROR", error);
-    // Even on error, we might want to stay alive to report it
+    setImmediate(() => process.exit(1));
   }
 }
 
 initialize().catch((err) => {
   console.error("[PtyHost] Fatal initialization error:", err);
   emergencyLogFatal("FATAL_INIT_ERROR", err);
+  setImmediate(() => process.exit(1));
 });
