@@ -342,9 +342,9 @@ describe("useGlobalKeybindings — IME composition guard", () => {
 
   it("does not resolve or dispatch when isComposing is true", () => {
     mocks.keybindingService.resolveKeybinding.mockReturnValue({
-      match: undefined,
+      match: { actionId: "panel.cycleNext" },
       chordPrefix: false,
-      shouldConsume: false,
+      shouldConsume: true,
     });
 
     render(<Host />);
@@ -353,6 +353,11 @@ describe("useGlobalKeybindings — IME composition guard", () => {
     expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
     expect(mocks.actionService.dispatch).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(false);
+
+    // Positive control — confirm the handler is actually installed by dispatching
+    // a normal Cmd+W next, which must reach resolveKeybinding.
+    pressCmdW();
+    expect(mocks.keybindingService.resolveKeybinding).toHaveBeenCalledTimes(1);
   });
 
   it("does not resolve or dispatch when keyCode is 229 (Chromium Process key)", () => {
