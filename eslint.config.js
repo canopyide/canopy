@@ -276,6 +276,21 @@ export default tseslint.config(
             "Don't pipe raw error.message into user-facing notifications. Use humanizeAppError(error) from @shared/utils/errorMessage to produce a friendly title and body, and stash the raw message in a 'Copy details' action. See #6050.",
         },
         {
+          // why: type:"error" + priority:"low" silently drops the error
+          // into the history inbox with no toast — users won't see it. If
+          // the failure is diagnostic-only (user can still finish their
+          // current task) demote to console.warn; if users need to see it,
+          // remove priority:"low" or raise to "high"/"normal". Direct-child
+          // combinator inside :has() prevents false positives from nested
+          // sub-objects (e.g. context payloads). Literal-only match — the
+          // computed-priority pattern in useErrors.ts is intentionally out
+          // of scope. See #6885.
+          selector:
+            "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) > ObjectExpression:has(> Property[key.name='type'][value.value='error']):has(> Property[key.name='priority'][value.value='low'])",
+          message:
+            'Don\'t emit low-priority error notifications. Use console.warn for diagnostic-only failures (user can still finish their task), or remove priority:"low" so the error toasts. See #6885.',
+        },
+        {
           selector:
             "JSXAttribute[name.name='dangerouslySetInnerHTML'] > JSXExpressionContainer > ObjectExpression > Property[key.name='__html']:not(:has(CallExpression))",
           message:
