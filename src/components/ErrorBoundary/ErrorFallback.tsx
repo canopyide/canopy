@@ -118,27 +118,29 @@ export function ErrorFallback({
                 sizes.button
               )}
             >
-              Report Issue
+              Report issue
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={handleOpenLogs}
-            data-testid="error-fallback-logs"
-            className={cn(
-              "bg-daintree-border hover:bg-daintree-border/80 text-daintree-text rounded transition-colors",
-              sizes.button
-            )}
-          >
-            View Logs
-          </button>
+          {variant !== "component" && (
+            <button
+              type="button"
+              onClick={handleOpenLogs}
+              data-testid="error-fallback-logs"
+              className={cn(
+                "bg-daintree-border hover:bg-daintree-border/80 text-daintree-text rounded transition-colors",
+                sizes.button
+              )}
+            >
+              View logs
+            </button>
+          )}
         </div>
 
         {import.meta.env.DEV && errorInfo?.componentStack && variant !== "component" && (
           <details className="w-full mt-4">
             <summary className="cursor-pointer text-xs text-daintree-text/60 hover:text-daintree-text/80">
-              Technical Details
+              Technical details
             </summary>
             <pre className="mt-2 p-3 bg-scrim-soft rounded text-xs text-status-error/80 overflow-auto max-h-48 select-text">
               {error.stack || "No stack trace available"}

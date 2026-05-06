@@ -57,7 +57,7 @@ describe("ErrorFallback", () => {
 
     it("does not render technical details", () => {
       render(<ErrorFallback {...baseProps} variant="section" />);
-      expect(screen.queryByText("Technical Details")).toBeNull();
+      expect(screen.queryByText("Technical details")).toBeNull();
     });
 
     it("does not render stack trace", () => {
@@ -83,7 +83,7 @@ describe("ErrorFallback", () => {
 
     it("renders technical details block for section variant", () => {
       render(<ErrorFallback {...baseProps} variant="section" />);
-      expect(screen.getByText("Technical Details")).toBeTruthy();
+      expect(screen.getByText("Technical details")).toBeTruthy();
     });
 
     it("renders stack trace in details", () => {
@@ -96,7 +96,7 @@ describe("ErrorFallback", () => {
     it("does not show technical details regardless of env", () => {
       vi.stubEnv("DEV", true);
       render(<ErrorFallback {...baseProps} variant="component" />);
-      expect(screen.queryByText("Technical Details")).toBeNull();
+      expect(screen.queryByText("Technical details")).toBeNull();
     });
 
     it("does not show incident ID in production", () => {
@@ -114,20 +114,32 @@ describe("ErrorFallback", () => {
       expect(baseProps.resetError).toHaveBeenCalledOnce();
     });
 
-    it("shows Report Issue button for section variant with onReport", () => {
+    it("shows Report issue button for section variant with onReport", () => {
       vi.stubEnv("DEV", false);
       const onReport = vi.fn();
       render(<ErrorFallback {...baseProps} variant="section" onReport={onReport} />);
-      const btn = screen.getByText("Report Issue");
+      const btn = screen.getByText("Report issue");
       fireEvent.click(btn);
       expect(onReport).toHaveBeenCalledOnce();
     });
 
-    it("does not show Report Issue for component variant", () => {
+    it("does not show Report issue for component variant", () => {
       vi.stubEnv("DEV", false);
       const onReport = vi.fn();
       render(<ErrorFallback {...baseProps} variant="component" onReport={onReport} />);
-      expect(screen.queryByText("Report Issue")).toBeNull();
+      expect(screen.queryByText("Report issue")).toBeNull();
+    });
+
+    it("does not show View logs for component variant", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="component" />);
+      expect(screen.queryByText("View logs")).toBeNull();
+    });
+
+    it("shows View logs for section variant", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      expect(screen.getByText("View logs")).toBeTruthy();
     });
 
     it("shows Reload window text for fullscreen variant", () => {
