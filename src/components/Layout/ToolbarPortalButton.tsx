@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
-import { BotMessageSquare } from "lucide-react";
+import { MessageSquareMore } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
@@ -32,7 +32,7 @@ export const ToolbarPortalButton = memo(function ToolbarPortalButton({
           aria-label={portalOpen ? "Close web chat" : "Open web chat"}
           aria-pressed={portalOpen}
         >
-          <BotMessageSquare aria-hidden="true" />
+          <MessageSquareMore aria-hidden="true" />
           <ShortcutRevealChip actionId="panel.togglePortal" />
         </Button>
       </TooltipTrigger>
