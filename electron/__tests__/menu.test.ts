@@ -298,7 +298,7 @@ describe("update menu lifecycle", () => {
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
-    app.isPackaged = false;
+    Object.defineProperty(app, "isPackaged", { value: false, configurable: true });
   });
 
   function findUpdateItem(
@@ -318,7 +318,7 @@ describe("update menu lifecycle", () => {
   describe("on macOS (packaged)", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-      app.isPackaged = true;
+      Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });
 
@@ -367,7 +367,7 @@ describe("update menu lifecycle", () => {
   describe("on linux/win (packaged)", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
-      app.isPackaged = true;
+      Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });
 
@@ -386,7 +386,7 @@ describe("update menu lifecycle", () => {
   describe("click handler branching", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-      app.isPackaged = true;
+      Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });
 
@@ -438,14 +438,16 @@ describe("update menu lifecycle", () => {
 
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-      app.isPackaged = true;
+      Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
 
       // The most-recent createApplicationMenu call registers the listener via
       // onMenuStateChange; pull it back out of the mock's call history.
       const calls = autoUpdaterServiceMock.onMenuStateChange.mock.calls;
       if (calls.length === 0) throw new Error("expected onMenuStateChange to be called");
-      dispatchUpdate = calls[calls.length - 1][0] as (state: "idle" | "checking" | "ready") => void;
+      const lastCall = calls[calls.length - 1] as unknown[] | undefined;
+      if (!lastCall || !lastCall[0]) throw new Error("expected callback argument");
+      dispatchUpdate = lastCall[0] as (state: "idle" | "checking" | "ready") => void;
     });
 
     it("checking state sets disabled label", () => {
