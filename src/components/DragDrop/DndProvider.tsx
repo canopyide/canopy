@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  type MutableRefObject,
 } from "react";
 import {
   DndContext,
@@ -44,6 +45,7 @@ import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useLayoutUndoStore } from "@/store/layoutUndoStore";
 import { applyManualWorktreeReorder } from "@/lib/worktreeReorder";
 import type { WorktreeSnapshot } from "@shared/types";
+import { m } from "framer-motion";
 import {
   resolveContainerId,
   filterTerminalsByContainer,
@@ -54,6 +56,12 @@ import {
   findGroupIndex,
   type OverDropData,
 } from "./dropResolution";
+import {
+  UI_ANIMATION_DURATION,
+  EASE_SNAPPY,
+  PANEL_RESTORE_DURATION,
+  EASE_OUT_EXPO,
+} from "@/lib/animationUtils";
 
 // Placeholder ID used when dragging from dock to grid
 export const GRID_PLACEHOLDER_ID = "__grid-placeholder__";
@@ -213,10 +221,12 @@ function DragOverlayWithCursorTracking({
   activeTerminal,
   activeWorktree,
   groupTabCount,
+  isCancelDropRef,
 }: {
   activeTerminal: TerminalInstance | null;
   activeWorktree: WorktreeSnapshot | null;
   groupTabCount?: number;
+  isCancelDropRef: MutableRefObject<boolean>;
 }) {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
@@ -283,8 +293,25 @@ function DragOverlayWithCursorTracking({
   );
 
   return (
-    <DragOverlay dropAnimation={null} modifiers={activeModifiers}>
-      {overlayContent}
+    <DragOverlay
+      dropAnimation={
+        isCancelDropRef.current
+          ? { duration: PANEL_RESTORE_DURATION, easing: EASE_OUT_EXPO, sideEffects: null }
+          : null
+      }
+      modifiers={activeModifiers}
+    >
+      {overlayContent ? (
+        <m.div
+          key={activeTerminal?.id ?? activeWorktree?.id ?? "drag-overlay"}
+          initial={{ scale: 0.95, opacity: 0.8 }}
+          animate={{ scale: 1, opacity: 1 }}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion -- framer-motion v12 Easing type doesn't include CSS cubic-bezier strings
+          transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_SNAPPY } as any}
+        >
+          {overlayContent}
+        </m.div>
+      ) : null}
     </DragOverlay>
   );
 }
@@ -312,6 +339,8 @@ export function DndProvider({ children }: DndProviderProps) {
   const [placeholderIndex, setPlaceholderIndex] = useState<number | null>(null);
   const stabilizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dockRetryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const isCancelDropRef = useRef(false);
 
   // Configure sensors with activation constraint so clicks work for popovers
   const sensors = useSensors(
@@ -342,6 +371,8 @@ export function DndProvider({ children }: DndProviderProps) {
   }, [activeId, activeData, panelsById]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
+    isCancelDropRef.current = false;
+
     const { active } = event;
     const dragId = active.id as string;
 
@@ -526,6 +557,8 @@ export function DndProvider({ children }: DndProviderProps) {
         setTimeout(() => terminalInstanceService.lockResize(draggedId, false), 100);
       }
 
+      // Defensive: cancelDrop should convert rejected drops to onDragCancel.
+      // If we reach this point, the drop was validated.
       if (!over || !activeData || !draggedId) return;
 
       // Capture layout state before any mutations for undo support
@@ -588,15 +621,11 @@ export function DndProvider({ children }: DndProviderProps) {
       // Track if this is a worktree drop (skip reorder logic, but still run stabilization)
       const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
       if (isWorktreeDrop) {
-        // Block worktree drops for multi-panel groups (would split the group)
-        if (isGroupDrag) {
-          // Cancel the drop - fall through to stabilization only
-        } else {
-          const currentTerminal = freshTerminalsById[draggedId];
-          if (currentTerminal && currentTerminal.worktreeId !== overData.worktreeId) {
-            moveTerminalToWorktree(draggedId, overData.worktreeId!);
-            setFocused(null);
-          }
+        if (isGroupDrag) return; // Defensive: cancelDrop should catch this
+        const currentTerminal = freshTerminalsById[draggedId];
+        if (currentTerminal && currentTerminal.worktreeId !== overData.worktreeId) {
+          moveTerminalToWorktree(draggedId, overData.worktreeId!);
+          setFocused(null);
         }
         // Don't return - fall through to stabilization
       }
@@ -639,8 +668,9 @@ export function DndProvider({ children }: DndProviderProps) {
         );
 
         if (sourceLocation === "dock" && targetContainer === "grid" && gridIsFull) {
-          // Grid is full, cancel the drop - still run stabilization below
-        } else if (isGroupDrag) {
+          return; // Defensive: cancelDrop should catch this
+        }
+        if (isGroupDrag) {
           // Group-aware drag: move the entire tab group
           if (sourceLocation === targetContainer) {
             // Same container: reorder groups
@@ -860,6 +890,74 @@ export function DndProvider({ children }: DndProviderProps) {
     ]
   );
 
+  const cancelDrop = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+
+      if (!over) {
+        isCancelDropRef.current = true;
+        return true;
+      }
+
+      if (isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
+        return false;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dnd-kit data.current is loosely typed
+      const activeDataRaw = active.data.current as DragData | undefined;
+      const draggedId = activeDataRaw?.terminal?.id ?? (active?.id ? String(active.id) : null);
+
+      if (!activeDataRaw || !draggedId) {
+        isCancelDropRef.current = true;
+        return true;
+      }
+
+      const overData = over.data.current as OverDropData | undefined;
+
+      const isGroupDrag =
+        activeDataRaw.groupId &&
+        activeDataRaw.groupPanelIds &&
+        activeDataRaw.groupPanelIds.length > 1;
+      const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
+      if (isWorktreeDrop && isGroupDrag) {
+        isCancelDropRef.current = true;
+        return true;
+      }
+
+      if (activeDataRaw.sourceLocation === "dock") {
+        const overId = String(over.id);
+        if (overId !== TRASH_DROPPABLE_ID) {
+          const store = usePanelStore.getState();
+          const targetContainer = detectTargetContainer(
+            overData,
+            overContainer,
+            overId,
+            store.panelsById,
+            parseAccordionDragId(overId) !== null
+          );
+
+          if (targetContainer === "grid") {
+            const gridIsFull = isGridFull(
+              store.panelsById,
+              store.panelIds,
+              useWorktreeSelectionStore.getState().activeWorktreeId,
+              store.tabGroups,
+              getMaxGridCapacity()
+            );
+
+            if (gridIsFull) {
+              isCancelDropRef.current = true;
+              return true;
+            }
+          }
+        }
+      }
+
+      return false;
+    },
+    [overContainer, getMaxGridCapacity]
+  );
+
   const handleDragCancel = useCallback(() => {
     // Skip terminal unlock for worktree-sort drags (no lock was acquired)
     const isWorktreeSort = activeId ? parseWorktreeSortDragId(activeId) !== null : false;
@@ -964,6 +1062,7 @@ export function DndProvider({ children }: DndProviderProps) {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
+      cancelDrop={cancelDrop}
       collisionDetection={collisionDetection}
       measuring={MEASURING_CONFIG}
       accessibility={{ announcements: dragAnnouncements }}
@@ -975,6 +1074,7 @@ export function DndProvider({ children }: DndProviderProps) {
         activeTerminal={activeTerminal}
         activeWorktree={activeSortWorktree}
         groupTabCount={activeData?.groupPanelIds?.length}
+        isCancelDropRef={isCancelDropRef}
       />
     </DndContext>
   );
