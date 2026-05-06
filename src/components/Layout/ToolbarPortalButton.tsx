@@ -4,7 +4,7 @@ import { MessageSquareMore } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { usePortalStore } from "@/store";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
@@ -17,6 +17,7 @@ export const ToolbarPortalButton = memo(function ToolbarPortalButton({
   const portalOpen = usePortalStore((state) => state.isOpen);
   const togglePortal = usePortalStore((state) => state.toggle);
   const portalShortcut = useKeybindingDisplay("panel.togglePortal");
+  const portalAriaShortcut = useAriaKeyshortcuts("panel.togglePortal");
   const portalHintHover = useShortcutHintHover("panel.togglePortal");
 
   return (
@@ -31,6 +32,7 @@ export const ToolbarPortalButton = memo(function ToolbarPortalButton({
           className={toolbarIconButtonClass}
           aria-label={portalOpen ? "Close web chat" : "Open web chat"}
           aria-pressed={portalOpen}
+          aria-keyshortcuts={portalAriaShortcut}
         >
           <MessageSquareMore aria-hidden="true" />
           <ShortcutRevealChip actionId="panel.togglePortal" />

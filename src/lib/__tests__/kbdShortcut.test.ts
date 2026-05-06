@@ -5,6 +5,7 @@ import {
   VALID_KEY_PATTERN,
   isChordPrefix,
   normalizeQuery,
+  comboToAriaKeyshortcuts,
 } from "../kbdShortcut";
 
 describe("parseChord — macOS glyphs", () => {
@@ -268,6 +269,140 @@ describe("normalizeQuery", () => {
   it("canonicalizes whole-token modifier aliases", () => {
     expect(normalizeQuery("command+shift+p")).toBe("cmd+shift+p");
     expect(normalizeQuery("command palette")).toBe("cmd+palette");
+  });
+});
+
+describe("comboToAriaKeyshortcuts — macOS modifier mapping", () => {
+  it("maps Cmd to Meta on macOS", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+P", true)).toBe("Meta+P");
+    expect(comboToAriaKeyshortcuts("Command+P", true)).toBe("Meta+P");
+    expect(comboToAriaKeyshortcuts("Meta+P", true)).toBe("Meta+P");
+  });
+
+  it("maps Ctrl/Control to Control on macOS", () => {
+    expect(comboToAriaKeyshortcuts("Ctrl+A", true)).toBe("Control+A");
+    expect(comboToAriaKeyshortcuts("Control+A", true)).toBe("Control+A");
+  });
+
+  it("maps Option/Alt to Alt on macOS", () => {
+    expect(comboToAriaKeyshortcuts("Option+T", true)).toBe("Alt+T");
+    expect(comboToAriaKeyshortcuts("Alt+T", true)).toBe("Alt+T");
+  });
+
+  it("preserves Shift", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+Shift+P", true)).toBe("Meta+Shift+P");
+  });
+});
+
+describe("comboToAriaKeyshortcuts — Win/Linux modifier mapping", () => {
+  it("maps Cmd to Control on Win/Linux (matches the runtime Cmd→Ctrl swap)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+P", false)).toBe("Control+P");
+    expect(comboToAriaKeyshortcuts("Command+P", false)).toBe("Control+P");
+    expect(comboToAriaKeyshortcuts("Meta+P", false)).toBe("Control+P");
+  });
+
+  it("keeps Ctrl as Control", () => {
+    expect(comboToAriaKeyshortcuts("Ctrl+Shift+P", false)).toBe("Control+Shift+P");
+  });
+
+  it("maps Option/Alt to Alt", () => {
+    expect(comboToAriaKeyshortcuts("Option+T", false)).toBe("Alt+T");
+    expect(comboToAriaKeyshortcuts("Alt+T", false)).toBe("Alt+T");
+  });
+});
+
+describe("comboToAriaKeyshortcuts — special key names", () => {
+  it("uses canonical KeyboardEvent key names for named keys", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+Return", true)).toBe("Meta+Enter");
+    expect(comboToAriaKeyshortcuts("Cmd+Enter", true)).toBe("Meta+Enter");
+    expect(comboToAriaKeyshortcuts("Escape", true)).toBe("Escape");
+    expect(comboToAriaKeyshortcuts("Esc", true)).toBe("Escape");
+    expect(comboToAriaKeyshortcuts("Tab", true)).toBe("Tab");
+    expect(comboToAriaKeyshortcuts("Backspace", true)).toBe("Backspace");
+    expect(comboToAriaKeyshortcuts("Delete", true)).toBe("Delete");
+    expect(comboToAriaKeyshortcuts("Del", true)).toBe("Delete");
+  });
+
+  it("maps arrow names to ArrowUp/ArrowDown/ArrowLeft/ArrowRight", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+Up", true)).toBe("Meta+ArrowUp");
+    expect(comboToAriaKeyshortcuts("Cmd+ArrowDown", true)).toBe("Meta+ArrowDown");
+    expect(comboToAriaKeyshortcuts("Ctrl+Left", false)).toBe("Control+ArrowLeft");
+    expect(comboToAriaKeyshortcuts("Ctrl+ArrowRight", false)).toBe("Control+ArrowRight");
+  });
+
+  it("preserves multi-char unknown tokens (PageUp, NumpadEnter)", () => {
+    expect(comboToAriaKeyshortcuts("PageUp", true)).toBe("PageUp");
+    expect(comboToAriaKeyshortcuts("Cmd+NumpadEnter", true)).toBe("Meta+NumpadEnter");
+  });
+});
+
+describe("comboToAriaKeyshortcuts — chord sequences", () => {
+  it("preserves space between chord steps", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K T", true)).toBe("Meta+K T");
+    expect(comboToAriaKeyshortcuts("Cmd+K T", false)).toBe("Control+K T");
+  });
+
+  it("handles two-step chords with shared prefix", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+W", true)).toBe("Meta+K Meta+W");
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+W", false)).toBe("Control+K Control+W");
+  });
+
+  it("collapses extra whitespace between steps", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K   T", true)).toBe("Meta+K T");
+  });
+});
+
+describe("comboToAriaKeyshortcuts — real default-combo round-trips", () => {
+  // Anchors the converter against representative bindings from
+  // defaultKeybindings.ts so a future raw-combo refactor cannot silently
+  // change what ends up in the accessibility tree.
+  it("maps panel toggles (Cmd+B → Meta+B / Control+B)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+B", true)).toBe("Meta+B");
+    expect(comboToAriaKeyshortcuts("Cmd+B", false)).toBe("Control+B");
+  });
+
+  it("maps multi-modifier combos (Cmd+Shift+P, Cmd+Alt+P)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+Shift+P", true)).toBe("Meta+Shift+P");
+    expect(comboToAriaKeyshortcuts("Cmd+Alt+P", false)).toBe("Control+Alt+P");
+  });
+
+  it("maps two-step chord families (Cmd+K Cmd+S, Cmd+K T)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", true)).toBe("Meta+K Meta+S");
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", false)).toBe("Control+K Control+S");
+    expect(comboToAriaKeyshortcuts("Cmd+K T", true)).toBe("Meta+K T");
+    expect(comboToAriaKeyshortcuts("Cmd+K T", false)).toBe("Control+K T");
+  });
+});
+
+describe("comboToAriaKeyshortcuts — edge cases", () => {
+  it("returns undefined for null/undefined/empty input", () => {
+    expect(comboToAriaKeyshortcuts(undefined, true)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts(null, true)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts("", true)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts("   ", true)).toBeUndefined();
+  });
+
+  it("handles literal + key (Ctrl++)", () => {
+    expect(comboToAriaKeyshortcuts("Ctrl++", false)).toBe("Control++");
+    expect(comboToAriaKeyshortcuts("Cmd+Shift++", true)).toBe("Meta+Shift++");
+  });
+
+  it("uppercases single-char keys", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+p", true)).toBe("Meta+P");
+    expect(comboToAriaKeyshortcuts("Cmd+1", true)).toBe("Meta+1");
+  });
+
+  it("is case-insensitive for modifiers", () => {
+    expect(comboToAriaKeyshortcuts("CMD+SHIFT+P", true)).toBe("Meta+Shift+P");
+    expect(comboToAriaKeyshortcuts("cmd+shift+p", true)).toBe("Meta+Shift+P");
+  });
+
+  it("trims whitespace around + separators", () => {
+    expect(comboToAriaKeyshortcuts(" Cmd + Shift + P ", true)).toBe("Meta+Shift+P");
+  });
+
+  it("passes through unknown modifier-style tokens unchanged", () => {
+    expect(comboToAriaKeyshortcuts("Hyper+P", true)).toBe("Hyper+P");
   });
 });
 

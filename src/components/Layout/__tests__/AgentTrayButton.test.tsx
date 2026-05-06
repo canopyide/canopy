@@ -109,6 +109,7 @@ vi.mock("@/store/worktreeStore", () => ({
 
 vi.mock("@/hooks", () => ({
   useKeybindingDisplay: () => null,
+  useAriaKeyshortcuts: () => undefined,
 }));
 
 let mockCcrPresetsByAgent: Record<string, Array<{ id: string; name: string }>> = {};

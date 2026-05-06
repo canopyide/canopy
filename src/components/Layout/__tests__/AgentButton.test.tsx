@@ -96,6 +96,7 @@ vi.mock("@/hooks/useWorktrees", () => ({
 
 vi.mock("@/hooks", () => ({
   useKeybindingDisplay: () => null,
+  useAriaKeyshortcuts: () => undefined,
 }));
 
 vi.mock("@/config/agents", () => ({

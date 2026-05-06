@@ -29,7 +29,12 @@ export { useAppThemeConfig } from "./useAppThemeConfig";
 export { useWorktreeTerminals } from "./useWorktreeTerminals";
 export type { WorktreeTerminalCounts, UseWorktreeTerminalsResult } from "./useWorktreeTerminals";
 
-export { useKeybindingScope, useKeybindingDisplay } from "./useKeybinding";
+export {
+  useKeybindingScope,
+  useKeybindingDisplay,
+  useEffectiveCombo,
+  useAriaKeyshortcuts,
+} from "./useKeybinding";
 export { useGlobalKeybindings, usePendingChord } from "./useGlobalKeybindings";
 export { keybindingService } from "../services/KeybindingService";
 export type { KeyScope, KeybindingConfig } from "../services/KeybindingService";

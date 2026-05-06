@@ -16,6 +16,7 @@ import {
   useWorktrees,
   useProjectSettings,
   useWorktreeActions,
+  useAriaKeyshortcuts,
   useKeybindingDisplay,
 } from "@/hooks";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
@@ -72,6 +73,9 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const overviewShortcut = useKeybindingDisplay("worktree.overview");
   const refreshShortcut = useKeybindingDisplay("worktree.refresh");
   const createWorktreeShortcut = useKeybindingDisplay("worktree.createDialog.open");
+  const overviewAriaShortcut = useAriaKeyshortcuts("worktree.overview");
+  const refreshAriaShortcut = useAriaKeyshortcuts("worktree.refresh");
+  const createWorktreeAriaShortcut = useAriaKeyshortcuts("worktree.createDialog.open");
   const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus();
   const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
   const deferredWorktrees = useDeferredValue(worktrees);
@@ -604,6 +608,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   onClick={onOpenOverview}
                   className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
                   aria-label="Open worktrees overview"
+                  aria-keyshortcuts={overviewAriaShortcut}
                 >
                   <LayoutGrid className="w-3.5 h-3.5" />
                 </button>
@@ -633,6 +638,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   disabled={isRefreshing}
                   className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/40"
                   aria-label="Refresh sidebar"
+                  aria-keyshortcuts={refreshAriaShortcut}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
                 </button>
@@ -653,6 +659,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 onPointerEnter={() => void preloadNewWorktreeDialog()}
                 className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
                 aria-label="Create new worktree"
+                aria-keyshortcuts={createWorktreeAriaShortcut}
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>

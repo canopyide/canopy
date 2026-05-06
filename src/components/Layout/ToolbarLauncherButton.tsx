@@ -4,7 +4,7 @@ import { SquareTerminal, Globe } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 
 type LauncherType = "terminal" | "browser";
 
@@ -46,6 +46,7 @@ export const ToolbarLauncherButton = memo(function ToolbarLauncherButton({
 }: ToolbarLauncherButtonProps) {
   const config = LAUNCHER_CONFIG[type];
   const shortcut = useKeybindingDisplay(config.keybindingAction);
+  const ariaShortcut = useAriaKeyshortcuts(config.keybindingAction);
   const launcherHover = useShortcutHintHover(config.keybindingAction);
 
   const handleClick = useCallback(() => {
@@ -65,6 +66,7 @@ export const ToolbarLauncherButton = memo(function ToolbarLauncherButton({
           onClick={handleClick}
           className={toolbarIconButtonClass}
           aria-label={config.label}
+          aria-keyshortcuts={ariaShortcut}
         >
           <Icon />
           <ShortcutRevealChip actionId={config.keybindingAction} />
