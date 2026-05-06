@@ -180,6 +180,8 @@ export interface NotificationSettings {
   quietHoursEndMin: number;
   /** Days the schedule applies to, 0 (Sun) - 6 (Sat). Empty array means every day. */
   quietHoursWeekdays: number[];
+  /** When true, the bell drawer groups entries by worktree/project context. */
+  groupByContext?: boolean;
 }
 
 // ElectronAPI Type (exposed via preload)
