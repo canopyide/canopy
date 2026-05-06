@@ -243,6 +243,7 @@ export interface StoreSchema {
   updateChannel: "stable" | "nightly";
   dismissedUpdateVersion?: string;
   dismissedUpdateAt?: number;
+  lastUpdateCheck?: number | null;
   /**
    * Per-logger level overrides keyed by stable `"<process>:Module"` names (or
    * `"*"` / `"<process>:*"` wildcards). Values are `"debug" | "info" | "warn"
@@ -388,6 +389,7 @@ const storeOptions = {
     orchestrationMilestones: {},
     shortcutHintCounts: {},
     updateChannel: "stable" as const,
+    lastUpdateCheck: null,
     logLevelOverrides: {},
   },
   cwd: process.env.DAINTREE_USER_DATA,

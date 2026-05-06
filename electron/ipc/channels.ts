@@ -407,6 +407,7 @@ export const CHANNELS = {
   UPDATE_GET_CHANNEL: "update:get-channel",
   UPDATE_SET_CHANNEL: "update:set-channel",
   UPDATE_DISMISS_TOAST: "update:dismiss-toast",
+  UPDATE_GET_LAST_CHECK: "update:get-last-check",
 
   SLASH_COMMANDS_LIST: "slash-commands:list",
 

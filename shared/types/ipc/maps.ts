@@ -1432,6 +1432,10 @@ export interface IpcInvokeMap {
     args: [channel: "stable" | "nightly"];
     result: "stable" | "nightly";
   };
+  "update:get-last-check": {
+    args: [];
+    result: number | null;
+  };
 
   // Agent Capabilities channels
   "agent-capabilities:get-registry": {
