@@ -121,9 +121,9 @@ describe("probeMcpServer", () => {
       res.end("Unauthorized");
     });
 
-    await expect(
-      probeMcpServer(fake.port, "wrong-key", { hardTimeoutMs: 500 })
-    ).rejects.toThrow(/status 401/);
+    await expect(probeMcpServer(fake.port, "wrong-key", { hardTimeoutMs: 500 })).rejects.toThrow(
+      /status 401/
+    );
   });
 
   it("rejects after retries when the server consistently returns 500", async () => {
