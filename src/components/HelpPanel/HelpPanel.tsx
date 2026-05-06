@@ -394,82 +394,88 @@ export function HelpPanel({
       const sessionToRevoke = helpState.sessionId;
       const liveAgentId = helpState.agentId ?? initialAgentId;
 
-      void window.electron.terminal
-        .gracefulKill(initialTerminalId)
-        .then((capturedSessionId) => {
-          // State may have changed during the IPC round-trip. Don't act on
-          // stale captures.
-          const after = useHelpPanelStore.getState();
-          if (after.terminalId !== initialTerminalId) return;
-          // Critical race: user reopened the panel while gracefulKill was
-          // in flight. The terminal is still live and visible — don't tear
-          // it down out from under them. The captured session ID is also
-          // discarded; the next hibernation cycle will capture a fresh one.
-          if (after.isOpen) return;
-          if (capturedSessionId && projectId && liveAgentId && cwd) {
-            after.setHibernateSession(projectId, {
-              sessionId: capturedSessionId,
-              cwd,
-              agentId: liveAgentId,
-            });
-          } else if (projectId) {
-            // No session captured — make sure we don't try to resume from a
-            // stale entry on next open.
-            after.clearHibernateSession(projectId);
-          }
-          usePanelStore.getState().removePanel(initialTerminalId);
-          revokeHelpSession(sessionToRevoke);
-          useHelpPanelStore.getState().clearTerminal();
-        })
-        .catch((err) => {
-          // Mirror the .then race-guard: bail if the user has reopened the
-          // panel or the terminal id has been replaced during the IPC.
-          const after = useHelpPanelStore.getState();
-          if (after.terminalId !== initialTerminalId || after.isOpen) return;
-          logError("HelpPanel: gracefulKill during hibernate failed", err);
-          if (projectId) {
-            // Drop any prior hibernate entry so we don't auto-resume from a
-            // potentially stale one after a kill failure.
-            useHelpPanelStore.getState().clearHibernateSession(projectId);
-          }
-          // Fall back to direct removal so we don't leak a hidden PTY.
-          usePanelStore.getState().removePanel(initialTerminalId);
-          revokeHelpSession(sessionToRevoke);
-          useHelpPanelStore.getState().clearTerminal();
-        });
+      safeFireAndForget(
+        window.electron.terminal
+          .gracefulKill(initialTerminalId)
+          .then((capturedSessionId) => {
+            // State may have changed during the IPC round-trip. Don't act on
+            // stale captures.
+            const after = useHelpPanelStore.getState();
+            if (after.terminalId !== initialTerminalId) return;
+            // Critical race: user reopened the panel while gracefulKill was
+            // in flight. The terminal is still live and visible — don't tear
+            // it down out from under them. The captured session ID is also
+            // discarded; the next hibernation cycle will capture a fresh one.
+            if (after.isOpen) return;
+            if (capturedSessionId && projectId && liveAgentId && cwd) {
+              after.setHibernateSession(projectId, {
+                sessionId: capturedSessionId,
+                cwd,
+                agentId: liveAgentId,
+              });
+            } else if (projectId) {
+              // No session captured — make sure we don't try to resume from a
+              // stale entry on next open.
+              after.clearHibernateSession(projectId);
+            }
+            usePanelStore.getState().removePanel(initialTerminalId);
+            revokeHelpSession(sessionToRevoke);
+            useHelpPanelStore.getState().clearTerminal();
+          })
+          .catch((err) => {
+            // Mirror the .then race-guard: bail if the user has reopened the
+            // panel or the terminal id has been replaced during the IPC.
+            const after = useHelpPanelStore.getState();
+            if (after.terminalId !== initialTerminalId || after.isOpen) return;
+            logError("HelpPanel: gracefulKill during hibernate failed", err);
+            if (projectId) {
+              // Drop any prior hibernate entry so we don't auto-resume from a
+              // potentially stale one after a kill failure.
+              useHelpPanelStore.getState().clearHibernateSession(projectId);
+            }
+            // Fall back to direct removal so we don't leak a hidden PTY.
+            usePanelStore.getState().removePanel(initialTerminalId);
+            revokeHelpSession(sessionToRevoke);
+            useHelpPanelStore.getState().clearTerminal();
+          }),
+        { context: "HelpPanel:hibernate gracefulKill" }
+      );
     };
 
-    void window.electron.helpAssistant
-      .getSettings()
-      .then((settings) => {
-        if (cancelled) return;
-        const minutes = settings.idleHibernateMinutes;
-        if (
-          minutes !== 0 &&
-          minutes !== 15 &&
-          minutes !== 30 &&
-          minutes !== 60 &&
-          minutes !== 120
-        ) {
-          // Stored value out of range — fall back to the default rather than
-          // hibernating immediately.
+    safeFireAndForget(
+      window.electron.helpAssistant
+        .getSettings()
+        .then((settings) => {
+          if (cancelled) return;
+          const minutes = settings.idleHibernateMinutes;
+          if (
+            minutes !== 0 &&
+            minutes !== 15 &&
+            minutes !== 30 &&
+            minutes !== 60 &&
+            minutes !== 120
+          ) {
+            // Stored value out of range — fall back to the default rather than
+            // hibernating immediately.
+            hibernateMinutesRef.current = 30;
+          } else {
+            hibernateMinutesRef.current = minutes;
+          }
+          if (hibernateMinutesRef.current <= 0) return;
+          clearTimer();
+          hibernateTimerRef.current = setTimeout(fire, hibernateMinutesRef.current * 60 * 1000);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          logError("HelpPanel: failed to load idleHibernateMinutes", err);
+          // Fall back to the default so a settings IPC blip doesn't leave the
+          // assistant resident forever.
           hibernateMinutesRef.current = 30;
-        } else {
-          hibernateMinutesRef.current = minutes;
-        }
-        if (hibernateMinutesRef.current <= 0) return;
-        clearTimer();
-        hibernateTimerRef.current = setTimeout(fire, hibernateMinutesRef.current * 60 * 1000);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        logError("HelpPanel: failed to load idleHibernateMinutes", err);
-        // Fall back to the default so a settings IPC blip doesn't leave the
-        // assistant resident forever.
-        hibernateMinutesRef.current = 30;
-        clearTimer();
-        hibernateTimerRef.current = setTimeout(fire, 30 * 60 * 1000);
-      });
+          clearTimer();
+          hibernateTimerRef.current = setTimeout(fire, 30 * 60 * 1000);
+        }),
+      { context: "HelpPanel:hibernate getSettings" }
+    );
 
     return () => {
       cancelled = true;
