@@ -373,11 +373,15 @@ describe("McpServerSettingsTab", () => {
       expect(screen.getByText("Copied!")).toBeTruthy();
     });
     expect(writeText).toHaveBeenCalledTimes(1);
-    const jsonArg = writeText.mock.calls[0]![0] as string;
-    const parsed = JSON.parse(jsonArg) as Array<{ id: string; toolId: string }>;
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0]!.id).toBe("1");
-    expect(parsed[0]!.toolId).toBe("files.read");
+    const jsonArg = String(writeText.mock.calls[0]![0]);
+    const parsed: unknown = JSON.parse(jsonArg);
+    expect(Array.isArray(parsed)).toBe(true);
+    if (!Array.isArray(parsed)) throw new Error("expected array");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- narrowed by Array.isArray guard above
+    const arr = parsed as Array<{ id: string; toolId: string }>;
+    expect(arr).toHaveLength(1);
+    expect(arr[0]!.id).toBe("1");
+    expect(arr[0]!.toolId).toBe("files.read");
     expect(mockedNotify).not.toHaveBeenCalled();
   });
 

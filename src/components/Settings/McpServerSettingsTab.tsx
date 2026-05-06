@@ -36,6 +36,8 @@ interface McpServerStatus {
 
 type AuditResultFilter = "all" | McpAuditResult;
 
+const COPY_FEEDBACK_MS = 2000;
+
 const RESULT_LABEL: Record<McpAuditResult, string> = {
   success: "Success",
   error: "Error",
@@ -260,7 +262,7 @@ export function McpServerSettingsTab() {
       await navigator.clipboard.writeText(JSON.stringify(records, null, 2));
       setCopiedAudit(true);
       if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
-      auditCopyTimeoutRef.current = setTimeout(() => setCopiedAudit(false), 2000);
+      auditCopyTimeoutRef.current = setTimeout(() => setCopiedAudit(false), COPY_FEEDBACK_MS);
     } catch (err) {
       setCopiedAudit(false);
       if (auditCopyTimeoutRef.current) {
