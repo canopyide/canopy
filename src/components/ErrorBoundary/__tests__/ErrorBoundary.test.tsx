@@ -32,7 +32,12 @@ vi.mock("@/lib/utils", () => ({
 
 interface ElectronMock {
   system: { openExternal: ReturnType<typeof vi.fn> };
-  clipboard: { writeText: ReturnType<typeof vi.fn> };
+  clipboard?: { writeText: ReturnType<typeof vi.fn> };
+}
+
+function getElectronMock(): ElectronMock {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
+  return (window as any).electron;
 }
 
 function installElectronMock(): ElectronMock {
@@ -40,7 +45,8 @@ function installElectronMock(): ElectronMock {
     system: { openExternal: vi.fn().mockResolvedValue(undefined) },
     clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
   };
-  (window as unknown as { electron: ElectronMock }).electron = mock;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.stubGlobal("electron", mock as any);
   return mock;
 }
 
@@ -63,7 +69,7 @@ describe("ErrorBoundary", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
-    delete (window as unknown as { electron?: unknown }).electron;
+    vi.unstubAllGlobals();
   });
 
   it("renders children when no error", () => {
@@ -225,8 +231,8 @@ describe("ErrorBoundary", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const electron = (window as unknown as { electron: ElectronMock }).electron;
-    expect(electron.clipboard.writeText).not.toHaveBeenCalled();
+    const electron = getElectronMock();
+    expect(electron.clipboard?.writeText).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
 
     expect(actionService.dispatch).toHaveBeenCalledWith(
@@ -259,9 +265,10 @@ describe("ErrorBoundary", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const electron = (window as unknown as { electron: ElectronMock }).electron;
-    expect(electron.clipboard.writeText).toHaveBeenCalledTimes(1);
-    const clipboardArg = electron.clipboard.writeText.mock.calls[0]![0] as string;
+    const electron = getElectronMock();
+    expect(electron.clipboard?.writeText).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const clipboardArg = electron.clipboard!.writeText.mock.calls[0]![0] as string;
     expect(clipboardArg).toContain("**Component:**");
     expect(clipboardArg).toContain("Component blew up");
 
@@ -282,8 +289,9 @@ describe("ErrorBoundary", () => {
   });
 
   it("still opens the stub URL when clipboard write fails", async () => {
-    const electron = (window as unknown as { electron: ElectronMock }).electron;
-    electron.clipboard.writeText.mockRejectedValue(new Error("clipboard busy"));
+    const electron = getElectronMock();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-explicit-any
+    (electron.clipboard!.writeText as any).mockRejectedValue(new Error("clipboard busy"));
 
     function ThrowGiantStack(): React.ReactElement {
       const error = new Error("Component blew up");
@@ -304,7 +312,7 @@ describe("ErrorBoundary", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(electron.clipboard.writeText).toHaveBeenCalled();
+    expect(electron.clipboard?.writeText).toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "info",
@@ -317,9 +325,9 @@ describe("ErrorBoundary", () => {
   });
 
   it("flags clipboard fallback as failed when the clipboard API is absent", async () => {
-    const electron = (window as unknown as { electron: ElectronMock }).electron;
+    const mockElectron = getElectronMock();
     // Simulate a context where clipboard IPC is unavailable.
-    delete (electron as unknown as { clipboard?: unknown }).clipboard;
+    delete mockElectron.clipboard;
 
     function ThrowGiantStack(): React.ReactElement {
       const error = new Error("Component blew up");
@@ -370,13 +378,13 @@ describe("ErrorBoundary", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const electron = (window as unknown as { electron: ElectronMock }).electron;
-    expect(electron.clipboard.writeText).toHaveBeenCalledTimes(1);
+    const electron = getElectronMock();
+    expect(electron.clipboard?.writeText).toHaveBeenCalledTimes(1);
     expect(actionService.dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing when window.electron is unavailable entirely", async () => {
-    delete (window as unknown as { electron?: unknown }).electron;
+    vi.unstubAllGlobals();
 
     render(
       <ErrorBoundary variant="section">
