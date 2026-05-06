@@ -93,6 +93,8 @@ const IDLE_TERMINAL_THRESHOLD_PRESETS = [
   { value: 240, label: "4h" },
 ] as const;
 
+const UPDATE_CHECK_REFRESH_INTERVAL_MS = 60_000;
+
 interface ShortcutDisplay {
   actionId: string;
   key: string;
@@ -174,7 +176,7 @@ export function GeneralTab({
     };
 
     loadLastCheck();
-    const interval = setInterval(loadLastCheck, 60_000);
+    const interval = setInterval(loadLastCheck, UPDATE_CHECK_REFRESH_INTERVAL_MS);
 
     return () => {
       cancelled = true;
