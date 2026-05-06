@@ -62,6 +62,7 @@ import {
   EASE_SNAPPY,
   PANEL_RESTORE_DURATION,
   EASE_OUT_EXPO,
+  getUiAnimationDuration,
 } from "@/lib/animationUtils";
 
 // Placeholder ID used when dragging from dock to grid
@@ -330,7 +331,7 @@ function DragOverlayWithCursorTracking({
       dropAnimation={
         isCancelDrop
           ? { duration: PANEL_RESTORE_DURATION, easing: EASE_OUT_EXPO, sideEffects: null }
-          : null
+          : { duration: getUiAnimationDuration(), easing: EASE_SNAPPY, sideEffects: null }
       }
       modifiers={activeModifiers}
     >
