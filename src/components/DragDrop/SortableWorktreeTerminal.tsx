@@ -1,8 +1,10 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { m } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { TerminalInstance } from "@/store";
 import type { WorktreeDragData } from "./DndProvider";
+import { pixelSnapTransform } from "./SortableTerminal";
 
 interface SortableWorktreeTerminalProps {
   terminal: TerminalInstance;
@@ -42,6 +44,7 @@ export function SortableWorktreeTerminal({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: getAccordionDragId(terminal.id),
     data: dragData,
+    animateLayoutChanges: () => false,
   });
 
   const style = {
@@ -49,23 +52,36 @@ export function SortableWorktreeTerminal({
     transition,
   };
 
-  // Omit role and aria-roledescription from attributes since we set them explicitly
-  const { role: _role, "aria-roledescription": _ariaRoleDesc, ...filteredAttributes } = attributes;
+  const {
+    role: _role,
+    "aria-roledescription": _ariaRoleDesc,
+    tabIndex: _tabIndex,
+    ...filteredAttributes
+  } = attributes;
+  void _tabIndex;
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(isDragging && "opacity-40")}
-      role="listitem"
-      aria-roledescription="sortable item"
-      {...filteredAttributes}
-    >
-      {typeof children === "function" ? (
-        children({ listeners })
-      ) : (
-        <div {...listeners}>{children}</div>
-      )}
-    </div>
+    <m.div layout="position" transformTemplate={pixelSnapTransform} className="h-full min-w-0">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={cn("h-full min-w-0")}
+        role="listitem"
+        aria-roledescription="sortable item"
+        {...filteredAttributes}
+      >
+        <m.div
+          className="h-full"
+          animate={{ opacity: isDragging ? 0.4 : 1 }}
+          transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
+        >
+          {typeof children === "function" ? (
+            children({ listeners })
+          ) : (
+            <div {...listeners}>{children}</div>
+          )}
+        </m.div>
+      </div>
+    </m.div>
   );
 }

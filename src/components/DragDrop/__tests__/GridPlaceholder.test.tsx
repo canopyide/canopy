@@ -27,16 +27,18 @@ vi.mock("../DndProvider", () => ({
 }));
 
 describe("SortableGridPlaceholder", () => {
-  it("renders contain-layout and contain-style on the wrapper", () => {
+  it("renders contain-layout and contain-style on the inner sortable wrapper", () => {
     const { container } = render(<SortableGridPlaceholder />);
-    const wrapper = container.firstChild as HTMLElement;
+    const outer = container.firstChild as HTMLElement;
+    const wrapper = outer.firstChild as HTMLElement;
     expect(wrapper.className).toContain("contain-layout");
     expect(wrapper.className).toContain("contain-style");
   });
 
-  it("sets data-placeholder-id on the wrapper", () => {
+  it("sets data-placeholder-id on the inner wrapper", () => {
     const { container } = render(<SortableGridPlaceholder />);
-    const wrapper = container.firstChild as HTMLElement;
+    const outer = container.firstChild as HTMLElement;
+    const wrapper = outer.firstChild as HTMLElement;
     expect(wrapper.getAttribute("data-placeholder-id")).toBe("__grid-placeholder__");
   });
 });

@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { m } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { TerminalInstance } from "@/store";
 import type { DragData } from "./DndProvider";
@@ -33,6 +34,7 @@ export function SortableDockItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: terminal.id,
     data: dragData,
+    animateLayoutChanges: () => false,
   });
 
   const style = {
@@ -40,17 +42,28 @@ export function SortableDockItem({
     transition,
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const destructured = attributes as unknown as Record<string, unknown>;
+  const { role: _role, tabIndex: _tabIndex, ...remainingAttributes } = destructured;
+  void _role;
+  void _tabIndex;
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn("flex-shrink-0", isDragging && "opacity-40")}
-      {...attributes}
-      {...listeners}
-      role="listitem"
+    <m.div
+      layout="position"
+      className="flex-shrink-0"
+      {...remainingAttributes}
       aria-roledescription="sortable item"
     >
-      <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
-    </div>
+      <div ref={setNodeRef} style={style} role="listitem" className={cn("flex-shrink-0")}>
+        <m.div
+          className="h-full"
+          animate={{ opacity: isDragging ? 0.4 : 1 }}
+          transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
+        >
+          <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
+        </m.div>
+      </div>
+    </m.div>
   );
 }

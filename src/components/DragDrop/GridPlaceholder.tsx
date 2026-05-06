@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { m } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useDndPlaceholder, GRID_PLACEHOLDER_ID } from "./DndProvider";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
@@ -59,6 +60,7 @@ export function SortableGridPlaceholder() {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: GRID_PLACEHOLDER_ID,
     data: { container: "grid", isPlaceholder: true },
+    animateLayoutChanges: () => false,
   });
 
   const style = {
@@ -67,15 +69,17 @@ export function SortableGridPlaceholder() {
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="h-full contain-layout contain-style"
-      data-placeholder-id={GRID_PLACEHOLDER_ID}
-    >
-      <GridPlaceholder />
-    </div>
+    <m.div layout="position" className="h-full">
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        className="h-full contain-layout contain-style"
+        data-placeholder-id={GRID_PLACEHOLDER_ID}
+      >
+        <GridPlaceholder />
+      </div>
+    </m.div>
   );
 }

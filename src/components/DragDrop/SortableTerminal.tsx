@@ -9,7 +9,7 @@ import { DragHandleProvider } from "./DragHandleContext";
 // Force integer-pixel translations on the FLIP wrapper. xterm canvas/WebGL
 // renderers blur when their ancestor chain receives a fractional CSS transform
 // (Chromium bug 40892376), so we snap mid-flight to the nearest device pixel.
-function pixelSnapTransform({ x, y }: TransformProperties): string {
+export function pixelSnapTransform({ x, y }: TransformProperties): string {
   const tx = typeof x === "number" ? x : parseFloat(x ?? "0") || 0;
   const ty = typeof y === "number" ? y : parseFloat(y ?? "0") || 0;
   return `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
@@ -58,7 +58,7 @@ export function SortableTerminal({
   });
 
   const sortableStyle = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   };
 
@@ -88,10 +88,16 @@ export function SortableTerminal({
         style={sortableStyle}
         className={cn(
           "h-full min-w-0 contain-layout contain-style",
-          isDragging && "opacity-40 ring-2 ring-daintree-text/20 rounded"
+          isDragging && "ring-2 ring-daintree-text/20 rounded"
         )}
       >
-        <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
+        <m.div
+          className="h-full"
+          animate={{ opacity: isDragging ? 0.4 : 1 }}
+          transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
+        >
+          <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
+        </m.div>
       </div>
     </m.div>
   );

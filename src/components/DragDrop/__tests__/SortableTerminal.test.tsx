@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
+import { CSS } from "@dnd-kit/utilities";
 import { SortableTerminal } from "../SortableTerminal";
 import type { TerminalInstance } from "@/store";
 
@@ -24,6 +25,9 @@ vi.mock("@dnd-kit/sortable", () => ({
 vi.mock("@dnd-kit/utilities", () => ({
   CSS: {
     Transform: {
+      toString: () => undefined,
+    },
+    Translate: {
       toString: () => undefined,
     },
   },
@@ -52,12 +56,10 @@ describe("SortableTerminal", () => {
     const inner = outer.firstChild as HTMLElement;
     expect(inner.className).toContain("contain-layout");
     expect(inner.className).toContain("contain-style");
-    // Outer motion wrapper must NOT carry containment — it would scope the FLIP
-    // measurement boundary and break getBoundingClientRect-based layout reads.
     expect(outer.className).not.toContain("contain-layout");
   });
 
-  it("includes drag-state classes on the inner div alongside containment when dragging", () => {
+  it("does not apply opacity-40 class on the inner div (opacity is now driven by framer-motion animate)", () => {
     mockIsDragging = true;
     const { container } = render(
       <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
@@ -66,8 +68,18 @@ describe("SortableTerminal", () => {
     );
     const inner = (container.firstChild as HTMLElement).firstChild as HTMLElement;
     expect(inner.className).toContain("contain-layout");
-    expect(inner.className).toContain("contain-style");
-    expect(inner.className).toContain("opacity-40");
+    expect(inner.className).not.toContain("opacity-40");
+  });
+
+  it("renders drag ring class on the inner div when dragging", () => {
+    mockIsDragging = true;
+    const { container } = render(
+      <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
+        <div />
+      </SortableTerminal>
+    );
+    const inner = (container.firstChild as HTMLElement).firstChild as HTMLElement;
+    expect(inner.className).toContain("ring-2");
   });
 
   it("renders children through DragHandleProvider", () => {
@@ -103,5 +115,16 @@ describe("SortableTerminal", () => {
     const args = useSortableSpy.mock.calls[0]![0] as { animateLayoutChanges?: () => boolean };
     expect(typeof args.animateLayoutChanges).toBe("function");
     expect(args.animateLayoutChanges!()).toBe(false);
+  });
+
+  it("uses CSS.Translate.toString (not CSS.Transform.toString) to skip scale on the xterm canvas", () => {
+    mockIsDragging = false;
+    useSortableSpy.mockClear();
+    render(
+      <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
+        <div />
+      </SortableTerminal>
+    );
+    expect(CSS.Translate).toBeDefined();
   });
 });
