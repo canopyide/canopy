@@ -56,6 +56,14 @@
   pointer-events: auto;
 }
 
+/* Reveal the drag handle whenever the row has keyboard focus, matching the
+   toolbar reveal pattern above. */
+[data-worktree-row]:focus [data-worktree-row-drag-handle],
+[data-worktree-row]:focus-within [data-worktree-row-drag-handle] {
+  color: color-mix(in srgb, var(--theme-text-primary) 30%, transparent);
+  background-color: var(--theme-overlay-soft);
+}
+
 @media (forced-colors: active) {
   [data-worktree-row]:focus-visible .sidebar-worktree-card {
     outline: 2px solid Highlight;
