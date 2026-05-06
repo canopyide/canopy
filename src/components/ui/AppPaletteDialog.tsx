@@ -222,8 +222,7 @@ export function AppPaletteDialog({
 
 interface AppPaletteHeaderProps {
   label: string;
-  keyHint?: string;
-  /** Canonical shortcut string rendered via KbdChord (e.g. "Cmd+N"). Takes precedence over keyHint. */
+  /** Canonical shortcut string rendered via KbdChord (e.g. "Cmd+N"). */
   shortcut?: string;
   children: React.ReactNode;
   className?: string;
@@ -237,7 +236,6 @@ interface AppPaletteHeaderProps {
 
 AppPaletteDialog.Header = function AppPaletteHeader({
   label,
-  keyHint,
   shortcut,
   children,
   className,
@@ -252,11 +250,7 @@ AppPaletteDialog.Header = function AppPaletteHeader({
     >
       <div className="flex justify-between items-center mb-1.5 text-[11px] text-daintree-text/50">
         <span>{label}</span>
-        {shortcut ? (
-          <KbdChord shortcut={shortcut} />
-        ) : keyHint ? (
-          <span className="font-mono">{keyHint}</span>
-        ) : null}
+        {shortcut ? <KbdChord shortcut={shortcut} /> : null}
       </div>
       {children}
       <div

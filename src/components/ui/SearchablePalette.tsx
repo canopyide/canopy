@@ -45,9 +45,7 @@ export interface SearchablePaletteProps<T> {
 
   /** Label shown above the search input */
   label: string;
-  /** Keyboard hint displayed in header (e.g. "⌘P") */
-  keyHint?: string;
-  /** Canonical shortcut rendered via KbdChord pills. Takes precedence over keyHint. */
+  /** Canonical shortcut rendered via KbdChord pills. */
   shortcut?: string;
   /** ARIA label for the dialog */
   ariaLabel: string;
@@ -152,7 +150,6 @@ export function SearchablePalette<T>({
   onHoverIndex,
   matchesById,
   label,
-  keyHint,
   shortcut,
   ariaLabel,
   searchPlaceholder = "Search",
@@ -288,7 +285,6 @@ export function SearchablePalette<T>({
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel={ariaLabel}>
       <AppPaletteDialog.Header
         label={label}
-        keyHint={keyHint}
         shortcut={shortcut}
         className={headerClassName}
         isLoading={isLoading}

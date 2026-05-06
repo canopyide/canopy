@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 import { ActionPaletteItem } from "./ActionPaletteItem";
 import type {
   ActionPaletteItem as ActionPaletteItemType,
@@ -51,6 +52,8 @@ export function ActionPalette({
     [executeAction]
   );
 
+  const actionPaletteShortcut = useEffectiveCombo("action.palette.open");
+
   return (
     <SearchablePalette<ActionPaletteItemType>
       isOpen={isOpen}
@@ -75,7 +78,7 @@ export function ActionPalette({
         />
       )}
       label="Actions"
-      keyHint="⇧⇧"
+      shortcut={actionPaletteShortcut}
       ariaLabel="Action palette"
       searchPlaceholder="Find an action"
       searchAriaLabel="Search actions"
