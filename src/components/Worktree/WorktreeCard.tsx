@@ -565,12 +565,10 @@ export function WorktreeCard({
             isActive && variant !== "sidebar" && "bg-surface-panel-elevated",
             !isActive &&
               variant === "grid" &&
-              "hover:bg-overlay-subtle hover:shadow-[var(--theme-shadow-ambient)]",
+              "hover:bg-overlay-subtle hover:shadow-[var(--theme-shadow-ambient)] [html[data-dragging='true']_&]:hover:bg-transparent [html[data-dragging='true']_&]:hover:shadow-none",
             variant === "sidebar" && !isActive && "bg-transparent",
             isFocused && !isActive && variant === "grid" && "bg-overlay-soft",
-            isOver &&
-              !isActive &&
-              "ring-2 ring-overlay bg-overlay-soft border-overlay transition-colors",
+            isOver && !isActive && "ring-2 ring-inset ring-border-default",
             worktree.isCurrent &&
               "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
           )}
@@ -594,14 +592,6 @@ export function WorktreeCard({
             )}
             aria-label={`Select worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}`}
           />
-          {isOver && !isActive && (
-            <div
-              className={cn(
-                "absolute inset-0 z-50 bg-overlay-soft border-2 border-overlay pointer-events-none animate-in fade-in duration-150",
-                variant === "grid" && "rounded-lg"
-              )}
-            />
-          )}
           {flashKey > 0 && (
             <div
               key={flashKey}
@@ -665,7 +655,7 @@ export function WorktreeCard({
                 ref={dragHandleActivatorRef}
                 data-worktree-row-drag-handle=""
                 className={cn(
-                  "shrink-0 w-4 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors motion-reduce:transition-none",
+                  "shrink-0 w-4 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors group-hover/card:delay-[50ms] motion-reduce:transition-none",
                   isDraggingSort
                     ? "bg-overlay-emphasis text-text-primary"
                     : "text-transparent group-hover/card:text-text-primary/30 group-hover/card:bg-overlay-soft"
